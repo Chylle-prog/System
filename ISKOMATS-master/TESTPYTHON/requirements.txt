@@ -5,6 +5,7 @@ uvicorn
 flask-cors
 flask-bcrypt
 flask-socketio
+eventlet
 psycopg2-binary
 supabase
 PyJWT

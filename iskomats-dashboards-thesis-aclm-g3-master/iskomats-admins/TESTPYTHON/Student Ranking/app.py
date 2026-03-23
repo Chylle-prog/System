@@ -761,6 +761,7 @@ def admin_decision(req_no):
 
 
 if __name__ == '__main__':
-    print("Starting Admin Backend on Port 5001...")
-    socketio.run(app, debug=False, port=5001, host='0.0.0.0')
+    port = int(os.environ.get('PORT', '5001'))
+    print(f"Starting Admin Backend on Port {port}...")
+    socketio.run(app, debug=False, port=port, host='0.0.0.0')
 
