@@ -199,6 +199,8 @@ def generate_token(user_id, role):
 
 def initialize_auto_chat_rooms():
     """Create initial chat rooms for all pending/accepted applicants and their providers"""
+    conn = None
+    cursor = None
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -250,9 +252,11 @@ def initialize_auto_chat_rooms():
         conn.commit()
     except Exception as e:
         print(f"Chat initialization error: {e}")
+        print("Skipping automatic chat room initialization until the database becomes available.")
     finally:
-        if conn:
+        if cursor:
             cursor.close()
+        if conn:
             conn.close()
 
 def init_socketio(socketio):
