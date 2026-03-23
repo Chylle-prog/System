@@ -1,0 +1,180 @@
+.navbar {
+  background: rgba(79, 13, 0, 0.95);
+  backdrop-filter: blur(8px);
+  padding: 0.9rem 5%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: var(--border-light);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.navbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+  color: white;
+  transition: var(--transition);
+}
+
+.navbar-brand:hover {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.navbar-brand-logo {
+  height: 40px;
+  width: auto;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+  transition: transform 0.3s ease;
+}
+
+.navbar-brand-logo:hover {
+  transform: scale(1.05);
+}
+
+.navbar-brand-text {
+  font-size: 1.65rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: white;
+}
+
+.navbar-nav {
+  display: flex;
+  gap: 2.5rem;
+  align-items: center;
+}
+
+.navbar-nav a {
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 500;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: var(--transition);
+  position: relative;
+  padding: 0.25rem 0;
+}
+
+.navbar-nav a::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #ffb199, #ffddd4);
+  transition: width 0.25s ease;
+}
+
+.navbar-nav a:hover::after {
+  width: 100%;
+}
+
+.navbar-nav a:hover {
+  color: white;
+}
+
+.navbar-nav .nav-btn {
+  background: white;
+  color: var(--primary);
+  padding: 0.6rem 1.8rem;
+  border-radius: 40px;
+  border: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: var(--transition);
+  box-shadow: 0 8px 16px -8px rgba(0, 0, 0, 0.2);
+}
+
+.navbar-nav .nav-btn:hover {
+  background: #ffefe8;
+  transform: translateY(-3px);
+  box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.3);
+}
+
+.navbar-menu {
+  display: flex;
+  gap: 2.5rem;
+  align-items: center;
+}
+
+.navbar-menu .user-email {
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+.profile-btn, .logout-btn {
+  background: transparent;
+  padding: 0.5rem 1.5rem;
+  border-radius: 40px;
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.profile-btn:hover, .logout-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+.notification-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.notification-btn {
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 1.3rem;
+  cursor: pointer;
+  position: relative;
+  padding: 0.5rem 0.8rem;
+  display: flex;
+  align-items: center;
+  transition: all 0.2s;
+  border-radius: 50%;
+}
+
+.notification-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.notification-badge {
+  position: absolute;
+  top: 0;
+  right: 2px;
+  background: #ff6b6b;
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border: 2px solid var(--primary);
+}
+
+@media (max-width: 768px) {
+  .navbar {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .navbar-nav, .navbar-menu {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1rem;
+  }
+}

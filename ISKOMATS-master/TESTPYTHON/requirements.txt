@@ -1,0 +1,12 @@
+flask
+flask-cors
+flask-bcrypt
+flask-socketio
+psycopg2-binary
+supabase
+PyJWT
+python-dotenv
+cryptography
+opencv-python
+numpy
+pandas

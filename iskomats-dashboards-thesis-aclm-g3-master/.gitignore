@@ -1,0 +1,21 @@
+# .gitignore for iskomats-dashboards-thesis-aclm-g3-master
+
+# Dependency directories
+node_modules/
+
+# Environment files
+.env
+.env.local
+
+# Build outputs
+dist/
+dist-ssr/
+*.local
+
+# Editor directories
+.vscode/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class

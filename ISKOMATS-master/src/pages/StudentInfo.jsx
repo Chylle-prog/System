@@ -1,0 +1,1912 @@
+import React, { useEffect, useState, useRef } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import SignaturePad from '../components/SignaturePad';
+import { applicantAPI, applicationAPI } from '../services/api';
+
+const STEP_FIELDS = {
+  1: [
+    'lastName', 'firstName', 'middleName', 'maidenName', 'dateOfBirth', 'placeOfBirth',
+    'streetBarangay', 'townCity', 'province', 'zipCode', 'sex', 'citizenship',
+    'mobileNumber'
+  ],
+  2: [
+    'fatherStatus', 'fatherName', 'fatherOccupation', 'fatherAddress', 'fatherPhoneNumber',
+    'motherStatus', 'motherName', 'motherOccupation', 'motherAddress', 'motherPhoneNumber',
+    'parentsGrossIncome', 'numberOfSiblings'
+  ],
+  3: [
+    'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course', 'gpa'
+  ],
+  4: [
+    'mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo'
+  ],
+  5: [
+    'mayorValidID_photo', 'privacyConsent', 'dataCertifyConsent',
+    'applicantSignatureName', 'dateAccomplished'
+  ]
+};
+
+const isFileLike = (value) => typeof File !== 'undefined' && value instanceof File;
+const DOCUMENT_IMAGE_FIELDS = new Set([
+  'mayorCOE_photo',
+  'mayorGrades_photo',
+  'mayorIndigency_photo',
+  'mayorValidID_photo'
+]);
+const DOCUMENT_UPLOAD_FIELD_MAP = {
+  mayorCOE_photo: 'enrollment_certificate_doc',
+  mayorGrades_photo: 'grades_doc',
+  mayorIndigency_photo: 'indigency_doc',
+  mayorValidID_photo: 'id_pic'
+};
+
+const buildDraftStorageKey = (user, searchParams, scholarshipName) => {
+  const scholarshipKey = searchParams.get('reqNo') || searchParams.get('scholarship_id') || scholarshipName || 'default';
+  return `studentinfo:draft:${user}:${scholarshipKey}`;
+};
+
+const serializeDraftFormData = (data) => Object.fromEntries(
+  Object.entries(data).filter(([, value]) => {
+    if (value === null || value === undefined || isFileLike(value)) {
+      return false;
+    }
+
+    if (typeof value === 'string' && value.startsWith('data:')) {
+      return false;
+    }
+
+    if (typeof value === 'string' && !value.trim()) {
+      return false;
+    }
+
+    return ['string', 'number', 'boolean'].includes(typeof value);
+  })
+);
+
+const mergeMeaningfulValues = (baseData, incomingData = {}) => {
+  const nextData = { ...baseData };
+
+  Object.entries(incomingData).forEach(([key, value]) => {
+    if (value === null || value === undefined) {
+      return;
+    }
+
+    if (typeof value === 'string' && !value.trim()) {
+      return;
+    }
+
+    nextData[key] = value;
+  });
+
+  return nextData;
+};
+
+const fillEmptyValuesOnly = (baseData, incomingData = {}) => {
+  const nextData = { ...baseData };
+
+  Object.entries(incomingData).forEach(([key, value]) => {
+    if (value === null || value === undefined) {
+      return;
+    }
+
+    if (typeof value === 'string' && !value.trim()) {
+      return;
+    }
+
+    const currentValue = nextData[key];
+    const hasCurrentString = typeof currentValue === 'string' && currentValue.trim();
+    const hasCurrentValue = hasCurrentString || typeof currentValue === 'number' || currentValue === true;
+
+    if (!hasCurrentValue) {
+      nextData[key] = value;
+    }
+  });
+
+  return nextData;
+};
+
+const StudentInfo = () => {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [currentUser, setCurrentUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
+  const [showSubmissionModal, setShowSubmissionModal] = useState(false);
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [promptMessage, setPromptMessage] = useState('');
+  const [idPicturePreview, setIdPicturePreview] = useState(null);
+  const [faceVerificationPreview, setFaceVerificationPreview] = useState(null);
+  const [validIdPreview, setValidIdPreview] = useState(null);
+  const [signaturePreview, setSignaturePreview] = useState(null);
+  const [drawnSignature, setDrawnSignature] = useState(null);
+  const [hasOtherAssistance, setHasOtherAssistance] = useState('');
+  const [scholarshipName, setScholarshipName] = useState('Scholarship Application');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingStep, setIsSavingStep] = useState(false);
+  const [currentStep, setCurrentStep] = useState(1);
+
+  // School ID photo states
+  const [schoolIdPhotos, setSchoolIdPhotos] = useState({
+    front: null,
+    back: null
+  });
+
+  // Verification States
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const [cameraError, setCameraError] = useState(null);
+  const [cameraInitializing, setCameraInitializing] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [usingFrontCamera, setUsingFrontCamera] = useState(true);
+  const [currentStream, setCurrentStream] = useState(null);
+  const [cameraPermissionStatus, setCameraPermissionStatus] = useState('');
+  const [ocrError, setOcrError] = useState('');
+  const [photos, setPhotos] = useState({
+    id_front: null,
+    id_back: null,
+    face_photo: null
+  });
+
+  const idPictureInputRef = useRef(null);
+  const signatureInputRef = useRef(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const sigPad = useRef(null);
+  const cameraTimeoutRef = useRef(null);
+
+  const [showSignaturePad, setShowSignaturePad] = useState(false);
+
+  const [formData, setFormData] = useState({
+    // Personal Information
+    lastName: '',
+    firstName: '',
+    middleName: '',
+    maidenName: '',
+    dateOfBirth: '',
+    placeOfBirth: '',
+    streetBarangay: '',
+    townCity: '',
+    province: '',
+    zipCode: '',
+    sex: '',
+    citizenship: '',
+    schoolIdNumber: '',
+    schoolName: '',
+    schoolAddress: '',
+    schoolSector: '',
+    mobileNumber: '',
+    yearLevel: '',
+    emailAddress: '',
+    gpa: '',
+    
+    // Family Background
+    fatherStatus: '',
+    fatherName: '',
+    fatherOccupation: '',
+    fatherAddress: '',
+    fatherPhoneNumber: '',
+    motherStatus: '',
+    motherName: '',
+    motherOccupation: '',
+    motherAddress: '',
+    motherPhoneNumber: '',
+    parentsGrossIncome: '',
+    numberOfSiblings: '',
+    course: '',
+    
+    // Documentary Requirements
+    mayorCOE_photo: null,
+    mayorGrades_photo: null,
+    mayorIndigency_photo: null,
+    mayorValidID_photo: null,
+
+    // School ID Photos
+    schoolIdFront: null,
+    schoolIdBack: null,
+    
+    // Certification
+    privacyConsent: false,
+    dataCertifyConsent: false,
+    applicantSignatureName: '',
+    dateAccomplished: ''
+  });
+
+  const persistDraft = (user, nextFormData = formData, nextStep = currentStep) => {
+    if (!user) {
+      return;
+    }
+
+    sessionStorage.setItem(
+      buildDraftStorageKey(user, searchParams, scholarshipName),
+      JSON.stringify({
+        currentStep: nextStep,
+        hasOtherAssistance,
+        formData: serializeDraftFormData(nextFormData)
+      })
+    );
+  };
+
+  const clearDraft = (user = currentUser) => {
+    if (!user) {
+      return;
+    }
+
+    sessionStorage.removeItem(buildDraftStorageKey(user, searchParams, scholarshipName));
+  };
+
+  const saveCurrentStepProgress = async (stepNumber = currentStep) => {
+    const payload = new FormData();
+    let hasPayload = false;
+
+    for (const fieldName of STEP_FIELDS[stepNumber] || []) {
+      const value = formData[fieldName];
+
+      if (value === undefined || value === null || value === '') {
+        continue;
+      }
+
+      const payloadFieldName = DOCUMENT_UPLOAD_FIELD_MAP[fieldName] || fieldName;
+      payload.append(payloadFieldName, typeof value === 'boolean' ? String(value) : value);
+      hasPayload = true;
+    }
+
+    if (stepNumber === 1 && idPicturePreview) {
+      payload.append('profile_picture', idPicturePreview);
+      hasPayload = true;
+    }
+
+    if (stepNumber === 3) {
+      if (schoolIdPhotos.front) {
+        payload.append('id_front', schoolIdPhotos.front);
+        hasPayload = true;
+      }
+
+      if (schoolIdPhotos.back) {
+        payload.append('id_back', schoolIdPhotos.back);
+        hasPayload = true;
+      }
+    }
+
+    if (stepNumber === 5) {
+      if (photos.face_photo) {
+        payload.append('face_photo', photos.face_photo);
+        hasPayload = true;
+      }
+
+      const signatureData = drawnSignature || signaturePreview;
+      if (signatureData) {
+        payload.append('signature_data', signatureData);
+        hasPayload = true;
+      }
+    }
+
+    persistDraft(currentUser);
+
+    if (!hasPayload) {
+      return;
+    }
+
+    await applicantAPI.updateProfile(payload);
+  };
+
+  useEffect(() => {
+    // Add Font Awesome link
+    const fontAwesomeLink = document.createElement('link');
+    fontAwesomeLink.rel = 'stylesheet';
+    fontAwesomeLink.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css';
+    document.head.appendChild(fontAwesomeLink);
+
+    // Add Google Fonts link
+    const googleFontsLink = document.createElement('link');
+    googleFontsLink.rel = 'preconnect';
+    googleFontsLink.href = 'https://fonts.googleapis.com';
+    document.head.appendChild(googleFontsLink);
+
+    const googleFontsDisplay = document.createElement('link');
+    googleFontsDisplay.rel = 'preconnect';
+    googleFontsDisplay.href = 'https://fonts.gstatic.com';
+    googleFontsDisplay.crossOrigin = 'anonymous';
+    document.head.appendChild(googleFontsDisplay);
+
+    const googleFontsSheet = document.createElement('link');
+    googleFontsSheet.rel = 'stylesheet';
+    googleFontsSheet.href = 'https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap';
+    document.head.appendChild(googleFontsSheet);
+
+    // Image Compression Utility
+    const compressImage = (file, maxWidth = 1024, quality = 0.6) => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+          const img = new Image();
+          img.src = event.target.result;
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+
+            if (width > maxWidth) {
+              height *= maxWidth / width;
+              width = maxWidth;
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Get compressed base64
+            const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+            resolve(compressedBase64);
+          };
+          img.onerror = reject;
+        };
+        reader.onerror = reject;
+      });
+    };
+    window.compressImage = compressImage; // Make it available globally in the component scope
+
+    // Load user data
+    const user = localStorage.getItem('currentUser');
+    
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+
+    setCurrentUser(user);
+
+    // Get scholarship name and search criteria from URL params
+    const scholarship = searchParams.get('scholarship');
+    const urlGpa = searchParams.get('gpa');
+    const urlIncome = searchParams.get('income');
+    const draftKey = buildDraftStorageKey(user, searchParams, scholarship || scholarshipName);
+    let savedDraft = null;
+
+    try {
+      const rawDraft = sessionStorage.getItem(draftKey);
+      savedDraft = rawDraft ? JSON.parse(rawDraft) : null;
+    } catch {
+      savedDraft = null;
+    }
+    
+    // Ensure each scholarship form always starts from step 1
+    setCurrentStep(1);
+    if (scholarship) {
+      setScholarshipName(scholarship);
+    }
+
+    // Pre-fill profile data from backend API
+    const loadProfile = async () => {
+      try {
+        const profile = await applicantAPI.getProfile();
+        setUserProfile(profile);
+
+        setFormData(prev => mergeMeaningfulValues(prev, {
+          firstName: profile.first_name || '',
+          lastName: profile.last_name || '',
+          middleName: profile.middle_name || '',
+          maidenName: profile.maiden_name || '',
+          dateOfBirth: profile.birthdate || '',
+          placeOfBirth: profile.birth_place || '',
+          streetBarangay: profile.street_brgy || '',
+          townCity: profile.town_city_municipality || '',
+          province: profile.province || '',
+          zipCode: profile.zip_code || '',
+          sex: profile.sex || '',
+          citizenship: profile.citizenship || '',
+          schoolIdNumber: profile.school_id_no || '',
+          schoolName: profile.school || '',
+          schoolAddress: profile.school_address || '',
+          schoolSector: profile.school_sector || '',
+          mobileNumber: profile.mobile_no || '',
+          yearLevel: profile.year_lvl || '',
+          emailAddress: profile.email || user,
+          fatherStatus: profile.father_status === true ? 'Living' : profile.father_status === false ? 'Deceased' : '',
+          fatherName: [profile.father_fname, profile.father_lname].filter(Boolean).join(' '),
+          fatherOccupation: profile.father_occupation || '',
+          fatherPhoneNumber: profile.father_phone_no || '',
+          motherStatus: profile.mother_status === true ? 'Living' : profile.mother_status === false ? 'Deceased' : '',
+          motherName: [profile.mother_fname, profile.mother_lname].filter(Boolean).join(' '),
+          motherOccupation: profile.mother_occupation || '',
+          motherPhoneNumber: profile.mother_phone_no || '',
+          parentsGrossIncome: urlIncome || profile.financial_income_of_parents || '',
+          gpa: urlGpa || profile.overall_gpa || '',
+          numberOfSiblings: profile.sibling_no || '',
+          course: profile.course || ''
+        }));
+
+        if (profile.profile_picture) {
+          setIdPicturePreview(profile.profile_picture);
+        }
+        
+        if (profile.has_other_assistance) {
+          setHasOtherAssistance('Yes');
+        } else if (profile.has_other_assistance === false) {
+          setHasOtherAssistance('No');
+        }
+      } catch (err) {
+        console.warn('Could not pre-fill from profile:', err.message);
+      } finally {
+        if (savedDraft?.formData) {
+          setFormData(prev => fillEmptyValuesOnly(prev, savedDraft.formData));
+        }
+
+        if (savedDraft?.hasOtherAssistance) {
+          setHasOtherAssistance(savedDraft.hasOtherAssistance);
+        }
+
+        if (savedDraft?.currentStep) {
+          setCurrentStep(savedDraft.currentStep);
+        }
+      }
+    };
+
+    loadProfile();
+
+    return () => {
+      document.head.removeChild(fontAwesomeLink);
+      document.head.removeChild(googleFontsLink);
+      document.head.removeChild(googleFontsDisplay);
+      document.head.removeChild(googleFontsSheet);
+      
+      if (currentStream) {
+
+  useEffect(() => {
+    if (!validIdPreview || !validIdPreview.startsWith('blob:')) {
+      return undefined;
+    }
+
+    return () => {
+      URL.revokeObjectURL(validIdPreview);
+    };
+  }, [validIdPreview]);
+        currentStream.getTracks().forEach(track => track.stop());
+      }
+      if (cameraTimeoutRef.current) {
+        clearTimeout(cameraTimeoutRef.current);
+      }
+    };
+  }, [navigate, searchParams]); // Removed currentStream from dependencies to avoid infinite loops if it changes
+
+  useEffect(() => {
+    if (!currentUser) {
+      return;
+    }
+
+    persistDraft(currentUser);
+  }, [currentUser, formData, hasOtherAssistance, currentStep, scholarshipName, searchParams]);
+
+  // Camera functions
+  const openCamera = async () => {
+    setShowCameraModal(true);
+    setCameraInitializing(true);
+    setCameraError(null);
+    setCameraReady(false);
+
+    try {
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+      }
+
+      const constraints = {
+        video: {
+          facingMode: usingFrontCamera ? 'user' : 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      };
+
+      const timeoutPromise = new Promise((_, reject) => {
+        cameraTimeoutRef.current = setTimeout(() => reject(new Error('Camera access timeout')), 10000);
+      });
+
+      const stream = await Promise.race([
+        navigator.mediaDevices.getUserMedia(constraints),
+        timeoutPromise
+      ]);
+
+      if (cameraTimeoutRef.current) clearTimeout(cameraTimeoutRef.current);
+
+      setCurrentStream(stream);
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await new Promise((resolve, reject) => {
+          videoRef.current.onloadedmetadata = () => {
+            videoRef.current.play().then(resolve).catch(reject);
+          };
+          videoRef.current.onerror = () => reject(new Error('Video playback error'));
+        });
+      }
+
+      setCameraInitializing(false);
+      setCameraReady(true);
+    } catch (err) {
+      console.error('Camera error:', err);
+      setCameraInitializing(false);
+      setCameraReady(false);
+      setCameraError({ 
+        message: err.name === 'NotAllowedError' ? 'Camera permission denied' : 'Camera access failed', 
+        details: err.message 
+      });
+    }
+  };
+
+  const closeCamera = () => {
+    if (currentStream) {
+      currentStream.getTracks().forEach(track => track.stop());
+      setCurrentStream(null);
+    }
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setShowCameraModal(false);
+    setCameraInitializing(false);
+    setCameraReady(false);
+    setCameraError(null);
+    if (cameraTimeoutRef.current) clearTimeout(cameraTimeoutRef.current);
+  };
+
+  const capturePhoto = () => {
+    if (!videoRef.current || !currentStream) return;
+
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+
+    if (usingFrontCamera) {
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+    }
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    // Apply slightly higher quality for face photo as it's critical
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    setPhotos(prev => ({ ...prev, face_photo: dataUrl }));
+    setFaceVerificationPreview(dataUrl);
+    
+    closeCamera();
+  };
+
+  const openGallery = (type) => {
+    const fileInput = document.getElementById(`photo_${type}`);
+    if (fileInput) fileInput.click();
+  };
+
+  const handlePhotoChange = (type) => {
+    const fileInput = document.getElementById(`photo_${type}`);
+    const file = fileInput?.files[0];
+    if (file && window.compressImage) {
+      window.compressImage(file).then(compressedBase64 => {
+        setPhotos(prev => ({ ...prev, [type]: compressedBase64 }));
+        if (type === 'face_photo') setFaceVerificationPreview(compressedBase64);
+        
+        // Keep face verification local; the backend has a single id_pic slot.
+        if (type !== 'face_photo') {
+          applicantAPI.updateProfile({ [type]: compressedBase64 }).catch(console.error);
+        }
+      });
+    }
+  };
+
+  const removePhoto = (type) => {
+    setPhotos(prev => ({ ...prev, [type]: null }));
+    if (type === 'face_photo') setFaceVerificationPreview(null);
+    const fileInput = document.getElementById(`photo_${type}`);
+    if (fileInput) fileInput.value = '';
+  };
+
+  const logout = () => {
+    localStorage.removeItem('currentUser');
+    navigate('/');
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value, type, checked, files } = e.target;
+    
+    if (type === 'checkbox') {
+      setFormData(prev => ({
+        ...prev,
+        [name]: checked
+      }));
+    } else if (type === 'file') {
+      const file = files[0] || null;
+      if (DOCUMENT_IMAGE_FIELDS.has(name)) {
+        setFormData(prev => ({
+          ...prev,
+          [name]: file
+        }));
+
+        if (name === 'mayorValidID_photo') {
+          setValidIdPreview(file ? URL.createObjectURL(file) : null);
+        }
+      } else if (file && file.type.startsWith('image/') && window.compressImage) {
+        window.compressImage(file).then(compressedBase64 => {
+          setFormData(prev => ({
+            ...prev,
+            [name]: compressedBase64
+          }));
+          
+          if (name === 'mayorValidID_photo') {
+            setValidIdPreview(compressedBase64);
+          }
+          
+          // Auto-save progress
+          applicantAPI.updateProfile({ [name]: compressedBase64 }).catch(console.error);
+        });
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          [name]: file
+        }));
+      }
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
+  };
+
+  const handleIdPictureUpload = (e) => {
+    const file = e.target.files[0];
+    if (file && window.compressImage) {
+      window.compressImage(file, 400).then(compressedBase64 => { // Smaller size for 2x2 ID
+        setIdPicturePreview(compressedBase64);
+        setFormData(prev => ({ ...prev, profile_picture: compressedBase64 }));
+        
+        applicantAPI.updateProfile({ profile_picture: compressedBase64 }).catch(console.error);
+      });
+    }
+  };
+
+  const handleSchoolIdPhotoUpload = (side, e) => {
+    const file = e.target.files[0];
+    if (file && window.compressImage) {
+      window.compressImage(file).then(compressedBase64 => {
+        setSchoolIdPhotos(prev => ({ ...prev, [side]: compressedBase64 }));
+        setFormData(prev => ({ 
+          ...prev, 
+          [`schoolId${side.charAt(0).toUpperCase() + side.slice(1)}`]: compressedBase64
+        }));
+        // Also update the photos state for Step 5 validation and backend
+        const photoKey = side === 'front' ? 'id_front' : 'id_back';
+        setPhotos(prev => ({ ...prev, [photoKey]: compressedBase64 }));
+        
+        // Auto-save progress
+        applicantAPI.updateProfile({ 
+          [photoKey]: compressedBase64
+        }).catch(console.error);
+      });
+    }
+  };
+
+  const removeSchoolIdPhoto = (side) => {
+    setSchoolIdPhotos(prev => ({ ...prev, [side]: null }));
+    setFormData(prev => ({ ...prev, [`schoolId${side.charAt(0).toUpperCase() + side.slice(1)}`]: null }));
+  };
+
+  const handleSignatureUpload = (e) => {
+    const file = e.target.files[0];
+    if (file && window.compressImage) {
+      window.compressImage(file).then(compressedBase64 => {
+        setSignaturePreview(compressedBase64);
+        
+        applicantAPI.updateProfile({ signature_data: compressedBase64 }).catch(console.error);
+      });
+    }
+  };
+
+  const handleFaceVerificationUpload = (e) => {
+    const file = e.target.files[0];
+    if (file && window.compressImage) {
+      window.compressImage(file).then(compressedBase64 => {
+        setFaceVerificationPreview(compressedBase64);
+        setPhotos(prev => ({ ...prev, face_photo: compressedBase64 }));
+      });
+    }
+  };
+
+  const clearSignature = () => {
+    if (sigPad.current) {
+      sigPad.current.clear();
+    }
+    setDrawnSignature(null);
+    setFormData(prev => ({ ...prev, applicantSignatureName: '' }));
+  };
+
+  const saveSignature = () => {
+    if (sigPad.current && !sigPad.current.isEmpty()) {
+      const canvas = sigPad.current.getTrimmedCanvas();
+      const dataUrl = canvas.toDataURL('image/png');
+      setDrawnSignature(dataUrl);
+      setFormData(prev => ({ ...prev, applicantSignatureName: dataUrl }));
+      setShowSignaturePad(false);
+      applicantAPI.updateProfile({ signature_data: dataUrl }).catch(console.error);
+    } else {
+      showPromptMessage('⚠️ Please provide a signature first.');
+    }
+  };
+
+  const showPromptMessage = (message, duration = 3000) => {
+    setPromptMessage(message);
+    setShowPrompt(true);
+    setTimeout(() => {
+      setShowPrompt(false);
+    }, duration);
+  };
+
+  const handleNextStep = async (e) => {
+    if (e) e.preventDefault();
+    
+    const stepContainer = document.querySelector('.step-container.active');
+    if (!stepContainer) return;
+
+    const requiredFields = stepContainer.querySelectorAll('[required]');
+    let isMissing = false;
+
+    requiredFields.forEach(field => {
+      if (field.type === 'checkbox') {
+        field.parentElement.style.color = '#333';
+      } else {
+        field.style.borderColor = 'var(--border)';
+      }
+
+      if (field.type === 'checkbox' && !field.checked) {
+        isMissing = true;
+        field.parentElement.style.color = '#e74c3c';
+      } else if (field.type === 'file') {
+        if (field.name) {
+          const hasSavedFile = Boolean(formData[field.name] || userProfile?.[`has_${field.name}`]);
+          if (!hasSavedFile) {
+            isMissing = true;
+          }
+        }
+      } else if (!field.value.trim() && field.type !== 'file') {
+        isMissing = true;
+        field.style.borderColor = '#e74c3c';
+      }
+    });
+
+    if (currentStep === 1 && !idPicturePreview) {
+      showPromptMessage('⚠️ Please upload your 2x2 ID Picture.');
+      return;
+    }
+
+    if (currentStep === 3) {
+      if ((!schoolIdPhotos.front && !userProfile?.has_id_img_front) || (!schoolIdPhotos.back && !userProfile?.has_id_img_back)) {
+        showPromptMessage('⚠️ Please upload both front and back of your School ID.');
+        return;
+      }
+    }
+
+    if (isMissing) {
+      showPromptMessage('⚠️ Please fill in all required fields.');
+      return;
+    }
+
+    try {
+      setIsSavingStep(true);
+      await saveCurrentStepProgress(currentStep);
+      setCurrentStep(prev => Math.min(prev + 1, 5));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      console.error('Save error:', err);
+      showPromptMessage(`⚠️ Could not save Step ${currentStep}. ${err.message}`);
+    } finally {
+      setIsSavingStep(false);
+    }
+  };
+
+  const handlePrevStep = () => {
+    setCurrentStep(prev => Math.max(prev - 1, 1));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleApplicationSubmit = async (e) => {
+    e.preventDefault();
+
+    const requiredFields = [
+      { name: 'lastName', label: 'Last Name' },
+      { name: 'firstName', label: 'First Name' },
+      { name: 'middleName', label: 'Middle Name' },
+      { name: 'dateOfBirth', label: 'Date of Birth' },
+      { name: 'placeOfBirth', label: 'Place of Birth' },
+      { name: 'streetBarangay', label: 'Street & Barangay' },
+      { name: 'townCity', label: 'Town/City' },
+      { name: 'province', label: 'Province' },
+      { name: 'zipCode', label: 'Zip Code' },
+      { name: 'sex', label: 'Sex' },
+      { name: 'citizenship', label: 'Citizenship' },
+      { name: 'schoolIdNumber', label: 'School ID Number' },
+      { name: 'schoolName', label: 'School Name' },
+      { name: 'schoolAddress', label: 'School Address' },
+      { name: 'schoolSector', label: 'School Sector' },
+      { name: 'mobileNumber', label: 'Mobile Number' },
+      { name: 'yearLevel', label: 'Year Level' },
+      { name: 'fatherStatus', label: 'Father Status' },
+      { name: 'motherStatus', label: 'Mother Status' },
+      { name: 'fatherOccupation', label: 'Father Occupation' },
+      { name: 'motherOccupation', label: 'Mother Occupation' },
+      { name: 'parentsGrossIncome', label: "Parents' Gross Income" },
+      { name: 'numberOfSiblings', label: 'Number of Siblings' },
+      { name: 'course', label: 'Course' }
+    ];
+
+    let missingLabel = '';
+    for (const field of requiredFields) {
+      if (!formData[field.name] || (typeof formData[field.name] === 'string' && !formData[field.name].trim())) {
+        missingLabel = field.label;
+        break;
+      }
+    }
+
+    if (missingLabel) {
+      showPromptMessage(`⚠️ Please fill in all fields: ${missingLabel} is missing.`);
+      return;
+    }
+
+    // Validate Required Documents
+    const requiredDocs = [
+      { name: 'mayorCOE_photo', label: 'COE Photo' },
+      { name: 'mayorGrades_photo', label: 'Grades Photo' },
+      { name: 'mayorIndigency_photo', label: 'Indigency Photo' },
+      { name: 'mayorValidID_photo', label: 'Valid ID Photo' }
+    ];
+
+    let missingDocLabel = '';
+    for (const doc of requiredDocs) {
+      if (!formData[doc.name] && !userProfile?.[`has_${doc.name}`]) {
+        missingDocLabel = doc.label;
+        break;
+      }
+    }
+
+    if (missingDocLabel) {
+      showPromptMessage(`⚠️ Please upload the document: ${missingDocLabel}.`);
+      return;
+    }
+
+    // Validate Identity Verification
+    // Both front/back ID are still required for the backend, but face_photo is now optional if valid ID photo is provided
+    if (
+      (!photos.id_front && !userProfile?.has_id_img_front) ||
+      (!photos.id_back && !userProfile?.has_id_img_back) ||
+      (!photos.face_photo && !formData.mayorValidID_photo && !userProfile?.has_mayorValidID_photo)
+    ) {
+      showPromptMessage('⚠️ Please complete Identity Verification: Upload Front/Back ID plus either a Face Photo or Valid ID Photo.');
+      return;
+    }
+
+    // Validate Checkboxes
+    if (!formData.privacyConsent) {
+      showPromptMessage('⚠️ Please accept the Privacy Policy to proceed.');
+      return;
+    }
+    if (!formData.dataCertifyConsent) {
+      showPromptMessage('⚠️ Please certify that the information provided is correct.');
+      return;
+    }
+
+    // Check if either signature image is uploaded or drawn
+    if (!signaturePreview && !drawnSignature && !userProfile?.has_signature) {
+      showPromptMessage('⚠️ Please either upload a signature photo or draw your signature.');
+      return;
+    }
+    
+    // Validate Signature Name
+    const sigNameRaw = (formData.applicantSignatureName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (!sigNameRaw) {
+      showPromptMessage('⚠️ Please type your Full Printed Name for the signature.');
+      return;
+    }
+
+    // Try to get numeric ID from URL parameters
+    let reqNo = searchParams.get('reqNo');
+    if (!reqNo || isNaN(parseInt(reqNo))) {
+      reqNo = searchParams.get('scholarship_id');
+    }
+    
+    if (!reqNo || isNaN(parseInt(reqNo))) {
+      showPromptMessage('⚠️ Scholarship ID missing or invalid.');
+      return;
+    }
+
+    const numericReqNo = parseInt(reqNo, 10);
+
+    setIsSubmitting(true);
+
+    try {
+      await saveCurrentStepProgress(5);
+
+      const submissionData = new FormData();
+
+      // Submit application
+      const result = await applicationAPI.submit(numericReqNo, submissionData);
+      console.log('Submission result:', result);
+
+      clearDraft();
+
+      setShowSubmissionModal(true);
+      setTimeout(() => {
+        navigate('/portal');
+      }, 3000);
+    } catch (err) {
+      console.error('Submission error:', err);
+      showPromptMessage(`⚠️ Error: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <>
+      <style>{`
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+
+        body {
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+          background-color: #f9fafc;
+          color: #121826;
+          line-height: 1.5;
+        }
+
+        :root {
+          --primary: #4F0D00;
+          --primary-light: #8b3a1f;
+          --accent: #4F0D00;
+          --accent-soft: #ffe8e3;
+          --gray-1: #f4f6fa;
+          --gray-2: #e2e8f0;
+          --gray-3: #b0c0d0;
+          --text-dark: #121826;
+          --text-soft: #3f4a5c;
+          --white: #ffffff;
+          --success: #0f7b5a;
+          --success-bg: #e1f7f0;
+          --warning: #b65f22;
+          --warning-bg: #ffefe3;
+          --danger: #b13e3e;
+          --danger-bg: #fee9e9;
+          --shadow-sm: 0 4px 10px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.05);
+          --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.04), 0 4px 10px rgba(0, 20, 40, 0.03);
+          --shadow-lg: 0 20px 40px -12px rgba(0, 40, 80, 0.2);
+          --border-light: 1px solid rgba(0, 0, 0, 0.05);
+          --border: #e2e8f0;
+        }
+
+        .navbar {
+          background: var(--primary);
+          padding: 0.9rem 5%;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          border-bottom: var(--border-light);
+          position: sticky;
+          top: 0;
+          z-index: 100;
+          backdrop-filter: blur(8px);
+          background-color: rgba(79, 13, 0, 0.95);
+        }
+
+        .navbar-brand {
+          font-size: 1.65rem;
+          font-weight: 800;
+          letter-spacing: -0.02em;
+          color: white;
+          text-decoration: none;
+        }
+
+        .navbar-menu {
+          display: flex;
+          gap: 2.5rem;
+          align-items: center;
+        }
+
+        .navbar-menu span {
+          color: rgba(255, 255, 255, 0.9);
+          font-weight: 500;
+          font-size: 0.95rem;
+        }
+
+        .logout-btn {
+          background: transparent;
+          padding: 0.5rem 1.5rem;
+          border-radius: 40px;
+          border: 1.5px solid rgba(255, 255, 255, 0.3);
+          color: white;
+          font-weight: 600;
+          font-size: 0.9rem;
+          transition: all 0.2s;
+          cursor: pointer;
+        }
+
+        .logout-btn:hover {
+          background: rgba(255, 255, 255, 0.1);
+          border-color: rgba(255, 255, 255, 0.6);
+          color: white;
+        }
+
+        .form-container {
+          max-width: 900px;
+          margin: 0 auto;
+          padding: 2rem 5%;
+          animation: fadeIn 0.6s ease-out;
+        }
+
+        .form-card {
+          background: #ffffff;
+          padding: 3rem;
+          border-radius: 30px;
+          border: 1px solid var(--border);
+          box-shadow: var(--shadow-md);
+          position: relative;
+        }
+
+        .section-header {
+          text-align: center;
+          margin-bottom: 2.5rem;
+        }
+        .section-header h2 {
+          font-size: 1.8rem;
+          font-weight: 800;
+          color: var(--primary);
+          margin-bottom: 0.5rem;
+          letter-spacing: -0.5px;
+        }
+        .section-header p {
+          color: var(--text-soft);
+          font-size: 1rem;
+        }
+
+        .step-indicator {
+          display: flex;
+          justify-content: space-between;
+          margin-bottom: 3.5rem;
+          position: relative;
+          padding: 0 10px;
+        }
+        .step-indicator::before {
+          content: '';
+          position: absolute;
+          top: 21px;
+          left: 0;
+          width: 100%;
+          height: 2px;
+          background: #e0e0e0;
+          z-index: 1;
+        }
+        .progress-bar {
+          position: absolute;
+          top: 21px;
+          left: 0;
+          height: 2px;
+          background: var(--primary);
+          z-index: 2;
+          transition: width 0.3s ease;
+        }
+        .step-item {
+          position: relative;
+          z-index: 3;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          width: 80px;
+        }
+        .step-circle {
+          width: 42px;
+          height: 42px;
+          border-radius: 50%;
+          background: white;
+          border: 2px solid #e0e0e0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 800;
+          font-size: 1rem;
+          color: #999;
+          margin-bottom: 0.8rem;
+          transition: all 0.3s ease;
+          box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        }
+        .step-item.active .step-circle {
+          border-color: var(--primary);
+          color: var(--primary);
+          transform: scale(1.1);
+        }
+        .step-item.completed .step-circle {
+          background: var(--primary);
+          border-color: var(--primary);
+          color: white;
+        }
+        .step-label {
+          font-size: 0.8rem;
+          color: #999;
+          text-align: center;
+          font-weight: 600;
+          transition: color 0.3s ease;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .step-item.active .step-label {
+          color: var(--primary);
+        }
+
+        .step-container {
+          display: none;
+          animation: slideIn 0.4s ease-out;
+        }
+        .step-container.active {
+          display: block;
+        }
+
+        @keyframes slideIn {
+          from { opacity: 0; transform: translateX(10px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+
+        .form-row {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 1.2rem;
+          margin-bottom: 1.2rem;
+        }
+
+        .form-group {
+          margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+          display: block;
+          font-weight: 600;
+          font-size: 0.85rem;
+          margin-bottom: 0.5rem;
+          color: #444;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+          width: 100%;
+          padding: 0.9rem 1.2rem;
+          border: 1.5px solid var(--gray-2);
+          border-radius: 18px;
+          font-size: 0.95rem;
+          transition: 0.15s;
+          background: var(--gray-1);
+          font-family: 'Inter', sans-serif;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+          outline: none;
+          border-color: var(--accent);
+          background: var(--white);
+          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
+        }
+
+        .submit-btn {
+          background: var(--primary);
+          color: white;
+          border: none;
+          border-radius: 40px;
+          font-weight: 700;
+          font-size: 1rem;
+          cursor: pointer;
+          transition: all 0.2s;
+          box-shadow: 0 4px 12px rgba(79, 13, 0, 0.2);
+          padding: 1rem 2rem;
+        }
+
+        .submit-btn:hover:not(:disabled) {
+          background: #3a0a00;
+          transform: translateY(-2px);
+          box-shadow: 0 6px 16px rgba(79, 13, 0, 0.3);
+        }
+
+        .submit-btn:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+        }
+
+        .back-to-form-btn {
+          color: var(--text-soft);
+          border: none;
+          background: transparent;
+          cursor: pointer;
+          font-size: 0.95rem;
+          font-weight: 500;
+          transition: color 0.2s;
+        }
+
+        .back-to-form-btn:hover {
+          color: var(--primary);
+        }
+
+        .modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0.4);
+          backdrop-filter: blur(8px);
+          display: none;
+          justify-content: center;
+          align-items: center;
+          z-index: 1000;
+        }
+
+        .modal-overlay.active {
+          display: flex;
+        }
+
+        .submission-modal {
+          background: white;
+          padding: 2.5rem;
+          border-radius: 30px;
+          max-width: 500px;
+          width: 90%;
+          text-align: center;
+          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+        }
+
+        .success-icon-wrapper {
+          width: 80px;
+          height: 80px;
+          background: #e6f7ec;
+          color: #28a745;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 2.5rem;
+          margin: 0 auto 1.5rem;
+        }
+
+        .camera-modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0.85);
+          display: none;
+          justify-content: center;
+          align-items: center;
+          z-index: 2000;
+          backdrop-filter: blur(10px);
+        }
+
+        .camera-modal-overlay.active {
+          display: flex;
+        }
+
+        .camera-modal-content {
+          background: white;
+          padding: 2.5rem;
+          border-radius: 32px;
+          max-width: 650px;
+          width: 90%;
+          text-align: center;
+        }
+
+        .camera-modal-content video {
+          width: 100%;
+          border-radius: 20px;
+          margin-bottom: 2rem;
+          background: #000;
+        }
+
+        .signature-preview-box {
+          position: relative;
+          background: #fff;
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          padding: 10px;
+          margin-top: 10px;
+        }
+
+        .signature-preview-box img {
+          max-width: 100%;
+          max-height: 150px;
+          object-fit: contain;
+        }
+
+        .small-prompt {
+          position: fixed;
+          bottom: 20px;
+          right: 20px;
+          background: #333;
+          color: white;
+          padding: 10px 20px;
+          border-radius: 30px;
+          font-size: 0.9rem;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+          z-index: 3000;
+          opacity: 0;
+          transition: opacity 0.3s;
+          pointer-events: none;
+        }
+
+        .small-prompt.show {
+          opacity: 1;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        .redirect-status {
+          font-size: 0.9rem;
+          color: #999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          margin-top: 2rem;
+        }
+
+        .loader-dots {
+          display: flex;
+          gap: 4px;
+        }
+
+        .dot {
+          width: 6px;
+          height: 6px;
+          background: var(--primary);
+          border-radius: 50%;
+          animation: dotLoading 1.4s infinite;
+        }
+
+        .dot:nth-child(2) { animation-delay: 0.2s; }
+        .dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes dotLoading {
+          0%, 80%, 100% { transform: scale(0); opacity: 0; }
+          40% { transform: scale(1); opacity: 1; }
+        }
+
+        @media (max-width: 768px) {
+          .step-label { display: none; }
+          .form-card { padding: 1.5rem; }
+          .navbar { padding: 1rem 5%; }
+        }
+      `}</style>
+
+      <nav className="navbar">
+        <Link to="/portal" className="navbar-brand">iskoMats</Link>
+        <div className="navbar-menu">
+          <span>{currentUser}</span>
+          <button className="logout-btn" onClick={() => {
+            localStorage.removeItem('currentUser');
+            navigate('/login');
+          }}>
+            <i className="fas fa-sign-out-alt" style={{marginRight: '6px'}}></i>Logout
+          </button>
+        </div>
+      </nav>
+
+      <div className={`small-prompt ${showPrompt ? 'show' : ''}`}>
+        {promptMessage}
+      </div>
+
+      <div className="form-container">
+        <div className="form-card">
+          <div className="section-header">
+            <img src="/iskologo.png" alt="Logo" style={{height: '50px', marginBottom: '1rem', filter: 'grayscale(1) contrast(1.2)'}} />
+            <h2>{scholarshipName}</h2>
+            <p>Step {currentStep} of 5: {
+              currentStep === 1 ? 'Personal Information' :
+              currentStep === 2 ? 'Family Background' :
+              currentStep === 3 ? 'Educational Information' :
+              currentStep === 4 ? 'Documentary Requirements' :
+              'Certification & Verification'
+            }</p>
+          </div>
+
+          <div className="step-indicator">
+            <div className="progress-bar" style={{width: `${((currentStep - 1) / 4) * 100}%`}}></div>
+            {[1, 2, 3, 4, 5].map(step => (
+              <div key={step} className={`step-item ${currentStep === step ? 'active' : ''} ${currentStep > step ? 'completed' : ''}`}>
+                <div className="step-circle">{currentStep > step ? <i className="fas fa-check"></i> : step}</div>
+                <div className="step-label">{
+                  step === 1 ? 'Personal' :
+                  step === 2 ? 'Family' :
+                  step === 3 ? 'Education' :
+                  step === 4 ? 'Docs' :
+                  'Verify'
+                }</div>
+              </div>
+            ))}
+          </div>
+
+          <form onSubmit={handleApplicationSubmit}>
+
+            {/* Step 1: Personal Information */}
+            <div className={`step-container ${currentStep === 1 ? 'active' : ''}`}>
+              <h3 style={{marginBottom: '1.5rem', fontSize: '1.2rem', color: 'var(--primary)', fontWeight: '700', borderBottom: '2px solid var(--accent-soft)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center'}}>
+                <i className="fas fa-user" style={{marginRight: '12px', fontSize: '1.1rem'}}></i>1. Personal Information
+              </h3>
+
+              {/* 2x2 ID Picture */}
+              <div style={{marginBottom: '2rem', textAlign: 'center'}}>
+                <label style={{display: 'block', fontSize: '0.85rem', marginBottom: '1rem', color: '#444', fontWeight: '600'}}>
+                  2x2 ID Picture <span style={{color: '#e74c3c'}}>*</span>
+                </label>
+                <div style={{border: '2px dashed #ccc', borderRadius: '20px', height: '180px', width: '180px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden', boxShadow: 'var(--shadow-sm)'}}>
+                  <input type="file" name="profile_picture" accept="image/*" onChange={handleIdPictureUpload} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
+                  <div style={{textAlign: 'center', color: '#999', fontSize: '0.85rem', pointerEvents: 'none'}}>
+                    {idPicturePreview ? (
+                      <img src={idPicturePreview} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="ID Preview" />
+                    ) : (
+                      <>
+                        <i className="fas fa-camera" style={{fontSize: '2rem', marginBottom: '0.5rem', display: 'block'}}></i>
+                        <span>Upload 2x2 ID Picture</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Last Name <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="text" name="lastName" value={formData.lastName} onChange={handleInputChange} placeholder="Dela Cruz" required />
+                </div>
+                <div className="form-group">
+                  <label>First Name <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="text" name="firstName" value={formData.firstName} onChange={handleInputChange} placeholder="Juan" required />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Middle Name <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="text" name="middleName" value={formData.middleName} onChange={handleInputChange} placeholder="Santos" required />
+                </div>
+                <div className="form-group">
+                  <label>Maiden Name (for married women)</label>
+                  <input type="text" name="maidenName" value={formData.maidenName} onChange={handleInputChange} placeholder="Maiden Name" />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Date of Birth <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="date" name="dateOfBirth" value={formData.dateOfBirth} onChange={handleInputChange} required />
+                </div>
+                <div className="form-group">
+                  <label>Place of Birth <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="text" name="placeOfBirth" value={formData.placeOfBirth} onChange={handleInputChange} placeholder="City/Municipality" required />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Permanent Address <span style={{color: '#e74c3c'}}>*</span></label>
+                <div className="form-row" style={{gridTemplateColumns: '2fr 1fr 1fr'}}>
+                  <input type="text" name="streetBarangay" value={formData.streetBarangay} onChange={handleInputChange} placeholder="Street & Barangay" required />
+                  <input type="text" name="townCity" value={formData.townCity} onChange={handleInputChange} placeholder="Town/City" required />
+                  <input type="text" name="province" value={formData.province} onChange={handleInputChange} placeholder="Province" required />
+                </div>
+                <div style={{marginTop: '0.5rem', width: '25%'}}>
+                  <input type="text" name="zipCode" value={formData.zipCode} onChange={handleInputChange} placeholder="Zip Code" required />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Sex <span style={{color: '#e74c3c'}}>*</span></label>
+                  <select name="sex" value={formData.sex} onChange={handleInputChange} required>
+                    <option value="">Select Sex</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Citizenship <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="text" name="citizenship" value={formData.citizenship} onChange={handleInputChange} placeholder="Filipino" required />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Mobile Number <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="tel" name="mobileNumber" value={formData.mobileNumber} onChange={handleInputChange} placeholder="09XXXXXXXXX" required />
+                </div>
+                <div className="form-group">
+                  <label>Email Address <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="email" name="emailAddress" value={formData.emailAddress} onChange={handleInputChange} style={{background: '#f8f9fa'}} readOnly />
+                </div>
+              </div>
+
+              <div style={{marginTop: '2rem', display: 'flex', justifyContent: 'flex-end'}}>
+                <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
+                  Next: Family Background <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
+                </button>
+              </div>
+            </div>
+
+            {/* Step 2: Family Background */}
+            <div className={`step-container ${currentStep === 2 ? 'active' : ''}`}>
+              <h3 style={{marginBottom: '1.5rem', fontSize: '1.2rem', color: 'var(--primary)', fontWeight: '700', borderBottom: '2px solid var(--accent-soft)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center'}}>
+                <i className="fas fa-users" style={{marginRight: '12px', fontSize: '1.1rem'}}></i>2. Family Background
+              </h3>
+
+              {/* Father Information */}
+              <div style={{marginBottom: '2rem'}}>
+                <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '600', marginBottom: '1rem', borderLeft: '3px solid var(--primary)', paddingLeft: '10px'}}>
+                  Father's Information
+                </h4>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Status <span style={{color: '#e74c3c'}}>*</span></label>
+                    <select name="fatherStatus" value={formData.fatherStatus} onChange={handleInputChange} required={currentStep === 2}>
+                      <option value="">Select Status</option>
+                      <option value="Living">Living</option>
+                      <option value="Deceased">Deceased</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Name <span style={{color: '#e74c3c'}}>*</span></label>
+                    <input type="text" name="fatherName" value={formData.fatherName} onChange={handleInputChange} placeholder="Full Name" required={currentStep === 2} />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Occupation <span style={{color: '#e74c3c'}}>*</span></label>
+                    <input type="text" name="fatherOccupation" value={formData.fatherOccupation} onChange={handleInputChange} placeholder="Occupation" required={currentStep === 2} />
+                  </div>
+                  <div className="form-group">
+                    <label>Phone Number <span style={{color: '#e74c3c'}}>*</span></label>
+                    <input type="tel" name="fatherPhoneNumber" value={formData.fatherPhoneNumber} onChange={handleInputChange} placeholder="09XXXXXXXXX" required={currentStep === 2} />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Address <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="text" name="fatherAddress" value={formData.fatherAddress} onChange={handleInputChange} placeholder="Permanent Address" required={currentStep === 2} />
+                </div>
+              </div>
+
+              {/* Mother Information */}
+              <div style={{marginBottom: '2rem'}}>
+                <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '600', marginBottom: '1rem', borderLeft: '3px solid var(--primary)', paddingLeft: '10px'}}>
+                  Mother's Information
+                </h4>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Status <span style={{color: '#e74c3c'}}>*</span></label>
+                    <select name="motherStatus" value={formData.motherStatus} onChange={handleInputChange} required={currentStep === 2}>
+                      <option value="">Select Status</option>
+                      <option value="Living">Living</option>
+                      <option value="Deceased">Deceased</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Name <span style={{color: '#e74c3c'}}>*</span></label>
+                    <input type="text" name="motherName" value={formData.motherName} onChange={handleInputChange} placeholder="Full Name" required={currentStep === 2} />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Occupation <span style={{color: '#e74c3c'}}>*</span></label>
+                    <input type="text" name="motherOccupation" value={formData.motherOccupation} onChange={handleInputChange} placeholder="Occupation" required={currentStep === 2} />
+                  </div>
+                  <div className="form-group">
+                    <label>Phone Number <span style={{color: '#e74c3c'}}>*</span></label>
+                    <input type="tel" name="motherPhoneNumber" value={formData.motherPhoneNumber} onChange={handleInputChange} placeholder="09XXXXXXXXX" required={currentStep === 2} />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Address <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="text" name="motherAddress" value={formData.motherAddress} onChange={handleInputChange} placeholder="Permanent Address" required={currentStep === 2} />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Parents' Gross Annual Income <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="number" name="parentsGrossIncome" value={formData.parentsGrossIncome} onChange={handleInputChange} placeholder="0.00" required={currentStep === 2} />
+                </div>
+                <div className="form-group">
+                  <label>Number of Siblings <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="number" name="numberOfSiblings" value={formData.numberOfSiblings} onChange={handleInputChange} placeholder="0" required={currentStep === 2} />
+                </div>
+              </div>
+
+              <div style={{marginTop: '2rem', display: 'flex', justifyContent: 'space-between'}}>
+                <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
+                  <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> Back: Personal Info
+                </button>
+                <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
+                  Next: Educational Info <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
+                </button>
+              </div>
+            </div>
+
+            {/* Step 3: Educational Information */}
+            <div className={`step-container ${currentStep === 3 ? 'active' : ''}`}>
+              <h3 style={{marginBottom: '1.5rem', fontSize: '1.2rem', color: 'var(--primary)', fontWeight: '700', borderBottom: '2px solid var(--accent-soft)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center'}}>
+                <i className="fas fa-graduation-cap" style={{marginRight: '12px', fontSize: '1.1rem'}}></i>3. Educational Information
+              </h3>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>School ID Number <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="text" name="schoolIdNumber" value={formData.schoolIdNumber} onChange={handleInputChange} placeholder="ID Number" required={currentStep === 3} />
+                </div>
+                <div className="form-group">
+                  <label>Name of School <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="text" name="schoolName" value={formData.schoolName} onChange={handleInputChange} placeholder="School Name" required={currentStep === 3} />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>School Address <span style={{color: '#e74c3c'}}>*</span></label>
+                <input type="text" name="schoolAddress" value={formData.schoolAddress} onChange={handleInputChange} placeholder="Complete School Address" required={currentStep === 3} />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>School Sector <span style={{color: '#e74c3c'}}>*</span></label>
+                  <select name="schoolSector" value={formData.schoolSector} onChange={handleInputChange} required={currentStep === 3}>
+                    <option value="">Select Sector</option>
+                    <option value="Public">Public</option>
+                    <option value="Private">Private</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Year Level <span style={{color: '#e74c3c'}}>*</span></label>
+                  <select name="yearLevel" value={formData.yearLevel} onChange={handleInputChange} required={currentStep === 3}>
+                    <option value="">Select Year</option>
+                    {[1, 2, 3, 4, 5].map(yr => <option key={yr} value={`${yr}${yr === 1 ? 'st' : yr === 2 ? 'nd' : yr === 3 ? 'rd' : 'th'} Year`}>{yr}{yr === 1 ? 'st' : yr === 2 ? 'nd' : yr === 3 ? 'rd' : 'th'} Year</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Course/Program <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="text" name="course" value={formData.course} onChange={handleInputChange} placeholder="B.S. Information Technology" required={currentStep === 3} />
+                </div>
+                <div className="form-group">
+                  <label>Current GPA <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="number" step="0.01" name="gpa" value={formData.gpa} onChange={handleInputChange} placeholder="0.00" required={currentStep === 3} />
+                </div>
+              </div>
+
+              <div style={{marginBottom: '2rem'}}>
+                <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '1rem', color: '#444', fontWeight: '600'}}>
+                  Updated School ID (Photo) <span style={{color: '#e74c3c'}}>*</span>
+                </label>
+                <div className="form-row">
+                  <div className="form-group" style={{textAlign: 'center'}}>
+                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
+                      <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} required={currentStep === 3} />
+                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem'}}>
+                        {schoolIdPhotos.front ? <img src={schoolIdPhotos.front} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="School ID Front" /> : 'Front of School ID'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="form-group" style={{textAlign: 'center'}}>
+                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
+                      <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} required={currentStep === 3} />
+                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem'}}>
+                        {schoolIdPhotos.back ? <img src={schoolIdPhotos.back} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="School ID Back" /> : 'Back of School ID'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{marginTop: '2rem', display: 'flex', justifyContent: 'space-between'}}>
+                <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
+                  <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> Back: Family Background
+                </button>
+                <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
+                  Next: Documentary Requirements <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
+                </button>
+              </div>
+            </div>
+
+            {/* Step 4: Documentary Requirements */}
+            <div className={`step-container ${currentStep === 4 ? 'active' : ''}`}>
+              <h3 style={{marginBottom: '1.5rem', fontSize: '1.2rem', color: 'var(--primary)', fontWeight: '700', borderBottom: '2px solid var(--accent-soft)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center'}}>
+                <i className="fas fa-file-invoice" style={{marginRight: '12px', fontSize: '1.1rem'}}></i>4. Documentary Requirements
+              </h3>
+              <p style={{color: 'var(--text-soft)', fontSize: '0.85rem', marginBottom: '2rem', background: 'var(--warning-bg)', padding: '0.8rem 1.2rem', borderRadius: '12px', borderLeft: '4px solid var(--warning)'}}>
+                <i className="fas fa-info-circle" style={{marginRight: '8px'}}></i>Upload <strong>PHOTO</strong> for each requirement. Files are uploaded when you click Next to reduce lag while selecting them.
+              </p>
+
+              <div style={{display: 'flex', flexDirection: 'column', gap: '1.5rem'}}>
+                {[
+                  { label: 'Certificate of Enrollment (Current A.Y)', name: 'mayorCOE' },
+                  { label: 'Certified True Copy of Grades (Last Semester)', name: 'mayorGrades' },
+                  { label: 'Certificate of Indigency', name: 'mayorIndigency' },
+                  { label: 'Valid Government Issued ID', name: 'mayorValidID' }
+                ].map((doc, idx) => (
+                  <div key={idx} style={{background: '#fdfdfd', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--gray-2)'}}>
+                    <label style={{fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '1rem', display: 'block'}}>{doc.label} <span style={{color: '#e74c3c'}}>*</span></label>
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label style={{fontSize: '0.8rem', color: '#666'}}>Photo (.png/jpg)</label>
+                        <input type="file" name={`${doc.name}_photo`} accept="image/*" onChange={handleInputChange} required={currentStep === 4} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{marginTop: '2rem', display: 'flex', justifyContent: 'space-between'}}>
+                <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
+                  <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> Back: Educational Info
+                </button>
+                <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
+                  Next: Final Verification <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
+                </button>
+              </div>
+            </div>
+
+            {/* Step 5: Certification and Verification */}
+            <div className={`step-container ${currentStep === 5 ? 'active' : ''}`}>
+              <h3 style={{marginBottom: '1.5rem', fontSize: '1.2rem', color: 'var(--primary)', fontWeight: '700', borderBottom: '2px solid var(--accent-soft)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center'}}>
+                <i className="fas fa-check-double" style={{marginRight: '12px', fontSize: '1.1rem'}}></i>5. Certification & Verification
+              </h3>
+
+              <div style={{background: '#f8f9fa', padding: '1.5rem', borderRadius: '16px', marginBottom: '2rem', border: '1px solid #e9ecef'}}>
+                <h4 style={{fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '1rem'}}>Privacy Consent & Certification</h4>
+                <div style={{fontSize: '0.85rem', color: '#555', lineHeight: '1.6', maxHeight: '150px', overflowY: 'auto', paddingRight: '10px', marginBottom: '1rem'}}>
+                  I hereby certify that all information provided in this application is true and correct to the best of my knowledge and belief. I understand that any false statement or simulation of information shall be a ground for the reproduction or cancellation of my scholarship. I also authorize the scholarship committee to verify the information provided herein.
+                </div>
+                <label style={{display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#333', cursor: 'pointer', fontWeight: '600'}}>
+                  <input type="checkbox" name="privacyConsent" checked={formData.privacyConsent} onChange={handleInputChange} style={{width: '18px', height: '18px'}} required={currentStep === 5} />
+                  I agree to the terms and conditions
+                </label>
+                <label style={{display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#333', cursor: 'pointer', fontWeight: '600', marginTop: '10px'}}>
+                  <input type="checkbox" name="dataCertifyConsent" checked={formData.dataCertifyConsent} onChange={handleInputChange} style={{width: '18px', height: '18px'}} required={currentStep === 5} />
+                  I certify that the information provided is correct
+                </label>
+              </div>
+
+              {/* Signature Section */}
+              <div style={{marginBottom: '2rem'}}>
+                <label style={{display: 'block', fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '1rem'}}>Applicant's Signature <span style={{color: '#e74c3c'}}>*</span></label>
+                <div style={{background: '#fff', border: '1px solid var(--border)', borderRadius: '16px', padding: '1.5rem', textAlign: 'center'}}>
+                  {!showSignaturePad && !formData.applicantSignatureName ? (
+                    <button type="button" onClick={() => setShowSignaturePad(true)} className="photo-option-btn" style={{margin: '0 auto'}}>
+                      <i className="fas fa-pen-nib"></i> Sign Application
+                    </button>
+                  ) : showSignaturePad ? (
+                    <div style={{width: '100%', maxWidth: '400px', margin: '0 auto'}}>
+                      <div style={{border: '1.5px solid #eee', borderRadius: '12px', background: '#fcfcfc', marginBottom: '1rem'}}>
+                        <SignaturePad ref={sigPad} canvasProps={{width: 400, height: 150, className: 'sigCanvas'}} />
+                      </div>
+                      <div style={{display: 'flex', gap: '10px', justifyContent: 'center'}}>
+                        <button type="button" onClick={clearSignature} className="back-to-form-btn" style={{padding: '0.5rem 1.5rem', fontSize: '0.85rem'}}>Clear</button>
+                        <button type="button" onClick={saveSignature} className="submit-btn" style={{width: 'auto', padding: '0.5rem 2rem', height: 'auto', fontSize: '0.85rem'}}>Save Signature</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="signature-preview-box">
+                      <img src={formData.applicantSignatureName} alt="Signature" />
+                      <button type="button" onClick={() => setShowSignaturePad(true)} style={{position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer'}}><i className="fas fa-undo"></i></button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ID Verification Section (Face & Valid ID) */}
+              <div style={{marginBottom: '2rem'}}>
+                <h4 style={{fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '1rem'}}>Final Verification <span style={{color: '#e74c3c'}}>*</span></h4>
+                <div className="form-row">
+                  <div className="form-group" style={{textAlign: 'center'}}>
+                    <label style={{fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem', display: 'block'}}>Face Photo</label>
+                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
+                      {photos.face_photo ? (
+                        <>
+                          <img src={photos.face_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Face Verification" />
+                          <button type="button" onClick={() => removePhoto('face_photo')} style={{position: 'absolute', top: '5px', right: '5px', background: 'rgba(255,0,0,0.7)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px'}}><i className="fas fa-times"></i></button>
+                        </>
+                      ) : (
+                        <button type="button" onClick={openCamera} style={{border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer'}}>
+                          <i className="fas fa-camera" style={{fontSize: '1.5rem'}}></i>
+                          <span style={{display: 'block', fontSize: '0.75rem', marginTop: '5px'}}>Open Camera</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="form-group" style={{textAlign: 'center'}}>
+                    <label style={{fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem', display: 'block'}}>Valid ID Photo</label>
+                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
+                      <input type="file" name="mayorValidID_photo" accept="image/*" onChange={handleInputChange} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} required={currentStep === 5} />
+                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem'}}>
+                        {validIdPreview ? <img src={validIdPreview} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Valid ID" /> : 'Upload ID Photo'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{marginTop: '3rem', display: 'flex', justifyContent: 'space-between'}}>
+                <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
+                  <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> Back: Requirements
+                </button>
+                <button type="submit" className="submit-btn" disabled={isSubmitting || isSavingStep} style={{width: 'auto', padding: '0.8rem 3.5rem', borderRadius: '40px', background: 'var(--success)', border: 'none'}}>
+                  {isSubmitting ? (
+                    <><i className="fas fa-spinner fa-spin" style={{marginRight: '10px'}}></i>Submitting...</>
+                  ) : (
+                    <><i className="fas fa-paper-plane" style={{marginRight: '10px'}}></i>Submit Application</>
+                  )}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <div className="redirect-status">
+          All data is transmitted securely via 256-bit SSL encryption.
+        </div>
+      </div>
+
+      {/* Success Modal */}
+      <div className={`modal-overlay ${showSubmissionModal ? 'active' : ''}`}>
+        <div className="submission-modal">
+          <div className="success-icon-wrapper">
+            <i className="fas fa-check"></i>
+          </div>
+          <h2>Application submitted!</h2>
+          <p>Your application for <strong>{scholarshipName}</strong> has been received. Please wait for an email regarding your status.</p>
+          <div className="redirect-status">
+            Redirecting to portal...
+            <div className="loader-dots">
+              <div className="dot"></div><div className="dot"></div><div className="dot"></div>
+            </div>
+          </div>
+          <button className="submit-btn" onClick={() => navigate('/portal')} style={{marginTop: '1.5rem', width: '100%'}}>
+            Return to Portal
+          </button>
+        </div>
+      </div>
+
+      {/* Camera Modal Overlay */}
+      <div className={`camera-modal-overlay ${showCameraModal ? 'active' : ''}`}>
+        <div className="camera-modal-content">
+          <h3 style={{marginBottom: '1rem', color: 'var(--primary)'}}>Face Verification</h3>
+          <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1.5rem'}}>Position your face within the frame and click capture.</p>
+          <div style={{position: 'relative', width: '100%', background: '#000', borderRadius: '20px', overflow: 'hidden', marginBottom: '2rem'}}>
+            <video ref={videoRef} autoPlay playsInline muted style={{width: '100%', transform: usingFrontCamera ? 'scaleX(-1)' : 'none'}} />
+            {cameraInitializing && (
+              <div style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)', color: 'white'}}>
+                <i className="fas fa-spinner fa-spin" style={{fontSize: '2rem'}}></i>
+              </div>
+            )}
+            {cameraError && (
+              <div style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.8)', color: 'white', padding: '2rem'}}>
+                <i className="fas fa-exclamation-triangle" style={{fontSize: '2rem', marginBottom: '1rem', color: '#ffcc00'}}></i>
+                <p>{cameraError.message}</p>
+                <button onClick={openCamera} className="submit-btn" style={{marginTop: '1rem', padding: '0.5rem 1.5rem', height: 'auto'}}>Retry</button>
+              </div>
+            )}
+          </div>
+          <div style={{display: 'flex', gap: '15px', justifyContent: 'center'}}>
+            <button type="button" onClick={closeCamera} className="back-to-form-btn">Cancel</button>
+            <button type="button" onClick={capturePhoto} className="submit-btn" disabled={!cameraReady} style={{width: 'auto', padding: '0.8rem 2rem', height: 'auto', borderRadius: '30px'}}>
+              <i className="fas fa-camera" style={{marginRight: '8px'}}></i> Capture
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};
+
+export default StudentInfo;

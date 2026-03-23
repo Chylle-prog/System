@@ -1,0 +1,195 @@
+@import "tailwindcss";
+
+/* Custom base styles for enhanced design */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Custom component styles */
+@layer components {
+
+  /* Animation delays */
+  .animation-delay-1000 {
+    animation-delay: 1s;
+  }
+
+  .animation-delay-2000 {
+    animation-delay: 2s;
+  }
+
+  .animation-delay-3000 {
+    animation-delay: 3s;
+  }
+
+  .animation-delay-4000 {
+    animation-delay: 4s;
+  }
+
+  /* Enhanced glassmorphism */
+  .glass-enhanced {
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+  }
+
+  /* Enhanced shadows */
+  .shadow-enhanced {
+    box-shadow:
+      0 25px 50px -12px rgba(139, 41, 66, 0.5),
+      0 0 0 1px rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* Print Styles - Improved Table/Report Format */
+@media print {
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+
+  /* Hide navigation, sidebars, and UI buttons */
+  nav,
+  aside,
+  header,
+  footer,
+  button,
+  .no-print,
+  .fixed,
+  .z-50,
+  [role="button"],
+  .sidebar,
+  .navbar,
+  .modal-backdrop {
+    display: none !important;
+  }
+
+  /* Ensure the main content expands */
+  body,
+  html,
+  #root,
+  .min-h-screen {
+    background: white !important;
+    color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: auto !important;
+    width: 100% !important;
+    overflow: visible !important;
+  }
+
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  /* Table formatting for professional reports */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin-bottom: 20px !important;
+    page-break-inside: auto !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+    page-break-after: auto !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+    background-color: #f8f9fa !important;
+  }
+
+  th,
+  td {
+    border: 1px solid #dee2e6 !important;
+    padding: 12px 8px !important;
+    text-align: left !important;
+    color: #212529 !important;
+    font-size: 10pt !important;
+  }
+
+  th {
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+  }
+
+  /* Keep charts visible but ensure they don't break layout */
+  canvas {
+    max-width: 100% !important;
+    height: auto !important;
+    page-break-inside: avoid !important;
+  }
+
+  .grid {
+    display: block !important;
+  }
+
+  /* Remove excessive styling for print */
+  .shadow-sm,
+  .shadow-md,
+  .shadow-lg,
+  .shadow-xl,
+  .shadow-2xl,
+  .shadow-enhanced {
+    box-shadow: none !important;
+  }
+
+  .rounded-2xl,
+  .rounded-3xl,
+  .rounded-xl,
+  .rounded-[40px] {
+    border-radius: 0 !important;
+    border: 1px solid #eee !important;
+  }
+
+  /* Report header */
+  .report-header {
+    display: block !important;
+    text-align: center !important;
+    margin-bottom: 40px !important;
+    padding: 20px !important;
+    border-bottom: 3px solid #800020 !important;
+  }
+
+  .report-title {
+    font-size: 24pt !important;
+    font-weight: 900 !important;
+    color: #800020 !important;
+    margin-bottom: 5px !important;
+    text-transform: uppercase !important;
+  }
+
+  .report-subtitle {
+    font-size: 12pt !important;
+    color: #666 !important;
+    margin-bottom: 20px !important;
+  }
+}
+
+/* Visibility classes */
+.print-only {
+  display: none;
+}
+
+@media print {
+  .print-only {
+    display: block !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}

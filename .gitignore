@@ -1,0 +1,40 @@
+# Root .gitignore for System folder
+
+# Logs and temporary files
+*.log
+npm-debug.log*
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env/
+
+# Dependency directories
+node_modules/
+**/node_modules/
+
+# Build outputs
+dist/
+build/
+bin/
+obj/
+
+# Sensitive files
+.env
+**/.env
+*.key
+*.pem
+
+# Editor-specific
+.vscode/
+.idea/
+*.suo
+*.user
+
+# Ignore the template folder if it ever reappears
+*template/

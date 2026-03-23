@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Scholarship Management Portal</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 700px; margin: 100px auto; text-align: center; padding: 20px; background: #f8f9fa; }
+    h1 { color: #2c3e50; margin-bottom: 10px; }
+    .tagline { font-size: 1.2em; color: #555; margin-bottom: 40px; }
+    .btn { display: inline-block; padding: 16px 50px; margin: 15px; font-size: 1.3em; text-decoration: none; border-radius: 8px; color: white; }
+    .btn-login { background: #3498db; }
+    .btn-register { background: #27ae60; }
+    .btn-admin { background: #e74c3c; }
+    .btn:hover { opacity: 0.92; transform: translateY(-2px); }
+    .message { padding: 15px; border-radius: 6px; margin: 30px 0; max-width: 500px; margin-left: auto; margin-right: auto; }
+    .success { background: #dff0d8; color: #3c763d; }
+    .error   { background: #f2dede; color: #a94442; }
+  </style>
+</head>
+<body>
+  <h1>Scholarship Management Portal</h1>
+  <p class="tagline">Manage your scholarships and review applicants</p>
+
+  <a href="{{ url_for('provider_login') }}" class="btn btn-login">Provider Login</a>
+  <a href="{{ url_for('provider_register') }}" class="btn btn-register">Register Provider</a>
+  <a href="{{ url_for('admin_login') }}" class="btn btn-admin">Full Admin</a>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, msg in messages %}
+        <div class="message {{ category }}">{{ msg|safe }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+</body>
+</html>
