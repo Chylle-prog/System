@@ -132,20 +132,21 @@ app.register_blueprint(api_bp)  # Add API routes
 
 Create `.env` file in TESTPYTHON folder:
 ```
-FLASK_ENV=development
-FLASK_DEBUG=1
-SECRET_KEY=your-very-long-random-secret-key-change-this
-DB_NAME=test
-DB_USER=postgres
-DB_PASSWORD=secure_pass
-DB_HOST=localhost
-DB_PORT=5432
-ENCRYPTION_KEY=your-encryption-key
+FLASK_ENV=your_flask_env
+FLASK_DEBUG=your_flask_debug_value
+SECRET_KEY=your_secret_key_here
+DB_NAME=your_database_name
+DB_USER=your_database_user
+DB_PASSWORD=your_database_password
+DB_HOST=your_database_host
+DB_PORT=your_database_port
+ENCRYPTION_KEY=your_encryption_key_here
 ```
 
 Create `.env` file in iskomats-admins folder:
 ```
-REACT_APP_API_URL=http://localhost:5000/api
+VITE_API_URL=your_backend_api_url
+VITE_SOCKET_URL=your_backend_socket_url
 ```
 
 ---
