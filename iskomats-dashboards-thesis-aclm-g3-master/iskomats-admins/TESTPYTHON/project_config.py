@@ -19,16 +19,16 @@ if ENV_PATH.exists():
 
 
 def get_db_connection_kwargs():
-    schema = os.environ.get('DB_SCHEMA', 'public').strip() or 'public'
-    sslmode = os.environ.get('DB_SSLMODE', 'require').strip() or 'require'
-    connect_timeout = int(os.environ.get('DB_CONNECT_TIMEOUT', '10'))
+    schema = os.getenv('DB_SCHEMA', 'public').strip() or 'public'
+    sslmode = os.getenv('DB_SSLMODE', 'require').strip() or 'require'
+    connect_timeout = int(os.getenv('DB_CONNECT_TIMEOUT', '10'))
 
     connection_kwargs = {
-        'dbname': os.environ.get('DB_NAME'),
-        'user': os.environ.get('DB_USER'),
-        'password': os.environ.get('DB_PASSWORD'),
-        'host': os.environ.get('DB_HOST'),
-        'port': os.environ.get('DB_PORT', '5432'),
+        'dbname': os.getenv('DB_NAME'),
+        'user': os.getenv('DB_USER'),
+        'password': os.getenv('DB_PASSWORD'),
+        'host': os.getenv('DB_HOST'),
+        'port': os.getenv('DB_PORT', '5432'),
         'sslmode': sslmode,
         'connect_timeout': connect_timeout,
     }
@@ -52,7 +52,7 @@ def get_db_display_config():
         'host': connection_kwargs['host'],
         'port': connection_kwargs['port'],
         'dbname': connection_kwargs['dbname'],
-        'schema': os.environ.get('DB_SCHEMA', 'public').strip() or 'public',
+        'schema': os.getenv('DB_SCHEMA', 'public').strip() or 'public',
         'sslmode': connection_kwargs['sslmode'],
     }
 
