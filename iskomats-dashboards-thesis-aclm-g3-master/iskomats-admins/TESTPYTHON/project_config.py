@@ -19,24 +19,31 @@ if ENV_PATH.exists():
 
 
 def get_db_connection_kwargs():
-    schema = os.getenv('DB_SCHEMA', 'public').strip() or 'public'
-    sslmode = os.getenv('DB_SSLMODE', 'require').strip() or 'require'
-    connect_timeout = int(os.getenv('DB_CONNECT_TIMEOUT', '10'))
+    schema = os.getenv('DB_SCHEMA', '').strip()
+    sslmode = os.getenv('DB_SSLMODE', '').strip()
+    connect_timeout = os.getenv('DB_CONNECT_TIMEOUT', '').strip()
 
     connection_kwargs = {
-        'dbname': os.getenv('DB_NAME'),
-        'user': os.getenv('DB_USER'),
-        'password': os.getenv('DB_PASSWORD'),
-        'host': os.getenv('DB_HOST'),
-        'port': os.getenv('DB_PORT', '5432'),
-        'sslmode': sslmode,
-        'connect_timeout': connect_timeout,
+        'dbname': os.getenv('DB_NAME', '').strip() or None,
+        'user': os.getenv('DB_USER', '').strip() or None,
+        'password': os.getenv('DB_PASSWORD', '').strip() or None,
+        'host': os.getenv('DB_HOST', '').strip() or None,
     }
 
-    if schema and schema != 'public':
+    port = os.getenv('DB_PORT', '').strip()
+    if port:
+        connection_kwargs['port'] = port
+
+    if sslmode:
+        connection_kwargs['sslmode'] = sslmode
+
+    if connect_timeout:
+        connection_kwargs['connect_timeout'] = int(connect_timeout)
+
+    if schema:
         connection_kwargs['options'] = f'-c search_path={schema}'
 
-    return connection_kwargs
+    return {key: value for key, value in connection_kwargs.items() if value is not None}
 
 
 def get_db(cursor_factory=RealDictCursor):
@@ -50,19 +57,22 @@ def get_db_display_config():
     connection_kwargs = get_db_connection_kwargs()
     return {
         'host': connection_kwargs['host'],
-        'port': connection_kwargs['port'],
+        'port': connection_kwargs.get('port'),
         'dbname': connection_kwargs['dbname'],
-        'schema': os.getenv('DB_SCHEMA', 'public').strip() or 'public',
-        'sslmode': connection_kwargs['sslmode'],
+        'schema': os.getenv('DB_SCHEMA', '').strip(),
+        'sslmode': connection_kwargs.get('sslmode'),
     }
 
 
 def use_storage():
-    return os.environ.get('STORE_FILES_IN', 'database').strip().lower() == 'storage'
+    return os.environ.get('STORE_FILES_IN', '').strip().lower() == 'storage'
 
 
-def get_storage_bucket(default='iskomats-files'):
-    return os.environ.get('SUPABASE_STORAGE_BUCKET', default).strip() or default
+def get_storage_bucket(default=None):
+    bucket = os.environ.get('SUPABASE_STORAGE_BUCKET', '').strip()
+    if bucket:
+        return bucket
+    return default
 
 
 def get_supabase_client():

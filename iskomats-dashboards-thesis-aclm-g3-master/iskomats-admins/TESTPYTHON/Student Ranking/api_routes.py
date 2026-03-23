@@ -1255,11 +1255,11 @@ def get_applicants(program):
                     (a.id_pic IS NOT NULL) as "has_id_pic",
                     (a.profile_picture IS NOT NULL) as "has_profile_picture",
                     (a.signature_image_data IS NOT NULL) as "has_signature"
-            FROM public.applicants a
-            INNER JOIN public.applicant_status s ON a.applicant_no = s.applicant_no
-            INNER JOIN public.scholarships esc ON s.scholarship_no = esc.req_no
-            INNER JOIN public.scholarship_providers p ON esc.pro_no = p.pro_no
-            LEFT JOIN public.email e ON a.applicant_no = e.applicant_no
+            FROM applicants a
+            INNER JOIN applicant_status s ON a.applicant_no = s.applicant_no
+            INNER JOIN scholarships esc ON s.scholarship_no = esc.req_no
+            INNER JOIN scholarship_providers p ON esc.pro_no = p.pro_no
+            LEFT JOIN email e ON a.applicant_no = e.applicant_no
             WHERE 1=1
         '''
         params = []
