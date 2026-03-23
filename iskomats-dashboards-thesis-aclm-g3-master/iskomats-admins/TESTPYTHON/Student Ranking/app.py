@@ -20,7 +20,7 @@ from project_config import get_db as base_get_db, get_db_display_config
 def get_allowed_origins():
     configured = os.environ.get(
         'CORS_ORIGINS',
-        'http://localhost:5173,http://localhost:3000,http://localhost:5174',
+        'http://localhost:5173,http://localhost:3000,http://localhost:5174,https://cozy-kulfi-35f772.netlify.app,https://system-kjbv.onrender.com',
     )
     return [origin.strip() for origin in configured.split(',') if origin.strip()]
 
