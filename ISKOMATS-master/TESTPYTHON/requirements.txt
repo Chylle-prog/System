@@ -1,3 +1,4 @@
+# Requires Python 3.10
 flask
 flask-cors
 flask-bcrypt
