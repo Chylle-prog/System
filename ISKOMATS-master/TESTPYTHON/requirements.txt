@@ -1,5 +1,7 @@
 # Requires Python 3.10
 flask
+fastapi
+uvicorn
 flask-cors
 flask-bcrypt
 flask-socketio
