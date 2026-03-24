@@ -1,8 +1,9 @@
 import os
+import re
 import sys
 
 import psycopg2
-from flask import Flask
+from flask import Flask, request
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
@@ -22,7 +23,38 @@ def get_allowed_origins():
         'CORS_ORIGINS',
         'http://localhost:5173,http://localhost:3000,http://localhost:5174,https://cozy-kulfi-35f772.netlify.app,https://system-kjbv.onrender.com',
     )
-    return [origin.strip() for origin in configured.split(',') if origin.strip()]
+    origins = [origin.strip() for origin in configured.split(',') if origin.strip()]
+    preview_patterns = []
+
+    for origin in origins:
+        if origin.endswith('.netlify.app') and '--' not in origin:
+            host = origin.removeprefix('https://').removeprefix('http://')
+            preview_patterns.append(re.compile(rf"https://.*--{re.escape(host)}$"))
+
+    return origins + preview_patterns
+
+
+def split_allowed_origins(origins):
+    exact_origins = []
+    regex_origins = []
+
+    for origin in origins:
+        if hasattr(origin, 'match'):
+            regex_origins.append(origin)
+        else:
+            exact_origins.append(origin)
+
+    return exact_origins, regex_origins
+
+
+def is_origin_allowed(origin, exact_origins, regex_origins):
+    if not origin:
+        return False
+
+    if origin in exact_origins:
+        return True
+
+    return any(pattern.match(origin) for pattern in regex_origins)
 
 
 def get_db():
@@ -45,11 +77,29 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'development-key-replace-in-production')
 
 allowed_origins = get_allowed_origins()
-CORS(app, resources={r"/api/*": {"origins": allowed_origins}})
+exact_allowed_origins, preview_origin_patterns = split_allowed_origins(allowed_origins)
+
+CORS(app, resources={r"/api/*": {"origins": exact_allowed_origins}})
 
 socketio = SocketIO(app, cors_allowed_origins=allowed_origins)
 app.register_blueprint(api_bp)
 init_socketio(socketio)
+
+
+@app.after_request
+def add_cors_headers(response):
+    origin = request.headers.get('Origin')
+
+    if request.path.startswith('/api/') and is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Headers'] = request.headers.get(
+            'Access-Control-Request-Headers',
+            'Content-Type, Authorization'
+        )
+        response.headers['Access-Control-Allow-Methods'] = 'DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT'
+        response.headers['Vary'] = 'Origin'
+
+    return response
 
 
 @app.route('/')
