@@ -1,8 +1,7 @@
 // src/services/api.js - Create this file to connect React to Python backend
 
 import axios from 'axios';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+import { API_BASE_URL } from './config';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
