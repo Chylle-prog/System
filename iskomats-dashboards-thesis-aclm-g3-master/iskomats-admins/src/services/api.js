@@ -44,25 +44,25 @@ api.interceptors.response.use(
 
 export const authAPI = {
   login: (email, password) =>
-    api.post('/auth/login', { email, password }),
+    api.post('/admin/auth/login', { email, password }),
   
   register: (fullName, email, username, password, role) =>
-    api.post('/auth/register', { fullName, email, username, password, role }),
+    api.post('/admin/auth/register', { fullName, email, username, password, role }),
   
   logout: () =>
-    api.post('/auth/logout'),
+    api.post('/admin/auth/logout'),
   
   forgotPassword: (email) =>
-    api.post('/auth/forgot-password', { email }),
+    api.post('/admin/auth/forgot-password', { email }),
   
   resetPassword: (token, newPassword) =>
-    api.post('/auth/reset-password', { token, newPassword }),
+    api.post('/admin/auth/reset-password', { token, newPassword }),
   
   verifyEmail: (token) =>
-    api.post('/auth/verify-email', { token }),
+    api.post('/admin/auth/verify-email', { token }),
   
   checkEmail: (email) =>
-    api.post('/auth/check-email', { email }),
+    api.post('/admin/auth/check-email', { email }),
 };
 
 // ===== ADMIN ENDPOINTS =====
@@ -82,7 +82,7 @@ export const adminAPI = {
     api.delete(`/admin/accounts/${accountId}`),
   
   lockAccount: (accountId, locked) =>
-    api.put(`/accounts/${accountId}/lock`, { locked }),
+    api.put(`/admin/accounts/${accountId}/lock`, { locked }),
   
   // Reports
   generateReport: (reportData) =>
@@ -100,37 +100,37 @@ export const adminAPI = {
 
 export const scholarshipAPI = {
   getByProgram: (program) =>
-    api.get(`/scholarships/${program}`),
+    api.get(`/admin/scholarships/${program}`),
   
   getApplicants: (program, filters = {}) =>
-    api.get(`/applicants/${program}`, { params: filters }),
+    api.get(`/admin/applicants/${program}`, { params: filters }),
   
   createApplicant: (program, applicantData) =>
-    api.post(`/applicants/${program}`, applicantData),
+    api.post(`/admin/applicants/${program}`, applicantData),
   
   updateApplicant: (program, applicantId, applicantData) =>
-    api.put(`/applicants/${program}/${applicantId}`, applicantData),
+    api.put(`/admin/applicants/${program}/${applicantId}`, applicantData),
   
   deleteApplicant: (program, applicantId) =>
-    api.delete(`/applicants/${program}/${applicantId}`),
+    api.delete(`/admin/applicants/${program}/${applicantId}`),
   
   getRankings: (program) =>
-    api.get(`/rankings/${program}`),
+    api.get(`/admin/rankings/${program}`),
   
   submitRanking: (program, rankingData) =>
-    api.post(`/rankings/${program}/rank`, rankingData),
+    api.post(`/admin/rankings/${program}/rank`, rankingData),
   
   getApplicantDetails: (applicantId) =>
-    api.get(`/applicants/${applicantId}`),
+    api.get(`/admin/applicants/${applicantId}`),
 
   createScholarship: (scholarshipData) =>
-    api.post('/scholarships', scholarshipData),
+    api.post('/admin/scholarships', scholarshipData),
   
   updateScholarship: (reqNo, scholarshipData) =>
-    api.put(`/scholarships/${reqNo}`, scholarshipData),
+    api.put(`/admin/scholarships/${reqNo}`, scholarshipData),
   
   deleteScholarship: (reqNo) =>
-    api.delete(`/scholarships/${reqNo}`),
+    api.delete(`/admin/scholarships/${reqNo}`),
 };
 
 export default api;

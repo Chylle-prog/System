@@ -88,7 +88,7 @@ def decrypt_image_to_data_url(encrypted_data):
         print(f"Decryption error: {e}", file=sys.stderr)
         return None
 
-api_bp = Blueprint('api', __name__, url_prefix='/api')
+api_bp = Blueprint('admin_api', __name__, url_prefix='/api/admin')
 bcrypt = Bcrypt()
 
 # ===== JWT CONFIG =====
@@ -709,7 +709,7 @@ def verify_email():
 
 # ===== ADMIN ENDPOINTS =====
 
-@api_bp.route('/admin/accounts', methods=['GET'])
+@api_bp.route('/accounts', methods=['GET'])
 @token_required
 def get_accounts(current_user):
     """Get all user accounts"""
@@ -793,7 +793,7 @@ def get_accounts(current_user):
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
-@api_bp.route('/admin/accounts', methods=['POST'])
+@api_bp.route('/accounts', methods=['POST'])
 @token_required
 def create_account(current_user):
     """Create new user account"""
@@ -877,7 +877,7 @@ def create_account(current_user):
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
-@api_bp.route('/admin/accounts/<int:account_id>', methods=['PUT'])
+@api_bp.route('/accounts/<int:account_id>', methods=['PUT'])
 @token_required
 def update_account(current_user, account_id):
     """Update user account"""
@@ -914,7 +914,7 @@ def update_account(current_user, account_id):
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
-@api_bp.route('/admin/accounts/<int:account_id>', methods=['DELETE'])
+@api_bp.route('/accounts/<int:account_id>', methods=['DELETE'])
 @token_required
 def delete_account(current_user, account_id):
     """Delete user account"""
@@ -980,7 +980,7 @@ def toggle_account_lock(current_user, account_id):
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
-@api_bp.route('/admin/statistics', methods=['GET'])
+@api_bp.route('/statistics', methods=['GET'])
 @token_required
 def get_statistics(current_user):
     """Get dashboard statistics"""
@@ -1019,7 +1019,7 @@ def get_statistics(current_user):
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
-@api_bp.route('/admin/logs', methods=['GET'])
+@api_bp.route('/logs', methods=['GET'])
 @token_required
 def get_activity_logs(current_user):
     """Get dashboard activity logs from live database tables."""
