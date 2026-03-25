@@ -653,6 +653,29 @@ def check_email():
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 
+@api_bp.route('/providers', methods=['GET'])
+def get_providers():
+    """Fetch all scholarship providers from the database"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        # Fetch both ID and Name to be used in the dropdown
+        cursor.execute("SELECT pro_no, provider_name FROM scholarship_providers ORDER BY provider_name ASC")
+        providers = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        # Ensure we return a list of simplified objects
+        result = [
+            {'pro_no': row['pro_no'], 'provider_name': row['provider_name']}
+            for row in providers
+        ]
+        
+        return jsonify(result), 200
+    except Exception as e:
+        print(f"[AUTH] Error fetching providers: {str(e)}")
+        return jsonify({'message': f'Error fetching providers: {str(e)}'}), 500
+
 @api_bp.route('/auth/register', methods=['POST'])
 def register():
     """Register endpoint - create new user"""

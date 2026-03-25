@@ -131,6 +131,9 @@ export const scholarshipAPI = {
   
   deleteScholarship: (reqNo) =>
     api.delete(`/admin/scholarships/${reqNo}`),
+  
+  getProviders: () =>
+    api.get('/admin/providers'),
 };
 
 export default api;

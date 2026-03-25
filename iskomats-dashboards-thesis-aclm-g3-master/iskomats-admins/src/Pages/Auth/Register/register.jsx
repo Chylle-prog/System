@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { FaUser, FaLock, FaEnvelope, FaEye, FaEyeSlash, FaGraduationCap, FaUserPlus, FaPhone, FaIdCard, FaSchool } from "react-icons/fa";
-import { authAPI } from "../../../services/api";
+import { FaUser, FaLock, FaEnvelope, FaEye, FaEyeSlash, FaGraduationCap, FaUserPlus, FaPhone, FaIdCard, FaSchool, FaChevronDown } from "react-icons/fa";
+import { authAPI, scholarshipAPI } from "../../../services/api";
 
 const Register = () => {
   const navigate = useNavigate();
@@ -21,6 +21,22 @@ const Register = () => {
     error: "",
     agreement: false
   });
+  const [providers, setProviders] = useState([]);
+  const [isLoadingProviders, setIsLoadingProviders] = useState(true);
+
+  useEffect(() => {
+    const fetchProviders = async () => {
+      try {
+        const response = await scholarshipAPI.getProviders();
+        setProviders(response.data);
+      } catch (err) {
+        console.error("Failed to fetch providers:", err);
+      } finally {
+        setIsLoadingProviders(false);
+      }
+    };
+    fetchProviders();
+  }, []);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -211,16 +227,22 @@ const Register = () => {
                   <label className="text-white text-sm font-semibold">
                     What role scholarship are you?
                   </label>
-                  <div className="mt-2">
-                    <input
-                      type="text"
+                  <div className="mt-2 relative">
+                    <select
                       name="role"
                       value={formData.role}
                       onChange={handleChange}
-                      placeholder="Enter scholarship role"
                       required
-                      className="w-full px-3 py-1.5 rounded-md bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
-                    />
+                      className="w-full px-3 py-1.5 rounded-md bg-white/10 border border-white/30 text-white focus:outline-none focus:border-white appearance-none"
+                    >
+                      <option value="" disabled className="bg-red-900 text-white">Select scholarship role</option>
+                      {providers.map((p) => (
+                        <option key={p.pro_no} value={p.provider_name} className="bg-red-900 text-white">
+                          {p.provider_name}
+                        </option>
+                      ))}
+                    </select>
+                    <FaChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-red-300 pointer-events-none text-xs" />
                   </div>
                 </div>
 
