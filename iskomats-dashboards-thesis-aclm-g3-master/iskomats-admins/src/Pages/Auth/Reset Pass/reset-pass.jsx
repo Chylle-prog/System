@@ -1,9 +1,11 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { FaLock, FaEye, FaEyeSlash, FaCheckCircle, FaArrowLeft, FaShieldAlt } from "react-icons/fa";
+import { authAPI } from '../../../services/api';
 
 const ResetPass = () => {
   const navigate = useNavigate();
+  const { token: routeToken } = useParams();
   const [formData, setFormData] = useState({
     newPassword: "",
     confirmPassword: "",
@@ -12,8 +14,8 @@ const ResetPass = () => {
     isLoading: false,
     error: "",
     success: false,
-    token: "", // This would come from URL params in a real app
   });
+  const token = useMemo(() => routeToken || new URLSearchParams(window.location.search).get('token') || '', [routeToken]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -56,6 +58,15 @@ const ResetPass = () => {
     e.preventDefault();
     setFormData({ ...formData, isLoading: true, error: "", success: false });
 
+    if (!token) {
+      setFormData((previous) => ({
+        ...previous,
+        error: "Password reset link is invalid or missing",
+        isLoading: false,
+      }));
+      return;
+    }
+
     // Basic validation
     if (!formData.newPassword || !formData.confirmPassword) {
       setFormData({
@@ -87,15 +98,22 @@ const ResetPass = () => {
       return;
     }
 
-    // Simulate API call
-    setTimeout(() => {
-      // Simulate successful password reset
-      setFormData({
-        ...formData,
+    try {
+      await authAPI.resetPassword(token, formData.newPassword);
+      setFormData((previous) => ({
+        ...previous,
         isLoading: false,
-        success: true
-      });
-    }, 2000);
+        success: true,
+        error: "",
+      }));
+    } catch (error) {
+      setFormData((previous) => ({
+        ...previous,
+        isLoading: false,
+        success: false,
+        error: error.response?.data?.message || error.message || 'Failed to reset password',
+      }));
+    }
   };
 
   const handleBackToLogin = () => {
@@ -138,7 +156,7 @@ const ResetPass = () => {
             <p className="text-white/70 text-sm">
               {formData.success 
                 ? "Password reset successfully!"
-                : "Create a new strong password for your account"
+                : token ? "Create a new strong password for your account" : "This password reset link is invalid or missing"
               }
             </p>
           </div>
@@ -258,7 +276,7 @@ const ResetPass = () => {
                 {/* Submit Button */}
                 <button
                   type="submit"
-                  disabled={formData.isLoading || !passwordValidation.isValid}
+                  disabled={formData.isLoading || !passwordValidation.isValid || !token}
                   className="w-full py-2 rounded-md bg-gradient-to-r from-red-800 to-red-700 text-white font-bold flex items-center justify-center gap-2 hover:-translate-y-0.5 transition disabled:opacity-60"
                 >
                   {formData.isLoading ? (

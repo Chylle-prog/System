@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FaEnvelope, FaArrowLeft, FaPaperPlane, FaCheckCircle, FaSignInAlt } from "react-icons/fa";
+import { authAPI } from '../../../services/api';
 
 const ForgetPass = () => {
   const navigate = useNavigate();
@@ -47,16 +48,23 @@ const ForgetPass = () => {
       return;
     }
 
-    // Simulate API call
-    setTimeout(() => {
-      // Simulate successful password reset request
-      setFormData({
-        ...formData,
+    try {
+      await authAPI.forgotPassword(formData.email.trim());
+      setFormData((previous) => ({
+        ...previous,
         isLoading: false,
         success: true,
-        isSubmitted: true
-      });
-    }, 2000);
+        isSubmitted: true,
+        error: "",
+      }));
+    } catch (error) {
+      setFormData((previous) => ({
+        ...previous,
+        isLoading: false,
+        success: false,
+        error: error.response?.data?.message || error.message || 'Failed to send reset email',
+      }));
+    }
   };
 
   const handleBackToLogin = () => {
@@ -64,16 +72,7 @@ const ForgetPass = () => {
   };
 
   const handleResendEmail = () => {
-    setFormData({ ...formData, isLoading: true, success: false });
-    
-    // Simulate resending email
-    setTimeout(() => {
-      setFormData({
-        ...formData,
-        isLoading: false,
-        success: true
-      });
-    }, 1000);
+    handleSubmit({ preventDefault: () => {} });
   };
 
   return (

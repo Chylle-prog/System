@@ -1,5 +1,6 @@
 import sys
 import os
+import smtplib
 from flask import Blueprint, request, jsonify, send_file, url_for
 from flask_cors import CORS
 from flask_bcrypt import Bcrypt
@@ -94,6 +95,12 @@ bcrypt = Bcrypt()
 # ===== JWT CONFIG =====
 SECRET_KEY = os.environ.get('SECRET_KEY')
 TOKEN_EXPIRY = 24  # hours
+PASSWORD_RESET_EXPIRY_MINUTES = int(os.environ.get('PASSWORD_RESET_EXPIRY_MINUTES', '30'))
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://stingy-body.surge.sh').rstrip('/')
+SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
+SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
+SMTP_SENDER = os.environ.get('SMTP_SENDER_EMAIL') or os.environ.get('SMTP_EMAIL')
+SMTP_PASSWORD = os.environ.get('SMTP_APP_PASSWORD') or os.environ.get('SMTP_PASSWORD')
 
 # ===== ENCRYPTION SETUP =====
 _ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
@@ -237,6 +244,56 @@ def generate_token(user_id, role, pro_no):
         'exp': datetime.utcnow() + timedelta(hours=TOKEN_EXPIRY)
     }
     return jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+
+
+def generate_password_reset_token(user_no, email, provider_name, pro_no):
+    """Generate a time-limited password reset token."""
+    payload = {
+        'purpose': 'password-reset',
+        'user_no': user_no,
+        'email': email,
+        'provider_name': provider_name,
+        'pro_no': pro_no,
+        'iat': datetime.utcnow(),
+        'exp': datetime.utcnow() + timedelta(minutes=PASSWORD_RESET_EXPIRY_MINUTES),
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+
+
+def decode_password_reset_token(token):
+    """Validate and decode a password reset token."""
+    payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+    if payload.get('purpose') != 'password-reset':
+        raise jwt.InvalidTokenError('Invalid password reset token')
+    return payload
+
+
+def send_password_reset_email(receiver_email, reset_url, provider_name=None):
+    """Send a password reset email via Gmail SMTP using the configured credentials."""
+    if not SMTP_SENDER or not SMTP_PASSWORD:
+        raise RuntimeError('SMTP sender credentials are not configured')
+
+    provider_label = provider_name or 'ISKOMATS Admin'
+    message = f"""Subject: Reset your ISKOMATS password
+To: {receiver_email}
+From: {SMTP_SENDER}
+
+Hello,
+
+We received a request to reset your password for {provider_label}.
+
+Use the link below to set a new password:
+{reset_url}
+
+This link will expire in {PASSWORD_RESET_EXPIRY_MINUTES} minutes.
+
+If you did not request a password reset, you can ignore this email.
+"""
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        server.starttls()
+        server.login(SMTP_SENDER, SMTP_PASSWORD)
+        server.sendmail(SMTP_SENDER, receiver_email, message)
 
 
 def ensure_admin_activity_log_table(cursor):
@@ -971,9 +1028,39 @@ def forgot_password():
     
     if not data or not data.get('email'):
         return jsonify({'message': 'Email is required'}), 400
-    
-    # TODO: Implement email sending with reset token
-    return jsonify({'message': 'Password reset link sent to email'}), 200
+
+    try:
+        normalized_email = data['email'].strip()
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            '''
+            SELECT e.user_no, e.email_address, u.user_name, u.pro_no, p.provider_name
+            FROM email e
+            JOIN users u ON e.user_no = u.user_no
+            LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
+            WHERE e.email_address ILIKE %s
+            LIMIT 1
+            ''',
+            (normalized_email,),
+        )
+        user = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if user:
+            reset_token = generate_password_reset_token(
+                user['user_no'],
+                user['email_address'],
+                user['provider_name'],
+                user['pro_no'],
+            )
+            reset_url = f"{FRONTEND_URL}/reset-password/{reset_token}"
+            send_password_reset_email(user['email_address'], reset_url, user['provider_name'])
+
+        return jsonify({'message': 'Password reset link sent to email'}), 200
+    except Exception as e:
+        return jsonify({'message': f'Failed to send password reset email: {str(e)}'}), 500
 
 @api_bp.route('/auth/reset-password', methods=['POST'])
 def reset_password():
@@ -982,15 +1069,47 @@ def reset_password():
     
     if not data or not data.get('token') or not data.get('newPassword'):
         return jsonify({'message': 'Token and new password are required'}), 400
-    
-    # TODO: Verify token and update password
-    record_admin_activity(
-        actor_name='Password Reset Flow',
-        action='Change Password',
-        target_type='Auth',
-        status='success',
-    )
-    return jsonify({'message': 'Password reset successfully'}), 200
+
+    try:
+        payload = decode_password_reset_token(data['token'])
+        password_hash = bcrypt.generate_password_hash(data['newPassword']).decode('utf-8')
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            '''
+            UPDATE email
+            SET password_hash = %s
+            WHERE user_no = %s AND email_address ILIKE %s
+            RETURNING em_no
+            ''',
+            (password_hash, payload['user_no'], payload['email']),
+        )
+        updated = cursor.fetchone()
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        if not updated:
+            return jsonify({'message': 'Password reset token is invalid'}), 400
+
+        record_admin_activity(
+            actor_user_no=payload['user_no'],
+            actor_name=payload.get('provider_name') or payload['email'],
+            actor_email=payload['email'],
+            action='Change Password',
+            target_type='Auth',
+            provider_no=payload.get('pro_no'),
+            provider_name=payload.get('provider_name') or 'All',
+            status='success',
+        )
+        return jsonify({'message': 'Password reset successfully'}), 200
+    except jwt.ExpiredSignatureError:
+        return jsonify({'message': 'Password reset link has expired'}), 400
+    except jwt.InvalidTokenError:
+        return jsonify({'message': 'Password reset link is invalid'}), 400
+    except Exception as e:
+        return jsonify({'message': f'Failed to reset password: {str(e)}'}), 500
 
 @api_bp.route('/auth/verify-email', methods=['POST'])
 def verify_email():
