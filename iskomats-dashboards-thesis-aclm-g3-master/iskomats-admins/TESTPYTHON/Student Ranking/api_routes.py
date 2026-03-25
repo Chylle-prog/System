@@ -984,6 +984,12 @@ def reset_password():
         return jsonify({'message': 'Token and new password are required'}), 400
     
     # TODO: Verify token and update password
+    record_admin_activity(
+        actor_name='Password Reset Flow',
+        action='Change Password',
+        target_type='Auth',
+        status='success',
+    )
     return jsonify({'message': 'Password reset successfully'}), 200
 
 @api_bp.route('/auth/verify-email', methods=['POST'])
