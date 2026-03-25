@@ -66,6 +66,14 @@ function normalizeAccount(account) {
   };
 }
 
+function buildCreatedAccount(account, accountType) {
+  return normalizeAccount({
+    ...account,
+    type: account.type || accountType,
+    joined: account.joined || new Date().toISOString().split('T')[0],
+  });
+}
+
 function normalizeLog(log) {
   return {
     id: log.id,
@@ -291,24 +299,44 @@ export default function Dash() {
           throw new Error('A password is required for new database accounts.');
         }
 
-        await adminAPI.createAccount({
+        const response = await adminAPI.createAccount({
           email: accountForm.email.trim(),
           password: accountForm.password,
           role: accountForm.role === 'Admin' ? 'admin' : 'scholar',
           firstName,
           lastName,
         });
+
+        const createdAccount = response.data?.account;
+        if (createdAccount) {
+          const normalizedCreatedAccount = buildCreatedAccount(createdAccount, accountForm.role === 'Admin' ? 'Admin' : 'Applicant');
+          setAccounts((previousAccounts) => [normalizedCreatedAccount, ...previousAccounts]);
+          setStatistics((previousStatistics) => ({
+            ...previousStatistics,
+            totalUsers: (previousStatistics.totalUsers || 0) + 1,
+            totalApplicants: normalizedCreatedAccount.type === 'Applicant'
+              ? (previousStatistics.totalApplicants || 0) + 1
+              : previousStatistics.totalApplicants,
+          }));
+        } else {
+          await loadDashboardData(false);
+        }
       } else if (accountModal.data?.type === 'Admin') {
         await adminAPI.updateAccount(accountModal.data.id, {
           name: accountForm.fullName.trim(),
           email: accountForm.email.trim(),
         });
+
+        setAccounts((previousAccounts) => previousAccounts.map((account) => (
+          account.id === accountModal.data.id
+            ? normalizeAccount({ ...account, name: accountForm.fullName.trim(), email: accountForm.email.trim() })
+            : account
+        )));
       } else {
         throw new Error('Student records are view-only in this dashboard because the current database API does not support student account edits here.');
       }
 
       setAccountModal({ open: false, mode: 'add', data: null });
-      await loadDashboardData(false);
     } catch (error) {
       setPageError(error.response?.data?.message || error.message || 'Failed to save account.');
     } finally {

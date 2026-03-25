@@ -1,6 +1,6 @@
 import sys
 import os
-from flask import Blueprint, request, jsonify, send_file
+from flask import Blueprint, request, jsonify, send_file, url_for
 from flask_cors import CORS
 from flask_bcrypt import Bcrypt
 from functools import wraps
@@ -69,7 +69,7 @@ def get_applicant_media_metadata(applicant_no, column_name, has_data, name="docu
     if not has_data:
         return []
     return [{
-        'src': f'/api/applicant-image/{applicant_no}/{column_name}',
+        'src': url_for('admin_api.get_applicant_image', applicant_no=applicant_no, column_name=column_name, _external=True),
         'type': 'image/jpeg',
         'name': f"{name} (Lazy Loaded)"
     }]
@@ -623,11 +623,17 @@ def register():
         return jsonify({'message': 'Missing required fields'}), 400
     
     try:
-        # Hash password
-        password_hash = bcrypt.generate_password_hash(data['password']).decode('utf-8')
-        
         conn = get_db()
         cursor = conn.cursor()
+
+        normalized_email = data['email'].strip()
+        cursor.execute("SELECT 1 FROM email WHERE email_address ILIKE %s", (normalized_email,))
+        if cursor.fetchone():
+            cursor.close()
+            conn.close()
+            return jsonify({'message': 'Email already exists'}), 409
+
+        password_hash = bcrypt.generate_password_hash(data['password']).decode('utf-8')
         
         # 1. Find or create scholarship provider
         cursor.execute("SELECT pro_no FROM scholarship_providers WHERE provider_name ILIKE %s", (data['role'],))
@@ -649,7 +655,7 @@ def register():
         # 3. Insert into email table
         cursor.execute(
             "INSERT INTO email (email_address, password_hash, user_no) VALUES (%s, %s, %s) RETURNING em_no",
-            (data['email'], password_hash, user_no)
+            (normalized_email, password_hash, user_no)
         )
         em_no = cursor.fetchone()['em_no']
         
@@ -804,10 +810,17 @@ def create_account(current_user):
         return jsonify({'message': 'Missing required fields'}), 400
     
     try:
-        password_hash = bcrypt.generate_password_hash(data['password']).decode('utf-8')
-        
         conn = get_db()
         cursor = conn.cursor()
+
+        normalized_email = data['email'].strip()
+        cursor.execute("SELECT em_no FROM email WHERE email_address ILIKE %s", (normalized_email,))
+        if cursor.fetchone():
+            cursor.close()
+            conn.close()
+            return jsonify({'message': 'Email already exists'}), 409
+
+        password_hash = bcrypt.generate_password_hash(data['password']).decode('utf-8')
         
         role = data.get('role', 'scholar').lower()
         
@@ -836,7 +849,7 @@ def create_account(current_user):
             # 3a. Insert into email table
             cursor.execute(
                 "INSERT INTO email (email_address, password_hash, user_no) VALUES (%s, %s, %s) RETURNING em_no",
-                (data['email'], password_hash, user_no)
+                (normalized_email, password_hash, user_no)
             )
             account_id = cursor.fetchone()['em_no']
         else:
@@ -861,7 +874,7 @@ def create_account(current_user):
             # 3b. Insert into email table
             cursor.execute(
                 "INSERT INTO email (email_address, password_hash, applicant_no) VALUES (%s, %s, %s) RETURNING em_no",
-                (data['email'], password_hash, applicant_no)
+                (normalized_email, password_hash, applicant_no)
             )
             account_id = cursor.fetchone()['em_no']
         
@@ -869,7 +882,19 @@ def create_account(current_user):
         cursor.close()
         conn.close()
         
-        return jsonify({'success': True, 'account': {'id': account_id, 'email': data['email'], 'name': full_name}}), 201
+        return jsonify({'success': True, 'account': {
+            'id': account_id,
+            'email': normalized_email,
+            'name': full_name,
+            'first_name': data['firstName'],
+            'last_name': data['lastName'],
+            'role': role,
+            'type': 'Admin' if role == 'admin' else 'Applicant',
+            'scholarship': provider_name if role == 'admin' else data.get('scholarship', 'Unassigned'),
+            'status': 'Registered' if role == 'admin' else 'Pending',
+            'joined': datetime.utcnow().date().isoformat(),
+            'locked': False,
+        }}), 201
     
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
@@ -1184,9 +1209,12 @@ def get_scholarship_by_program(program):
             
             # Add image URL if present
             if image_id:
-                # Create absolute URL to the image endpoint dynamically
-                base_url = request.host_url.rstrip('/')
-                image_url = f"{base_url}/api/scholarship-image/{req_no}/{len(scholarships_dict[req_no]['scholarshipImages'])}"
+                image_url = url_for(
+                    'admin_api.get_scholarship_image_by_index',
+                    req_no=req_no,
+                    idx=len(scholarships_dict[req_no]['scholarshipImages']),
+                    _external=True,
+                )
                 scholarships_dict[req_no]['scholarshipImages'].append(image_url)
         
         result = list(scholarships_dict.values())
@@ -1292,7 +1320,7 @@ def get_applicants(program):
 
             # Manage signature as a lazy-loaded URL too
             if a.get('has_signature'):
-                a['signature'] = f'/api/applicant-image/{app_no}/signature_image_data'
+                a['signature'] = url_for('admin_api.get_applicant_image', applicant_no=app_no, column_name='signature_image_data', _external=True)
             else:
                 a['signature'] = None
             
@@ -1542,7 +1570,7 @@ def update_scholarship(current_user, req_no):
                         encrypted = _fernet.encrypt(img_bytes) if _fernet else img_bytes
                         new_image_data_list.append(encrypted)
                         print(f"[SCHOLARSHIP UPDATE] Image {i}: Using new base64 data")
-                elif '/api/scholarship-image/' in url:
+                elif '/scholarship-image/' in url:
                     # This is an EXISTING image URL
                     # Extract index from URL: /api/scholarship-image/{req_no}/{idx}
                     try:
