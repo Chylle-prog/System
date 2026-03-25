@@ -1175,6 +1175,13 @@ def get_activity_logs(current_user_id, pro_no, role):
         )
         has_status_updated = cursor.fetchone()['has_status_updated']
         event_date_expr = 'COALESCE(ast.status_updated, NOW())' if has_status_updated else 'NOW()'
+        message_provider_expr = """
+            CASE
+                WHEN m.pro_no IS NOT NULL THEN m.pro_no
+                WHEN split_part(COALESCE(m.room, ''), '+', 2) ~ '^[0-9]+$' THEN split_part(m.room, '+', 2)::int
+                ELSE NULL
+            END
+        """.strip()
 
         logs = []
 
@@ -1217,18 +1224,18 @@ def get_activity_logs(current_user_id, pro_no, role):
             })
 
         cursor.execute(
-            '''
+            f'''
             SELECT
                 m.m_id AS id,
                 m.username,
                 m.message,
                 m.timestamp,
-                split_part(m.room, '+', 2)::int AS provider_no,
+                {message_provider_expr} AS provider_no,
                 p.provider_name
             FROM message m
-            LEFT JOIN scholarship_providers p ON p.pro_no = split_part(m.room, '+', 2)::int
+            LEFT JOIN scholarship_providers p ON p.pro_no = {message_provider_expr}
             WHERE m.timestamp IS NOT NULL
-            {f"AND split_part(m.room, '+', 2)::int = {pro_no}" if role != "Admin" else ""}
+            {f"AND {message_provider_expr} = {pro_no}" if role != "Admin" else ""}
             ORDER BY m.timestamp DESC, m.m_id DESC
             LIMIT 100
             '''
