@@ -142,17 +142,57 @@ def base64_to_bytes(b64_string):
     except Exception:
         return None
 
-def bytes_to_data_url(byte_data, mime='image/jpeg'):
+def bytes_to_data_url(byte_data, mime=None):
     """Convert binary data to base64 data URL."""
     if not byte_data:
         return None
     try:
         if hasattr(byte_data, 'tobytes'):
             byte_data = byte_data.tobytes()
+        if not mime:
+            mime = get_mime_type(byte_data)
         b64 = base64.b64encode(byte_data).decode('utf-8')
         return f'data:{mime};base64,{b64}'
     except Exception:
         return None
+
+def get_mime_type(data):
+    """Detect MIME type from binary data magic bytes."""
+    if not data:
+        return 'application/octet-stream'
+    
+    if hasattr(data, 'tobytes'):
+        data = data.tobytes()
+    
+    # PNG
+    if data[:4] == b'\x89PNG':
+        return 'image/png'
+    # JPEG
+    elif data[:2] == b'\xff\xd8':
+        return 'image/jpeg'
+    # GIF
+    elif data[:4] == b'GIF8':
+        return 'image/gif'
+    # WEBP
+    elif data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+        return 'image/webp'
+    # ISO Base Media File Format (AVIF, HEIC, etc.)
+    elif data[4:8] == b'ftyp':
+        brand = data[8:12]
+        if brand in [b'avif', b'avis']:
+            return 'image/avif'
+        elif brand in [b'heic', b'heix', b'hevc', b'hevx']:
+            return 'image/heic'
+        elif brand in [b'mif1', b'msf1', b'heif', b'heix']:
+            return 'image/heif'
+    # SVG
+    elif data[:5].lower() == b'<svg ' or data[:14].lower() == b'<?xml version=':
+        return 'image/svg+xml'
+    # PDF
+    elif data[:4] == b'%PDF':
+        return 'application/pdf'
+        
+    return 'application/octet-stream'
 
 # ===== DECORATORS =====
 
@@ -1691,14 +1731,7 @@ def get_scholarship_image(sch_img_no):
             return jsonify({'message': 'Failed to decrypt image'}), 500
         
         # Detect image type from magic bytes
-        if decrypted_img[:4] == b'\x89PNG':
-            mime_type = 'image/png'
-        elif decrypted_img[:2] == b'\xff\xd8':
-            mime_type = 'image/jpeg'
-        elif decrypted_img[:4] == b'GIF8':
-            mime_type = 'image/gif'
-        else:
-            mime_type = 'application/octet-stream'
+        mime_type = get_mime_type(decrypted_img)
         
         # Return as binary file
         return send_file(
@@ -1757,14 +1790,7 @@ def get_scholarship_image_by_index(req_no, idx):
             return jsonify({'message': 'Failed to decrypt image'}), 500
         
         # Detect image type from magic bytes
-        if decrypted_img[:4] == b'\x89PNG':
-            mime_type = 'image/png'
-        elif decrypted_img[:2] == b'\xff\xd8':
-            mime_type = 'image/jpeg'
-        elif decrypted_img[:4] == b'GIF8':
-            mime_type = 'image/gif'
-        else:
-            mime_type = 'application/octet-stream'
+        mime_type = get_mime_type(decrypted_img)
         
         # Return as binary file
         return send_file(
@@ -1824,16 +1850,7 @@ def get_applicant_image(applicant_no, column_name):
                 return jsonify({'message': 'Failed to decrypt signature'}), 500
         
         # Detect image type from magic bytes
-        if data[:4] == b'\x89PNG':
-            mime_type = 'image/png'
-        elif data[:2] == b'\xff\xd8':
-            mime_type = 'image/jpeg'
-        elif data[:4] == b'GIF8':
-            mime_type = 'image/gif'
-        elif data[:4] == b'%PDF':
-            mime_type = 'application/pdf'
-        else:
-            mime_type = 'application/octet-stream'
+        mime_type = get_mime_type(data)
         
         return send_file(
             BytesIO(data),
