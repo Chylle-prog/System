@@ -2,7 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import PrivateRoute from './pages/PrivateRoute';
-import HomePage from './pages/HomePage';
+import Homepage from './pages/Homepage';
 import Login from './pages/Login';
 import Portal from './pages/Portal';
 import FindScholarship from './pages/FindScholarship';
@@ -14,7 +14,7 @@ function App() {
     <Router>
       <AuthProvider>
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<Homepage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/portal" element={
             <PrivateRoute>

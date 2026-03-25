@@ -215,21 +215,24 @@ def token_required(f):
         
         try:
             data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-            current_user = data['user_id']
+            current_user_id = data['user_id']
+            pro_no = data.get('pro_no')
+            role = data.get('role')
         except jwt.ExpiredSignatureError:
             return jsonify({'message': 'Token has expired'}), 401
         except jwt.InvalidTokenError:
             return jsonify({'message': 'Invalid token'}), 401
         
-        return f(current_user, *args, **kwargs)
+        return f(current_user_id, pro_no, role, *args, **kwargs)
     
     return decorated
 
-def generate_token(user_id, role):
-    """Generate JWT token"""
+def generate_token(user_id, role, pro_no):
+    """Generate JWT token with user_id, role, and pro_no"""
     payload = {
         'user_id': user_id,
         'role': role,
+        'pro_no': pro_no,
         'iat': datetime.utcnow(),
         'exp': datetime.utcnow() + timedelta(hours=TOKEN_EXPIRY)
     }
@@ -617,8 +620,8 @@ def login():
         
         user_name = user['user_name'] or prov_name
         
-        # Generate JWT token
-        token = generate_token(user['user_no'], normalized_role)
+        # Generate JWT token with pro_no and provider_name
+        token = generate_token(user['user_no'], prov_name, user['pro_no'])
         
         return jsonify({
             'success': True,
@@ -739,7 +742,7 @@ def register():
 
 @api_bp.route('/auth/logout', methods=['POST'])
 @token_required
-def logout(current_user):
+def logout(current_user_id, pro_no, role):
     """Logout endpoint - invalidate token (frontend should delete token)"""
     return jsonify({'message': 'Logged out successfully'}), 200
 
@@ -780,7 +783,7 @@ def verify_email():
 
 @api_bp.route('/accounts', methods=['GET'])
 @token_required
-def get_accounts(current_user):
+def get_accounts(current_user_id, pro_no, role):
     """Get all user accounts"""
     try:
         filters = request.args
@@ -830,6 +833,11 @@ def get_accounts(current_user):
         '''
         params = []
         
+        # Isolation: If not superadmin, only show accounts related to this provider
+        if role != 'Admin':
+            query += ' AND (u.pro_no = %s OR s.pro_no = %s)'
+            params.extend([pro_no, pro_no])
+        
         if filters.get('role'):
             role_filter = filters['role'].lower()
             if role_filter == 'admin':
@@ -864,7 +872,7 @@ def get_accounts(current_user):
 
 @api_bp.route('/accounts', methods=['POST'])
 @token_required
-def create_account(current_user):
+def create_account(current_user_id, pro_no, role):
     """Create new user account"""
     data = request.get_json()
     
@@ -967,7 +975,7 @@ def create_account(current_user):
 
 @api_bp.route('/accounts/<int:account_id>', methods=['PUT'])
 @token_required
-def update_account(current_user, account_id):
+def update_account(current_user_id, pro_no, role, account_id):
     """Update user account"""
     data = request.get_json()
     
@@ -1004,7 +1012,7 @@ def update_account(current_user, account_id):
 
 @api_bp.route('/accounts/<int:account_id>', methods=['DELETE'])
 @token_required
-def delete_account(current_user, account_id):
+def delete_account(current_user_id, pro_no, role, account_id):
     """Delete user account"""
     try:
         conn = get_db()
@@ -1036,7 +1044,7 @@ def delete_account(current_user, account_id):
 
 @api_bp.route('/accounts/<int:account_id>/lock', methods=['PUT'])
 @token_required
-def toggle_account_lock(current_user, account_id):
+def toggle_account_lock(current_user_id, pro_no, role, account_id):
     """Lock or unlock a user account"""
     data = request.get_json()
     if not data or 'locked' not in data:
@@ -1070,27 +1078,62 @@ def toggle_account_lock(current_user, account_id):
 
 @api_bp.route('/statistics', methods=['GET'])
 @token_required
-def get_statistics(current_user):
+def get_statistics(current_user_id, pro_no, role):
     """Get dashboard statistics"""
     try:
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get total users
-        cursor.execute('SELECT COUNT(*) as total FROM email')
-        total_users = cursor.fetchone()['total']
-        
-        # Get users by role
-        cursor.execute('''
-            SELECT CASE WHEN user_no IS NOT NULL THEN 'admin' ELSE 'scholar' END as role, 
-                   COUNT(*) as count 
-            FROM email GROUP BY CASE WHEN user_no IS NOT NULL THEN 'admin' ELSE 'scholar' END
-        ''')
-        by_role = cursor.fetchall()
-        
-        # Get total applications
-        cursor.execute('SELECT COUNT(*) as total FROM applicants')
-        total_applicants = cursor.fetchone()['total']
+        if role != 'Admin':
+            # Get total users related to this provider
+            cursor.execute('''
+                SELECT COUNT(DISTINCT e.em_no) as total FROM email e 
+                LEFT JOIN users u ON e.user_no = u.user_no 
+                WHERE u.pro_no = %s OR e.applicant_no IN (
+                    SELECT applicant_no FROM applicant_status ast 
+                    JOIN scholarships s ON ast.scholarship_no = s.req_no 
+                    WHERE s.pro_no = %s
+                )
+            ''', (pro_no, pro_no))
+            total_users = cursor.fetchone()['total']
+            
+            # Get users by role for this provider
+            cursor.execute('''
+                SELECT CASE WHEN e.user_no IS NOT NULL THEN 'admin' ELSE 'scholar' END as role, 
+                       COUNT(DISTINCT e.em_no) as count 
+                FROM email e
+                LEFT JOIN users u ON e.user_no = u.user_no
+                WHERE u.pro_no = %s OR e.applicant_no IN (
+                    SELECT applicant_no FROM applicant_status ast 
+                    JOIN scholarships s ON ast.scholarship_no = s.req_no 
+                    WHERE s.pro_no = %s
+                )
+                GROUP BY CASE WHEN e.user_no IS NOT NULL THEN 'admin' ELSE 'scholar' END
+            ''', (pro_no, pro_no))
+            by_role = cursor.fetchall()
+            
+            # Get total applications for this provider
+            cursor.execute('''
+                SELECT COUNT(DISTINCT ast.applicant_no) as total 
+                FROM applicant_status ast 
+                JOIN scholarships s ON ast.scholarship_no = s.req_no 
+                WHERE s.pro_no = %s
+            ''', (pro_no,))
+            total_applicants = cursor.fetchone()['total']
+        else:
+            # Superadmin gets everything
+            cursor.execute('SELECT COUNT(*) as total FROM email')
+            total_users = cursor.fetchone()['total']
+            
+            cursor.execute('''
+                SELECT CASE WHEN user_no IS NOT NULL THEN 'admin' ELSE 'scholar' END as role, 
+                       COUNT(*) as count 
+                FROM email GROUP BY CASE WHEN user_no IS NOT NULL THEN 'admin' ELSE 'scholar' END
+            ''')
+            by_role = cursor.fetchall()
+            
+            cursor.execute('SELECT COUNT(*) as total FROM applicants')
+            total_applicants = cursor.fetchone()['total']
         
         cursor.close()
         conn.close()
@@ -1109,7 +1152,7 @@ def get_statistics(current_user):
 
 @api_bp.route('/logs', methods=['GET'])
 @token_required
-def get_activity_logs(current_user):
+def get_activity_logs(current_user_id, pro_no, role):
     """Get dashboard activity logs from live database tables."""
     try:
         filters = request.args
@@ -1151,6 +1194,8 @@ def get_activity_logs(current_user):
             LEFT JOIN applicants a ON ast.applicant_no = a.applicant_no
             LEFT JOIN scholarships s ON ast.scholarship_no = s.req_no
             LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
+            WHERE 1=1
+            {f"AND s.pro_no = {pro_no}" if role != "Admin" else ""}
             ORDER BY {event_date_expr} DESC, ast.stat_no DESC
             LIMIT 250
             '''
@@ -1178,13 +1223,14 @@ def get_activity_logs(current_user):
             FROM message m
             LEFT JOIN scholarship_providers p ON p.pro_no = split_part(m.room, '+', 2)::int
             WHERE m.timestamp IS NOT NULL
+            {f"AND split_part(m.room, '+', 2)::int = {pro_no}" if role != "Admin" else ""}
             ORDER BY m.timestamp DESC, m.m_id DESC
             LIMIT 100
             '''
         )
 
         for row in cursor.fetchall():
-            preview = (row['message'] or '').strip()
+            preview = str(row['message'] or '').strip()
             if len(preview) > 60:
                 preview = preview[:57] + '...'
             logs.append({
@@ -1231,7 +1277,8 @@ def get_activity_logs(current_user):
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
 @api_bp.route('/scholarships/<program>', methods=['GET'])
-def get_scholarship_by_program(program):
+@token_required
+def get_scholarship_by_program(current_user_id, pro_no, role, program):
     """Get scholarship data for a program (provider) - returns metadata and base64-encoded images"""
     try:
         conn = get_db()
@@ -1246,11 +1293,21 @@ def get_scholarship_by_program(program):
             FROM scholarships s
             LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
             LEFT JOIN scholarship_images si ON s.req_no = si.req_no
-            WHERE p.provider_name ILIKE %s OR (s.pro_no IS NULL AND %s != 'all')
-            ORDER BY s.req_no, si.sch_img_no
+            WHERE 1=1
         '''
+        params = []
         
-        cursor.execute(query, (f"%{program}%", program))
+        # Isolation: If not superadmin, only show scholarships for this provider
+        if role != 'Admin':
+            query += ' AND s.pro_no = %s'
+            params.append(pro_no)
+        elif program.lower() != 'all':
+            query += ' AND (p.provider_name ILIKE %s OR (s.pro_no IS NULL AND %s != "all"))'
+            params.extend([f"%{program}%", program])
+            
+        query += ' ORDER BY s.req_no, si.sch_img_no'
+        
+        cursor.execute(query, params)
         rows = cursor.fetchall()
         cursor.close()
         conn.close()
@@ -1291,7 +1348,8 @@ def get_scholarship_by_program(program):
 
 
 @api_bp.route('/applicants/<program>', methods=['GET'])
-def get_applicants(program):
+@token_required
+def get_applicants(current_user_id, pro_no, role, program):
     """Get applicants for a program"""
     try:
         filters = request.args
@@ -1355,7 +1413,11 @@ def get_applicants(program):
         '''
         params = []
         
-        if program.lower() != 'all':
+        # Isolation: If not superadmin, only show applicants for this provider
+        if role != 'Admin':
+            query += ' AND esc.pro_no = %s'
+            params.append(pro_no)
+        elif program.lower() != 'all':
             query += ' AND p.provider_name ILIKE %s'
             params.append(f"%{program}%")
         else:
@@ -1423,7 +1485,7 @@ def get_applicants(program):
 
 @api_bp.route('/applicants/<program>', methods=['POST'])
 @token_required
-def create_applicant(current_user, program):
+def create_applicant(current_user_id, pro_no, role, program):
     """Create new applicant"""
     data = request.get_json()
     
@@ -1448,16 +1510,24 @@ def create_applicant(current_user, program):
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
 @api_bp.route('/rankings/<program>', methods=['GET'])
-def get_rankings(program):
+@token_required
+def get_rankings(current_user_id, pro_no, role, program):
     """Get rankings for a program"""
     try:
         conn = get_db()
         cursor = conn.cursor()
         
-        cursor.execute(
-            'SELECT * FROM rankings WHERE program = %s ORDER BY rank ASC',
-            (program.lower(),)
-        )
+        # Isolation: If not superadmin, only show rankings for this provider
+        if role != 'Admin':
+            cursor.execute(
+                'SELECT r.* FROM rankings r JOIN scholarships s ON r.scholarship_no = s.req_no WHERE s.pro_no = %s ORDER BY r.rank ASC',
+                (pro_no,)
+            )
+        else:
+            cursor.execute(
+                'SELECT * FROM rankings WHERE program ILIKE %s ORDER BY rank ASC',
+                (f"%{program}%",)
+            )
         rankings = cursor.fetchall()
         cursor.close()
         conn.close()
@@ -1469,14 +1539,14 @@ def get_rankings(program):
 
 @api_bp.route('/rankings/<program>/rank', methods=['POST'])
 @token_required
-def submit_ranking(current_user, program):
+def submit_ranking(current_user_id, pro_no, role, program):
     """Submit ranking/scoring for applicants"""
     # TODO: Implement ranking logic using existing scoring functions
     return jsonify({'success': True, 'message': 'Rankings submitted'}), 200
 
 @api_bp.route('/scholarships', methods=['POST'])
 @token_required
-def create_scholarship(current_user):
+def create_scholarship(current_user_id, pro_no, role):
     """Create new scholarship post"""
     data = request.get_json()
     
@@ -1488,14 +1558,11 @@ def create_scholarship(current_user):
         conn = get_db()
         cursor = conn.cursor()
         
-        # 1. Get pro_no for current_user (user_no)
-        cursor.execute("SELECT pro_no FROM users WHERE user_no = %s", (current_user,))
-        user_record = cursor.fetchone()
-        
-        if not user_record or not user_record['pro_no']:
-            return jsonify({'message': 'User not associated with a scholarship provider'}), 403
+        # Isolation: Use pro_no from token if not superadmin
+        if role != 'Admin' and pro_no is None:
+             return jsonify({'message': 'User not associated with a scholarship provider'}), 403
             
-        pro_no = user_record['pro_no']
+        target_pro_no = pro_no # Use the pro_no from the token
         
         # 2. Insert into scholarships table (without images)
         cursor.execute('''
@@ -1507,7 +1574,7 @@ def create_scholarship(current_user):
             data['minGpa'],
             data['parentFinance'],
             data['location'],
-            pro_no,
+            target_pro_no,
             data['slots'],
             data['deadline'],
             data.get('description', ''),
@@ -1552,7 +1619,7 @@ def create_scholarship(current_user):
 
 @api_bp.route('/scholarships/<int:req_no>', methods=['PUT'])
 @token_required
-def update_scholarship(current_user, req_no):
+def update_scholarship(current_user_id, pro_no, role, req_no):
     """Update scholarship post"""
     data = request.get_json()
     
@@ -1560,19 +1627,7 @@ def update_scholarship(current_user, req_no):
         conn = get_db()
         cursor = conn.cursor()
         
-        # 1. Get user's provider info
-        cursor.execute("""
-            SELECT u.pro_no, p.provider_name 
-            FROM users u 
-            LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no 
-            WHERE u.user_no = %s
-        """, (current_user,))
-        user_row = cursor.fetchone()
-        if not user_row:
-            return jsonify({'message': 'User not found'}), 404
-        
-        user_pro_no = user_row['pro_no']
-        is_admin = user_row['provider_name'] and 'admin' in user_row['provider_name'].lower()
+        is_admin = (role == 'Admin')
         
         # 2. Check scholarship ownership
         cursor.execute("SELECT pro_no FROM scholarships WHERE req_no = %s", (req_no,))
@@ -1581,12 +1636,12 @@ def update_scholarship(current_user, req_no):
             return jsonify({'message': 'Scholarship not found'}), 404
             
         # Allow update if user is Admin OR pro_no matches OR if existing scholarship has NO pro_no
-        if not is_admin and sch_row['pro_no'] is not None and user_pro_no is not None and sch_row['pro_no'] != user_pro_no:
+        if not is_admin and sch_row['pro_no'] is not None and pro_no is not None and sch_row['pro_no'] != pro_no:
             return jsonify({'message': 'Unauthorized'}), 401
 
         # 3. Handle orphaned scholarships
-        if not is_admin and sch_row['pro_no'] is None and user_pro_no is not None:
-            cursor.execute("UPDATE scholarships SET pro_no = %s WHERE req_no = %s", (user_pro_no, req_no))
+        if not is_admin and sch_row['pro_no'] is None and pro_no is not None:
+            cursor.execute("UPDATE scholarships SET pro_no = %s WHERE req_no = %s", (pro_no, req_no))
              
         # 4. Process field updates (excluding images)
         update_fields = []
@@ -1626,6 +1681,9 @@ def update_scholarship(current_user, req_no):
             for i, img_data in enumerate(data['scholarshipImages']):
                 url = img_data.get('url') if isinstance(img_data, dict) else img_data
                 
+                if not isinstance(url, str):
+                    continue
+                    
                 if url.startswith('data:'):
                     # This is a NEW image being uploaded as base64
                     img_bytes = base64_to_bytes(url)
@@ -1673,25 +1731,13 @@ def update_scholarship(current_user, req_no):
 
 @api_bp.route('/scholarships/<int:req_no>', methods=['DELETE'])
 @token_required
-def delete_scholarship(current_user, req_no):
+def delete_scholarship(current_user_id, pro_no, role, req_no):
     """Delete scholarship post"""
     try:
         conn = get_db()
         cursor = conn.cursor()
         
-        # 1. Get user's provider info
-        cursor.execute("""
-            SELECT u.pro_no, p.provider_name 
-            FROM users u 
-            LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no 
-            WHERE u.user_no = %s
-        """, (current_user,))
-        user_row = cursor.fetchone()
-        if not user_row:
-            return jsonify({'message': 'User not found'}), 404
-        
-        user_pro_no = user_row['pro_no']
-        is_admin = user_row['provider_name'] and 'admin' in user_row['provider_name'].lower()
+        is_superadmin = (role == 'Admin')
         
         # 2. Check scholarship ownership
         cursor.execute("SELECT pro_no FROM scholarships WHERE req_no = %s", (req_no,))
@@ -1700,7 +1746,7 @@ def delete_scholarship(current_user, req_no):
             return jsonify({'message': 'Scholarship not found'}), 404
             
         # Allow delete if user is Admin OR pro_no matches OR if existing scholarship has NO pro_no
-        if not is_admin and sch_row['pro_no'] is not None and user_pro_no is not None and sch_row['pro_no'] != user_pro_no:
+        if not is_superadmin and sch_row['pro_no'] is not None and pro_no is not None and sch_row['pro_no'] != pro_no:
             return jsonify({'message': 'Unauthorized'}), 401
             
         # 3. Delete entries in applicant_status first (foreign key)
@@ -1885,6 +1931,33 @@ def get_applicant_image(applicant_no, column_name):
     except Exception as e:
         print(f"[APPLICANT IMAGE] Error: {str(e)}")
         return jsonify({'message': f'Error: {str(e)}'}), 500
+
+# ===== UTILITY ENDPOINTS =====
+
+@api_bp.route('/providers', methods=['GET'])
+@token_required
+def get_providers(current_user_id, pro_no, role):
+    """Get list of scholarship providers for dropdowns"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT pro_no, provider_name FROM scholarship_providers ORDER BY provider_name")
+        providers = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return jsonify({'success': True, 'providers': [dict(p) for p in providers]}), 200
+    except Exception as e:
+        return jsonify({'message': f'Error: {str(e)}'}), 500
+
+@api_bp.route('/auth/me', methods=['GET'])
+@token_required
+def get_current_user_info(current_user_id, pro_no, role):
+    """Utility to verify token payload"""
+    return jsonify({
+        'user_id': current_user_id,
+        'pro_no': pro_no,
+        'role': role
+    }), 200
 
 # ===== ERROR HANDLERS =====
 
