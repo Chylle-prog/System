@@ -29,6 +29,15 @@ import {
 import * as XLSX from 'xlsx';
 import { adminAPI } from '../../services/api';
 
+const ACTION_EVENT_OPTIONS = [
+  { label: 'Login', value: 'Login' },
+  { label: 'Logout', value: 'Logout' },
+  { label: 'Password / Security', value: 'Password' },
+  { label: 'Profile Updates', value: 'Profile' },
+  { label: 'Applications', value: 'Application' },
+  { label: 'Messages', value: 'Message' },
+];
+
 const emptyStatistics = {
   totalUsers: 0,
   totalApplicants: 0,
@@ -157,10 +166,6 @@ export default function Dash() {
     return Array.from(programs).sort((left, right) => left.localeCompare(right));
   }, [accounts, activities]);
 
-  const availableActions = useMemo(() => {
-    return Array.from(new Set(activities.map((activity) => activity.activity).filter(Boolean))).sort((left, right) => left.localeCompare(right));
-  }, [activities]);
-
   const loadDashboardData = async (showLoader = true) => {
     if (showLoader) {
       setIsLoading(true);
@@ -231,7 +236,8 @@ export default function Dash() {
   const filteredActivityReport = useMemo(() => {
     return activities.filter((activity) => {
       const matchesProgram = actReportFilter.program === 'All' || activity.scholarship === actReportFilter.program;
-      const matchesAction = actReportFilter.action === 'All' || activity.activity === actReportFilter.action;
+      const matchesAction = actReportFilter.action === 'All'
+        || (activity.activity || '').toLowerCase().includes(actReportFilter.action.toLowerCase());
       const search = actReportFilter.search.trim().toLowerCase();
       const matchesSearch = !search || [activity.user, activity.activity, activity.scholarship].some((value) => (value || '').toLowerCase().includes(search));
       return matchesProgram && matchesAction && matchesSearch;
@@ -756,8 +762,8 @@ export default function Dash() {
                     </select>
                     <select value={actReportFilter.action} onChange={(event) => setActReportFilter({ ...actReportFilter, action: event.target.value })} className="px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]">
                       <option value="All">All Actions</option>
-                      {availableActions.map((action) => (
-                        <option key={action} value={action}>{action}</option>
+                      {ACTION_EVENT_OPTIONS.map((action) => (
+                        <option key={action.value} value={action.value}>{action.label}</option>
                       ))}
                     </select>
                     <button onClick={() => exportToExcel(filteredActivityReport, 'Activity_Log')} className="px-6 py-2 bg-[#800020] text-white rounded-xl font-black text-xs uppercase tracking-widest hover:opacity-90 transition-all flex items-center gap-2 shadow-lg shadow-[#800020]/20">
