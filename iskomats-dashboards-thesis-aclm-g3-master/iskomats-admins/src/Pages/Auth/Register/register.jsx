@@ -3,6 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { FaUser, FaLock, FaEnvelope, FaEye, FaEyeSlash, FaGraduationCap, FaUserPlus, FaPhone, FaIdCard, FaSchool, FaChevronDown } from "react-icons/fa";
 import { authAPI, scholarshipAPI } from "../../../services/api";
 
+const FALLBACK_PROVIDERS = [
+  { pro_no: 'africa', provider_name: 'Africa' },
+  { pro_no: 'vilma', provider_name: 'Vilma' },
+  { pro_no: 'tulong', provider_name: 'Tulong' },
+];
+
 const Register = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
@@ -28,9 +34,11 @@ const Register = () => {
     const fetchProviders = async () => {
       try {
         const response = await scholarshipAPI.getProviders();
-        setProviders(response.data);
+        const nextProviders = Array.isArray(response.data) ? response.data.filter((provider) => provider?.provider_name) : [];
+        setProviders(nextProviders.length > 0 ? nextProviders : FALLBACK_PROVIDERS);
       } catch (err) {
         console.error("Failed to fetch providers:", err);
+        setProviders(FALLBACK_PROVIDERS);
       } finally {
         setIsLoadingProviders(false);
       }
@@ -235,7 +243,9 @@ const Register = () => {
                       required
                       className="w-full px-3 py-1.5 rounded-md bg-white/10 border border-white/30 text-white focus:outline-none focus:border-white appearance-none"
                     >
-                      <option value="" disabled className="bg-red-900 text-white">Select scholarship role</option>
+                      <option value="" disabled className="bg-red-900 text-white">
+                        {isLoadingProviders ? 'Loading scholarship roles...' : 'Select scholarship role'}
+                      </option>
                       {providers.map((p) => (
                         <option key={p.pro_no} value={p.provider_name} className="bg-red-900 text-white">
                           {p.provider_name}

@@ -911,17 +911,28 @@ def get_providers():
     """Fetch all scholarship providers from the database"""
     try:
         conn = get_db()
-        # Explicitly use standard cursor to get tuples
-        cursor = conn.cursor(cursor_factory=None)
+        cursor = conn.cursor()
         cursor.execute("SELECT pro_no, provider_name FROM scholarship_providers ORDER BY provider_name ASC")
         rows = cursor.fetchall()
         
         result = []
         for row in rows:
-            if row and len(row) >= 2:
+            if not row:
+                continue
+
+            if isinstance(row, dict):
+                provider_no = row.get('pro_no')
+                provider_name = row.get('provider_name')
+            else:
+                if len(row) < 2:
+                    continue
+                provider_no = row[0]
+                provider_name = row[1]
+
+            if provider_name:
                 result.append({
-                    'pro_no': row[0],
-                    'provider_name': row[1]
+                    'pro_no': provider_no,
+                    'provider_name': provider_name
                 })
             
         cursor.close()
