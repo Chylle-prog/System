@@ -22,3 +22,4 @@ __pycache__/
 
 # Dashboard reference files
 iskomats-admins/src/Pages/Dash/*-ref.jsx
+iskomats-admins/references/
