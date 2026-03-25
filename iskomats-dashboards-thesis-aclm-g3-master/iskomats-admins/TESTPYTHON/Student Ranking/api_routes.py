@@ -238,6 +238,163 @@ def generate_token(user_id, role, pro_no):
     }
     return jwt.encode(payload, SECRET_KEY, algorithm='HS256')
 
+
+def ensure_admin_activity_log_table(cursor):
+    """Ensure the admin audit table exists before writing or reading logs."""
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS admin_activity_logs (
+            log_id SERIAL PRIMARY KEY,
+            actor_user_no INTEGER,
+            actor_name VARCHAR(255) NOT NULL,
+            actor_email VARCHAR(255),
+            action VARCHAR(120) NOT NULL,
+            target_type VARCHAR(80),
+            target_id VARCHAR(80),
+            target_label VARCHAR(255),
+            provider_no INTEGER,
+            provider_name VARCHAR(255),
+            status VARCHAR(50) NOT NULL DEFAULT 'success',
+            occurred_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_admin_activity_logs_occurred_at ON admin_activity_logs(occurred_at DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_admin_activity_logs_provider_no ON admin_activity_logs(provider_no)"
+    )
+
+
+def fetch_actor_context(cursor, user_no):
+    """Resolve the actor's display information from the users/email tables."""
+    if not user_no:
+        return None
+
+    cursor.execute(
+        """
+        SELECT
+            u.user_no,
+            COALESCE(u.user_name, p.provider_name, 'Unknown User') AS actor_name,
+            e.email_address AS actor_email,
+            p.pro_no AS provider_no,
+            COALESCE(p.provider_name, 'All') AS provider_name
+        FROM users u
+        LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
+        LEFT JOIN email e ON e.user_no = u.user_no
+        WHERE u.user_no = %s
+        LIMIT 1
+        """,
+        (user_no,),
+    )
+    return cursor.fetchone()
+
+
+def fetch_account_activity_context(cursor, account_id):
+    """Resolve the current account context for audit logging."""
+    cursor.execute(
+        """
+        SELECT
+            e.em_no AS account_id,
+            e.email_address AS email,
+            COALESCE(
+                u.user_name,
+                NULLIF(TRIM(COALESCE(a.first_name, '') || ' ' || COALESCE(a.last_name, '')), ''),
+                'Unknown Account'
+            ) AS name,
+            CASE WHEN e.user_no IS NOT NULL THEN 'Admin' ELSE 'Applicant' END AS account_type,
+            COALESCE(p.pro_no, s.pro_no) AS provider_no,
+            COALESCE(p.provider_name, s.scholarship_name, 'All') AS provider_name
+        FROM email e
+        LEFT JOIN users u ON e.user_no = u.user_no
+        LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
+        LEFT JOIN applicants a ON e.applicant_no = a.applicant_no
+        LEFT JOIN (
+            SELECT applicant_no, scholarship_no,
+                   ROW_NUMBER() OVER (PARTITION BY applicant_no ORDER BY stat_no DESC) AS rn
+            FROM applicant_status
+        ) ast ON ast.applicant_no = a.applicant_no AND ast.rn = 1
+        LEFT JOIN scholarships s ON ast.scholarship_no = s.req_no
+        WHERE e.em_no = %s
+        LIMIT 1
+        """,
+        (account_id,),
+    )
+    return cursor.fetchone()
+
+
+def record_admin_activity(
+    *,
+    actor_user_no=None,
+    actor_name=None,
+    actor_email=None,
+    action,
+    target_type=None,
+    target_id=None,
+    target_label=None,
+    provider_no=None,
+    provider_name=None,
+    status='success',
+):
+    """Persist an audit event without interrupting the primary request flow."""
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        ensure_admin_activity_log_table(cursor)
+
+        actor_context = None
+        if actor_user_no:
+            actor_context = fetch_actor_context(cursor, actor_user_no)
+
+        resolved_actor_name = actor_name or (actor_context['actor_name'] if actor_context else 'Unknown User')
+        resolved_actor_email = actor_email or (actor_context['actor_email'] if actor_context else None)
+        resolved_provider_no = provider_no if provider_no is not None else (actor_context['provider_no'] if actor_context else None)
+        resolved_provider_name = provider_name or (actor_context['provider_name'] if actor_context else 'All')
+
+        cursor.execute(
+            """
+            INSERT INTO admin_activity_logs (
+                actor_user_no,
+                actor_name,
+                actor_email,
+                action,
+                target_type,
+                target_id,
+                target_label,
+                provider_no,
+                provider_name,
+                status
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                actor_user_no,
+                resolved_actor_name,
+                resolved_actor_email,
+                action,
+                target_type,
+                str(target_id) if target_id is not None else None,
+                target_label,
+                resolved_provider_no,
+                resolved_provider_name,
+                (status or 'success').lower(),
+            ),
+        )
+        conn.commit()
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        print(f"[AUDIT] Failed to write admin activity log: {exc}")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
 # ===== CHAT SOCKET EVENTS =====
 
 def initialize_auto_chat_rooms():
@@ -580,6 +737,7 @@ def login():
     try:
         conn = get_db()
         cursor = conn.cursor()
+        normalized_email = data['email'].strip()
         
         # Query user from database based on email table joining with user and scholarship_providers
         cursor.execute('''
@@ -588,24 +746,51 @@ def login():
             LEFT JOIN users u ON e.user_no = u.user_no
             LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
             WHERE e.email_address ILIKE %s
-        ''', (data['email'],))
+        ''', (normalized_email,))
         user = cursor.fetchone()
         cursor.close()
         conn.close()
         
         if not user or user['applicant_no'] is not None or user['user_no'] is None:
             # Users with applicant_no are applicants, disregarding them entirely
+            record_admin_activity(
+                actor_name=normalized_email,
+                actor_email=normalized_email,
+                action='Login Failed',
+                status='failed',
+            )
             return jsonify({'message': "Email not found"}), 404
+
+        provider_name = (user['provider_name'] or '').strip() or 'All'
+        user_name = user['user_name'] or provider_name or normalized_email
         
         if not bcrypt.check_password_hash(user['password_hash'], data['password']):
+            record_admin_activity(
+                actor_user_no=user['user_no'],
+                actor_name=user_name,
+                actor_email=normalized_email,
+                action='Login Failed',
+                provider_no=user['pro_no'],
+                provider_name=provider_name,
+                status='failed',
+            )
             return jsonify({'message': 'Incorrect password'}), 401
         
         # Check if account is locked
         if user.get('is_locked'):
+            record_admin_activity(
+                actor_user_no=user['user_no'],
+                actor_name=user_name,
+                actor_email=normalized_email,
+                action='Login Failed',
+                provider_no=user['pro_no'],
+                provider_name=provider_name,
+                status='failed',
+            )
             return jsonify({'message': 'Account is locked. Please contact administrator.'}), 403
         
         # Normalize role for frontend routing
-        prov_name = (user['provider_name'] or '').strip()
+        prov_name = provider_name
         normalized_role = 'admin'
         if 'vilma' in prov_name.lower():
             normalized_role = 'vilma'
@@ -618,10 +803,18 @@ def login():
         else:
             normalized_role = prov_name.lower()
         
-        user_name = user['user_name'] or prov_name
-        
         # Generate JWT token with pro_no and provider_name
         token = generate_token(user['user_no'], prov_name, user['pro_no'])
+
+        record_admin_activity(
+            actor_user_no=user['user_no'],
+            actor_name=user_name,
+            actor_email=normalized_email,
+            action='Login',
+            provider_no=user['pro_no'],
+            provider_name=prov_name,
+            status='success',
+        )
         
         return jsonify({
             'success': True,
@@ -733,6 +926,19 @@ def register():
         conn.commit()
         cursor.close()
         conn.close()
+
+        record_admin_activity(
+            actor_user_no=user_no,
+            actor_name=data['fullName'],
+            actor_email=normalized_email,
+            action='Account Registered',
+            target_type='Admin',
+            target_id=user_no,
+            target_label=data['fullName'],
+            provider_no=pro_no,
+            provider_name=data['role'],
+            status='success',
+        )
         
         return jsonify({
             'success': True,
@@ -749,6 +955,13 @@ def register():
 @token_required
 def logout(current_user_id, pro_no, role):
     """Logout endpoint - invalidate token (frontend should delete token)"""
+    record_admin_activity(
+        actor_user_no=current_user_id,
+        action='Logout',
+        provider_no=pro_no,
+        provider_name=role or 'All',
+        status='success',
+    )
     return jsonify({'message': 'Logged out successfully'}), 200
 
 @api_bp.route('/auth/forgot-password', methods=['POST'])
@@ -898,7 +1111,7 @@ def create_account(current_user_id, pro_no, role):
 
         password_hash = bcrypt.generate_password_hash(data['password']).decode('utf-8')
         
-        role = data.get('role', 'scholar').lower()
+        account_role = data.get('role', 'scholar').lower()
         
         # 1. Find or create scholarship provider based on 'scholarship' field or 'role'
         provider_name = data.get('scholarship', data.get('role', 'All'))
@@ -907,18 +1120,18 @@ def create_account(current_user_id, pro_no, role):
         
         if not provider:
             cursor.execute("INSERT INTO scholarship_providers (provider_name) VALUES (%s) RETURNING pro_no", (provider_name,))
-            pro_no = cursor.fetchone()['pro_no']
+            target_provider_no = cursor.fetchone()['pro_no']
         else:
-            pro_no = provider['pro_no']
+            target_provider_no = provider['pro_no']
             
         full_name = f"{data['firstName']} {data['lastName']}"
         account_id = None
         
-        if role == 'admin':
+        if account_role == 'admin':
             # 2a. Insert into users table
             cursor.execute(
                 "INSERT INTO users (pro_no, user_name) VALUES (%s, %s) RETURNING user_no",
-                (pro_no, full_name)
+                (target_provider_no, full_name)
             )
             user_no = cursor.fetchone()['user_no']
             
@@ -957,6 +1170,19 @@ def create_account(current_user_id, pro_no, role):
         conn.commit()
         cursor.close()
         conn.close()
+
+        audit_provider_no = target_provider_no
+        audit_provider_name = provider_name if provider_name not in ['admin', 'scholar'] else (role or 'All')
+        record_admin_activity(
+            actor_user_no=current_user_id,
+            action='Account Created',
+            target_type='Admin' if account_role == 'admin' else 'Applicant',
+            target_id=account_id,
+            target_label=full_name,
+            provider_no=audit_provider_no,
+            provider_name=audit_provider_name,
+            status='success',
+        )
         
         return jsonify({'success': True, 'account': {
             'id': account_id,
@@ -964,10 +1190,10 @@ def create_account(current_user_id, pro_no, role):
             'name': full_name,
             'first_name': data['firstName'],
             'last_name': data['lastName'],
-            'role': role,
-            'type': 'Admin' if role == 'admin' else 'Applicant',
-            'scholarship': provider_name if role == 'admin' else data.get('scholarship', 'Unassigned'),
-            'status': 'Registered' if role == 'admin' else 'Pending',
+            'role': account_role,
+            'type': 'Admin' if account_role == 'admin' else 'Applicant',
+            'scholarship': provider_name if account_role == 'admin' else data.get('scholarship', 'Unassigned'),
+            'status': 'Registered' if account_role == 'admin' else 'Pending',
             'joined': datetime.utcnow().date().isoformat(),
             'locked': False,
         }}), 201
@@ -987,12 +1213,20 @@ def update_account(current_user_id, pro_no, role, account_id):
     try:
         conn = get_db()
         cursor = conn.cursor()
+        account_context = fetch_account_activity_context(cursor, account_id)
+        
+        if not account_context:
+            cursor.close()
+            conn.close()
+            return jsonify({'message': 'Account not found'}), 404
         
         # Get user_no or applicant_no from email table
         cursor.execute("SELECT user_no, applicant_no FROM email WHERE em_no = %s", (account_id,))
         email_record = cursor.fetchone()
         
         if not email_record:
+            cursor.close()
+            conn.close()
             return jsonify({'message': 'Account not found'}), 404
             
         if email_record['user_no']:
@@ -1009,6 +1243,18 @@ def update_account(current_user_id, pro_no, role, account_id):
         conn.commit()
         cursor.close()
         conn.close()
+
+        updated_name = data.get('name') or account_context['name']
+        record_admin_activity(
+            actor_user_no=current_user_id,
+            action='Profile Update',
+            target_type=account_context['account_type'],
+            target_id=account_id,
+            target_label=updated_name,
+            provider_no=account_context['provider_no'],
+            provider_name=account_context['provider_name'],
+            status='success',
+        )
         
         return jsonify({'success': True, 'message': 'Account updated'}), 200
     
@@ -1022,6 +1268,11 @@ def delete_account(current_user_id, pro_no, role, account_id):
     try:
         conn = get_db()
         cursor = conn.cursor()
+        account_context = fetch_account_activity_context(cursor, account_id)
+        if not account_context:
+            cursor.close()
+            conn.close()
+            return jsonify({'message': 'Account not found'}), 404
         
         # Get user_no from email table
         cursor.execute("SELECT user_no FROM email WHERE em_no = %s", (account_id,))
@@ -1041,6 +1292,17 @@ def delete_account(current_user_id, pro_no, role, account_id):
         
         if not deleted:
             return jsonify({'message': 'Account not found'}), 404
+
+        record_admin_activity(
+            actor_user_no=current_user_id,
+            action='Account Deleted',
+            target_type=account_context['account_type'],
+            target_id=account_id,
+            target_label=account_context['name'],
+            provider_no=account_context['provider_no'],
+            provider_name=account_context['provider_name'],
+            status='success',
+        )
         
         return jsonify({'success': True, 'message': 'Account deleted'}), 200
     
@@ -1058,6 +1320,11 @@ def toggle_account_lock(current_user_id, pro_no, role, account_id):
     try:
         conn = get_db()
         cursor = conn.cursor()
+        account_context = fetch_account_activity_context(cursor, account_id)
+        if not account_context:
+            cursor.close()
+            conn.close()
+            return jsonify({'message': 'Account not found'}), 404
         
         # Update the email table with lock status
         cursor.execute('''
@@ -1076,6 +1343,16 @@ def toggle_account_lock(current_user_id, pro_no, role, account_id):
             return jsonify({'message': 'Account not found'}), 404
         
         status = 'locked' if data['locked'] else 'unlocked'
+        record_admin_activity(
+            actor_user_no=current_user_id,
+            action='Account Locked' if data['locked'] else 'Account Unlocked',
+            target_type=account_context['account_type'],
+            target_id=account_id,
+            target_label=account_context['name'],
+            provider_no=account_context['provider_no'],
+            provider_name=account_context['provider_name'],
+            status='success',
+        )
         return jsonify({'success': True, 'message': f'Account {status}'}), 200
     
     except Exception as e:
@@ -1158,127 +1435,68 @@ def get_statistics(current_user_id, pro_no, role):
 @api_bp.route('/logs', methods=['GET'])
 @token_required
 def get_activity_logs(current_user_id, pro_no, role):
-    """Get dashboard activity logs from live database tables."""
+    """Get admin audit activity logs from the dedicated audit table."""
     try:
         filters = request.args
         conn = get_db()
         cursor = conn.cursor()
 
-        cursor.execute(
-            '''
-            SELECT EXISTS (
-                SELECT 1
-                FROM information_schema.columns
-                WHERE table_name = 'applicant_status' AND column_name = 'status_updated'
-            ) AS has_status_updated
-            '''
-        )
-        has_status_updated = cursor.fetchone()['has_status_updated']
-        event_date_expr = 'COALESCE(ast.status_updated, NOW())' if has_status_updated else 'NOW()'
-        message_provider_expr = """
-            CASE
-                WHEN m.pro_no IS NOT NULL THEN m.pro_no
-                WHEN split_part(COALESCE(m.room, ''), '+', 2) ~ '^[0-9]+$' THEN split_part(m.room, '+', 2)::int
-                ELSE NULL
-            END
-        """.strip()
+        ensure_admin_activity_log_table(cursor)
 
-        logs = []
-
-        cursor.execute(
-            f'''
+        query = '''
             SELECT
-                ast.stat_no AS id,
-                COALESCE(a.first_name || ' ' || a.last_name, 'Unknown Applicant') AS user_name,
-                CASE
-                    WHEN ast.is_accepted IS TRUE THEN 'Application Accepted'
-                    WHEN ast.is_accepted IS FALSE THEN 'Application Rejected'
-                    ELSE 'Application Submitted'
-                END AS activity,
-                CASE
-                    WHEN ast.is_accepted IS TRUE THEN 'success'
-                    WHEN ast.is_accepted IS FALSE THEN 'failed'
-                    ELSE 'pending'
-                END AS status,
-                COALESCE(s.scholarship_name, p.provider_name, 'Unassigned') AS scholarship,
-                {event_date_expr} AS event_date
-            FROM applicant_status ast
-            LEFT JOIN applicants a ON ast.applicant_no = a.applicant_no
-            LEFT JOIN scholarships s ON ast.scholarship_no = s.req_no
-            LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
+                log_id AS id,
+                actor_name AS user,
+                action AS activity,
+                status,
+                COALESCE(provider_name, 'All') AS scholarship,
+                occurred_at
+            FROM admin_activity_logs
             WHERE 1=1
-            {f"AND s.pro_no = {pro_no}" if role != "Admin" else ""}
-            ORDER BY {event_date_expr} DESC, ast.stat_no DESC
-            LIMIT 250
-            '''
-        )
+        '''
+        params = []
 
-        for row in cursor.fetchall():
-            logs.append({
-                'id': f"status-{row['id']}",
-                'user': row['user_name'],
+        if role != 'Admin':
+            query += ' AND provider_no = %s'
+            params.append(pro_no)
+
+        if filters.get('program') and filters.get('program') != 'All':
+            query += ' AND provider_name = %s'
+            params.append(filters.get('program'))
+
+        if filters.get('action') and filters.get('action') != 'All':
+            query += ' AND action ILIKE %s'
+            params.append(f"%{filters.get('action')}%")
+
+        search = (filters.get('search') or '').strip()
+        if search:
+            search_term = f"%{search}%"
+            query += '''
+                AND (
+                    actor_name ILIKE %s
+                    OR COALESCE(actor_email, '') ILIKE %s
+                    OR action ILIKE %s
+                    OR COALESCE(target_label, '') ILIKE %s
+                    OR COALESCE(provider_name, '') ILIKE %s
+                )
+            '''
+            params.extend([search_term, search_term, search_term, search_term, search_term])
+
+        query += ' ORDER BY occurred_at DESC, log_id DESC LIMIT 250'
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        filtered_logs = [
+            {
+                'id': f"audit-{row['id']}",
+                'user': row['user'],
                 'activity': row['activity'],
-                'status': row['status'],
+                'status': (row['status'] or 'success').lower(),
                 'scholarship': row['scholarship'],
-                'date': row['event_date'].strftime('%Y-%m-%d %H:%M') if row['event_date'] else None,
-            })
-
-        cursor.execute(
-            f'''
-            SELECT
-                m.m_id AS id,
-                m.username,
-                m.message,
-                m.timestamp,
-                {message_provider_expr} AS provider_no,
-                p.provider_name
-            FROM message m
-            LEFT JOIN scholarship_providers p ON p.pro_no = {message_provider_expr}
-            WHERE m.timestamp IS NOT NULL
-            {f"AND {message_provider_expr} = {pro_no}" if role != "Admin" else ""}
-            ORDER BY m.timestamp DESC, m.m_id DESC
-            LIMIT 100
-            '''
-        )
-
-        for row in cursor.fetchall():
-            preview = str(row['message'] or '').strip()
-            if len(preview) > 60:
-                preview = preview[:57] + '...'
-            logs.append({
-                'id': f"message-{row['id']}",
-                'user': row['username'] or 'Unknown User',
-                'activity': f"Message Sent{': ' + preview if preview else ''}",
-                'status': 'success',
-                'scholarship': row['provider_name'] or (f"Provider #{row['provider_no']}" if row['provider_no'] else 'Direct Message'),
-                'date': row['timestamp'].strftime('%Y-%m-%d %H:%M') if row['timestamp'] else None,
-            })
-
-        def matches_filters(log):
-            program = filters.get('program')
-            action = filters.get('action')
-            search = (filters.get('search') or '').strip().lower()
-
-            if program and program != 'All' and log['scholarship'] != program:
-                return False
-
-            if action and action != 'All' and action.lower() not in (log['activity'] or '').lower():
-                return False
-
-            if search:
-                haystack = ' '.join([
-                    str(log.get('user') or ''),
-                    str(log.get('activity') or ''),
-                    str(log.get('scholarship') or ''),
-                ]).lower()
-                if search not in haystack:
-                    return False
-
-            return True
-
-        filtered_logs = [log for log in logs if matches_filters(log)]
-
-        filtered_logs.sort(key=lambda log: log.get('date') or '', reverse=True)
+                'date': row['occurred_at'].strftime('%Y-%m-%d %H:%M') if row['occurred_at'] else None,
+            }
+            for row in rows
+        ]
 
         cursor.close()
         conn.close()

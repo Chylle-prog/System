@@ -34,8 +34,7 @@ const ACTION_EVENT_OPTIONS = [
   { label: 'Logout', value: 'Logout' },
   { label: 'Password / Security', value: 'Password' },
   { label: 'Profile Updates', value: 'Profile' },
-  { label: 'Applications', value: 'Application' },
-  { label: 'Messages', value: 'Message' },
+  { label: 'Account Management', value: 'Account' },
 ];
 
 const emptyStatistics = {
@@ -255,6 +254,20 @@ export default function Dash() {
     return date.toISOString().split('T')[0];
   };
 
+  const formatActivityTimestamp = (timestamp) => {
+    if (!timestamp) return 'No timestamp';
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return timestamp;
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  };
+
   const openAccountModal = (mode, data = null) => {
     setAccountModal({ open: true, mode, data });
     setPageError('');
@@ -435,6 +448,7 @@ export default function Dash() {
 
   const getActivityTypeIcon = (activity) => {
     const act = (activity || '').toLowerCase();
+    if (act.includes('failed') || act.includes('deleted')) return <FaTimesCircle />;
     if (act.includes('login')) return <FaSignInAlt />;
     if (act.includes('logout')) return <FaSignOutAlt />;
     if (act.includes('password') || act.includes('security')) return <FaKey />;
@@ -549,12 +563,12 @@ export default function Dash() {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                   <div className="lg:col-span-2 bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="p-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
-                      <h3 className="font-black text-gray-900 uppercase tracking-widest text-xs">System Activity Stream</h3>
+                      <h3 className="font-black text-gray-900 uppercase tracking-widest text-xs">System Audit Stream</h3>
                       <button onClick={() => setActiveTab('activity-reports')} className="text-xs font-bold text-[#800020] hover:underline">Full Audit</button>
                     </div>
                     <div className="divide-y divide-gray-50">
                       {activities.length === 0 ? (
-                        <div className="p-6 text-sm font-bold text-gray-400">No database activity rows found.</div>
+                        <div className="p-6 text-sm font-bold text-gray-400">No audit records found.</div>
                       ) : (
                         activities.slice(0, 6).map((activity) => (
                           <div key={activity.id} className="p-4 flex items-center gap-4 hover:bg-gray-50 transition-colors">
@@ -564,7 +578,7 @@ export default function Dash() {
                             <div className="flex-1">
                               <div className="flex justify-between items-center mb-0.5 gap-4">
                                 <span className="text-sm font-black text-gray-900">{activity.user}</span>
-                                <span className="text-[10px] font-bold text-gray-400 uppercase">{activity.date || 'No timestamp'}</span>
+                                <span className="text-[10px] font-bold text-gray-400 uppercase">{formatActivityTimestamp(activity.date)}</span>
                               </div>
                               <p className="text-xs text-gray-500">{activity.activity} - <span className="text-[#800020] font-bold">{activity.scholarship}</span></p>
                             </div>
@@ -748,7 +762,7 @@ export default function Dash() {
             {activeTab === 'activity-reports' && (
               <div className="space-y-6">
                 <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex justify-between items-center flex-wrap gap-4">
-                  <h2 className="text-xl font-black text-gray-900 uppercase">Database Activity</h2>
+                  <h2 className="text-xl font-black text-gray-900 uppercase">Audit Intelligence</h2>
                   <div className="flex items-center gap-3 flex-wrap">
                     <div className="relative">
                       <FaSearch className="absolute left-3 top-3 text-gray-300 text-xs" />
@@ -794,10 +808,15 @@ export default function Dash() {
                               </div>
                             </td>
                             <td className="px-8 py-4"><span className="text-[10px] font-black text-[#800020] border border-[#800020]/20 px-2 py-0.5 rounded uppercase tracking-widest">{activity.scholarship}</span></td>
-                            <td className="px-8 py-4 font-mono text-xs text-gray-400 italic">{formatDate(activity.date)}</td>
+                            <td className="px-8 py-4 font-mono text-xs text-gray-400 italic">{formatActivityTimestamp(activity.date)}</td>
                             <td className="px-8 py-4 text-center"><div className="flex justify-center">{getActivityIcon(activity.status)}</div></td>
                           </tr>
                         ))}
+                        {filteredActivityReport.length === 0 && (
+                          <tr>
+                            <td colSpan="5" className="px-8 py-12 text-center text-sm font-bold text-gray-400">No audit records matched your filters.</td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -996,7 +1015,7 @@ export default function Dash() {
                     <td className="p-4 text-sm font-bold text-gray-900">{item.user}</td>
                     <td className="p-4 text-sm font-bold text-gray-700">{item.activity}</td>
                     <td className="p-4 text-sm font-black text-[#800020] uppercase">{item.scholarship}</td>
-                    <td className="p-4 text-xs font-mono text-gray-400 italic">{formatDate(item.date)}</td>
+                    <td className="p-4 text-xs font-mono text-gray-400 italic">{formatActivityTimestamp(item.date)}</td>
                     <td className="p-4 text-sm font-bold uppercase">{item.status}</td>
                   </>
                 )}
