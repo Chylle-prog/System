@@ -661,23 +661,28 @@ def get_providers():
     """Fetch all scholarship providers from the database"""
     try:
         conn = get_db()
-        cursor = conn.cursor()
-        # Fetch both ID and Name to be used in the dropdown
+        # Explicitly use standard cursor to get tuples
+        cursor = conn.cursor(cursor_factory=None)
         cursor.execute("SELECT pro_no, provider_name FROM scholarship_providers ORDER BY provider_name ASC")
-        providers = cursor.fetchall()
+        rows = cursor.fetchall()
+        
+        result = []
+        for row in rows:
+            if row and len(row) >= 2:
+                result.append({
+                    'pro_no': row[0],
+                    'provider_name': row[1]
+                })
+            
         cursor.close()
         conn.close()
-        
-        # Ensure we return a list of simplified objects
-        result = [
-            {'pro_no': row['pro_no'], 'provider_name': row['provider_name']}
-            for row in providers
-        ]
-        
         return jsonify(result), 200
     except Exception as e:
         print(f"[AUTH] Error fetching providers: {str(e)}")
         return jsonify({'message': f'Error fetching providers: {str(e)}'}), 500
+
+
+
 
 @api_bp.route('/auth/register', methods=['POST'])
 def register():
@@ -1933,21 +1938,6 @@ def get_applicant_image(applicant_no, column_name):
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
 # ===== UTILITY ENDPOINTS =====
-
-@api_bp.route('/providers', methods=['GET'])
-@token_required
-def get_providers(current_user_id, pro_no, role):
-    """Get list of scholarship providers for dropdowns"""
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT pro_no, provider_name FROM scholarship_providers ORDER BY provider_name")
-        providers = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        return jsonify({'success': True, 'providers': [dict(p) for p in providers]}), 200
-    except Exception as e:
-        return jsonify({'message': f'Error: {str(e)}'}), 500
 
 @api_bp.route('/auth/me', methods=['GET'])
 @token_required
