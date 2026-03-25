@@ -7,6 +7,7 @@ DEFAULT_CORS_ORIGINS = (
     'http://localhost:3000,'
     'http://localhost:5174,'
     'https://cozy-kulfi-35f772.netlify.app,'
+    'https://stingy-body.surge.sh,'
     'https://system-kjbv.onrender.com'
 )
 
@@ -16,8 +17,10 @@ def get_secret_key():
 
 
 def get_allowed_origins():
-    configured = os.environ.get('CORS_ORIGINS', DEFAULT_CORS_ORIGINS)
-    origins = [origin.strip() for origin in configured.split(',') if origin.strip()]
+    configured = os.environ.get('CORS_ORIGINS', '')
+    default_origins = [origin.strip() for origin in DEFAULT_CORS_ORIGINS.split(',') if origin.strip()]
+    configured_origins = [origin.strip() for origin in configured.split(',') if origin.strip()]
+    origins = list(dict.fromkeys([*default_origins, *configured_origins]))
     preview_patterns = []
 
     for origin in origins:

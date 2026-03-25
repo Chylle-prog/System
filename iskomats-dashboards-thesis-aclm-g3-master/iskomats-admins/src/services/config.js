@@ -6,6 +6,19 @@ const API_PREFIX = '/api';
 const stripTrailingSlash = (value) => value.replace(/\/+$/, '');
 const ensureLeadingSlash = (value) => (value.startsWith('/') ? value : `/${value}`);
 
+const isLocalOrigin = (value) => {
+  if (!value) {
+    return false;
+  }
+
+  try {
+    const { hostname } = new URL(value);
+    return LOCAL_HOSTNAMES.has(hostname);
+  } catch {
+    return false;
+  }
+};
+
 const normalizeApiBaseUrl = (value) => {
   const sanitized = stripTrailingSlash(value);
 
@@ -43,16 +56,20 @@ const defaultBackendOrigin = isLocalDevelopment()
   : PRODUCTION_BACKEND_ORIGIN;
 
 const resolveApiBaseUrl = () => {
-  if (import.meta.env.VITE_API_URL) {
-    return normalizeApiBaseUrl(import.meta.env.VITE_API_URL);
+  const configuredApiUrl = import.meta.env.VITE_API_URL;
+
+  if (configuredApiUrl && (isLocalDevelopment() || !isLocalOrigin(configuredApiUrl))) {
+    return normalizeApiBaseUrl(configuredApiUrl);
   }
 
   return normalizeApiBaseUrl(defaultBackendOrigin);
 };
 
 const resolveSocketUrl = () => {
-  if (import.meta.env.VITE_SOCKET_URL) {
-    return normalizeSocketUrl(import.meta.env.VITE_SOCKET_URL);
+  const configuredSocketUrl = import.meta.env.VITE_SOCKET_URL;
+
+  if (configuredSocketUrl && (isLocalDevelopment() || !isLocalOrigin(configuredSocketUrl))) {
+    return normalizeSocketUrl(configuredSocketUrl);
   }
 
   return normalizeSocketUrl(defaultBackendOrigin);
