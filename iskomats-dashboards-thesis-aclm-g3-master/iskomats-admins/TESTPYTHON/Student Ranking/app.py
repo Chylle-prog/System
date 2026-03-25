@@ -95,7 +95,7 @@ def status():
 
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', '5001'))
+    port = int(os.environ.get('PORT', '5003'))
     print(f'Starting combined ISKOMATS backend on port {port}...')
     socketio.run(app, debug=False, port=port, host='0.0.0.0')
 
