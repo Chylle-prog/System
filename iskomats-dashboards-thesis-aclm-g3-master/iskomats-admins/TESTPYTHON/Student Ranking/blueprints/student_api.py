@@ -508,12 +508,13 @@ def submit_application():
         if not applicant:
             return jsonify({'message': 'Applicant profile not found'}), 404
 
-        # Get scholarship data via requirement
-        cur.execute('SELECT scholarship_no FROM scholarship_requirements WHERE req_no = %s', (req_no,))
-        req_row = cur.fetchone()
-        if not req_row:
-            return jsonify({'message': 'Scholarship requirement not found'}), 404
-        scholarship_id = req_row['scholarship_no']
+        # In this system, req_no (passed from frontend) is the primary scholarship identifier
+        scholarship_id = req_no
+        
+        # Verify the scholarship exists
+        cur.execute('SELECT req_no FROM scholarships WHERE req_no = %s', (scholarship_id,))
+        if not cur.fetchone():
+            return jsonify({'message': 'Scholarship not found'}), 404
 
         # ── Data Preparation ──────────────────────────────────────────────────
         id_front_bytes = decode_base64(form_data.get('id_front')) or db_bytes(applicant.get('id_img_front'))
