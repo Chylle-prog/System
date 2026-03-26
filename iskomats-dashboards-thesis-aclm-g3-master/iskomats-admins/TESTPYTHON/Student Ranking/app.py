@@ -1,5 +1,6 @@
 import os
 
+# Deployment trigger: 2026-03-26 - Force Render rebuild
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO
 
