@@ -12,13 +12,13 @@ const STEP_FIELDS = {
   2: [
     'fatherStatus', 'fatherName', 'fatherOccupation', 'fatherAddress', 'fatherPhoneNumber',
     'motherStatus', 'motherName', 'motherOccupation', 'motherAddress', 'motherPhoneNumber',
-    'parentsGrossIncome', 'numberOfSiblings'
+    'parentsGrossIncome', 'numberOfSiblings', 'mayorIndigency_photo'
   ],
   3: [
-    'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course', 'gpa'
+    'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course', 'gpa',
+    'mayorCOE_photo', 'mayorGrades_photo'
   ],
-  4: [],
-  5: [
+  4: [
     'privacyConsent', 'dataCertifyConsent',
     'applicantSignatureName', 'dateAccomplished'
   ]
@@ -28,14 +28,12 @@ const isFileLike = (value) => typeof File !== 'undefined' && value instanceof Fi
 const DOCUMENT_IMAGE_FIELDS = new Set([
   'mayorCOE_photo',
   'mayorGrades_photo',
-  'mayorIndigency_photo',
-  'mayorValidID_photo'
+  'mayorIndigency_photo'
 ]);
 const DOCUMENT_UPLOAD_FIELD_MAP = {
   mayorCOE_photo: 'enrollment_certificate_doc',
   mayorGrades_photo: 'grades_doc',
-  mayorIndigency_photo: 'indigency_doc',
-  mayorValidID_photo: 'id_pic'
+  mayorIndigency_photo: 'indigency_doc'
 };
 
 const buildDraftStorageKey = (user, searchParams, scholarshipName) => {
@@ -194,7 +192,6 @@ const StudentInfo = () => {
     mayorCOE_photo: null,
     mayorGrades_photo: null,
     mayorIndigency_photo: null,
-    mayorValidID_photo: null,
 
     // School ID Photos
     schoolIdFront: null,
@@ -261,6 +258,17 @@ const StudentInfo = () => {
       hasPayload = true;
     }
 
+    if (stepNumber === 2) {
+      if (photos.mayorIndigency_photo) {
+        if (isFileLike(photos.mayorIndigency_photo)) {
+          payload.append('indigency_doc', photos.mayorIndigency_photo);
+        } else if (typeof photos.mayorIndigency_photo === 'string' && photos.mayorIndigency_photo.startsWith('data:')) {
+          jsonData['indigency_doc'] = photos.mayorIndigency_photo;
+        }
+        hasPayload = true;
+      }
+    }
+
     if (stepNumber === 3) {
       if (schoolIdPhotos.front) {
         if (isFileLike(schoolIdPhotos.front)) {
@@ -279,9 +287,7 @@ const StudentInfo = () => {
         }
         hasPayload = true;
       }
-    }
 
-    if (stepNumber === 4) {
       if (photos.mayorCOE_photo) {
         if (isFileLike(photos.mayorCOE_photo)) {
           payload.append('enrollment_certificate_doc', photos.mayorCOE_photo);
@@ -299,32 +305,14 @@ const StudentInfo = () => {
         }
         hasPayload = true;
       }
-
-      if (photos.mayorIndigency_photo) {
-        if (isFileLike(photos.mayorIndigency_photo)) {
-          payload.append('indigency_doc', photos.mayorIndigency_photo);
-        } else if (typeof photos.mayorIndigency_photo === 'string' && photos.mayorIndigency_photo.startsWith('data:')) {
-          jsonData['indigency_doc'] = photos.mayorIndigency_photo;
-        }
-        hasPayload = true;
-      }
     }
 
-    if (stepNumber === 5) {
+    if (stepNumber === 4) {
       if (photos.face_photo) {
         if (isFileLike(photos.face_photo)) {
           payload.append('face_photo', photos.face_photo);
         } else if (typeof photos.face_photo === 'string' && photos.face_photo.startsWith('data:')) {
           jsonData['face_photo'] = photos.face_photo;
-        }
-        hasPayload = true;
-      }
-
-      if (photos.mayorValidID_photo) {
-        if (isFileLike(photos.mayorValidID_photo)) {
-          payload.append('id_pic', photos.mayorValidID_photo);
-        } else if (typeof photos.mayorValidID_photo === 'string' && photos.mayorValidID_photo.startsWith('data:')) {
-          jsonData['id_pic'] = photos.mayorValidID_photo;
         }
         hasPayload = true;
       }
@@ -895,7 +883,7 @@ const StudentInfo = () => {
     try {
       setIsSavingStep(true);
       await saveCurrentStepProgress(currentStep);
-      setCurrentStep(prev => Math.min(prev + 1, 5));
+      setCurrentStep(prev => Math.min(prev + 1, 4));
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       console.error('Save error:', err);
@@ -957,8 +945,7 @@ const StudentInfo = () => {
     const requiredDocs = [
       { name: 'mayorCOE_photo', label: 'COE Photo' },
       { name: 'mayorGrades_photo', label: 'Grades Photo' },
-      { name: 'mayorIndigency_photo', label: 'Indigency Photo' },
-      { name: 'mayorValidID_photo', label: 'Valid ID Photo' }
+      { name: 'mayorIndigency_photo', label: 'Indigency Photo' }
     ];
 
     let missingDocLabel = '';
@@ -975,13 +962,13 @@ const StudentInfo = () => {
     }
 
     // Validate Identity Verification
-    // Both front/back ID are still required for the backend, but face_photo is now optional if valid ID photo is provided
+    // Both front/back School ID are still required for the backend
     if (
       (!photos.id_front && !userProfile?.has_id_img_front) ||
       (!photos.id_back && !userProfile?.has_id_img_back) ||
-      (!photos.face_photo && !formData.mayorValidID_photo && !userProfile?.has_mayorValidID_photo)
+      (!photos.face_photo && !userProfile?.has_face_photo)
     ) {
-      showPromptMessage('⚠️ Please complete Identity Verification: Upload Front/Back ID plus either a Face Photo or Valid ID Photo.');
+      showPromptMessage('⚠️ Please complete Identity Verification: Upload Front/Back School ID and a Face Photo.');
       return;
     }
 
@@ -1018,27 +1005,44 @@ const StudentInfo = () => {
       setIsSubmitting(true);
       const skipVerification = e.nativeEvent.altKey;
       console.log(`Submitting application (skipVerification: ${skipVerification})...`);
+      
+      await saveCurrentStepProgress(5);
 
       const submissionData = new FormData();
       
-      // Append all text fields from formData
+      // Define image keys to exclude from general formData loop to avoid double-sending
+      const imageKeys = [
+        'profile_picture', 'id_front', 'id_back', 'face_photo', 
+        'mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo', 'mayorValidID_photo',
+        'applicantSignatureName', 'signature_data'
+      ];
+
+      // Append all text fields from formData, excluding images
       Object.keys(formData).forEach(key => {
-        if (formData[key] !== null && formData[key] !== undefined) {
+        if (!imageKeys.includes(key) && formData[key] !== null && formData[key] !== undefined) {
           submissionData.append(key, formData[key]);
         }
       });
 
-      // Append photos and documents
+      // Append photos and documents explicitly once from the photos state
+      if (photos.profile_picture) submissionData.append('profile_picture', photos.profile_picture);
       if (photos.id_front) submissionData.append('id_front', photos.id_front);
       if (photos.id_back) submissionData.append('id_back', photos.id_back);
       if (photos.face_photo) submissionData.append('face_photo', photos.face_photo);
-      if (drawnSignature) submissionData.append('signature_data', drawnSignature);
+      
+      if (drawnSignature) {
+        submissionData.append('signature_data', drawnSignature);
+      } else if (signaturePreview) {
+        submissionData.append('signature_data', signaturePreview);
+      }
       
       // Add documentary requirements
       const docKeys = ['mayorCOE', 'mayorGrades', 'mayorIndigency', 'mayorValidID'];
       docKeys.forEach(key => {
         const fileKey = `${key}_photo`;
-        if (formData[fileKey]) {
+        if (photos[fileKey]) {
+          submissionData.append(fileKey, photos[fileKey]);
+        } else if (formData[fileKey] && typeof formData[fileKey] === 'string') {
           submissionData.append(fileKey, formData[fileKey]);
         }
       });
@@ -1528,25 +1532,23 @@ const StudentInfo = () => {
           <div className="section-header">
             <img src="/iskologo.png" alt="Logo" style={{height: '50px', marginBottom: '1rem', filter: 'grayscale(1) contrast(1.2)'}} />
             <h2>{scholarshipName}</h2>
-            <p>Step {currentStep} of 5: {
+            <p>Step {currentStep} of 4: {
               currentStep === 1 ? 'Personal Information' :
               currentStep === 2 ? 'Family Background' :
               currentStep === 3 ? 'Educational Information' :
-              currentStep === 4 ? 'Documentary Requirements' :
               'Certification & Verification'
             }</p>
           </div>
 
           <div className="step-indicator">
-            <div className="progress-bar" style={{width: `${((currentStep - 1) / 4) * 100}%`}}></div>
-            {[1, 2, 3, 4, 5].map(step => (
+            <div className="progress-bar" style={{width: `${((currentStep - 1) / 3) * 100}%`}}></div>
+            {[1, 2, 3, 4].map(step => (
               <div key={step} className={`step-item ${currentStep === step ? 'active' : ''} ${currentStep > step ? 'completed' : ''}`}>
                 <div className="step-circle">{currentStep > step ? <i className="fas fa-check"></i> : step}</div>
                 <div className="step-label">{
                   step === 1 ? 'Personal' :
                   step === 2 ? 'Family' :
                   step === 3 ? 'Education' :
-                  step === 4 ? 'Docs' :
                   'Verify'
                 }</div>
               </div>
@@ -1746,6 +1748,19 @@ const StudentInfo = () => {
                 </div>
               </div>
 
+              {/* Documentary Requirement: Indigency */}
+              <div style={{marginTop: '1.5rem', background: '#fdfdfd', padding: '1.2rem', borderRadius: '16px', border: '1px solid var(--gray-2)'}}>
+                <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.8rem', color: '#444', fontWeight: '600'}}>
+                  Certificate of Indigency <span style={{color: '#e74c3c'}}>*</span>
+                </label>
+                <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
+                  <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} required={currentStep === 2} />
+                  <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem'}}>
+                    {photos.mayorIndigency_photo ? <img src={photos.mayorIndigency_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Indigency" /> : 'Upload Photo of Indigency'}
+                  </div>
+                </div>
+              </div>
+
               <div style={{marginTop: '2rem', display: 'flex', justifyContent: 'space-between'}}>
                 <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
                   <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> Back: Personal Info
@@ -1831,6 +1846,33 @@ const StudentInfo = () => {
                 </div>
               </div>
 
+              {/* Documentary Requirements: COE and Grades */}
+              <div style={{marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                <div style={{background: '#fdfdfd', padding: '1.2rem', borderRadius: '16px', border: '1px solid var(--gray-2)'}}>
+                  <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.8rem', color: '#444', fontWeight: '600'}}>
+                    Certificate of Enrollment (Current A.Y) <span style={{color: '#e74c3c'}}>*</span>
+                  </label>
+                  <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
+                    <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} required={currentStep === 3} />
+                    <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem'}}>
+                      {photos.mayorCOE_photo ? <img src={photos.mayorCOE_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="COE" /> : 'Upload Photo of COE'}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{background: '#fdfdfd', padding: '1.2rem', borderRadius: '16px', border: '1px solid var(--gray-2)'}}>
+                  <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.8rem', color: '#444', fontWeight: '600'}}>
+                    Certified True Copy of Grades <span style={{color: '#e74c3c'}}>*</span>
+                  </label>
+                  <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
+                    <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} required={currentStep === 3} />
+                    <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem'}}>
+                      {photos.mayorGrades_photo ? <img src={photos.mayorGrades_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Grades" /> : 'Upload Photo of Grades'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div style={{marginTop: '2rem', display: 'flex', justifyContent: 'space-between'}}>
                 <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
                   <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> Back: Family Background
@@ -1841,48 +1883,10 @@ const StudentInfo = () => {
               </div>
             </div>
 
-            {/* Step 4: Documentary Requirements */}
+            {/* Step 4: Certification and Verification */}
             <div className={`step-container ${currentStep === 4 ? 'active' : ''}`}>
               <h3 style={{marginBottom: '1.5rem', fontSize: '1.2rem', color: 'var(--primary)', fontWeight: '700', borderBottom: '2px solid var(--accent-soft)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center'}}>
-                <i className="fas fa-file-invoice" style={{marginRight: '12px', fontSize: '1.1rem'}}></i>4. Documentary Requirements
-              </h3>
-              <p style={{color: 'var(--text-soft)', fontSize: '0.85rem', marginBottom: '2rem', background: 'var(--warning-bg)', padding: '0.8rem 1.2rem', borderRadius: '12px', borderLeft: '4px solid var(--warning)'}}>
-                <i className="fas fa-info-circle" style={{marginRight: '8px'}}></i>Upload <strong>PHOTO</strong> for each requirement. Files are uploaded when you click Next to reduce lag while selecting them.
-              </p>
-
-              <div style={{display: 'flex', flexDirection: 'column', gap: '1.5rem'}}>
-                {[
-                  { label: 'Certificate of Enrollment (Current A.Y)', name: 'mayorCOE' },
-                  { label: 'Certified True Copy of Grades (Last Semester)', name: 'mayorGrades' },
-                  { label: 'Certificate of Indigency', name: 'mayorIndigency' },
-                  { label: 'Valid Government Issued ID', name: 'mayorValidID' }
-                ].map((doc, idx) => (
-                  <div key={idx} style={{background: '#fdfdfd', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--gray-2)'}}>
-                    <label style={{fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '1rem', display: 'block'}}>{doc.label} <span style={{color: '#e74c3c'}}>*</span></label>
-                    <div className="form-row">
-                      <div className="form-group">
-                        <label style={{fontSize: '0.8rem', color: '#666'}}>Photo (.png/jpg)</label>
-                        <input type="file" name={`${doc.name}_photo`} accept="image/*" onChange={handleInputChange} required={currentStep === 4} />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{marginTop: '2rem', display: 'flex', justifyContent: 'space-between'}}>
-                <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
-                  <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> Back: Educational Info
-                </button>
-                <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
-                  Next: Final Verification <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
-                </button>
-              </div>
-            </div>
-
-            {/* Step 5: Certification and Verification */}
-            <div className={`step-container ${currentStep === 5 ? 'active' : ''}`}>
-              <h3 style={{marginBottom: '1.5rem', fontSize: '1.2rem', color: 'var(--primary)', fontWeight: '700', borderBottom: '2px solid var(--accent-soft)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center'}}>
-                <i className="fas fa-check-double" style={{marginRight: '12px', fontSize: '1.1rem'}}></i>5. Certification & Verification
+                <i className="fas fa-check-double" style={{marginRight: '12px', fontSize: '1.1rem'}}></i>4. Certification & Verification
               </h3>
 
               <div style={{background: '#f8f9fa', padding: '1.5rem', borderRadius: '16px', marginBottom: '2rem', border: '1px solid #e9ecef'}}>
@@ -1891,11 +1895,11 @@ const StudentInfo = () => {
                   I hereby certify that all information provided in this application is true and correct to the best of my knowledge and belief. I understand that any false statement or simulation of information shall be a ground for the reproduction or cancellation of my scholarship. I also authorize the scholarship committee to verify the information provided herein.
                 </div>
                 <label style={{display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#333', cursor: 'pointer', fontWeight: '600'}}>
-                  <input type="checkbox" name="privacyConsent" checked={formData.privacyConsent} onChange={handleInputChange} style={{width: '18px', height: '18px'}} required={currentStep === 5} />
+                  <input type="checkbox" name="privacyConsent" checked={formData.privacyConsent} onChange={handleInputChange} style={{width: '18px', height: '18px'}} required={currentStep === 4} />
                   I agree to the terms and conditions
                 </label>
                 <label style={{display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#333', cursor: 'pointer', fontWeight: '600', marginTop: '10px'}}>
-                  <input type="checkbox" name="dataCertifyConsent" checked={formData.dataCertifyConsent} onChange={handleInputChange} style={{width: '18px', height: '18px'}} required={currentStep === 5} />
+                  <input type="checkbox" name="dataCertifyConsent" checked={formData.dataCertifyConsent} onChange={handleInputChange} style={{width: '18px', height: '18px'}} required={currentStep === 4} />
                   I certify that the information provided is correct
                 </label>
               </div>
@@ -1927,41 +1931,29 @@ const StudentInfo = () => {
                 </div>
               </div>
 
-              {/* ID Verification Section (Face & Valid ID) */}
+              {/* Face Verification Section */}
               <div style={{marginBottom: '2rem'}}>
-                <h4 style={{fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '1rem'}}>Final Verification <span style={{color: '#e74c3c'}}>*</span></h4>
-                <div className="form-row">
-                  <div className="form-group" style={{textAlign: 'center'}}>
-                    <label style={{fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem', display: 'block'}}>Face Photo</label>
-                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      {photos.face_photo ? (
-                        <>
-                          <img src={photos.face_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Face Verification" />
-                          <button type="button" onClick={() => removePhoto('face_photo')} style={{position: 'absolute', top: '5px', right: '5px', background: 'rgba(255,0,0,0.7)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px'}}><i className="fas fa-times"></i></button>
-                        </>
-                      ) : (
-                        <button type="button" onClick={openCamera} style={{border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer'}}>
-                          <i className="fas fa-camera" style={{fontSize: '1.5rem'}}></i>
-                          <span style={{display: 'block', fontSize: '0.75rem', marginTop: '5px'}}>Open Camera</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="form-group" style={{textAlign: 'center'}}>
-                    <label style={{fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem', display: 'block'}}>Valid ID Photo</label>
-                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      <input type="file" name="mayorValidID_photo" accept="image/*" onChange={handleInputChange} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} required={currentStep === 5} />
-                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem'}}>
-                        {validIdPreview ? <img src={validIdPreview} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Valid ID" /> : 'Upload ID Photo'}
-                      </div>
-                    </div>
+                <h4 style={{fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '1rem'}}>Final Verification (Face Photo) <span style={{color: '#e74c3c'}}>*</span></h4>
+                <div style={{textAlign: 'center', maxWidth: '300px', margin: '0 auto'}}>
+                  <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
+                    {photos.face_photo ? (
+                      <>
+                        <img src={photos.face_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Face Verification" />
+                        <button type="button" onClick={() => removePhoto('face_photo')} style={{position: 'absolute', top: '5px', right: '5px', background: 'rgba(255,0,0,0.7)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px'}}><i className="fas fa-times"></i></button>
+                      </>
+                    ) : (
+                      <button type="button" onClick={openCamera} style={{border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer'}}>
+                        <i className="fas fa-camera" style={{fontSize: '2rem'}}></i>
+                        <span style={{display: 'block', fontSize: '0.9rem', marginTop: '10px'}}>Open Camera</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
 
               <div style={{marginTop: '3rem', display: 'flex', justifyContent: 'space-between'}}>
                 <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
-                  <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> Back: Requirements
+                  <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> Back: Education
                 </button>
                 <button type="submit" className="submit-btn" disabled={isSubmitting || isSavingStep} style={{width: 'auto', padding: '0.8rem 3.5rem', borderRadius: '40px', background: 'var(--success)', border: 'none'}}>
                   {isSubmitting ? (
