@@ -111,7 +111,6 @@ const StudentInfo = () => {
   const [promptMessage, setPromptMessage] = useState('');
   const [idPicturePreview, setIdPicturePreview] = useState(null);
   const [faceVerificationPreview, setFaceVerificationPreview] = useState(null);
-  const [validIdPreview, setValidIdPreview] = useState(null);
   const [signaturePreview, setSignaturePreview] = useState(null);
   const [drawnSignature, setDrawnSignature] = useState(null);
   const [hasOtherAssistance, setHasOtherAssistance] = useState('');
@@ -503,7 +502,6 @@ const StudentInfo = () => {
         // Load final verification ID photo
         if (profile.id_pic) {
           setPhotos(prev => ({ ...prev, mayorValidID_photo: profile.id_pic }));
-          setValidIdPreview(profile.id_pic);
         }
         
         // Load signature
@@ -544,15 +542,6 @@ const StudentInfo = () => {
       
       if (currentStream) {
 
-  useEffect(() => {
-    if (!validIdPreview || !validIdPreview.startsWith('blob:')) {
-      return undefined;
-    }
-
-    return () => {
-      URL.revokeObjectURL(validIdPreview);
-    };
-  }, [validIdPreview]);
         currentStream.getTracks().forEach(track => track.stop());
       }
       if (cameraTimeoutRef.current) {
