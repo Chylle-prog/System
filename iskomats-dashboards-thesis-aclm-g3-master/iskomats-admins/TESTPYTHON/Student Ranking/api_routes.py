@@ -1,6 +1,6 @@
 import sys
 import os
-import smtplib
+import json
 from flask import Blueprint, request, jsonify, send_file, url_for
 from flask_cors import CORS
 from flask_bcrypt import Bcrypt
@@ -10,6 +10,7 @@ import jwt
 from datetime import datetime, timedelta
 import psycopg2
 import base64
+from urllib import parse, request as urllib_request, error as urllib_error
 from cryptography.fernet import Fernet
 from io import BytesIO
 import traceback
@@ -97,10 +98,10 @@ SECRET_KEY = os.environ.get('SECRET_KEY')
 TOKEN_EXPIRY = 24  # hours
 PASSWORD_RESET_EXPIRY_MINUTES = int(os.environ.get('PASSWORD_RESET_EXPIRY_MINUTES', '30'))
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://stingy-body.surge.sh').rstrip('/')
-SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
-SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
-SMTP_SENDER = os.environ.get('SMTP_SENDER_EMAIL') or os.environ.get('SMTP_EMAIL')
-SMTP_PASSWORD = os.environ.get('SMTP_APP_PASSWORD') or os.environ.get('SMTP_PASSWORD')
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
+GOOGLE_REFRESH_TOKEN = os.environ.get('GOOGLE_REFRESH_TOKEN')
+GMAIL_SENDER_EMAIL = os.environ.get('GMAIL_SENDER_EMAIL') or os.environ.get('SMTP_SENDER_EMAIL') or os.environ.get('SMTP_EMAIL')
 
 # ===== ENCRYPTION SETUP =====
 _ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
@@ -268,15 +269,51 @@ def decode_password_reset_token(token):
     return payload
 
 
+def fetch_google_access_token():
+    """Exchange the configured refresh token for a Gmail API access token."""
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET or not GOOGLE_REFRESH_TOKEN:
+        raise RuntimeError('Google Gmail API credentials are not configured')
+
+    token_request_body = parse.urlencode({
+        'client_id': GOOGLE_CLIENT_ID,
+        'client_secret': GOOGLE_CLIENT_SECRET,
+        'refresh_token': GOOGLE_REFRESH_TOKEN,
+        'grant_type': 'refresh_token',
+    }).encode('utf-8')
+
+    token_request = urllib_request.Request(
+        'https://oauth2.googleapis.com/token',
+        data=token_request_body,
+        headers={'Content-Type': 'application/x-www-form-urlencoded'},
+        method='POST',
+    )
+
+    try:
+        with urllib_request.urlopen(token_request, timeout=30) as response:
+            payload = json.loads(response.read().decode('utf-8'))
+    except urllib_error.HTTPError as exc:
+        response_body = exc.read().decode('utf-8', errors='replace')
+        raise RuntimeError(f'Google token exchange failed: {response_body}') from exc
+    except OSError as exc:
+        raise RuntimeError('Google token exchange failed because the network request could not be completed') from exc
+
+    access_token = payload.get('access_token')
+    if not access_token:
+        raise RuntimeError('Google token exchange succeeded but no access token was returned')
+
+    return access_token
+
+
 def send_password_reset_email(receiver_email, reset_url, provider_name=None):
-    """Send a password reset email via Gmail SMTP using the configured credentials."""
-    if not SMTP_SENDER or not SMTP_PASSWORD:
-        raise RuntimeError('SMTP sender credentials are not configured')
+    """Send a password reset email via the Gmail API over HTTPS."""
+    if not GMAIL_SENDER_EMAIL:
+        raise RuntimeError('Gmail sender email is not configured')
 
     provider_label = provider_name or 'ISKOMATS Admin'
     message = f"""Subject: Reset your ISKOMATS password
 To: {receiver_email}
-From: {SMTP_SENDER}
+From: {GMAIL_SENDER_EMAIL}
+Content-Type: text/plain; charset="UTF-8"
 
 Hello,
 
@@ -290,18 +327,27 @@ This link will expire in {PASSWORD_RESET_EXPIRY_MINUTES} minutes.
 If you did not request a password reset, you can ignore this email.
 """
 
+    access_token = fetch_google_access_token()
+    encoded_message = base64.urlsafe_b64encode(message.encode('utf-8')).decode('utf-8')
+    gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
+    gmail_request = urllib_request.Request(
+        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+        data=gmail_request_body,
+        headers={
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+        },
+        method='POST',
+    )
+
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_SENDER, SMTP_PASSWORD)
-            server.sendmail(SMTP_SENDER, receiver_email, message)
+        with urllib_request.urlopen(gmail_request, timeout=30) as response:
+            response.read()
+    except urllib_error.HTTPError as exc:
+        response_body = exc.read().decode('utf-8', errors='replace')
+        raise RuntimeError(f'Gmail API send failed: {response_body}') from exc
     except OSError as exc:
-        if getattr(exc, 'errno', None) == 101:
-            raise RuntimeError(
-                'SMTP is unreachable from this host. Render free web services block outbound SMTP on ports 25, 465, and 587. '
-                'Use an HTTP email provider API or upgrade to a plan that supports your email delivery approach.'
-            ) from exc
-        raise
+        raise RuntimeError('Gmail API request failed because the network request could not be completed') from exc
 
 
 def ensure_admin_activity_log_table(cursor):
