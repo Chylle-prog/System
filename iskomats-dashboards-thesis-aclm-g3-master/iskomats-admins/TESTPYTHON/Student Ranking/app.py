@@ -42,19 +42,17 @@ def index():
 def handle_preflight():
     if request.method == 'OPTIONS':
         origin = request.headers.get('Origin')
-        print(f"[CORS] OPTIONS request from origin: {origin}")
         if origin and is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
             response = jsonify({'status': 'ok'})
             response.headers['Access-Control-Allow-Origin'] = origin
             response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, PATCH, OPTIONS'
-            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept, X-Requested-With'
             response.headers['Access-Control-Max-Age'] = '86400'
             response.headers['Access-Control-Allow-Credentials'] = 'true'
-            print(f"[CORS] Preflight approved for {origin}")
             return response, 200
         else:
-            print(f"[CORS] Rejecting preflight - Origin not allowed or missing: {origin}")
-            print(f"[CORS] Allowed: {exact_allowed_origins}")
+            # For preflight failures, still return 200 but without CORS headers (browser will block)
+            # or return 403 if specifically disallowed
             response = jsonify({'error': 'CORS policy: origin not allowed'})
             response.status_code = 403
             return response, 403
@@ -65,22 +63,40 @@ def handle_preflight():
 def add_cors_headers(response):
     origin = request.headers.get('Origin')
     
-    # Always add CORS headers if origin is allowed - even for error responses
-    if origin:
-        if is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
-            response.headers['Access-Control-Allow-Origin'] = origin
-            response.headers['Access-Control-Allow-Methods'] = 'DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT'
-            response.headers['Access-Control-Allow-Headers'] = request.headers.get(
-                'Access-Control-Request-Headers',
-                'Content-Type, Authorization, Accept'
-            )
-            response.headers['Access-Control-Allow-Credentials'] = 'true'
-            response.headers['Vary'] = 'Origin'
-            print(f"[CORS] ✓ Added CORS headers for {origin} to {request.path} (status: {response.status_code})")
-        else:
-            print(f"[CORS] ✗ Origin {origin} NOT in allowed list for {request.path}")
-            print(f"[CORS] Allowed origins: {exact_allowed_origins}")
+    if origin and is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Methods'] = 'DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT'
+        response.headers['Access-Control-Allow-Headers'] = request.headers.get(
+            'Access-Control-Request-Headers',
+            'Content-Type, Authorization, Accept, X-Requested-With'
+        )
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Vary'] = 'Origin'
 
+    return response
+
+
+@app.errorhandler(401)
+def handle_401(e):
+    origin = request.headers.get('Origin')
+    response = jsonify({'error': 'Unauthorized', 'message': str(e)})
+    response.status_code = 401
+    if origin and is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Vary'] = 'Origin'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+    return response
+
+
+@app.errorhandler(403)
+def handle_403(e):
+    origin = request.headers.get('Origin')
+    response = jsonify({'error': 'Forbidden', 'message': str(e)})
+    response.status_code = 403
+    if origin and is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Vary'] = 'Origin'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
     return response
 
 
@@ -92,6 +108,7 @@ def handle_404(e):
     if origin and is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
         response.headers['Access-Control-Allow-Origin'] = origin
         response.headers['Vary'] = 'Origin'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
     return response
 
 
@@ -103,6 +120,7 @@ def handle_500(e):
     if origin and is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
         response.headers['Access-Control-Allow-Origin'] = origin
         response.headers['Vary'] = 'Origin'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
     return response
 
 

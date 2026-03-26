@@ -3,13 +3,13 @@ import re
 
 
 DEFAULT_CORS_ORIGINS = (
-    'http://localhost:5173,'
-    'http://localhost:3000,'
-    'http://localhost:5174,'
-    'https://cozy-kulfi-35f772.netlify.app,'
-    'https://stingy-body.surge.sh,'
-    'https://foregoing-giants.surge.sh,'
-    'https://system-kjbv.onrender.com'
+    "http://localhost:5173,"
+    "http://localhost:3000,"
+    "http://localhost:5174,"
+    "https://cozy-kulfi-35f772.netlify.app,"
+    "https://stingy-body.surge.sh,"
+    "https://foregoing-giants.surge.sh,"
+    "https://system-kjbv.onrender.com"
 )
 
 
