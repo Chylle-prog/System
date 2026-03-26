@@ -29,7 +29,7 @@ def token_required(route_handler):
     def decorated(*args, **kwargs):
         # Skip token validation for OPTIONS (preflight) requests
         if request.method == 'OPTIONS':
-            return route_handler(*args, **kwargs)
+            return '', 204 # Return empty response - CORS headers added by after_request
         
         token = request.headers.get('Authorization')
         if not token:
