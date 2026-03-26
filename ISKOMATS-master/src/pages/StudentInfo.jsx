@@ -895,13 +895,6 @@ const StudentInfo = () => {
       showPromptMessage('⚠️ Please either upload a signature photo or draw your signature.');
       return;
     }
-    
-    // Validate Signature Name
-    const sigNameRaw = (formData.applicantSignatureName || '').trim().toLowerCase().replace(/\s+/g, ' ');
-    if (!sigNameRaw) {
-      showPromptMessage('⚠️ Please type your Full Printed Name for the signature.');
-      return;
-    }
 
     // Try to get numeric ID from URL parameters
     let reqNo = searchParams.get('reqNo');
