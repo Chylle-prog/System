@@ -290,10 +290,18 @@ This link will expire in {PASSWORD_RESET_EXPIRY_MINUTES} minutes.
 If you did not request a password reset, you can ignore this email.
 """
 
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-        server.starttls()
-        server.login(SMTP_SENDER, SMTP_PASSWORD)
-        server.sendmail(SMTP_SENDER, receiver_email, message)
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_SENDER, SMTP_PASSWORD)
+            server.sendmail(SMTP_SENDER, receiver_email, message)
+    except OSError as exc:
+        if getattr(exc, 'errno', None) == 101:
+            raise RuntimeError(
+                'SMTP is unreachable from this host. Render free web services block outbound SMTP on ports 25, 465, and 587. '
+                'Use an HTTP email provider API or upgrade to a plan that supports your email delivery approach.'
+            ) from exc
+        raise
 
 
 def ensure_admin_activity_log_table(cursor):
