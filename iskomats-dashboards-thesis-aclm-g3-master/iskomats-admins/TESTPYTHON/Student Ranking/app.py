@@ -37,6 +37,20 @@ def index():
     }), 200
 
 
+@app.before_request
+def handle_preflight():
+    if request.method == 'OPTIONS':
+        origin = request.headers.get('Origin')
+        if request.path.startswith('/api/') and is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
+            response = jsonify({'status': 'ok'})
+            response.headers['Access-Control-Allow-Origin'] = origin
+            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, PATCH, OPTIONS'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+            response.headers['Access-Control-Max-Age'] = '3600'
+            return response, 200
+    return None
+
+
 @app.after_request
 def add_cors_headers(response):
     origin = request.headers.get('Origin')
