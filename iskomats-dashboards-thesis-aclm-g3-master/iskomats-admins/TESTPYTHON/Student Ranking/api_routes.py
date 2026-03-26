@@ -271,8 +271,18 @@ def decode_password_reset_token(token):
 
 def fetch_google_access_token():
     """Exchange the configured refresh token for a Gmail API access token."""
-    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET or not GOOGLE_REFRESH_TOKEN:
-        raise RuntimeError('Google Gmail API credentials are not configured')
+    missing_settings = []
+    if not GOOGLE_CLIENT_ID:
+        missing_settings.append('GOOGLE_CLIENT_ID')
+    if not GOOGLE_CLIENT_SECRET:
+        missing_settings.append('GOOGLE_CLIENT_SECRET')
+    if not GOOGLE_REFRESH_TOKEN:
+        missing_settings.append('GOOGLE_REFRESH_TOKEN')
+
+    if missing_settings:
+        raise RuntimeError(
+            f"Google Gmail API credentials are not configured. Missing: {', '.join(missing_settings)}"
+        )
 
     token_request_body = parse.urlencode({
         'client_id': GOOGLE_CLIENT_ID,
@@ -307,7 +317,7 @@ def fetch_google_access_token():
 def send_password_reset_email(receiver_email, reset_url, provider_name=None):
     """Send a password reset email via the Gmail API over HTTPS."""
     if not GMAIL_SENDER_EMAIL:
-        raise RuntimeError('Gmail sender email is not configured')
+        raise RuntimeError('Gmail sender email is not configured. Missing: GMAIL_SENDER_EMAIL')
 
     provider_label = provider_name or 'ISKOMATS Admin'
     message = f"""Subject: Reset your ISKOMATS password
