@@ -2,7 +2,6 @@
 flask
 fastapi
 uvicorn
-flask-cors
 flask-bcrypt
 flask-socketio
 eventlet
