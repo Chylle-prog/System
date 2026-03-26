@@ -767,14 +767,16 @@ def submit_application():
             return jsonify({'message': 'Front of School ID is required for verification'}), 400
 
         indigency_doc_bytes = doc_bytes.get('mayorIndigency_photo')
-        if address and not indigency_doc_bytes:
+        town_city = applicant.get('town_city_municipality', '')
+        if town_city and not indigency_doc_bytes:
             return jsonify({'message': 'Certificate of Indigency is required for address verification'}), 400
             
-        from ocr_utils import verify_id_with_ocr
+        from ocr_utils import verify_id_with_ocr, verify_face_with_id
         ocr_ok, ocr_status, _ = verify_id_with_ocr(
             id_front_bytes,
-            full_name,
-            address,
+            first_name=applicant.get('first_name', ''),
+            last_name=applicant.get('last_name', ''),
+            town_city_municipality=town_city,
             address_image_data=indigency_doc_bytes
         )
         
@@ -783,6 +785,12 @@ def submit_application():
         # If OCR is strictly required, we block here.
         if not ocr_ok:
             return jsonify({'message': f"Identity verification failed: {ocr_status}"}), 400
+        
+        # 4b. Face Verification (compare face_photo with id_img_front)
+        if face_photo_bytes and id_front_bytes:
+            face_ok, face_status, face_confidence = verify_face_with_id(face_photo_bytes, id_front_bytes)
+            if not face_ok:
+                return jsonify({'message': f"Face verification failed: {face_status}"}), 400
 
         # 5. Update Database (Applicants Table)
         updates = []

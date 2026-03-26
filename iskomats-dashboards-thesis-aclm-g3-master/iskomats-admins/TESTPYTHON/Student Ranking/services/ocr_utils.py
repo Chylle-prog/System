@@ -29,7 +29,26 @@ def normalize_text(text: str) -> str:
     )
 
 
-def verify_id_with_ocr(id_image_data, name: str, address: str = '', address_image_data=None):
+def verify_id_with_ocr(id_image_data, first_name: str = '', last_name: str = '', town_city_municipality: str = '', address_image_data=None):
+    """AI-assisted ID verification using OCR + fuzzy similarity.
+
+    Parameters
+    ----------
+    id_image_data : bytes | None
+        Raw image bytes for ID front (e.g. JPEG/PNG).
+    first_name : str, optional
+        First name to look for in the ID text.
+    last_name : str, optional
+        Last name to look for in the ID text.
+    town_city_municipality : str, optional
+        Town/city/municipality to look for in address document (empty → skip address check).
+    address_image_data : bytes | None, optional
+        Separate raw image bytes used specifically for address/indigency OCR.
+
+    Returns
+    -------
+    (is_verified: bool, status: str, extracted_text: str)
+    """
     import cv2
     import numpy as np
     import pandas as pd
@@ -64,65 +83,184 @@ def verify_id_with_ocr(id_image_data, name: str, address: str = '', address_imag
 
         extracted_text = id_ocr['raw']
         extracted_text_norm = id_ocr['normalized']
-        name_norm = normalize_text(name)
 
-        ratio = fuzz.ratio(name_norm, extracted_text_norm)
-        partial = fuzz.partial_ratio(name_norm, extracted_text_norm)
-        token = fuzz.token_sort_ratio(name_norm, extracted_text_norm)
-        try:
-            weighted = fuzz.WRatio(name_norm, extracted_text_norm)
-        except Exception:
-            weighted = 0
-
-        name_similarity = max(ratio, partial, token, weighted)
-        name_words = [word for word in name_norm.split() if len(word) >= 2]
+        # ── First Name + Last Name fuzzy matching ──────────────────────────────
+        first_name_norm = normalize_text(first_name)
+        last_name_norm = normalize_text(last_name)
+        
+        # Match first name against ID
+        first_name_similarity = 0
+        if first_name_norm:
+            ratio = fuzz.ratio(first_name_norm, extracted_text_norm)
+            partial = fuzz.partial_ratio(first_name_norm, extracted_text_norm)
+            token = fuzz.token_sort_ratio(first_name_norm, extracted_text_norm)
+            try:
+                weighted = fuzz.WRatio(first_name_norm, extracted_text_norm)
+            except Exception:
+                weighted = 0
+            first_name_similarity = max(ratio, partial, token, weighted)
+        
+        # Match last name against ID
+        last_name_similarity = 0
+        if last_name_norm:
+            ratio = fuzz.ratio(last_name_norm, extracted_text_norm)
+            partial = fuzz.partial_ratio(last_name_norm, extracted_text_norm)
+            token = fuzz.token_sort_ratio(last_name_norm, extracted_text_norm)
+            try:
+                weighted = fuzz.WRatio(last_name_norm, extracted_text_norm)
+            except Exception:
+                weighted = 0
+            last_name_similarity = max(ratio, partial, token, weighted)
+        
+        # Per-word best-match fallback for names
+        first_name_words = [word for word in first_name_norm.split() if len(word) >= 2]
+        last_name_words = [word for word in last_name_norm.split() if len(word) >= 2]
         ocr_words = [word for word in extracted_text_norm.split() if word]
-        per_word_scores = []
-        if name_words and ocr_words:
-            for name_word in name_words:
+        
+        if first_name_words and ocr_words:
+            per_word_scores = []
+            for name_word in first_name_words:
                 best_score = max((fuzz.partial_ratio(name_word, ocr_word) for ocr_word in ocr_words), default=0)
                 per_word_scores.append(best_score)
-        if per_word_scores:
-            name_similarity = max(name_similarity, sum(per_word_scores) / len(per_word_scores))
+            if per_word_scores:
+                first_name_similarity = max(first_name_similarity, sum(per_word_scores) / len(per_word_scores))
+        
+        if last_name_words and ocr_words:
+            per_word_scores = []
+            for name_word in last_name_words:
+                best_score = max((fuzz.partial_ratio(name_word, ocr_word) for ocr_word in ocr_words), default=0)
+                per_word_scores.append(best_score)
+            if per_word_scores:
+                last_name_similarity = max(last_name_similarity, sum(per_word_scores) / len(per_word_scores))
 
-        name_threshold = 88
+        name_threshold = 85
+        name_verified = (first_name_similarity >= name_threshold or not first_name_norm) and \
+                       (last_name_similarity >= name_threshold or not last_name_norm)
 
-        if address:
+        # ── Town/City/Municipality fuzzy matching (optional) ───────────────────────────
+        if town_city_municipality:
             address_ocr, address_error = extract_normalized_text(
                 address_image_data if address_image_data is not None else id_image_data,
-                'No address document image provided',
+                'No address document image provided'
             )
             if address_error:
                 return False, address_error, extracted_text
 
-            address_norm = normalize_text(address)
+            town_norm = normalize_text(town_city_municipality)
             address_text_norm = address_ocr['normalized']
-            address_similarity = fuzz.partial_ratio(address_norm, address_text_norm)
-            address_threshold = 50
-            important_addr_words = [word for word in address_norm.split() if len(word) >= 4]
-            if important_addr_words:
-                found_count = sum(1 for word in important_addr_words if word in address_text_norm)
-                addr_found = found_count >= max(1, len(important_addr_words) - 1)
+            town_similarity = fuzz.partial_ratio(town_norm, address_text_norm)
+            town_threshold = 50
+            
+            # Check if key words from town are present
+            town_words = [word for word in town_norm.split() if len(word) >= 3]
+            if town_words:
+                found_count = sum(1 for word in town_words if word in address_text_norm)
+                town_found = found_count >= max(1, len(town_words) - 1)
             else:
-                addr_found = True
+                town_found = True
         else:
-            address_similarity = 100
-            address_threshold = 0
-            addr_found = True
+            town_similarity = 100  # skip check
+            town_threshold = 0
+            town_found = True
 
-        name_found = all(word in extracted_text_norm for word in name_words) and bool(name_words)
-        fuzzy_pass = name_similarity >= name_threshold and address_similarity >= address_threshold
-        fallback_pass = name_found and addr_found
-        is_verified = fuzzy_pass or fallback_pass
+        # Final verification logic
+        fuzzy_pass = name_verified and town_similarity >= town_threshold and town_found
+        is_verified = fuzzy_pass
 
         if is_verified:
-            if fuzzy_pass:
-                status = f'ID verified (Name: {name_similarity:.0f}%, Addr: {address_similarity:.0f}%)'
-            else:
-                status = f'ID verified via word-match (Name: {name_similarity:.0f}%, Addr: {address_similarity:.0f}%)'
+            status = f'ID verified (First: {first_name_similarity:.0f}%, Last: {last_name_similarity:.0f}%, Town: {town_similarity:.0f}%)'
         else:
-            status = f'ID mismatch — name not found on ID (Name: {name_similarity:.0f}%, Addr: {address_similarity:.0f}%)'
+            status = f'ID mismatch (First: {first_name_similarity:.0f}%, Last: {last_name_similarity:.0f}%, Town: {town_similarity:.0f}%)'
 
         return is_verified, status, extracted_text
     except Exception as exc:
         return False, f'OCR Error: {str(exc)}', ''
+
+
+def verify_face_with_id(face_image_data, id_image_data):
+    """AI-assisted face verification by comparing face photo with ID photo.
+    
+    Uses facial recognition to determine if the face in the uploaded photo
+    matches the face in the ID document.
+
+    Parameters
+    ----------
+    face_image_data : bytes | None
+        Raw image bytes of the submitted face photo (e.g. JPEG/PNG).
+    id_image_data : bytes | None
+        Raw image bytes of the ID document photo (e.g. JPEG/PNG).
+
+    Returns
+    -------
+    (is_verified: bool, status: str, confidence: float)
+    """
+    import numpy as np
+    import cv2
+    import pandas as pd
+    
+    if face_image_data is None or (isinstance(face_image_data, float) and pd.isna(face_image_data)):
+        return False, 'No face photo provided', 0.0
+    
+    if id_image_data is None or (isinstance(id_image_data, float) and pd.isna(id_image_data)):
+        return False, 'No ID image provided', 0.0
+    
+    try:
+        # Lazy import face_recognition for optional dependency
+        try:
+            import face_recognition
+        except ImportError:
+            return False, 'Face recognition library not installed', 0.0
+        
+        def load_image_for_face_recognition(image_data):
+            """Load and decode image for face_recognition library."""
+            nparr = np.frombuffer(bytes(image_data), np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if img is None:
+                return None
+            # Convert BGR to RGB for face_recognition
+            return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        
+        face_img = load_image_for_face_recognition(face_image_data)
+        id_img = load_image_for_face_recognition(id_image_data)
+        
+        if face_img is None:
+            return False, 'Could not load face photo', 0.0
+        if id_img is None:
+            return False, 'Could not load ID image', 0.0
+        
+        # Extract face encodings
+        face_encodings = face_recognition.face_encodings(face_img)
+        id_encodings = face_recognition.face_encodings(id_img)
+        
+        if not face_encodings:
+            return False, 'No face detected in submitted photo', 0.0
+        if not id_encodings:
+            return False, 'No face detected in ID document', 0.0
+        
+        # Get the first face encoding from each image
+        face_encoding = face_encodings[0]
+        id_encoding = id_encodings[0]
+        
+        # Compare faces using Euclidean distance
+        # face_recognition uses distance threshold of 0.6 for face_distance
+        distance = face_recognition.face_distance([id_encoding], face_encoding)[0]
+        
+        # Convert distance to confidence (0-100%)
+        # Distance of 0 = perfect match, distance of 1.0 = no match
+        # We'll use: confidence = (1 - distance) * 100
+        confidence = max(0.0, min(100.0, (1.0 - distance) * 100))
+        
+        FACE_THRESHOLD = 60  # 60% confidence threshold
+        is_verified = confidence >= FACE_THRESHOLD
+        
+        if is_verified:
+            status = f'Face verified (Confidence: {confidence:.1f}%)'
+        else:
+            status = f'Face verification failed - faces do not match (Confidence: {confidence:.1f}%)'
+        
+        return is_verified, status, confidence
+        
+    except ImportError:
+        return False, 'Face recognition not available', 0.0
+    except Exception as e:
+        return False, f'Face verification error: {str(e)}', 0.0

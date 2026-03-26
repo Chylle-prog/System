@@ -13,6 +13,7 @@ const Login = () => {
   const [showError, setShowError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [profilePicture, setProfilePicture] = useState(null);
+  const [isLoginLoading, setIsLoginLoading] = useState(false);
   const { setCurrentUserState } = useAuth();
   const [currentUser, setCurrentUser] = useState(null);
 
@@ -57,6 +58,7 @@ const Login = () => {
     const email = e.target.email.value;
     const password = e.target.password.value;
 
+    setIsLoginLoading(true);
     try {
       // Call backend login API
       const response = await authAPI.login(email, password);
@@ -81,6 +83,7 @@ const Login = () => {
         setErrorMessage(error.message || 'Login failed. Please try again.');
       }
       setShowError(true);
+      setIsLoginLoading(false);
     }
   };
 
@@ -491,6 +494,18 @@ const Login = () => {
           transform: translateY(-3px) scale(1.01);
           box-shadow: 0 20px 30px -12px #4F0D00;
           background-position: right center;
+        }
+
+        .submit-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+          transform: none;
+          box-shadow: 0 12px 24px -12px rgba(79, 13, 0, 0.3);
+        }
+
+        .submit-btn:disabled:hover {
+          transform: none;
+          box-shadow: 0 12px 24px -12px rgba(79, 13, 0, 0.3);
         }
 
         .toggle-auth {
@@ -916,7 +931,15 @@ const Login = () => {
                     <input type="password" name="password" placeholder="••••••••" required />
                   </div>
                 </div>
-                <button type="submit" className="submit-btn">Log in</button>
+                <button type="submit" className="submit-btn" disabled={isLoginLoading}>
+                  {isLoginLoading ? (
+                    <>
+                      <i className="fas fa-spinner fa-spin" style={{marginRight: '8px'}}></i>Loading...
+                    </>
+                  ) : (
+                    <>Log in</>
+                  )}
+                </button>
                 <div className="forgot-password">
                   <a href="#" onClick={handleForgotPassword} style={{ color: 'var(--primary)', textDecoration: 'none', fontSize: '0.9rem' }}>
                     Forgot password?

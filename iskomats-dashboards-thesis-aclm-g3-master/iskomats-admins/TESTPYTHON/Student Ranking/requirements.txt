@@ -16,3 +16,4 @@ numpy
 pandas
 easyocr
 rapidfuzz
+face_recognition

@@ -68,7 +68,7 @@ export const authAPI = {
    * @returns {Promise} - {token, user, role}
    */
   login: async (email, password) => {
-    const response = await makeRequest('/auth/login', {
+    const response = await makeRequest('/student/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
@@ -84,7 +84,7 @@ export const authAPI = {
    * @returns {Promise}
    */
   checkEmail: async (email) => {
-    return makeRequest('/auth/check-email', {
+    return makeRequest('/student/auth/check-email', {
       method: 'POST',
       body: JSON.stringify({ email }),
     });
@@ -96,7 +96,7 @@ export const authAPI = {
    * @returns {Promise}
    */
   register: async (userData) => {
-    return makeRequest('/auth/register', {
+    return makeRequest('/student/auth/register', {
       method: 'POST',
       body: JSON.stringify(userData),
     });
@@ -113,7 +113,7 @@ export const authAPI = {
    * Validate token
    */
   validateToken: async () => {
-    return makeRequest('/auth/validate', {
+    return makeRequest('/student/auth/validate', {
       method: 'GET',
     });
   },
@@ -130,7 +130,7 @@ export const scholarshipAPI = {
    * @returns {Promise} - Array of ranked scholarships
    */
   getRankings: async (profile) => {
-    return makeRequest('/scholarships/rankings', {
+    return makeRequest('/student/scholarships/rankings', {
       method: 'POST',
       body: JSON.stringify(profile),
     });
@@ -141,7 +141,7 @@ export const scholarshipAPI = {
    * @returns {Promise} - Array of scholarships
    */
   getAll: async () => {
-    return makeRequest('/scholarships/all', {
+    return makeRequest('/student/scholarships/all', {
       method: 'GET',
     });
   },
@@ -152,7 +152,7 @@ export const scholarshipAPI = {
    * @returns {Promise}
    */
   getById: async (reqNo) => {
-    return makeRequest(`/scholarships/${reqNo}`, {
+    return makeRequest(`/student/scholarships/${reqNo}`, {
       method: 'GET',
     });
   },
@@ -170,7 +170,7 @@ export const scholarshipAPI = {
       ...(maxIncome !== undefined && { maxIncome }),
       ...(location && { location }),
     });
-    return makeRequest(`/scholarships/search?${params}`, {
+    return makeRequest(`/student/scholarships/search?${params}`, {
       method: 'GET',
     });
   },
@@ -186,7 +186,7 @@ export const applicantAPI = {
    * @returns {Promise}
    */
   getProfile: async () => {
-    return makeRequest('/applicant/profile', {
+    return makeRequest('/student/applicant/profile', {
       method: 'GET',
     });
   },
@@ -198,13 +198,13 @@ export const applicantAPI = {
    */
   updateProfile: async (profileData) => {
     if (profileData instanceof FormData) {
-      return makeRequest('/applicant/profile', {
+      return makeRequest('/student/applicant/profile', {
         method: 'PUT',
         body: profileData,
       });
     }
 
-    return makeRequest('/applicant/profile', {
+    return makeRequest('/student/applicant/profile', {
       method: 'PUT',
       body: JSON.stringify(profileData),
     });
@@ -219,7 +219,7 @@ export const applicantAPI = {
     const formData = new FormData();
     formData.append('id_image', idImageFile);
     
-    return makeRequest('/applicant/upload-id', {
+    return makeRequest('/student/applicant/upload-id', {
       method: 'POST',
       body: formData,
       headers: {
@@ -237,7 +237,7 @@ export const applicantAPI = {
     const formData = new FormData();
     formData.append('face_image', faceImageFile);
     
-    return makeRequest('/applicant/upload-face', {
+    return makeRequest('/student/applicant/upload-face', {
       method: 'POST',
       body: formData,
       headers: {
@@ -251,7 +251,7 @@ export const applicantAPI = {
    * @returns {Promise}
    */
   getDocuments: async () => {
-    return makeRequest('/applicant/documents', {
+    return makeRequest('/student/applicant/documents', {
       method: 'GET',
     });
   },
@@ -267,7 +267,7 @@ export const applicantAPI = {
     formData.append('id_front', frontFile);
     formData.append('id_back',  backFile);
 
-    const url   = `${API_BASE_URL}/applicant/upload-id-front-back`;
+    const url   = `${API_BASE_URL}/student/applicant/upload-id-front-back`;
     const token = getAuthToken();
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -278,7 +278,7 @@ export const applicantAPI = {
     return data;
   },
   submitExtendedProfile: async (formData) => {
-    const url = `${API_BASE_URL}/applicant/extended-profile`;
+    const url = `${API_BASE_URL}/student/applicant/extended-profile`;
     const token = getAuthToken();
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -309,12 +309,12 @@ export const applicationAPI = {
       if (!applicationData.has('req_no')) {
         applicationData.append('req_no', reqNo);
       }
-      return makeRequest('/applications/submit', {
+      return makeRequest('/student/applications/submit', {
         method: 'POST',
         body: applicationData,
       });
     }
-    return makeRequest('/applications/submit', {
+    return makeRequest('/student/applications/submit', {
       method: 'POST',
       body: JSON.stringify({ req_no: reqNo, ...applicationData }),
     });
@@ -325,7 +325,7 @@ export const applicationAPI = {
    * @returns {Promise} - Array of user's applications
    */
   getUserApplications: async () => {
-    return makeRequest('/applications/my-applications', {
+    return makeRequest('/student/applications/my-applications', {
       method: 'GET',
     });
   },
@@ -336,7 +336,7 @@ export const applicationAPI = {
    * @returns {Promise}
    */
   getById: async (applicationId) => {
-    return makeRequest(`/applications/${applicationId}`, {
+    return makeRequest(`/student/applications/${applicationId}`, {
       method: 'GET',
     });
   },
@@ -347,7 +347,7 @@ export const applicationAPI = {
    * @returns {Promise}
    */
   cancel: async (applicationId) => {
-    return makeRequest(`/applications/${applicationId}`, {
+    return makeRequest(`/student/applications/${applicationId}`, {
       method: 'DELETE',
     });
   },
