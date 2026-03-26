@@ -1,7 +1,6 @@
 import os
 
 from flask import Flask, jsonify, request
-from flask_cors import CORS
 from flask_socketio import SocketIO
 
 from blueprints import admin_bp, init_admin_socketio, register_admin_routes, student_api_bp
@@ -15,8 +14,8 @@ app.secret_key = get_secret_key()
 allowed_origins = get_allowed_origins()
 exact_allowed_origins, preview_origin_patterns = split_allowed_origins(allowed_origins)
 
-# Simplified CORS configuration - use manual handlers for more control
-CORS(app, resources={r"/api/*": {"origins": exact_allowed_origins, "supports_credentials": True}}, allow_headers=['Content-Type', 'Authorization'])
+# Note: We handle CORS manually in before_request and after_request to have full control
+# Don't use CORS() extension - it can conflict with manual handlers
 
 socketio = SocketIO(app, cors_allowed_origins=allowed_origins)
 
@@ -42,6 +41,7 @@ def index():
 def handle_preflight():
     if request.method == 'OPTIONS':
         origin = request.headers.get('Origin')
+        print(f"[CORS] OPTIONS request from origin: {origin}")
         if is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
             response = jsonify({'status': 'ok'})
             response.headers['Access-Control-Allow-Origin'] = origin
@@ -49,7 +49,10 @@ def handle_preflight():
             response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept'
             response.headers['Access-Control-Max-Age'] = '86400'
             response.headers['Access-Control-Allow-Credentials'] = 'true'
+            print(f"[CORS] Preflight approved for {origin}")
             return response, 200
+        else:
+            print(f"[CORS] Origin not allowed: {origin}")
     return None
 
 
@@ -57,8 +60,8 @@ def handle_preflight():
 def add_cors_headers(response):
     origin = request.headers.get('Origin')
     
-    # Always add CORS headers for API endpoints if origin is allowed
-    if is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
+    # Always add CORS headers if origin is allowed
+    if origin and is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
         response.headers['Access-Control-Allow-Origin'] = origin
         response.headers['Access-Control-Allow-Methods'] = 'DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT'
         response.headers['Access-Control-Allow-Headers'] = request.headers.get(
@@ -67,6 +70,9 @@ def add_cors_headers(response):
         )
         response.headers['Access-Control-Allow-Credentials'] = 'true'
         response.headers['Vary'] = 'Origin'
+        print(f"[CORS] Added CORS headers for {origin} to {request.path}")
+    elif origin:
+        print(f"[CORS] Origin {origin} not in allowed list for path {request.path}")
 
     return response
 
@@ -99,6 +105,12 @@ def health_check():
                 'sslmode': db_config['sslmode'],
             },
         }, 500
+
+
+@app.route('/api/cors-test', methods=['GET', 'OPTIONS'])
+def cors_test():
+    """Simple endpoint to test CORS configuration"""
+    return jsonify({'message': 'CORS test successful', 'origin': request.headers.get('Origin')}), 200
 
 
 @app.route('/_status')

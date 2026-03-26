@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CORS Test</title>
+</head>
+<body>
+    <h1>CORS Test for iskomats-backend</h1>
+    <button onclick="testCors()">Test CORS Request</button>
+    <pre id="result">Ready to test...</pre>
+
+    <script>
+        async function testCors() {
+            const result = document.getElementById('result');
+            result.textContent = 'Testing CORS...';
+            
+            try {
+                const response = await fetch('https://system-kjbv.onrender.com/api/cors-test', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                result.textContent = `✓ Status: ${response.status}\n✓ CORS Test Passed!\n\nResponse:\n${JSON.stringify(data, null, 2)}\n\nHeaders:\n${Array.from(response.headers.entries()).map(([k,v]) => `${k}: ${v}`).join('\n')}`;
+                
+            } catch (error) {
+                result.textContent = `✗ CORS Test Failed:\n${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>
