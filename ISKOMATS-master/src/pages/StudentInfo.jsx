@@ -17,11 +17,9 @@ const STEP_FIELDS = {
   3: [
     'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course', 'gpa'
   ],
-  4: [
-    'mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo'
-  ],
+  4: [],
   5: [
-    'mayorValidID_photo', 'privacyConsent', 'dataCertifyConsent',
+    'privacyConsent', 'dataCertifyConsent',
     'applicantSignatureName', 'dateAccomplished'
   ]
 };
@@ -286,27 +284,27 @@ const StudentInfo = () => {
     if (stepNumber === 4) {
       if (photos.mayorCOE_photo) {
         if (isFileLike(photos.mayorCOE_photo)) {
-          payload.append('mayorCOE_photo', photos.mayorCOE_photo);
+          payload.append('enrollment_certificate_doc', photos.mayorCOE_photo);
         } else if (typeof photos.mayorCOE_photo === 'string' && photos.mayorCOE_photo.startsWith('data:')) {
-          jsonData['mayorCOE_photo'] = photos.mayorCOE_photo;
+          jsonData['enrollment_certificate_doc'] = photos.mayorCOE_photo;
         }
         hasPayload = true;
       }
 
       if (photos.mayorGrades_photo) {
         if (isFileLike(photos.mayorGrades_photo)) {
-          payload.append('mayorGrades_photo', photos.mayorGrades_photo);
+          payload.append('grades_doc', photos.mayorGrades_photo);
         } else if (typeof photos.mayorGrades_photo === 'string' && photos.mayorGrades_photo.startsWith('data:')) {
-          jsonData['mayorGrades_photo'] = photos.mayorGrades_photo;
+          jsonData['grades_doc'] = photos.mayorGrades_photo;
         }
         hasPayload = true;
       }
 
       if (photos.mayorIndigency_photo) {
         if (isFileLike(photos.mayorIndigency_photo)) {
-          payload.append('mayorIndigency_photo', photos.mayorIndigency_photo);
+          payload.append('indigency_doc', photos.mayorIndigency_photo);
         } else if (typeof photos.mayorIndigency_photo === 'string' && photos.mayorIndigency_photo.startsWith('data:')) {
-          jsonData['mayorIndigency_photo'] = photos.mayorIndigency_photo;
+          jsonData['indigency_doc'] = photos.mayorIndigency_photo;
         }
         hasPayload = true;
       }
@@ -324,9 +322,9 @@ const StudentInfo = () => {
 
       if (photos.mayorValidID_photo) {
         if (isFileLike(photos.mayorValidID_photo)) {
-          payload.append('mayorValidID_photo', photos.mayorValidID_photo);
+          payload.append('id_pic', photos.mayorValidID_photo);
         } else if (typeof photos.mayorValidID_photo === 'string' && photos.mayorValidID_photo.startsWith('data:')) {
-          jsonData['mayorValidID_photo'] = photos.mayorValidID_photo;
+          jsonData['id_pic'] = photos.mayorValidID_photo;
         }
         hasPayload = true;
       }
