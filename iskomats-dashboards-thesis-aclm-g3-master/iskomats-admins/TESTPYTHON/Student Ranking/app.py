@@ -42,7 +42,7 @@ def handle_preflight():
     if request.method == 'OPTIONS':
         origin = request.headers.get('Origin')
         print(f"[CORS] OPTIONS request from origin: {origin}")
-        if is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
+        if origin and is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
             response = jsonify({'status': 'ok'})
             response.headers['Access-Control-Allow-Origin'] = origin
             response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, PATCH, OPTIONS'
@@ -52,7 +52,11 @@ def handle_preflight():
             print(f"[CORS] Preflight approved for {origin}")
             return response, 200
         else:
-            print(f"[CORS] Origin not allowed: {origin}")
+            print(f"[CORS] Rejecting preflight - Origin not allowed or missing: {origin}")
+            print(f"[CORS] Allowed: {exact_allowed_origins}")
+            response = jsonify({'error': 'CORS policy: origin not allowed'})
+            response.status_code = 403
+            return response, 403
     return None
 
 
@@ -60,20 +64,44 @@ def handle_preflight():
 def add_cors_headers(response):
     origin = request.headers.get('Origin')
     
-    # Always add CORS headers if origin is allowed
+    # Always add CORS headers if origin is allowed - even for error responses
+    if origin:
+        if is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
+            response.headers['Access-Control-Allow-Origin'] = origin
+            response.headers['Access-Control-Allow-Methods'] = 'DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT'
+            response.headers['Access-Control-Allow-Headers'] = request.headers.get(
+                'Access-Control-Request-Headers',
+                'Content-Type, Authorization, Accept'
+            )
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+            response.headers['Vary'] = 'Origin'
+            print(f"[CORS] ✓ Added CORS headers for {origin} to {request.path} (status: {response.status_code})")
+        else:
+            print(f"[CORS] ✗ Origin {origin} NOT in allowed list for {request.path}")
+            print(f"[CORS] Allowed origins: {exact_allowed_origins}")
+
+    return response
+
+
+@app.errorhandler(404)
+def handle_404(e):
+    origin = request.headers.get('Origin')
+    response = jsonify({'error': 'Not found', 'path': request.path})
+    response.status_code = 404
     if origin and is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
         response.headers['Access-Control-Allow-Origin'] = origin
-        response.headers['Access-Control-Allow-Methods'] = 'DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT'
-        response.headers['Access-Control-Allow-Headers'] = request.headers.get(
-            'Access-Control-Request-Headers',
-            'Content-Type, Authorization, Accept'
-        )
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
         response.headers['Vary'] = 'Origin'
-        print(f"[CORS] Added CORS headers for {origin} to {request.path}")
-    elif origin:
-        print(f"[CORS] Origin {origin} not in allowed list for path {request.path}")
+    return response
 
+
+@app.errorhandler(500)
+def handle_500(e):
+    origin = request.headers.get('Origin')
+    response = jsonify({'error': 'Internal server error'})
+    response.status_code = 500
+    if origin and is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Vary'] = 'Origin'
     return response
 
 
@@ -111,6 +139,17 @@ def health_check():
 def cors_test():
     """Simple endpoint to test CORS configuration"""
     return jsonify({'message': 'CORS test successful', 'origin': request.headers.get('Origin')}), 200
+
+
+@app.route('/api/debug/cors', methods=['GET', 'OPTIONS'])
+def debug_cors():
+    """Debug endpoint - shows configured CORS origins"""
+    return jsonify({
+        'message': 'CORS debug info',
+        'request_origin': request.headers.get('Origin'),
+        'allowed_exact_origins': exact_allowed_origins,
+        'allowed_regex_patterns': [str(p.pattern) for p in preview_origin_patterns]
+    }), 200
 
 
 @app.route('/_status')
