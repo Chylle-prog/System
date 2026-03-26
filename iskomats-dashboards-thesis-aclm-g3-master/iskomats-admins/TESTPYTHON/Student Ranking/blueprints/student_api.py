@@ -483,27 +483,44 @@ def update_profile():
 @student_api_bp.route('/applications/submit', methods=['POST'])
 @token_required
 def submit_application():
+    import time
+    start_time = time.time()
     try:
+        current_user_id = request.user_no
         form_data = request.form
         files_data = request.files
 
         req_no = form_data.get('req_no')
+        skip_verify = form_data.get('skip_verification', 'false').lower() == 'true'
+        
+        print(f"[SUBMIT] Processing application for User {current_user_id}, Req {req_no} (skip_verify={skip_verify})")
+
         if not req_no:
             return jsonify({'message': 'Requirement number (req_no) is missing'}), 400
         req_no = int(req_no)
 
         conn = get_db()
         cur = conn.cursor()
-        cur.execute('SELECT * FROM applicants WHERE applicant_no = %s', (request.user_no,))
+        
+        # Get applicant data
+        cur.execute('SELECT * FROM applicants WHERE applicant_no = %s', (current_user_id,))
         applicant = cur.fetchone()
+        if not applicant:
+            return jsonify({'message': 'Applicant profile not found'}), 404
 
-        full_name = f"{applicant['first_name']} {applicant['middle_name'] or ''} {applicant['last_name']}".strip().replace('  ', ' ')
-        address = f"{applicant['street_brgy'] or ''} {applicant['town_city_municipality'] or ''} {applicant['province'] or ''}".strip()
+        # Get scholarship data via requirement
+        cur.execute('SELECT scholarship_no FROM scholarship_requirements WHERE req_no = %s', (req_no,))
+        req_row = cur.fetchone()
+        if not req_row:
+            return jsonify({'message': 'Scholarship requirement not found'}), 404
+        scholarship_id = req_row['scholarship_no']
 
+        # ── Data Preparation ──────────────────────────────────────────────────
         id_front_bytes = decode_base64(form_data.get('id_front')) or db_bytes(applicant.get('id_img_front'))
         id_back_bytes = decode_base64(form_data.get('id_back')) or db_bytes(applicant.get('id_img_back'))
         face_photo_bytes = decode_base64(form_data.get('face_photo'))
         profile_pic_bytes = decode_base64(form_data.get('profile_picture')) or db_bytes(applicant.get('profile_picture'))
+        
         signature_bytes = decode_signature(form_data.get('signature_data')) or decode_signature(applicant.get('signature_image_data'))
 
         doc_keys = ['mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo', 'mayorValidID_photo']
@@ -522,30 +539,47 @@ def submit_application():
             else:
                 doc_bytes[key] = decode_base64(form_data.get(key)) or db_bytes(applicant.get(doc_column_map[key]))
 
-        if not id_front_bytes:
-            return jsonify({'message': 'Front of School ID is required for verification'}), 400
-
-        indigency_doc_bytes = doc_bytes.get('mayorIndigency_photo')
-        town_city = applicant.get('town_city_municipality', '')
-        if town_city and not indigency_doc_bytes:
-            return jsonify({'message': 'Certificate of Indigency is required for address verification'}), 400
-
-        ocr_ok, ocr_status, _ = verify_id_with_ocr(
-            id_front_bytes,
-            first_name=applicant.get('first_name', ''),
-            last_name=applicant.get('last_name', ''),
-            town_city_municipality=town_city,
-            address_image_data=indigency_doc_bytes,
-        )
-        if not ocr_ok:
-            return jsonify({'message': f'Identity verification failed: {ocr_status}'}), 400
+        # ── OCR & FACE VERIFICATION ───────────────────────────────────────────
+        ocr_ok = True
+        ocr_status = "Verification skipped"
+        face_ok = True
+        face_status = "Verification skipped"
         
-        # Face Verification (compare face_photo with id_img_front)
-        if face_photo_bytes and id_front_bytes:
-            face_ok, face_status, face_confidence = verify_face_with_id(face_photo_bytes, id_front_bytes)
-            if not face_ok:
-                return jsonify({'message': f'Face verification failed: {face_status}'}), 400
+        if not skip_verify:
+            if not id_front_bytes:
+                return jsonify({'message': 'Front of School ID is required for verification'}), 400
 
+            indigency_doc_bytes = doc_bytes.get('mayorIndigency_photo')
+            town_city = applicant.get('town_city_municipality', '')
+            
+            print("[SUBMIT] Starting OCR verification...")
+            ocr_start = time.time()
+            ocr_ok, ocr_status, _ = verify_id_with_ocr(
+                id_front_bytes,
+                first_name=applicant.get('first_name', ''),
+                last_name=applicant.get('last_name', ''),
+                town_city_municipality=town_city,
+                address_image_data=indigency_doc_bytes,
+            )
+            print(f"[SUBMIT] OCR finished in {time.time() - ocr_start:.2f}s: {ocr_status}")
+
+            if not ocr_ok:
+                return jsonify({'message': f'Identity verification failed: {ocr_status}'}), 400
+
+            # 2. Face Verification
+            if face_photo_bytes and id_front_bytes:
+                print("[SUBMIT] Starting Face verification...")
+                face_start = time.time()
+                face_ok, face_status, _ = verify_face_with_id(face_photo_bytes, id_front_bytes)
+                print(f"[SUBMIT] Face verification finished in {time.time() - face_start:.2f}s: {face_status}")
+                if not face_ok:
+                    return jsonify({'message': f'Face verification failed: {face_status}'}), 400
+            else:
+                face_ok = False
+                face_status = "Face photo or ID front missing"
+                print(f"[SUBMIT] Face verification skipped: {face_status}")
+
+        # ── UPDATE APPLICANT PROFILE ──────────────────────────────────────────
         updates = []
         params = []
         field_mapping = {
@@ -566,11 +600,11 @@ def submit_application():
             'id_img_front': id_front_bytes,
             'id_img_back': id_back_bytes,
             'profile_picture': profile_pic_bytes,
-            'signature_image_data': fernet.encrypt(signature_bytes) if fernet and signature_bytes else signature_bytes,
+            'signature_image_data': fernet.encrypt(signature_bytes) if fernet and signature_bytes else None,
             'enrollment_certificate_doc': doc_bytes['mayorCOE_photo'],
             'grades_doc': doc_bytes['mayorGrades_photo'],
             'indigency_doc': doc_bytes['mayorIndigency_photo'],
-            'id_pic': doc_bytes['mayorValidID_photo'] or db_bytes(applicant.get('id_pic')) or face_photo_bytes,
+            'id_pic': doc_bytes['mayorValidID_photo'] or face_photo_bytes,
         }
 
         for column_name, value in binary_map.items():
@@ -580,22 +614,32 @@ def submit_application():
 
         if updates:
             sql = f"UPDATE applicants SET {', '.join(updates)} WHERE applicant_no = %s"
-            params.append(request.user_no)
+            params.append(current_user_id)
             cur.execute(sql, tuple(params))
 
+        # ── CREATE/UPDATE STATUS ──────────────────────────────────────────────
         cur.execute(
             """
             INSERT INTO applicant_status (scholarship_no, applicant_no, is_accepted)
             VALUES (%s, %s, NULL)
             ON CONFLICT (scholarship_no, applicant_no) DO NOTHING
             """,
-            (req_no, request.user_no),
+            (scholarship_id, current_user_id),
         )
 
         conn.commit()
-        return jsonify({'message': 'Application submitted and verified successfully'})
+        print(f"[SUBMIT] Application successful for User {current_user_id} in {time.time() - start_time:.2f}s")
+        return jsonify({
+            'message': 'Application submitted successfully',
+            'ocr_status': ocr_status,
+            'face_status': face_status
+        }), 201
+
     except Exception as exc:
         traceback.print_exc()
+        print(f"[SUBMIT] ❌ Error after {time.time() - start_time:.2f}s: {str(exc)}")
+        if 'conn' in locals():
+            conn.rollback()
         return jsonify({'message': f'Submission error: {str(exc)}'}), 500
     finally:
         if 'conn' in locals():

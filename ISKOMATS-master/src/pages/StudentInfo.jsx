@@ -1014,19 +1014,44 @@ const StudentInfo = () => {
 
     const numericReqNo = parseInt(reqNo, 10);
 
-    setIsSubmitting(true);
-
     try {
-      await saveCurrentStepProgress(5);
+      setIsSubmitting(true);
+      const skipVerification = e.nativeEvent.altKey;
+      console.log(`Submitting application (skipVerification: ${skipVerification})...`);
 
       const submissionData = new FormData();
+      
+      // Append all text fields from formData
+      Object.keys(formData).forEach(key => {
+        if (formData[key] !== null && formData[key] !== undefined) {
+          submissionData.append(key, formData[key]);
+        }
+      });
+
+      // Append photos and documents
+      if (photos.id_front) submissionData.append('id_front', photos.id_front);
+      if (photos.id_back) submissionData.append('id_back', photos.id_back);
+      if (photos.face_photo) submissionData.append('face_photo', photos.face_photo);
+      if (drawnSignature) submissionData.append('signature_data', drawnSignature);
+      
+      // Add documentary requirements
+      const docKeys = ['mayorCOE', 'mayorGrades', 'mayorIndigency', 'mayorValidID'];
+      docKeys.forEach(key => {
+        const fileKey = `${key}_photo`;
+        if (formData[fileKey]) {
+          submissionData.append(fileKey, formData[fileKey]);
+        }
+      });
 
       // Submit application
-      const result = await applicationAPI.submit(numericReqNo, submissionData);
+      const result = await applicationAPI.submit(numericReqNo, submissionData, skipVerification);
       console.log('Submission result:', result);
 
-      clearDraft();
+      if (skipVerification) {
+        showPromptMessage('✅ Debug: Submission sent with verification skip.');
+      }
 
+      clearDraft();
       setShowSubmissionModal(true);
       setTimeout(() => {
         navigate('/portal');

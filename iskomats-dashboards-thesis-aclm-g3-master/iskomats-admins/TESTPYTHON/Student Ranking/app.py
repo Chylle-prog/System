@@ -46,13 +46,16 @@ def handle_preflight():
             response = jsonify({'status': 'ok'})
             response.headers['Access-Control-Allow-Origin'] = origin
             response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, PATCH, OPTIONS'
-            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept, X-Requested-With'
+            # Allow any headers the browser requested
+            requested_headers = request.headers.get('Access-Control-Request-Headers')
+            if requested_headers:
+                response.headers['Access-Control-Allow-Headers'] = requested_headers
+            else:
+                response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept, X-Requested-With'
             response.headers['Access-Control-Max-Age'] = '86400'
             response.headers['Access-Control-Allow-Credentials'] = 'true'
             return response, 200
         else:
-            # For preflight failures, still return 200 but without CORS headers (browser will block)
-            # or return 403 if specifically disallowed
             response = jsonify({'error': 'CORS policy: origin not allowed'})
             response.status_code = 403
             return response, 403
@@ -124,7 +127,40 @@ def handle_500(e):
     return response
 
 
-@app.route('/api/health')
+@app.errorhandler(413)
+def handle_413(e):
+    origin = request.headers.get('Origin')
+    response = jsonify({'error': 'Payload Too Large', 'message': 'The uploaded images may be too large. Please try again with smaller files.'})
+    response.status_code = 413
+    if origin and is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Vary'] = 'Origin'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+    return response
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    # Pass through HTTP errors
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        origin = request.headers.get('Origin')
+        resp = e.get_response()
+        if origin and is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
+            resp.headers['Access-Control-Allow-Origin'] = origin
+            resp.headers['Vary'] = 'Origin'
+            resp.headers['Access-Control-Allow-Credentials'] = 'true'
+        return resp
+
+    # Handle non-HTTP exceptions
+    origin = request.headers.get('Origin')
+    response = jsonify({'error': 'Unexpected Error', 'message': str(e)})
+    response.status_code = 500
+    if origin and is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Vary'] = 'Origin'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+    return response
 def health_check():
     try:
         conn = get_db()

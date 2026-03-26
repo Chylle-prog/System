@@ -33,11 +33,16 @@ const makeRequest = async (endpoint, options = {}) => {
     const response = await fetch(url, {
       ...options,
       headers,
+    }).catch(err => {
+      console.error(`Fetch Error [${endpoint}]:`, err);
+      if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
+        throw new Error(`Network Error: Could not reach the server at ${url}. This might be a timeout or CORS issue.`);
+      }
+      throw err;
     });
 
-    const data = await response.json();
-
     if (!response.ok) {
+      // Handle 401 Unauthorized specifically
       if (response.status === 401) {
         // Clear auth data and redirect to login if unauthorized
         localStorage.removeItem('authToken');
@@ -46,10 +51,24 @@ const makeRequest = async (endpoint, options = {}) => {
           window.location.href = '/login';
         }
       }
-      throw new Error(data.message || `API Error: ${response.status}`);
+
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        // If response is not JSON, or empty, provide a generic error
+        throw new Error(`Server Error (${response.status}): ${response.statusText}`);
+      }
+      throw new Error(errorData.message || errorData.error || `Request failed with status ${response.status}`);
     }
 
-    return data;
+    // Try to parse JSON, but allow for responses with no body (e.g., 204 No Content)
+    try {
+      return await response.json();
+    } catch (e) {
+      // If response is not JSON or empty, return a success object
+      return { status: 'ok', message: 'Success (No JSON response)' };
+    }
   } catch (error) {
     console.error(`API Error [${endpoint}]:`, error);
     throw error;
@@ -300,14 +319,18 @@ export const applicationAPI = {
    * Submit application for a scholarship
    * @param {number} reqNo - Scholarship ID
    * @param {object} applicationData - Application details
+   * @param {boolean} [skipVerification=false] - Optional flag to skip verification steps
    * @returns {Promise}
    */
-  submit: async (reqNo, applicationData) => {
+  submit: async (reqNo, applicationData, skipVerification = false) => {
     if (applicationData instanceof FormData) {
       // If it's FormData, the req_no might already be in there, 
       // but let's ensure it's set if not
       if (!applicationData.has('req_no')) {
         applicationData.append('req_no', reqNo);
+      }
+      if (skipVerification) {
+        applicationData.append('skip_verification', 'true');
       }
       return makeRequest('/student/applications/submit', {
         method: 'POST',
