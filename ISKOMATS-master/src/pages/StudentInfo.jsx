@@ -234,13 +234,19 @@ const StudentInfo = () => {
 
   const saveCurrentStepProgress = async (stepNumber = currentStep) => {
     const payload = new FormData();
+    const jsonData = {};
     let hasPayload = false;
 
     for (const fieldName of STEP_FIELDS[stepNumber] || []) {
-      const value = formData[fieldName];
+      let value = formData[fieldName];
 
       if (value === undefined || value === null || value === '') {
         continue;
+      }
+
+      // Convert display values back to database values
+      if (fieldName === 'sex') {
+        value = value === 'Male' ? 'M' : value === 'Female' ? 'F' : value;
       }
 
       const payloadFieldName = DOCUMENT_UPLOAD_FIELD_MAP[fieldName] || fieldName;
@@ -249,31 +255,89 @@ const StudentInfo = () => {
     }
 
     if (stepNumber === 1 && idPicturePreview) {
-      payload.append('profile_picture', idPicturePreview);
+      if (isFileLike(idPicturePreview)) {
+        payload.append('profile_picture', idPicturePreview);
+      } else if (typeof idPicturePreview === 'string' && idPicturePreview.startsWith('data:')) {
+        jsonData['profile_picture'] = idPicturePreview;
+      }
       hasPayload = true;
     }
 
     if (stepNumber === 3) {
       if (schoolIdPhotos.front) {
-        payload.append('id_front', schoolIdPhotos.front);
+        if (isFileLike(schoolIdPhotos.front)) {
+          payload.append('id_front', schoolIdPhotos.front);
+        } else if (typeof schoolIdPhotos.front === 'string' && schoolIdPhotos.front.startsWith('data:')) {
+          jsonData['id_front'] = schoolIdPhotos.front;
+        }
         hasPayload = true;
       }
 
       if (schoolIdPhotos.back) {
-        payload.append('id_back', schoolIdPhotos.back);
+        if (isFileLike(schoolIdPhotos.back)) {
+          payload.append('id_back', schoolIdPhotos.back);
+        } else if (typeof schoolIdPhotos.back === 'string' && schoolIdPhotos.back.startsWith('data:')) {
+          jsonData['id_back'] = schoolIdPhotos.back;
+        }
+        hasPayload = true;
+      }
+    }
+
+    if (stepNumber === 4) {
+      if (photos.mayorCOE_photo) {
+        if (isFileLike(photos.mayorCOE_photo)) {
+          payload.append('mayorCOE_photo', photos.mayorCOE_photo);
+        } else if (typeof photos.mayorCOE_photo === 'string' && photos.mayorCOE_photo.startsWith('data:')) {
+          jsonData['mayorCOE_photo'] = photos.mayorCOE_photo;
+        }
+        hasPayload = true;
+      }
+
+      if (photos.mayorGrades_photo) {
+        if (isFileLike(photos.mayorGrades_photo)) {
+          payload.append('mayorGrades_photo', photos.mayorGrades_photo);
+        } else if (typeof photos.mayorGrades_photo === 'string' && photos.mayorGrades_photo.startsWith('data:')) {
+          jsonData['mayorGrades_photo'] = photos.mayorGrades_photo;
+        }
+        hasPayload = true;
+      }
+
+      if (photos.mayorIndigency_photo) {
+        if (isFileLike(photos.mayorIndigency_photo)) {
+          payload.append('mayorIndigency_photo', photos.mayorIndigency_photo);
+        } else if (typeof photos.mayorIndigency_photo === 'string' && photos.mayorIndigency_photo.startsWith('data:')) {
+          jsonData['mayorIndigency_photo'] = photos.mayorIndigency_photo;
+        }
         hasPayload = true;
       }
     }
 
     if (stepNumber === 5) {
       if (photos.face_photo) {
-        payload.append('face_photo', photos.face_photo);
+        if (isFileLike(photos.face_photo)) {
+          payload.append('face_photo', photos.face_photo);
+        } else if (typeof photos.face_photo === 'string' && photos.face_photo.startsWith('data:')) {
+          jsonData['face_photo'] = photos.face_photo;
+        }
+        hasPayload = true;
+      }
+
+      if (photos.mayorValidID_photo) {
+        if (isFileLike(photos.mayorValidID_photo)) {
+          payload.append('mayorValidID_photo', photos.mayorValidID_photo);
+        } else if (typeof photos.mayorValidID_photo === 'string' && photos.mayorValidID_photo.startsWith('data:')) {
+          jsonData['mayorValidID_photo'] = photos.mayorValidID_photo;
+        }
         hasPayload = true;
       }
 
       const signatureData = drawnSignature || signaturePreview;
       if (signatureData) {
-        payload.append('signature_data', signatureData);
+        if (isFileLike(signatureData)) {
+          payload.append('signature_data', signatureData);
+        } else if (typeof signatureData === 'string' && signatureData.startsWith('data:')) {
+          jsonData['signature_data'] = signatureData;
+        }
         hasPayload = true;
       }
     }
@@ -284,7 +348,18 @@ const StudentInfo = () => {
       return;
     }
 
-    await applicantAPI.updateProfile(payload);
+    // If there's JSON data and no files, use JSON request; otherwise use FormData
+    if (Object.keys(jsonData).length > 0 && Array.from(payload.entries()).length === 0) {
+      await applicantAPI.updateProfile(jsonData);
+    } else if (Object.keys(jsonData).length > 0) {
+      // Mix of files and data URIs - append JSON data as string
+      Object.entries(jsonData).forEach(([key, value]) => {
+        payload.append(key, value);
+      });
+      await applicantAPI.updateProfile(payload);
+    } else {
+      await applicantAPI.updateProfile(payload);
+    }
   };
 
   useEffect(() => {
@@ -392,7 +467,7 @@ const StudentInfo = () => {
           townCity: profile.town_city_municipality || '',
           province: profile.province || '',
           zipCode: profile.zip_code || '',
-          sex: profile.sex || '',
+          sex: profile.sex === 'M' ? 'Male' : profile.sex === 'F' ? 'Female' : (profile.sex || ''),
           citizenship: profile.citizenship || '',
           schoolIdNumber: profile.school_id_no || '',
           schoolName: profile.school || '',
@@ -415,8 +490,40 @@ const StudentInfo = () => {
           course: profile.course || ''
         }));
 
+        // Load profile picture
         if (profile.profile_picture) {
           setIdPicturePreview(profile.profile_picture);
+        }
+        
+        // Load school ID photos (front and back)
+        if (profile.id_img_front) {
+          setSchoolIdPhotos(prev => ({ ...prev, front: profile.id_img_front }));
+        }
+        if (profile.id_img_back) {
+          setSchoolIdPhotos(prev => ({ ...prev, back: profile.id_img_back }));
+        }
+        
+        // Load documentary requirement photos
+        if (profile.enrollment_certificate_doc) {
+          setPhotos(prev => ({ ...prev, mayorCOE_photo: profile.enrollment_certificate_doc }));
+        }
+        if (profile.grades_doc) {
+          setPhotos(prev => ({ ...prev, mayorGrades_photo: profile.grades_doc }));
+        }
+        if (profile.indigency_doc) {
+          setPhotos(prev => ({ ...prev, mayorIndigency_photo: profile.indigency_doc }));
+        }
+        
+        // Load final verification ID photo
+        if (profile.id_pic) {
+          setPhotos(prev => ({ ...prev, mayorValidID_photo: profile.id_pic }));
+          setValidIdPreview(profile.id_pic);
+        }
+        
+        // Load signature
+        if (profile.signature_image_data) {
+          setFormData(prev => ({ ...prev, applicantSignatureName: profile.signature_image_data }));
+          setSignaturePreview(profile.signature_image_data);
         }
         
         if (profile.has_other_assistance) {

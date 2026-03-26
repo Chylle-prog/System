@@ -317,20 +317,30 @@ def get_profile():
             if isinstance(value, (bytes, memoryview)):
                 if key == 'profile_picture':
                     applicant[key] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
+                elif key == 'signature_image_data':
+                    # Decrypt signature if encrypted
+                    sig_bytes = decode_signature(value)
+                    applicant['signature_image_data'] = f"data:image/png;base64,{base64.b64encode(sig_bytes).decode('utf-8')}"
+                    applicant['has_signature'] = True
+                elif key == 'id_img_front':
+                    applicant['id_img_front'] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
+                    applicant['has_id'] = True
+                elif key == 'id_img_back':
+                    applicant['id_img_back'] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
+                elif key == 'enrollment_certificate_doc':
+                    applicant['enrollment_certificate_doc'] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
+                    applicant['has_mayorCOE_photo'] = True
+                elif key == 'grades_doc':
+                    applicant['grades_doc'] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
+                    applicant['has_mayorGrades_photo'] = True
+                elif key == 'indigency_doc':
+                    applicant['indigency_doc'] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
+                    applicant['has_mayorIndigency_photo'] = True
+                elif key == 'id_pic':
+                    applicant['id_pic'] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
+                    applicant['has_mayorValidID_photo'] = True
                 else:
                     applicant[f'has_{key}'] = True
-                    if key == 'id_img_front':
-                        applicant['has_id'] = True
-                    if key == 'signature_image_data':
-                        applicant['has_signature'] = True
-                    if key == 'enrollment_certificate_doc':
-                        applicant['has_mayorCOE_photo'] = True
-                    if key == 'grades_doc':
-                        applicant['has_mayorGrades_photo'] = True
-                    if key == 'indigency_doc':
-                        applicant['has_mayorIndigency_photo'] = True
-                    if key == 'id_pic':
-                        applicant['has_mayorValidID_photo'] = True
                     del applicant[key]
             elif isinstance(value, datetime):
                 applicant[key] = value.isoformat()

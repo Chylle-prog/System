@@ -488,37 +488,32 @@ def get_profile():
                 # Handle images that the frontend needs by converting to base64
                 if key == 'profile_picture':
                     # Convert to data URI for frontend if it's an image
-                    applicant[key] = f"data:image/jpeg;base64,{base64.b64encode(value).decode('utf-8')}"
+                    applicant[key] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
+                elif key == 'signature_image_data':
+                    # Decrypt signature if encrypted
+                    sig_bytes = decode_signature(value)
+                    applicant['signature_image_data'] = f"data:image/png;base64,{base64.b64encode(sig_bytes).decode('utf-8')}"
+                    applicant['has_signature'] = True
+                elif key == 'id_img_front':
+                    applicant['id_img_front'] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
+                    applicant['has_id'] = True
+                elif key == 'id_img_back':
+                    applicant['id_img_back'] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
+                elif key == 'enrollment_certificate_doc':
+                    applicant['enrollment_certificate_doc'] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
+                    applicant['has_mayorCOE_photo'] = True
+                elif key == 'grades_doc':
+                    applicant['grades_doc'] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
+                    applicant['has_mayorGrades_photo'] = True
+                elif key == 'indigency_doc':
+                    applicant['indigency_doc'] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
+                    applicant['has_mayorIndigency_photo'] = True
+                elif key == 'id_pic':
+                    applicant['id_pic'] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
+                    applicant['has_mayorValidID_photo'] = True
                 else:
                     applicant[f'has_{key}'] = True
-                    # Compatibility with existing frontend expectation
-                    if key == 'id_img_front':
-                        applicant['has_id'] = True
-                    if key == 'signature_image_data':
-                        applicant['has_signature'] = True
-                    if key == 'enrollment_certificate_doc':
-                        applicant['has_mayorCOE_photo'] = True
-                    if key == 'grades_doc':
-                        applicant['has_mayorGrades_photo'] = True
-                    if key == 'indigency_doc':
-                        applicant['has_mayorIndigency_photo'] = True
-                    if key == 'id_pic':
-                        applicant['has_mayorValidID_photo'] = True
                     del applicant[key]
-            elif key.startswith('id_img_') or key == 'signature_image_data':
-                # Ensure compatibility flags are set even if value is None
-                if key == 'id_img_front':
-                    applicant['has_id'] = False
-                if key == 'signature_image_data':
-                    applicant['has_signature'] = False
-            elif key == 'enrollment_certificate_doc':
-                applicant['has_mayorCOE_photo'] = False
-            elif key == 'grades_doc':
-                applicant['has_mayorGrades_photo'] = False
-            elif key == 'indigency_doc':
-                applicant['has_mayorIndigency_photo'] = False
-            elif key == 'id_pic':
-                applicant['has_mayorValidID_photo'] = False
             elif isinstance(value, datetime):
                 # Ensure dates are serializable
                 applicant[key] = value.isoformat()
