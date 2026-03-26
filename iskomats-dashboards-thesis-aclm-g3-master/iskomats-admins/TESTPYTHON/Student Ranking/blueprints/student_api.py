@@ -27,6 +27,10 @@ fernet = Fernet(ENCRYPTION_KEY) if ENCRYPTION_KEY else None
 def token_required(route_handler):
     @wraps(route_handler)
     def decorated(*args, **kwargs):
+        # Skip token validation for OPTIONS (preflight) requests
+        if request.method == 'OPTIONS':
+            return route_handler(*args, **kwargs)
+        
         token = request.headers.get('Authorization')
         if not token:
             return jsonify({'message': 'Token is missing'}), 401
