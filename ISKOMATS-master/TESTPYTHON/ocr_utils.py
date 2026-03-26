@@ -183,9 +183,9 @@ def verify_id_with_ocr(id_image_data, first_name: str = "", last_name: str = "",
 
 
 def verify_face_with_id(face_image_data, id_image_data):
-    """AI-assisted face verification by comparing face photo with ID photo.
+    """Face verification using DeepFace to compare face photo with ID photo.
     
-    Uses facial recognition to determine if the face in the uploaded photo
+    Uses DeepFace's face recognition to determine if the face in the uploaded photo
     matches the face in the ID document.
 
     Parameters
@@ -210,62 +210,55 @@ def verify_face_with_id(face_image_data, id_image_data):
         return False, "No ID image provided", 0.0
     
     try:
-        # Lazy import face_recognition for optional dependency
-        try:
-            import face_recognition
-        except ImportError:
-            return False, "Face recognition library not installed", 0.0
+        from deepface import DeepFace
         
-        def load_image_for_face_recognition(image_data):
-            """Load and decode image for face_recognition library."""
+        def load_image_from_bytes(image_data):
+            """Load image from bytes data."""
             nparr = np.frombuffer(bytes(image_data), np.uint8)
             img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            if img is None:
-                return None
-            # Convert BGR to RGB for face_recognition
-            return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            return img
         
-        face_img = load_image_for_face_recognition(face_image_data)
-        id_img = load_image_for_face_recognition(id_image_data)
+        face_img = load_image_from_bytes(face_image_data)
+        id_img = load_image_from_bytes(id_image_data)
         
         if face_img is None:
             return False, "Could not load face photo", 0.0
         if id_img is None:
             return False, "Could not load ID image", 0.0
         
-        # Extract face encodings
-        face_encodings = face_recognition.face_encodings(face_img)
-        id_encodings = face_recognition.face_encodings(id_img)
+        # Save temporary image files for DeepFace processing
+        import tempfile
+        import os as os_module
         
-        if not face_encodings:
-            return False, "No face detected in submitted photo", 0.0
-        if not id_encodings:
-            return False, "No face detected in ID document", 0.0
-        
-        # Get the first face encoding from each image
-        face_encoding = face_encodings[0]
-        id_encoding = id_encodings[0]
-        
-        # Compare faces using Euclidean distance
-        # face_recognition uses distance threshold of 0.6 for face_distance
-        distance = face_recognition.face_distance([id_encoding], face_encoding)[0]
-        
-        # Convert distance to confidence (0-100%)
-        # Distance of 0 = perfect match, distance of 1.0 = no match
-        # We'll use: confidence = (1 - distance) * 100
-        confidence = max(0.0, min(100.0, (1.0 - distance) * 100))
-        
-        FACE_THRESHOLD = 60  # 60% confidence threshold
-        is_verified = confidence >= FACE_THRESHOLD
-        
-        if is_verified:
-            status = f"Face verified (Confidence: {confidence:.1f}%)"
-        else:
-            status = f"Face verification failed - faces do not match (Confidence: {confidence:.1f}%)"
-        
-        return is_verified, status, confidence
-        
-    except ImportError:
-        return False, "Face recognition not available", 0.0
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                face_path = os_module.path.join(temp_dir, 'face.jpg')
+                id_path = os_module.path.join(temp_dir, 'id.jpg')
+                
+                cv2.imwrite(face_path, face_img)
+                cv2.imwrite(id_path, id_img)
+                
+                # Use DeepFace to verify faces
+                result = DeepFace.verify(face_path, id_path, model_name='VGG-Face', enforce_detection=False)
+                
+                is_verified = result['verified']
+                distance = result['distance']
+                
+                # Convert distance to confidence (0-100%)
+                # Smaller distance = more similar, larger distance = different
+                confidence = max(0.0, min(100.0, (1.0 - distance) * 100)) if distance < 1.0 else 0.0
+                
+                if is_verified:
+                    status = f"Face verified (Distance: {distance:.4f}, Confidence: {confidence:.1f}%)"
+                else:
+                    status = f"Face verification failed - faces do not match (Distance: {distance:.4f}, Confidence: {confidence:.1f}%)"
+                
+                return is_verified, status, confidence
+                
+        except ImportError:
+            return False, "DeepFace not available", 0.0
+        except Exception as e:
+            return False, f"Face verification error: {str(e)}", 0.0
+            
     except Exception as e:
         return False, f"Face verification error: {str(e)}", 0.0
