@@ -882,27 +882,40 @@ const Portal = () => {
         }
 
         .portal-header {
-          background: linear-gradient(135deg, #4F0D00 0%, #8b3a1f 100%);
-          color: white;
-          padding: 4rem 5%;
+          background: 
+            radial-gradient(ellipse at 80% 30%, rgba(255,249,245,0.7) 0%, rgba(241,245,251,0.7) 100%),
+            linear-gradient(rgba(255,255,255,0.6), rgba(255,255,255,0.6)),
+            url('/cityhall.jpg') center/cover no-repeat;
+          color: var(--primary);
+          padding: 5rem 5%;
           text-align: center;
-          border-radius: 24px;
+          border-radius: 32px;
           margin: 2.5rem 5%;
-          box-shadow: 0 10px 30px rgba(79, 13, 0, 0.15);
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+          position: relative;
+          overflow: hidden;
+          border: 1px solid rgba(255, 255, 255, 0.5);
         }
 
         .portal-header h2 {
-          font-size: 2.2rem;
+          font-size: 2.8rem;
           font-weight: 800;
           letter-spacing: -0.02em;
-          margin-bottom: 0.5rem;
+          margin-bottom: 0.8rem;
+          color: var(--primary);
+          position: relative;
+          z-index: 2;
+          text-shadow: 0 2px 10px rgba(255, 255, 255, 0.5);
         }
 
         .portal-header p {
+          color: #1a2332;
+          font-weight: 500;
+          font-size: 1.1rem;
+          letter-spacing: 0.2px;
+          position: relative;
+          z-index: 2;
           opacity: 0.9;
-          font-weight: 400;
-          font-size: 0.95rem;
-          letter-spacing: 0.3px;
         }
 
         .portal-content {
