@@ -324,13 +324,11 @@ export const applicationAPI = {
    */
   submit: async (reqNo, applicationData, skipVerification = false) => {
     if (applicationData instanceof FormData) {
-      // If it's FormData, the req_no might already be in there, 
-      // but let's ensure it's set if not
       if (!applicationData.has('req_no')) {
         applicationData.append('req_no', reqNo);
       }
       if (skipVerification) {
-        applicationData.append('skip_verification', 'true');
+        applicationData.append('skipVerification', 'true');
       }
       return makeRequest('/student/applications/submit', {
         method: 'POST',
@@ -339,7 +337,11 @@ export const applicationAPI = {
     }
     return makeRequest('/student/applications/submit', {
       method: 'POST',
-      body: JSON.stringify({ req_no: reqNo, ...applicationData }),
+      body: JSON.stringify({ 
+        req_no: reqNo, 
+        skipVerification: skipVerification,
+        ...applicationData 
+      }),
     });
   },
 
@@ -434,10 +436,13 @@ export const verificationAPI = {
    * Call this AFTER uploadIdFrontBack() has stored the images.
    * @returns {Promise} - {verified, status, front_status, back_status, extracted_text}
    */
-  ocrCheck: async () => {
+  ocrCheck: async (idFront = null, indigencyDoc = null) => {
     return makeRequest('/verification/ocr-check', {
       method: 'POST',
-      body: JSON.stringify({}),
+      body: JSON.stringify({
+        id_front: idFront,
+        indigency_doc: indigencyDoc
+      }),
     });
   },
 };

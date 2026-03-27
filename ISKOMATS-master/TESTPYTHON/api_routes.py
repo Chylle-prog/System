@@ -667,6 +667,68 @@ def update_profile():
         if 'conn' in locals():
             conn.close()
 
+@api_bp.route('/verification/ocr-check', methods=['POST'])
+@token_required
+def ocr_check():
+    """Manual trigger for OCR verification (early check)."""
+    try:
+        data = request.get_json(silent=True) or {}
+        
+        # 1. Get Applicant info and current documents
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM applicants WHERE applicant_no = %s", (request.user_no,))
+        applicant = cur.fetchone()
+        
+        if not applicant:
+            return jsonify({'message': 'Applicant not found'}), 404
+            
+        def db_bytes(value):
+            if isinstance(value, memoryview):
+                return value.tobytes()
+            return value
+
+        def decode_base64(data_uri):
+            if not data_uri or not isinstance(data_uri, str) or ',' not in data_uri:
+                return None
+            try:
+                return base64.b64decode(data_uri.split(',')[1])
+            except Exception:
+                return None
+
+        # Use provided images or fallback to DB
+        id_front_bytes = decode_base64(data.get('id_front')) or db_bytes(applicant.get('id_img_front'))
+        indigency_doc_bytes = decode_base64(data.get('indigency_doc')) or db_bytes(applicant.get('indigency_doc'))
+        
+        if not id_front_bytes:
+            return jsonify({'message': 'Front of School ID is missing', 'verified': False}), 200
+            
+        town_city = applicant.get('town_city_municipality', '')
+        # If town_city is provided, indigency is usually required for address verification
+        if town_city and not indigency_doc_bytes:
+            return jsonify({'message': 'Certificate of Indigency is missing for address verification', 'verified': False}), 200
+
+        from ocr_utils import verify_id_with_ocr
+        ocr_ok, ocr_status, _ = verify_id_with_ocr(
+            id_front_bytes,
+            first_name=applicant.get('first_name', ''),
+            last_name=applicant.get('last_name', ''),
+            town_city_municipality=town_city,
+            address_image_data=indigency_doc_bytes
+        )
+        
+        return jsonify({
+            'verified': ocr_ok,
+            'message': ocr_status
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'message': f"OCR Error: {str(e)}", 'verified': False}), 500
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
 # ─── APPLICATION SUBMISSION ────────────────────────────────
 
 @api_bp.route('/applications/submit', methods=['POST'])
@@ -758,28 +820,33 @@ def submit_application():
                     doc_bytes[key] = db_bytes(applicant.get(doc_column_map[key]))
 
         # 4. OCR Verification (on id_front)
-        if not id_front_bytes:
-            return jsonify({'message': 'Front of School ID is required for verification'}), 400
-
-        indigency_doc_bytes = doc_bytes.get('mayorIndigency_photo')
-        town_city = applicant.get('town_city_municipality', '')
-        if town_city and not indigency_doc_bytes:
-            return jsonify({'message': 'Certificate of Indigency is required for address verification'}), 400
-            
-        from ocr_utils import verify_id_with_ocr, verify_face_with_id
-        ocr_ok, ocr_status, _ = verify_id_with_ocr(
-            id_front_bytes,
-            first_name=applicant.get('first_name', ''),
-            last_name=applicant.get('last_name', ''),
-            town_city_municipality=town_city,
-            address_image_data=indigency_doc_bytes
-        )
+        skip_verification = form_data.get('skipVerification') == 'true' or form_data.get('skipVerification') == True
         
-        # NOTE: We might still allow submission even if OCR fails, 
-        # but the user requested refactoring verification into this flow.
-        # If OCR is strictly required, we block here.
-        if not ocr_ok:
-            return jsonify({'message': f"Identity verification failed: {ocr_status}"}), 400
+        if not skip_verification:
+            if not id_front_bytes:
+                return jsonify({'message': 'Front of School ID is required for verification'}), 400
+
+            indigency_doc_bytes = doc_bytes.get('mayorIndigency_photo')
+            town_city = applicant.get('town_city_municipality', '')
+            if town_city and not indigency_doc_bytes:
+                return jsonify({'message': 'Certificate of Indigency is required for address verification'}), 400
+                
+            from ocr_utils import verify_id_with_ocr, verify_face_with_id
+            ocr_ok, ocr_status, _ = verify_id_with_ocr(
+                id_front_bytes,
+                first_name=applicant.get('first_name', ''),
+                last_name=applicant.get('last_name', ''),
+                town_city_municipality=town_city,
+                address_image_data=indigency_doc_bytes
+            )
+            
+            # NOTE: We might still allow submission even if OCR fails, 
+            # but the user requested refactoring verification into this flow.
+            # If OCR is strictly required, we block here.
+            if not ocr_ok:
+                return jsonify({'message': f"Identity verification failed: {ocr_status}"}), 400
+        else:
+            print(f"Skipping OCR verification for applicant {request.user_no} as requested by frontend.")
         
         # 4b. Face Verification (compare face_photo with id_img_front)
         if face_photo_bytes and id_front_bytes:
