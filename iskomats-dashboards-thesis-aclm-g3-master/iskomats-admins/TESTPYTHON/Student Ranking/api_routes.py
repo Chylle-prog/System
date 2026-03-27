@@ -602,6 +602,18 @@ def init_socketio(socketio):
             user_id = decoded.get('user_id') or decoded.get('user_no')
             user_role = decoded.get('role', 'student' if 'user_no' in decoded else None)
             
+            # Normalize user_role before checking against admin_roles
+            if user_role and user_role != 'student':
+                ur_low = user_role.lower()
+                if 'vilma' in ur_low:
+                    user_role = 'vilma'
+                elif 'africa' in ur_low:
+                    user_role = 'africa'
+                elif 'tulong' in ur_low or 'mandanas' in ur_low or 'ched' in ur_low:
+                    user_role = 'tulong'
+                elif 'admin' in ur_low:
+                    user_role = 'admin'
+
             print(f"DEBUG Chat Login: user_id={user_id}, role={user_role}")
             
             if not user_id:
