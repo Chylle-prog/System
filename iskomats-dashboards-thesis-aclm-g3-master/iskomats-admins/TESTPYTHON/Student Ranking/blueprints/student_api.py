@@ -493,8 +493,12 @@ def submit_application():
         form_data = request.form
         files_data = request.files
 
-        req_no = form_data.get('req_no') or request.json.get('req_no') if request.is_json else None
-        skip_verify = (form_data.get('skip_verification') or (request.json.get('skip_verification') if request.is_json else 'false')).lower() == 'true'
+        if request.is_json:
+            req_no = request.json.get('req_no')
+            skip_verify = str(request.json.get('skip_verification', 'false')).lower() == 'true'
+        else:
+            req_no = form_data.get('req_no')
+            skip_verify = str(form_data.get('skip_verification', 'false')).lower() == 'true'
         
         print(f"[SUBMIT] Processing application for User {current_user_id}, Req {req_no} (skip_verify={skip_verify})")
 

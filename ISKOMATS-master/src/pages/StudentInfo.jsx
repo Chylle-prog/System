@@ -995,14 +995,14 @@ const StudentInfo = () => {
       const skipVerification = e.nativeEvent.altKey;
       console.log(`Submitting application (skipVerification: ${skipVerification})...`);
       
-      await saveCurrentStepProgress(5);
+      await saveCurrentStepProgress(4);
 
       const submissionData = new FormData();
       
       // Define image keys to exclude from general formData loop to avoid double-sending
       const imageKeys = [
         'profile_picture', 'id_front', 'id_back', 'face_photo', 
-        'mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo', 'mayorValidID_photo',
+        'mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo',
         'applicantSignatureName', 'signature_data'
       ];
 
@@ -1026,7 +1026,7 @@ const StudentInfo = () => {
       }
       
       // Add documentary requirements
-      const docKeys = ['mayorCOE', 'mayorGrades', 'mayorIndigency', 'mayorValidID'];
+      const docKeys = ['mayorCOE', 'mayorGrades', 'mayorIndigency'];
       docKeys.forEach(key => {
         const fileKey = `${key}_photo`;
         if (photos[fileKey]) {
