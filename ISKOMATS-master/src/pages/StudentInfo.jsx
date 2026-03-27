@@ -800,6 +800,19 @@ const StudentInfo = () => {
         setOcrStatus(result.message || 'Identity and address verified successfully!');
         return true;
       } else {
+        // Handle technical unavailability as a non-blocking "soft" failure
+        const isTechnical = result.message?.includes('temporarily unavailable') || 
+                           result.message?.includes('Low memory mode') ||
+                           result.message?.includes('OCR service');
+        
+        if (isTechnical) {
+          setOcrVerified('technical_unavailable');
+          const techMsg = result.message || 'OCR service temporarily unavailable';
+          setOcrStatus(techMsg);
+          showPromptMessage(`ℹ️ Note: ${techMsg}. You can still proceed to the next step.`);
+          return true; // Allow proceeding
+        }
+
         setOcrVerified('failed');
         const errorMsg = result.message || 'Identity verification failed. Please ensure your documents are clear.';
         setOcrStatus(errorMsg);
@@ -808,11 +821,13 @@ const StudentInfo = () => {
       }
     } catch (err) {
       console.error('OCR Error:', err);
-      setOcrVerified('failed');
-      const errorMsg = err.message || 'Unknown verification error';
-      setOcrStatus(errorMsg);
-      showPromptMessage(`⚠️ Verification Issue: ${errorMsg}`);
-      return false;
+      
+      // Also treat network/server errors as non-blocking technical issues
+      setOcrVerified('technical_unavailable');
+      const errorMsg = err.message || 'Technical error during verification';
+      setOcrStatus(`Technical Issue: ${errorMsg}`);
+      showPromptMessage(`⚠️ Note: Verification service issue (${errorMsg}). You can still proceed.`);
+      return true; // Allow proceeding despite technical error
     }
   };
 
