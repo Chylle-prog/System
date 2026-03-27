@@ -1,17 +1,25 @@
 import eventlet
 eventlet.monkey_patch()
 import os
+import sys
 
-# Deployment trigger: 2026-03-26 - Force Render rebuild
+# Force unbuffered output for Render logs
+sys.stdout.reconfigure(line_buffering=True)
+
+print("[STARTUP] 1. eventlet monkey_patch complete. Loading modules...", flush=True)
+
+# Deployment trigger: 2026-03-27 - Debug Port Scan Timeout
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO
 
+print("[STARTUP] 2. Flask/SocketIO imported. Loading blueprints...", flush=True)
 from blueprints import admin_bp, init_admin_socketio, register_admin_routes, student_api_bp
+
+print("[STARTUP] 3. Blueprints imported. Loading services...", flush=True)
 from services.auth_service import get_allowed_origins, get_secret_key, is_origin_allowed, split_allowed_origins
 from services.db_service import get_db, get_db_display_config
 
-
-print("[STARTUP] Initializing Flask app...")
+print("[STARTUP] 4. Services imported. Initializing Flask app...", flush=True)
 app = Flask(__name__)
 app.secret_key = get_secret_key()
 
