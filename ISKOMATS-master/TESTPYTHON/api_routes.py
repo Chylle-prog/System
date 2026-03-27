@@ -413,6 +413,7 @@ def get_rankings():
 
         today = datetime.now().date()
         ranked = []
+        ineligible = []
 
         for sch in scholarships:
             deadline = sch.get('deadline')
@@ -420,19 +421,19 @@ def get_rankings():
                 continue
 
             score = 0
-            disqualified = False
+            reasons = []
 
             # GPA
             min_gpa = sch['gpa']
             if min_gpa is not None and gpa < min_gpa:
-                disqualified = True
+                reasons.append(f"GPA {gpa} is lower than required {min_gpa}")
             elif min_gpa:
                 score += min(60, (gpa - min_gpa) * 12)
 
             # Income
             max_inc = sch['parent_finance']
             if max_inc is not None and income > max_inc:
-                disqualified = True
+                reasons.append(f"Income ₱{income:,.0f} exceeds limit ₱{max_inc:,.0f}")
             elif max_inc:
                 score += min(50, (max_inc - income) // 15000)
 
@@ -445,23 +446,31 @@ def get_rankings():
                 elif any(word in address for word in loc_clean.split()):
                     score += 40
                 else:
-                    disqualified = True
+                    reasons.append(f"Location does not match requirement '{loc}'")
             else:
                 score += 10
 
-            if not disqualified:
-                ranked.append({
-                    'req_no': sch['req_no'],
-                    'name': sch['scholarship_name'],
-                    'gpa': min_gpa,
-                    'parent_finance': max_inc,
-                    'location': loc,
-                    'deadline': sch.get('deadline'),
-                    'score': round(score)
-                })
+            item = {
+                'req_no': sch['req_no'],
+                'name': sch['scholarship_name'],
+                'minGpa': min_gpa,
+                'maxIncome': max_inc,
+                'location': loc,
+                'deadline': sch.get('deadline'),
+                'score': round(score),
+                'reasons': reasons
+            }
+
+            if not reasons:
+                ranked.append(item)
+            else:
+                ineligible.append(item)
 
         ranked.sort(key=lambda x: -x['score'])
-        return jsonify(ranked)
+        return jsonify({
+            'eligible': ranked,
+            'ineligible': ineligible
+        })
 
     except Exception as e:
         return jsonify({'message': str(e)}), 500

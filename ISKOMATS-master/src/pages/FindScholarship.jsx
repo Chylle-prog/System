@@ -11,6 +11,7 @@ const FindScholarship = () => {
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
   const [scholarshipMatches, setScholarshipMatches] = useState([]);
+  const [ineligibleMatches, setIneligibleMatches] = useState([]);
   const [successBanner, setSuccessBanner] = useState('');
   const [hasApprovedApplication, setHasApprovedApplication] = useState(false);
 
@@ -225,7 +226,7 @@ const FindScholarship = () => {
       }
 
       // Step 2: Scholarship ranking
-      const ranked = await scholarshipAPI.getRankings({
+      const response = await scholarshipAPI.getRankings({
         gpa,
         income,
         street_brgy: formData.street_brgy,
@@ -234,15 +235,20 @@ const FindScholarship = () => {
         zip_code: formData.zip_code,
       });
 
+      const { eligible = [], ineligible = [] } = response;
+
       setShowLoadingOverlay(false);
 
-      if (ranked.length > 0) {
-        setSuccessBanner(`Found ${ranked.length} scholarship${ranked.length > 1 ? 's' : ''} matching your profile — ranked by estimated fit.`);
+      if (eligible.length > 0) {
+        setSuccessBanner(`Found ${eligible.length} scholarship${eligible.length > 1 ? 's' : ''} matching your profile — ranked by estimated fit.`);
+      } else if (ineligible.length > 0) {
+        setSuccessBanner('No scholarships perfectly match your criteria, but we found some potential opportunities below.');
       } else {
-        setSuccessBanner('No scholarships match your current qualifications. Try adjusting your criteria.');
+        setSuccessBanner('No scholarships found. Try adjusting your criteria or checking again later.');
       }
 
-      setScholarshipMatches(ranked);
+      setScholarshipMatches(eligible);
+      setIneligibleMatches(ineligible);
       setShowFormView(false);
       setShowResultsView(true);
 
@@ -646,6 +652,41 @@ const FindScholarship = () => {
           box-shadow: var(--shadow-sm);
         }
 
+        .scholarship-card.ineligible {
+          opacity: 0.85;
+          border-left: 4px solid var(--danger);
+          background: #fffcfc;
+        }
+
+        .scholarship-card.ineligible h4 {
+          color: var(--text-soft);
+        }
+
+        .ineligible-badge {
+          background: var(--danger-bg);
+          color: var(--danger);
+          padding: 0.5rem 1rem;
+          border-radius: 12px;
+          font-size: 0.85rem;
+          font-weight: 700;
+          margin-bottom: 1.5rem;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .reasons-list {
+          margin-top: 0.5rem;
+          padding-left: 1.2rem;
+          color: var(--danger);
+          font-size: 0.85rem;
+          font-weight: 500;
+        }
+
+        .reasons-list li {
+          margin-bottom: 0.3rem;
+        }
+
         .no-results {
           text-align: center;
           color: var(--text-soft);
@@ -962,7 +1003,7 @@ const FindScholarship = () => {
             </div>
           )}
           <div className="scholarship-grid">
-            {scholarshipMatches.length > 0 ? (
+            {scholarshipMatches.length > 0 && (
               scholarshipMatches.map((match, index) => (
                 <div key={match.req_no ?? index} className="scholarship-card">
                   <h4>{match.name}</h4>
@@ -995,7 +1036,49 @@ const FindScholarship = () => {
                   </button>
                 </div>
               ))
-            ) : (
+            )}
+
+            {ineligibleMatches.length > 0 && (
+              ineligibleMatches.map((match, index) => (
+                <div key={`ineligible-${match.req_no ?? index}`} className="scholarship-card ineligible">
+                  <div className="ineligible-badge">
+                    <i className="fas fa-exclamation-circle"></i> Not Eligible
+                  </div>
+                  <h4>{match.name}</h4>
+                  <div className="scholarship-provider">
+                    {match.location ? `📍 ${match.location}` : '🌐 Open to all locations'}
+                  </div>
+                  
+                  <div style={{ marginBottom: '1rem' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-soft)', textTransform: 'uppercase' }}>Reason for ineligibility:</span>
+                    <ul className="reasons-list">
+                      {match.reasons.map((reason, rIdx) => (
+                        <li key={rIdx}>{reason}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="scholarship-requirements" style={{ opacity: 0.6 }}>
+                    {match.minGpa != null && (
+                      <div className="requirement-badge">Min GPA: {match.minGpa}</div>
+                    )}
+                    {match.maxIncome != null && (
+                      <div className="requirement-badge">Max Income: ₱{Number(match.maxIncome).toLocaleString()}/yr</div>
+                    )}
+                  </div>
+
+                  <button 
+                    className="apply-btn" 
+                    disabled={true}
+                    style={{ backgroundColor: 'var(--gray-2)', color: 'var(--gray-3)', cursor: 'not-allowed' }}
+                  >
+                    Not Eligible to Apply
+                  </button>
+                </div>
+              ))
+            )}
+
+            {scholarshipMatches.length === 0 && ineligibleMatches.length === 0 && (
               <div className="no-results">
                 <i className="fas fa-search" style={{fontSize: '2rem', opacity: '0.5', marginBottom: '1rem'}}></i>
                 <p>No matching scholarships found. Please review your information and try again with different criteria.</p>
