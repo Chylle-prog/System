@@ -12,9 +12,16 @@ _reader = None
 def _get_reader():
     global _reader
     if _reader is None:
-        import easyocr
-        _reader = easyocr.Reader(['en'], gpu=False)
-    return _reader
+        try:
+            import easyocr
+            # Note: Reader(['en'], gpu=False) downloads ~300MB of models on first run
+            # which might trigger OOM on low-memory instances.
+            _reader = easyocr.Reader(['en'], gpu=False)
+        except (ImportError, Exception) as e:
+            print(f"[OCR] Warning: Could not initialize easyocr: {str(e)}")
+            _reader = False # Sentinel for "failed to load"
+    return _reader if _reader is not False else None
+
 
 
 def normalize_text(text: str) -> str:
@@ -59,6 +66,8 @@ def verify_id_with_ocr(id_image_data, first_name: str = '', last_name: str = '',
 
     try:
         reader = _get_reader()
+        if not reader:
+            return False, 'OCR service temporarily unavailable (Low memory mode)', ''
 
         def extract_normalized_text(image_data, missing_message):
             if image_data is None or (isinstance(image_data, float) and pd.isna(image_data)):
@@ -205,7 +214,10 @@ def verify_face_with_id(face_image_data, id_image_data):
         return False, 'No ID image provided', 0.0
     
     try:
-        from deepface import DeepFace
+        try:
+            from deepface import DeepFace
+        except (ImportError, Exception):
+            return False, 'Face verification service unavailable (Low memory mode)', 0.0
         
         def load_image_from_bytes(image_data):
             """Load image from bytes data."""

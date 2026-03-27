@@ -695,6 +695,22 @@ const StudentInfo = () => {
       }));
     } else if (type === 'file') {
       const file = files[0] || null;
+      if (DOCUMENT_IMAGE_FIELDS.has(name) && file && file.type.startsWith('image/') && window.compressImage) {
+        window.compressImage(file).then(compressedBase64 => {
+          setFormData(prev => ({ ...prev, [name]: compressedBase64 }));
+          setPhotos(prev => ({ ...prev, [name]: compressedBase64 }));
+          
+          // Auto-save progress
+          applicantAPI.updateProfile({ [name]: compressedBase64 }).catch(console.error);
+        });
+        
+        // Handle previews
+        if (name === 'mayorValidID_photo') {
+          setValidIdPreview(file ? URL.createObjectURL(file) : null);
+        }
+        return;
+      }
+
       if (DOCUMENT_IMAGE_FIELDS.has(name)) {
         setFormData(prev => ({
           ...prev,
