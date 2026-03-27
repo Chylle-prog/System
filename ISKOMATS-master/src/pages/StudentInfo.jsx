@@ -1867,7 +1867,7 @@ const StudentInfo = () => {
                   <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> Back: Family Background
                 </button>
                 <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
-                  Next: Documentary Requirements <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
+                  Next: Certification & Verification <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
                 </button>
               </div>
             </div>
