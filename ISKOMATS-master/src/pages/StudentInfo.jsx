@@ -1694,23 +1694,17 @@ const StudentInfo = () => {
               </h3>
 
               {/* 2x2 ID Picture */}
-              <div style={{marginBottom: '2rem', textAlign: 'center'}}>
-                <label style={{display: 'block', fontSize: '0.85rem', marginBottom: '1rem', color: '#444', fontWeight: '600'}}>
+              <div style={{marginBottom: '2rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
+                <label style={{display: 'block', fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '0.5rem'}}>
                   2x2 ID Picture <span style={{color: '#e74c3c'}}>*</span>
                 </label>
-                <div style={{border: '2px dashed #ccc', borderRadius: '20px', height: '180px', width: '180px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden', boxShadow: 'var(--shadow-sm)'}}>
-                  <input type="file" name="profile_picture" accept="image/*" onChange={handleIdPictureUpload} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
-                  <div style={{textAlign: 'center', color: '#999', fontSize: '0.85rem', pointerEvents: 'none'}}>
-                    {idPicturePreview ? (
-                      <img src={idPicturePreview} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="ID Preview" />
-                    ) : (
-                      <>
-                        <i className="fas fa-camera" style={{fontSize: '2rem', marginBottom: '0.5rem', display: 'block'}}></i>
-                        <span>Upload 2x2 ID Picture</span>
-                      </>
-                    )}
+                <p style={{fontSize: '0.8rem', color: '#666', marginBottom: '1rem'}}>Photo (.png/jpg)</p>
+                <input type="file" name="profile_picture" accept="image/*" onChange={handleIdPictureUpload} style={{width: '100%'}} />
+                {idPicturePreview && (
+                  <div style={{marginTop: '1rem', textAlign: 'center'}}>
+                    <img src={idPicturePreview} style={{width: '120px', height: '120px', objectFit: 'cover', borderRadius: '12px', border: '2px solid #fff', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="ID Preview" />
                   </div>
-                </div>
+                )}
               </div>
 
               <div className="form-row">
@@ -1879,15 +1873,18 @@ const StudentInfo = () => {
               </div>
 
               {/* Documentary Requirement: Indigency */}
-              <div style={{marginTop: '1.5rem', background: '#fdfdfd', padding: '1.2rem', borderRadius: '16px', border: '1px solid var(--gray-2)'}}>
-                <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.8rem', color: '#444', fontWeight: '600'}}>
+              <div style={{marginTop: '1.5rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
+                <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
                   Certificate of Indigency <span style={{color: '#e74c3c'}}>*</span>
-                </label>
-                <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                  <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} required={currentStep === 2} />
-                  <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem'}}>
-                    {photos.mayorIndigency_photo ? <img src={photos.mayorIndigency_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Indigency" /> : 'Upload Photo of Indigency'}
-                  </div>
+                </h4>
+                <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
+                <div style={{paddingLeft: '16px'}}>
+                  <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 2} />
+                  {photos.mayorIndigency_photo && (
+                    <div style={{marginTop: '1rem'}}>
+                      <img src={photos.mayorIndigency_photo} style={{maxWidth: '200px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="Indigency Preview" />
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1952,53 +1949,47 @@ const StudentInfo = () => {
                 </div>
               </div>
 
-              <div style={{marginBottom: '2rem'}}>
-                <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '1rem', color: '#444', fontWeight: '600'}}>
+              <div style={{marginBottom: '2rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
+                <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
                   Updated School ID (Photo) <span style={{color: '#e74c3c'}}>*</span>
-                </label>
-                <div className="form-row">
-                  <div className="form-group" style={{textAlign: 'center'}}>
-                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} required={currentStep === 3} />
-                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem'}}>
-                        {schoolIdPhotos.front ? <img src={schoolIdPhotos.front} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="School ID Front" /> : 'Front of School ID'}
-                      </div>
-                    </div>
+                </h4>
+                <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1.2rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
+                
+                <div className="form-row" style={{paddingLeft: '16px'}}>
+                  <div className="form-group">
+                    <label style={{fontSize: '0.8rem', color: '#555'}}>Front Side</label>
+                    <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} required={currentStep === 3} />
+                    {schoolIdPhotos.front && <img src={schoolIdPhotos.front} style={{marginTop: '10px', width: '100%', maxWidth: '150px', borderRadius: '8px'}} alt="Front Preview" />}
                   </div>
-                  <div className="form-group" style={{textAlign: 'center'}}>
-                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} required={currentStep === 3} />
-                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem'}}>
-                        {schoolIdPhotos.back ? <img src={schoolIdPhotos.back} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="School ID Back" /> : 'Back of School ID'}
-                      </div>
-                    </div>
+                  <div className="form-group">
+                    <label style={{fontSize: '0.8rem', color: '#555'}}>Back Side</label>
+                    <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} required={currentStep === 3} />
+                    {schoolIdPhotos.back && <img src={schoolIdPhotos.back} style={{marginTop: '10px', width: '100%', maxWidth: '150px', borderRadius: '8px'}} alt="Back Preview" />}
                   </div>
                 </div>
               </div>
 
               {/* Documentary Requirements: COE and Grades */}
-              <div style={{marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem'}}>
-                <div style={{background: '#fdfdfd', padding: '1.2rem', borderRadius: '16px', border: '1px solid var(--gray-2)'}}>
-                  <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.8rem', color: '#444', fontWeight: '600'}}>
+              <div style={{marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.2rem'}}>
+                <div style={{background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
+                  <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
                     Certificate of Enrollment (Current A.Y) <span style={{color: '#e74c3c'}}>*</span>
-                  </label>
-                  <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                    <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} required={currentStep === 3} />
-                    <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem'}}>
-                      {photos.mayorCOE_photo ? <img src={photos.mayorCOE_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="COE" /> : 'Upload Photo of COE'}
-                    </div>
+                  </h4>
+                  <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
+                  <div style={{paddingLeft: '16px'}}>
+                    <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} />
+                    {photos.mayorCOE_photo && <img src={photos.mayorCOE_photo} style={{marginTop: '10px', maxWidth: '200px', borderRadius: '8px'}} alt="COE Preview" />}
                   </div>
                 </div>
 
-                <div style={{background: '#fdfdfd', padding: '1.2rem', borderRadius: '16px', border: '1px solid var(--gray-2)'}}>
-                  <label style={{display: 'block', fontSize: '0.9rem', marginBottom: '0.8rem', color: '#444', fontWeight: '600'}}>
+                <div style={{background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
+                  <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
                     Certified True Copy of Grades <span style={{color: '#e74c3c'}}>*</span>
-                  </label>
-                  <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                    <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} required={currentStep === 3} />
-                    <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem'}}>
-                      {photos.mayorGrades_photo ? <img src={photos.mayorGrades_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Grades" /> : 'Upload Photo of Grades'}
-                    </div>
+                  </h4>
+                  <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
+                  <div style={{paddingLeft: '16px'}}>
+                    <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} />
+                    {photos.mayorGrades_photo && <img src={photos.mayorGrades_photo} style={{marginTop: '10px', maxWidth: '200px', borderRadius: '8px'}} alt="Grades Preview" />}
                   </div>
                 </div>
               </div>
@@ -2062,19 +2053,23 @@ const StudentInfo = () => {
               </div>
 
               {/* Face Verification Section */}
-              <div style={{marginBottom: '2rem'}}>
-                <h4 style={{fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '1rem'}}>Final Verification (Face Photo) <span style={{color: '#e74c3c'}}>*</span></h4>
-                <div style={{textAlign: 'center', maxWidth: '300px', margin: '0 auto'}}>
-                  <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
+              <div style={{marginBottom: '2rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
+                <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
+                  Final Verification (Face Photo) <span style={{color: '#e74c3c'}}>*</span>
+                </h4>
+                <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1.2rem', paddingLeft: '16px'}}>Live Capture required</p>
+                
+                <div style={{textAlign: 'center', paddingLeft: '16px'}}>
+                  <div style={{border: '2px solid #fff', borderRadius: '20px', height: '200px', width: '200px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e1e8f0', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)'}}>
                     {photos.face_photo ? (
                       <>
                         <img src={photos.face_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Face Verification" />
-                        <button type="button" onClick={() => removePhoto('face_photo')} style={{position: 'absolute', top: '5px', right: '5px', background: 'rgba(255,0,0,0.7)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px'}}><i className="fas fa-times"></i></button>
+                        <button type="button" onClick={() => removePhoto('face_photo')} style={{position: 'absolute', top: '10px', right: '10px', background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'}}><i className="fas fa-times"></i></button>
                       </>
                     ) : (
-                      <button type="button" onClick={openCamera} style={{border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer'}}>
-                        <i className="fas fa-camera" style={{fontSize: '2rem'}}></i>
-                        <span style={{display: 'block', fontSize: '0.9rem', marginTop: '10px'}}>Open Camera</span>
+                      <button type="button" onClick={openCamera} style={{border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px'}}>
+                        <i className="fas fa-camera" style={{fontSize: '2.5rem'}}></i>
+                        <span style={{fontSize: '0.9rem', fontWeight: '600'}}>Click to Open Camera</span>
                       </button>
                     )}
                   </div>
