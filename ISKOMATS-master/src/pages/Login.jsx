@@ -14,6 +14,8 @@ const Login = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [profilePicture, setProfilePicture] = useState(null);
   const [isLoginLoading, setIsLoginLoading] = useState(false);
+  const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
   const { setCurrentUserState } = useAuth();
   const [currentUser, setCurrentUser] = useState(null);
 
@@ -59,6 +61,8 @@ const Login = () => {
     const password = e.target.password.value;
 
     setIsLoginLoading(true);
+    setLoadingMessage({ title: 'Logging in', message: 'Authenticating your account...' });
+    setShowLoadingOverlay(true);
     try {
       // Call backend login API
       const response = await authAPI.login(email, password);
@@ -72,7 +76,11 @@ const Login = () => {
       setShowError(false);
 
       // Navigate to portal
-      navigate('/portal');
+      setTimeout(() => {
+        setShowLoadingOverlay(false);
+        setIsLoginLoading(false);
+        navigate('/portal');
+      }, 500);
     } catch (error) {
       // Handle specific error messages from backend
       if (error.message.includes('Email not found')) {
@@ -84,6 +92,7 @@ const Login = () => {
       }
       setShowError(true);
       setIsLoginLoading(false);
+      setShowLoadingOverlay(false);
     }
   };
 
@@ -107,6 +116,8 @@ const Login = () => {
     }
 
     try {
+      setLoadingMessage({ title: 'Checking Email', message: 'Verifying registration availability...' });
+      setShowLoadingOverlay(true);
       // Check if email already exists
       const checkResponse = await authAPI.checkEmail(email);
       if (checkResponse.exists) {
@@ -120,10 +131,12 @@ const Login = () => {
       localStorage.setItem('registrationEmail', email);
       localStorage.setItem('registrationPassword', password);
       setShowRegistrationModal(true);
+      setShowLoadingOverlay(false);
       e.target.reset();
     } catch (error) {
       setErrorMessage(error.message || 'Registration failed. Please try again.');
       setShowError(true);
+      setShowLoadingOverlay(false);
     }
   };
 
@@ -150,6 +163,8 @@ const Login = () => {
     }
 
     try {
+      setLoadingMessage({ title: 'Creating Profile', message: 'Saving your information and setting up your account...' });
+      setShowLoadingOverlay(true);
       // Get registration credentials from localStorage
       const email = localStorage.getItem('registrationEmail');
       const password = localStorage.getItem('registrationPassword');
@@ -212,11 +227,13 @@ const Login = () => {
 
       // Redirect to portal after delay
       setTimeout(() => {
+        setShowLoadingOverlay(false);
         navigate('/portal');
       }, 2000);
     } catch (error) {
       setErrorMessage(error.message || 'Profile creation failed. Please try again.');
       setShowError(true);
+      setShowLoadingOverlay(false);
     }
   };
 
@@ -773,6 +790,56 @@ const Login = () => {
           text-decoration: underline !important;
         }
 
+        .loading-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0.75);
+          backdrop-filter: blur(10px);
+          display: none;
+          justify-content: center;
+          align-items: center;
+          z-index: 9999;
+          animation: fadeIn 0.3s ease;
+        }
+
+        .loading-overlay.active {
+          display: flex;
+        }
+
+        .loading-modal {
+          background: white;
+          padding: 3.5rem;
+          border-radius: 40px;
+          text-align: center;
+          box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
+          max-width: 450px;
+          width: 90%;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .loading-spinner {
+          width: 60px;
+          height: 60px;
+          border: 6px solid #ffe8e3;
+          border-top: 6px solid var(--primary);
+          border-radius: 50%;
+          margin: 0 auto 1.8rem;
+          animation: spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
         @media (max-width: 768px) {
           .navbar {
             flex-direction: column;
@@ -1136,6 +1203,19 @@ const Login = () => {
           </div>
         </div>
       )}
+
+      {/* Loading overlay */}
+      <div className={`loading-overlay ${showLoadingOverlay ? 'active' : ''}`}>
+        <div className="loading-modal">
+          <div className="loading-spinner"></div>
+          <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
+            {loadingMessage.title}
+          </h3>
+          <p style={{ color: 'var(--text-soft)', fontSize: '1rem' }}>
+            {loadingMessage.message}
+          </p>
+        </div>
+      </div>
     </>
   );
 };

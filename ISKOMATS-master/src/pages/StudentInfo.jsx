@@ -117,6 +117,7 @@ const StudentInfo = () => {
   const [scholarshipName, setScholarshipName] = useState('Scholarship Application');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingStep, setIsSavingStep] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
   const [currentStep, setCurrentStep] = useState(1);
 
   // School ID photo states
@@ -886,6 +887,7 @@ const StudentInfo = () => {
     }
 
     try {
+      setLoadingMessage({ title: `Saving Step ${currentStep}`, message: 'Updating your application progress...' });
       setIsSavingStep(true);
       await saveCurrentStepProgress(currentStep);
       setCurrentStep(prev => Math.min(prev + 1, 4));
@@ -1007,6 +1009,7 @@ const StudentInfo = () => {
     const numericReqNo = parseInt(reqNo, 10);
 
     try {
+      setLoadingMessage({ title: 'Submitting Application', message: 'Analyzing documents and finalizing your application. This may take a moment...' });
       setIsSubmitting(true);
       const skipVerification = e.nativeEvent.altKey;
       console.log(`Submitting application (skipVerification: ${skipVerification})...`);
@@ -1098,6 +1101,57 @@ const StudentInfo = () => {
           --gray-2: #e2e8f0;
           --gray-3: #b0c0d0;
           --text-dark: #121826;
+        }
+
+        .loading-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0.75);
+          backdrop-filter: blur(10px);
+          display: none;
+          justify-content: center;
+          align-items: center;
+          z-index: 9999;
+          animation: fadeIn 0.3s ease;
+        }
+
+        .loading-overlay.active {
+          display: flex;
+        }
+
+        .loading-modal {
+          background: white;
+          padding: 3.5rem;
+          border-radius: 40px;
+          text-align: center;
+          box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
+          max-width: 450px;
+          width: 90%;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .loading-spinner {
+          width: 60px;
+          height: 60px;
+          border: 6px solid #ffe8e3;
+          border-top: 6px solid var(--primary);
+          border-radius: 50%;
+          margin: 0 auto 1.8rem;
+          animation: spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
           --text-soft: #3f4a5c;
           --white: #ffffff;
           --success: #0f7b5a;
@@ -2023,6 +2077,19 @@ const StudentInfo = () => {
               <i className="fas fa-camera" style={{marginRight: '8px'}}></i> Capture
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Loading overlay */}
+      <div className={`loading-overlay ${isSubmitting || isSavingStep ? 'active' : ''}`}>
+        <div className="loading-modal">
+          <div className="loading-spinner"></div>
+          <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
+            {loadingMessage.title}
+          </h3>
+          <p style={{ color: 'var(--text-soft)', fontSize: '1rem' }}>
+            {loadingMessage.message}
+          </p>
         </div>
       </div>
     </>
