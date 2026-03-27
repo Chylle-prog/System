@@ -1,9 +1,5 @@
-"""
-Shared OCR helpers for ISKOMATS.
-
-Imported by student web routes and student API routes so the easyocr model
-is only initialised once per process via a module-level lazy singleton.
-"""
+import os
+import sys
 
 
 _reader = None
@@ -12,6 +8,11 @@ _reader = None
 def _get_reader():
     global _reader
     if _reader is None:
+        if os.environ.get('SKIP_HEAVY_IMPORTS') == 'True':
+            print("[OCR] Skipping easyocr due to SKIP_HEAVY_IMPORTS=True", flush=True)
+            _reader = False
+            return None
+            
         try:
             import easyocr
             # Note: Reader(['en'], gpu=False) downloads ~300MB of models on first run
@@ -214,6 +215,10 @@ def verify_face_with_id(face_image_data, id_image_data):
         return False, 'No ID image provided', 0.0
     
     try:
+        if os.environ.get('SKIP_HEAVY_IMPORTS') == 'True':
+            print("[FACE] Skipping deepface due to SKIP_HEAVY_IMPORTS=True", flush=True)
+            return False, 'Face verification service skipped (Debug mode)', 0.0
+
         try:
             from deepface import DeepFace
         except (ImportError, Exception):
