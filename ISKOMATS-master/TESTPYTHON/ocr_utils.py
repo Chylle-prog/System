@@ -1,3 +1,4 @@
+import os
 """
 ocr_utils.py — Shared OCR helpers for ISKOMATS.
 
@@ -12,11 +13,29 @@ module-level lazy singleton.
 _reader = None
 
 def _get_reader():
+    """Lazy-load easyocr reader with memory fail-safes."""
     global _reader
     if _reader is None:
-        import easyocr  # deferred import
-        _reader = easyocr.Reader(['en'], gpu=False)
-    return _reader
+        # Check if heavy imports should be skipped (e.g., to save memory in dev/limited envs)
+        if os.environ.get('SKIP_HEAVY_IMPORTS') == 'True':
+            print("[OCR] Skipping easyocr initialization due to SKIP_HEAVY_IMPORTS=True", flush=True)
+            _reader = False # Sentinel for "disabled"
+            return None
+            
+        try:
+            import easyocr
+            print("[OCR] Initializing easyocr reader (GPU=False)...", flush=True)
+            # Note: Reader(['en'], gpu=False) loads ~300MB-600MB of models into RAM.
+            _reader = easyocr.Reader(['en'], gpu=False)
+            print("[OCR] easyocr reader initialized successfully.", flush=True)
+        except (ImportError, Exception) as e:
+            # Catching all exceptions since OOM or model download failure can occur here
+            print(f"[OCR] Error: Could not initialize easyocr: {str(e)}", flush=True)
+            import traceback
+            traceback.print_exc()
+            _reader = False # Sentinel for "failed to load/unavailable"
+            
+    return _reader if _reader is not False else None
 
 
 def normalize_text(text: str) -> str:
@@ -63,6 +82,8 @@ def verify_id_with_ocr(id_image_data, first_name: str = "", last_name: str = "",
 
     try:
         reader = _get_reader()
+        if not reader:
+            return False, "OCR service temporarily unavailable (Low memory mode)", ""
 
         def extract_normalized_text(image_data, missing_message):
             if image_data is None or (isinstance(image_data, float) and pd.isna(image_data)):
@@ -210,7 +231,16 @@ def verify_face_with_id(face_image_data, id_image_data):
         return False, "No ID image provided", 0.0
     
     try:
-        from deepface import DeepFace
+        # Check for heavy import skip
+        if os.environ.get('SKIP_HEAVY_IMPORTS') == 'True':
+            print("[FACE] Skipping deepface due to SKIP_HEAVY_IMPORTS=True", flush=True)
+            return False, "Face verification service skipped (Debug mode)", 0.0
+
+        try:
+            from deepface import DeepFace
+        except (ImportError, Exception) as e:
+            print(f"[FACE] Error: Could not initialize DeepFace: {str(e)}", flush=True)
+            return False, "Face verification service unavailable (Low memory mode)", 0.0
         
         def load_image_from_bytes(image_data):
             """Load image from bytes data."""
