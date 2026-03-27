@@ -784,15 +784,6 @@ const StudentInfo = () => {
         applicantAPI.updateProfile({ 
           [photoKey]: compressedBase64
         }).catch(console.error);
-
-        // TRIGGER EARLY OCR VERIFICATION
-        // If this is the front ID and we already have the indigency doc from Step 2, run OCR now
-        if (side === 'front') {
-          const indigencyDoc = photos.mayorIndigency_photo || formData.mayorIndigency_photo || userProfile?.indigency_doc;
-          if (indigencyDoc) {
-            performOcrVerification(compressedBase64, indigencyDoc);
-          }
-        }
       });
     }
   };
@@ -807,14 +798,17 @@ const StudentInfo = () => {
       if (result.verified) {
         setOcrVerified('success');
         setOcrStatus(result.message || 'Identity and address verified successfully!');
+        return true;
       } else {
         setOcrVerified('failed');
         setOcrStatus(result.message || 'Identity verification failed. Please ensure your documents are clear.');
+        return false;
       }
     } catch (err) {
       console.error('OCR Error:', err);
       setOcrVerified('failed');
       setOcrStatus(`Verification error: ${err.message}`);
+      return false;
     }
   };
 
@@ -925,6 +919,25 @@ const StudentInfo = () => {
     try {
       setLoadingMessage({ title: `Saving Step ${currentStep}`, message: 'Updating your application progress...' });
       setIsSavingStep(true);
+      
+      // TRIGGER OCR VERIFICATION ON STEP 3 NEXT
+      if (currentStep === 3) {
+        const idFront = schoolIdPhotos.front || userProfile?.id_img_front;
+        const indigencyDoc = photos.mayorIndigency_photo || formData.mayorIndigency_photo || userProfile?.indigency_doc;
+        
+        if (idFront && indigencyDoc) {
+          setLoadingMessage({ title: 'Verifying Identity', message: 'Analyzing your ID and address documents. This speeds up your final submission...' });
+          const isVerified = await performOcrVerification(idFront, indigencyDoc);
+          
+          if (!isVerified) {
+            // If verification failed (technical or mismatch), inform user but allow them to proceed if they want?
+            // Actually, let's stop them so they can fix documented issues, but provide a way to bypass if it's a 404/network error
+            setIsSavingStep(false);
+            return; // Stay on Step 3 so they see the error box
+          }
+        }
+      }
+
       await saveCurrentStepProgress(currentStep);
       setCurrentStep(prev => Math.min(prev + 1, 4));
       window.scrollTo({ top: 0, behavior: 'smooth' });
