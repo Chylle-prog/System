@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { applicationAPI } from '../services/api';
+import { applicationAPI, scholarshipAPI } from '../services/api';
 import socketService from '../services/socket';
 
 const Portal = () => {
@@ -29,6 +29,9 @@ const Portal = () => {
 
   // Chat messages for each scholarship
   const [chatMessages, setChatMessages] = useState({});
+
+  // Scholarship Resources (Guides)
+  const [resources, setResources] = useState([]);
 
   // Notification data structure
   const [notifications, setNotifications] = useState([
@@ -114,6 +117,19 @@ const Portal = () => {
     if (user) {
       fetchApplications();
     }
+
+    // Load scholarship resources
+    const fetchResources = async () => {
+      try {
+        const data = await scholarshipAPI.getAll();
+        // Filter to only show scholarships that have requirements defined
+        // or prioritize the specific ones from the DB
+        setResources(data || []);
+      } catch (err) {
+        console.error("Failed to load resources:", err);
+      }
+    };
+    fetchResources();
 
     // Socket.IO Integration
     let unsubLogged, unsubMsg, unsubRoom;
@@ -1812,63 +1828,51 @@ const Portal = () => {
                 Resources & Guides
               </h3>
               <div className="scholarship-list">
-                <div className="scholarship-card">
-                  <h4><i className="fas fa-landmark" style={{marginRight: '10px', color: 'var(--primary)'}}></i>Mayor Eric B. Africa Scholarship</h4>
-                  <div className="requirements-list">
-                    <h5>Requirements:</h5>
-                    <ul>
-                      <li>GPA of 3.5 and above</li>
-                      <li>Monthly family income ≤ ₱60,000</li>
-                      <li>Resident of Lipa City</li>
-                      <li>Enrolled in any college/university within Lipa City</li>
-                      <li>Good moral character certificate</li>
-                      <li>No pending disciplinary cases</li>
-                      <li>Birth certificate (NSO copy)</li>
-                      <li>Proof of residence (barangay certificate)</li>
-                      <li>Latest school transcript of records</li>
-                      <li>Parent's income tax return</li>
-                    </ul>
+                {resources.length > 0 ? (
+                  resources.map(res => {
+                    let requirementsList = [];
+                    try {
+                      // Requirements are stored as a JSON string in the DB
+                      requirementsList = res.requirements ? JSON.parse(res.requirements) : [];
+                    } catch (e) {
+                      console.error("Failed to parse requirements for", res.scholarship_name, e);
+                    }
+
+                    return (
+                      <div className="scholarship-card" key={res.req_no}>
+                        <h4>
+                          <i 
+                            className={`fas ${res.icon || 'fa-graduation-cap'}`} 
+                            style={{marginRight: '10px', color: 'var(--primary)'}}
+                          ></i>
+                          {res.scholarship_name}
+                        </h4>
+                        <div className="requirements-list">
+                          <h5>Requirements:</h5>
+                          {requirementsList.length > 0 ? (
+                            <ul>
+                              {requirementsList.map((req, idx) => (
+                                <li key={idx}>{req}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <ul>
+                              {res.gpa && <li>Minimum GPA: {res.gpa}</li>}
+                              {res.parent_finance && <li>Monthly family income ≤ ₱{Number(res.parent_finance).toLocaleString()}</li>}
+                              {res.location && <li>Resident of {res.location}</li>}
+                              <li>Please check the official provider website for more details.</li>
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div style={{textAlign: 'center', padding: '2rem', color: 'var(--text-soft)'}}>
+                    <i className="fas fa-spinner fa-spin" style={{fontSize: '2rem', marginBottom: '1rem'}}></i>
+                    <p>Loading scholarship resources...</p>
                   </div>
-                </div>
-                <div className="scholarship-card">
-                  <h4><i className="fas fa-users" style={{marginRight: '10px', color: 'var(--primary)'}}></i>Governor Vilma's Scholarship</h4>
-                  <div className="requirements-list">
-                    <h5>Requirements:</h5>
-                    <ul>
-                      <li>GPA of 3.0 and above</li>
-                      <li>Monthly family income ≤ ₱50,000</li>
-                      <li>Resident of Batangas Province</li>
-                      <li>Enrolled in accredited college/university</li>
-                      <li>Letter of recommendation from school official</li>
-                      <li>Community service certificate (minimum 20 hours)</li>
-                      <li>Birth certificate (NSO copy)</li>
-                      <li>Barangay clearance</li>
-                      <li>Latest school grades</li>
-                      <li>Parent's certificate of employment</li>
-                      <li>2x2 ID picture (white background)</li>
-                    </ul>
-                  </div>
-                </div>
-                <div className="scholarship-card">
-                  <h4><i className="fas fa-graduation-cap" style={{marginRight: '10px', color: 'var(--primary)'}}></i>CHED Tulong Dunong</h4>
-                  <div className="requirements-list">
-                    <h5>Requirements:</h5>
-                    <ul>
-                      <li>GPA of 2.5 and above</li>
-                      <li>Monthly family income ≤ ₱120,000</li>
-                      <li>Filipino citizen</li>
-                      <li>Enrolled in CHED-recognized institution</li>
-                      <li>Certificate of Registration (COR)</li>
-                      <li>Billing statement from school</li>
-                      <li>Birth certificate (PSA copy)</li>
-                      <li>Parent's marriage certificate (if applicable)</li>
-                      <li>Latest income tax return</li>
-                      <li>Community tax certificate</li>
-                      <li>School ID and registration form</li>
-                      <li>Proof of enrollment (current semester)</li>
-                    </ul>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
           )}
