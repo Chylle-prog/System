@@ -584,7 +584,9 @@ def init_socketio(socketio):
     """Initialize SocketIO events for chatting"""
     
     # Run once on initialization
-    initialize_auto_chat_rooms()
+    import eventlet
+    print("[STARTUP] Spawning chat room initialization in background...")
+    eventlet.spawn(initialize_auto_chat_rooms)
 
     @socketio.on('login')
     def on_login(data):

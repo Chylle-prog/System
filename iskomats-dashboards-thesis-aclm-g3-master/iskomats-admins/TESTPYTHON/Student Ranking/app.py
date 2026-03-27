@@ -1,3 +1,5 @@
+import eventlet
+eventlet.monkey_patch()
 import os
 
 # Deployment trigger: 2026-03-26 - Force Render rebuild
@@ -9,6 +11,7 @@ from services.auth_service import get_allowed_origins, get_secret_key, is_origin
 from services.db_service import get_db, get_db_display_config
 
 
+print("[STARTUP] Initializing Flask app...")
 app = Flask(__name__)
 app.secret_key = get_secret_key()
 
@@ -18,8 +21,10 @@ exact_allowed_origins, preview_origin_patterns = split_allowed_origins(allowed_o
 # Note: We handle CORS manually in before_request and after_request to have full control
 # Don't use CORS() extension - it can conflict with manual handlers
 
+print("[STARTUP] Initializing SocketIO...")
 socketio = SocketIO(app, cors_allowed_origins=allowed_origins)
 
+print("[STARTUP] Registering blueprints...")
 app.register_blueprint(admin_bp)
 app.register_blueprint(student_api_bp)
 
