@@ -801,13 +801,17 @@ const StudentInfo = () => {
         return true;
       } else {
         setOcrVerified('failed');
-        setOcrStatus(result.message || 'Identity verification failed. Please ensure your documents are clear.');
+        const errorMsg = result.message || 'Identity verification failed. Please ensure your documents are clear.';
+        setOcrStatus(errorMsg);
+        showPromptMessage(`❌ Verification Issue: ${errorMsg}`);
         return false;
       }
     } catch (err) {
       console.error('OCR Error:', err);
       setOcrVerified('failed');
-      setOcrStatus(`Verification error: ${err.message}`);
+      const errorMsg = err.message || 'Unknown verification error';
+      setOcrStatus(errorMsg);
+      showPromptMessage(`⚠️ Verification Issue: ${errorMsg}`);
       return false;
     }
   };
@@ -1956,73 +1960,6 @@ const StudentInfo = () => {
                   </div>
                 </div>
               </div>
-
-              {/* OCR Verification Status UI */}
-              {ocrVerified && (
-                <div style={{
-                  marginTop: '1rem',
-                  padding: '1rem',
-                  borderRadius: '16px',
-                  background: ocrVerified === 'verifying' ? '#f0f7ff' : ocrVerified === 'success' ? '#edfff3' : '#fff5f5',
-                  border: `1px solid ${ocrVerified === 'verifying' ? '#cce5ff' : ocrVerified === 'success' ? '#c3e6cb' : '#f5c6cb'}`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  marginBottom: '1.5rem',
-                  animation: 'fadeIn 0.3s ease'
-                }}>
-                  <div style={{fontSize: '1.2rem'}}>
-                    {ocrVerified === 'verifying' ? <i className="fas fa-spinner fa-spin" style={{color: '#0056b3'}}></i> : 
-                     ocrVerified === 'success' ? <i className="fas fa-check-circle" style={{color: '#28a745'}}></i> : 
-                     <i className="fas fa-exclamation-circle" style={{color: '#dc3545'}}></i>}
-                  </div>
-                  <div style={{flex: 1}}>
-                    <p style={{
-                      margin: 0, 
-                      fontSize: '0.9rem', 
-                      fontWeight: '700', 
-                      color: ocrVerified === 'verifying' ? '#004085' : ocrVerified === 'success' ? '#155724' : '#721c24'
-                    }}>
-                      {ocrVerified === 'verifying' ? 'Verifying Identity...' : 
-                       ocrVerified === 'success' ? 'Identity Verified' : 'Verification Issue'}
-                    </p>
-                    <p style={{
-                      margin: '2px 0 0', 
-                      fontSize: '0.8rem', 
-                      color: ocrVerified === 'verifying' ? '#004085' : ocrVerified === 'success' ? '#155724' : '#721c24',
-                      opacity: 0.9,
-                      lineHeight: '1.4'
-                    }}>
-                      {ocrStatus}
-                    </p>
-                  </div>
-                  {ocrVerified === 'failed' && (
-                    <button 
-                      type="button" 
-                      onClick={() => {
-                        const indigencyDoc = photos.mayorIndigency_photo || formData.mayorIndigency_photo || userProfile?.indigency_doc;
-                        if (schoolIdPhotos.front && indigencyDoc) {
-                          performOcrVerification(schoolIdPhotos.front, indigencyDoc);
-                        } else {
-                          showPromptMessage('⚠️ Please upload both School ID Front and Indigency Doc first.');
-                        }
-                      }}
-                      style={{
-                        background: 'var(--primary)',
-                        border: 'none',
-                        color: 'white',
-                        padding: '5px 12px',
-                        borderRadius: '20px',
-                        fontSize: '0.75rem',
-                        cursor: 'pointer',
-                        fontWeight: '600'
-                      }}
-                    >
-                      Retry
-                    </button>
-                  )}
-                </div>
-              )}
 
               {/* Documentary Requirements: COE and Grades */}
               <div style={{marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem'}}>

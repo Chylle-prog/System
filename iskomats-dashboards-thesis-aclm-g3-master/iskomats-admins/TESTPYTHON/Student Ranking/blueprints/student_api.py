@@ -1,5 +1,6 @@
 import base64
 import os
+import time
 import traceback
 from datetime import datetime, timedelta
 from functools import wraps
@@ -498,7 +499,9 @@ def submit_application():
             skip_verify = str(request.json.get('skip_verification', 'false')).lower() == 'true'
         else:
             req_no = form_data.get('req_no')
-            skip_verify = str(form_data.get('skip_verification', 'false')).lower() == 'true'
+            # Support both camelCase (frontend) and snake_case (legacy/internal)
+            skip_verify_val = form_data.get('skipVerification') or form_data.get('skip_verification')
+            skip_verify = str(skip_verify_val).lower() == 'true' if skip_verify_val is not None else False
         
         print(f"[SUBMIT] Processing application for User {current_user_id}, Req {req_no} (skip_verify={skip_verify})")
 
@@ -649,6 +652,58 @@ def submit_application():
         if 'conn' in locals():
             conn.rollback()
         return jsonify({'message': f'Submission error: {str(exc)}'}), 500
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+
+@student_api_bp.route('/verification/ocr-check', methods=['POST'])
+@token_required
+def ocr_check():
+    """Manual trigger for OCR verification (early check)."""
+    try:
+        data = request.get_json(silent=True) or {}
+        
+        # 1. Get Applicant info and current documents
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM applicants WHERE applicant_no = %s", (request.user_no,))
+        applicant = cur.fetchone()
+        
+        if not applicant:
+            return jsonify({'verified': False, 'message': 'Applicant profile not found'}), 404
+            
+        # 2. Extract images from payload OR from database if not provided
+        # The frontend sends these as base64 data URLs
+        id_front_bytes = decode_base64(data.get('idFront')) or db_bytes(applicant.get('id_img_front'))
+        indigency_doc_bytes = decode_base64(data.get('indigencyDoc')) or db_bytes(applicant.get('indigency_doc'))
+        
+        if not id_front_bytes or not indigency_doc_bytes:
+            return jsonify({
+                'verified': False, 
+                'message': 'Missing documents. Please upload both the Front of your School ID and the Indigency document.'
+            }), 400
+            
+        # 3. Run OCR Verification
+        print(f"[OCR-CHECK] Manual trigger for User {request.user_no}")
+        town_city = applicant.get('town_city_municipality', '')
+        
+        verified, message, _ = verify_id_with_ocr(
+            id_front_bytes,
+            first_name=applicant.get('first_name', ''),
+            last_name=applicant.get('last_name', ''),
+            town_city_municipality=town_city,
+            address_image_data=indigency_doc_bytes
+        )
+        
+        return jsonify({
+            'verified': verified,
+            'message': message
+        })
+        
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'verified': False, 'message': f'Server error during verification: {str(e)}'}), 500
     finally:
         if 'conn' in locals():
             conn.close()
