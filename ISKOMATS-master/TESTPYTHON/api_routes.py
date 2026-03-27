@@ -408,6 +408,25 @@ def get_rankings():
     try:
         conn = get_db()
         cur = conn.cursor()
+        
+        # ─── Optional Auth Check ──────────────────────────────────────
+        user_no = None
+        token = request.headers.get('Authorization')
+        if token:
+            try:
+                if token.startswith('Bearer '):
+                    token = token[7:]
+                decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+                user_no = decoded.get('user_no')
+            except Exception:
+                pass # Non-critical if token is invalid for just ranking
+        
+        # Get list of scholarships the user has already applied for
+        applied_sch_ids = set()
+        if user_no:
+            cur.execute("SELECT scholarship_no FROM applicant_status WHERE applicant_no = %s", (user_no,))
+            applied_sch_ids = {row['scholarship_no'] for row in cur.fetchall()}
+        
         cur.execute("SELECT * FROM scholarships")
         scholarships = cur.fetchall()
 
@@ -417,12 +436,15 @@ def get_rankings():
 
         for sch in scholarships:
             deadline = sch.get('deadline')
-            if deadline and deadline < today:
-                continue
-
+            is_expired = deadline and deadline < today
+            
             score = 0
             reasons = []
+            
+            if is_expired:
+                reasons.append(f"Application deadline has passed ({deadline})")
 
+            # ... (rest of the eligibility checks)
             # GPA
             min_gpa = sch['gpa']
             if min_gpa is not None and gpa < min_gpa:
@@ -458,7 +480,9 @@ def get_rankings():
                 'location': loc,
                 'deadline': sch.get('deadline'),
                 'score': round(score),
-                'reasons': reasons
+                'reasons': reasons,
+                'alreadyApplied': sch['req_no'] in applied_sch_ids,
+                'isExpired': is_expired
             }
 
             if not reasons:

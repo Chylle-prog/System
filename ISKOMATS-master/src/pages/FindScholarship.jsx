@@ -1029,10 +1029,11 @@ const FindScholarship = () => {
                   <button 
                     className="apply-btn" 
                     onClick={() => applyForScholarship(match.name, match.req_no)}
-                    disabled={hasApprovedApplication}
-                    style={hasApprovedApplication ? { backgroundColor: 'var(--gray-3)', cursor: 'not-allowed', color: 'white', opacity: 0.8 } : {}}
+                    disabled={hasApprovedApplication || match.alreadyApplied}
+                    style={(hasApprovedApplication || match.alreadyApplied) ? { backgroundColor: 'var(--gray-3)', cursor: 'not-allowed', color: 'white', opacity: 0.8 } : {}}
                   >
-                    {hasApprovedApplication ? 'Limit Reached: Already Approved' : 'Apply for this Scholarship'}
+                    {hasApprovedApplication ? 'Limit Reached: Already Approved' : 
+                     match.alreadyApplied ? 'Already Applied' : 'Apply for this Scholarship'}
                   </button>
                 </div>
               ))
@@ -1072,7 +1073,7 @@ const FindScholarship = () => {
                     disabled={true}
                     style={{ backgroundColor: 'var(--gray-2)', color: 'var(--gray-3)', cursor: 'not-allowed' }}
                   >
-                    Not Eligible to Apply
+                    {match.alreadyApplied ? 'Already Applied' : 'Not Eligible to Apply'}
                   </button>
                 </div>
               ))
