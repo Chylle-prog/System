@@ -173,11 +173,11 @@ const Login = () => {
       let applicantNo = '';
 
       try {
-        // Register user with backend
+        // Register user with backend (backend expects snake_case field names)
         const registerResponse = await authAPI.register({
-          firstName,
-          middleName,
-          lastName,
+          first_name: firstName,
+          middle_name: middleName,
+          last_name: lastName,
           email,
           password
         });

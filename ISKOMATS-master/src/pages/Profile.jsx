@@ -196,9 +196,11 @@ const Profile = () => {
       // Update profile via API
       const updatedData = await applicantAPI.updateProfile(profileData);
 
-      // Update user profile state (response does NOT include profile_picture binary)
-      // Preserve the profile_picture we already have in state so display doesn't reset
-      const mergedProfile = { ...updatedData };
+      // Re-fetch the full profile from the server so all fields are populated
+      const freshProfile = await applicantAPI.getProfile();
+
+      // Preserve the profile picture we already have in state (server may not return binary)
+      const mergedProfile = { ...freshProfile };
       if (profilePicture) {
         mergedProfile.profile_picture = profilePicture;
       }
@@ -207,7 +209,7 @@ const Profile = () => {
       // Show success modal
       setShowSuccessModal(true);
 
-      // After success, handle redirection or reload
+      // After success, close edit form and hide loading overlay
       setTimeout(() => {
         setShowSuccessModal(false);
         setShowEditForm(false);
