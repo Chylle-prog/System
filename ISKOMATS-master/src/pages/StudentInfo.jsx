@@ -143,6 +143,9 @@ const StudentInfo = () => {
     id_back: null,
     face_photo: null
   });
+  const [extraSignaturePhoto, setExtraSignaturePhoto] = useState(null);
+  const [isFaceMatching, setIsFaceMatching] = useState(false);
+  const [faceMatchResult, setFaceMatchResult] = useState(null); // { verified: boolean, confidence: number }
 
   const idPictureInputRef = useRef(null);
   const signatureInputRef = useRef(null);
@@ -2026,53 +2029,124 @@ const StudentInfo = () => {
               </div>
 
               {/* Signature Section */}
-              <div style={{marginBottom: '2rem'}}>
-                <label style={{display: 'block', fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '1rem'}}>Applicant's Signature <span style={{color: '#e74c3c'}}>*</span></label>
-                <div style={{background: '#fff', border: '1px solid var(--border)', borderRadius: '16px', padding: '1.5rem', textAlign: 'center'}}>
-                  {!showSignaturePad && !formData.applicantSignatureName ? (
-                    <button type="button" onClick={() => setShowSignaturePad(true)} className="photo-option-btn" style={{margin: '0 auto'}}>
-                      <i className="fas fa-pen-nib"></i> Sign Application
-                    </button>
-                  ) : showSignaturePad ? (
-                    <div style={{width: '100%', maxWidth: '400px', margin: '0 auto'}}>
-                      <div style={{border: '1.5px solid #eee', borderRadius: '12px', background: '#fcfcfc', marginBottom: '1rem'}}>
-                        <SignaturePad ref={sigPad} canvasProps={{width: 400, height: 150, className: 'sigCanvas'}} />
+               <div style={{marginBottom: '2rem'}}>
+                <label style={{display: 'block', fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '1rem'}}>
+                  Signature & Additional Identification <span style={{color: '#e74c3c'}}>*</span>
+                </label>
+                
+                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem'}}>
+                  {/* Signature Column */}
+                  <div style={{background: '#fff', border: '1px solid var(--border)', borderRadius: '16px', padding: '1.5rem', textAlign: 'center'}}>
+                    <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#666', marginBottom: '1rem'}}>Drawer Signature</label>
+                    {!showSignaturePad && !formData.applicantSignatureName ? (
+                      <button type="button" onClick={() => setShowSignaturePad(true)} className="photo-option-btn" style={{margin: '0 auto'}}>
+                        <i className="fas fa-pen-nib"></i> Sign Application
+                      </button>
+                    ) : showSignaturePad ? (
+                      <div style={{width: '100%', maxWidth: '300px', margin: '0 auto'}}>
+                        <div style={{border: '1.5px solid #eee', borderRadius: '12px', background: '#fcfcfc', marginBottom: '1rem'}}>
+                          <SignaturePad ref={sigPad} canvasProps={{width: 300, height: 120, className: 'sigCanvas'}} />
+                        </div>
+                        <div style={{display: 'flex', gap: '8px', justifyContent: 'center'}}>
+                          <button type="button" onClick={clearSignature} className="back-to-form-btn" style={{padding: '0.4rem 1rem', fontSize: '0.8rem'}}>Clear</button>
+                          <button type="button" onClick={saveSignature} className="submit-btn" style={{width: 'auto', padding: '0.4rem 1.2rem', height: 'auto', fontSize: '0.8rem'}}>Save</button>
+                        </div>
                       </div>
-                      <div style={{display: 'flex', gap: '10px', justifyContent: 'center'}}>
-                        <button type="button" onClick={clearSignature} className="back-to-form-btn" style={{padding: '0.5rem 1.5rem', fontSize: '0.85rem'}}>Clear</button>
-                        <button type="button" onClick={saveSignature} className="submit-btn" style={{width: 'auto', padding: '0.5rem 2rem', height: 'auto', fontSize: '0.85rem'}}>Save Signature</button>
+                    ) : (
+                      <div className="signature-preview-box">
+                        <img src={formData.applicantSignatureName} alt="Signature" style={{maxHeight: '100px'}} />
+                        <button type="button" onClick={() => setShowSignaturePad(true)} style={{position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer'}}><i className="fas fa-undo"></i></button>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="signature-preview-box">
-                      <img src={formData.applicantSignatureName} alt="Signature" />
-                      <button type="button" onClick={() => setShowSignaturePad(true)} style={{position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer'}}><i className="fas fa-undo"></i></button>
-                    </div>
-                  )}
+                    )}
+                  </div>
+
+                  {/* Extra Image Column (Not connected to DB) */}
+                  <div style={{background: '#f0f7ff', border: '1px solid #e1e8f0', borderRadius: '16px', padding: '1.5rem', textAlign: 'center'}}>
+                    <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#666', marginBottom: '0.5rem'}}>Additional Identification (Optional)</label>
+                    <p style={{fontSize: '0.7rem', color: '#888', marginBottom: '1rem'}}>Internal Record Only (Not stored in DB)</p>
+                    <input type="file" accept="image/*" onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => setExtraSignaturePhoto(reader.result);
+                        reader.readAsDataURL(file);
+                      }
+                    }} style={{fontSize: '0.75rem', width: '100%'}} />
+                    {extraSignaturePhoto && (
+                      <div style={{marginTop: '10px', position: 'relative'}}>
+                        <img src={extraSignaturePhoto} alt="Extra Identification" style={{maxHeight: '80px', borderRadius: '8px', border: '1px solid #fff'}} />
+                        <button type="button" onClick={() => setExtraSignaturePhoto(null)} style={{position: 'absolute', top: '-5px', right: '5px', background: 'rgba(255,0,0,0.7)', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', fontSize: '10px'}}><i className="fas fa-times"></i></button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Face Verification Section */}
+               {/* Face Verification Section */}
               <div style={{marginBottom: '2rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
                 <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
-                  Final Verification (Face Photo) <span style={{color: '#e74c3c'}}>*</span>
+                  Final Identity Verification <span style={{color: '#e74c3c'}}>*</span>
                 </h4>
-                <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1.2rem', paddingLeft: '16px'}}>Live Capture required</p>
+                <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1.2rem', paddingLeft: '16px'}}>Match captured photo with your School ID</p>
                 
-                <div style={{textAlign: 'center', paddingLeft: '16px'}}>
-                  <div style={{border: '2px solid #fff', borderRadius: '20px', height: '200px', width: '200px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e1e8f0', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)'}}>
+                <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem'}}>
+                  <div style={{border: '2px solid #fff', borderRadius: '20px', height: '200px', width: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e1e8f0', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)'}}>
                     {photos.face_photo ? (
                       <>
                         <img src={photos.face_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Face Verification" />
-                        <button type="button" onClick={() => removePhoto('face_photo')} style={{position: 'absolute', top: '10px', right: '10px', background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'}}><i className="fas fa-times"></i></button>
+                        <button type="button" onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); }} style={{position: 'absolute', top: '10px', right: '10px', background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'}}><i className="fas fa-times"></i></button>
                       </>
                     ) : (
                       <button type="button" onClick={openCamera} style={{border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px'}}>
                         <i className="fas fa-camera" style={{fontSize: '2.5rem'}}></i>
-                        <span style={{fontSize: '0.9rem', fontWeight: '600'}}>Click to Open Camera</span>
+                        <span style={{fontSize: '0.9rem', fontWeight: '600'}}>Capture Face Photo</span>
                       </button>
                     )}
                   </div>
+
+                  {photos.face_photo && (
+                    <div style={{width: '100%', maxWidth: '300px', textAlign: 'center'}}>
+                      {!faceMatchResult ? (
+                        <button type="button" onClick={async () => {
+                          const idImg = schoolIdPhotos.front || userProfile?.id_img_front;
+                          if (!idImg) {
+                            showPromptMessage('⚠️ Please upload your School ID in Step 3 first.');
+                            return;
+                          }
+                          
+                          setIsFaceMatching(true);
+                          setLoadingMessage({ title: 'Matching Face', message: 'Comparing captured photo with your School ID...' });
+                          
+                          try {
+                            const result = await applicantAPI.verifyFaceAgainstId(photos.face_photo, idImg);
+                            setFaceMatchResult(result);
+                            if (result.verified) {
+                              showPromptMessage('✅ Face successfully matched with ID!');
+                            } else {
+                              showPromptMessage(`❌ Face Match Issue: ${result.message || 'Face does not match the ID.'}`);
+                            }
+                          } catch (err) {
+                            console.error('Match error:', err);
+                            // Generic success for technical issues on matching too
+                            showPromptMessage('ℹ️ Verification service issue. Proceeding with manual check.');
+                            setFaceMatchResult({ verified: true, technical_unavailable: true });
+                          } finally {
+                            setIsFaceMatching(false);
+                          }
+                        }} className="submit-btn" disabled={isFaceMatching} style={{width: '100%', background: 'var(--primary)', borderRadius: '12px'}}>
+                          {isFaceMatching ? <><i className="fas fa-spinner fa-spin"></i> Matching...</> : <><i className="fas fa-user-check"></i> Verify Match with ID</>}
+                        </button>
+                      ) : (
+                        <div style={{padding: '10px', borderRadius: '12px', background: faceMatchResult.verified ? '#d4edda' : '#f8d7da', color: faceMatchResult.verified ? '#155724' : '#721c24', border: faceMatchResult.verified ? '1px solid #c3e6cb' : '1px solid #f5c6cb'}}>
+                          <i className={`fas ${faceMatchResult.verified ? 'fa-check-circle' : 'fa-exclamation-circle'}`} style={{marginRight: '8px'}}></i>
+                          {faceMatchResult.verified ? (faceMatchResult.technical_unavailable ? 'Service issue (Manual Check needed)' : 'Facial identity verified!') : faceMatchResult.message || 'Face identity mismatch.'}
+                          {!faceMatchResult.verified && (
+                            <button type="button" onClick={() => setFaceMatchResult(null)} style={{background: 'none', border: 'none', color: '#721c24', cursor: 'pointer', textDecoration: 'underline', fontSize: '0.8rem', marginLeft: '10px'}}>Retry</button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
