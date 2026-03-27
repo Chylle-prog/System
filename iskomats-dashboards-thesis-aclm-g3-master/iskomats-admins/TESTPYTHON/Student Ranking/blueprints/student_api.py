@@ -675,13 +675,25 @@ def ocr_check():
             
         # 2. Extract images from payload OR from database if not provided
         # The frontend sends these as base64 data URLs
-        id_front_bytes = decode_base64(data.get('idFront')) or db_bytes(applicant.get('id_img_front'))
-        indigency_doc_bytes = decode_base64(data.get('indigencyDoc')) or db_bytes(applicant.get('indigency_doc'))
+        # Support both camelCase (old/internal) and snake_case (frontend api.js)
+        id_front_param = data.get('id_front') or data.get('idFront')
+        indigency_doc_param = data.get('indigency_doc') or data.get('indigencyDoc')
         
-        if not id_front_bytes or not indigency_doc_bytes:
+        id_front_bytes = decode_base64(id_front_param) or db_bytes(applicant.get('id_img_front'))
+        indigency_doc_bytes = decode_base64(indigency_doc_param) or db_bytes(applicant.get('indigency_doc'))
+        
+        if not id_front_bytes:
+            print(f"[OCR-CHECK] User {request.user_no}: Missing ID front")
             return jsonify({
                 'verified': False, 
-                'message': 'Missing documents. Please upload both the Front of your School ID and the Indigency document.'
+                'message': 'Missing Document: Please upload the Front of your School ID.'
+            }), 400
+            
+        if not indigency_doc_bytes:
+            print(f"[OCR-CHECK] User {request.user_no}: Missing Indigency document")
+            return jsonify({
+                'verified': False, 
+                'message': 'Missing Document: Please upload your Certificate of Indigency for address verification.'
             }), 400
             
         # 3. Run OCR Verification

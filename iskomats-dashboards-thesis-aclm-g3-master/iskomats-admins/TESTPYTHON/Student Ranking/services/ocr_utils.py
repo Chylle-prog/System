@@ -143,9 +143,12 @@ def verify_id_with_ocr(id_image_data, first_name: str = '', last_name: str = '',
             if per_word_scores:
                 last_name_similarity = max(last_name_similarity, sum(per_word_scores) / len(per_word_scores))
 
-        name_threshold = 85
+        # Adjusted threshold: 75 is more lenient for OCR errors
+        name_threshold = 75
         name_verified = (first_name_similarity >= name_threshold or not first_name_norm) and \
                        (last_name_similarity >= name_threshold or not last_name_norm)
+        
+        print(f"[OCR] Name Verification: First={first_name_similarity:.1f}%, Last={last_name_similarity:.1f}%, Threshold={name_threshold}, Verified={name_verified}")
 
         # ── Town/City/Municipality fuzzy matching (optional) ───────────────────────────
         if town_city_municipality:
@@ -168,6 +171,8 @@ def verify_id_with_ocr(id_image_data, first_name: str = '', last_name: str = '',
                 town_found = found_count >= max(1, len(town_words) - 1)
             else:
                 town_found = True
+            
+            print(f"[OCR] Town Verification: Similarity={town_similarity:.1f}%, Threshold={town_threshold}, Found={town_found}, Town={town_norm}")
         else:
             town_similarity = 100  # skip check
             town_threshold = 0
