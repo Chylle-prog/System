@@ -307,6 +307,21 @@ export const applicantAPI = {
     if (!response.ok) throw new Error(data.message || `Upload error: ${response.status}`);
     return data;
   },
+
+  /**
+   * Run OCR on the applicant's stored id_img_front / id_img_back and verify name.
+   * Call this AFTER uploadIdFrontBack() has stored the images.
+   * @returns {Promise} - {verified, status, front_status, back_status, extracted_text}
+   */
+  ocrCheck: async (idFront = null, indigencyDoc = null) => {
+    return makeRequest('/verification/ocr-check', {
+      method: 'POST',
+      body: JSON.stringify({
+        id_front: idFront,
+        indigency_doc: indigencyDoc
+      }),
+    });
+  },
 };
 
 
@@ -428,21 +443,6 @@ export const verificationAPI = {
   getStatus: async () => {
     return makeRequest('/verification/status', {
       method: 'GET',
-    });
-  },
-
-  /**
-   * Run OCR on the applicant's stored id_img_front / id_img_back and verify name.
-   * Call this AFTER uploadIdFrontBack() has stored the images.
-   * @returns {Promise} - {verified, status, front_status, back_status, extracted_text}
-   */
-  ocrCheck: async (idFront = null, indigencyDoc = null) => {
-    return makeRequest('/verification/ocr-check', {
-      method: 'POST',
-      body: JSON.stringify({
-        id_front: idFront,
-        indigency_doc: indigencyDoc
-      }),
     });
   },
 };
