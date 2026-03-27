@@ -502,6 +502,29 @@ def get_rankings():
         if 'conn' in locals():
             conn.close()
 
+@api_bp.route('/announcements', methods=['GET'])
+def get_announcements():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        # Join with scholarship_providers to get the name of the provider who made the announcement
+        # Note: Using COALESCE for created_at in case it doesn't exist yet, but ordering by ann_no as fallback
+        cur.execute("""
+            SELECT a.ann_no, a.ann_message, p.provider_name
+            FROM announcements a
+            JOIN scholarship_providers p ON a.pro_no = p.pro_no
+            ORDER BY a.ann_no DESC
+            LIMIT 10
+        """)
+        announcements = cur.fetchall()
+        return jsonify(announcements)
+    except Exception as e:
+        print(f"Error fetching announcements: {e}")
+        return jsonify({'message': str(e)}), 500
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
 # ─── APPLICANT ENDPOINTS ─────────────────────────────────────────
 
 @api_bp.route('/applicant/profile', methods=['GET'])

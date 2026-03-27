@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { applicationAPI, scholarshipAPI } from '../services/api';
+import { applicationAPI, scholarshipAPI, announcementAPI } from '../services/api';
 import socketService from '../services/socket';
 
 const Portal = () => {
@@ -34,6 +34,7 @@ const Portal = () => {
   const [resources, setResources] = useState([]);
 
   // Notification data structure
+  const [dbAnnouncements, setDbAnnouncements] = useState([]);
   const [notifications, setNotifications] = useState([
     {
       id: 1,
@@ -130,6 +131,17 @@ const Portal = () => {
       }
     };
     fetchResources();
+
+    // Load dynamic announcements
+    const fetchAnnouncements = async () => {
+      try {
+        const data = await announcementAPI.getAll();
+        setDbAnnouncements(data || []);
+      } catch (err) {
+        console.error("Failed to load announcements:", err);
+      }
+    };
+    fetchAnnouncements();
 
     // Socket.IO Integration
     let unsubLogged, unsubMsg, unsubRoom;
@@ -1655,38 +1667,27 @@ const Portal = () => {
                 >
                   <i className="fas fa-calendar-alt" style={{marginRight: '6px'}}></i> View Calendar
                 </button>
-              </div>
-
-              <div style={{display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2.5rem'}}>
-                <div className="community-post" style={{borderLeft: '4px solid var(--primary)', paddingLeft: '1rem', borderRadius: '12px'}}>
-                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem'}}>
-                    <h4 style={{margin: 0, color: 'var(--primary)', fontSize: '1.1rem'}}>Mayor Eric B. Africa Scholarship</h4>
-                    <span style={{fontSize: '0.8rem', color: 'var(--text-soft)', background: 'var(--gray-2)', padding: '0.2rem 0.6rem', borderRadius: '20px'}}>Today</span>
+              </div>              <div style={{display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2.5rem'}}>
+                {dbAnnouncements.length > 0 ? (
+                  dbAnnouncements.map((ann, idx) => (
+                    <div key={ann.ann_no || idx} className="community-post" style={{borderLeft: '4px solid var(--primary)', paddingLeft: '1rem', borderRadius: '12px'}}>
+                      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem'}}>
+                        <h4 style={{margin: 0, color: 'var(--primary)', fontSize: '1.1rem'}}>{ann.provider_name}</h4>
+                        <span style={{fontSize: '0.8rem', color: 'var(--text-soft)', background: 'var(--gray-2)', padding: '0.2rem 0.6rem', borderRadius: '20px'}}>
+                          {ann.created_at ? new Date(ann.created_at).toLocaleDateString() : 'Recent'}
+                        </span>
+                      </div>
+                      <p style={{marginBottom: '0.5rem', color: 'var(--text-dark)'}}>
+                        {ann.ann_message}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{textAlign: 'center', padding: '2rem', color: 'var(--text-soft)'}}>
+                    <i className="fas fa-bullhorn" style={{fontSize: '2rem', marginBottom: '1rem', display: 'block'}}></i>
+                    <p>No announcements at this time.</p>
                   </div>
-                  <p style={{marginBottom: '0.5rem', color: 'var(--text-dark)'}}>
-                    <strong>Notice to all applicants:</strong> The deadline for submitting the hard copies of your application requirements at the Lipa City Hall has been extended until next Friday. Please ensure all documents are properly compiled in a long brown envelope.
-                  </p>
-                </div>
-
-                <div className="community-post" style={{borderLeft: '4px solid var(--warning)', paddingLeft: '1rem', borderRadius: '12px'}}>
-                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem'}}>
-                    <h4 style={{margin: 0, color: 'var(--warning)', fontSize: '1.1rem'}}>Governor Vilma's Scholarship</h4>
-                    <span style={{fontSize: '0.8rem', color: 'var(--text-soft)', background: 'var(--gray-2)', padding: '0.2rem 0.6rem', borderRadius: '20px'}}>Yesterday</span>
-                  </div>
-                  <p style={{marginBottom: '0.5rem', color: 'var(--text-dark)'}}>
-                    We are currently reviewing the first batch of applications. You can expect interview schedule notifications via email and SMS starting next week. Keep your lines open!
-                  </p>
-                </div>
-
-                <div className="community-post" style={{borderLeft: '4px solid var(--success)', paddingLeft: '1rem', borderRadius: '12px'}}>
-                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem'}}>
-                    <h4 style={{margin: 0, color: 'var(--success)', fontSize: '1.1rem'}}>CHED Tulong Dunong</h4>
-                    <span style={{fontSize: '0.8rem', color: 'var(--text-soft)', background: 'var(--gray-2)', padding: '0.2rem 0.6rem', borderRadius: '20px'}}>3 days ago</span>
-                  </div>
-                  <p style={{marginBottom: '0.5rem', color: 'var(--text-dark)'}}>
-                    Friendly reminder: Ensure your latest Certificate of Registration (COR) and grades are accurately uploaded to your application. Missing or unverified documents will result to delays in allowance disbursement.
-                  </p>
-                </div>
+                )}
               </div>
 
               <h3 id="events-calendar-section" style={{color: 'var(--primary)', marginBottom: '1.5rem', fontSize: '1.6rem', paddingTop: '1rem'}}>

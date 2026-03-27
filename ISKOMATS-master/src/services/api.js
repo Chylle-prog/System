@@ -448,6 +448,21 @@ export const verificationAPI = {
 };
 
 /**
+ * ===== ANNOUNCEMENT ENDPOINTS =====
+ */
+export const announcementAPI = {
+  /**
+   * Get latest announcements
+   * @returns {Promise} - Array of announcements
+   */
+  getAll: async () => {
+    return makeRequest('/student/announcements', {
+      method: 'GET',
+    });
+  },
+};
+
+/**
  * ===== EXPORT ALL API SERVICES =====
  */
 export default {
@@ -456,4 +471,5 @@ export default {
   applicant: applicantAPI,
   applications: applicationAPI,
   verification: verificationAPI,
+  announcements: announcementAPI,
 };
