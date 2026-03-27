@@ -12,7 +12,6 @@ const Portal = () => {
   const [activeSection, setActiveSection] = useState('menu');
   const [showMessageDropdown, setShowMessageDropdown] = useState(false);
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
-  const [showPhonePopup, setShowPhonePopup] = useState(false);
   const [currentChatId, setCurrentChatId] = useState(null);
   const [chatInput, setChatInput] = useState('');
   const [applications, setApplications] = useState([]);
@@ -1474,21 +1473,7 @@ const Portal = () => {
         </div>
       </nav>
 
-      <div className={`phone-popup-overlay ${showPhonePopup ? 'show' : ''}`} onClick={() => setShowPhonePopup(false)}>
-        <div className="phone-popup-content" onClick={e => e.stopPropagation()}>
-          <button className="phone-popup-close" onClick={() => setShowPhonePopup(false)}>&times;</button>
-          <div className="phone-popup-header">
-            <i className="fas fa-phone-alt"></i>
-            <h3>Contact Support</h3>
-          </div>
-          <p>For urgent scholarship concerns, you may reach us at:</p>
-          <div className="phone-number">0912-345-6789</div>
-          <p className="phone-note">Available Mon-Fri, 8:00 AM - 5:00 PM</p>
-          <button className="phone-call-btn" onClick={() => window.location.href = 'tel:09123456789'}>
-            Call Now
-          </button>
-        </div>
-      </div>
+
 
       {/* Loading overlay */}
       <div className={`loading-overlay ${showLoadingOverlay ? 'active' : ''}`}>
