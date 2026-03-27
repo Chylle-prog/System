@@ -12,6 +12,8 @@ const FindScholarship = () => {
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
   const [scholarshipMatches, setScholarshipMatches] = useState([]);
   const [successBanner, setSuccessBanner] = useState('');
+  const [hasApprovedApplication, setHasApprovedApplication] = useState(false);
+
   
   const [incomeLevel, setIncomeLevel] = useState('');
 
@@ -88,6 +90,19 @@ const FindScholarship = () => {
           zip_code: profile.zip_code || '',
           // gpa and income intentionally left as '' (empty)
         }));
+
+        try {
+          const apps = await applicationAPI.getUserApplications();
+          if (apps && Array.isArray(apps)) {
+            const approvedApp = apps.find(app => app.status === 'Approved');
+            if (approvedApp) {
+              setHasApprovedApplication(true);
+            }
+          }
+        } catch (appErr) {
+          console.warn('Could not load user applications:', appErr.message);
+        }
+
       } catch (err) {
         console.warn('Could not pre-fill from profile:', err.message);
       } finally {
@@ -970,8 +985,13 @@ const FindScholarship = () => {
                   <div className="scholarship-benefits">
                     🏆 Match score: <strong>{match.score}</strong> pts
                   </div>
-                  <button className="apply-btn" onClick={() => applyForScholarship(match.name, match.req_no)}>
-                    Apply for this Scholarship
+                  <button 
+                    className="apply-btn" 
+                    onClick={() => applyForScholarship(match.name, match.req_no)}
+                    disabled={hasApprovedApplication}
+                    style={hasApprovedApplication ? { backgroundColor: 'var(--gray-3)', cursor: 'not-allowed', color: 'white', opacity: 0.8 } : {}}
+                  >
+                    {hasApprovedApplication ? 'Limit Reached: Already Approved' : 'Apply for this Scholarship'}
                   </button>
                 </div>
               ))
