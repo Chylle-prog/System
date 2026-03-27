@@ -204,19 +204,26 @@ const Login = () => {
       localStorage.setItem('authToken', authToken);
       localStorage.setItem('applicantNo', applicantNo);
 
-      // Now that we have a token, save the rest of the profile data
-      await applicantAPI.updateProfile({
-        birthdate,
-        school,
-        mobile_no: mobileNo,
-        street_brgy: streetBrgy,
-        town_city_municipality: townCityMunicipality,
+      // Now that we have a token, save the rest of the profile data.
+      // Use the exact camelCase keys that match Profile.jsx and the backend field_mapping.
+      const profilePayload = {
+        firstName,
+        middleName,
+        lastName,
+        dateOfBirth: birthdate,
+        schoolName: school,
+        mobileNumber: mobileNo,
+        streetBarangay: streetBrgy,
+        townCity: townCityMunicipality,
         province,
-        zip_code: zipCode,
-        overall_gpa: overallGpa ? parseFloat(overallGpa) : null,
-        financial_income_of_parents: financialIncomeOfParents ? parseInt(financialIncomeOfParents) : null,
-        profile_picture: profilePicture
-      });
+        zipCode,
+      };
+      
+      if (overallGpa) profilePayload.gpa = parseFloat(overallGpa);
+      if (financialIncomeOfParents) profilePayload.parentsGrossIncome = parseInt(financialIncomeOfParents);
+      if (profilePicture) profilePayload.profile_picture = profilePicture;
+
+      await applicantAPI.updateProfile(profilePayload);
 
       // Clear temporary registration data
       localStorage.removeItem('registrationEmail');
