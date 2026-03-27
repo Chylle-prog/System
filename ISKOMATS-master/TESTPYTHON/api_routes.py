@@ -667,7 +667,7 @@ def update_profile():
         if 'conn' in locals():
             conn.close()
 
-@api_bp.route('/verification/ocr-check', methods=['POST'])
+@api_bp.route('/student/verification/ocr-check', methods=['POST'])
 @token_required
 def ocr_check():
     """Manual trigger for OCR verification (early check)."""

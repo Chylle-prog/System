@@ -314,7 +314,7 @@ export const applicantAPI = {
    * @returns {Promise} - {verified, status, front_status, back_status, extracted_text}
    */
   ocrCheck: async (idFront = null, indigencyDoc = null) => {
-    return makeRequest('/verification/ocr-check', {
+    return makeRequest('/student/verification/ocr-check', {
       method: 'POST',
       body: JSON.stringify({
         id_front: idFront,

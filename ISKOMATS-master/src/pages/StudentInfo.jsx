@@ -2148,6 +2148,34 @@ const StudentInfo = () => {
           </p>
         </div>
       </div>
+      
+      {/* Floating Prompt Alert */}
+      <div className={`prompt-alert ${showPrompt ? 'active' : ''}`} style={{
+        position: 'fixed',
+        bottom: '30px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        background: 'rgba(0, 0, 0, 0.85)',
+        color: 'white',
+        padding: '12px 24px',
+        borderRadius: '50px',
+        zIndex: '10000',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+        transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+        opacity: showPrompt ? 1 : 0,
+        pointerEvents: showPrompt ? 'all' : 'none',
+        marginBottom: showPrompt ? '0' : '-20px'
+      }}>
+        <div style={{
+          fontSize: '1rem',
+          fontWeight: '500'
+        }}>
+          {promptMessage}
+        </div>
+      </div>
     </>
   );
 };
