@@ -10,6 +10,8 @@ const Profile = () => {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [profilePicture, setProfilePicture] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
   const [error, setError] = useState(null);
   const [formData, setFormData] = useState({
     firstName: '',
@@ -62,6 +64,8 @@ const Profile = () => {
       }
 
       setCurrentUser(user);
+      setLoadingMessage({ title: 'Loading Profile', message: 'Retrieving your information from the database...' });
+      setShowLoadingOverlay(true);
       setIsLoading(true);
       setError(null);
 
@@ -87,6 +91,7 @@ const Profile = () => {
         }
       } finally {
         setIsLoading(false);
+        setShowLoadingOverlay(false);
       }
     };
 
@@ -168,6 +173,8 @@ const Profile = () => {
     e.preventDefault();
 
     try {
+      setLoadingMessage({ title: 'Updating Profile', message: 'Saving your changes to the database...' });
+      setShowLoadingOverlay(true);
       const profileData = {
         firstName: formData.firstName,
         middleName: formData.middleName,
@@ -204,10 +211,12 @@ const Profile = () => {
       setTimeout(() => {
         setShowSuccessModal(false);
         setShowEditForm(false);
+        setShowLoadingOverlay(false);
       }, 2000);
     } catch (err) {
       setError(err.message || 'Failed to update profile');
       console.error('Error updating profile:', err);
+      setShowLoadingOverlay(false);
     }
   };
 
@@ -260,6 +269,57 @@ const Profile = () => {
           --gray-2: #e2e8f0;
           --gray-3: #b0c0d0;
           --text-dark: #121826;
+        }
+
+        .loading-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0.75);
+          backdrop-filter: blur(10px);
+          display: none;
+          justify-content: center;
+          align-items: center;
+          z-index: 9999;
+          animation: fadeIn 0.3s ease;
+        }
+
+        .loading-overlay.active {
+          display: flex;
+        }
+
+        .loading-modal {
+          background: white;
+          padding: 3.5rem;
+          border-radius: 40px;
+          text-align: center;
+          box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
+          max-width: 450px;
+          width: 90%;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .loading-spinner {
+          width: 60px;
+          height: 60px;
+          border: 6px solid #ffe8e3;
+          border-top: 6px solid var(--primary);
+          border-radius: 50%;
+          margin: 0 auto 1.8rem;
+          animation: spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
           --text-soft: #3f4a5c;
           --white: #ffffff;
           --success: #0f7b5a;
@@ -1086,17 +1146,24 @@ const Profile = () => {
         </div>
       </section>
 
-      {/* Success Modal */}
+      {/* Modal success pop-up */}
       <div className={`success-modal ${showSuccessModal ? 'active' : ''}`}>
         <div className="modal-content">
-          <h3>Success!</h3>
-          <p>Your profile has been saved successfully.</p>
-          <button
-            className="close-btn"
-            onClick={() => setShowSuccessModal(false)}
-          >
-            Continue
-          </button>
+          <h3 style={{color: 'var(--success)'}}>Profile Updated!</h3>
+          <p>Your profile has been successfully saved.</p>
+        </div>
+      </div>
+
+      {/* Loading overlay */}
+      <div className={`loading-overlay ${showLoadingOverlay ? 'active' : ''}`}>
+        <div className="loading-modal">
+          <div className="loading-spinner"></div>
+          <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
+            {loadingMessage.title}
+          </h3>
+          <p style={{ color: 'var(--text-soft)', fontSize: '1rem' }}>
+            {loadingMessage.message}
+          </p>
         </div>
       </div>
     </>

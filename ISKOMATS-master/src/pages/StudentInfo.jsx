@@ -117,6 +117,7 @@ const StudentInfo = () => {
   const [scholarshipName, setScholarshipName] = useState('Scholarship Application');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingStep, setIsSavingStep] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
   const [currentStep, setCurrentStep] = useState(1);
 
@@ -439,6 +440,8 @@ const StudentInfo = () => {
     // Pre-fill profile data from backend API
     const loadProfile = async () => {
       try {
+        setLoadingMessage({ title: 'Loading Profile', message: 'Retrieving your information to pre-fill the application...' });
+        setIsInitialLoading(true);
         const profile = await applicantAPI.getProfile();
         setUserProfile(profile);
 
@@ -530,6 +533,7 @@ const StudentInfo = () => {
         if (savedDraft?.currentStep) {
           setCurrentStep(savedDraft.currentStep);
         }
+        setIsInitialLoading(false);
       }
     };
 
@@ -2081,7 +2085,7 @@ const StudentInfo = () => {
       </div>
 
       {/* Loading overlay */}
-      <div className={`loading-overlay ${isSubmitting || isSavingStep ? 'active' : ''}`}>
+      <div className={`loading-overlay ${isSubmitting || isSavingStep || isInitialLoading ? 'active' : ''}`}>
         <div className="loading-modal">
           <div className="loading-spinner"></div>
           <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>

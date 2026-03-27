@@ -9,6 +9,7 @@ const FindScholarship = () => {
   const [showFormView, setShowFormView] = useState(true);
   const [showResultsView, setShowResultsView] = useState(false);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
   const [scholarshipMatches, setScholarshipMatches] = useState([]);
   const [successBanner, setSuccessBanner] = useState('');
   
@@ -67,6 +68,8 @@ const FindScholarship = () => {
     // Pre-fill form fields from the backend profile API
     const loadProfile = async () => {
       try {
+        setLoadingMessage({ title: 'Loading Profile', message: 'Retrieving your information to pre-fill the form...' });
+        setShowLoadingOverlay(true);
         const profile = await applicantAPI.getProfile();
         setUserProfile(profile);
 
@@ -87,6 +90,8 @@ const FindScholarship = () => {
         }));
       } catch (err) {
         console.warn('Could not pre-fill from profile:', err.message);
+      } finally {
+        setShowLoadingOverlay(false);
       }
     };
 
@@ -186,7 +191,8 @@ const FindScholarship = () => {
       return;
     }
 
-    setShowLoadingOverlay(true);
+      setLoadingMessage({ title: 'Searching Scholarships', message: 'Analyzing your profile to find the best matches...' });
+      setShowLoadingOverlay(true);
 
     try {
       // Step 1: Save GPA / income to profile
@@ -268,6 +274,57 @@ const FindScholarship = () => {
           --gray-2: #e2e8f0;
           --gray-3: #b0c0d0;
           --text-dark: #121826;
+        }
+
+        .loading-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0.75);
+          backdrop-filter: blur(10px);
+          display: none;
+          justify-content: center;
+          align-items: center;
+          z-index: 9999;
+          animation: fadeIn 0.3s ease;
+        }
+
+        .loading-overlay.active {
+          display: flex;
+        }
+
+        .loading-modal {
+          background: white;
+          padding: 3.5rem;
+          border-radius: 40px;
+          text-align: center;
+          box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
+          max-width: 450px;
+          width: 90%;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .loading-spinner {
+          width: 60px;
+          height: 60px;
+          border: 6px solid #ffe8e3;
+          border-top: 6px solid var(--primary);
+          border-radius: 50%;
+          margin: 0 auto 1.8rem;
+          animation: spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
           --text-soft: #3f4a5c;
           --white: #ffffff;
           --success: #0f7b5a;
@@ -932,8 +989,12 @@ const FindScholarship = () => {
       <div className={`loading-overlay ${showLoadingOverlay ? 'active' : ''}`}>
         <div className="loading-modal">
           <div className="loading-spinner"></div>
-          <h3>Searching</h3>
-          <p>Finding the best scholarships for you...</p>
+          <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
+            {loadingMessage.title}
+          </h3>
+          <p style={{ color: 'var(--text-soft)', fontSize: '1rem' }}>
+            {loadingMessage.message}
+          </p>
         </div>
       </div>
     </>

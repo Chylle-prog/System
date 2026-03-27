@@ -19,6 +19,8 @@ const Portal = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   // ADDED THE MISSING STATE HERE
   const [showChatModal, setShowChatModal] = useState(false);
+  const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
   
   const messageDropdownRef = useRef(null);
   const notificationDropdownRef = useRef(null);
@@ -99,10 +101,14 @@ const Portal = () => {
     // Load applications dynamically from DB
     const fetchApplications = async () => {
       try {
+        setLoadingMessage({ title: 'Loading Applications', message: 'Retrieving your scholarship status and history...' });
+        setShowLoadingOverlay(true);
         const apps = await applicationAPI.getUserApplications();
         setApplications(apps || []);
       } catch (err) {
         console.error("Failed to load applications:", err);
+      } finally {
+        setShowLoadingOverlay(false);
       }
     };
     
@@ -390,6 +396,56 @@ const Portal = () => {
           --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.04), 0 4px 10px rgba(0, 20, 40, 0.03);
           --shadow-lg: 0 20px 40px -12px rgba(0, 40, 80, 0.2);
           --border-light: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .loading-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0.75);
+          backdrop-filter: blur(10px);
+          display: none;
+          justify-content: center;
+          align-items: center;
+          z-index: 9999;
+          animation: fadeIn 0.3s ease;
+        }
+
+        .loading-overlay.active {
+          display: flex;
+        }
+
+        .loading-modal {
+          background: white;
+          padding: 3.5rem;
+          border-radius: 40px;
+          text-align: center;
+          box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
+          max-width: 450px;
+          width: 90%;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .loading-spinner {
+          width: 60px;
+          height: 60px;
+          border: 6px solid #ffe8e3;
+          border-top: 6px solid var(--primary);
+          border-radius: 50%;
+          margin: 0 auto 1.8rem;
+          animation: spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
 
         .navbar {
@@ -1417,6 +1473,35 @@ const Portal = () => {
           </button>
         </div>
       </nav>
+
+      <div className={`phone-popup-overlay ${showPhonePopup ? 'show' : ''}`} onClick={() => setShowPhonePopup(false)}>
+        <div className="phone-popup-content" onClick={e => e.stopPropagation()}>
+          <button className="phone-popup-close" onClick={() => setShowPhonePopup(false)}>&times;</button>
+          <div className="phone-popup-header">
+            <i className="fas fa-phone-alt"></i>
+            <h3>Contact Support</h3>
+          </div>
+          <p>For urgent scholarship concerns, you may reach us at:</p>
+          <div className="phone-number">0912-345-6789</div>
+          <p className="phone-note">Available Mon-Fri, 8:00 AM - 5:00 PM</p>
+          <button className="phone-call-btn" onClick={() => window.location.href = 'tel:09123456789'}>
+            Call Now
+          </button>
+        </div>
+      </div>
+
+      {/* Loading overlay */}
+      <div className={`loading-overlay ${showLoadingOverlay ? 'active' : ''}`}>
+        <div className="loading-modal">
+          <div className="loading-spinner"></div>
+          <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
+            {loadingMessage.title}
+          </h3>
+          <p style={{ color: 'var(--text-soft)', fontSize: '1rem' }}>
+            {loadingMessage.message}
+          </p>
+        </div>
+      </div>
 
       {/* Chat Modal */}
       <div className={`chat-modal ${showChatModal ? 'show' : ''}`}>
