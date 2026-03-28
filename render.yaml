@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: iskomats-backend
+    runtime: python
+    rootDir: iskomats-dashboards-thesis-aclm-g3-master/iskomats-admins/TESTPYTHON/Student Ranking
+    buildCommand: apt-get install -y tesseract-ocr && pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.10"

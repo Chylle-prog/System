@@ -10,9 +10,10 @@ supabase
 PyJWT
 python-dotenv
 cryptography
-opencv-python
+opencv-python-headless
 numpy
 pandas
-easyocr
+pytesseract
+Pillow
 rapidfuzz
 deepface

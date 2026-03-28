@@ -3,51 +3,12 @@ import sys
 import gc
 
 
-# ─── Environment hints for ONNX / threading (set before first import) ─────────
-os.environ.setdefault('ONEDNN_PRIMITIVE_CACHE_CAPACITY', '1')
+# ─── Environment hints for threading ──────────────────────────────────────────
 os.environ.setdefault('OMP_NUM_THREADS', '1')
-
-# ─── OCR Reader — with periodic refresh to prevent memory accumulation ────────
-_reader = None
-_reader_request_count = 0
-_READER_REFRESH_INTERVAL = 100   # Recreate EasyOCR reader every N OCR calls
+os.environ.setdefault('ONEDNN_PRIMITIVE_CACHE_CAPACITY', '1')
 
 # ─── DeepFace — lazy singleton ─────────────────────────────────────────────────
 _deepface = None
-
-
-def _get_reader(force_refresh: bool = False):
-    """Return the EasyOCR reader, recreating it periodically to release memory."""
-    global _reader, _reader_request_count
-
-    # Respect hard skip flag
-    if os.environ.get('SKIP_HEAVY_IMPORTS') == 'True':
-        print("[OCR] Skipping easyocr due to SKIP_HEAVY_IMPORTS=True", flush=True)
-        return None
-
-    # Periodic refresh: terminate old reader, force GC, then recreate
-    if force_refresh or (_reader is not None and _reader is not False
-                         and _reader_request_count >= _READER_REFRESH_INTERVAL):
-        print(f"[OCR] Refreshing EasyOCR reader after {_reader_request_count} requests…", flush=True)
-        _reader = None
-        gc.collect()  # Encourage Python to release the old reader's memory
-        _reader_request_count = 0
-
-    if _reader is None:
-        try:
-            import easyocr
-            # gpu=False — no GPU on Render; model download ~300 MB on first run
-            _reader = easyocr.Reader(['en'], gpu=False)
-            _reader_request_count = 0
-            print("[OCR] EasyOCR reader initialised.", flush=True)
-        except (ImportError, Exception) as e:
-            print(f"[OCR] Warning: Could not initialise easyocr: {str(e)}", flush=True)
-            _reader = False  # Sentinel — "failed to load"
-
-    if _reader is not False:
-        _reader_request_count += 1
-
-    return _reader if _reader is not False else None
 
 
 def _get_deepface():
@@ -66,17 +27,38 @@ def _get_deepface():
     return _deepface if _deepface is not False else None
 
 
+# ─── Tesseract availability check ─────────────────────────────────────────────
+
+_tesseract_available = None   # None = unchecked, True/False = result
+
+
+def _check_tesseract():
+    """Check once whether the tesseract binary is reachable."""
+    global _tesseract_available
+    if _tesseract_available is not None:
+        return _tesseract_available
+    try:
+        import pytesseract
+        ver = pytesseract.get_tesseract_version()
+        print(f"[OCR] Tesseract available — version {ver}", flush=True)
+        _tesseract_available = True
+    except Exception as e:
+        print(f"[OCR] Tesseract not available: {e}", flush=True)
+        _tesseract_available = False
+    return _tesseract_available
+
+
 # ─── Image preprocessing ──────────────────────────────────────────────────────
 
-_MAX_OCR_WIDTH = 1600   # px — wide enough for ID text; reduces RAM substantially
+_MAX_OCR_WIDTH = 1200   # px — wide enough for most ID text
 
 
 def _preprocess_for_ocr(img):
     """
-    Preprocess a colour OpenCV image for OCR:
+    Preprocess a colour OpenCV image for Tesseract OCR:
       1. Downscale if wider than _MAX_OCR_WIDTH  (biggest memory win)
-      2. Convert to grayscale                    (~66 % less memory vs colour)
-      3. Apply binary threshold                  (improves OCR accuracy on IDs)
+      2. Convert to grayscale                    (~66 % less memory)
+      3. Apply adaptive threshold                (improves OCR on varied lighting)
 
     Returns a grayscale uint8 ndarray.
     """
@@ -96,9 +78,9 @@ def _preprocess_for_ocr(img):
     if len(img.shape) == 3:
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     else:
-        gray = img  # already grayscale
+        gray = img
 
-    # 3. Adaptive threshold for better contrast (works well on varied lighting)
+    # 3. Adaptive threshold for better contrast on varied lighting
     binary = cv2.adaptiveThreshold(
         gray, 255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -108,6 +90,46 @@ def _preprocess_for_ocr(img):
     )
 
     return binary
+
+
+# ─── OCR extraction ───────────────────────────────────────────────────────────
+
+def _run_tesseract(image_bytes):
+    """
+    Decode image bytes, preprocess, and run Tesseract OCR.
+
+    Returns (text: str, error: str | None)
+    """
+    import cv2
+    import numpy as np
+    import pytesseract
+
+    if image_bytes is None:
+        return '', 'No image data provided'
+
+    try:
+        nparr = np.frombuffer(bytes(image_bytes), np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        del nparr
+
+        if img is None:
+            return '', 'Could not decode image'
+
+        processed = _preprocess_for_ocr(img)
+        del img
+
+        # Tesseract config:
+        #   --psm 3  = fully automatic page segmentation (default, good for docs)
+        #   --oem 3  = use LSTM engine (best accuracy)
+        custom_config = r'--psm 3 --oem 3'
+        text = pytesseract.image_to_string(processed, config=custom_config)
+        del processed
+        gc.collect()
+
+        return text.strip(), None
+
+    except Exception as e:
+        return '', f'OCR extraction error: {str(e)}'
 
 
 # ─── Text helpers ─────────────────────────────────────────────────────────────
@@ -133,7 +155,7 @@ def verify_id_with_ocr(
     town_city_municipality: str = '',
     address_image_data=None,
 ):
-    """AI-assisted ID verification using OCR + fuzzy similarity.
+    """AI-assisted ID verification using Tesseract OCR + fuzzy similarity.
 
     Parameters
     ----------
@@ -152,56 +174,28 @@ def verify_id_with_ocr(
     -------
     (is_verified: bool, status: str, extracted_text: str)
     """
-    import cv2
-    import numpy as np
     import pandas as pd
     from rapidfuzz import fuzz
 
     if id_image_data is None or (isinstance(id_image_data, float) and pd.isna(id_image_data)):
         return False, 'No ID image provided', ''
 
+    # Confirm Tesseract is available
+    if not _check_tesseract():
+        return False, 'OCR service temporarily unavailable (Tesseract not installed on server)', ''
+
     try:
-        reader = _get_reader()
-        if not reader:
-            return False, 'OCR service temporarily unavailable (Low memory mode)', ''
-
-        def extract_normalized_text(image_data, missing_message):
-            """Decode bytes → preprocess → run OCR → return normalised text dict."""
-            if image_data is None or (isinstance(image_data, float) and pd.isna(image_data)):
-                return None, missing_message
-
-            nparr = np.frombuffer(bytes(image_data), np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            if img is None:
-                return None, 'Could not load image'
-
-            # ── Memory optimisations ───────────────────────────────────────────
-            img = _preprocess_for_ocr(img)
-            # ──────────────────────────────────────────────────────────────────
-
-            # Only request plain text — no hocr/tsv/blocks (saves 30-50 % RAM)
-            ocr_results = reader.readtext(img, detail=0, paragraph=False)
-            extracted = ' '.join(ocr_results)
-
-            # Explicit cleanup
-            del img
-            del nparr
-
-            return {
-                'raw': extracted,
-                'normalized': normalize_text(extracted),
-            }, None
-
-        id_ocr, id_error = extract_normalized_text(id_image_data, 'No ID image provided')
-        if id_error:
+        # ── Extract text from ID image ─────────────────────────────────────────
+        extracted_text_raw, id_error = _run_tesseract(id_image_data)
+        if id_error and not extracted_text_raw:
             return False, id_error, ''
 
-        extracted_text = id_ocr['raw']
-        extracted_text_norm = id_ocr['normalized']
+        extracted_text_norm = normalize_text(extracted_text_raw)
+        print(f"[OCR] ID text extracted ({len(extracted_text_raw)} chars)", flush=True)
 
         # ── First Name + Last Name fuzzy matching ──────────────────────────────
         first_name_norm = normalize_text(first_name)
-        last_name_norm = normalize_text(last_name)
+        last_name_norm  = normalize_text(last_name)
 
         def name_similarity(name_norm, text_norm):
             if not name_norm:
@@ -244,15 +238,13 @@ def verify_id_with_ocr(
 
         # ── Town/City/Municipality address matching (optional) ─────────────────
         if town_city_municipality:
-            address_ocr, address_error = extract_normalized_text(
-                address_image_data if address_image_data is not None else id_image_data,
-                'No address document image provided',
-            )
-            if address_error:
-                return False, address_error, extracted_text
+            addr_src = address_image_data if address_image_data is not None else id_image_data
+            address_text_raw, addr_error = _run_tesseract(addr_src)
+            if addr_error and not address_text_raw:
+                return False, addr_error, extracted_text_raw
 
             town_norm         = normalize_text(town_city_municipality)
-            address_text_norm = address_ocr['normalized']
+            address_text_norm = normalize_text(address_text_raw)
             town_similarity   = fuzz.partial_ratio(town_norm, address_text_norm)
             town_threshold    = 50
 
@@ -291,7 +283,7 @@ def verify_id_with_ocr(
                 f'Town: {town_similarity:.0f}%)'
             )
 
-        return is_verified, status, extracted_text
+        return is_verified, status, extracted_text_raw
 
     except Exception as exc:
         return False, f'OCR Error: {str(exc)}', ''
