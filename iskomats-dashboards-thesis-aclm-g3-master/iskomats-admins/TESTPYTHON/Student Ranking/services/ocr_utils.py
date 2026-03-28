@@ -361,10 +361,11 @@ def verify_face_with_id(face_image_data, id_image_data):
                 del face_img, id_img
                 gc.collect()
 
+                # Set enforce_detection=True to ensure a face is actually present
                 result = deepface.verify(
                     face_path, id_path,
                     model_name='VGG-Face',
-                    enforce_detection=False,
+                    enforce_detection=True,
                 )
 
             is_verified = result['verified']
@@ -378,6 +379,11 @@ def verify_face_with_id(face_image_data, id_image_data):
 
             return is_verified, status, confidence
 
+        except ValueError as e:
+            msg = str(e)
+            if 'Face could not be detected' in msg:
+                 return False, 'Face not detected: Please ensure both your selfie and ID photo are clear and well-lit.', 0.0
+            return False, f'Face detection issue: {msg}', 0.0
         except ImportError:
             return False, 'DeepFace not available', 0.0
         except Exception as e:
