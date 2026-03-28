@@ -245,15 +245,13 @@ def verify_id_with_ocr(
 
             town_norm         = normalize_text(town_city_municipality)
             address_text_norm = normalize_text(address_text_raw)
-            town_similarity   = fuzz.partial_ratio(town_norm, address_text_norm)
-            town_threshold    = 50
-
-            town_words = [w for w in town_norm.split() if len(w) >= 3]
-            if town_words:
-                found_count = sum(1 for w in town_words if w in address_text_norm)
-                town_found  = found_count >= max(1, len(town_words) - 1)
-            else:
-                town_found = True
+            
+            partial = fuzz.partial_ratio(town_norm, address_text_norm)
+            token = fuzz.token_set_ratio(town_norm, address_text_norm)
+            town_similarity = max(partial, token)
+            
+            town_threshold    = 60
+            town_found        = town_similarity >= town_threshold
 
             print(
                 f"[OCR] Town: Similarity={town_similarity:.1f}% "
