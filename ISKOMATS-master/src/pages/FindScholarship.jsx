@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { applicantAPI, scholarshipAPI, applicationAPI, verificationAPI } from '../services/api';
 
 const FindScholarship = () => {
   const navigate = useNavigate();
+  const { userProfile: globalProfile } = useAuth();
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [showFormView, setShowFormView] = useState(true);
@@ -902,7 +903,7 @@ const FindScholarship = () => {
       <nav className="navbar">
         <Link to="/portal" className="navbar-brand">iskoMats</Link>
         <div className="navbar-menu">
-          <span>{currentUser}</span>
+          <span>{globalProfile?.first_name || userProfile?.first_name || localStorage.getItem('userFirstName') || currentUser}</span>
           <button className="logout-btn" onClick={logout}>
             <i className="fas fa-sign-out-alt" style={{marginRight: '6px'}}></i>Logout
           </button>

@@ -6,7 +6,7 @@ import socketService from '../services/socket';
 
 const Portal = () => {
   const navigate = useNavigate();
-  const { logout: authLogout } = useAuth();
+  const { logout: authLogout, userProfile: globalProfile } = useAuth();
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [activeSection, setActiveSection] = useState('menu');
@@ -1472,7 +1472,7 @@ const Portal = () => {
       <nav className="navbar">
         <Link to="/" className="navbar-brand">iskoMats</Link>
         <div className="navbar-menu">
-          <span>{userProfile?.first_name || currentUser}</span>
+          <span>{globalProfile?.first_name || userProfile?.first_name || localStorage.getItem('userFirstName') || currentUser}</span>
 
           {/* MESSAGE ICON WITH DROPDOWN */}
           <div className="message-wrapper" ref={messageDropdownRef}>

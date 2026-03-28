@@ -107,6 +107,7 @@ const fillEmptyValuesOnly = (baseData, incomingData = {}) => {
 const StudentInfo = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { logout: authLogout, userProfile: globalProfile } = useAuth();
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [showSubmissionModal, setShowSubmissionModal] = useState(false);
@@ -1781,7 +1782,7 @@ const StudentInfo = () => {
       <nav className="navbar">
         <Link to="/portal" className="navbar-brand">iskoMats</Link>
         <div className="navbar-menu">
-          <span>{userProfile?.first_name || userProfile?.firstName || currentUser}</span>
+          <span>{globalProfile?.first_name || userProfile?.first_name || userProfile?.firstName || localStorage.getItem('userFirstName') || currentUser}</span>
           <button className="logout-btn" onClick={() => {
             localStorage.removeItem('currentUser');
             navigate('/login');

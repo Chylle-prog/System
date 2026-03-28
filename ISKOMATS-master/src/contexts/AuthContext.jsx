@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { getCurrentUser, getUserProfiles, getUserAccounts, setCurrentUser, updateUserProfiles, updateUserAccounts } from '../utils/storage';
+import { applicantAPI } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -7,9 +8,27 @@ export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUserState] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
   const [userProfiles, setUserProfiles] = useState({});
   const [userAccounts, setUserAccounts] = useState({});
   const [loading, setLoading] = useState(true);
+
+  // Function to fetch full profile and store first name
+  const fetchProfile = async (email) => {
+    try {
+      const profile = await applicantAPI.getProfile();
+      if (profile) {
+        setUserProfile(profile);
+        if (profile.first_name) {
+          localStorage.setItem('userFirstName', profile.first_name);
+        }
+        return profile;
+      }
+    } catch (err) {
+      console.warn('Could not fetch global profile:', err.message);
+    }
+    return null;
+  };
 
   useEffect(() => {
     // Load data from localStorage on mount
@@ -20,14 +39,23 @@ export const AuthProvider = ({ children }) => {
     setCurrentUserState(user);
     setUserProfiles(profiles);
     setUserAccounts(accounts);
-    setLoading(false);
+    
+    if (user) {
+      fetchProfile(user).finally(() => setLoading(false));
+    } else {
+      setLoading(false);
+    }
   }, []);
 
-  const login = (email, password) => {
+  const login = async (email, password) => {
     const accounts = getUserAccounts();
     if (accounts[email] && accounts[email].password === password) {
       setCurrentUser(email);
       setCurrentUserState(email);
+      
+      // Fetch profile immediately on login
+      await fetchProfile(email);
+      
       return { success: true, user: email };
     }
     return { success: false, error: 'Invalid credentials' };
@@ -73,7 +101,9 @@ export const AuthProvider = ({ children }) => {
 
   const value = {
     currentUser,
-    setCurrentUserState, // Allow components to directly update the auth state
+    setCurrentUserState,
+    userProfile, // Fetch userProfile globally
+    fetchProfile, // Allow manual refresh if needed
     userProfiles,
     userAccounts,
     login,
