@@ -741,10 +741,14 @@ def ocr_check():
             return jsonify({'verified': False, 'message': 'Applicant profile not found'}), 404
 
         # 2. Resolve images — payload takes priority, then fall back to stored DB copies
-        id_front_param      = data.get('id_front') or data.get('idFront')
-        indigency_doc_param = data.get('indigency_doc') or data.get('indigencyDoc')
+        # If the frontend explicitly sends id_front as null, it means we ONLY want to verify the address
+        if 'id_front' in data and data['id_front'] is None:
+            id_front_bytes = None
+        else:
+            id_front_param = data.get('id_front') or data.get('idFront')
+            id_front_bytes = decode_base64(id_front_param) or db_bytes(applicant.get('id_img_front'))
 
-        id_front_bytes      = decode_base64(id_front_param) or db_bytes(applicant.get('id_img_front'))
+        indigency_doc_param = data.get('indigency_doc') or data.get('indigencyDoc')
         indigency_doc_bytes = decode_base64(indigency_doc_param) or db_bytes(applicant.get('indigency_doc'))
 
         town_city = data.get('town_city') or data.get('townCity') or applicant.get('town_city_municipality', '')
