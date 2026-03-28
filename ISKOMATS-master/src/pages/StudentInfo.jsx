@@ -2006,17 +2006,23 @@ const StudentInfo = () => {
 
               {/* Documentary Requirement: Indigency */}
               <div style={{marginTop: '1.5rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
-                <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
+                <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '1rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
                   Certificate of Indigency <span style={{color: '#e74c3c'}}>*</span>
                 </h4>
-                <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
                 <div style={{paddingLeft: '16px'}}>
-                  <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 2} />
-                  {photos.mayorIndigency_photo && (
-                    <div style={{marginTop: '1rem'}}>
-                      <img src={photos.mayorIndigency_photo} style={{maxWidth: '200px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="Indigency Preview" />
+                  <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '180px', width: '280px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
+                    <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 2} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
+                    <div style={{textAlign: 'center', color: '#999', fontSize: '0.85rem', pointerEvents: 'none'}}>
+                      {photos.mayorIndigency_photo ? (
+                        <img src={photos.mayorIndigency_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Indigency Preview" />
+                      ) : (
+                        <>
+                          <i className="fas fa-camera" style={{fontSize: '2rem', marginBottom: '0.5rem', display: 'block'}}></i>
+                          <span>Upload Indigency Photo</span>
+                        </>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
               </div>
 
@@ -2082,46 +2088,87 @@ const StudentInfo = () => {
               </div>
 
               <div style={{marginBottom: '2rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
-                <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
-                  Updated School ID (Photo) <span style={{color: '#e74c3c'}}>*</span>
+                <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '1.2rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
+                  Updated School ID <span style={{color: '#e74c3c'}}>*</span>
                 </h4>
-                <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1.2rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
                 
-                <div className="form-row" style={{paddingLeft: '16px'}}>
+                <div className="form-row" style={{paddingLeft: '16px', gap: '2rem'}}>
                   <div className="form-group">
-                    <label style={{fontSize: '0.8rem', color: '#555'}}>Front Side</label>
-                    <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} required={currentStep === 3} />
-                    {schoolIdPhotos.front && <img src={schoolIdPhotos.front} style={{marginTop: '10px', width: '100%', maxWidth: '150px', borderRadius: '8px'}} alt="Front Preview" />}
+                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>Front Side</label>
+                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
+                      <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} required={currentStep === 3} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
+                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none'}}>
+                        {schoolIdPhotos.front ? (
+                          <img src={schoolIdPhotos.front} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Front Preview" />
+                        ) : (
+                          <>
+                            <i className="fas fa-camera" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
+                            <span>Upload Front</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
                   <div className="form-group">
-                    <label style={{fontSize: '0.8rem', color: '#555'}}>Back Side</label>
-                    <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} required={currentStep === 3} />
-                    {schoolIdPhotos.back && <img src={schoolIdPhotos.back} style={{marginTop: '10px', width: '100%', maxWidth: '150px', borderRadius: '8px'}} alt="Back Preview" />}
+                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>Back Side</label>
+                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
+                      <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} required={currentStep === 3} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
+                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none'}}>
+                        {schoolIdPhotos.back ? (
+                          <img src={schoolIdPhotos.back} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Back Preview" />
+                        ) : (
+                          <>
+                            <i className="fas fa-camera" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
+                            <span>Upload Back</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
 
               {/* Documentary Requirements: COE and Grades */}
-              <div style={{marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.2rem'}}>
+              <div style={{marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem'}}>
                 <div style={{background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
-                  <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
+                  <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '1rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
                     Certificate of Enrollment (Current A.Y) <span style={{color: '#e74c3c'}}>*</span>
                   </h4>
-                  <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
                   <div style={{paddingLeft: '16px'}}>
-                    <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} />
-                    {photos.mayorCOE_photo && <img src={photos.mayorCOE_photo} style={{marginTop: '10px', maxWidth: '200px', borderRadius: '8px'}} alt="COE Preview" />}
+                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '180px', width: '280px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
+                      <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
+                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.85rem', pointerEvents: 'none'}}>
+                        {photos.mayorCOE_photo ? (
+                          <img src={photos.mayorCOE_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="COE Preview" />
+                        ) : (
+                          <>
+                            <i className="fas fa-camera" style={{fontSize: '2rem', marginBottom: '0.5rem', display: 'block'}}></i>
+                            <span>Upload COE Photo</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
                 <div style={{background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
-                  <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
+                  <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '1rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
                     Certified True Copy of Grades <span style={{color: '#e74c3c'}}>*</span>
                   </h4>
-                  <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
                   <div style={{paddingLeft: '16px'}}>
-                    <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} />
-                    {photos.mayorGrades_photo && <img src={photos.mayorGrades_photo} style={{marginTop: '10px', maxWidth: '200px', borderRadius: '8px'}} alt="Grades Preview" />}
+                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '180px', width: '280px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
+                      <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
+                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.85rem', pointerEvents: 'none'}}>
+                        {photos.mayorGrades_photo ? (
+                          <img src={photos.mayorGrades_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Grades Preview" />
+                        ) : (
+                          <>
+                            <i className="fas fa-camera" style={{fontSize: '2rem', marginBottom: '0.5rem', display: 'block'}}></i>
+                            <span>Upload Grades Photo</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
