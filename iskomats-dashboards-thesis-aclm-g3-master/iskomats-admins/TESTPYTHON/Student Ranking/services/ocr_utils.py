@@ -1,51 +1,24 @@
 import os
 import sys
 import gc
-
+import multiprocessing as mp
 
 # ─── Environment hints for threading & memory ──────────────────────────────────
 os.environ.setdefault('OMP_NUM_THREADS', '1')
 os.environ.setdefault('ONEDNN_PRIMITIVE_CACHE_CAPACITY', '1')
+# ONNX / TF logging
 os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '3')
-os.environ.setdefault('TF_FORCE_GPU_ALLOW_GROWTH', 'true')
-os.environ.setdefault('TF_NUM_INTEROP_THREADS', '1')
-os.environ.setdefault('TF_NUM_INTRAOP_THREADS', '1')
-os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
 
-# ─── DeepFace — lazy singleton ─────────────────────────────────────────────────
-_deepface = None
-_deepface_error = "Not initialized"
-
-
-def _get_deepface():
-    global _deepface, _deepface_error
-    if _deepface is None:
-        if str(os.environ.get('SKIP_HEAVY_IMPORTS', 'False')).lower() == 'true':
-            _deepface_error = "Face verification manually disabled via SKIP_HEAVY_IMPORTS=True in server settings."
-            print(f"[FACE] {_deepface_error}", flush=True)
-            _deepface = False
-            return None
-        try:
-            from deepface import DeepFace
-            _deepface = DeepFace
-            _deepface_error = None
-            gc.collect() # Clear overhead after heavy import
-            print("[FACE] DeepFace successfully initialized.", flush=True)
-        except ImportError as e:
-            _deepface_error = f"DeepFace library not installed or corrupted: {str(e)}"
-            print(f"[FACE] CRITICAL: {_deepface_error}", flush=True)
-            _deepface = False
-        except Exception as e:
-            _deepface_error = f"DeepFace initialization failed (likely out of memory): {str(e)}"
-            print(f"[FACE] CRITICAL: {_deepface_error}", flush=True)
-            _deepface = False
-    return _deepface if _deepface is not False else None
-
+# Force spawn start method for Clean RAM isolation (Crucial for 512MB RAM)
+try:
+    if mp.get_start_method(allow_none=True) is None:
+        mp.set_start_method('spawn', force=True)
+except Exception:
+    pass
 
 # ─── Tesseract availability check ─────────────────────────────────────────────
 
 _tesseract_available = None   # None = unchecked, True/False = result
-
 
 def _check_tesseract():
     """Check once whether the tesseract binary is reachable."""
@@ -66,36 +39,20 @@ def _check_tesseract():
 # ─── Image preprocessing ──────────────────────────────────────────────────────
 
 _MAX_OCR_WIDTH = 1200   # px — wide enough for most ID text
-
+_MAX_FACE_WIDTH = 224   # px — optimal for ArcFace/ONNX
 
 def _preprocess_for_ocr(img):
-    """
-    Preprocess a colour OpenCV image for Tesseract OCR:
-      1. Downscale if wider than _MAX_OCR_WIDTH  (biggest memory win)
-      2. Convert to grayscale                    (~66 % less memory)
-      3. Apply adaptive threshold                (improves OCR on varied lighting)
-
-    Returns a grayscale uint8 ndarray.
-    """
     import cv2
-
     h, w = img.shape[:2]
-
-    # 1. Resize only if necessary
     if w > _MAX_OCR_WIDTH:
         scale = _MAX_OCR_WIDTH / w
-        new_w = int(w * scale)
-        new_h = int(h * scale)
-        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
-        print(f"[OCR] Resized image {w}×{h} → {new_w}×{new_h}", flush=True)
-
-    # 2. Grayscale
+        img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+    
     if len(img.shape) == 3:
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     else:
         gray = img
 
-    # 3. Adaptive threshold for better contrast on varied lighting
     binary = cv2.adaptiveThreshold(
         gray, 255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -103,46 +60,32 @@ def _preprocess_for_ocr(img):
         blockSize=31,
         C=10,
     )
-
     return binary
 
 
 # ─── OCR extraction ───────────────────────────────────────────────────────────
 
 def _run_tesseract(image_bytes):
-    """
-    Decode image bytes, preprocess, and run Tesseract OCR.
-
-    Returns (text: str, error: str | None)
-    """
     import cv2
     import numpy as np
     import pytesseract
 
-    if image_bytes is None:
+    if not image_bytes:
         return '', 'No image data provided'
 
     try:
         nparr = np.frombuffer(bytes(image_bytes), np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        del nparr
-
         if img is None:
             return '', 'Could not decode image'
 
         processed = _preprocess_for_ocr(img)
-        del img
-
-        # Tesseract config:
-        #   --psm 3  = fully automatic page segmentation (default, good for docs)
-        #   --oem 3  = use LSTM engine (best accuracy)
         custom_config = r'--psm 3 --oem 3'
         text = pytesseract.image_to_string(processed, config=custom_config)
         del processed
         gc.collect()
 
         return text.strip(), None
-
     except Exception as e:
         return '', f'OCR extraction error: {str(e)}'
 
@@ -150,8 +93,7 @@ def _run_tesseract(image_bytes):
 # ─── Text helpers ─────────────────────────────────────────────────────────────
 
 def normalize_text(text: str) -> str:
-    if not text:
-        return ''
+    if not text: return ''
     return (
         text.lower()
         .replace('.', '')
@@ -170,70 +112,33 @@ def verify_id_with_ocr(
     town_city_municipality: str = '',
     address_image_data=None,
 ):
-    """AI-assisted ID verification using Tesseract OCR + fuzzy similarity.
-
-    Parameters
-    ----------
-    id_image_data : bytes | None
-        Raw image bytes for ID front (e.g. JPEG/PNG).
-    first_name : str, optional
-        First name to look for in the ID text.
-    last_name : str, optional
-        Last name to look for in the ID text.
-    town_city_municipality : str, optional
-        Town/city/municipality to look for in address document (empty → skip).
-    address_image_data : bytes | None, optional
-        Separate raw image bytes used for address/indigency OCR.
-
-    Returns
-    -------
-    (is_verified: bool, status: str, extracted_text: str)
-    """
+    """AI-assisted ID verification using Tesseract OCR + fuzzy similarity."""
     import pandas as pd
     from rapidfuzz import fuzz
 
-    if id_image_data is None or (isinstance(id_image_data, float) and pd.isna(id_image_data)):
+    if not id_image_data or (isinstance(id_image_data, float) and pd.isna(id_image_data)):
         return False, 'No ID image provided', ''
 
-    # Confirm Tesseract is available
     if not _check_tesseract():
-        return False, 'OCR service temporarily unavailable (Tesseract not installed on server)', ''
+        return False, 'OCR service temporarily unavailable', ''
 
     try:
-        # ── Extract text from ID image ─────────────────────────────────────────
+        # 1. Extract text from ID
         extracted_text_raw, id_error = _run_tesseract(id_image_data)
         if id_error and not extracted_text_raw:
             return False, id_error, ''
 
         extracted_text_norm = normalize_text(extracted_text_raw)
-        print(f"[OCR] ID text extracted ({len(extracted_text_raw)} chars)", flush=True)
-
-        # ── First Name + Last Name fuzzy matching ──────────────────────────────
         first_name_norm = normalize_text(first_name)
         last_name_norm  = normalize_text(last_name)
 
         def name_similarity(name_norm, text_norm):
-            if not name_norm:
-                return 0
-            ratio   = fuzz.ratio(name_norm, text_norm)
+            if not name_norm: return 0
+            # Multi-strategy fuzzy match
+            ratio = fuzz.ratio(name_norm, text_norm)
             partial = fuzz.partial_ratio(name_norm, text_norm)
-            token   = fuzz.token_sort_ratio(name_norm, text_norm)
-            try:
-                weighted = fuzz.WRatio(name_norm, text_norm)
-            except Exception:
-                weighted = 0
-            score = max(ratio, partial, token, weighted)
-
-            # Per-word fallback
-            name_words = [w for w in name_norm.split() if len(w) >= 2]
-            ocr_words  = [w for w in text_norm.split() if w]
-            if name_words and ocr_words:
-                per_word = [
-                    max((fuzz.partial_ratio(nw, ow) for ow in ocr_words), default=0)
-                    for nw in name_words
-                ]
-                score = max(score, sum(per_word) / len(per_word))
-            return score
+            token = fuzz.token_sort_ratio(name_norm, text_norm)
+            return max(ratio, partial, token)
 
         first_name_similarity = name_similarity(first_name_norm, extracted_text_norm)
         last_name_similarity  = name_similarity(last_name_norm,  extracted_text_norm)
@@ -244,63 +149,29 @@ def verify_id_with_ocr(
             (last_name_similarity  >= name_threshold or not last_name_norm)
         )
 
-        print(
-            f"[OCR] Name: First={first_name_similarity:.1f}% "
-            f"Last={last_name_similarity:.1f}% "
-            f"Threshold={name_threshold} Verified={name_verified}",
-            flush=True,
-        )
-
-        # ── Town/City/Municipality address matching (optional) ─────────────────
+        # 2. Town/City matching
         if town_city_municipality:
-            addr_src = address_image_data if address_image_data is not None else id_image_data
+            addr_src = address_image_data if address_image_data else id_image_data
             address_text_raw, addr_error = _run_tesseract(addr_src)
-            if addr_error and not address_text_raw:
-                return False, addr_error, extracted_text_raw
-
-            town_norm         = normalize_text(town_city_municipality)
+            town_norm = normalize_text(town_city_municipality)
             address_text_norm = normalize_text(address_text_raw)
             
             partial = fuzz.partial_ratio(town_norm, address_text_norm)
             token = fuzz.token_set_ratio(town_norm, address_text_norm)
             town_similarity = max(partial, token)
-            
-            town_threshold    = 60
-            town_found        = town_similarity >= town_threshold
-
-            # Development Testing Bypass
-            if town_norm == 'test':
-                town_found = True
-                town_similarity = 100
-                print("[OCR] Bypassed address verification for testing (input was 'Test')", flush=True)
-
-            print(
-                f"[OCR] Town: Similarity={town_similarity:.1f}% "
-                f"Threshold={town_threshold} Found={town_found} Town='{town_norm}'",
-                flush=True,
-            )
+            town_threshold = 60
+            town_found = town_similarity >= town_threshold
         else:
             town_similarity = 100
-            town_threshold  = 0
-            town_found      = True
+            town_threshold = 0
+            town_found = True
 
-        # ── Final result ───────────────────────────────────────────────────────
+        # 3. Final Decision
         is_verified = name_verified and town_similarity >= town_threshold and town_found
-
         if is_verified:
-            status = (
-                f'ID verified '
-                f'(First: {first_name_similarity:.0f}%, '
-                f'Last: {last_name_similarity:.0f}%, '
-                f'Town: {town_similarity:.0f}%)'
-            )
+            status = f'ID verified (F:{first_name_similarity:.0f}%, L:{last_name_similarity:.0f}%, T:{town_similarity:.0f}%)'
         else:
-            status = (
-                f'ID mismatch '
-                f'(First: {first_name_similarity:.0f}%, '
-                f'Last: {last_name_similarity:.0f}%, '
-                f'Town: {town_similarity:.0f}%)'
-            )
+            status = f'ID mismatch (F:{first_name_similarity:.0f}%, L:{last_name_similarity:.0f}%, T:{town_similarity:.0f}%)'
 
         return is_verified, status, extracted_text_raw
 
@@ -308,108 +179,86 @@ def verify_id_with_ocr(
         return False, f'OCR Error: {str(exc)}', ''
 
 
-# ─── Face verification ────────────────────────────────────────────────────────
+# ─── Face verification (Ultra-Lightweight ONNX Implementation) ────────────────
 
-_MAX_FACE_WIDTH = 400   # px — face photos don't need to be large for recognition; reduces memory usage
-
-
-def verify_face_with_id(face_image_data, id_image_data):
-    """Face verification using DeepFace.
-
-    Parameters
-    ----------
-    face_image_data : bytes | None
-    id_image_data   : bytes | None
-
-    Returns
-    -------
-    (is_verified: bool, status: str, confidence: float)
-    """
-    import numpy as np
-    import cv2
-    import pandas as pd
-    import os
-
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-    os.environ['TF_NUM_INTEROP_THREADS'] = '1'
-    os.environ['TF_NUM_INTRAOP_THREADS'] = '1'
-
-    if face_image_data is None or (isinstance(face_image_data, float) and pd.isna(face_image_data)):
-        return False, 'No face photo provided', 0.0
-    if id_image_data is None or (isinstance(id_image_data, float) and pd.isna(id_image_data)):
-        return False, 'No ID image provided', 0.0
-
+def _internal_uniface_verify(face_image_data, id_image_data, result_queue):
+    """Internal function to run in a subprocess to isolate ONNX memory usage."""
     try:
-        deepface = _get_deepface()
-        if deepface is None:
-            reason = _deepface_error or "Service unavailable (Low memory mode)"
-            return False, f"Face verification service unavailable: {reason}", 0.0
+        import numpy as np
+        import cv2
+        import gc
+        import os
+        from uniface import RetinaFace, ArcFace # Lightweight ONNX models
+        import onnxruntime as ort
 
-        def load_and_resize(image_data, max_width=_MAX_FACE_WIDTH):
-            """Decode + downscale to conserve memory during DeepFace inference."""
+        # Ensure we use CPU provider for free tier
+        detector = RetinaFace()
+        recognizer = ArcFace()
+
+        def load_and_resize(image_data):
+            if image_data is None: return None
             nparr = np.frombuffer(bytes(image_data), np.uint8)
-            img   = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            if img is None:
-                return None
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if img is None: return None
             h, w = img.shape[:2]
-            if w > max_width:
-                scale  = max_width / w
-                img    = cv2.resize(img, (int(w * scale), int(h * scale)),
-                                    interpolation=cv2.INTER_AREA)
+            if w > _MAX_FACE_WIDTH:
+                scale = _MAX_FACE_WIDTH / w
+                img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
             return img
 
         face_img = load_and_resize(face_image_data)
-        id_img   = load_and_resize(id_image_data)
+        id_img = load_and_resize(id_image_data)
 
-        if face_img is None:
-            return False, 'Could not load face photo', 0.0
-        if id_img is None:
-            return False, 'Could not load ID image', 0.0
+        if face_img is None or id_img is None:
+            result_queue.put((False, 'Could not load images', 0.0))
+            return
 
-        import tempfile
-        import os as _os
+        # 1. Detect faces in both images
+        faces_face = detector.detect(face_img)
+        faces_id = detector.detect(id_img)
 
-        try:
-            with tempfile.TemporaryDirectory() as tmp:
-                face_path = _os.path.join(tmp, 'face.jpg')
-                id_path   = _os.path.join(tmp, 'id.jpg')
+        if not faces_face or not faces_id:
+            msg = "Face not detected in selfie" if not faces_face else "Face not detected in ID photo"
+            result_queue.put((False, f"{msg}: Ensure photos are clear and well-lit.", 0.0))
+            return
 
-                # Write at reduced quality to keep temp files small
-                cv2.imwrite(face_path, face_img, [cv2.IMWRITE_JPEG_QUALITY, 80])
-                cv2.imwrite(id_path,   id_img,   [cv2.IMWRITE_JPEG_QUALITY, 80])
+        # 2. Extract embeddings using ArcFace
+        emb_face = recognizer.extract(face_img, faces_face[0].bbox)
+        emb_id = recognizer.extract(id_img, faces_id[0].bbox)
 
-                # Explicit cleanup before heavy inference
-                del face_img, id_img
-                gc.collect()
-
-                # Set enforce_detection=True to ensure a face is actually present
-                result = deepface.verify(
-                    face_path, id_path,
-                    model_name='VGG-Face',
-                    detector_backend='opencv', # Lightweight/fast detector
-                    enforce_detection=True,
-                )
-
-            is_verified = result['verified']
-            distance    = result['distance']
-            confidence  = max(0.0, min(100.0, (1.0 - distance) * 100)) if distance < 1.0 else 0.0
-
-            if is_verified:
-                status = f'Face verified (Distance: {distance:.4f}, Confidence: {confidence:.1f}%)'
-            else:
-                status = f'Face verification failed — faces do not match (Distance: {distance:.4f}, Confidence: {confidence:.1f}%)'
-
-            return is_verified, status, confidence
-
-        except ValueError as e:
-            msg = str(e)
-            if 'Face could not be detected' in msg:
-                 return False, 'Face not detected: Please ensure both your selfie and ID photo are clear and well-lit.', 0.0
-            return False, f'Face detection issue: {msg}', 0.0
-        except ImportError:
-            return False, 'DeepFace not available', 0.0
-        except Exception as e:
-            return False, f'Face verification error: {str(e)}', 0.0
+        # 3. Calculate Cosine Similarity
+        # UniFace embeddings are usually normalized. Cosine similarity = dot product.
+        similarity = np.dot(emb_face, emb_id)
+        confidence = max(0.0, min(100.0, float(similarity) * 100))
+        
+        # ArcFace thresholds usually around 0.35-0.45 for cosine
+        is_verified = similarity > 0.38
+        status = f"Face verified (Conf: {confidence:.1f}%)" if is_verified else "Faces do not match"
+        
+        result_queue.put((is_verified, status, confidence))
 
     except Exception as e:
-        return False, f'Face verification error: {str(e)}', 0.0
+        result_queue.put((False, f"Verification error: {str(e)}", 0.0))
+
+def verify_face_with_id(face_image_data, id_image_data):
+    """Verify face with memory isolation (UniFace + ONNX for 512MB RAM)."""
+    if not face_image_data or not id_image_data:
+        return False, "Missing image data", 0.0
+
+    try:
+        # Skip heavy imports in main process entirely
+        result_queue = mp.Queue()
+        p = mp.Process(target=_internal_uniface_verify, args=(face_image_data, id_image_data, result_queue))
+        p.start()
+        p.join(timeout=45) # Lower timeout for ONNX (it's faster)
+        
+        if p.is_alive():
+            p.terminate()
+            return False, "Verification timed out due to high load.", 0.0
+            
+        if result_queue.empty():
+            return False, "Verification process failed (Likely out of memory).", 0.0
+            
+        return result_queue.get()
+    except Exception as e:
+        return False, f"Processor failure: {str(e)}", 0.0
