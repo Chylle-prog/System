@@ -8,25 +8,36 @@ os.environ.setdefault('OMP_NUM_THREADS', '1')
 os.environ.setdefault('ONEDNN_PRIMITIVE_CACHE_CAPACITY', '1')
 os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '3')
 os.environ.setdefault('TF_FORCE_GPU_ALLOW_GROWTH', 'true')
+os.environ.setdefault('TF_NUM_INTEROP_THREADS', '1')
+os.environ.setdefault('TF_NUM_INTRAOP_THREADS', '1')
+os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
 
 # ─── DeepFace — lazy singleton ─────────────────────────────────────────────────
 _deepface = None
+_deepface_error = "Not initialized"
 
 
 def _get_deepface():
-    global _deepface
+    global _deepface, _deepface_error
     if _deepface is None:
         if str(os.environ.get('SKIP_HEAVY_IMPORTS', 'False')).lower() == 'true':
-            print("[FACE] Face verification manually disabled via SKIP_HEAVY_IMPORTS=True", flush=True)
+            _deepface_error = "Face verification manually disabled via SKIP_HEAVY_IMPORTS=True in server settings."
+            print(f"[FACE] {_deepface_error}", flush=True)
             _deepface = False
             return None
         try:
             from deepface import DeepFace
             _deepface = DeepFace
+            _deepface_error = None
             gc.collect() # Clear overhead after heavy import
             print("[FACE] DeepFace successfully initialized.", flush=True)
-        except (ImportError, Exception) as e:
-            print(f"[FACE] CRITICAL: Could not initialise deepface (resource or dependency issue): {str(e)}", flush=True)
+        except ImportError as e:
+            _deepface_error = f"DeepFace library not installed or corrupted: {str(e)}"
+            print(f"[FACE] CRITICAL: {_deepface_error}", flush=True)
+            _deepface = False
+        except Exception as e:
+            _deepface_error = f"DeepFace initialization failed (likely out of memory): {str(e)}"
+            print(f"[FACE] CRITICAL: {_deepface_error}", flush=True)
             _deepface = False
     return _deepface if _deepface is not False else None
 
@@ -317,6 +328,11 @@ def verify_face_with_id(face_image_data, id_image_data):
     import numpy as np
     import cv2
     import pandas as pd
+    import os
+
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    os.environ['TF_NUM_INTEROP_THREADS'] = '1'
+    os.environ['TF_NUM_INTRAOP_THREADS'] = '1'
 
     if face_image_data is None or (isinstance(face_image_data, float) and pd.isna(face_image_data)):
         return False, 'No face photo provided', 0.0
@@ -325,8 +341,9 @@ def verify_face_with_id(face_image_data, id_image_data):
 
     try:
         deepface = _get_deepface()
-        if not deepface:
-            return False, 'Face verification service unavailable (Low memory mode)', 0.0
+        if deepface is None:
+            reason = _deepface_error or "Service unavailable (Low memory mode)"
+            return False, f"Face verification service unavailable: {reason}", 0.0
 
         def load_and_resize(image_data, max_width=_MAX_FACE_WIDTH):
             """Decode + downscale to conserve memory during DeepFace inference."""
