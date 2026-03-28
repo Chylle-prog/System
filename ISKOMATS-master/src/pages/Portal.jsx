@@ -370,6 +370,12 @@ const Portal = () => {
 
   const cancelApplication = async (reqNo, scholarshipName) => {
     if (confirm(`Are you sure you want to cancel your application for "${scholarshipName}"?`)) {
+      setLoadingMessage({
+        title: 'Cancelling Application',
+        message: 'Please wait while we process your request.'
+      });
+      setShowLoadingOverlay(true);
+      
       try {
         await applicationAPI.cancel(reqNo);
         // Refresh the list after cancellation
@@ -379,6 +385,8 @@ const Portal = () => {
       } catch (err) {
         console.error("Failed to cancel application:", err);
         alert(`Error: ${err.message || 'Could not cancel application'}`);
+      } finally {
+        setShowLoadingOverlay(false);
       }
     }
   };
@@ -1401,6 +1409,52 @@ const Portal = () => {
             font-size: 0.85rem;
           }
         }
+
+        /* Loading Overlay Styles */
+        .loading-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0.7);
+          backdrop-filter: blur(8px);
+          display: none;
+          justify-content: center;
+          align-items: center;
+          z-index: 10000;
+          transition: all 0.3s ease;
+        }
+
+        .loading-overlay.active {
+          display: flex;
+        }
+
+        .loading-modal {
+          background: white;
+          padding: 2.5rem;
+          border-radius: 30px;
+          text-align: center;
+          max-width: 450px;
+          width: 90%;
+          box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+          border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .loading-spinner {
+          width: 60px;
+          height: 60px;
+          border: 6px solid #f3f3f3;
+          border-top: 6px solid var(--primary);
+          border-radius: 50%;
+          margin: 0 auto 1.5rem;
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
       `}</style>
 
       <nav className="navbar">
@@ -1892,6 +1946,19 @@ const Portal = () => {
           )}
         </div>
       </section>
+      
+      {/* Loading overlay */}
+      <div className={`loading-overlay ${showLoadingOverlay ? 'active' : ''}`}>
+        <div className="loading-modal">
+          <div className="loading-spinner"></div>
+          <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
+            {loadingMessage.title}
+          </h3>
+          <p style={{ color: 'var(--text-soft)', fontSize: '1rem' }}>
+            {loadingMessage.message}
+          </p>
+        </div>
+      </div>
     </>
   );
 };

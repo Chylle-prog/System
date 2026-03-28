@@ -1202,6 +1202,11 @@ const StudentInfo = () => {
         }
       }
       // ──────────────────────────────────────────────────────────────────────────
+      
+      setLoadingMessage({
+        title: 'Submitting Application',
+        message: 'We are processing your documents. Please do not close this window.'
+      });
 
       // If identity was already address-verified in Step 2, skip OCR on submission
       // but always run face matching on the backend
