@@ -2,7 +2,6 @@ import sys
 import os
 import json
 from flask import Blueprint, request, jsonify, send_file, url_for
-from flask_cors import CORS
 from flask_bcrypt import Bcrypt
 from functools import wraps
 from flask_socketio import emit, join_room
