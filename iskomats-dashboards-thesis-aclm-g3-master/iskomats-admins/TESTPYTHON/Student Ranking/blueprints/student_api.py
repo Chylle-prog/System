@@ -992,3 +992,37 @@ def student_not_found(_error):
 @student_api_bp.errorhandler(500)
 def student_server_error(_error):
     return jsonify({'message': 'Internal server error'}), 500
+
+@student_api_bp.route('/verification/face-match', methods=['POST'])
+@token_required
+def face_match():
+    """
+    Standalone face verification (live photo vs ID image).
+    """
+    data = request.get_json() or {}
+    face_image_data = data.get('face_image')
+    id_image_data = data.get('id_image')
+
+    if not face_image_data or not id_image_data:
+        return jsonify({'verified': False, 'message': 'Missing face or ID image.'}), 400
+
+    try:
+        # Check if the images are base64 strings
+        face_bytes = decode_base64(face_image_data) if isinstance(face_image_data, str) and face_image_data.startswith('data:') else None
+        id_bytes = decode_base64(id_image_data) if isinstance(id_image_data, str) and id_image_data.startswith('data:') else None
+
+        if not face_bytes or not id_bytes:
+            return jsonify({'verified': False, 'message': 'Invalid image format. Must be base64 data URI.'}), 400
+
+        # Run face verification using DeepFace (via service)
+        verified, message, confidence = verify_face_with_id(face_bytes, id_bytes)
+        
+        return jsonify({
+            'verified': verified,
+            'message': message,
+            'confidence': confidence
+        })
+    except Exception as e:
+        print(f"[FACE-MATCH] Error: {str(e)}", flush=True)
+        traceback.print_exc()
+        return jsonify({'verified': False, 'message': f'Internal verification error: {str(e)}'}), 500
