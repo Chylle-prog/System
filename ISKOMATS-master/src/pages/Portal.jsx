@@ -114,9 +114,21 @@ const Portal = () => {
         setShowLoadingOverlay(false);
       }
     };
+
+    const fetchProfile = async () => {
+      try {
+        const profile = await applicantAPI.getProfile();
+        setUserProfile(profile);
+      } catch (err) {
+        console.warn("Failed to fetch user profile:", err);
+      }
+    };
     
     if (user) {
       fetchApplications();
+      if (!profiles[user]) {
+        fetchProfile();
+      }
     }
 
     // Load scholarship resources
@@ -1460,7 +1472,7 @@ const Portal = () => {
       <nav className="navbar">
         <Link to="/" className="navbar-brand">iskoMats</Link>
         <div className="navbar-menu">
-          <span>{currentUser}</span>
+          <span>{userProfile?.first_name || currentUser}</span>
 
           {/* MESSAGE ICON WITH DROPDOWN */}
           <div className="message-wrapper" ref={messageDropdownRef}>

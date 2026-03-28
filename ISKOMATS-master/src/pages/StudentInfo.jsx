@@ -1769,7 +1769,7 @@ const StudentInfo = () => {
       <nav className="navbar">
         <Link to="/portal" className="navbar-brand">iskoMats</Link>
         <div className="navbar-menu">
-          <span>{currentUser}</span>
+          <span>{userProfile?.first_name || userProfile?.firstName || currentUser}</span>
           <button className="logout-btn" onClick={() => {
             localStorage.removeItem('currentUser');
             navigate('/login');

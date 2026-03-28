@@ -4,13 +4,16 @@ import { useAuth } from '../contexts/AuthContext';
 import './Navbar.css';
 
 const Navbar = ({ showMenu = false, userEmail = '' }) => {
-  const { logout, currentUser } = useAuth();
+  const { logout, currentUser, userProfiles } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = () => {
     logout();
     navigate('/');
   };
+
+  // Get first name from profiles if available
+  const displayName = userProfiles[currentUser]?.first_name || userEmail || currentUser;
 
   return (
     <nav className="navbar">
@@ -28,7 +31,7 @@ const Navbar = ({ showMenu = false, userEmail = '' }) => {
         </div>
       ) : (
         <div className="navbar-menu">
-          <span className="user-email">{userEmail || currentUser}</span>
+          <span className="user-email">{displayName}</span>
           {showMenu && (
             <>
               <button className="profile-btn" onClick={() => navigate('/profile')}>
