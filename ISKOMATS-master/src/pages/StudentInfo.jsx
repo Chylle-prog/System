@@ -1181,7 +1181,7 @@ const StudentInfo = () => {
               || result.message?.includes('service issue'))
               && !result.message?.includes('Face not detected');
 
-            if (!result.verified && !isTechnical) {
+            if (!result.verified) {
               setFaceVerified('failed');
               setFaceMatchResult(result);
               showPromptMessage(`❌ Face Match Error: ${result.message || 'The face photo provided does not match your School ID.'}`, 6000);
@@ -1189,16 +1189,13 @@ const StudentInfo = () => {
               return; // Block submission
             }
 
-            if (isTechnical) {
-              setFaceVerified('technical_unavailable');
-              console.warn('[FACE] Technical issue, allowing manual check.');
-            } else {
-              setFaceVerified('success');
-            }
+            setFaceVerified('success');
           } catch (faceErr) {
             console.error('[FACE] Verification error:', faceErr);
-            setFaceVerified('technical_unavailable');
-            // Don't block submission on technical errors, let admin check manually
+            setFaceVerified('failed');
+            showPromptMessage(`⚠️ Identity verification service error. Please try again or check your photo clarity.`);
+            setIsSubmitting(false);
+            return;
           }
         }
       }

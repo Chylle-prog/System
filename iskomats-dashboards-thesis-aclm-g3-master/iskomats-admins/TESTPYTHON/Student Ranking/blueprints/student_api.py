@@ -638,18 +638,11 @@ def submit_application():
                     print(f"[SUBMIT] Face verification finished in {time.time() - face_start:.2f}s: {face_status}")
                     
                     if not face_ok:
-                        # If the failure is purely technical (e.g. Low memory mode on Render), allow the user to proceed.
-                        # This prevents blocking submissions when the server is underpowered.
-                        is_technical_error = "Low memory mode" in face_status or "service unavailable" in face_status.lower()
-                        
-                        if is_technical_error:
-                            print(f"[SUBMIT] ℹ️ Face Verification skipped (Technical): {face_status}")
-                        else:
-                            print(f"[SUBMIT] ❌ Face Verification Failed (Mismatch): {face_status}")
-                            return jsonify({
-                                'message': f'Face Verification Failed: {face_status}',
-                                'face_status': face_status
-                            }), 400
+                        print(f"[SUBMIT] ❌ Face Verification Failed: {face_status}")
+                        return jsonify({
+                            'message': f'Face Verification Failed: {face_status}',
+                            'face_status': face_status
+                        }), 400
                 else:
                     face_status = "Face photo or ID front missing"
                     print(f"[SUBMIT] ❌ Face verification skipped/missing: {face_status}")

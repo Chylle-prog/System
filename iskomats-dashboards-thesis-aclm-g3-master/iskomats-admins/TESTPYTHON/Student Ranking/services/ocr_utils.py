@@ -16,16 +16,17 @@ _deepface = None
 def _get_deepface():
     global _deepface
     if _deepface is None:
-        if os.environ.get('SKIP_HEAVY_IMPORTS') == 'True':
-            print("[FACE] Skipping deepface due to SKIP_HEAVY_IMPORTS=True", flush=True)
+        if str(os.environ.get('SKIP_HEAVY_IMPORTS', 'False')).lower() == 'true':
+            print("[FACE] Face verification manually disabled via SKIP_HEAVY_IMPORTS=True", flush=True)
             _deepface = False
             return None
         try:
             from deepface import DeepFace
             _deepface = DeepFace
             gc.collect() # Clear overhead after heavy import
+            print("[FACE] DeepFace successfully initialized.", flush=True)
         except (ImportError, Exception) as e:
-            print(f"[FACE] Warning: Could not initialise deepface: {str(e)}", flush=True)
+            print(f"[FACE] CRITICAL: Could not initialise deepface (resource or dependency issue): {str(e)}", flush=True)
             _deepface = False
     return _deepface if _deepface is not False else None
 
