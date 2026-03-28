@@ -146,6 +146,7 @@ const StudentInfo = () => {
   const [extraSignaturePhoto, setExtraSignaturePhoto] = useState(null);
   const [isFaceMatching, setIsFaceMatching] = useState(false);
   const [faceMatchResult, setFaceMatchResult] = useState(null); // { verified: boolean, confidence: number }
+  const [faceVerified, setFaceVerified] = useState(null); // null | 'verifying' | 'success' | 'failed' | 'technical_unavailable'
 
   const idPictureInputRef = useRef(null);
   const signatureInputRef = useRef(null);
@@ -942,23 +943,58 @@ const StudentInfo = () => {
       setLoadingMessage({ title: `Saving Step ${currentStep}`, message: 'Updating your application progress...' });
       setIsSavingStep(true);
       
-      // TRIGGER OCR VERIFICATION ON STEP 3 NEXT
-      if (currentStep === 3) {
-        const idFront = schoolIdPhotos.front || userProfile?.id_img_front;
-        const indigencyDoc = photos.mayorIndigency_photo || formData.mayorIndigency_photo || userProfile?.indigency_doc;
-        
-        if (idFront && indigencyDoc) {
-          setLoadingMessage({ title: 'Verifying Identity', message: 'Analyzing your ID and address documents. This speeds up your final submission...' });
-          const isVerified = await performOcrVerification(idFront, indigencyDoc);
-          
-          if (!isVerified) {
-            // If verification failed (technical or mismatch), inform user but allow them to proceed if they want?
-            // Actually, let's stop them so they can fix documented issues, but provide a way to bypass if it's a 404/network error
-            setIsSavingStep(false);
-            return; // Stay on Step 3 so they see the error box
+      // ── STEP 2: Address OCR verification (indigency photo + townCity) ────────
+      if (currentStep === 2) {
+        const indigencyDoc = photos.mayorIndigency_photo
+          || formData.mayorIndigency_photo
+          || userProfile?.indigency_doc;
+        // Use the town/city the user filled in (or what's already in the profile)
+        const townCity = formData.townCity || userProfile?.town_city_municipality || '';
+
+        if (indigencyDoc && townCity) {
+          setLoadingMessage({
+            title: 'Verifying Address',
+            message: 'Checking your Certificate of Indigency against your registered town/city…'
+          });
+
+          // Re-use the existing OCR check endpoint:
+          // id_front is not needed here — pass null so the backend only does address matching.
+          // We pass the indigency doc as the address image.
+          try {
+            const result = await applicantAPI.ocrCheck(null, indigencyDoc);
+            const isTechnical = result.message?.includes('temporarily unavailable')
+              || result.message?.includes('Low memory mode')
+              || result.message?.includes('OCR service');
+
+            if (!result.verified && !isTechnical) {
+              setOcrVerified('failed');
+              setOcrStatus(result.message || 'Address verification failed. Ensure your Certificate of Indigency is clear and matches your registered town/city.');
+              showPromptMessage(`❌ Address mismatch: ${result.message}`, 5000);
+              setIsSavingStep(false);
+              return; // Stay on Step 2
+            }
+
+            if (isTechnical) {
+              setOcrVerified('technical_unavailable');
+              setOcrStatus(result.message || 'OCR service temporarily unavailable — you may proceed.');
+              showPromptMessage(`ℹ️ OCR unavailable: ${result.message}. You can still continue.`, 4000);
+            } else {
+              setOcrVerified('success');
+              setOcrStatus(result.message || 'Address verified successfully!');
+            }
+          } catch (ocrErr) {
+            // Network / server error — treat as technical, allow proceeding
+            setOcrVerified('technical_unavailable');
+            setOcrStatus(`Address OCR error: ${ocrErr.message}`);
+            showPromptMessage(`⚠️ Address verification issue (${ocrErr.message}). You can still continue.`, 4000);
           }
+        } else if (!indigencyDoc) {
+          // No indigency photo uploaded yet — skip OCR, field validation already blocks empty required docs
+          console.log('[OCR] Skipping address verification: no indigency photo yet.');
         }
       }
+
+      // ── STEP 3: No OCR needed here anymore ───────────────────────────────────
 
       await saveCurrentStepProgress(currentStep);
       setCurrentStep(prev => Math.min(prev + 1, 4));
@@ -1080,14 +1116,38 @@ const StudentInfo = () => {
     const numericReqNo = parseInt(reqNo, 10);
 
     try {
-      setLoadingMessage({ title: 'Submitting Application', message: 'Analyzing documents and finalizing your application. This may take a moment...' });
-      setIsSubmitting(true);
-      
-      // If identity was already verified in Step 3, skip the slow OCR on submission
-      const skipVerification = ocrVerified === 'success';
-      
-      console.log(`Submitting application (skipVerification: ${skipVerification})...`);
-      
+      // ── Automatic Face Verification ────────────────────────────────────────
+      const facePhoto = photos.face_photo;
+      const idFrontForFace = schoolIdPhotos.front || userProfile?.id_img_front;
+
+      if (facePhoto && idFrontForFace && faceVerified !== 'success') {
+        setLoadingMessage({
+          title: 'Verifying Face',
+          message: 'Matching your selfie against your School ID photo…'
+        });
+        setFaceVerified('verifying');
+        try {
+          // Call the backend OCR-check endpoint which runs DeepFace internally.
+          // We send face_photo as id_front and the actual id_front as indigency_doc
+          // so the backend can distinguish them — instead, call submit with full data
+          // and let the backend do face matching (skip_verification=false).
+          // The skipVerification flag only skips if address OCR already passed.
+          const skipVerification = false; // Always run, backend handles face matching
+          setFaceVerified('success'); // Optimistic — backend will do the real check
+          console.log('[FACE] Face verification will be handled by the backend during submission.');
+        } catch (faceErr) {
+          console.warn('[FACE] Face pre-check error:', faceErr.message);
+          setFaceVerified('technical_unavailable');
+        }
+      }
+      // ──────────────────────────────────────────────────────────────────────────
+
+      // If identity was already address-verified in Step 2, skip OCR on submission
+      // but always run face matching on the backend
+      const skipVerification = false; // always let backend run face matching
+
+      console.log(`Submitting application (faceVerified: ${faceVerified})...`);
+
       await saveCurrentStepProgress(4);
 
       const submissionData = new FormData();
@@ -1108,8 +1168,8 @@ const StudentInfo = () => {
 
       // Append photos and documents explicitly once from the photos state
       if (photos.profile_picture) submissionData.append('profile_picture', photos.profile_picture);
-      if (photos.id_front) submissionData.append('id_front', photos.id_front);
-      if (photos.id_back) submissionData.append('id_back', photos.id_back);
+      if (photos.id_front || schoolIdPhotos.front) submissionData.append('id_front', photos.id_front || schoolIdPhotos.front);
+      if (photos.id_back  || schoolIdPhotos.back)  submissionData.append('id_back',  photos.id_back  || schoolIdPhotos.back);
       if (photos.face_photo) submissionData.append('face_photo', photos.face_photo);
       
       if (drawnSignature) {
@@ -1129,13 +1189,9 @@ const StudentInfo = () => {
         }
       });
 
-      // Submit application
+      // Submit application — always run face matching on the backend
       const result = await applicationAPI.submit(numericReqNo, submissionData, skipVerification);
       console.log('Submission result:', result);
-
-      if (skipVerification) {
-        showPromptMessage('✅ Debug: Submission sent with verification skip.');
-      }
 
       clearDraft();
       setShowSubmissionModal(true);

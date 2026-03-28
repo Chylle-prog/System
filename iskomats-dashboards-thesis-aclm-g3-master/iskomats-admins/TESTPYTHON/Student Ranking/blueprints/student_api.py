@@ -721,65 +721,95 @@ def submit_application():
 @student_api_bp.route('/verification/ocr-check', methods=['POST'])
 @token_required
 def ocr_check():
-    """Manual trigger for OCR verification (early check)."""
+    """OCR verification endpoint — two modes:
+
+    1. Address-only (id_front omitted/null): verifies the indigency photo against
+       the applicant's registered town_city_municipality. Used on Step 2 Next.
+    2. Full (id_front provided): verifies name (via School ID) + address.
+    """
     try:
         data = request.get_json(silent=True) or {}
-        
-        # 1. Get Applicant info and current documents
+
+        # 1. Get applicant record from DB
         conn = get_db()
         cur = conn.cursor()
         cur.execute("SELECT * FROM applicants WHERE applicant_no = %s", (request.user_no,))
         applicant = cur.fetchone()
-        
+
         if not applicant:
             return jsonify({'verified': False, 'message': 'Applicant profile not found'}), 404
-            
-        # 2. Extract images from payload OR from database if not provided
-        # The frontend sends these as base64 data URLs
-        # Support both camelCase (old/internal) and snake_case (frontend api.js)
-        id_front_param = data.get('id_front') or data.get('idFront')
+
+        # 2. Resolve images — payload takes priority, then fall back to stored DB copies
+        id_front_param      = data.get('id_front') or data.get('idFront')
         indigency_doc_param = data.get('indigency_doc') or data.get('indigencyDoc')
-        
-        id_front_bytes = decode_base64(id_front_param) or db_bytes(applicant.get('id_img_front'))
+
+        id_front_bytes      = decode_base64(id_front_param) or db_bytes(applicant.get('id_img_front'))
         indigency_doc_bytes = decode_base64(indigency_doc_param) or db_bytes(applicant.get('indigency_doc'))
-        
-        if not id_front_bytes:
-            print(f"[OCR-CHECK] User {request.user_no}: Missing ID front")
-            return jsonify({
-                'verified': False, 
-                'message': 'Missing Document: Please upload the Front of your School ID.'
-            }), 400
-            
-        if not indigency_doc_bytes:
-            print(f"[OCR-CHECK] User {request.user_no}: Missing Indigency document")
-            return jsonify({
-                'verified': False, 
-                'message': 'Missing Document: Please upload your Certificate of Indigency for address verification.'
-            }), 400
-            
-        # 3. Run OCR Verification
-        print(f"[OCR-CHECK] Manual trigger for User {request.user_no}")
+
         town_city = applicant.get('town_city_municipality', '')
-        
-        verified, message, _ = verify_id_with_ocr(
-            id_front_bytes,
-            first_name=applicant.get('first_name', ''),
-            last_name=applicant.get('last_name', ''),
-            town_city_municipality=town_city,
-            address_image_data=indigency_doc_bytes
-        )
-        
-        return jsonify({
-            'verified': verified,
-            'message': message
-        })
-        
+
+        # ── Mode selection ─────────────────────────────────────────────────────
+        address_only = id_front_bytes is None
+
+        if address_only:
+            # ── Address-only mode (Step 2) ─────────────────────────────────────
+            print(f"[OCR-CHECK] User {request.user_no}: Address-only mode", flush=True)
+
+            if not indigency_doc_bytes:
+                return jsonify({
+                    'verified': False,
+                    'message': 'Missing Document: Please upload your Certificate of Indigency.'
+                }), 400
+
+            if not town_city:
+                # Town/city not yet saved — let them proceed (Step 1 not yet complete)
+                print(f"[OCR-CHECK] User {request.user_no}: No town/city on profile, skipping", flush=True)
+                return jsonify({
+                    'verified': True,
+                    'message': 'Address check skipped: please fill in your Town/City in Step 1 first.'
+                })
+
+            # Run OCR: pass the indigency doc as the primary image and the address image,
+            # supply empty names so only the address/town matching runs.
+            verified, message, _ = verify_id_with_ocr(
+                indigency_doc_bytes,
+                first_name='',
+                last_name='',
+                town_city_municipality=town_city,
+                address_image_data=indigency_doc_bytes,
+            )
+
+            print(f"[OCR-CHECK] Address-only result: verified={verified}", flush=True)
+            return jsonify({'verified': verified, 'message': message})
+
+        else:
+            # ── Full verification mode (name + address) ────────────────────────
+            print(f"[OCR-CHECK] User {request.user_no}: Full verification mode", flush=True)
+
+            if not indigency_doc_bytes:
+                return jsonify({
+                    'verified': False,
+                    'message': 'Missing Document: Please upload your Certificate of Indigency for address verification.'
+                }), 400
+
+            verified, message, _ = verify_id_with_ocr(
+                id_front_bytes,
+                first_name=applicant.get('first_name', ''),
+                last_name=applicant.get('last_name', ''),
+                town_city_municipality=town_city,
+                address_image_data=indigency_doc_bytes,
+            )
+
+            print(f"[OCR-CHECK] Full result: verified={verified}", flush=True)
+            return jsonify({'verified': verified, 'message': message})
+
     except Exception as e:
         traceback.print_exc()
         return jsonify({'verified': False, 'message': f'Server error during verification: {str(e)}'}), 500
     finally:
         if 'conn' in locals():
             conn.close()
+
 
 
 @student_api_bp.route('/applications/my-applications', methods=['GET'])
@@ -800,7 +830,7 @@ def get_my_applications():
                     WHEN ast.is_accepted = FALSE THEN 'Rejected'
                     ELSE 'Pending'
                 END as status,
-                ast.status_updated as created_at
+                NOW() as created_at
             FROM applicant_status ast
             JOIN scholarships s ON ast.scholarship_no = s.req_no
             WHERE ast.applicant_no = %s
