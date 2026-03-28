@@ -459,7 +459,14 @@ def update_profile():
 
         for frontend_key, db_col in field_mapping.items():
             if frontend_key in data:
-                add_update(db_col, data[frontend_key])
+                value = data[frontend_key]
+                # school_id_no is an INTEGER column — coerce safely
+                if db_col == 'school_id_no':
+                    try:
+                        value = int(value) if value not in (None, '', 'null') else None
+                    except (ValueError, TypeError):
+                        value = None
+                add_update(db_col, value)
 
         if 'fatherName' in data:
             father_fname, father_lname = split_parent_name(data.get('fatherName'))
@@ -651,8 +658,15 @@ def submit_application():
 
         for form_key, db_col in field_mapping.items():
             if form_key in form_data:
+                value = form_data[form_key]
+                # school_id_no is an INTEGER column — coerce safely
+                if db_col == 'school_id_no':
+                    try:
+                        value = int(value) if value not in (None, '', 'null') else None
+                    except (ValueError, TypeError):
+                        value = None
                 updates.append(f'{db_col} = %s')
-                params.append(form_data[form_key])
+                params.append(value)
 
         binary_map = {
             'id_img_front': id_front_bytes,
@@ -839,28 +853,60 @@ def get_announcements():
     try:
         conn = get_db()
         cur = conn.cursor()
-        
-        # Join announcements with scholarship_providers to get the name of the provider
+
+        # Check if 'status_updated' column exists in the announcements table
         cur.execute("""
-            SELECT a.ann_no, a.ann_message, a.status_updated, sp.pro_name
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'announcements' AND column_name = 'status_updated'
+        """)
+        has_status_updated = cur.fetchone() is not None
+
+        # Check if 'ann_date' column exists (alternative date column name)
+        cur.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'announcements' AND column_name = 'ann_date'
+        """)
+        has_ann_date = cur.fetchone() is not None
+
+        # Build the date expression based on what columns actually exist
+        if has_status_updated:
+            date_col = 'a.status_updated'
+            order_col = 'a.status_updated DESC'
+        elif has_ann_date:
+            date_col = 'a.ann_date'
+            order_col = 'a.ann_date DESC'
+        else:
+            date_col = 'NULL'
+            order_col = 'a.ann_no DESC'
+
+        # Join announcements with scholarship_providers to get the name of the provider
+        cur.execute(f"""
+            SELECT a.ann_no, a.ann_message, {date_col} AS ann_date, sp.pro_name
             FROM announcements a
             JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
-            ORDER BY a.status_updated DESC
+            ORDER BY {order_col}
         """)
-        
+
         rows = cur.fetchall()
-        
+
         announcements = []
         for row in rows:
+            ann_date = row.get('ann_date')
+            if ann_date and hasattr(ann_date, 'date'):
+                date_str = str(ann_date.date())
+            elif ann_date:
+                date_str = str(ann_date)
+            else:
+                date_str = 'Recent'
             announcements.append({
                 'id': row['ann_no'],
                 'message': row['ann_message'],
-                'date': str(row['status_updated'].date()) if row['status_updated'] else 'Recent',
+                'date': date_str,
                 'provider': row['pro_name']
             })
-            
-        cur.close()
-        conn.close()
+
         return jsonify(announcements)
     except Exception as e:
         return jsonify({'message': f"Error fetching announcements: {str(e)}"}), 500
