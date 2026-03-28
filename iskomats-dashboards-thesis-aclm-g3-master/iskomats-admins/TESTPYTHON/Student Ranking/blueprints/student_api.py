@@ -616,7 +616,8 @@ def submit_application():
                     print("[SUBMIT] Warning: Front of School ID is missing, skipping OCR.")
                 else:
                     indigency_doc_bytes = doc_bytes.get('mayorIndigency_photo')
-                    town_city = applicant.get('town_city_municipality', '')
+                    # Use the most recent value from the form if available
+                    town_city = form_data.get('townCity') or applicant.get('town_city_municipality', '')
                     
                     print("[SUBMIT] Starting OCR verification...")
                     ocr_start = time.time()
@@ -746,7 +747,7 @@ def ocr_check():
         id_front_bytes      = decode_base64(id_front_param) or db_bytes(applicant.get('id_img_front'))
         indigency_doc_bytes = decode_base64(indigency_doc_param) or db_bytes(applicant.get('indigency_doc'))
 
-        town_city = applicant.get('town_city_municipality', '')
+        town_city = data.get('town_city') or data.get('townCity') or applicant.get('town_city_municipality', '')
 
         # ── Mode selection ─────────────────────────────────────────────────────
         address_only = id_front_bytes is None

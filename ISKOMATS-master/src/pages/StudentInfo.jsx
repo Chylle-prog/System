@@ -961,15 +961,18 @@ const StudentInfo = () => {
           // id_front is not needed here — pass null so the backend only does address matching.
           // We pass the indigency doc as the address image.
           try {
-            const result = await applicantAPI.ocrCheck(null, indigencyDoc);
+            const result = await applicantAPI.ocrCheck(null, indigencyDoc, townCity);
             const isTechnical = result.message?.includes('temporarily unavailable')
               || result.message?.includes('Low memory mode')
               || result.message?.includes('OCR service');
 
             if (!result.verified && !isTechnical) {
               setOcrVerified('failed');
-              setOcrStatus(result.message || 'Address verification failed. Ensure your Certificate of Indigency is clear and matches your registered town/city.');
-              showPromptMessage(`❌ Address mismatch: ${result.message}`, 5000);
+              setOcrStatus(result.message || 'Address mismatch: your Certificate of Indigency does not match your registered city/municipality.');
+              showPromptMessage(
+                `❌ Address mismatch: The city/municipality on your Certificate of Indigency does not match "${townCity}". Please check your document or update your address.`,
+                7000
+              );
               setIsSavingStep(false);
               return; // Stay on Step 2
             }
@@ -980,7 +983,7 @@ const StudentInfo = () => {
               showPromptMessage(`ℹ️ OCR unavailable: ${result.message}. You can still continue.`, 4000);
             } else {
               setOcrVerified('success');
-              setOcrStatus(result.message || 'Address verified successfully!');
+              setOcrStatus(result.message || `Address verified — city/municipality matches!`);
             }
           } catch (ocrErr) {
             // Network / server error — treat as technical, allow proceeding
