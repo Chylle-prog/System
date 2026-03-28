@@ -812,6 +812,44 @@ def ocr_check():
 
 
 
+@student_api_bp.route('/applications/<int:scholarship_no>', methods=['DELETE'])
+@token_required
+def cancel_application(scholarship_no):
+    """Cancel (delete) the current user's application for a given scholarship."""
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+
+        # Verify the application exists and belongs to this applicant
+        cur.execute(
+            """
+            SELECT 1 FROM applicant_status
+            WHERE scholarship_no = %s AND applicant_no = %s
+            """,
+            (scholarship_no, request.user_no),
+        )
+        if not cur.fetchone():
+            return jsonify({'message': 'Application not found or does not belong to you'}), 404
+
+        # Remove the application
+        cur.execute(
+            """
+            DELETE FROM applicant_status
+            WHERE scholarship_no = %s AND applicant_no = %s
+            """,
+            (scholarship_no, request.user_no),
+        )
+        conn.commit()
+
+        return jsonify({'message': 'Application cancelled successfully'})
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({'message': f'Error cancelling application: {str(exc)}'}), 500
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+
 @student_api_bp.route('/applications/my-applications', methods=['GET'])
 @token_required
 def get_my_applications():
