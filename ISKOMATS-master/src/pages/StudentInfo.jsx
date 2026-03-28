@@ -1160,6 +1160,7 @@ const StudentInfo = () => {
     }
 
     const numericReqNo = parseInt(reqNo, 10);
+    setIsSubmitting(true);
 
     try {
       // ── Automatic Face Verification ────────────────────────────────────────

@@ -636,14 +636,24 @@ def submit_application():
                     face_start = time.time()
                     face_ok, face_status, _ = verify_face_with_id(face_photo_bytes, id_front_bytes)
                     print(f"[SUBMIT] Face verification finished in {time.time() - face_start:.2f}s: {face_status}")
+                    
+                    if not face_ok:
+                        print(f"[SUBMIT] ❌ Face Verification Failed: {face_status}")
+                        return jsonify({
+                            'message': f'Face Verification Failed: {face_status}',
+                            'face_status': face_status
+                        }), 400
                 else:
                     face_status = "Face photo or ID front missing"
-                    print(f"[SUBMIT] Face verification skipped: {face_status}")
+                    print(f"[SUBMIT] ❌ Face verification skipped/missing: {face_status}")
+                    return jsonify({'message': f'Missing verification documents: {face_status}'}), 400
+
             except Exception as ai_err:
-                print(f"[SUBMIT] AI Verification Error (Best Effort): {str(ai_err)}")
-                ocr_status = f"OCR Error: {str(ai_err)}"
-                face_status = f"Face Error: {str(ai_err)}"
-                # We continue to allow the submission even if AI fails due to environment limits
+                print(f"[SUBMIT] AI Verification Exception: {str(ai_err)}")
+                return jsonify({
+                    'message': f'Verification service error: {str(ai_err)}. Please ensure your photos are clear and try again.',
+                    'face_status': f"Error: {str(ai_err)}"
+                }), 400
 
         # ── UPDATE APPLICANT PROFILE ──────────────────────────────────────────
         updates = []
