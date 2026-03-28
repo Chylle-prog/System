@@ -18,7 +18,7 @@ from io import BytesIO
 import traceback
 from project_config import get_db
 
-api_bp = Blueprint('api', __name__, url_prefix='/api')
+api_bp = Blueprint('api', __name__, url_prefix='/api/student')
 bcrypt = Bcrypt()
 
 # Encryption setup (must match main app)
@@ -403,7 +403,19 @@ def get_rankings():
     data = request.get_json()
     gpa = float(data.get('gpa', 0))
     income = float(data.get('income', 0))
-    address = data.get('address', '').lower().strip()
+    
+    # Construct address from individual parts if full address is missing
+    address = data.get('address', '')
+    if not address:
+        parts = [
+            data.get('street_brgy', ''),
+            data.get('town_city_municipality', ''),
+            data.get('province', ''),
+            data.get('zip_code', '')
+        ]
+        address = ' '.join(filter(None, parts))
+    
+    address = address.lower().strip()
 
     try:
         conn = get_db()
@@ -429,6 +441,9 @@ def get_rankings():
         
         cur.execute("SELECT * FROM scholarships")
         scholarships = cur.fetchall()
+        
+        if not scholarships:
+            print("Warning: No scholarships found in database table 'scholarships'")
 
         today = datetime.now().date()
         ranked = []
