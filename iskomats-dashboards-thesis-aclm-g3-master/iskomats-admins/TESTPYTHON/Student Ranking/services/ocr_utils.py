@@ -223,11 +223,13 @@ def _internal_uniface_verify(face_image_data, id_image_data, result_queue):
             return
 
         # 2. Extract embeddings using ArcFace
-        emb_face = recognizer.extract(face_img, faces_face[0].bbox)
-        emb_id = recognizer.extract(id_img, faces_id[0].bbox)
+        # UniFace provides aligned_face within the detection result
+        emb_face = recognizer.encode(faces_face[0].aligned_face)
+        emb_id = recognizer.encode(faces_id[0].aligned_face)
 
         # 3. Calculate Cosine Similarity
-        # UniFace embeddings are usually normalized. Cosine similarity = dot product.
+        # ArcFace embeddings from UniFace are usually pre-normalized.
+        # Cosine similarity = dot product of normalized vectors.
         similarity = np.dot(emb_face, emb_id)
         confidence = max(0.0, min(100.0, float(similarity) * 100))
         
