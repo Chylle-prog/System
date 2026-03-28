@@ -190,10 +190,14 @@ def _internal_uniface_verify(face_image_data, id_image_data, result_queue):
         import os
         from uniface import RetinaFace, ArcFace # Lightweight ONNX models
         import onnxruntime as ort
-
-        # Ensure we use CPU provider for free tier
-        detector = RetinaFace()
-        recognizer = ArcFace()
+        
+        # Explicitly tune ONNX session for 512MB RAM tier (CPU only, 1 thread)
+        sess_options = ort.SessionOptions()
+        sess_options.intra_op_num_threads = 1
+        sess_options.inter_op_num_threads = 1
+        
+        detector = RetinaFace(session_options=sess_options)
+        recognizer = ArcFace(session_options=sess_options)
 
         def load_and_resize(image_data):
             if image_data is None: return None
@@ -223,13 +227,12 @@ def _internal_uniface_verify(face_image_data, id_image_data, result_queue):
             return
 
         # 2. Extract embeddings using ArcFace
-        # UniFace provides aligned_face within the detection result
-        emb_face = recognizer.encode(faces_face[0].aligned_face)
-        emb_id = recognizer.encode(faces_id[0].aligned_face)
+        # In UniFace, the ArcFace object is callable.
+        emb_face = recognizer(faces_face[0].aligned_face)
+        emb_id = recognizer(faces_id[0].aligned_face)
 
         # 3. Calculate Cosine Similarity
-        # ArcFace embeddings from UniFace are usually pre-normalized.
-        # Cosine similarity = dot product of normalized vectors.
+        # ArcFace embeddings from UniFace are pre-normalized.
         similarity = np.dot(emb_face, emb_id)
         confidence = max(0.0, min(100.0, float(similarity) * 100))
         

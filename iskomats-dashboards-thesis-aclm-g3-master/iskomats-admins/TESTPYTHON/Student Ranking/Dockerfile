@@ -23,6 +23,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy all application files
 COPY . .
 
+# Pre-download models to avoid timeouts on first request
+RUN python -c "from uniface import RetinaFace, ArcFace; RetinaFace(); ArcFace()"
+
 # Expose port (Render sets PORT internally, often 10000, 
 # but setting an EXPOSE is good practice)
 EXPOSE 10000

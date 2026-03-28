@@ -1024,7 +1024,7 @@ def face_match():
         if not face_bytes or not id_bytes:
             return jsonify({'verified': False, 'message': 'Invalid image format. Must be base64 data URI.'}), 400
 
-        # Run face verification using DeepFace (via service)
+        # Run face verification using UniFace/ONNX (via ocr_utils)
         verified, message, confidence = verify_face_with_id(face_bytes, id_bytes)
         
         return jsonify({
