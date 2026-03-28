@@ -2,6 +2,7 @@ services:
   - type: web
     name: iskomats-backend
     env: docker
+    plan: free
     rootDir: "iskomats-dashboards-thesis-aclm-g3-master/iskomats-admins/TESTPYTHON/Student Ranking"
     # Docker automatically runs the Dockerfile in the rootDir
     # so we don't need a buildCommand or startCommand here.
