@@ -38,3 +38,7 @@ obj/
 
 # Ignore the template folder if it ever reappears
 *template/
+
+# EasyOCR Backups
+iskomats-dashboards-thesis-aclm-g3-master-easyocr/
+ISKOMATS-master-easyocr/
