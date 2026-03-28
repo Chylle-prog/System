@@ -323,6 +323,19 @@ export const applicantAPI = {
       }),
     });
   },
+
+  /**
+   * Verify face match with ID
+   * @param {string} faceBase64 - Base64 encoded face image
+   * @param {string} idBase64 - Base64 encoded ID image
+   * @returns {Promise}
+   */
+  verifyFaceAgainstId: async (faceBase64, idBase64) => {
+    return makeRequest('/student/verification/face-match', {
+      method: 'POST',
+      body: JSON.stringify({ face_image: faceBase64, id_image: idBase64 }),
+    });
+  },
 };
 
 
@@ -431,7 +444,7 @@ export const verificationAPI = {
    * @returns {Promise}
    */
   verifyFaceAgainstId: async (faceBase64, idBase64) => {
-    return makeRequest('/verification/face-match', {
+    return makeRequest('/student/verification/face-match', {
       method: 'POST',
       body: JSON.stringify({ face_image: faceBase64, id_image: idBase64 }),
     });
