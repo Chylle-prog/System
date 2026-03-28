@@ -27,8 +27,11 @@ const STEP_FIELDS = {
 const isFileLike = (value) => typeof File !== 'undefined' && value instanceof File;
 const DOCUMENT_IMAGE_FIELDS = new Set([
   'mayorCOE_photo',
+  'mayorCOE_video',
   'mayorGrades_photo',
-  'mayorIndigency_photo'
+  'mayorGrades_video',
+  'mayorIndigency_photo',
+  'mayorIndigency_video'
 ]);
 const DOCUMENT_UPLOAD_FIELD_MAP = {
   mayorCOE_photo: 'enrollment_certificate_doc',
@@ -197,8 +200,11 @@ const StudentInfo = () => {
     
     // Documentary Requirements
     mayorCOE_photo: null,
+    mayorCOE_video: null,
     mayorGrades_photo: null,
+    mayorGrades_video: null,
     mayorIndigency_photo: null,
+    mayorIndigency_video: null,
 
     // School ID Photos
     schoolIdFront: null,
@@ -1245,11 +1251,20 @@ const StudentInfo = () => {
       // Add documentary requirements
       const docKeys = ['mayorCOE', 'mayorGrades', 'mayorIndigency'];
       docKeys.forEach(key => {
-        const fileKey = `${key}_photo`;
-        if (photos[fileKey]) {
-          submissionData.append(fileKey, photos[fileKey]);
-        } else if (formData[fileKey] && typeof formData[fileKey] === 'string') {
-          submissionData.append(fileKey, formData[fileKey]);
+        // Photo
+        const photoKey = `${key}_photo`;
+        if (photos[photoKey]) {
+          submissionData.append(photoKey, photos[photoKey]);
+        } else if (formData[photoKey] && typeof formData[photoKey] === 'string') {
+          submissionData.append(photoKey, formData[photoKey]);
+        } else if (formData[photoKey] instanceof File) {
+          submissionData.append(photoKey, formData[photoKey]);
+        }
+
+        // Video
+        const videoKey = `${key}_video`;
+        if (formData[videoKey] instanceof File) {
+          submissionData.append(videoKey, formData[videoKey]);
         }
       });
 
@@ -2002,22 +2017,22 @@ const StudentInfo = () => {
               </div>
 
               {/* Documentary Requirement: Indigency */}
-              <div style={{marginTop: '1.5rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
-                <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '1rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
+              <div style={{marginTop: '2rem', background: '#fff', padding: '2rem', borderRadius: '24px', border: '1px solid #edf2f7', boxShadow: '0 4px 12px rgba(0,0,0,0.03)'}}>
+                <h4 style={{fontSize: '1.1rem', color: '#2d3748', fontWeight: '700', marginBottom: '1.5rem', borderLeft: '4px solid #e53e3e', paddingLeft: '15px', lineHeight: '1.2'}}>
                   Certificate of Indigency <span style={{color: '#e74c3c'}}>*</span>
                 </h4>
-                <div style={{paddingLeft: '16px'}}>
-                  <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '180px', width: '280px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                    <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 2} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
-                    <div style={{textAlign: 'center', color: '#999', fontSize: '0.85rem', pointerEvents: 'none'}}>
-                      {photos.mayorIndigency_photo ? (
-                        <img src={photos.mayorIndigency_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Indigency Preview" />
-                      ) : (
-                        <>
-                          <i className="fas fa-camera" style={{fontSize: '2rem', marginBottom: '0.5rem', display: 'block'}}></i>
-                          <span>Upload Indigency Photo</span>
-                        </>
-                      )}
+                
+                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem'}}>
+                  <div className="form-group" style={{marginBottom: 0}}>
+                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Photo (.png/jpg)</label>
+                    <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
+                      <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 2} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                    </div>
+                  </div>
+                  <div className="form-group" style={{marginBottom: 0}}>
+                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov)</label>
+                    <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
+                      <input type="file" name="mayorIndigency_video" accept="video/*" onChange={handleInputChange} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
                     </div>
                   </div>
                 </div>
@@ -2126,44 +2141,44 @@ const StudentInfo = () => {
               </div>
 
               {/* Documentary Requirements: COE and Grades */}
-              <div style={{marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem'}}>
-                <div style={{background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
-                  <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '1rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
-                    Certificate of Enrollment (Current A.Y) <span style={{color: '#e74c3c'}}>*</span>
+              <div style={{marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '2rem'}}>
+                <div style={{background: '#fff', padding: '2rem', borderRadius: '24px', border: '1px solid #edf2f7', boxShadow: '0 4px 12px rgba(0,0,0,0.03)'}}>
+                  <h4 style={{fontSize: '1.1rem', color: '#2d3748', fontWeight: '700', marginBottom: '1.5rem', borderLeft: '4px solid #e53e3e', paddingLeft: '15px', lineHeight: '1.2'}}>
+                    Certificate of Enrollment for Current A.Y <span style={{color: '#e74c3c'}}>*</span>
                   </h4>
-                  <div style={{paddingLeft: '16px'}}>
-                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '180px', width: '280px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
-                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.85rem', pointerEvents: 'none'}}>
-                        {photos.mayorCOE_photo ? (
-                          <img src={photos.mayorCOE_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="COE Preview" />
-                        ) : (
-                          <>
-                            <i className="fas fa-camera" style={{fontSize: '2rem', marginBottom: '0.5rem', display: 'block'}}></i>
-                            <span>Upload COE Photo</span>
-                          </>
-                        )}
+                  
+                  <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem'}}>
+                    <div className="form-group" style={{marginBottom: 0}}>
+                      <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Photo (.png/jpg)</label>
+                      <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
+                        <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                      </div>
+                    </div>
+                    <div className="form-group" style={{marginBottom: 0}}>
+                      <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov)</label>
+                      <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
+                        <input type="file" name="mayorCOE_video" accept="video/*" onChange={handleInputChange} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div style={{background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
-                  <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '1rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
-                    Certified True Copy of Grades <span style={{color: '#e74c3c'}}>*</span>
+                <div style={{background: '#fff', padding: '2rem', borderRadius: '24px', border: '1px solid #edf2f7', boxShadow: '0 4px 12px rgba(0,0,0,0.03)'}}>
+                  <h4 style={{fontSize: '1.1rem', color: '#2d3748', fontWeight: '700', marginBottom: '1.5rem', borderLeft: '4px solid #e53e3e', paddingLeft: '15px', lineHeight: '1.2'}}>
+                    Certified true copy of grades last semester <span style={{color: '#e74c3c'}}>*</span>
                   </h4>
-                  <div style={{paddingLeft: '16px'}}>
-                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '180px', width: '280px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
-                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.85rem', pointerEvents: 'none'}}>
-                        {photos.mayorGrades_photo ? (
-                          <img src={photos.mayorGrades_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Grades Preview" />
-                        ) : (
-                          <>
-                            <i className="fas fa-camera" style={{fontSize: '2rem', marginBottom: '0.5rem', display: 'block'}}></i>
-                            <span>Upload Grades Photo</span>
-                          </>
-                        )}
+                  
+                  <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem'}}>
+                    <div className="form-group" style={{marginBottom: 0}}>
+                      <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Photo (.png/jpg)</label>
+                      <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
+                        <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                      </div>
+                    </div>
+                    <div className="form-group" style={{marginBottom: 0}}>
+                      <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov)</label>
+                      <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
+                        <input type="file" name="mayorGrades_video" accept="video/*" onChange={handleInputChange} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
                       </div>
                     </div>
                   </div>
