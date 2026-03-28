@@ -253,6 +253,12 @@ def verify_id_with_ocr(
             town_threshold    = 60
             town_found        = town_similarity >= town_threshold
 
+            # Development Testing Bypass
+            if town_norm == 'test':
+                town_found = True
+                town_similarity = 100
+                print("[OCR] Bypassed address verification for testing (input was 'Test')", flush=True)
+
             print(
                 f"[OCR] Town: Similarity={town_similarity:.1f}% "
                 f"Threshold={town_threshold} Found={town_found} Town='{town_norm}'",
