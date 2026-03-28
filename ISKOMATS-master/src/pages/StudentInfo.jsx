@@ -997,7 +997,50 @@ const StudentInfo = () => {
         }
       }
 
-      // ── STEP 3: No OCR needed here anymore ───────────────────────────────────
+      // ── STEP 3: Name OCR verification (School ID Front) ──────────────────────
+      if (currentStep === 3) {
+        const idFront = schoolIdPhotos.front || formData.id_front;
+        
+        if (idFront) {
+          setLoadingMessage({
+            title: 'Verifying Identity',
+            message: 'Checking your School ID to verify your name matches your profile...'
+          });
+
+          try {
+            // Pass the ID Front for name verification. 
+            // We pass null for indigencyDoc to trigger Name-Only mode in the backend.
+            const result = await applicantAPI.ocrCheck(idFront, null);
+            const isTechnical = result.message?.includes('temporarily unavailable')
+              || result.message?.includes('Low memory mode')
+              || result.message?.includes('OCR service');
+
+            if (!result.verified && !isTechnical) {
+              setOcrVerified('failed');
+              setOcrStatus(result.message || 'Name mismatch: The name on your School ID does not match your profile.');
+              showPromptMessage(
+                `❌ Name mismatch: The name on your School ID does not match your registered name. Please ensure you uploaded a clear photo of your own ID.`,
+                7000
+              );
+              setIsSavingStep(false);
+              return; // Stay on Step 3
+            }
+
+            if (isTechnical) {
+              setOcrVerified('technical_unavailable');
+              setOcrStatus(result.message || 'OCR service temporarily unavailable — you may proceed.');
+              showPromptMessage(`ℹ️ OCR unavailable: ${result.message}. You can still continue.`, 4000);
+            } else {
+              setOcrVerified('success');
+              setOcrStatus(result.message || `Identity verified — name matches!`);
+            }
+          } catch (ocrErr) {
+            setOcrVerified('technical_unavailable');
+            setOcrStatus(`Name OCR error: ${ocrErr.message}`);
+            showPromptMessage(`⚠️ Identity verification issue (${ocrErr.message}). You can still continue.`, 4000);
+          }
+        }
+      }
 
       await saveCurrentStepProgress(currentStep);
       setCurrentStep(prev => Math.min(prev + 1, 4));
