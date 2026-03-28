@@ -1163,27 +1163,41 @@ const StudentInfo = () => {
 
     try {
       // ── Automatic Face Verification ────────────────────────────────────────
-      const facePhoto = photos.face_photo;
-      const idFrontForFace = schoolIdPhotos.front || userProfile?.id_img_front;
+      if (photos.face_photo) {
+        const idImg = schoolIdPhotos.front || userProfile?.id_img_front;
+        
+        if (idImg && faceVerified !== 'success') {
+          setLoadingMessage({
+            title: 'Verifying Identity',
+            message: 'Comparing your selfie with your School ID...'
+          });
+          setFaceVerified('verifying');
 
-      if (facePhoto && idFrontForFace && faceVerified !== 'success') {
-        setLoadingMessage({
-          title: 'Verifying Face',
-          message: 'Matching your selfie against your School ID photo…'
-        });
-        setFaceVerified('verifying');
-        try {
-          // Call the backend OCR-check endpoint which runs DeepFace internally.
-          // We send face_photo as id_front and the actual id_front as indigency_doc
-          // so the backend can distinguish them — instead, call submit with full data
-          // and let the backend do face matching (skip_verification=false).
-          // The skipVerification flag only skips if address OCR already passed.
-          const skipVerification = false; // Always run, backend handles face matching
-          setFaceVerified('success'); // Optimistic — backend will do the real check
-          console.log('[FACE] Face verification will be handled by the backend during submission.');
-        } catch (faceErr) {
-          console.warn('[FACE] Face pre-check error:', faceErr.message);
-          setFaceVerified('technical_unavailable');
+          try {
+            const result = await applicantAPI.verifyFaceAgainstId(photos.face_photo, idImg);
+            const isTechnical = result.message?.includes('temporarily unavailable')
+              || result.message?.includes('Low memory mode')
+              || result.message?.includes('service issue');
+
+            if (!result.verified && !isTechnical) {
+              setFaceVerified('failed');
+              setFaceMatchResult(result);
+              showPromptMessage(`❌ Face Match Error: ${result.message || 'The face photo provided does not match your School ID.'}`, 6000);
+              setIsSubmitting(false);
+              return; // Block submission
+            }
+
+            if (isTechnical) {
+              setFaceVerified('technical_unavailable');
+              console.warn('[FACE] Technical issue, allowing manual check.');
+            } else {
+              setFaceVerified('success');
+            }
+          } catch (faceErr) {
+            console.error('[FACE] Verification error:', faceErr);
+            setFaceVerified('technical_unavailable');
+            // Don't block submission on technical errors, let admin check manually
+          }
         }
       }
       // ──────────────────────────────────────────────────────────────────────────
@@ -2211,50 +2225,6 @@ const StudentInfo = () => {
                       </button>
                     )}
                   </div>
-
-                  {photos.face_photo && (
-                    <div style={{width: '100%', maxWidth: '300px', textAlign: 'center'}}>
-                      {!faceMatchResult ? (
-                        <button type="button" onClick={async () => {
-                          const idImg = schoolIdPhotos.front || userProfile?.id_img_front;
-                          if (!idImg) {
-                            showPromptMessage('⚠️ Please upload your School ID in Step 3 first.');
-                            return;
-                          }
-                          
-                          setIsFaceMatching(true);
-                          setLoadingMessage({ title: 'Matching Face', message: 'Comparing captured photo with your School ID...' });
-                          
-                          try {
-                            const result = await applicantAPI.verifyFaceAgainstId(photos.face_photo, idImg);
-                            setFaceMatchResult(result);
-                            if (result.verified) {
-                              showPromptMessage('✅ Face successfully matched with ID!');
-                            } else {
-                              showPromptMessage(`❌ Face Match Issue: ${result.message || 'Face does not match the ID.'}`);
-                            }
-                          } catch (err) {
-                            console.error('Match error:', err);
-                            // Generic success for technical issues on matching too
-                            showPromptMessage('ℹ️ Verification service issue. Proceeding with manual check.');
-                            setFaceMatchResult({ verified: true, technical_unavailable: true });
-                          } finally {
-                            setIsFaceMatching(false);
-                          }
-                        }} className="submit-btn" disabled={isFaceMatching} style={{width: '100%', background: 'var(--primary)', borderRadius: '12px'}}>
-                          {isFaceMatching ? <><i className="fas fa-spinner fa-spin"></i> Matching...</> : <><i className="fas fa-user-check"></i> Verify Match with ID</>}
-                        </button>
-                      ) : (
-                        <div style={{padding: '10px', borderRadius: '12px', background: faceMatchResult.verified ? '#d4edda' : '#f8d7da', color: faceMatchResult.verified ? '#155724' : '#721c24', border: faceMatchResult.verified ? '1px solid #c3e6cb' : '1px solid #f5c6cb'}}>
-                          <i className={`fas ${faceMatchResult.verified ? 'fa-check-circle' : 'fa-exclamation-circle'}`} style={{marginRight: '8px'}}></i>
-                          {faceMatchResult.verified ? (faceMatchResult.technical_unavailable ? 'Service issue (Manual Check needed)' : 'Facial identity verified!') : faceMatchResult.message || 'Face identity mismatch.'}
-                          {!faceMatchResult.verified && (
-                            <button type="button" onClick={() => setFaceMatchResult(null)} style={{background: 'none', border: 'none', color: '#721c24', cursor: 'pointer', textDecoration: 'underline', fontSize: '0.8rem', marginLeft: '10px'}}>Retry</button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               </div>
 
