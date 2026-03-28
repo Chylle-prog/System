@@ -1175,9 +1175,10 @@ const StudentInfo = () => {
 
           try {
             const result = await applicantAPI.verifyFaceAgainstId(photos.face_photo, idImg);
-            const isTechnical = result.message?.includes('temporarily unavailable')
+            const isTechnical = (result.message?.includes('temporarily unavailable')
               || result.message?.includes('Low memory mode')
-              || result.message?.includes('service issue');
+              || result.message?.includes('service issue'))
+              && !result.message?.includes('Face not detected');
 
             if (!result.verified && !isTechnical) {
               setFaceVerified('failed');
