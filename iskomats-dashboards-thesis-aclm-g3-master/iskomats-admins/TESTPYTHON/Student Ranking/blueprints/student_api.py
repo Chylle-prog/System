@@ -244,62 +244,109 @@ def get_rankings():
     data = request.get_json() or {}
     gpa = float(data.get('gpa', 0))
     income = float(data.get('income', 0))
-    address = data.get('address', '').lower().strip()
+    
+    # Construct address from individual parts if full address is missing
+    address = data.get('address', '')
+    if not address:
+        parts = [
+            data.get('street_brgy', ''),
+            data.get('town_city_municipality', ''),
+            data.get('province', ''),
+            data.get('zipCode', data.get('zip_code', ''))
+        ]
+        address = ' '.join(filter(None, parts))
+    
+    address = address.lower().strip()
 
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute('SELECT * FROM scholarships')
+        
+        # ─── Optional Auth Check ──────────────────────────────────────
+        user_no = None
+        token = request.headers.get('Authorization')
+        if token:
+            try:
+                if token.startswith('Bearer '):
+                    token = token[7:]
+                decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+                user_no = decoded.get('user_no')
+            except Exception:
+                pass # Non-critical if token is invalid for just ranking
+        
+        # Get list of scholarships the user has already applied for
+        applied_sch_ids = set()
+        if user_no:
+            cur.execute("SELECT scholarship_no FROM applicant_status WHERE applicant_no = %s", (user_no,))
+            applied_sch_ids = {row['scholarship_no'] for row in cur.fetchall()}
+        
+        cur.execute("SELECT * FROM scholarships")
         scholarships = cur.fetchall()
 
         today = datetime.now().date()
         ranked = []
+        ineligible = []
 
-        for scholarship in scholarships:
-            deadline = scholarship.get('deadline')
-            if deadline and deadline < today:
-                continue
-
+        for sch in scholarships:
+            deadline = sch.get('deadline')
+            is_expired = deadline and deadline < today
+            
             score = 0
-            disqualified = False
+            reasons = []
+            
+            if is_expired:
+                reasons.append(f"Application deadline has passed ({deadline})")
 
-            min_gpa = scholarship['gpa']
+            # GPA
+            min_gpa = sch['gpa']
             if min_gpa is not None and gpa < min_gpa:
-                disqualified = True
+                reasons.append(f"GPA {gpa} is lower than required {min_gpa}")
             elif min_gpa:
                 score += min(60, (gpa - min_gpa) * 12)
 
-            max_income = scholarship['parent_finance']
-            if max_income is not None and income > max_income:
-                disqualified = True
-            elif max_income:
-                score += min(50, (max_income - income) // 15000)
+            # Income
+            max_inc = sch['parent_finance']
+            if max_inc is not None and income > max_inc:
+                reasons.append(f"Income ₱{income:,.0f} exceeds limit ₱{max_inc:,.0f}")
+            elif max_inc:
+                score += min(50, (max_inc - income) // 15000)
 
-            location = scholarship['location']
-            if location and location.strip():
-                location_clean = location.lower().strip()
-                if location_clean in address:
+            # Location
+            loc = sch['location']
+            if loc and loc.strip():
+                loc_clean = loc.lower().strip()
+                if loc_clean in address:
                     score += 100
-                elif any(word in address for word in location_clean.split()):
+                elif any(word in address for word in loc_clean.split()):
                     score += 40
                 else:
-                    disqualified = True
+                    reasons.append(f"Location does not match requirement '{loc}'")
             else:
                 score += 10
 
-            if not disqualified:
-                ranked.append({
-                    'req_no': scholarship['req_no'],
-                    'name': scholarship['scholarship_name'],
-                    'gpa': min_gpa,
-                    'parent_finance': max_income,
-                    'location': location,
-                    'deadline': scholarship.get('deadline'),
-                    'score': round(score),
-                })
+            item = {
+                'req_no': sch['req_no'],
+                'name': sch['scholarship_name'],
+                'minGpa': min_gpa,
+                'maxIncome': max_inc,
+                'location': loc,
+                'deadline': str(deadline) if deadline else None,
+                'score': round(score),
+                'reasons': reasons,
+                'alreadyApplied': sch['req_no'] in applied_sch_ids,
+                'isExpired': is_expired
+            }
 
-        ranked.sort(key=lambda scholarship: -scholarship['score'])
-        return jsonify(ranked)
+            if not reasons:
+                ranked.append(item)
+            else:
+                ineligible.append(item)
+
+        ranked.sort(key=lambda x: -x['score'])
+        return jsonify({
+            'eligible': ranked,
+            'ineligible': ineligible
+        })
     except Exception as exc:
         return jsonify({'message': str(exc)}), 500
     finally:
@@ -782,6 +829,41 @@ def update_application_status(req_no):
         return jsonify({'message': 'Status updated'})
     except Exception as exc:
         return jsonify({'message': str(exc)}), 500
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+
+@student_api_bp.route('/announcements', methods=['GET'])
+def get_announcements():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        # Join announcements with scholarship_providers to get the name of the provider
+        cur.execute("""
+            SELECT a.ann_no, a.ann_message, a.status_updated, sp.pro_name
+            FROM announcements a
+            JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
+            ORDER BY a.status_updated DESC
+        """)
+        
+        rows = cur.fetchall()
+        
+        announcements = []
+        for row in rows:
+            announcements.append({
+                'id': row['ann_no'],
+                'message': row['ann_message'],
+                'date': str(row['status_updated'].date()) if row['status_updated'] else 'Recent',
+                'provider': row['pro_name']
+            })
+            
+        cur.close()
+        conn.close()
+        return jsonify(announcements)
+    except Exception as e:
+        return jsonify({'message': f"Error fetching announcements: {str(e)}"}), 500
     finally:
         if 'conn' in locals():
             conn.close()

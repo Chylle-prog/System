@@ -3,7 +3,7 @@ import sys
 
 
 _reader = None
-
+_deepface = None
 
 def _get_reader():
     global _reader
@@ -16,12 +16,27 @@ def _get_reader():
         try:
             import easyocr
             # Note: Reader(['en'], gpu=False) downloads ~300MB of models on first run
-            # which might trigger OOM on low-memory instances.
             _reader = easyocr.Reader(['en'], gpu=False)
         except (ImportError, Exception) as e:
             print(f"[OCR] Warning: Could not initialize easyocr: {str(e)}")
             _reader = False # Sentinel for "failed to load"
     return _reader if _reader is not False else None
+
+def _get_deepface():
+    global _deepface
+    if _deepface is None:
+        if os.environ.get('SKIP_HEAVY_IMPORTS') == 'True':
+            print("[FACE] Skipping deepface due to SKIP_HEAVY_IMPORTS=True", flush=True)
+            _deepface = False
+            return None
+            
+        try:
+            from deepface import DeepFace
+            _deepface = DeepFace
+        except (ImportError, Exception) as e:
+            print(f"[FACE] Warning: Could not initialize deepface: {str(e)}")
+            _deepface = False
+    return _deepface if _deepface is not False else None
 
 
 
@@ -220,13 +235,8 @@ def verify_face_with_id(face_image_data, id_image_data):
         return False, 'No ID image provided', 0.0
     
     try:
-        if os.environ.get('SKIP_HEAVY_IMPORTS') == 'True':
-            print("[FACE] Skipping deepface due to SKIP_HEAVY_IMPORTS=True", flush=True)
-            return False, 'Face verification service skipped (Debug mode)', 0.0
-
-        try:
-            from deepface import DeepFace
-        except (ImportError, Exception):
+        deepface = _get_deepface()
+        if not deepface:
             return False, 'Face verification service unavailable (Low memory mode)', 0.0
         
         def load_image_from_bytes(image_data):
@@ -256,7 +266,7 @@ def verify_face_with_id(face_image_data, id_image_data):
                 cv2.imwrite(id_path, id_img)
                 
                 # Use DeepFace to verify faces
-                result = DeepFace.verify(face_path, id_path, model_name='VGG-Face', enforce_detection=False)
+                result = deepface.verify(face_path, id_path, model_name='VGG-Face', enforce_detection=False)
                 
                 is_verified = result['verified']
                 distance = result['distance']
