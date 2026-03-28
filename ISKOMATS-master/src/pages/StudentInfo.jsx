@@ -1756,17 +1756,23 @@ const StudentInfo = () => {
               </h3>
 
               {/* 2x2 ID Picture */}
-              <div style={{marginBottom: '2rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
-                <label style={{display: 'block', fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '0.5rem'}}>
+              <div style={{marginBottom: '2rem', textAlign: 'center'}}>
+                <label style={{display: 'block', fontSize: '0.85rem', marginBottom: '0.5rem', color: '#444', fontWeight: '600'}}>
                   2x2 ID Picture <span style={{color: '#e74c3c'}}>*</span>
                 </label>
-                <p style={{fontSize: '0.8rem', color: '#666', marginBottom: '1rem'}}>Photo (.png/jpg)</p>
-                <input type="file" name="profile_picture" accept="image/*" onChange={handleIdPictureUpload} style={{width: '100%'}} />
-                {idPicturePreview && (
-                  <div style={{marginTop: '1rem', textAlign: 'center'}}>
-                    <img src={idPicturePreview} style={{width: '120px', height: '120px', objectFit: 'cover', borderRadius: '12px', border: '2px solid #fff', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="ID Preview" />
+                <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '150px', width: '150px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
+                  <input type="file" name="profile_picture" accept="image/*" required onChange={handleIdPictureUpload} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
+                  <div style={{textAlign: 'center', color: '#999', fontSize: '0.85rem', pointerEvents: 'none'}}>
+                    {idPicturePreview ? (
+                      <img src={idPicturePreview} style={{width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px'}} alt="ID Preview" />
+                    ) : (
+                      <>
+                        <i className="fas fa-camera" style={{fontSize: '2rem', marginBottom: '0.5rem', display: 'block'}}></i>
+                        <span>Upload 2x2 ID Picture</span>
+                      </>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
 
               <div className="form-row">

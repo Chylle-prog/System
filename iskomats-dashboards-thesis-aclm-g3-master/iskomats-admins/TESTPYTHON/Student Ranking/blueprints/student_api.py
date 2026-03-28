@@ -952,7 +952,7 @@ def get_announcements():
 
         # Join announcements with scholarship_providers to get the name of the provider
         cur.execute(f"""
-            SELECT a.ann_no, a.ann_message, {date_col} AS ann_date, sp.pro_name
+            SELECT a.ann_no, a.ann_message, {date_col} AS ann_date, sp.provider_name AS pro_name
             FROM announcements a
             JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
             ORDER BY {order_col}
