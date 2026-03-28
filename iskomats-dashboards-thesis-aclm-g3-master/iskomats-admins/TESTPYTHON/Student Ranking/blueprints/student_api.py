@@ -791,21 +791,17 @@ def ocr_check():
             # ── Full verification mode (name + address) ────────────────────────
             print(f"[OCR-CHECK] User {request.user_no}: Full verification mode", flush=True)
 
-            if not indigency_doc_bytes:
-                return jsonify({
-                    'verified': False,
-                    'message': 'Missing Document: Please upload your Certificate of Indigency for address verification.'
-                }), 400
-
+            # If no address doc is provided, the library will still verify the name
+            # as long as town_city_municipality is passed as an empty string.
             verified, message, _ = verify_id_with_ocr(
                 id_front_bytes,
                 first_name=applicant.get('first_name', ''),
                 last_name=applicant.get('last_name', ''),
-                town_city_municipality=town_city,
+                town_city_municipality=town_city if indigency_doc_bytes else '',
                 address_image_data=indigency_doc_bytes,
             )
 
-            print(f"[OCR-CHECK] Full result: verified={verified}", flush=True)
+            print(f"[OCR-CHECK] Full result (Name Match): verified={verified}", flush=True)
             return jsonify({'verified': verified, 'message': message})
 
     except Exception as e:
