@@ -3,9 +3,11 @@ import sys
 import gc
 
 
-# ─── Environment hints for threading ──────────────────────────────────────────
+# ─── Environment hints for threading & memory ──────────────────────────────────
 os.environ.setdefault('OMP_NUM_THREADS', '1')
 os.environ.setdefault('ONEDNN_PRIMITIVE_CACHE_CAPACITY', '1')
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '3')
+os.environ.setdefault('TF_FORCE_GPU_ALLOW_GROWTH', 'true')
 
 # ─── DeepFace — lazy singleton ─────────────────────────────────────────────────
 _deepface = None
@@ -21,6 +23,7 @@ def _get_deepface():
         try:
             from deepface import DeepFace
             _deepface = DeepFace
+            gc.collect() # Clear overhead after heavy import
         except (ImportError, Exception) as e:
             print(f"[FACE] Warning: Could not initialise deepface: {str(e)}", flush=True)
             _deepface = False
@@ -295,7 +298,7 @@ def verify_id_with_ocr(
 
 # ─── Face verification ────────────────────────────────────────────────────────
 
-_MAX_FACE_WIDTH = 800   # px — face photos don't need to be large for recognition
+_MAX_FACE_WIDTH = 400   # px — face photos don't need to be large for recognition; reduces memory usage
 
 
 def verify_face_with_id(face_image_data, id_image_data):
@@ -365,6 +368,7 @@ def verify_face_with_id(face_image_data, id_image_data):
                 result = deepface.verify(
                     face_path, id_path,
                     model_name='VGG-Face',
+                    detector_backend='opencv', # Lightweight/fast detector
                     enforce_detection=True,
                 )
 

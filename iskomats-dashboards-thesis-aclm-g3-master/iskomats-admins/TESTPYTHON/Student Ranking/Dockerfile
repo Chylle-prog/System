@@ -1,5 +1,9 @@
 FROM python:3.10-slim
 
+# Encourage Python to flush logs and OS to reclaim memory
+ENV PYTHONUNBUFFERED=1 \
+    MALLOC_TRIM_THRESHOLD_=100000
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
