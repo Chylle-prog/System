@@ -228,15 +228,42 @@ def _internal_uniface_verify(face_image_data, id_image_data, result_queue):
 
         # 2. Extract embeddings using ArcFace
         # In UniFace, the ArcFace object is callable.
-        # Check for various attribute names to handle different library versions
-        def get_face_img(face_obj):
-            for attr in ['face', 'img', 'aligned_face']:
+        # Check for various attribute names and dictionary keys to handle different library versions
+        def get_face_img(face_obj, parent_img):
+            # 1. Check for standard image attributes (object)
+            for attr in ['face', 'img', 'aligned_face', 'image', 'crop', 'cropped']:
                 if hasattr(face_obj, attr):
                     return getattr(face_obj, attr)
+            
+            # 2. Check for standard image keys (dictionary)
+            if isinstance(face_obj, dict):
+                for key in ['face', 'img', 'image', 'crop', 'cropped']:
+                    if key in face_obj:
+                        return face_obj[key]
+
+            # 3. Last resort: Manual crop from parent image if a bounding box exists
+            # Bounding boxes can be under 'bbox', 'box', 'rect'
+            bbox = None
+            if hasattr(face_obj, 'bbox'): bbox = face_obj.bbox
+            elif hasattr(face_obj, 'box'): bbox = face_obj.box
+            elif isinstance(face_obj, dict):
+                bbox = face_obj.get('bbox') or face_obj.get('box') or face_obj.get('rect')
+
+            if bbox is not None and parent_img is not None:
+                try:
+                    # Bboxes are usually [x1, y1, x2, y2]
+                    x1, y1, x2, y2 = map(int, bbox)
+                    # Clip coordinates to image boundaries
+                    h, w = parent_img.shape[:2]
+                    x1, y1 = max(0, x1), max(0, y1)
+                    x2, y2 = min(w, x2), min(h, y2)
+                    return parent_img[y1:y2, x1:x2]
+                except Exception:
+                    pass
             return None
 
-        img_face = get_face_img(faces_face[0])
-        img_id = get_face_img(faces_id[0])
+        img_face = get_face_img(faces_face[0], face_img)
+        img_id = get_face_img(faces_id[0], id_img)
 
         if img_face is None or img_id is None:
             result_queue.put((False, "Face processing error: Could not extract face properties.", 0.0))
