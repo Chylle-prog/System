@@ -196,8 +196,8 @@ def _internal_uniface_verify(face_image_data, id_image_data, result_queue):
         sess_options.intra_op_num_threads = 1
         sess_options.inter_op_num_threads = 1
         
-        detector = RetinaFace(session_options=sess_options)
-        recognizer = ArcFace(session_options=sess_options)
+        detector = RetinaFace()
+        recognizer = ArcFace()
 
         def load_and_resize(image_data):
             if image_data is None: return None
