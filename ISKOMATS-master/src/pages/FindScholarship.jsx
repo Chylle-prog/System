@@ -1,3 +1,4 @@
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { applicantAPI, scholarshipAPI, applicationAPI, verificationAPI } from '../services/api';
