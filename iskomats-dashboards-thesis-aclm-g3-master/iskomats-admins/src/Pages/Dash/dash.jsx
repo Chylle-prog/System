@@ -911,7 +911,7 @@ export default function Dash() {
 
       {reportModal.open && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[40px] w-full max-w-lg overflow-hidden shadow-2xl border border-white/20 animate-in zoom-in duration-300">
+          <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl border border-white/20 animate-in zoom-in duration-300">
             <div className="bg-gradient-to-br from-gray-900 to-black p-10 text-white relative">
               <FaChartBar className="absolute -top-6 -right-6 text-[160px] opacity-10 rotate-12" />
               <h3 className="text-3xl font-black uppercase tracking-tighter leading-none">Intelligence<br />Reports</h3>
@@ -958,7 +958,7 @@ export default function Dash() {
 
       {confirmModal.open && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xl z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[40px] p-12 max-w-sm w-full text-center shadow-2xl border border-white/20">
+          <div className="bg-white rounded-3xl p-12 max-w-sm w-full text-center shadow-2xl border border-white/20">
             <div className={`w-28 h-28 rounded-full mx-auto flex items-center justify-center mb-8 ${confirmModal.type === 'Delete' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
               <FaExclamationCircle className="text-5xl animate-bounce" />
             </div>
