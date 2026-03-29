@@ -263,7 +263,7 @@ def _internal_uniface_verify(face_image_data, id_image_data, result_queue):
         is_verified = similarity > 0.38
         status = f"Face verified (Conf: {confidence:.1f}%)" if is_verified else "Faces do not match"
         
-        result_queue.put((is_verified, status, confidence))
+        result_queue.put((bool(is_verified), status, float(confidence)))
 
     except Exception as e:
         result_queue.put((False, f"Verification error: {str(e)}", 0.0))
