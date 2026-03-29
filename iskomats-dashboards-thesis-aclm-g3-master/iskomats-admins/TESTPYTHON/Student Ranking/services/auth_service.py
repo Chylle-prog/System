@@ -9,6 +9,7 @@ DEFAULT_CORS_ORIGINS = (
     "https://cozy-kulfi-35f772.netlify.app,"
     "https://stingy-body.surge.sh,"
     "https://foregoing-giants.surge.sh,"
+    "https://iskomats-admin.surge.sh,"
     "https://system-kjbv.onrender.com"
 )
 
