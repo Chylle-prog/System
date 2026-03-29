@@ -924,6 +924,19 @@ def update_application_status(req_no):
             """,
             (status, req_no, applicant_no),
         )
+
+        # If this application is being APPROVED, we automatically REJECT all other 
+        # applications for the same applicant as they can only hold one scholarship.
+        if status in [True, 1, 'true', 'True']:
+            cur.execute(
+                """
+                UPDATE applicant_status
+                SET is_accepted = FALSE
+                WHERE applicant_no = %s AND scholarship_no != %s
+                """,
+                (applicant_no, req_no),
+            )
+
         conn.commit()
         return jsonify({'message': 'Status updated'})
     except Exception as exc:

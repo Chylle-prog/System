@@ -150,7 +150,7 @@
   .rounded-2xl,
   .rounded-3xl,
   .rounded-xl,
-  .rounded-[40px] {
+  .rounded-\[40px\] {
     border-radius: 0 !important;
     border: 1px solid #eee !important;
   }
