@@ -228,8 +228,22 @@ def _internal_uniface_verify(face_image_data, id_image_data, result_queue):
 
         # 2. Extract embeddings using ArcFace
         # In UniFace, the ArcFace object is callable.
-        emb_face = recognizer(faces_face[0].aligned_face)
-        emb_id = recognizer(faces_id[0].aligned_face)
+        # Check for various attribute names to handle different library versions
+        def get_face_img(face_obj):
+            for attr in ['face', 'img', 'aligned_face']:
+                if hasattr(face_obj, attr):
+                    return getattr(face_obj, attr)
+            return None
+
+        img_face = get_face_img(faces_face[0])
+        img_id = get_face_img(faces_id[0])
+
+        if img_face is None or img_id is None:
+            result_queue.put((False, "Face processing error: Could not extract face properties.", 0.0))
+            return
+
+        emb_face = recognizer(img_face)
+        emb_id = recognizer(img_id)
 
         # 3. Calculate Cosine Similarity
         # ArcFace embeddings from UniFace are pre-normalized.
