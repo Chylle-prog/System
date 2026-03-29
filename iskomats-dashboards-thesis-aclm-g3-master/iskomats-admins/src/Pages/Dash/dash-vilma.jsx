@@ -24,8 +24,6 @@ import {
   FaTrashAlt,
   FaPaperPlane,
   FaPlusCircle,
-  FaEnvelopeOpen,
-  FaClock,
   FaRobot
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';

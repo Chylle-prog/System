@@ -33,11 +33,7 @@ import {
   FaChartLine,
   FaGlobe,
   FaTrashAlt,
-  FaPaperPlane,
   FaPlusCircle,
-  FaEdit,
-  FaEnvelopeOpen,
-  FaUserCircle
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 import { scholarshipAPI } from '../../services/api';
