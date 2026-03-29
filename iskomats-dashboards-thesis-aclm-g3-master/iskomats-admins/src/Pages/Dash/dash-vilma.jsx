@@ -11,17 +11,6 @@ import {
   FaFilter,
   FaGlobeAfrica,
   FaInbox,
-  FaPaperPlane,
-  FaPrint,
-  FaRobot,
-  FaSearch,
-  FaStar,
-  FaTachometerAlt,
-  FaTimesCircle,
-  FaUserCircle,
-  FaUsers,
-  FaImage,
-  FaUpload,
   FaEdit,
   FaTrash,
   FaPlus,
@@ -32,7 +21,12 @@ import {
   FaArrowRight,
   FaChartLine,
   FaGlobe,
-  FaTrashAlt
+  FaTrashAlt,
+  FaPaperPlane,
+  FaPlusCircle,
+  FaEnvelopeOpen,
+  FaClock,
+  FaRobot
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 import { scholarshipAPI } from '../../services/api';
@@ -85,6 +79,12 @@ export default function DashVilma() {
   const [manageMode, setManageMode] = useState('list'); // create | edit | list
   const [editingPost, setEditingPost] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [manageTab, setManageTab] = useState('scholarship'); // scholarship | announcement
+  const [manageSearch, setManageSearch] = useState('');
+  const [schoolVerifModal, setSchoolVerifModal] = useState(null); // applicant object
+  const [indigencyVerifModal, setIndigencyVerifModal] = useState(null); // applicant object
+  const [schoolVerifSent, setSchoolVerifSent] = useState({}); // { [applicantName]: true }
+  const [indigencyVerifSent, setIndigencyVerifSent] = useState({}); // { [applicantName]: true }
   const [formData, setFormData] = useState({
     scholarshipName: '',
     deadline: '',
@@ -518,6 +518,76 @@ export default function DashVilma() {
       }
     }
   };
+
+  const saveAnnouncement = () => {
+    if (!formData.title || !formData.content) {
+      alert('Please fill in both title and content for the announcement.');
+      return;
+    }
+
+    const newAnnouncement = {
+      id: editingPost ? editingPost.id : Date.now(),
+      title: formData.title,
+      content: formData.content,
+      date: new Date().toISOString(),
+      status: 'active'
+    };
+
+    if (editingPost) {
+      setData(prev => ({
+        ...prev,
+        announcements: prev.announcements.map(ann => ann.id === editingPost.id ? newAnnouncement : ann)
+      }));
+    } else {
+      setData(prev => ({
+        ...prev,
+        announcements: [newAnnouncement, ...(prev.announcements || [])]
+      }));
+    }
+
+    alert(`Announcement ${editingPost ? 'updated' : 'published'} successfully!`);
+    resetForm();
+    setManageMode('list');
+  };
+
+  const editAnnouncement = (ann) => {
+    setEditingPost(ann);
+    setFormData({
+      title: ann.title,
+      content: ann.content
+    });
+    setManageMode('edit');
+  };
+
+  const deleteAnnouncement = (id) => {
+    if (window.confirm('Are you sure you want to delete this announcement?')) {
+      setData(prev => ({
+        ...prev,
+        announcements: prev.announcements.filter(ann => ann.id !== id)
+      }));
+    }
+  };
+
+  const filteredScholarshipPosts = useMemo(() => {
+    const posts = data.scholarshipPosts || [];
+    if (!manageSearch) return posts;
+    const search = manageSearch.toLowerCase();
+    return posts.filter(post => 
+      (post.scholarshipName || post.title || '').toLowerCase().includes(search) ||
+      (post.description || '').toLowerCase().includes(search) ||
+      (post.location || '').toLowerCase().includes(search)
+    );
+  }, [data.scholarshipPosts, manageSearch]);
+
+  const filteredAnnouncements = useMemo(() => {
+    const announcements = data.announcements || [];
+    if (!manageSearch) return announcements;
+    const search = manageSearch.toLowerCase();
+    return announcements.filter(ann => 
+      (ann.title || '').toLowerCase().includes(search) ||
+      (ann.content || '').toLowerCase().includes(search)
+    );
+  }, [data.announcements, manageSearch]);
 
   const stats = useMemo(() => {
     const total = data.applicants.length + data.accepted.length + data.declined.length;
@@ -970,79 +1040,153 @@ export default function DashVilma() {
       return (
         <section className="bg-white p-6 rounded-xl shadow-sm">
           <div className="flex items-center justify-between gap-3 flex-wrap mb-6">
-            <h3 className="text-xl font-semibold text-[#800020]">Vilma Scholarship - Manage Posts</h3>
-            <button
-              type="button"
-              onClick={() => {
-                resetForm();
-                setManageMode('create');
-              }}
-              className="px-4 py-2 rounded-lg bg-[#800020] text-white font-semibold flex items-center gap-2 hover:bg-[#650018] transition-colors"
-            >
-              <FaPlus /> Add New Post
-            </button>
+            <div className="flex bg-gray-100 p-1 rounded-xl shadow-inner mb-4 md:mb-0">
+               <button
+                onClick={() => setManageTab('scholarship')}
+                className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${manageTab === 'scholarship' ? 'bg-[#800020] text-white shadow-md' : 'text-gray-500 hover:text-[#800020]'}`}
+              >
+                Scholarship Posts
+              </button>
+              <button
+                onClick={() => setManageTab('announcement')}
+                className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${manageTab === 'announcement' ? 'bg-[#800020] text-white shadow-md' : 'text-gray-500 hover:text-[#800020]'}`}
+              >
+                Announcements
+              </button>
+            </div>
+            <div className="flex items-center gap-3">
+               <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+                <FaSearch className="text-[#800020]" />
+                <input
+                  type="text"
+                  placeholder={`Search ${manageTab}s...`}
+                  value={manageSearch}
+                  onChange={(e) => setManageSearch(e.target.value)}
+                  className="bg-transparent border-none outline-none text-xs font-medium w-32 md:w-48"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  resetForm();
+                  setManageMode('create');
+                }}
+                className="px-4 py-2 rounded-lg bg-[#800020] text-white font-semibold flex items-center gap-2 hover:bg-[#650018] transition-colors"
+              >
+                <FaPlus /> {manageTab === 'scholarship' ? 'Add Post' : 'Add Announcement'}
+              </button>
+            </div>
           </div>
 
           <div className="space-y-4">
-            {data.scholarshipPosts.length > 0 ? (
-              data.scholarshipPosts.map((post) => (
-                <div key={post.reqNo || post.id} className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <h4 className="text-lg font-semibold text-[#800020] mb-2">{post.scholarshipName || post.title}</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-600">
-                        <div><strong>Deadline:</strong> {formatDate(post.deadline)}</div>
-                        <div><strong>Slots:</strong> {post.slots}</div>
-                        <div><strong>Location:</strong> {post.location}</div>
-                        <div><strong>Min GPA:</strong> {post.minGpa}%</div>
-                        <div><strong>Term:</strong> {post.semester} {post.year}</div>
-                      </div>
-                      <p className="text-sm text-gray-700 mt-3 line-clamp-2">{post.description}</p>
-                      {post.scholarshipImages && post.scholarshipImages.length > 0 && (
-                        <div className="flex gap-2 mt-3">
-                          {post.scholarshipImages.slice(0, 3).map((img, idx) => (
-                            <img key={idx} src={img.url || img} alt="Scholarship" className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
-                          ))}
-                          {post.scholarshipImages.length > 3 && (
-                            <div className="w-16 h-16 bg-gray-100 rounded-lg border border-gray-200 flex items-center justify-center text-xs text-gray-600">
-                              +{post.scholarshipImages.length - 3}
-                            </div>
-                          )}
+            {manageTab === 'scholarship' ? (
+              filteredScholarshipPosts.length > 0 ? (
+                filteredScholarshipPosts.map((post) => (
+                  <div key={post.reqNo || post.id} className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h4 className="text-lg font-semibold text-[#800020] mb-2">{post.scholarshipName || post.title}</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-600">
+                          <div><strong>Deadline:</strong> {formatDate(post.deadline)}</div>
+                          <div><strong>Slots:</strong> {post.slots}</div>
+                          <div><strong>Location:</strong> {post.location}</div>
+                          <div><strong>Min GPA:</strong> {post.minGpa}%</div>
+                          <div><strong>Term:</strong> {post.semester} {post.year}</div>
                         </div>
-                      )}
-                      <div className="text-xs text-gray-500 mt-3">
-                        Date Created: {formatDate(post.dateCreated)}
+                        <p className="text-sm text-gray-700 mt-3 line-clamp-2">{post.description}</p>
+                        {post.scholarshipImages && post.scholarshipImages.length > 0 && (
+                          <div className="flex gap-2 mt-3">
+                            {post.scholarshipImages.slice(0, 3).map((img, idx) => (
+                              <img key={idx} src={img.url || img} alt="Scholarship" className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
+                            ))}
+                            {post.scholarshipImages.length > 3 && (
+                              <div className="w-16 h-16 bg-gray-100 rounded-lg border border-gray-200 flex items-center justify-center text-xs text-gray-600">
+                                +{post.scholarshipImages.length - 3}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <div className="text-xs text-gray-500 mt-3">
+                          Date Created: {formatDate(post.dateCreated)}
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex gap-2 ml-4">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          editPost(post);
-                        }}
-                        className="p-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
-                        title="Edit Post"
-                      >
-                        <FaEdit />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deletePost(post.reqNo || post.id)}
-                        className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
-                        title="Delete Post"
-                      >
-                        <FaTrash />
-                      </button>
+                      <div className="flex gap-2 ml-4">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            editPost(post);
+                          }}
+                          className="p-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+                          title="Edit Post"
+                        >
+                          <FaEdit />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deletePost(post.reqNo || post.id)}
+                          className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
+                          title="Delete Post"
+                        >
+                          <FaTrash />
+                        </button>
+                      </div>
                     </div>
                   </div>
+                ))
+              ) : (
+                <div className="text-center py-12">
+                  <FaImage className="text-4xl text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500">No scholarship posts yet. Create your first post!</p>
                 </div>
-              ))
+              )
             ) : (
-              <div className="text-center py-12">
-                <FaImage className="text-4xl text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500">No scholarship posts yet. Create your first post!</p>
-              </div>
+              filteredAnnouncements.length > 0 ? (
+                filteredAnnouncements.map((ann) => (
+                  <div key={ann.id} className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow bg-blue-50/20">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${ann.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                            {ann.status}
+                          </span>
+                          <h4 className="text-lg font-semibold text-[#800020]">{ann.title}</h4>
+                        </div>
+                        <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">{ann.content}</p>
+                        <div className="text-xs text-gray-500 mt-3 flex items-center gap-1">
+                          <FaClock className="text-[10px]" /> {formatDate(ann.date)}
+                        </div>
+                      </div>
+                      <div className="flex gap-2 ml-4">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            editAnnouncement(ann);
+                          }}
+                          className="p-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+                          title="Edit Announcement"
+                        >
+                          <FaEdit />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteAnnouncement(ann.id)}
+                          className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
+                          title="Delete Announcement"
+                        >
+                          <FaTrash />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-12">
+                  <FaRobot className="text-4xl text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500">No announcements yet. Create your first one!</p>
+                </div>
+              )
             )}
           </div>
         </section>
@@ -1053,7 +1197,7 @@ export default function DashVilma() {
       <section className="bg-white p-6 rounded-xl shadow-sm">
         <div className="flex items-center justify-between gap-3 mb-6">
           <h3 className="text-xl font-semibold text-[#800020]">
-            {manageMode === 'edit' ? 'Edit Scholarship Post' : 'Create New Scholarship Post'}
+            {manageMode === 'edit' ? `Edit ${manageTab === 'scholarship' ? 'Scholarship Post' : 'Announcement'}` : `Create New ${manageTab === 'scholarship' ? 'Scholarship Post' : 'Announcement'}`}
           </h3>
           <button
             type="button"
@@ -1064,176 +1208,193 @@ export default function DashVilma() {
           </button>
         </div>
 
-        <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={(e) => { e.preventDefault(); saveScholarshipPost(); }}>
-          <div>
-            <label className="block text-sm font-semibold text-[#800020] mb-1">Scholarship Name *</label>
-            <input
-              type="text"
-              name="scholarshipName"
-              value={formData.scholarshipName}
-              onChange={handleFormChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
-              placeholder="e.g. Vilma Scholarship 2026"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-[#800020] mb-1">Deadline *</label>
-            <input
-              type="date"
-              name="deadline"
-              value={formData.deadline}
-              onChange={handleFormChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-[#800020] mb-1">Min. GPA (%) *</label>
-            <input
-              type="number"
-              name="minGpa"
-              value={formData.minGpa}
-              onChange={handleFormChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
-              placeholder="e.g. 85"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-[#800020] mb-1">Slots *</label>
-            <input
-              type="number"
-              name="slots"
-              value={formData.slots}
-              onChange={handleFormChange}
-              min="1"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-[#800020] mb-1">Location *</label>
-            <input
-              type="text"
-              name="location"
-              value={formData.location}
-              onChange={handleFormChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
-              placeholder="Eligible location"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-[#800020] mb-1">Parent Income Limit (PHP)</label>
-            <input
-              type="number"
-              name="parentFinance"
-              value={formData.parentFinance}
-              onChange={handleFormChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
-              placeholder="Maximum annual income"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-[#800020] mb-1">Semester *</label>
-            <input
-              type="text"
-              name="semester"
-              value={formData.semester}
-              onChange={handleFormChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
-              placeholder="e.g. 1st Semester"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-[#800020] mb-1">Academic Year *</label>
-            <input
-              type="number"
-              name="year"
-              value={formData.year}
-              onChange={handleFormChange}
-              min="2020"
-              max="2100"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
-              placeholder="e.g. 2026"
-              required
-            />
-          </div>
+        <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={(e) => { e.preventDefault(); manageTab === 'scholarship' ? saveScholarshipPost() : saveAnnouncement(); }}>
           <div className="md:col-span-2">
-            <label className="block text-sm font-semibold text-[#800020] mb-1">Description *</label>
-            <textarea
-              name="description"
-              value={formData.description}
+            <label className="block text-sm font-semibold text-[#800020] mb-1">Title *</label>
+            <input
+              type="text"
+              name={manageTab === 'scholarship' ? 'scholarshipName' : 'title'}
+              value={manageTab === 'scholarship' ? formData.scholarshipName : formData.title}
               onChange={handleFormChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 min-h-[120px]"
-              placeholder="Full details about the scholarship..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+              placeholder={manageTab === 'scholarship' ? "e.g. Vilma Scholarship 2026" : "e.g. System Maintenance"}
               required
             />
           </div>
 
-          {/* Picture Upload Section */}
-          <div className="md:col-span-2">
-            <label className="block text-sm font-semibold text-[#800020] mb-3">
-              <FaImage className="inline mr-2" />
-              Scholarship Images
-            </label>
-
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[#800020] transition-colors">
-              <input
-                type="file"
-                id="image-upload"
-                multiple
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-              />
-              <label
-                htmlFor="image-upload"
-                className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-[#800020] text-white rounded-lg hover:bg-[#650018] transition-colors"
-              >
-                <FaUpload />
-                Choose Images
-              </label>
-              <p className="text-sm text-gray-500 mt-2">Upload scholarship photos, banners, or promotional images</p>
-            </div>
-
-            {/* Image Preview Grid */}
-            {scholarshipImages.length > 0 && (
-              <div className="mt-4">
-                <h4 className="text-sm font-semibold text-[#800020] mb-2">Uploaded Images ({scholarshipImages.length})</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {scholarshipImages.map((image, i) => (
-                    <div key={image.id || i} className="relative group">
-                      <img
-                        src={image.preview || image.url}
-                        alt={image.name || `Image ${i + 1}`}
-                        className="w-full h-32 object-cover rounded-lg border border-gray-200"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeImage(image.id || i)}
-                        className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <FaTimesCircle className="text-xs" />
-                      </button>
-                      <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 rounded-b-lg truncate">
-                        {image.name || `Image ${i + 1}`}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+          {manageTab === 'scholarship' ? (
+            <>
+              <div>
+                <label className="block text-sm font-semibold text-[#800020] mb-1">Deadline *</label>
+                <input
+                  type="date"
+                  name="deadline"
+                  value={formData.deadline}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  required
+                />
               </div>
-            )}
-          </div>
+              <div>
+                <label className="block text-sm font-semibold text-[#800020] mb-1">Min. GPA (%) *</label>
+                <input
+                  type="number"
+                  name="minGpa"
+                  value={formData.minGpa}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  placeholder="e.g. 85"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-[#800020] mb-1">Slots *</label>
+                <input
+                  type="number"
+                  name="slots"
+                  value={formData.slots}
+                  onChange={handleFormChange}
+                  min="1"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-[#800020] mb-1">Location *</label>
+                <input
+                  type="text"
+                  name="location"
+                  value={formData.location}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  placeholder="Eligible location"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-[#800020] mb-1">Parent Income Limit (PHP)</label>
+                <input
+                  type="number"
+                  name="parentFinance"
+                  value={formData.parentFinance}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  placeholder="Maximum annual income"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-[#800020] mb-1">Semester *</label>
+                <input
+                  type="text"
+                  name="semester"
+                  value={formData.semester}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  placeholder="e.g. 1st Semester"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-[#800020] mb-1">Academic Year *</label>
+                <input
+                  type="number"
+                  name="year"
+                  value={formData.year}
+                  onChange={handleFormChange}
+                  min="2020"
+                  max="2100"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  placeholder="e.g. 2026"
+                  required
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold text-[#800020] mb-1">Description *</label>
+                <textarea
+                  name="description"
+                  value={formData.description}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 min-h-[120px]"
+                  placeholder="Full details about the scholarship..."
+                  required
+                />
+              </div>
+
+              {/* Picture Upload Section */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold text-[#800020] mb-3">
+                  <FaImage className="inline mr-2" />
+                  Scholarship Images
+                </label>
+
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[#800020] transition-colors">
+                  <input
+                    type="file"
+                    id="image-upload"
+                    multiple
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                  />
+                  <label
+                    htmlFor="image-upload"
+                    className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-[#800020] text-white rounded-lg hover:bg-[#650018] transition-colors"
+                  >
+                    <FaUpload />
+                    Choose Images
+                  </label>
+                  <p className="text-sm text-gray-500 mt-2">Upload scholarship photos, banners, or promotional images</p>
+                </div>
+
+                {/* Image Preview Grid */}
+                {scholarshipImages.length > 0 && (
+                  <div className="mt-4">
+                    <h4 className="text-sm font-semibold text-[#800020] mb-2">Uploaded Images ({scholarshipImages.length})</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {scholarshipImages.map((image, i) => (
+                        <div key={image.id || i} className="relative group">
+                          <img
+                            src={image.preview || image.url}
+                            alt={image.name || `Image ${i + 1}`}
+                            className="w-full h-32 object-cover rounded-lg border border-gray-200"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeImage(image.id || i)}
+                            className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <FaTimesCircle className="text-xs" />
+                          </button>
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 rounded-b-lg truncate">
+                            {image.name || `Image ${i + 1}`}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="md:col-span-2">
+              <label className="block text-sm font-semibold text-[#800020] mb-1">Announcement Content *</label>
+              <textarea
+                name="content"
+                value={formData.content}
+                onChange={handleFormChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 min-h-[150px]"
+                placeholder="Write your announcement here..."
+                required
+              />
+            </div>
+          )}
 
           <div className="md:col-span-2 flex justify-end gap-2">
-            <button type="button" onClick={resetForm} className="px-4 py-2 rounded-lg bg-gray-500 text-white font-semibold hover:bg-gray-600 transition-colors">
+            <button type="button" onClick={() => setManageMode('list')} className="px-4 py-2 rounded-lg bg-gray-500 text-white font-semibold hover:bg-gray-600 transition-colors">
               Cancel
             </button>
             <button type="submit" className="px-4 py-2 rounded-lg bg-[#800020] text-white font-semibold hover:bg-[#650018] transition-colors">
-              {manageMode === 'edit' ? 'Update Post' : 'Create Post'}
+              {manageMode === 'edit' ? 'Update' : 'Publish'} {manageTab === 'scholarship' ? 'Post' : 'Announcement'}
             </button>
           </div>
         </form>
@@ -2322,6 +2483,24 @@ export default function DashVilma() {
             <span className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase ${isPending ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
               {isPending ? 'Pending Review' : 'Active Student'}
             </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setSchoolVerifModal(a)}
+                disabled={schoolVerifSent[a.name]}
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${schoolVerifSent[a.name] ? 'bg-green-100 text-green-700 cursor-default' : 'bg-[#800020] text-white hover:bg-[#650018]'}`}
+              >
+                <FaPaperPlane /> {schoolVerifSent[a.name] ? 'School Dispatch Sent' : 'Send for School Verification'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIndigencyVerifModal(a)}
+                disabled={indigencyVerifSent[a.name]}
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${indigencyVerifSent[a.name] ? 'bg-green-100 text-green-700 cursor-default' : 'bg-[#800020] text-white hover:bg-[#650018]'}`}
+              >
+                <FaPaperPlane /> {indigencyVerifSent[a.name] ? 'City Hall Dispatch Sent' : 'Verify Indigency (City Hall)'}
+              </button>
+            </div>
             <button
               onClick={() => { setViewApplicant(null); setSection('track'); }}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
