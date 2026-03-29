@@ -21,6 +21,12 @@ const Portal = () => {
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
   
+  // Custom Modal States for Cancellation
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [pendingCancel, setPendingCancel] = useState(null); // { reqNo, scholarshipName }
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [statusInfo, setStatusInfo] = useState({ title: '', message: '', isError: false });
+  
   const messageDropdownRef = useRef(null);
   const notificationDropdownRef = useRef(null);
 
@@ -380,26 +386,46 @@ const Portal = () => {
     ));
   };
 
-  const cancelApplication = async (reqNo, scholarshipName) => {
-    if (confirm(`Are you sure you want to cancel your application for "${scholarshipName}"?`)) {
-      setLoadingMessage({
-        title: 'Cancelling Application',
-        message: 'Please wait while we process your request.'
-      });
-      setShowLoadingOverlay(true);
+  const cancelApplication = (reqNo, scholarshipName) => {
+    setPendingCancel({ reqNo, scholarshipName });
+    setShowCancelConfirm(true);
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!pendingCancel) return;
+    
+    const { reqNo, scholarshipName } = pendingCancel;
+    setShowCancelConfirm(false);
+
+    setLoadingMessage({
+      title: 'Cancelling Application',
+      message: 'Please wait while we process your request.'
+    });
+    setShowLoadingOverlay(true);
+    
+    try {
+      await applicationAPI.cancel(reqNo);
+      // Refresh the list after cancellation
+      const apps = await applicationAPI.getUserApplications();
+      setApplications(apps || []);
       
-      try {
-        await applicationAPI.cancel(reqNo);
-        // Refresh the list after cancellation
-        const apps = await applicationAPI.getUserApplications();
-        setApplications(apps || []);
-        alert(`Your application for "${scholarshipName}" has been cancelled.`);
-      } catch (err) {
-        console.error("Failed to cancel application:", err);
-        alert(`Error: ${err.message || 'Could not cancel application'}`);
-      } finally {
-        setShowLoadingOverlay(false);
-      }
+      setStatusInfo({
+        title: 'Cancellation Successful',
+        message: `Your application for "${scholarshipName}" has been successfully cancelled.`,
+        isError: false
+      });
+      setShowStatusModal(true);
+    } catch (err) {
+      console.error("Failed to cancel application:", err);
+      setStatusInfo({
+        title: 'Cancellation Error',
+        message: `Error: ${err.message || 'Could not cancel application'}`,
+        isError: true
+      });
+      setShowStatusModal(true);
+    } finally {
+      setShowLoadingOverlay(false);
+      setPendingCancel(null);
     }
   };
 
@@ -493,6 +519,48 @@ const Portal = () => {
         @keyframes fadeIn {
           from { opacity: 0; }
           to { opacity: 1; }
+        }
+
+        .modal-buttons {
+          display: flex;
+          gap: 1rem;
+          justify-content: center;
+          margin-top: 2.5rem;
+        }
+
+        .modal-btn {
+          padding: 0.9rem 2.2rem;
+          border-radius: 40px;
+          font-weight: 700;
+          font-size: 0.95rem;
+          cursor: pointer;
+          transition: all 0.2s;
+          min-width: 140px;
+          font-family: 'Inter', sans-serif;
+        }
+
+        .modal-btn-primary {
+          background: var(--primary);
+          color: white;
+          border: none;
+          box-shadow: 0 10px 20px rgba(79, 13, 0, 0.2);
+        }
+
+        .modal-btn-primary:hover {
+          background: #3d0a00;
+          transform: translateY(-2px);
+          box-shadow: 0 15px 25px rgba(79, 13, 0, 0.3);
+        }
+
+        .modal-btn-secondary {
+          background: white;
+          color: var(--text-soft);
+          border: 2px solid var(--gray-2);
+        }
+
+        .modal-btn-secondary:hover {
+          background: var(--gray-1);
+          border-color: var(--gray-3);
         }
 
         .navbar {
@@ -1969,6 +2037,57 @@ const Portal = () => {
           <p style={{ color: 'var(--text-soft)', fontSize: '1rem' }}>
             {loadingMessage.message}
           </p>
+        </div>
+      </div>
+
+      {/* Cancellation Confirmation Modal */}
+      <div className={`loading-overlay ${showCancelConfirm ? 'active' : ''}`}>
+        <div className="loading-modal" style={{ padding: '3.5rem 2.5rem' }}>
+          <i className="fas fa-exclamation-triangle" style={{ fontSize: '3.5rem', color: '#e67e22', marginBottom: '1.5rem', display: 'block' }}></i>
+          <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '1rem' }}>
+            Confirm Cancellation
+          </h3>
+          <p style={{ color: 'var(--text-soft)', fontSize: '1.05rem', lineHeight: '1.6' }}>
+            Are you sure you want to cancel your application for <br />
+            <strong style={{ color: 'var(--text-dark)' }}>"{pendingCancel?.scholarshipName}"</strong>?
+          </p>
+          <div className="modal-buttons">
+            <button className="modal-btn modal-btn-secondary" onClick={() => setShowCancelConfirm(false)}>
+              No, Keep it
+            </button>
+            <button className="modal-btn modal-btn-primary" onClick={handleConfirmCancel}>
+              Yes, Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Success/Error Status Modal */}
+      <div className={`loading-overlay ${showStatusModal ? 'active' : ''}`}>
+        <div className="loading-modal" style={{ padding: '3.5rem 2.5rem' }}>
+          <i 
+            className={`fas ${statusInfo.isError ? 'fa-times-circle' : 'fa-check-circle'}`} 
+            style={{ 
+              fontSize: '4rem', 
+              color: statusInfo.isError ? '#e74c3c' : '#27ae60', 
+              marginBottom: '1.5rem', 
+              display: 'block' 
+            }}
+          ></i>
+          <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '1rem' }}>
+            {statusInfo.title}
+          </h3>
+          <p style={{ color: 'var(--text-soft)', fontSize: '1.05rem', lineHeight: '1.6' }}>
+            {statusInfo.message}
+          </p>
+          <div className="modal-buttons">
+            <button 
+              className="modal-btn modal-btn-primary" 
+              onClick={() => setShowStatusModal(false)}
+            >
+              OK
+            </button>
+          </div>
         </div>
       </div>
     </>
