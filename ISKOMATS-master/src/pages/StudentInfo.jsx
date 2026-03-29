@@ -131,6 +131,11 @@ const StudentInfo = () => {
     mayorGrades_video: false,
     mayorCOE_video: false
   });
+  const [uploadProgress, setUploadProgress] = useState({
+    mayorIndigency_video: 0,
+    mayorGrades_video: 0,
+    mayorCOE_video: 0
+  });
 
   // School ID photo states
   const [schoolIdPhotos, setSchoolIdPhotos] = useState({
@@ -700,12 +705,24 @@ const StudentInfo = () => {
 
     try {
       setIsUploadingVideo(prev => ({ ...prev, [fieldName]: true }));
+      setUploadProgress(prev => ({ ...prev, [fieldName]: 0 }));
 
       const fileExt = file.name.split('.').pop();
       const fileName = `${currentUser}_${fieldName}_${Date.now()}.${fileExt}`;
-      const { data, error } = await supabase.storage
+      
+      // Upload with timeout to prevent hanging
+      const uploadTimeout = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Upload timed out (60s). Please check your internet connection or try a smaller video.')), 60000)
+      );
+
+      const uploadPromise = supabase.storage
         .from('document_videos')
-        .upload(fileName, file);
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      const { data, error } = await Promise.race([uploadPromise, uploadTimeout]);
 
       if (error) throw error;
 
@@ -716,6 +733,7 @@ const StudentInfo = () => {
       const publicUrl = urlData.publicUrl;
 
       setFormData(prev => ({ ...prev, [fieldName]: publicUrl }));
+      setUploadProgress(prev => ({ ...prev, [fieldName]: 100 }));
       
       await applicantAPI.updateProfile({ [fieldName]: publicUrl });
 
@@ -723,7 +741,11 @@ const StudentInfo = () => {
       setShowPrompt(true);
     } catch (err) {
       console.error('Video upload error:', err);
-      setPromptMessage(`❌ Video upload failed: ${err.message}`);
+      let errorMsg = err.message || 'Unknown error during upload';
+      if (err.message === 'Failed to fetch') {
+         errorMsg = 'Network Error: Please check your Supabase URL and CORS settings.';
+      }
+      setPromptMessage(`❌ Video upload failed: ${errorMsg}`);
       setShowPrompt(true);
     } finally {
       setIsUploadingVideo(prev => ({ ...prev, [fieldName]: false }));
@@ -2094,8 +2116,11 @@ const StudentInfo = () => {
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov)</label>
                     <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', position: 'relative'}}>
                       {isUploadingVideo.mayorIndigency_video ? (
-                        <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '600'}}>
-                          <i className="fas fa-spinner fa-spin"></i> Uploading Video...
+                        <div style={{display: 'flex', flexDirection: 'column', gap: '5px'}}>
+                          <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '600'}}>
+                            <i className="fas fa-spinner fa-spin"></i> Uploading Video... {uploadProgress.mayorIndigency_video}%
+                          </div>
+                          <div style={{fontSize: '0.7rem', color: '#666'}}>If stuck, check internet or file size.</div>
                         </div>
                       ) : formData.mayorIndigency_video ? (
                         <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
@@ -2232,8 +2257,11 @@ const StudentInfo = () => {
                       <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov)</label>
                       <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', position: 'relative'}}>
                         {isUploadingVideo.mayorCOE_video ? (
-                          <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '600'}}>
-                            <i className="fas fa-spinner fa-spin"></i> Uploading Video...
+                          <div style={{display: 'flex', flexDirection: 'column', gap: '5px'}}>
+                            <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '600'}}>
+                              <i className="fas fa-spinner fa-spin"></i> Uploading Video... {uploadProgress.mayorCOE_video}%
+                            </div>
+                            <div style={{fontSize: '0.7rem', color: '#666'}}>If stuck, check internet or file height.</div>
                           </div>
                         ) : formData.mayorCOE_video ? (
                           <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
@@ -2266,8 +2294,11 @@ const StudentInfo = () => {
                       <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov)</label>
                       <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', position: 'relative'}}>
                         {isUploadingVideo.mayorGrades_video ? (
-                          <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '600'}}>
-                            <i className="fas fa-spinner fa-spin"></i> Uploading Video...
+                          <div style={{display: 'flex', flexDirection: 'column', gap: '5px'}}>
+                            <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '600'}}>
+                              <i className="fas fa-spinner fa-spin"></i> Uploading Video... {uploadProgress.mayorGrades_video}%
+                            </div>
+                            <div style={{fontSize: '0.7rem', color: '#666'}}>If stuck, check connection.</div>
                           </div>
                         ) : formData.mayorGrades_video ? (
                           <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
