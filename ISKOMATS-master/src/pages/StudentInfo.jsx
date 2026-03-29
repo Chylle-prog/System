@@ -159,7 +159,6 @@ const StudentInfo = () => {
     id_back: null,
     face_photo: null
   });
-  const [extraSignaturePhoto, setExtraSignaturePhoto] = useState(null);
   const [isFaceMatching, setIsFaceMatching] = useState(false);
   const [faceMatchResult, setFaceMatchResult] = useState(null); // { verified: boolean, confidence: number }
   const [faceVerified, setFaceVerified] = useState(null); // null | 'verifying' | 'success' | 'failed' | 'technical_unavailable'
@@ -2350,10 +2349,10 @@ const StudentInfo = () => {
               {/* Signature Section */}
                <div style={{marginBottom: '2rem'}}>
                 <label style={{display: 'block', fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '1rem'}}>
-                  Signature & Additional Identification <span style={{color: '#e74c3c'}}>*</span>
+                  Application Signature <span style={{color: '#e74c3c'}}>*</span>
                 </label>
                 
-                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem'}}>
+                <div style={{display: 'flex', justifyContent: 'center'}}>
                   {/* Signature Column */}
                   <div style={{background: '#fff', border: '1px solid var(--border)', borderRadius: '16px', padding: '1.5rem', textAlign: 'center'}}>
                     <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#666', marginBottom: '1rem'}}>Drawer Signature</label>
@@ -2375,26 +2374,6 @@ const StudentInfo = () => {
                       <div className="signature-preview-box">
                         <img src={formData.applicantSignatureName} alt="Signature" style={{maxHeight: '100px'}} />
                         <button type="button" onClick={() => setShowSignaturePad(true)} style={{position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer'}}><i className="fas fa-undo"></i></button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Extra Image Column (Not connected to DB) */}
-                  <div style={{background: '#f0f7ff', border: '1px solid #e1e8f0', borderRadius: '16px', padding: '1.5rem', textAlign: 'center'}}>
-                    <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#666', marginBottom: '0.5rem'}}>Additional Identification (Optional)</label>
-                    <p style={{fontSize: '0.7rem', color: '#888', marginBottom: '1rem'}}>Internal Record Only (Not stored in DB)</p>
-                    <input type="file" accept="image/*" onChange={(e) => {
-                      const file = e.target.files[0];
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onloadend = () => setExtraSignaturePhoto(reader.result);
-                        reader.readAsDataURL(file);
-                      }
-                    }} style={{fontSize: '0.75rem', width: '100%'}} />
-                    {extraSignaturePhoto && (
-                      <div style={{marginTop: '10px', position: 'relative'}}>
-                        <img src={extraSignaturePhoto} alt="Extra Identification" style={{maxHeight: '80px', borderRadius: '8px', border: '1px solid #fff'}} />
-                        <button type="button" onClick={() => setExtraSignaturePhoto(null)} style={{position: 'absolute', top: '-5px', right: '5px', background: 'rgba(255,0,0,0.7)', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', fontSize: '10px'}}><i className="fas fa-times"></i></button>
                       </div>
                     )}
                   </div>
