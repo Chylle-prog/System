@@ -455,6 +455,9 @@ def update_profile():
             'motherPhoneNumber': 'mother_phone_no', 'fatherOccupation': 'father_occupation',
             'motherOccupation': 'mother_occupation', 'parentsGrossIncome': 'financial_income_of_parents',
             'gpa': 'overall_gpa', 'numberOfSiblings': 'sibling_no', 'course': 'course',
+            'mayorIndigency_video': 'indigency_vid_url',
+            'mayorGrades_video': 'grades_vid_url',
+            'mayorCOE_video': 'enrollment_certificate_vid_url',
         }
 
         for frontend_key, db_col in field_mapping.items():
@@ -665,6 +668,9 @@ def submit_application():
             'schoolIdNumber': 'school_id_no', 'schoolName': 'school', 'schoolAddress': 'school_address',
             'schoolSector': 'school_sector', 'mobileNumber': 'mobile_no', 'yearLevel': 'year_lvl',
             'parentsGrossIncome': 'financial_income_of_parents', 'course': 'course',
+            'mayorIndigency_video': 'indigency_vid_url',
+            'mayorGrades_video': 'grades_vid_url',
+            'mayorCOE_video': 'enrollment_certificate_vid_url',
         }
 
         for form_key, db_col in field_mapping.items():

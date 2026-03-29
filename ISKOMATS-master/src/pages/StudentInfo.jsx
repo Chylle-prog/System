@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import SignaturePad from '../components/SignaturePad';
 import { applicantAPI, applicationAPI } from '../services/api';
+import { supabase } from '../supabaseClient';
 
 const STEP_FIELDS = {
   1: [
@@ -12,11 +14,11 @@ const STEP_FIELDS = {
   2: [
     'fatherStatus', 'fatherName', 'fatherOccupation', 'fatherAddress', 'fatherPhoneNumber',
     'motherStatus', 'motherName', 'motherOccupation', 'motherAddress', 'motherPhoneNumber',
-    'parentsGrossIncome', 'numberOfSiblings', 'mayorIndigency_photo'
+    'parentsGrossIncome', 'numberOfSiblings', 'mayorIndigency_photo', 'mayorIndigency_video'
   ],
   3: [
     'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course', 'gpa',
-    'mayorCOE_photo', 'mayorGrades_photo'
+    'mayorCOE_photo', 'mayorCOE_video', 'mayorGrades_photo', 'mayorGrades_video'
   ],
   4: [
     'privacyConsent', 'dataCertifyConsent',
@@ -124,6 +126,11 @@ const StudentInfo = () => {
   const [isInitialLoading, setIsInitialLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
   const [currentStep, setCurrentStep] = useState(1);
+  const [isUploadingVideo, setIsUploadingVideo] = useState({
+    mayorIndigency_video: false,
+    mayorGrades_video: false,
+    mayorCOE_video: false
+  });
 
   // School ID photo states
   const [schoolIdPhotos, setSchoolIdPhotos] = useState({
@@ -515,6 +522,17 @@ const StudentInfo = () => {
         if (profile.indigency_doc) {
           setPhotos(prev => ({ ...prev, mayorIndigency_photo: profile.indigency_doc }));
         }
+
+        // Load documentary requirement videos
+        if (profile.indigency_vid_url) {
+          setFormData(prev => ({ ...prev, mayorIndigency_video: profile.indigency_vid_url }));
+        }
+        if (profile.grades_vid_url) {
+          setFormData(prev => ({ ...prev, mayorGrades_video: profile.grades_vid_url }));
+        }
+        if (profile.enrollment_certificate_vid_url) {
+          setFormData(prev => ({ ...prev, mayorCOE_video: profile.enrollment_certificate_vid_url }));
+        }
         
         // Load final verification ID photo
         if (profile.id_pic) {
@@ -668,6 +686,48 @@ const StudentInfo = () => {
     setFaceVerificationPreview(dataUrl);
     
     closeCamera();
+  };
+
+  const handleVideoUpload = async (fieldName, e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('video/')) {
+        setPromptMessage('❌ Error: Please select a valid video file.');
+        setShowPrompt(true);
+        return;
+    }
+
+    try {
+      setIsUploadingVideo(prev => ({ ...prev, [fieldName]: true }));
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${currentUser}_${fieldName}_${Date.now()}.${fileExt}`;
+      const { data, error } = await supabase.storage
+        .from('document_videos')
+        .upload(fileName, file);
+
+      if (error) throw error;
+
+      const { data: urlData } = supabase.storage
+        .from('document_videos')
+        .getPublicUrl(fileName);
+
+      const publicUrl = urlData.publicUrl;
+
+      setFormData(prev => ({ ...prev, [fieldName]: publicUrl }));
+      
+      await applicantAPI.updateProfile({ [fieldName]: publicUrl });
+
+      setPromptMessage('✅ Video uploaded successfully!');
+      setShowPrompt(true);
+    } catch (err) {
+      console.error('Video upload error:', err);
+      setPromptMessage(`❌ Video upload failed: ${err.message}`);
+      setShowPrompt(true);
+    } finally {
+      setIsUploadingVideo(prev => ({ ...prev, [fieldName]: false }));
+    }
   };
 
   const openGallery = (type) => {
@@ -1924,7 +1984,7 @@ const StudentInfo = () => {
               </div>
 
               <div style={{marginTop: '2rem', display: 'flex', justifyContent: 'flex-end'}}>
-                <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
+                <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep || Object.values(isUploadingVideo).some(v => v)} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
                   Next: Family Background <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
                 </button>
               </div>
@@ -2032,8 +2092,21 @@ const StudentInfo = () => {
                   </div>
                   <div className="form-group" style={{marginBottom: 0}}>
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov)</label>
-                    <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
-                      <input type="file" name="mayorIndigency_video" accept="video/*" onChange={handleInputChange} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                    <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', position: 'relative'}}>
+                      {isUploadingVideo.mayorIndigency_video ? (
+                        <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '600'}}>
+                          <i className="fas fa-spinner fa-spin"></i> Uploading Video...
+                        </div>
+                      ) : formData.mayorIndigency_video ? (
+                        <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                          <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
+                            <i className="fas fa-check-circle"></i> Video Uploaded
+                          </div>
+                          <button type="button" onClick={() => setFormData(prev => ({ ...prev, mayorIndigency_video: null }))} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                        </div>
+                      ) : (
+                        <input type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorIndigency_video', e)} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2043,7 +2116,7 @@ const StudentInfo = () => {
                 <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
                   <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> Back: Personal Info
                 </button>
-                <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
+                <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep || Object.values(isUploadingVideo).some(v => v)} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
                   Next: Educational Info <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
                 </button>
               </div>
@@ -2157,8 +2230,21 @@ const StudentInfo = () => {
                     </div>
                     <div className="form-group" style={{marginBottom: 0}}>
                       <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov)</label>
-                      <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
-                        <input type="file" name="mayorCOE_video" accept="video/*" onChange={handleInputChange} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                      <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', position: 'relative'}}>
+                        {isUploadingVideo.mayorCOE_video ? (
+                          <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '600'}}>
+                            <i className="fas fa-spinner fa-spin"></i> Uploading Video...
+                          </div>
+                        ) : formData.mayorCOE_video ? (
+                          <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                            <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
+                              <i className="fas fa-check-circle"></i> Video Uploaded
+                            </div>
+                            <button type="button" onClick={() => setFormData(prev => ({ ...prev, mayorCOE_video: null }))} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                          </div>
+                        ) : (
+                          <input type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorCOE_video', e)} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2178,8 +2264,21 @@ const StudentInfo = () => {
                     </div>
                     <div className="form-group" style={{marginBottom: 0}}>
                       <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov)</label>
-                      <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
-                        <input type="file" name="mayorGrades_video" accept="video/*" onChange={handleInputChange} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                      <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', position: 'relative'}}>
+                        {isUploadingVideo.mayorGrades_video ? (
+                          <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '600'}}>
+                            <i className="fas fa-spinner fa-spin"></i> Uploading Video...
+                          </div>
+                        ) : formData.mayorGrades_video ? (
+                          <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                            <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
+                              <i className="fas fa-check-circle"></i> Video Uploaded
+                            </div>
+                            <button type="button" onClick={() => setFormData(prev => ({ ...prev, mayorGrades_video: null }))} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                          </div>
+                        ) : (
+                          <input type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorGrades_video', e)} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2190,7 +2289,7 @@ const StudentInfo = () => {
                 <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
                   <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> Back: Family Background
                 </button>
-                <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
+                <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep || Object.values(isUploadingVideo).some(v => v)} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
                   Next: Certification & Verification <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
                 </button>
               </div>
