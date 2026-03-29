@@ -227,50 +227,32 @@ def _internal_uniface_verify(face_image_data, id_image_data, result_queue):
             return
 
         # 2. Extract embeddings using ArcFace
-        # In UniFace, the ArcFace object is callable.
-        # Check for various attribute names and dictionary keys to handle different library versions
-        def get_face_img(face_obj, parent_img):
-            # 1. Check for standard image attributes (object)
-            for attr in ['face', 'img', 'aligned_face', 'image', 'crop', 'cropped']:
+        # In UniFace, the ArcFace object is callable and expects (img, landmarks)
+        def get_landmarks(face_obj):
+            for attr in ['landmarks', 'kps', 'keypoints']:
                 if hasattr(face_obj, attr):
                     return getattr(face_obj, attr)
-            
-            # 2. Check for standard image keys (dictionary)
             if isinstance(face_obj, dict):
-                for key in ['face', 'img', 'image', 'crop', 'cropped']:
+                for key in ['landmarks', 'kps', 'keypoints']:
                     if key in face_obj:
                         return face_obj[key]
-
-            # 3. Last resort: Manual crop from parent image if a bounding box exists
-            # Bounding boxes can be under 'bbox', 'box', 'rect'
-            bbox = None
-            if hasattr(face_obj, 'bbox'): bbox = face_obj.bbox
-            elif hasattr(face_obj, 'box'): bbox = face_obj.box
-            elif isinstance(face_obj, dict):
-                bbox = face_obj.get('bbox') or face_obj.get('box') or face_obj.get('rect')
-
-            if bbox is not None and parent_img is not None:
-                try:
-                    # Bboxes are usually [x1, y1, x2, y2]
-                    x1, y1, x2, y2 = map(int, bbox)
-                    # Clip coordinates to image boundaries
-                    h, w = parent_img.shape[:2]
-                    x1, y1 = max(0, x1), max(0, y1)
-                    x2, y2 = min(w, x2), min(h, y2)
-                    return parent_img[y1:y2, x1:x2]
-                except Exception:
-                    pass
             return None
 
-        img_face = get_face_img(faces_face[0], face_img)
-        img_id = get_face_img(faces_id[0], id_img)
+        lnmarks_face = get_landmarks(faces_face[0])
+        lnmarks_id = get_landmarks(faces_id[0])
 
-        if img_face is None or img_id is None:
-            result_queue.put((False, "Face processing error: Could not extract face properties.", 0.0))
-            return
-
-        emb_face = recognizer(img_face)
-        emb_id = recognizer(img_id)
+        if lnmarks_face is None or lnmarks_id is None:
+            # Fallback to image-only call if landmarks are missing, 
+            # though current error suggests they are required.
+            try:
+                emb_face = recognizer(face_img)
+                emb_id = recognizer(id_img)
+            except Exception:
+                result_queue.put((False, "Face processing error: Could not extract facial landmarks.", 0.0))
+                return
+        else:
+            emb_face = recognizer(face_img, lnmarks_face)
+            emb_id = recognizer(id_img, lnmarks_id)
 
         # 3. Calculate Cosine Similarity
         # ArcFace embeddings from UniFace are pre-normalized.
