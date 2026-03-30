@@ -2192,10 +2192,22 @@ def delete_scholarship(current_user_id, pro_no, role, req_no):
         if not is_superadmin and sch_row['pro_no'] is not None and pro_no is not None and sch_row['pro_no'] != pro_no:
             return jsonify({'message': 'Unauthorized'}), 401
             
-        # 3. Delete entries in applicant_status first (foreign key)
+        # 3. Delete messages associated with this scholarship first
+        # This deletes all messages between applicants and the provider for this scholarship
+        cursor.execute("""
+            DELETE FROM message 
+            WHERE (applicant_no, pro_no) IN (
+                SELECT DISTINCT ast.applicant_no, s.pro_no 
+                FROM applicant_status ast
+                JOIN scholarships s ON ast.scholarship_no = s.req_no
+                WHERE s.req_no = %s
+            )
+        """, (req_no,))
+        
+        # Delete entries in applicant_status (foreign key)
         cursor.execute("DELETE FROM applicant_status WHERE scholarship_no = %s", (req_no,))
         
-        # 3. Delete scholarship
+        # Delete scholarship
         cursor.execute("DELETE FROM scholarships WHERE req_no = %s", (req_no,))
         
         conn.commit()

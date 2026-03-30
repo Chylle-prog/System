@@ -180,8 +180,22 @@ const FindScholarship = () => {
       return 70;                  // Below 75 -> 0.00
     }
 
-    // NU Lipa Scale (1.00 is highest)
-    if (uniName.includes('nu lipa') || uniName.includes('national university')) {
+    // Schools using 1.00 as highest (BSU, KLL, PhilSCA, LCC, etc.)
+    const onePointZeroHighestSchools = [
+      'batangas state university', 'bsu',
+      'kolehiyo ng lungsod ng lipa', 'kll',
+      'philippine state college of aeronautics', 'philsca', 'philsca fab',
+      'lipa city colleges', 'lcc',
+      'university of batangas', 'ub ', 'ub lipa', // Note: 'ub ' with space to avoid matching 'subnet'
+      'new era university', 'neu',
+      'batangas college of arts and sciences', 'bcas',
+      'royal british college', 'rbc',
+      'sti academic center', 'sti ',
+      'ama computer college', 'ama ', 'ama lipa',
+      'ict-ed'
+    ];
+
+    if (onePointZeroHighestSchools.some(school => uniName.includes(school))) {
       if (gpa <= 1.12) return 99; // 1.00 -> 97-100
       if (gpa <= 1.37) return 95; // 1.25 -> 94-96
       if (gpa <= 1.62) return 92; // 1.50 -> 91-93

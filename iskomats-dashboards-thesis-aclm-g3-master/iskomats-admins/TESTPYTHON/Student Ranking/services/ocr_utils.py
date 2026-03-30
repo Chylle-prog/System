@@ -18,6 +18,20 @@ except Exception:
 
 # ─── Tesseract availability check ─────────────────────────────────────────────
 
+# On Windows, point pytesseract to the Tesseract binary.
+# Override via TESSERACT_CMD env var; falls back to the standard install location.
+import platform
+if platform.system() == 'Windows':
+    try:
+        import pytesseract
+        _tess_cmd = os.environ.get(
+            'TESSERACT_CMD',
+            r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+        )
+        pytesseract.pytesseract.tesseract_cmd = _tess_cmd
+    except ImportError:
+        pass
+
 _tesseract_available = None   # None = unchecked, True/False = result
 
 def _check_tesseract():
@@ -36,30 +50,43 @@ def _check_tesseract():
     return _tesseract_available
 
 
+
 # ─── Image preprocessing ──────────────────────────────────────────────────────
 
 _MAX_OCR_WIDTH = 1200   # px — wide enough for most ID text
 _MAX_FACE_WIDTH = 224   # px — optimal for ArcFace/ONNX
 
-def _preprocess_for_ocr(img):
+def _preprocess_strategy_a(img):
+    """Standard grayscale + CLAHE + adaptive threshold. Works well for plain docs."""
     import cv2
-    h, w = img.shape[:2]
-    if w > _MAX_OCR_WIDTH:
-        scale = _MAX_OCR_WIDTH / w
-        img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
-    
-    if len(img.shape) == 3:
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    else:
-        gray = img
-
-    binary = cv2.adaptiveThreshold(
-        gray, 255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        blockSize=31,
-        C=10,
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    gray = clahe.apply(gray)
+    return cv2.adaptiveThreshold(
+        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 10
     )
+
+
+def _preprocess_strategy_b(img):
+    """Background subtraction — best for patterned/colorful IDs (Philippine National ID)."""
+    import cv2
+    import numpy as np
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+    # Estimate background using large morphological closing
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (51, 51))
+    background = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
+    # Subtract background to isolate text
+    diff = cv2.absdiff(gray, background)
+    diff = cv2.normalize(diff, None, 0, 255, cv2.NORM_MINMAX)
+    _, binary = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    return binary
+
+
+def _preprocess_strategy_c(img):
+    """Simple OTSU on grayscale — reliable baseline for high-contrast docs."""
+    import cv2
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return binary
 
 
@@ -79,15 +106,32 @@ def _run_tesseract(image_bytes):
         if img is None:
             return '', 'Could not decode image'
 
-        processed = _preprocess_for_ocr(img)
-        custom_config = r'--psm 3 --oem 3'
-        text = pytesseract.image_to_string(processed, config=custom_config)
-        del processed
-        gc.collect()
+        h, w = img.shape[:2]
+        if w > _MAX_OCR_WIDTH:
+            scale = _MAX_OCR_WIDTH / w
+            img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
 
-        return text.strip(), None
+        custom_config = r'--psm 3 --oem 3'
+        best_text = ''
+
+        # Try each preprocessing strategy; keep whichever extracts the most text
+        for strategy in (_preprocess_strategy_a, _preprocess_strategy_b, _preprocess_strategy_c):
+            try:
+                processed = strategy(img)
+                text = pytesseract.image_to_string(processed, config=custom_config).strip()
+                if len(text) > len(best_text):
+                    best_text = text
+            except Exception:
+                continue
+
+        del img
+        gc.collect()
+        return best_text, None
+
     except Exception as e:
         return '', f'OCR extraction error: {str(e)}'
+
+
 
 
 # ─── Text helpers ─────────────────────────────────────────────────────────────
@@ -101,6 +145,99 @@ def normalize_text(text: str) -> str:
         .replace('-', ' ')
         .strip()
     )
+
+
+def extract_school_year(text: str):
+    """
+    Scan OCR text for academic year / semester patterns and check if the
+    current year is represented.
+
+    Three strategies (in order):
+      1. SY/Sem context with loose regex — tolerates OCR noise like
+         "12025 - 2028" (extra leading char + 6→8 misread of "2025-2026")
+      2. Strict year-pair regex for clean documents
+      3. Standalone year fallback (±1 tolerance)
+
+    Returns:
+      (is_current: bool, found_labels: list[str], message: str)
+    """
+    import re
+    from datetime import datetime
+
+    current_year = datetime.now().year
+
+    # Normalise dashes / whitespace
+    clean = re.sub(r'[\u2013\u2014\u2015\u2212]', '-', text)
+    clean = re.sub(r'\s+', ' ', clean)
+
+    found_labels = []
+    is_current = False
+
+    # ── Strategy 1: SY / Sem header with OCR-noise tolerance ─────────────────
+    # Allows up to 2 stray leading digits before each 4-digit year, so
+    # "12025 - 2028" → extracts y1=2025, y2=2028 (6→8 misread but range ok)
+    sy_pattern = re.compile(
+        r'(?:S\.?Y\.?|SY|Sem[a-z]*|School\s*Year)'  # keyword
+        r'[^\d]{0,20}'                                # gap (label text)
+        r'\d{0,2}(20\d{2})'                           # y1 (allows 1-2 noise digits before)
+        r'\s*[-\s/]+\s*'                               # separator
+        r'\d{0,2}(20\d{2})',                           # y2
+        re.IGNORECASE
+    )
+    for m in sy_pattern.finditer(clean):
+        y1, y2 = int(m.group(1)), int(m.group(2))
+        # Academic years are ALWAYS consecutive (e.g. 2025-2026).
+        # If y2 - y1 ≠ 1 it's an OCR digit misread — correct y2 to y1 + 1.
+        if y2 - y1 != 1:
+            y2 = y1 + 1
+        label = f"S.Y. {y1}–{y2}"
+        if y1 <= current_year <= y2:
+            is_current = True
+            found_labels.append(label)
+        elif found_labels == []:
+            found_labels.append(label)   # record even if outdated (for error msg)
+
+    if is_current:
+        return True, found_labels, f"School year verified ({', '.join(found_labels)})"
+
+    # ── Strategy 2: Strict year-pair regex (clean documents) ─────────────────
+    pair_pattern = re.compile(r'\b(20\d{2})\s*-\s*(20\d{2})\b')
+    for m in pair_pattern.finditer(clean):
+        y1, y2 = int(m.group(1)), int(m.group(2))
+        # Same normalization — correct non-consecutive pairs
+        if y2 - y1 != 1:
+            y2 = y1 + 1
+        label = f"S.Y. {y1}–{y2}"
+        if y1 <= current_year <= y2:
+            is_current = True
+            found_labels.append(label)
+        elif label not in found_labels:
+            found_labels.append(label)
+
+    if is_current:
+        return True, found_labels, f"School year verified ({', '.join(found_labels)})"
+
+    # ── Strategy 3: Standalone year (±1 tolerance to absorb OCR digit errors) ─
+    single_pattern = re.compile(r'\b(20\d{2})\b')
+    for m in single_pattern.finditer(clean):
+        y = int(m.group(1))
+        if abs(y - current_year) <= 1:           # e.g. 2025, 2026, 2027
+            is_current = True
+            found_labels.append(str(y))
+
+    if is_current:
+        return True, found_labels, f"School year verified ({', '.join(dict.fromkeys(found_labels))})"
+
+    # ── No current year found ─────────────────────────────────────────────────
+    if found_labels:
+        return False, found_labels, (
+            f"Grades appear outdated — found {', '.join(found_labels[:3])}, "
+            f"expected S.Y. {current_year - 1}–{current_year}"
+        )
+    return False, [], (
+        f"No school year / semester found — expected S.Y. {current_year - 1}–{current_year}"
+    )
+
 
 
 # ─── OCR verification ─────────────────────────────────────────────────────────

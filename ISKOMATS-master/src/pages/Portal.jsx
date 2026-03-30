@@ -949,6 +949,16 @@ const Portal = () => {
           text-align: right;
         }
 
+        .no-messages {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: 100%;
+          font-size: 1rem;
+          color: var(--gray-3);
+          font-weight: 500;
+        }
+
         .chat-input-area {
           padding: 1rem 1.5rem;
           background: white;
@@ -1638,15 +1648,19 @@ const Portal = () => {
             </button>
           </div>
           <div className="chat-messages">
-            {(chatMessages[currentChatId] || []).map((msg, index) => (
-              <div key={index} className={`message-bubble ${msg.type}`}>
-                {msg.type === 'received' && (
-                  <div className="sender">{msg.sender}</div>
-                )}
-                <div>{msg.message}</div>
-                <div className="time">{msg.time}</div>
-              </div>
-            ))}
+            {(chatMessages[currentChatId] || []).length > 0 ? (
+              (chatMessages[currentChatId] || []).map((msg, index) => (
+                <div key={index} className={`message-bubble ${msg.type}`}>
+                  {msg.type === 'received' && (
+                    <div className="sender">{msg.sender}</div>
+                  )}
+                  <div>{msg.message}</div>
+                  <div className="time">{msg.time}</div>
+                </div>
+              ))
+            ) : (
+              <div className="no-messages">No messages yet</div>
+            )}
           </div>
           <div className="chat-input-area">
             <input 

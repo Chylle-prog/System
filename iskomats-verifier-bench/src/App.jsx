@@ -25,9 +25,9 @@ const App = () => {
   
   // Form States
   const [form, setForm] = useState({
-    firstName: '',
-    lastName: '',
-    townCity: '',
+    firstName: 'Alexie Chyle',
+    lastName: 'Magbuhat',
+    townCity: 'Lipa City',
     idFront: null,
     indigencyDoc: null,
     enrollmentDoc: null,
@@ -112,6 +112,12 @@ const App = () => {
                 {detail.verified ? <CheckCircle2 size={16} color="#10b981" /> : <XCircle size={16} color="#ef4444" />}
               </div>
               <p style={{ fontSize: '0.8rem', color: detail.verified ? '#f8fafc' : '#ef4444' }}>{detail.message}</p>
+              {detail.raw_text && (
+                <details style={{ marginTop: '0.5rem' }}>
+                  <summary style={{ fontSize: '0.75rem', color: '#64748b', cursor: 'pointer' }}>📄 Raw OCR Text</summary>
+                  <pre style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: '#94a3b8', background: 'rgba(0,0,0,0.3)', padding: '0.5rem', borderRadius: '6px', whiteSpace: 'pre-wrap', maxHeight: '150px', overflowY: 'auto' }}>{detail.raw_text}</pre>
+                </details>
+              )}
             </div>
           ))}
         </div>

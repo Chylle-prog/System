@@ -12,7 +12,7 @@ from flask_bcrypt import Bcrypt
 
 from services.auth_service import get_secret_key
 from services.db_service import get_db
-from services.ocr_utils import verify_id_with_ocr, verify_face_with_id
+from services.ocr_utils import verify_id_with_ocr, verify_face_with_id, extract_school_year
 
 
 student_api_bp = Blueprint('student_api', __name__, url_prefix='/api/student')
@@ -762,7 +762,10 @@ def ocr_check():
         indigency_doc_param = data.get('indigency_doc') or data.get('indigencyDoc')
         enrollment_doc_param = data.get('enrollment_doc') or data.get('enrollmentDoc')
         grades_doc_param = data.get('grades_doc') or data.get('gradesDoc')
-        
+
+        # Request-provided names take precedence over DB values (supports verifier bench testing)
+        first_name = data.get('first_name') or applicant.get('first_name', '')
+        last_name = data.get('last_name') or applicant.get('last_name', '')
         town_city = data.get('town_city') or data.get('townCity') or applicant.get('town_city_municipality', '')
 
         # Helper to get bytes
@@ -777,22 +780,30 @@ def ocr_check():
         if enrollment_doc_param:
             doc_bytes = decode_base64(enrollment_doc_param)
             if doc_bytes:
-                v, msg, _ = verify_id_with_ocr(
+                v, msg, raw = verify_id_with_ocr(
                     id_image_data=doc_bytes,
                     required_keywords=["enrollment", "registration", "enrolled", "certify", "certificate", "school"]
                 )
-                results.append({'doc': 'Enrollment', 'verified': v, 'message': msg})
+                results.append({'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw})
                 if not v: overall_verified = False
 
         # ── Certified True Copy of Grades ─────────────────────────────────────
         if grades_doc_param:
             doc_bytes = decode_base64(grades_doc_param)
             if doc_bytes:
-                v, msg, _ = verify_id_with_ocr(
+                v, msg, raw = verify_id_with_ocr(
                     id_image_data=doc_bytes,
                     required_keywords=["grades", "transcript", "rating", "evaluation", "semester", "weighted", "average", "gpa"]
                 )
-                results.append({'doc': 'Grades', 'verified': v, 'message': msg})
+                # Additionally verify the school year / semester is current
+                year_ok, year_labels, year_msg = extract_school_year(raw)
+                if v and not year_ok:
+                    v = False
+                    msg = year_msg
+                elif v and year_ok:
+                    msg = f"{msg} | {year_msg}"
+                results.append({'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw,
+                                'school_year': year_labels if year_labels else None})
                 if not v: overall_verified = False
 
         # ── Certificate of Indigency / Address ────────────────────────────────
@@ -800,25 +811,25 @@ def ocr_check():
             # If no other docs, try to fall back to stored indigency or check address
             doc_bytes = get_bytes(indigency_doc_param, applicant.get('indigency_doc'))
             if doc_bytes:
-                v, msg, _ = verify_id_with_ocr(
+                v, msg, raw = verify_id_with_ocr(
                     id_image_data=doc_bytes,
                     town_city_municipality=town_city,
                     address_image_data=doc_bytes,
                     required_keywords=["indigency", "indigent", "barangay", "certificate"]
                 )
-                results.append({'doc': 'Indigency', 'verified': v, 'message': msg})
+                results.append({'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw})
                 if not v: overall_verified = False
 
         # ── School ID / Name Match ───────────────────────────────────────────
         if id_front_param:
             doc_bytes = get_bytes(id_front_param, applicant.get('id_img_front'))
             if doc_bytes:
-                v, msg, _ = verify_id_with_ocr(
+                v, msg, raw = verify_id_with_ocr(
                     id_image_data=doc_bytes,
-                    first_name=applicant.get('first_name', ''),
-                    last_name=applicant.get('last_name', '')
+                    first_name=first_name,
+                    last_name=last_name
                 )
-                results.append({'doc': 'Identity', 'verified': v, 'message': msg})
+                results.append({'doc': 'Identity', 'verified': v, 'message': msg, 'raw_text': raw})
                 if not v: overall_verified = False
 
         # Consolidate messages
@@ -864,6 +875,25 @@ def cancel_application(scholarship_no):
             """,
             (scholarship_no, request.user_no),
         )
+        
+        # Delete associated messages between applicant and provider
+        cur.execute(
+            """
+            SELECT pro_no FROM scholarships WHERE req_no = %s
+            """,
+            (scholarship_no,),
+        )
+        scholarship_row = cur.fetchone()
+        if scholarship_row:
+            pro_no = scholarship_row['pro_no']
+            # Delete all messages between applicant and provider
+            cur.execute(
+                """
+                DELETE FROM message WHERE applicant_no = %s AND pro_no = %s
+                """,
+                (request.user_no, pro_no),
+            )
+        
         conn.commit()
 
         return jsonify({'message': 'Application cancelled successfully'})
@@ -924,6 +954,26 @@ def update_application_status(req_no):
     try:
         conn = get_db()
         cur = conn.cursor()
+        
+        # If rejecting the application, delete associated messages first
+        if status in [False, 0, 'false', 'False']:
+            cur.execute(
+                """
+                SELECT pro_no FROM scholarships WHERE req_no = %s
+                """,
+                (req_no,),
+            )
+            scholarship_row = cur.fetchone()
+            if scholarship_row:
+                pro_no = scholarship_row['pro_no']
+                # Delete all messages between applicant and provider
+                cur.execute(
+                    """
+                    DELETE FROM message WHERE applicant_no = %s AND pro_no = %s
+                    """,
+                    (applicant_no, pro_no),
+                )
+        
         cur.execute(
             """
             UPDATE applicant_status
@@ -1063,4 +1113,4 @@ def face_match():
     except Exception as e:
         print(f"[FACE-MATCH] Error: {str(e)}", flush=True)
         traceback.print_exc()
-        return jsonify({'verified': False, 'message': f'Internal verification error: {str(e)}'}), 500
+        return jsonify({'verified': False, 'message': f'Internal verification error: {str(e)}'}), 500
