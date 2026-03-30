@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verifier Lab Bench - Standalone</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid #334155; }
+        .tab-active { background: #6366f1; color: white; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3); }
+        input[type="file"]::file-selector-button {
+            background: #1e293b; color: #94a3b8; padding: 8px 16px; border-radius: 8px; border: 1px solid #334155; cursor: pointer;
+        }
+        pre { background: #000; color: #a5d6ff; padding: 1rem; border-radius: 12px; overflow-x: auto; font-family: 'Fira Code', monospace; font-size: 0.8rem; }
+    </style>
+</head>
+<body class="min-h-screen">
+    <!-- Header/Auth -->
+    <div class="glass sticky top-0 z-50 px-8 py-4 flex gap-6 items-center">
+        <div class="text-indigo-400 font-black text-xl">iskoMats <span class="font-light text-slate-400">Lab</span></div>
+        <input id="api-url" type="text" placeholder="API Base URL" value="http://localhost:5000/api" class="bg-slate-900 border border-slate-700 px-4 py-2 rounded-lg text-sm flex-1">
+        <input id="api-token" type="password" placeholder="Bearer Token" class="bg-slate-900 border border-slate-700 px-4 py-2 rounded-lg text-sm w-64">
+    </div>
+
+    <div class="max-w-6xl mx-auto px-4 py-12">
+        <div class="text-center mb-12">
+            <h1 class="text-5xl font-extrabold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent mb-2">Verifier Test Bench</h1>
+            <p class="text-slate-400">Standalone Diagnostic Tool for OCR & Biometric Verification</p>
+        </div>
+
+        <!-- Navigation -->
+        <div class="flex justify-center gap-4 mb-12">
+            <button onclick="switchTab('ocr')" id="tab-ocr" class="tab-active px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all">
+                <i data-lucide="file-text"></i> OCR Documentation
+            </button>
+            <button onclick="switchTab('face')" id="tab-face" class="bg-slate-800 text-slate-400 px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all">
+                <i data-lucide="user-check"></i> Face Matching
+            </button>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Left Panel: Inputs -->
+            <div class="glass p-8 rounded-3xl">
+                <!-- OCR Tab -->
+                <div id="panel-ocr" class="space-y-6">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-2">
+                            <label class="text-xs font-bold text-slate-500 uppercase">ID Front (Required for Name)</label>
+                            <input type="file" onchange="previewFile(this, 'id-preview')" id="file-id" class="w-full">
+                            <img id="id-preview" class="hidden w-full h-32 object-contain rounded-xl mt-2 border border-slate-700">
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-xs font-bold text-slate-500 uppercase">Indigency (Address Match)</label>
+                            <input type="file" onchange="previewFile(this, 'indigency-preview')" id="file-indigency" class="w-full">
+                            <img id="indigency-preview" class="hidden w-full h-32 object-contain rounded-xl mt-2 border border-slate-700">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-2">
+                            <label class="text-xs font-bold text-slate-500 uppercase">Enrollment (COE)</label>
+                            <input type="file" onchange="previewFile(this, 'coe-preview')" id="file-coe" class="w-full">
+                            <img id="coe-preview" class="hidden w-full h-32 object-contain rounded-xl mt-2 border border-slate-700">
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-xs font-bold text-slate-500 uppercase">Grades Transcript</label>
+                            <input type="file" onchange="previewFile(this, 'grades-preview')" id="file-grades" class="w-full">
+                            <img id="grades-preview" class="hidden w-full h-32 object-contain rounded-xl mt-2 border border-slate-700">
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <label class="text-xs font-bold text-slate-500 uppercase">Expected Identity</label>
+                        <div class="grid grid-cols-2 gap-4">
+                            <input id="first-name" placeholder="First Name" class="bg-slate-900 border border-slate-700 px-4 py-3 rounded-xl w-full">
+                            <input id="last-name" placeholder="Last Name" class="bg-slate-900 border border-slate-700 px-4 py-3 rounded-xl w-full">
+                        </div>
+                        <input id="town-city" placeholder="Town/City (e.g. Pasig City)" class="bg-slate-900 border border-slate-700 px-4 py-3 rounded-xl w-full">
+                    </div>
+                    <button onclick="runOcrTest()" id="btn-ocr" class="w-full bg-indigo-600 hover:bg-indigo-500 py-4 rounded-2xl font-black flex items-center justify-center gap-3 transition-all active:scale-95">
+                        <i data-lucide="shield-check"></i> RUN OCR DIAGNOSTICS
+                    </button>
+                </div>
+
+                <!-- Face Tab -->
+                <div id="panel-face" class="hidden space-y-6">
+                    <div class="space-y-2">
+                        <label class="text-xs font-bold text-slate-500 uppercase">Reference ID Photo</label>
+                        <input type="file" onchange="previewFile(this, 'face-id-preview')" id="file-face-id" class="w-full">
+                        <img id="face-id-preview" class="hidden w-full h-48 object-contain rounded-xl mt-2 border border-slate-700">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-xs font-bold text-slate-500 uppercase">Live Selfie / Face Photo</label>
+                        <input type="file" onchange="previewFile(this, 'face-selfie-preview')" id="file-face-selfie" class="w-full">
+                        <img id="face-selfie-preview" class="hidden w-full h-48 object-contain rounded-xl mt-2 border border-slate-700">
+                    </div>
+                    <button onclick="runFaceTest()" id="btn-face" class="w-full bg-indigo-600 hover:bg-indigo-500 py-4 rounded-2xl font-black flex items-center justify-center gap-3 transition-all active:scale-95">
+                        <i data-lucide="camera"></i> MATCH BIOMETRICS
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right Panel: Results -->
+            <div class="glass p-8 rounded-3xl border-l-4 border-l-indigo-500">
+                <div id="results-placeholder" class="h-full flex flex-col items-center justify-center text-slate-500">
+                    <i data-lucide="search" class="w-16 h-16 opacity-20 mb-4"></i>
+                    <p>Waiting for diagnostics...</p>
+                </div>
+
+                <div id="results-container" class="hidden space-y-6">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-xl font-bold flex items-center gap-2">
+                            <i data-lucide="activity" class="text-indigo-400"></i> Report Summary
+                        </h3>
+                        <span id="status-badge" class="px-3 py-1 rounded-full text-xs font-black uppercase"></span>
+                    </div>
+
+                    <div id="doc-checks" class="space-y-4"></div>
+
+                    <div class="pt-6">
+                        <h4 class="text-xs font-bold text-slate-500 mb-4 flex items-center gap-2">
+                            <i data-lucide="code" class="w-4 h-4"></i> RAW SERVER RESPONSE
+                        </h4>
+                        <pre id="raw-json"></pre>
+                    </div>
+                </div>
+
+                <div id="loading" class="hidden h-full flex flex-col items-center justify-center">
+                    <i data-lucide="refresh-cw" class="w-12 h-12 text-indigo-500 animate-spin mb-4"></i>
+                    <p class="font-bold">Consulting AI Servers...</p>
+                    <p class="text-sm text-slate-500">This may take 5-10 seconds</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="text-center py-12 text-slate-600 text-xs font-bold uppercase tracking-widest">
+        ISKOMATS Verifier Lab Bench • Standalone Edition
+    </footer>
+
+    <script>
+        lucide.createIcons();
+        let activeTab = 'ocr';
+
+        function switchTab(tab) {
+            activeTab = tab;
+            document.getElementById('tab-ocr').className = tab === 'ocr' ? 'tab-active px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all' : 'bg-slate-800 text-slate-400 px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all';
+            document.getElementById('tab-face').className = tab === 'face' ? 'tab-active px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all' : 'bg-slate-800 text-slate-400 px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all';
+            
+            document.getElementById('panel-ocr').classList.toggle('hidden', tab !== 'ocr');
+            document.getElementById('panel-face').classList.toggle('hidden', tab !== 'face');
+        }
+
+        function previewFile(input, previewId) {
+            const file = input.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = e => {
+                    const img = document.getElementById(previewId);
+                    img.src = e.target.result;
+                    img.classList.remove('hidden');
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        async function toBase64(fileId) {
+            const input = document.getElementById(fileId);
+            const file = input.files[0];
+            if (!file) return null;
+            return new Promise((r, j) => {
+                const reader = new FileReader();
+                reader.onload = () => r(reader.result);
+                reader.onerror = j;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function runOcrTest() {
+            setLoading(true);
+            try {
+                const params = {
+                    id_front: await toBase64('file-id'),
+                    indigency_doc: await toBase64('file-indigency'),
+                    enrollment_doc: await toBase64('file-coe'),
+                    grades_doc: await toBase64('file-grades'),
+                    town_city: document.getElementById('town-city').value,
+                    first_name: document.getElementById('first-name').value,
+                    last_name: document.getElementById('last-name').value
+                };
+
+                const res = await fetch(document.getElementById('api-url').value + '/student/verification/ocr-check', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + document.getElementById('api-token').value
+                    },
+                    body: JSON.stringify(params)
+                });
+
+                const data = await res.json();
+                renderResults('ocr', data);
+            } catch (err) {
+                renderError(err);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        async function runFaceTest() {
+            setLoading(true);
+            try {
+                const params = {
+                    face_image: await toBase64('file-face-selfie'),
+                    id_image: await toBase64('file-face-id')
+                };
+
+                const res = await fetch(document.getElementById('api-url').value + '/student/verification/face-match', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + document.getElementById('api-token').value
+                    },
+                    body: JSON.stringify(params)
+                });
+
+                const data = await res.json();
+                renderResults('face', data);
+            } catch (err) {
+                renderError(err);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function setLoading(isLoading) {
+            document.getElementById('loading').classList.toggle('hidden', !isLoading);
+            document.getElementById('results-placeholder').classList.toggle('hidden', isLoading || document.getElementById('results-container').offsetParent !== null);
+            document.getElementById('results-container').classList.toggle('hidden', isLoading || document.getElementById('results-container').classList.contains('hidden'));
+        }
+
+        function renderResults(type, data) {
+            document.getElementById('results-placeholder').classList.add('hidden');
+            document.getElementById('results-container').classList.remove('hidden');
+            
+            const badge = document.getElementById('status-badge');
+            badge.innerText = data.verified ? 'VERIFIED' : 'FAILED';
+            badge.className = data.verified ? 'px-3 py-1 rounded-full text-xs font-black uppercase bg-emerald-500/20 text-emerald-500' : 'px-3 py-1 rounded-full text-xs font-black uppercase bg-rose-500/20 text-rose-500';
+
+            const checks = document.getElementById('doc-checks');
+            checks.innerHTML = '';
+
+            if (type === 'ocr' && data.details) {
+                data.details.forEach(d => {
+                    const el = document.createElement('div');
+                    el.className = 'p-4 rounded-2xl bg-slate-800/50 border border-slate-700 flex justify-between items-center';
+                    el.innerHTML = `
+                        <div>
+                            <div class="font-bold text-indigo-400">${d.doc} Check</div>
+                            <div class="text-xs text-slate-400">${d.message}</div>
+                        </div>
+                        <i data-lucide="${d.verified ? 'check-circle' : 'x-circle'}" class="${d.verified ? 'text-emerald-500' : 'text-rose-500'}"></i>
+                    `;
+                    checks.appendChild(el);
+                });
+            } else if (type === 'face') {
+                const confidence = data.confidence || 0;
+                checks.innerHTML = `
+                    <div class="p-8 rounded-3xl bg-slate-800/50 text-center">
+                        <div class="text-5xl font-black mb-2 ${data.verified ? 'text-emerald-500' : 'text-rose-500'}">${confidence.toFixed(1)}%</div>
+                        <div class="h-2 w-full bg-slate-700 rounded-full overflow-hidden mb-4">
+                            <div class="h-full bg-indigo-500 transition-all duration-1000" style="width: ${confidence}%"></div>
+                        </div>
+                        <p class="text-slate-400 text-sm">${data.message}</p>
+                    </div>
+                `;
+            }
+
+            document.getElementById('raw-json').innerText = JSON.stringify(data, null, 2);
+            lucide.createIcons();
+        }
+
+        function renderError(err) {
+            document.getElementById('results-placeholder').classList.add('hidden');
+            document.getElementById('results-container').classList.remove('hidden');
+            document.getElementById('doc-checks').innerHTML = `<div class="p-4 bg-rose-500/10 border border-rose-500/50 rounded-2xl text-rose-500 font-bold">Error: ${err.message}</div>`;
+            document.getElementById('raw-json').innerText = 'Check browser console for detailed logs';
+        }
+    </script>
+</body>
+</html>
