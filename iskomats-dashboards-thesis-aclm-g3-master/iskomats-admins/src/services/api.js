@@ -136,4 +136,17 @@ export const scholarshipAPI = {
     api.get('/admin/providers'),
 };
 
+// ===== ANNOUNCEMENT ENDPOINTS =====
+
+export const announcementAPI = {
+  getAll: () =>
+    api.get('/student/announcements'), // Reuse student endpoint for data fetching
+  
+  create: (announcementData) =>
+    api.post('/admin/announcements', announcementData),
+  
+  delete: (ann_no) =>
+    api.delete(`/admin/announcements/${ann_no}`),
+};
+
 export default api;

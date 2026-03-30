@@ -1806,12 +1806,15 @@ const Portal = () => {
                   dbAnnouncements.map((ann, idx) => (
                     <div key={ann.ann_no || idx} className="community-post" style={{borderLeft: '4px solid var(--primary)', paddingLeft: '1rem', borderRadius: '12px'}}>
                       <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem'}}>
-                        <h4 style={{margin: 0, color: 'var(--primary)', fontSize: '1.1rem'}}>{ann.provider_name}</h4>
+                        <div style={{flex: 1}}>
+                          <h4 style={{margin: 0, color: 'var(--primary)', fontSize: '0.9rem', opacity: 0.8}}>{ann.provider_name}</h4>
+                          {ann.ann_title && <h5 style={{margin: '0.2rem 0 0 0', color: 'var(--text-dark)', fontSize: '1.1rem', fontWeight: '800'}}>{ann.ann_title}</h5>}
+                        </div>
                         <span style={{fontSize: '0.8rem', color: 'var(--text-soft)', background: 'var(--gray-2)', padding: '0.2rem 0.6rem', borderRadius: '20px'}}>
-                          {ann.created_at ? new Date(ann.created_at).toLocaleDateString() : 'Recent'}
+                          {ann.created_at || 'Recent'}
                         </span>
                       </div>
-                      <p style={{marginBottom: '0.5rem', color: 'var(--text-dark)'}}>
+                      <p style={{marginBottom: '0.5rem', color: 'var(--text-dark)', fontSize: '1rem'}}>
                         {ann.ann_message}
                       </p>
                     </div>

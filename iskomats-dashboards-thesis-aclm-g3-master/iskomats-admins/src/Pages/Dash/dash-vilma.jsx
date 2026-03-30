@@ -27,7 +27,7 @@ import {
   FaRobot
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
-import { scholarshipAPI } from '../../services/api';
+import { scholarshipAPI, announcementAPI } from '../../services/api';
 import socketService from '../../services/socket';
 
 Chart.register(...registerables);
@@ -38,6 +38,7 @@ const initialVilmaData = {
   declined: [],
   inbox: [], // Add later (Missing Schema)
   scholarshipPosts: [], // Add later (Missing Schema)
+  announcements: [],
   historicalData: { // Add later (Missing Schema)
     monthlyApplications: [],
     courseDistribution: [],
@@ -393,8 +394,18 @@ export default function DashVilma() {
   useEffect(() => {
     if (section === 'manage') {
       loadScholarships();
+      loadAnnouncements();
     }
   }, [section]);
+
+  const loadAnnouncements = async () => {
+    try {
+      const response = await announcementAPI.getAll();
+      setData(prev => ({ ...prev, announcements: response.data || [] }));
+    } catch (error) {
+      console.error('Failed to load announcements:', error);
+    }
+  };
 
   const saveScholarshipPost = async () => {
     setIsSaving(true);
@@ -517,52 +528,53 @@ export default function DashVilma() {
     }
   };
 
-  const saveAnnouncement = () => {
+  const saveAnnouncement = async () => {
     if (!formData.title || !formData.content) {
       alert('Please fill in both title and content for the announcement.');
       return;
     }
 
-    const newAnnouncement = {
-      id: editingPost ? editingPost.id : Date.now(),
-      title: formData.title,
-      content: formData.content,
-      date: new Date().toISOString(),
-      status: 'active'
-    };
+    setIsSaving(true);
+    try {
+      const announcementData = {
+        title: formData.title,
+        content: formData.content
+      };
 
-    if (editingPost) {
-      setData(prev => ({
-        ...prev,
-        announcements: prev.announcements.map(ann => ann.id === editingPost.id ? newAnnouncement : ann)
-      }));
-    } else {
-      setData(prev => ({
-        ...prev,
-        announcements: [newAnnouncement, ...(prev.announcements || [])]
-      }));
+      const response = await announcementAPI.create(announcementData);
+
+      if (response.data.message) {
+        alert('Announcement saved successfully!');
+        resetForm();
+        loadAnnouncements();
+        setManageMode('list');
+      }
+    } catch (error) {
+      console.error('Failed to save announcement:', error);
+      alert('Error saving announcement: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setIsSaving(false);
     }
-
-    alert(`Announcement ${editingPost ? 'updated' : 'published'} successfully!`);
-    resetForm();
-    setManageMode('list');
   };
 
   const editAnnouncement = (ann) => {
     setEditingPost(ann);
     setFormData({
       title: ann.title,
-      content: ann.content
+      content: ann.message || ann.content
     });
     setManageMode('edit');
   };
 
-  const deleteAnnouncement = (id) => {
+  const deleteAnnouncement = async (id) => {
     if (window.confirm('Are you sure you want to delete this announcement?')) {
-      setData(prev => ({
-        ...prev,
-        announcements: prev.announcements.filter(ann => ann.id !== id)
-      }));
+      try {
+        await announcementAPI.delete(id);
+        loadAnnouncements();
+      } catch (error) {
+        console.error('Failed to delete announcement:', error);
+        alert('Error deleting announcement: ' + (error.response?.data?.message || error.message));
+      }
     }
   };
 

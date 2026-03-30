@@ -36,7 +36,7 @@ import {
   FaPlusCircle,
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
-import { scholarshipAPI } from '../../services/api';
+import { scholarshipAPI, announcementAPI } from '../../services/api';
 import socketService from '../../services/socket';
 
 Chart.register(...registerables);
@@ -47,6 +47,7 @@ const initialAfricaData = {
   declined: [],
   inbox: [], // Add later (Missing Schema)
   scholarshipPosts: [], // Add later (Missing Schema)
+  announcements: [],
   historicalData: { // Add later (Missing Schema)
     monthlyApplications: [],
     courseDistribution: [],
@@ -409,8 +410,18 @@ export default function DashAfrica() {
   useEffect(() => {
     if (section === 'manage') {
       loadScholarships();
+      loadAnnouncements();
     }
   }, [section]);
+
+  const loadAnnouncements = async () => {
+    try {
+      const response = await announcementAPI.getAll();
+      setData(prev => ({ ...prev, announcements: response.data || [] }));
+    } catch (error) {
+      console.error('Failed to load announcements:', error);
+    }
+  };
 
   const saveScholarshipPost = async () => {
     setIsSaving(true);
@@ -533,43 +544,40 @@ export default function DashAfrica() {
     }
   };
 
-  const saveAnnouncement = () => {
+  const saveAnnouncement = async () => {
     if (!formData.title || !formData.content) {
       alert('Please fill in all required fields');
       return;
     }
 
-    const newAnnouncement = {
-      id: manageMode === 'edit' ? editingPost.id : Date.now().toString(),
-      title: formData.title,
-      content: formData.content,
-      date: manageMode === 'edit' ? editingPost.date : new Date().toISOString(),
-      status: 'active'
-    };
+    setIsSaving(true);
+    try {
+      const announcementData = {
+        title: formData.title,
+        content: formData.content
+      };
 
-    if (manageMode === 'edit') {
-      setData(prev => ({
-        ...prev,
-        announcements: (prev.announcements || []).map(ann =>
-          ann.id === editingPost.id ? newAnnouncement : ann
-        )
-      }));
-    } else {
-      setData(prev => ({
-        ...prev,
-        announcements: [newAnnouncement, ...(prev.announcements || [])]
-      }));
+      const response = await announcementAPI.create(announcementData);
+
+      if (response.data.message) {
+        alert('Announcement saved successfully!');
+        resetForm();
+        loadAnnouncements();
+        setManageMode('list');
+      }
+    } catch (error) {
+      console.error('Failed to save announcement:', error);
+      alert('Error saving announcement: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setIsSaving(false);
     }
-
-    resetForm();
-    setManageMode('list');
   };
 
   const editAnnouncement = (ann) => {
     setEditingPost(ann);
     setFormData({
       title: ann.title,
-      content: ann.content,
+      content: ann.message || ann.content,
       deadline: '',
       eligibility: '',
       slots: '',
@@ -578,12 +586,15 @@ export default function DashAfrica() {
     setManageMode('edit');
   };
 
-  const deleteAnnouncement = (annId) => {
+  const deleteAnnouncement = async (annId) => {
     if (confirm('Are you sure you want to delete this announcement?')) {
-      setData(prev => ({
-        ...prev,
-        announcements: (prev.announcements || []).filter(ann => ann.id !== annId)
-      }));
+      try {
+        await announcementAPI.delete(annId);
+        loadAnnouncements();
+      } catch (error) {
+        console.error('Failed to delete announcement:', error);
+        alert('Error deleting announcement: ' + (error.response?.data?.message || error.message));
+      }
     }
   };
 

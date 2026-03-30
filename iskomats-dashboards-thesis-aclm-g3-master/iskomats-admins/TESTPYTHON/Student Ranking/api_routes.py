@@ -2387,6 +2387,85 @@ def get_current_user_info(current_user_id, pro_no, role):
         'role': role
     }), 200
 
+# ===== ANNOUNCEMENT ENDPOINTS =====
+
+@api_bp.route('/announcements', methods=['POST'])
+@token_required
+def create_announcement(current_user_id, pro_no, role):
+    data = request.json
+    title = data.get('title')
+    message = data.get('content')
+    
+    if not title or not message:
+        return jsonify({'message': 'Title and content are required'}), 400
+        
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO announcements (ann_title, ann_message, pro_no)
+            VALUES (%s, %s, %s)
+            RETURNING ann_no
+        """, (title, message, pro_no))
+        ann_no = cur.fetchone()['ann_no']
+        conn.commit()
+        
+        record_admin_activity(
+            actor_user_no=current_user_id,
+            action='create_announcement',
+            target_type='announcement',
+            target_id=ann_no,
+            target_label=title,
+            provider_no=pro_no
+        )
+        
+        return jsonify({'message': 'Announcement created', 'ann_no': ann_no}), 201
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+@api_bp.route('/announcements/<int:ann_no>', methods=['DELETE'])
+@token_required
+def delete_announcement(current_user_id, pro_no, role, ann_no):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        # Check ownership unless super admin
+        if role != 'admin':
+            cur.execute("SELECT pro_no, ann_title FROM announcements WHERE ann_no = %s", (ann_no,))
+            row = cur.fetchone()
+            if not row:
+                return jsonify({'message': 'Announcement not found'}), 404
+            if row['pro_no'] != pro_no:
+                return jsonify({'message': 'Unauthorized to delete this announcement'}), 403
+            title = row['ann_title']
+        else:
+            cur.execute("SELECT ann_title FROM announcements WHERE ann_no = %s", (ann_no,))
+            row = cur.fetchone()
+            title = row['ann_title'] if row else 'Unknown'
+                
+        cur.execute("DELETE FROM announcements WHERE ann_no = %s", (ann_no,))
+        conn.commit()
+        
+        record_admin_activity(
+            actor_user_no=current_user_id,
+            action='delete_announcement',
+            target_type='announcement',
+            target_id=ann_no,
+            target_label=title,
+            provider_no=pro_no
+        )
+        
+        return jsonify({'message': 'Announcement deleted'}), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
 # ===== ERROR HANDLERS =====
 
 @api_bp.errorhandler(404)
