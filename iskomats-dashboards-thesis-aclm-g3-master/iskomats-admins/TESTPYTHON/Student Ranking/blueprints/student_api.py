@@ -12,7 +12,7 @@ from flask_bcrypt import Bcrypt
 
 from services.auth_service import get_secret_key
 from services.db_service import get_db
-from services.ocr_utils import verify_id_with_ocr, verify_face_with_id, extract_school_year
+from services.ocr_utils import verify_id_with_ocr, verify_face_with_id, extract_school_year, verify_signature_against_id
 
 
 student_api_bp = Blueprint('student_api', __name__, url_prefix='/api/student')
@@ -1114,3 +1114,43 @@ def face_match():
         print(f"[FACE-MATCH] Error: {str(e)}", flush=True)
         traceback.print_exc()
         return jsonify({'verified': False, 'message': f'Internal verification error: {str(e)}'}), 500
+
+
+@student_api_bp.route('/verification/signature-match', methods=['POST'])
+@token_required
+def signature_match():
+    """
+    Signature verification — compares submitted signature with signatures on ID back.
+    Extracts signature regions from ID back and matches against submitted signature.
+    Returns confidence score and verification result.
+    """
+    data = request.get_json() or {}
+    signature_data = data.get('signature_image')
+    id_back_data = data.get('id_back_image')
+
+    if not signature_data or not id_back_data:
+        return jsonify({'verified': False, 'message': 'Missing signature or ID back image.', 'confidence': 0.0}), 400
+
+    try:
+        # Check if the images are base64 strings
+        signature_bytes = decode_base64(signature_data) if isinstance(signature_data, str) and signature_data.startswith('data:') else None
+        id_back_bytes = decode_base64(id_back_data) if isinstance(id_back_data, str) and id_back_data.startswith('data:') else None
+
+        if not signature_bytes or not id_back_bytes:
+            return jsonify({'verified': False, 'message': 'Invalid image format. Must be base64 data URI.', 'confidence': 0.0}), 400
+
+        # Use new signature verification function
+        # This extracts signatures from ID back and compares with submitted signature
+        verified, message, confidence = verify_signature_against_id(signature_bytes, id_back_bytes)
+        
+        # Ensure all values are native Python types (not numpy types)
+        return jsonify({
+            'verified': bool(verified),
+            'message': str(message),
+            'confidence': float(confidence)
+        })
+    except Exception as e:
+        print(f"[SIGNATURE-MATCH] Error: {str(e)}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return jsonify({'verified': False, 'message': f'Internal verification error: {str(e)}', 'confidence': 0.0}), 500

@@ -34,4 +34,12 @@ export const faceMatch = async (faceImage, idImage) => {
   return response.data;
 };
 
+export const signatureMatch = async (signatureImage, idBackImage) => {
+  const response = await api.post('/student/verification/signature-match', {
+    signature_image: signatureImage,
+    id_back_image: idBackImage,
+  });
+  return response.data;
+};
+
 export default api;

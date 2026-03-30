@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   FileText, 
   UserCheck, 
@@ -12,7 +12,8 @@ import {
   Fingerprint,
   Camera,
   Activity,
-  Code
+  Code,
+  PenTool
 } from 'lucide-react';
 import * as api from './api';
 
@@ -32,10 +33,13 @@ const App = () => {
     indigencyDoc: null,
     enrollmentDoc: null,
     gradesDoc: null,
-    faceImage: null
+    faceImage: null,
+    signatureImage: null,
+    idBackImage: null
   });
 
   const [previews, setPreviews] = useState({});
+  const signatureCanvasRef = useRef(null);
 
   useEffect(() => {
     localStorage.setItem('verifier_token', token);
@@ -88,6 +92,97 @@ const App = () => {
       setLoading(false);
     }
   };
+
+  const runSignatureTest = async () => {
+    setLoading(true);
+    setResults(null);
+    try {
+      // Get canvas image
+      const canvas = signatureCanvasRef.current;
+      if (!canvas) {
+        throw new Error('Canvas not initialized');
+      }
+      const signatureData = canvas.toDataURL('image/png');
+      
+      const res = await api.signatureMatch(signatureData, form.idBackImage);
+      setResults({ type: 'signature', data: res });
+    } catch (err) {
+      setResults({ type: 'error', data: err.response?.data || { message: err.message } });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const setupSignatureCanvas = () => {
+    const canvas = signatureCanvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    let isDrawing = false;
+
+    const startDrawing = (e) => {
+      isDrawing = true;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      
+      const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
+      const y = (e.clientY || (e.touches && e.touches[0].clientY)) - rect.top;
+      
+      ctx.beginPath();
+      ctx.moveTo(x * scaleX, y * scaleY);
+    };
+
+    const draw = (e) => {
+      if (!isDrawing) return;
+      e.preventDefault();
+      
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      
+      const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
+      const y = (e.clientY || (e.touches && e.touches[0].clientY)) - rect.top;
+      
+      ctx.lineTo(x * scaleX, y * scaleY);
+      ctx.stroke();
+    };
+
+    const stopDrawing = () => {
+      isDrawing = false;
+    };
+
+    canvas.addEventListener('mousedown', startDrawing);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stopDrawing);
+    canvas.addEventListener('mouseout', stopDrawing);
+    
+    canvas.addEventListener('touchstart', startDrawing);
+    canvas.addEventListener('touchmove', draw);
+    canvas.addEventListener('touchend', stopDrawing);
+  };
+
+  const clearSignatureCanvas = () => {
+    const canvas = signatureCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  };
+
+  // Initialize canvas when signature tab is active
+  useEffect(() => {
+    if (activeTab === 'signature') {
+      setTimeout(setupSignatureCanvas, 100);
+    }
+  }, [activeTab]);
 
   const renderOcrResults = () => {
     if (!results || results.type !== 'ocr') return null;
@@ -169,6 +264,41 @@ const App = () => {
     );
   };
 
+  const renderSignatureResults = () => {
+    if (!results || results.type !== 'signature') return null;
+    const { data } = results;
+    const confidence = data.confidence || 0;
+    
+    return (
+      <div className="results-content">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+          <h3 style={{ fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <PenTool size={20} className="text-secondary" /> Signature Match Score
+          </h3>
+          <span className={`status-badge ${data.verified ? 'status-success' : 'status-failed'}`}>
+            {data.verified ? 'Signature Valid' : 'Signature Mismatch'}
+          </span>
+        </div>
+
+        <div className="card" style={{ textAlign: 'center', padding: '2rem' }}>
+          <div style={{ fontSize: '3rem', fontWeight: '900', color: data.verified ? '#10b981' : '#ef4444' }}>
+            {confidence.toFixed(1)}%
+          </div>
+          <div className="confidence-bar">
+            <div className="confidence-fill" style={{ width: `${confidence}%` }}></div>
+          </div>
+          <p style={{ color: 'var(--text-muted)' }}>Signature Match Score</p>
+        </div>
+
+        <div style={{ marginTop: '2rem' }}>
+          <p style={{ fontSize: '0.9rem', color: '#f8fafc', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '10px' }}>
+            {data.message}
+          </p>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="app-root">
       <div className="auth-bar">
@@ -198,6 +328,9 @@ const App = () => {
           </button>
           <button className={`tab-btn ${activeTab === 'face' ? 'active' : ''}`} onClick={() => setActiveTab('face')}>
             <UserCheck size={18} style={{ marginRight: '8px' }} /> Face Matching
+          </button>
+          <button className={`tab-btn ${activeTab === 'signature' ? 'active' : ''}`} onClick={() => setActiveTab('signature')}>
+            <PenTool size={18} style={{ marginRight: '8px' }} /> Signature Verification
           </button>
         </nav>
 
@@ -254,7 +387,7 @@ const App = () => {
                   RUN COMPLETE OCR DIAGNOSTICS
                 </button>
               </div>
-            ) : (
+            ) : activeTab === 'face' ? (
               <div className="face-inputs">
                 <div className="input-group">
                   <label>Reference ID Photo</label>
@@ -277,7 +410,60 @@ const App = () => {
                   MATCH BIOMETRICS
                 </button>
               </div>
-            )}
+            ) : activeTab === 'signature' ? (
+              <div className="signature-inputs">
+                <div className="input-group">
+                  <label>Draw Signature</label>
+                  <div style={{ background: 'white', borderRadius: '8px', border: '2px solid #334155', padding: '4px', overflow: 'hidden' }}>
+                    <canvas 
+                      ref={signatureCanvasRef}
+                      width={400} 
+                      height={120}
+                      style={{
+                        display: 'block',
+                        cursor: 'crosshair',
+                        touchAction: 'none',
+                        width: '100%',
+                        height: '120px',
+                        backgroundColor: 'white'
+                      }}
+                    />
+                  </div>
+                  <button 
+                    onClick={clearSignatureCanvas}
+                    style={{ 
+                      width: '100%', 
+                      background: '#1e293b', 
+                      color: '#94a3b8', 
+                      padding: '8px 16px', 
+                      borderRadius: '8px',
+                      border: '1px solid #334155',
+                      cursor: 'pointer',
+                      marginTop: '8px',
+                      fontSize: '0.875rem',
+                      fontWeight: '600'
+                    }}
+                    onMouseOver={(e) => e.target.style.background = '#334155'}
+                    onMouseOut={(e) => e.target.style.background = '#1e293b'}
+                  >
+                    Clear Signature
+                  </button>
+                </div>
+
+                <div className="input-group">
+                  <label>ID Back Image</label>
+                  <div className="upload-area">
+                    <input type="file" onChange={(e) => handleFileChange(e, 'idBackImage')} />
+                    {previews.idBackImage ? <img src={previews.idBackImage} className="preview-img" /> : 'Drop ID Back'}
+                  </div>
+                </div>
+
+                <button className="btn-verify" onClick={runSignatureTest} disabled={loading}>
+                  {loading ? <RefreshCw className="loading-icon" /> : <PenTool size={20} />} 
+                  VERIFY SIGNATURE
+                </button>
+              </div>
+            ) : null}
           </div>
 
           {/* Right Panel: Results */}
@@ -309,7 +495,7 @@ const App = () => {
               </div>
             )}
 
-            {activeTab === 'ocr' ? renderOcrResults() : renderFaceResults()}
+            {activeTab === 'ocr' ? renderOcrResults() : activeTab === 'face' ? renderFaceResults() : renderSignatureResults()}
           </div>
         </div>
       </div>

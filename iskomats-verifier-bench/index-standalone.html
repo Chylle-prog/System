@@ -40,6 +40,9 @@
             <button onclick="switchTab('face')" id="tab-face" class="bg-slate-800 text-slate-400 px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all">
                 <i data-lucide="user-check"></i> Face Matching
             </button>
+            <button onclick="switchTab('signature')" id="tab-signature" class="bg-slate-800 text-slate-400 px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all">
+                <i data-lucide="pen-tool"></i> Signature Verification
+            </button>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -100,6 +103,32 @@
                         <i data-lucide="camera"></i> MATCH BIOMETRICS
                     </button>
                 </div>
+
+                <!-- Signature Tab -->
+                <div id="panel-signature" class="hidden space-y-6">
+                    <div class="space-y-2">
+                        <label class="text-xs font-bold text-slate-500 uppercase">Draw Signature</label>
+                        <div class="bg-white rounded-xl border-2 border-slate-700 p-1" style="overflow: hidden;">
+                            <canvas 
+                                id="signature-canvas" 
+                                width="400" 
+                                height="120"
+                                style="display: block; cursor: crosshair; touch-action: none; width: 100%; height: 120px; background: white;">
+                            </canvas>
+                        </div>
+                        <button onclick="clearSignatureCanvas()" class="w-full bg-slate-700 hover:bg-slate-600 py-2 rounded-lg text-sm font-semibold transition-all">
+                            Clear Signature
+                        </button>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-xs font-bold text-slate-500 uppercase">ID Back Image</label>
+                        <input type="file" onchange="previewFile(this, 'id-back-preview')" id="file-id-back" class="w-full">
+                        <img id="id-back-preview" class="hidden w-full h-48 object-contain rounded-xl mt-2 border border-slate-700">
+                    </div>
+                    <button onclick="runSignatureTest()" id="btn-signature" class="w-full bg-indigo-600 hover:bg-indigo-500 py-4 rounded-2xl font-black flex items-center justify-center gap-3 transition-all active:scale-95">
+                        <i data-lucide="pen-tool"></i> VERIFY SIGNATURE
+                    </button>
+                </div>
             </div>
 
             <!-- Right Panel: Results -->
@@ -148,9 +177,11 @@
             activeTab = tab;
             document.getElementById('tab-ocr').className = tab === 'ocr' ? 'tab-active px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all' : 'bg-slate-800 text-slate-400 px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all';
             document.getElementById('tab-face').className = tab === 'face' ? 'tab-active px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all' : 'bg-slate-800 text-slate-400 px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all';
+            document.getElementById('tab-signature').className = tab === 'signature' ? 'tab-active px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all' : 'bg-slate-800 text-slate-400 px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all';
             
             document.getElementById('panel-ocr').classList.toggle('hidden', tab !== 'ocr');
             document.getElementById('panel-face').classList.toggle('hidden', tab !== 'face');
+            document.getElementById('panel-signature').classList.toggle('hidden', tab !== 'signature');
         }
 
         function previewFile(input, previewId) {
@@ -234,6 +265,130 @@
                 setLoading(false);
             }
         }
+
+        async function runSignatureTest() {
+            setLoading(true);
+            try {
+                const canvas = document.getElementById('signature-canvas');
+                const signatureData = canvas.toDataURL('image/png');
+                
+                if (signatureData === 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==') {
+                    alert('Please draw a signature first');
+                    setLoading(false);
+                    return;
+                }
+
+                const params = {
+                    signature_image: signatureData,
+                    id_back_image: await toBase64('file-id-back')
+                };
+
+                const res = await fetch(document.getElementById('api-url').value + '/student/verification/signature-match', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + document.getElementById('api-token').value
+                    },
+                    body: JSON.stringify(params)
+                });
+
+                const data = await res.json();
+                renderSignatureResults(data);
+            } catch (err) {
+                renderError(err);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function renderSignatureResults(data) {
+            document.getElementById('results-placeholder').classList.add('hidden');
+            document.getElementById('results-container').classList.remove('hidden');
+            
+            const badge = document.getElementById('status-badge');
+            badge.innerText = data.verified ? 'VERIFIED' : 'MISMATCH';
+            badge.className = data.verified ? 'px-3 py-1 rounded-full text-xs font-black uppercase bg-emerald-500/20 text-emerald-500' : 'px-3 py-1 rounded-full text-xs font-black uppercase bg-rose-500/20 text-rose-500';
+
+            const checks = document.getElementById('doc-checks');
+            const confidence = data.confidence || 0;
+            checks.innerHTML = `
+                <div class="p-8 rounded-3xl bg-slate-800/50 text-center">
+                    <div class="text-5xl font-black mb-2 ${data.verified ? 'text-emerald-500' : 'text-rose-500'}">${confidence.toFixed(1)}%</div>
+                    <div class="h-2 w-full bg-slate-700 rounded-full overflow-hidden mb-4">
+                        <div class="h-full bg-indigo-500 transition-all duration-1000" style="width: ${Math.min(confidence, 100)}%"></div>
+                    </div>
+                    <p class="text-slate-400 text-sm">${data.message}</p>
+                </div>
+            `;
+
+            document.getElementById('raw-json').innerText = JSON.stringify(data, null, 2);
+        }
+
+        function setupSignatureCanvas() {
+            const canvas = document.getElementById('signature-canvas');
+            const ctx = canvas.getContext('2d');
+            let isDrawing = false;
+
+            // Set up white background
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2.5;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            const startDrawing = (e) => {
+                isDrawing = true;
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                
+                const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
+                const y = (e.clientY || (e.touches && e.touches[0].clientY)) - rect.top;
+                
+                ctx.beginPath();
+                ctx.moveTo(x * scaleX, y * scaleY);
+            };
+
+            const draw = (e) => {
+                if (!isDrawing) return;
+                e.preventDefault();
+                
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                
+                const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
+                const y = (e.clientY || (e.touches && e.touches[0].clientY)) - rect.top;
+                
+                ctx.lineTo(x * scaleX, y * scaleY);
+                ctx.stroke();
+            };
+
+            const stopDrawing = () => {
+                isDrawing = false;
+            };
+
+            canvas.addEventListener('mousedown', startDrawing);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', stopDrawing);
+            canvas.addEventListener('mouseout', stopDrawing);
+            
+            canvas.addEventListener('touchstart', startDrawing);
+            canvas.addEventListener('touchmove', draw);
+            canvas.addEventListener('touchend', stopDrawing);
+        }
+
+        function clearSignatureCanvas() {
+            const canvas = document.getElementById('signature-canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // Initialize canvas when page loads
+        window.addEventListener('load', setupSignatureCanvas);
+
 
         function setLoading(isLoading) {
             document.getElementById('loading').classList.toggle('hidden', !isLoading);

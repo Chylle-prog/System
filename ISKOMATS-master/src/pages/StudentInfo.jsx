@@ -162,6 +162,9 @@ const StudentInfo = () => {
   const [isFaceMatching, setIsFaceMatching] = useState(false);
   const [faceMatchResult, setFaceMatchResult] = useState(null); // { verified: boolean, confidence: number }
   const [faceVerified, setFaceVerified] = useState(null); // null | 'verifying' | 'success' | 'failed' | 'technical_unavailable'
+  const [isSignatureMatching, setIsSignatureMatching] = useState(false);
+  const [signatureMatchResult, setSignatureMatchResult] = useState(null); // { verified: boolean, confidence: number }
+  const [signatureVerified, setSignatureVerified] = useState(null); // null | 'verifying' | 'success' | 'failed'
 
   const idPictureInputRef = useRef(null);
   const signatureInputRef = useRef(null);
@@ -957,7 +960,7 @@ const StudentInfo = () => {
     setFormData(prev => ({ ...prev, applicantSignatureName: '' }));
   };
 
-  const saveSignature = () => {
+  const saveSignature = async () => {
     if (sigPad.current && !sigPad.current.isEmpty()) {
       const canvas = sigPad.current.getTrimmedCanvas();
       const dataUrl = canvas.toDataURL('image/png');
@@ -965,6 +968,26 @@ const StudentInfo = () => {
       setFormData(prev => ({ ...prev, applicantSignatureName: dataUrl }));
       setShowSignaturePad(false);
       applicantAPI.updateProfile({ signature_data: dataUrl }).catch(console.error);
+
+      // Verify signature against id_back if available
+      if (photos.id_back && dataUrl) {
+        try {
+          setSignatureVerified('verifying');
+          const result = await applicantAPI.verifySignatureAgainstIdBack(dataUrl, photos.id_back);
+          if (result.verified) {
+            setSignatureMatchResult(result);
+            setSignatureVerified('success');
+            showPromptMessage(`✅ Signature verified: ${result.message}`);
+          } else {
+            setSignatureMatchResult(result);
+            setSignatureVerified('failed');
+            showPromptMessage(`⚠️ ${result.message}`);
+          }
+        } catch (err) {
+          setSignatureVerified('failed');
+          showPromptMessage(`❌ Signature verification error: ${err.message}`);
+        }
+      }
     } else {
       showPromptMessage('⚠️ Please provide a signature first.');
     }
@@ -2389,6 +2412,30 @@ const StudentInfo = () => {
                       <div className="signature-preview-box">
                         <img src={formData.applicantSignatureName} alt="Signature" style={{maxHeight: '100px'}} />
                         <button type="button" onClick={() => setShowSignaturePad(true)} style={{position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer'}}><i className="fas fa-undo"></i></button>
+                      </div>
+                    )}
+                    
+                    {/* Signature Verification Status */}
+                    {signatureVerified && (
+                      <div style={{marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #eee'}}>
+                        {signatureVerified === 'verifying' && (
+                          <div style={{fontSize: '0.85rem', color: '#666', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                            <i className="fas fa-spinner fa-spin" style={{color: '#f39c12'}}></i>
+                            Verifying signature...
+                          </div>
+                        )}
+                        {signatureVerified === 'success' && (
+                          <div style={{fontSize: '0.85rem', color: '#27ae60', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '600'}}>
+                            <i className="fas fa-check-circle"></i>
+                            Signature verified: {signatureMatchResult?.confidence && `${Math.round(signatureMatchResult.confidence * 100)}% match`}
+                          </div>
+                        )}
+                        {signatureVerified === 'failed' && (
+                          <div style={{fontSize: '0.85rem', color: '#e74c3c', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '600'}}>
+                            <i className="fas fa-exclamation-circle"></i>
+                            Verification failed - Please try again
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

@@ -338,6 +338,19 @@ export const applicantAPI = {
       body: JSON.stringify({ face_image: faceBase64, id_image: idBase64 }),
     });
   },
+
+  /**
+   * Verify signature match with ID back
+   * @param {string} signatureBase64 - Base64 encoded signature image
+   * @param {string} idBackBase64 - Base64 encoded ID back image
+   * @returns {Promise}
+   */
+  verifySignatureAgainstIdBack: async (signatureBase64, idBackBase64) => {
+    return makeRequest('/student/verification/signature-match', {
+      method: 'POST',
+      body: JSON.stringify({ signature_image: signatureBase64, id_back_image: idBackBase64 }),
+    });
+  },
 };
 
 
@@ -449,6 +462,19 @@ export const verificationAPI = {
     return makeRequest('/student/verification/face-match', {
       method: 'POST',
       body: JSON.stringify({ face_image: faceBase64, id_image: idBase64 }),
+    });
+  },
+
+  /**
+   * Verify signature match with ID back
+   * @param {string} signatureBase64 - Base64 encoded signature image
+   * @param {string} idBackBase64 - Base64 encoded ID back image
+   * @returns {Promise}
+   */
+  verifySignatureAgainstIdBack: async (signatureBase64, idBackBase64) => {
+    return makeRequest('/student/verification/signature-match', {
+      method: 'POST',
+      body: JSON.stringify({ signature_image: signatureBase64, id_back_image: idBackBase64 }),
     });
   },
 

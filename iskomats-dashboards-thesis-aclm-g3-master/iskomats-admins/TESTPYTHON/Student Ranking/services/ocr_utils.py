@@ -492,3 +492,353 @@ def verify_face_with_id(face_image_data, id_image_data):
 
     except Exception as e:
         return False, f"Processor failure: {str(e)}", 0.0
+
+
+# ─── Signature Verification (OpenCV Feature Matching) ────────────────────────
+
+def _extract_signature_regions(id_image_data, max_signatures=2):
+    """
+    Extract possible signature regions from ID back image using contour detection.
+    Signatures are typically near the bottom of ID backs and have specific dimensions.
+    Returns list of cropped signature images.
+    """
+    import cv2
+    import numpy as np
+    
+    try:
+        # Decode image
+        nparr = np.frombuffer(id_image_data, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            return []
+        
+        # Preprocess: grayscale + threshold
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        
+        # Invert to find dark regions (signatures are typically dark)
+        binary = cv2.bitwise_not(binary)
+        
+        # Find contours
+        contours, _ = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Filter contours for signature-like regions
+        # Signatures typically have specific aspect ratios and sizes
+        signature_regions = []
+        height, width = img.shape[:2]
+        
+        for contour in contours:
+            x, y, w, h = cv2.boundingRect(contour)
+            area = cv2.contourArea(contour)
+            
+            # Signature heuristics (adjusted for smaller signatures):
+            # - Not too small (min area ~200 px instead of 500)
+            # - Not too large (max area ~40% of image instead of 50%)
+            # - Reasonable aspect ratio (0.2 to 4.0 instead of 0.3-3.0)
+            # - Usually in lower portion of ID back (y > 40% instead of 50%)
+            if area > 200 and area < (width * height * 0.4):
+                aspect_ratio = w / (h + 1e-6)
+                if 0.2 < aspect_ratio < 4.0 and y > height * 0.4:
+                    signature_regions.append((x, y, w, h, area))
+        
+        # Sort by area (descending) and take top N
+        signature_regions.sort(key=lambda r: r[4], reverse=True)
+        signature_regions = signature_regions[:max_signatures]
+        
+        print(f"[SIGNATURE] Extracted {len(signature_regions)} signature region(s)", flush=True)
+        
+        # Extract and return cropped images
+        cropped_signatures = []
+        for idx, (x, y, w, h, area) in enumerate(signature_regions):
+            # Add padding
+            pad = 5
+            x1, y1 = max(0, x - pad), max(0, y - pad)
+            x2, y2 = min(width, x + w + pad), min(height, y + h + pad)
+            sig_crop = img[y1:y2, x1:x2]
+            if sig_crop.size > 0:
+                cropped_signatures.append(sig_crop)
+                print(f"[SIGNATURE] Region {idx+1}: area={area:.0f}, pos=({x},{y}), size=({w}x{h})", flush=True)
+        
+        return cropped_signatures
+    
+    except Exception as e:
+        print(f"[SIGNATURE] Extraction failed: {str(e)}", flush=True)
+        return []
+
+
+# ─── Signature Helper ─────────────────────────────────────────────────────────
+
+def _crop_and_pad_signature(binary_img, target_size=(256, 256), padding=10):
+    """
+    Crops a binary signature image to its ink bounds and pads it to a fixed square 
+    size while preserving aspect ratio.
+    """
+    import cv2
+    import numpy as np
+    
+    # 1. Find bounding box of ink
+    coords = cv2.findNonZero(binary_img)
+    if coords is None:
+        return np.zeros(target_size, dtype=np.uint8)
+        
+    x, y, w, h = cv2.boundingRect(coords)
+    cropped = binary_img[y:y+h, x:x+w]
+    
+    # 2. Calculate scaling factor
+    target_w, target_h = target_size[0] - padding*2, target_size[1] - padding*2
+    scale = min(target_w / float(w), target_h / float(h))
+    
+    new_w, new_h = max(1, int(w * scale)), max(1, int(h * scale))
+        
+    # 3. Resize and paste into center
+    resized = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    canvas = np.zeros(target_size, dtype=np.uint8)
+    x_off = (target_size[0] - new_w) // 2
+    y_off = (target_size[1] - new_h) // 2
+    canvas[y_off:y_off+new_h, x_off:x_off+new_w] = resized
+    
+    return canvas
+
+def _compare_signatures_orb(submitted_sig_data, extracted_signatures):
+    """
+    Compare submitted signature against extracted signatures using advanced OpenCV algorithms.
+    Uses scipy and scikit-image for structural similarity and shape matching.
+    Returns highest match confidence (0.0 to 1.0).
+    """
+    import cv2
+    import numpy as np
+    
+    if not extracted_signatures:
+        return float(0.0), "No signatures found on ID back", None
+    
+    try:
+        from scipy.spatial.distance import cosine
+        from scipy.stats import entropy
+        from skimage.metrics import structural_similarity as ssim
+        from skimage.morphology import skeletonize
+    except ImportError as e:
+        print(f"[SIGNATURE] Required library missing: {e}, using fallback", flush=True)
+        return _compare_signatures_template_fallback(submitted_sig_data, extracted_signatures)
+    
+    try:
+        # Decode submitted signature
+        nparr = np.frombuffer(submitted_sig_data, np.uint8)
+        submitted = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if submitted is None:
+            return float(0.0), "Invalid submitted signature format", None
+        
+        # Convert to grayscale
+        submitted_gray = cv2.cvtColor(submitted, cv2.COLOR_BGR2GRAY) if len(submitted.shape) == 3 else submitted
+        submitted_gray = cv2.normalize(submitted_gray, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+        
+        print(f"[SIGNATURE] Using advanced OpenCV algorithms (scipy + scikit-image)", flush=True)
+        
+        best_match_ratio = 0.0
+        best_sig_index = None
+        
+        # Binary threshold for ink detection
+        _, submitted_bin_raw = cv2.threshold(submitted_gray, 128, 255, cv2.THRESH_BINARY_INV)
+        
+        # Apply strict crop and pad to standardize sizes and remove blank canvas
+        submitted_bin = _crop_and_pad_signature(submitted_bin_raw)
+        
+        # Get skeleton representation for structural analysis
+        submitted_bin_norm = submitted_bin.astype(np.uint8) // 255
+        submitted_skeleton = skeletonize(submitted_bin_norm).astype(np.uint8) * 255
+        
+        # Compare against each extracted signature
+        for idx, extracted_sig in enumerate(extracted_signatures):
+            try:
+                extracted_gray = cv2.cvtColor(extracted_sig, cv2.COLOR_BGR2GRAY) if len(extracted_sig.shape) == 3 else extracted_sig
+                extracted_gray = cv2.normalize(extracted_gray, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+                
+                _, extracted_bin_raw = cv2.threshold(extracted_gray, 128, 255, cv2.THRESH_BINARY_INV)
+                extracted_resized = _crop_and_pad_signature(extracted_bin_raw)
+                
+                # --- Phase 2: Feature Matching (ORB) ---
+                # Detect and compute keypoints/descriptors
+                orb = cv2.ORB_create(nfeatures=500)
+                kp_sub, des_sub = orb.detectAndCompute(submitted_bin, None)
+                kp_ext, des_ext = orb.detectAndCompute(extracted_resized, None)
+                
+                orb_score = 0.0
+                good_matches_count = 0
+                if des_sub is not None and des_ext is not None:
+                    # Use BFMatcher with Hamming distance for binary descriptors
+                    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+                    matches = bf.match(des_sub, des_ext)
+                    matches = sorted(matches, key=lambda x: x.distance)
+                    
+                    # Define "good" matches based on distance
+                    good_matches = [m for m in matches if m.distance < 50]
+                    good_matches_count = len(good_matches)
+                    
+                    # Normalize score: keypoint survival rate
+                    # We expect at least some core points to match
+                    denom = min(len(kp_sub), len(kp_ext), 120)
+                    if denom > 0:
+                        orb_score = min(1.0, (good_matches_count * 1.5) / denom)
+                
+                print(f"[SIGNATURE] Sig {idx+1} - ORB Matches: {good_matches_count} (Score: {orb_score:.2%})", flush=True)
+                
+                # --- Phase 2: Complexity Analysis ---
+                # Prevents simple lines/circles from getting high scores.
+                # A real signature usually has 40-200 keypoints.
+                kp_count = len(kp_sub) if kp_sub else 0
+                complexity_base = min(1.0, kp_count / 45.0) 
+                
+                # Relative complexity: is it much simpler than the ID?
+                kp_ext_count = len(kp_ext) if kp_ext else 1
+                rel_comp = min(1.0, (kp_count + 5) / (kp_ext_count * 0.4 + 5))
+                
+                complexity_factor = (complexity_base * 0.7) + (rel_comp * 0.3)
+                print(f"[SIGNATURE] Sig {idx+1} - Complexity: {complexity_factor:.2%} (KPs: {kp_count})", flush=True)
+
+                # --- Visual / Shape Similarity (Previous methods) ---
+                ssim_score = ssim(submitted_bin, extracted_resized, data_range=255)
+                ssim_norm = (ssim_score + 1) / 2
+                
+                # Combined scoring (Phase 2 Weights)
+                # ORB (40%): Hard to fake unique stroke junctions
+                # Complexity (25%): Hard to fake detail level
+                # Skeleton (20%): Path similarity
+                # Visual (15%): General shape blend
+                visual_blend = (ssim_norm * 0.4) + (hist_score * 0.3) + (contour_score * 0.3)
+                
+                combined_score = (orb_score * 0.40) + \
+                                 (complexity_factor * 0.25) + \
+                                 (skeleton_sim * 0.20) + \
+                                 (visual_blend * 0.15)
+                
+                if combined_score > best_match_ratio:
+                    best_match_ratio = combined_score
+                    best_sig_index = idx + 1
+                
+                print(f"[SIGNATURE] Sig {idx+1} - FINAL Combined score: {combined_score:.2%}", flush=True)
+            
+            except Exception as e:
+                print(f"[SIGNATURE] Matching against signature {idx+1} failed: {str(e)}", flush=True)
+                import traceback
+                traceback.print_exc()
+                continue
+        
+        # Verification threshold for specialized algorithm
+        VERIFICATION_THRESHOLD = 0.35  # Strict threshold now that background noise is removed
+        if best_match_ratio < VERIFICATION_THRESHOLD:
+            print(f"[SIGNATURE] No significant match found (best: {best_match_ratio:.2%}, need ≥{VERIFICATION_THRESHOLD:.0%})", flush=True)
+            return float(0.0), f"Signature does not match any on ID back ({best_match_ratio:.1%})", best_sig_index
+        
+        # Confidence: normalize to 0-100%
+        confidence = float(min(best_match_ratio * 100, 100.0))
+        
+        message = f"Match found (Signature {best_sig_index})" if best_sig_index else "No strong match"
+        print(f"[SIGNATURE] Final result: {message}, confidence={confidence:.1f}%", flush=True)
+        return confidence, message, best_sig_index
+    
+    except Exception as e:
+        print(f"[SIGNATURE] Advanced comparison failed: {str(e)}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return _compare_signatures_template_fallback(submitted_sig_data, extracted_signatures)
+
+
+def _compare_signatures_template_fallback(submitted_sig_data, extracted_signatures):
+    """
+    Fallback to template matching if Signature-Verification-OpenCV is not available.
+    """
+    import cv2
+    import numpy as np
+    
+    if not extracted_signatures:
+        return float(0.0), "No signatures found on ID back", None
+    
+    try:
+        nparr = np.frombuffer(submitted_sig_data, np.uint8)
+        submitted = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if submitted is None:
+            return float(0.0), "Invalid submitted signature format", None
+        
+        submitted_gray = cv2.cvtColor(submitted, cv2.COLOR_BGR2GRAY) if len(submitted.shape) == 3 else submitted
+        submitted_gray = cv2.normalize(submitted_gray, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+        
+        best_match_ratio = 0.0
+        best_sig_index = None
+        
+        _, submitted_bin_raw = cv2.threshold(submitted_gray, 128, 255, cv2.THRESH_BINARY_INV)
+        submitted_bin = _crop_and_pad_signature(submitted_bin_raw)
+        
+        for idx, extracted_sig in enumerate(extracted_signatures):
+            try:
+                extracted_gray = cv2.cvtColor(extracted_sig, cv2.COLOR_BGR2GRAY) if len(extracted_sig.shape) == 3 else extracted_sig
+                extracted_gray = cv2.normalize(extracted_gray, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+                
+                _, extracted_bin_raw = cv2.threshold(extracted_gray, 128, 255, cv2.THRESH_BINARY_INV)
+                extracted_resized = _crop_and_pad_signature(extracted_bin_raw)
+                
+                submitted_f32 = submitted_bin.astype(np.float32)
+                extracted_f32 = extracted_resized.astype(np.float32)
+                
+                submitted_mean = submitted_f32 - submitted_f32.mean()
+                extracted_mean = extracted_f32 - extracted_f32.mean()
+                
+                numerator = np.sum(submitted_mean * extracted_mean)
+                denominator = np.sqrt(np.sum(submitted_mean**2) * np.sum(extracted_mean**2)) + 1e-6
+                correlation_score = max(0, numerator / denominator)
+                
+                if correlation_score > best_match_ratio:
+                    best_match_ratio = correlation_score
+                    best_sig_index = idx + 1
+            
+            except Exception as e:
+                print(f"[SIGNATURE] Fallback matching failed: {e}", flush=True)
+                continue
+        
+        if best_match_ratio < 0.25:
+            return float(0.0), f"Signature does not match any on ID back ({best_match_ratio:.1%})", best_sig_index
+        
+        confidence = float(min(best_match_ratio * 100, 100.0))
+        return confidence, f"Match found (Signature {best_sig_index})", best_sig_index
+    
+    except Exception as e:
+        return float(0.0), f"Fallback error: {str(e)}", None
+
+
+def verify_signature_against_id(submitted_sig_data, id_back_data):
+    """
+    Main signature verification function.
+    Extracts signatures from ID back and compares with submitted signature.
+    Returns (verified: bool, message: str, confidence: float)
+    """
+    try:
+        print("[SIGNATURE] Starting verification process...", flush=True)
+        
+        # Extract signature regions from ID back
+        extracted_sigs = _extract_signature_regions(id_back_data, max_signatures=2)
+        
+        if not extracted_sigs:
+            print("[SIGNATURE] No signatures extracted from ID back", flush=True)
+            return False, "No signature regions detected on ID back", 0.0
+        
+        # Compare against extracted signatures
+        confidence, message, sig_index = _compare_signatures_orb(submitted_sig_data, extracted_sigs)
+        
+        # Verification threshold: 25% match confidence (template matching method is stricter)
+        VERIFICATION_THRESHOLD = 25.0
+        verified = bool(confidence >= VERIFICATION_THRESHOLD)
+        
+        # Add threshold info to message
+        if verified:
+            final_message = f"{message} - Verified ({confidence:.1f}% match)"
+        else:
+            final_message = f"{message} ({confidence:.1f}% match, need ≥{VERIFICATION_THRESHOLD}%)"
+        
+        print(f"[SIGNATURE] Verification complete: {final_message}", flush=True)
+        
+        # Ensure all return types are native Python types
+        return bool(verified), str(final_message), float(confidence)
+    
+    except Exception as e:
+        print(f"[SIGNATURE] Verification failed: {str(e)}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return False, f"Verification error: {str(e)}", 0.0
