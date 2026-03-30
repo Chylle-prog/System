@@ -1085,33 +1085,48 @@ const StudentInfo = () => {
         }
       }
 
-      // ── STEP 3: Name OCR verification (School ID Front) ──────────────────────
+      // ── STEP 3: Multi-Document OCR verification ──────────────────────────────
       if (currentStep === 3) {
         const idFront = schoolIdPhotos.front || formData.id_front;
+        const coeDoc = photos.mayorCOE_photo || formData.mayorCOE_photo || userProfile?.coe_doc;
+        const gradesDoc = photos.mayorGrades_photo || formData.mayorGrades_photo || userProfile?.grades_doc;
         
-        if (idFront) {
+        if (idFront || coeDoc || gradesDoc) {
           setLoadingMessage({
-            title: 'Verifying Identity',
-            message: 'Checking your School ID to verify your name matches your profile...'
+            title: 'Verifying Documents',
+            message: 'Authenticating your School ID, COE, and Grades using OCR...'
           });
 
           try {
-            // Pass the ID Front for name verification. 
-            // We pass null for indigencyDoc to trigger Name-Only mode in the backend.
-            const result = await applicantAPI.ocrCheck(idFront, null);
+            // We can now send all docs to the expanded backend endpoint in one go
+            const result = await applicantAPI.ocrCheck(idFront, null, null, coeDoc, gradesDoc);
+            
             const isTechnical = result.message?.includes('temporarily unavailable')
               || result.message?.includes('Low memory mode')
               || result.message?.includes('OCR service');
 
             if (!result.verified && !isTechnical) {
               setOcrVerified('failed');
-              setOcrStatus(result.message || 'Name mismatch: The name on your School ID does not match your profile.');
-              showPromptMessage(
-                `❌ Name mismatch: The name on your School ID does not match your registered name. Please ensure you uploaded a clear photo of your own ID.`,
-                7000
-              );
+              
+              // Find specific failure if details are provided
+              let specificError = result.message;
+              if (result.details) {
+                const failed = result.details.find(d => !d.verified);
+                if (failed) {
+                  if (failed.doc === 'Enrollment') {
+                    specificError = `❌ Certificate of Enrollment Issue: The uploaded photo doesn't seem to be a valid COE. Please ensure the word "Enrollment" is clearly visible.`;
+                  } else if (failed.doc === 'Grades') {
+                    specificError = `❌ Grades Transcript Issue: The uploaded photo doesn't seem to be a valid copy of grades. Please ensure keywords like "Grades" or "GPA" are visible.`;
+                  } else if (failed.doc === 'Identity') {
+                    specificError = `❌ Identity Mismatch: The name on your School ID does not match your profile.`;
+                  }
+                }
+              }
+
+              setOcrStatus(specificError);
+              showPromptMessage(specificError, 7000);
               setIsSavingStep(false);
-              return; // Stay on Step 3
+              return; // Block progress
             }
 
             if (isTechnical) {
@@ -1120,12 +1135,12 @@ const StudentInfo = () => {
               showPromptMessage(`ℹ️ OCR unavailable: ${result.message}. You can still continue.`, 4000);
             } else {
               setOcrVerified('success');
-              setOcrStatus(result.message || `Identity verified — name matches!`);
+              setOcrStatus(result.message || `All documents verified successfully!`);
             }
           } catch (ocrErr) {
             setOcrVerified('technical_unavailable');
-            setOcrStatus(`Name OCR error: ${ocrErr.message}`);
-            showPromptMessage(`⚠️ Identity verification issue (${ocrErr.message}). You can still continue.`, 4000);
+            setOcrStatus(`Verification error: ${ocrErr.message}`);
+            showPromptMessage(`⚠️ Document verification issue (${ocrErr.message}). You can still continue.`, 4000);
           }
         }
       }

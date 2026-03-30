@@ -738,11 +738,12 @@ def submit_application():
 @student_api_bp.route('/verification/ocr-check', methods=['POST'])
 @token_required
 def ocr_check():
-    """OCR verification endpoint — two modes:
+    """OCR verification endpoint — supports multi-document authentication:
 
-    1. Address-only (id_front omitted/null): verifies the indigency photo against
-       the applicant's registered town_city_municipality. Used on Step 2 Next.
-    2. Full (id_front provided): verifies name (via School ID) + address.
+    1. Address/Indigency: verifies town_city + keywords ["indigency"]
+    2. Enrollment (COE): verifies keywords ["enrollment", "registration"]
+    3. Grades: verifies keywords ["grades", "transcript", "rating"]
+    4. School ID: verifies Name Match.
     """
     try:
         data = request.get_json(silent=True) or {}
@@ -750,75 +751,83 @@ def ocr_check():
         # 1. Get applicant record from DB
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT * FROM applicants WHERE applicant_no = %s", (request.user_no,))
+        cur.execute("SELECT applicant_no, first_name, last_name, town_city_municipality, id_img_front, indigency_doc FROM applicants WHERE applicant_no = %s", (request.user_no,))
         applicant = cur.fetchone()
 
         if not applicant:
             return jsonify({'verified': False, 'message': 'Applicant profile not found'}), 404
 
-        # 2. Resolve images — payload takes priority, then fall back to stored DB copies
-        # If the frontend explicitly sends id_front as null, it means we ONLY want to verify the address
-        if 'id_front' in data and data['id_front'] is None:
-            id_front_bytes = None
-        else:
-            id_front_param = data.get('id_front') or data.get('idFront')
-            id_front_bytes = decode_base64(id_front_param) or db_bytes(applicant.get('id_img_front'))
-
+        # 2. Resolve parameters
+        id_front_param = data.get('id_front') or data.get('idFront')
         indigency_doc_param = data.get('indigency_doc') or data.get('indigencyDoc')
-        indigency_doc_bytes = decode_base64(indigency_doc_param) or db_bytes(applicant.get('indigency_doc'))
-
+        enrollment_doc_param = data.get('enrollment_doc') or data.get('enrollmentDoc')
+        grades_doc_param = data.get('grades_doc') or data.get('gradesDoc')
+        
         town_city = data.get('town_city') or data.get('townCity') or applicant.get('town_city_municipality', '')
 
-        # ── Mode selection ─────────────────────────────────────────────────────
-        address_only = id_front_bytes is None
+        # Helper to get bytes
+        def get_bytes(param, db_val):
+            return decode_base64(param) or db_bytes(db_val)
 
-        if address_only:
-            # ── Address-only mode (Step 2) ─────────────────────────────────────
-            print(f"[OCR-CHECK] User {request.user_no}: Address-only mode", flush=True)
+        # Process documents based on what is provided in the request
+        results = []
+        overall_verified = True
 
-            if not indigency_doc_bytes:
-                return jsonify({
-                    'verified': False,
-                    'message': 'Missing Document: Please upload your Certificate of Indigency.'
-                }), 400
+        # ── Certificate of Enrollment (COE) ───────────────────────────────────
+        if enrollment_doc_param:
+            doc_bytes = decode_base64(enrollment_doc_param)
+            if doc_bytes:
+                v, msg, _ = verify_id_with_ocr(
+                    id_image_data=doc_bytes,
+                    required_keywords=["enrollment", "registration", "enrolled", "certify", "certificate", "school"]
+                )
+                results.append({'doc': 'Enrollment', 'verified': v, 'message': msg})
+                if not v: overall_verified = False
 
-            if not town_city:
-                # Town/city not yet saved — let them proceed (Step 1 not yet complete)
-                print(f"[OCR-CHECK] User {request.user_no}: No town/city on profile, skipping", flush=True)
-                return jsonify({
-                    'verified': True,
-                    'message': 'Address check skipped: please fill in your Town/City in Step 1 first.'
-                })
+        # ── Certified True Copy of Grades ─────────────────────────────────────
+        if grades_doc_param:
+            doc_bytes = decode_base64(grades_doc_param)
+            if doc_bytes:
+                v, msg, _ = verify_id_with_ocr(
+                    id_image_data=doc_bytes,
+                    required_keywords=["grades", "transcript", "rating", "evaluation", "semester", "weighted", "average", "gpa"]
+                )
+                results.append({'doc': 'Grades', 'verified': v, 'message': msg})
+                if not v: overall_verified = False
 
-            # Run OCR: pass the indigency doc as the primary image and the address image,
-            # supply empty names so only the address/town matching runs.
-            verified, message, _ = verify_id_with_ocr(
-                indigency_doc_bytes,
-                first_name='',
-                last_name='',
-                town_city_municipality=town_city,
-                address_image_data=indigency_doc_bytes,
-            )
+        # ── Certificate of Indigency / Address ────────────────────────────────
+        if indigency_doc_param or (not enrollment_doc_param and not grades_doc_param and not id_front_param):
+            # If no other docs, try to fall back to stored indigency or check address
+            doc_bytes = get_bytes(indigency_doc_param, applicant.get('indigency_doc'))
+            if doc_bytes:
+                v, msg, _ = verify_id_with_ocr(
+                    id_image_data=doc_bytes,
+                    town_city_municipality=town_city,
+                    address_image_data=doc_bytes,
+                    required_keywords=["indigency", "indigent", "barangay", "certificate"]
+                )
+                results.append({'doc': 'Indigency', 'verified': v, 'message': msg})
+                if not v: overall_verified = False
 
-            print(f"[OCR-CHECK] Address-only result: verified={verified}", flush=True)
-            return jsonify({'verified': verified, 'message': message})
+        # ── School ID / Name Match ───────────────────────────────────────────
+        if id_front_param:
+            doc_bytes = get_bytes(id_front_param, applicant.get('id_img_front'))
+            if doc_bytes:
+                v, msg, _ = verify_id_with_ocr(
+                    id_image_data=doc_bytes,
+                    first_name=applicant.get('first_name', ''),
+                    last_name=applicant.get('last_name', '')
+                )
+                results.append({'doc': 'Identity', 'verified': v, 'message': msg})
+                if not v: overall_verified = False
 
-        else:
-            # ── Full verification mode (name + address) ────────────────────────
-            print(f"[OCR-CHECK] User {request.user_no}: Full verification mode", flush=True)
+        # Consolidate messages
+        if not results:
+            return jsonify({'verified': False, 'message': 'No documents provided for verification'}), 400
 
-            # If no address doc is provided, the library will still verify the name
-            # as long as town_city_municipality is passed as an empty string.
-            verified, message, _ = verify_id_with_ocr(
-                id_front_bytes,
-                first_name=applicant.get('first_name', ''),
-                last_name=applicant.get('last_name', ''),
-                town_city_municipality=town_city if indigency_doc_bytes else '',
-                address_image_data=indigency_doc_bytes,
-            )
+        final_msg = " | ".join([f"{r['doc']}: {r['message']}" for r in results])
+        return jsonify({'verified': overall_verified, 'message': final_msg, 'details': results})
 
-            print(f"[OCR-CHECK] Full result (Name Match): verified={verified}", flush=True)
-            return jsonify({'verified': verified, 'message': message})
 
     except Exception as e:
         traceback.print_exc()
@@ -826,7 +835,6 @@ def ocr_check():
     finally:
         if 'conn' in locals():
             conn.close()
-
 
 
 @student_api_bp.route('/applications/<int:scholarship_no>', methods=['DELETE'])

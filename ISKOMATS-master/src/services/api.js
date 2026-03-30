@@ -313,12 +313,14 @@ export const applicantAPI = {
    * Call this AFTER uploadIdFrontBack() has stored the images.
    * @returns {Promise} - {verified, status, front_status, back_status, extracted_text}
    */
-  ocrCheck: async (idFront = null, indigencyDoc = null, townCity = null) => {
+  ocrCheck: async (idFront = null, indigencyDoc = null, townCity = null, enrollmentDoc = null, gradesDoc = null) => {
     return makeRequest('/student/verification/ocr-check', {
       method: 'POST',
       body: JSON.stringify({
         id_front: idFront,
         indigency_doc: indigencyDoc,
+        enrollment_doc: enrollmentDoc,
+        grades_doc: gradesDoc,
         town_city: townCity
       }),
     });

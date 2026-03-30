@@ -111,30 +111,58 @@ def verify_id_with_ocr(
     last_name: str = '',
     town_city_municipality: str = '',
     address_image_data=None,
+    required_keywords: list = None,
 ):
     """AI-assisted ID verification using Tesseract OCR + fuzzy similarity."""
     import pandas as pd
     from rapidfuzz import fuzz
 
     if not id_image_data or (isinstance(id_image_data, float) and pd.isna(id_image_data)):
-        return False, 'No ID image provided', ''
+        return False, 'No image data provided', ''
 
     if not _check_tesseract():
         return False, 'OCR service temporarily unavailable', ''
 
     try:
-        # 1. Extract text from ID
+        # 1. Extract text from primary image (or address image)
         extracted_text_raw, id_error = _run_tesseract(id_image_data)
         if id_error and not extracted_text_raw:
             return False, id_error, ''
 
         extracted_text_norm = normalize_text(extracted_text_raw)
+        
+        # ── Keyword Verification ──────────────────────────────────────────────
+        keywords_matched = True
+        keyword_status = ""
+        
+        if required_keywords:
+            keywords_matched = False
+            best_match_score = 0
+            best_keyword = ""
+            
+            for kw in required_keywords:
+                kw_norm = normalize_text(kw)
+                if not kw_norm: continue
+                # Search for keyword anywhere in the extracted text
+                score = fuzz.partial_ratio(kw_norm, extracted_text_norm)
+                if score > best_match_score:
+                    best_match_score = score
+                    best_keyword = kw
+            
+            # Threshold for keyword matching (80% similarity)
+            if best_match_score >= 80:
+                keywords_matched = True
+                keyword_status = f"Keyword match: {best_keyword} ({best_match_score:.0f}%)"
+            else:
+                keywords_matched = False
+                keyword_status = f"Keyword mismatch (Best: {best_keyword} {best_match_score:.0f}%)"
+
+        # ── Name Matching (Optional) ───────────────────────────────────────────
         first_name_norm = normalize_text(first_name)
         last_name_norm  = normalize_text(last_name)
 
         def name_similarity(name_norm, text_norm):
             if not name_norm: return 0
-            # Multi-strategy fuzzy match
             ratio = fuzz.ratio(name_norm, text_norm)
             partial = fuzz.partial_ratio(name_norm, text_norm)
             token = fuzz.token_sort_ratio(name_norm, text_norm)
@@ -149,7 +177,7 @@ def verify_id_with_ocr(
             (last_name_similarity  >= name_threshold or not last_name_norm)
         )
 
-        # 2. Town/City matching
+        # ── Town/City matching (Optional) ────────────────────────────────────────
         if town_city_municipality:
             addr_src = address_image_data if address_image_data else id_image_data
             address_text_raw, addr_error = _run_tesseract(addr_src)
@@ -166,12 +194,18 @@ def verify_id_with_ocr(
             town_threshold = 0
             town_found = True
 
-        # 3. Final Decision
-        is_verified = name_verified and town_similarity >= town_threshold and town_found
-        if is_verified:
-            status = f'ID verified (F:{first_name_similarity:.0f}%, L:{last_name_similarity:.0f}%, T:{town_similarity:.0f}%)'
-        else:
-            status = f'ID mismatch (F:{first_name_similarity:.0f}%, L:{last_name_similarity:.0f}%, T:{town_similarity:.0f}%)'
+        # ── Final Decision ─────────────────────────────────────────────────────
+        is_verified = name_verified and town_found and keywords_matched
+        
+        details = []
+        if first_name_norm or last_name_norm:
+            details.append(f"Name Match: {max(first_name_similarity, last_name_similarity):.0f}%")
+        if town_city_municipality:
+            details.append(f"Address Match: {town_similarity:.0f}%")
+        if required_keywords:
+            details.append(keyword_status)
+            
+        status = (f"Verified: " if is_verified else "Mismatch: ") + ", ".join(details)
 
         return is_verified, status, extracted_text_raw
 
