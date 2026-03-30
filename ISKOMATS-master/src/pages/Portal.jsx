@@ -477,13 +477,13 @@ const Portal = () => {
           left: 0;
           width: 100%;
           height: 100%;
-          background: rgba(0, 0, 0, 0.75);
-          backdrop-filter: blur(10px);
+          background: rgba(0, 0, 0, 0.45);
+          backdrop-filter: blur(12px);
           display: none;
           justify-content: center;
           align-items: center;
-          z-index: 9999;
-          animation: fadeIn 0.3s ease;
+          z-index: 10000;
+          animation: modalFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .loading-overlay.active {
@@ -491,34 +491,44 @@ const Portal = () => {
         }
 
         .loading-modal {
-          background: white;
-          padding: 3.5rem;
+          background: rgba(255, 255, 255, 0.95);
+          padding: 3.5rem 2.5rem;
           border-radius: 40px;
           text-align: center;
-          box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
-          max-width: 450px;
+          box-shadow: 
+            0 25px 60px -12px rgba(0, 0, 0, 0.25),
+            0 0 1px 1px rgba(255, 255, 255, 0.1) inset;
+          max-width: 480px;
           width: 90%;
-          border: 1px solid rgba(255, 255, 255, 0.2);
+          border: 1px solid rgba(255, 255, 255, 0.6);
+          position: relative;
+          overflow: hidden;
+          animation: modalSlideUp 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        @keyframes modalFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        @keyframes modalSlideUp {
+          from { opacity: 0; transform: translateY(30px) scale(0.95); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
         .loading-spinner {
-          width: 60px;
-          height: 60px;
-          border: 6px solid #ffe8e3;
-          border-top: 6px solid var(--primary);
+          width: 65px;
+          height: 65px;
+          border: 5px solid #ffe8e3;
+          border-top: 5px solid var(--primary);
           border-radius: 50%;
-          margin: 0 auto 1.8rem;
-          animation: spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+          margin: 0 auto 2rem;
+          animation: spin 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
         }
 
         @keyframes spin {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
-        }
-
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
         }
 
         .modal-buttons {
@@ -1490,51 +1500,6 @@ const Portal = () => {
           }
         }
 
-        /* Loading Overlay Styles */
-        .loading-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background: rgba(0, 0, 0, 0.7);
-          backdrop-filter: blur(8px);
-          display: none;
-          justify-content: center;
-          align-items: center;
-          z-index: 10000;
-          transition: all 0.3s ease;
-        }
-
-        .loading-overlay.active {
-          display: flex;
-        }
-
-        .loading-modal {
-          background: white;
-          padding: 2.5rem;
-          border-radius: 30px;
-          text-align: center;
-          max-width: 450px;
-          width: 90%;
-          box-shadow: 0 20px 50px rgba(0,0,0,0.3);
-          border: 1px solid rgba(255,255,255,0.2);
-        }
-
-        .loading-spinner {
-          width: 60px;
-          height: 60px;
-          border: 6px solid #f3f3f3;
-          border-top: 6px solid var(--primary);
-          border-radius: 50%;
-          margin: 0 auto 1.5rem;
-          animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
       `}</style>
 
       <nav className="navbar">
@@ -2045,7 +2010,7 @@ const Portal = () => {
 
       {/* Cancellation Confirmation Modal */}
       <div className={`loading-overlay ${showCancelConfirm ? 'active' : ''}`}>
-        <div className="loading-modal" style={{ padding: '3.5rem 2.5rem' }}>
+        <div className="loading-modal">
           <i className="fas fa-exclamation-triangle" style={{ fontSize: '3.5rem', color: '#e67e22', marginBottom: '1.5rem', display: 'block' }}></i>
           <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '1rem' }}>
             Confirm Cancellation
@@ -2067,7 +2032,7 @@ const Portal = () => {
 
       {/* Success/Error Status Modal */}
       <div className={`loading-overlay ${showStatusModal ? 'active' : ''}`}>
-        <div className="loading-modal" style={{ padding: '3.5rem 2.5rem' }}>
+        <div className="loading-modal">
           <i 
             className={`fas ${statusInfo.isError ? 'fa-times-circle' : 'fa-check-circle'}`} 
             style={{ 
