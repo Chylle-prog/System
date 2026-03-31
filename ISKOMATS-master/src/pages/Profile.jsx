@@ -21,9 +21,9 @@ const Profile = () => {
     school: '',
     mobileNo: '',
     streetBrgy: '',
-    townCityMunicipality: '',
-    province: '',
-    zipCode: '',
+    townCityMunicipality: 'Lipa City',
+    province: 'Batangas',
+    zipCode: '4217',
     profilePicture: null
   });
 
@@ -116,9 +116,9 @@ const Profile = () => {
         school: userProfile.school || '',
         mobileNo: userProfile.mobile_no || '',
         streetBrgy: userProfile.street_brgy || '',
-        townCityMunicipality: userProfile.town_city_municipality || '',
-        province: userProfile.province || '',
-        zipCode: userProfile.zip_code || '',
+        townCityMunicipality: 'Lipa City',
+        province: 'Batangas',
+        zipCode: '4217',
         profilePicture: null
       });
       // Restore saved profile picture (base64 from backend), don't reset to null
@@ -135,9 +135,9 @@ const Profile = () => {
         school: '',
         mobileNo: '',
         streetBrgy: '',
-        townCityMunicipality: '',
-        province: '',
-        zipCode: '',
+        townCityMunicipality: 'Lipa City',
+        province: 'Batangas',
+        zipCode: '4217',
         profilePicture: null
       });
       setProfilePicture(null);
@@ -1109,24 +1109,112 @@ const Profile = () => {
                 </div>
                 <div className="form-group">
                   <label>Street / Barangay</label>
-                  <input
-                    type="text"
+                  <select
                     name="streetBrgy"
                     value={formData.streetBrgy}
                     onChange={handleInputChange}
-                    placeholder="e.g., 123 Main St, Brgy. Nayong Kanluran"
                     required
-                  />
+                  >
+                    <option value="">Select Barangay</option>
+                    <option value="Adya">Adya</option>
+                    <option value="Anilao">Anilao</option>
+                    <option value="Anilao-Labac">Anilao-Labac</option>
+                    <option value="Antipolo del Norte">Antipolo del Norte</option>
+                    <option value="Antipolo del Sur">Antipolo del Sur</option>
+                    <option value="Bagong Pook">Bagong Pook</option>
+                    <option value="Balintawak">Balintawak</option>
+                    <option value="Banaybanay">Banaybanay</option>
+                    <option value="Bolbok">Bolbok</option>
+                    <option value="Bugtong na Pulo">Bugtong na Pulo</option>
+                    <option value="Bulacnin">Bulacnin</option>
+                    <option value="Bulaklakan">Bulaklakan</option>
+                    <option value="Calamias">Calamias</option>
+                    <option value="Cumba">Cumba</option>
+                    <option value="Dagatan">Dagatan</option>
+                    <option value="Duhatan">Duhatan</option>
+                    <option value="Halang">Halang</option>
+                    <option value="Inosloban">Inosloban</option>
+                    <option value="Kayumanggi">Kayumanggi</option>
+                    <option value="Latag">Latag</option>
+                    <option value="Lodlod">Lodlod</option>
+                    <option value="Lumbang">Lumbang</option>
+                    <option value="Mabini">Mabini</option>
+                    <option value="Malagonlong">Malagonlong</option>
+                    <option value="Malitlit">Malitlit</option>
+                    <option value="Marauoy">Marauoy</option>
+                    <option value="Mataas na Lupa">Mataas na Lupa</option>
+                    <option value="Munting Pulo">Munting Pulo</option>
+                    <option value="Pagolingin Bata">Pagolingin Bata</option>
+                    <option value="Pagolingin East">Pagolingin East</option>
+                    <option value="Pagolingin West">Pagolingin West</option>
+                    <option value="Pangao">Pangao</option>
+                    <option value="Pinagkawitan">Pinagkawitan</option>
+                    <option value="Pinagtongulan">Pinagtongulan</option>
+                    <option value="Plaridel">Plaridel</option>
+                    <option value="Poblacion Barangay 1">Poblacion Barangay 1</option>
+                    <option value="Poblacion Barangay 2">Poblacion Barangay 2</option>
+                    <option value="Poblacion Barangay 3">Poblacion Barangay 3</option>
+                    <option value="Poblacion Barangay 4">Poblacion Barangay 4</option>
+                    <option value="Poblacion Barangay 5">Poblacion Barangay 5</option>
+                    <option value="Poblacion Barangay 6">Poblacion Barangay 6</option>
+                    <option value="Poblacion Barangay 7">Poblacion Barangay 7</option>
+                    <option value="Poblacion Barangay 8">Poblacion Barangay 8</option>
+                    <option value="Poblacion Barangay 9">Poblacion Barangay 9</option>
+                    <option value="Poblacion Barangay 9-A">Poblacion Barangay 9-A</option>
+                    <option value="Poblacion Barangay 10">Poblacion Barangay 10</option>
+                    <option value="Poblacion Barangay 11">Poblacion Barangay 11</option>
+                    <option value="Poblacion Barangay 12">Poblacion Barangay 12</option>
+                    <option value="Pusil">Pusil</option>
+                    <option value="Quezon">Quezon</option>
+                    <option value="Rizal">Rizal</option>
+                    <option value="Sabang">Sabang</option>
+                    <option value="Sampaguita">Sampaguita</option>
+                    <option value="San Benito">San Benito</option>
+                    <option value="San Carlos">San Carlos</option>
+                    <option value="San Celestino">San Celestino</option>
+                    <option value="San Francisco">San Francisco</option>
+                    <option value="San Guillermo">San Guillermo</option>
+                    <option value="San Isidro">San Isidro</option>
+                    <option value="San Jose">San Jose</option>
+                    <option value="San Lucas">San Lucas</option>
+                    <option value="San Salvador">San Salvador</option>
+                    <option value="San Sebastian (Balagbag)">San Sebastian (Balagbag)</option>
+                    <option value="Santo Niño">Santo Niño</option>
+                    <option value="Santo Toribio">Santo Toribio</option>
+                    <option value="Sico">Sico</option>
+                    <option value="Talisay">Talisay</option>
+                    <option value="Tambo">Tambo</option>
+                    <option value="Tangob">Tangob</option>
+                    <option value="Tanguay">Tanguay</option>
+                    <option value="Tibig">Tibig</option>
+                    <option value="Tipacan">Tipacan</option>
+                  </select>
                 </div>
                 <div className="form-group">
                   <label>Town / City / Municipality</label>
                   <input
                     type="text"
-                    name="townCityMunicipality"
-                    value={formData.townCityMunicipality}
-                    onChange={handleInputChange}
-                    placeholder="e.g., Manila"
-                    required
+                    readOnly
+                    value="Lipa City"
+                    style={{background: '#f0f0f0', cursor: 'not-allowed'}}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Province</label>
+                  <input
+                    type="text"
+                    readOnly
+                    value="Batangas"
+                    style={{background: '#f0f0f0', cursor: 'not-allowed'}}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Zip Code</label>
+                  <input
+                    type="text"
+                    readOnly
+                    value="4217"
+                    style={{background: '#f0f0f0', cursor: 'not-allowed'}}
                   />
                 </div>
                 <div className="form-group">
