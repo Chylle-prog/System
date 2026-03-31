@@ -197,6 +197,9 @@ const StudentInfo = () => {
   const coeVideoInputRef = useRef(null);
   const gradesPhotoInputRef = useRef(null);
   const gradesVideoInputRef = useRef(null);
+  const schoolIdFrontInputRef = useRef(null);
+  const schoolIdBackInputRef = useRef(null);
+  const idVideoInputRef = useRef(null);
 
   const [showSignaturePad, setShowSignaturePad] = useState(false);
 
@@ -2225,11 +2228,11 @@ const StudentInfo = () => {
                 </h4>
                 
                 <div className="form-row" style={{paddingLeft: '16px', gap: '2rem'}}>
-                  <div className="form-group">
+                  <div className="form-group" style={{position: 'relative'}}>
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>Front Side</label>
                     <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} required={currentStep === 3} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
-                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none'}}>
+                      <input ref={schoolIdFrontInputRef} type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} required={currentStep === 3} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
+                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none', position: 'absolute', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'}}>
                         {schoolIdPhotos.front ? (
                           <img src={schoolIdPhotos.front} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Front Preview" />
                         ) : (
@@ -2240,12 +2243,15 @@ const StudentInfo = () => {
                         )}
                       </div>
                     </div>
+                    {schoolIdPhotos.front && (
+                      <button type="button" onClick={() => { setSchoolIdPhotos(prev => ({ ...prev, front: null })); setTimeout(() => schoolIdFrontInputRef.current?.click(), 50); }} style={{marginTop: '0.5rem', background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
+                    )}
                   </div>
-                  <div className="form-group">
+                  <div className="form-group" style={{position: 'relative'}}>
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>Back Side</label>
                     <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} required={currentStep === 3} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
-                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none'}}>
+                      <input ref={schoolIdBackInputRef} type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} required={currentStep === 3} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
+                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none', position: 'absolute', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'}}>
                         {schoolIdPhotos.back ? (
                           <img src={schoolIdPhotos.back} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Back Preview" />
                         ) : (
@@ -2256,11 +2262,14 @@ const StudentInfo = () => {
                         )}
                       </div>
                     </div>
+                    {schoolIdPhotos.back && (
+                      <button type="button" onClick={() => { setSchoolIdPhotos(prev => ({ ...prev, back: null })); setTimeout(() => schoolIdBackInputRef.current?.click(), 50); }} style={{marginTop: '0.5rem', background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
+                    )}
                   </div>
-                  <div className="form-group">
+                  <div className="form-group" style={{position: 'relative'}}>
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>ID Video <span style={{color: '#e74c3c'}}>*</span></label>
                     <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      <input type="file" accept="video/*" onChange={(e) => handleVideoUpload('id_vid_url', e)} required={currentStep === 3} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
+                      <input ref={idVideoInputRef} type="file" accept="video/*" onChange={(e) => handleVideoUpload('id_vid_url', e)} required={currentStep === 3} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
                       <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none'}}>
                         {formData.id_vid_url ? (
                           <>
@@ -2275,6 +2284,9 @@ const StudentInfo = () => {
                         )}
                       </div>
                     </div>
+                    {formData.id_vid_url && (
+                      <button type="button" onClick={() => { setFormData(prev => ({ ...prev, id_vid_url: null })); setTimeout(() => idVideoInputRef.current?.click(), 50); }} style={{marginTop: '0.5rem', background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2484,6 +2496,9 @@ const StudentInfo = () => {
                       </button>
                     )}
                   </div>
+                  {photos.face_photo && (
+                    <button type="button" onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); setTimeout(() => openCamera(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.85rem', cursor: 'pointer', fontWeight: '600', textDecoration: 'underline'}}>Change Photo</button>
+                  )}
                 </div>
               </div>
 
