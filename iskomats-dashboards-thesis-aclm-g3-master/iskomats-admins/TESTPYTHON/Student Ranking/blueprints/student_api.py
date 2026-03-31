@@ -1059,11 +1059,12 @@ def get_announcements():
             else:
                 date_str = 'Recent'
             announcements.append({
-                'ann_no': row['ann_no'],
-                'ann_title': row['ann_title'],
-                'ann_message': row['ann_message'],
-                'created_at': date_str,
-                'provider_name': row['pro_name']
+                'id': row['ann_no'],
+                'title': row['ann_title'],
+                'content': row['ann_message'],
+                'date': date_str,
+                'provider_name': row['pro_name'],
+                'status': 'active'
             })
 
         return jsonify(announcements)
