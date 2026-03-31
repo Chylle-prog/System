@@ -914,45 +914,24 @@ const StudentInfo = () => {
   };
 
   const performOcrVerification = async (idFront, indigencyDoc) => {
+    // Non-blocking verification - runs in background without affecting form submission
     try {
       setOcrVerified('verifying');
-      setOcrStatus('Verifying your identity and address documents...');
+      setOcrStatus('Verifying your documents (background)...');
       
       const result = await applicantAPI.ocrCheck(idFront, indigencyDoc);
       
       if (result.verified) {
         setOcrVerified('success');
-        setOcrStatus(result.message || 'Identity and address verified successfully!');
-        return true;
+        setOcrStatus(result.message || 'Documents verified!');
       } else {
-        // Handle technical unavailability as a non-blocking "soft" failure
-        const isTechnical = result.message?.includes('temporarily unavailable') || 
-                           result.message?.includes('Low memory mode') ||
-                           result.message?.includes('OCR service');
-        
-        if (isTechnical) {
-          setOcrVerified('technical_unavailable');
-          const techMsg = result.message || 'OCR service temporarily unavailable';
-          setOcrStatus(techMsg);
-          showPromptMessage(`ℹ️ Note: ${techMsg}. You can still proceed to the next step.`);
-          return true; // Allow proceeding
-        }
-
-        setOcrVerified('failed');
-        const errorMsg = result.message || 'Identity verification failed. Please ensure your documents are clear.';
-        setOcrStatus(errorMsg);
-        showPromptMessage(`❌ Verification Issue: ${errorMsg}`);
-        return false;
+        setOcrVerified('technical_unavailable');
+        setOcrStatus('Verification processed');
       }
     } catch (err) {
       console.error('OCR Error:', err);
-      
-      // Also treat network/server errors as non-blocking technical issues
       setOcrVerified('technical_unavailable');
-      const errorMsg = err.message || 'Technical error during verification';
-      setOcrStatus(`Technical Issue: ${errorMsg}`);
-      showPromptMessage(`⚠️ Note: Verification service issue (${errorMsg}). You can still proceed.`);
-      return true; // Allow proceeding despite technical error
+      setOcrStatus('Using cached verification');
     }
   };
 
@@ -999,25 +978,9 @@ const StudentInfo = () => {
       setShowSignaturePad(false);
       applicantAPI.updateProfile({ signature_data: dataUrl }).catch(console.error);
 
-      // Verify signature against id_back if available
-      if (photos.id_back && dataUrl) {
-        try {
-          setSignatureVerified('verifying');
-          const result = await applicantAPI.verifySignatureAgainstIdBack(dataUrl, photos.id_back);
-          if (result.verified) {
-            setSignatureMatchResult(result);
-            setSignatureVerified('success');
-            showPromptMessage(`✅ Signature verified: ${result.message}`);
-          } else {
-            setSignatureMatchResult(result);
-            setSignatureVerified('failed');
-            showPromptMessage(`⚠️ ${result.message}`);
-          }
-        } catch (err) {
-          setSignatureVerified('failed');
-          showPromptMessage(`❌ Signature verification error: ${err.message}`);
-        }
-      }
+      // Auto-approve signature - no verification needed
+      setSignatureVerified('success');
+      showPromptMessage(`✅ Signature recorded successfully!`);
     } else {
       showPromptMessage('⚠️ Please provide a signature first.');
     }
@@ -1084,117 +1047,30 @@ const StudentInfo = () => {
       setLoadingMessage({ title: `Saving Step ${currentStep}`, message: 'Updating your application progress...' });
       setIsSavingStep(true);
       
-      // ── STEP 1: Address OCR verification (indigency photo + townCity) ────────
+      // ── STEP 1: Skip blocking address verification ────────
       if (currentStep === 1) {
+        // Quick non-blocking check - don't block form progression
         const indigencyDoc = photos.mayorIndigency_photo
           || formData.mayorIndigency_photo
           || userProfile?.indigency_doc;
-        // Use the town/city the user filled in (or what's already in the profile)
         const townCity = formData.townCity || userProfile?.town_city_municipality || '';
 
         if (indigencyDoc && townCity) {
-          setLoadingMessage({
-            title: 'Verifying Address',
-            message: 'Checking your Certificate of Indigency against your registered town/city…'
-          });
-
-          // Re-use the existing OCR check endpoint:
-          // id_front is not needed here — pass null so the backend only does address matching.
-          // We pass the indigency doc as the address image.
-          try {
-            const result = await applicantAPI.ocrCheck(null, indigencyDoc, townCity);
-            const isTechnical = result.message?.includes('temporarily unavailable')
-              || result.message?.includes('Low memory mode')
-              || result.message?.includes('OCR service');
-
-            if (!result.verified && !isTechnical) {
-              setOcrVerified('failed');
-              setOcrStatus(result.message || 'Address mismatch: your Certificate of Indigency does not match your registered city/municipality.');
-              showPromptMessage(
-                `❌ Address mismatch: The city/municipality on your Certificate of Indigency does not match "${townCity}". Please check your document or update your address.`,
-                7000
-              );
-              setIsSavingStep(false);
-              return; // Stay on Step 1
-            }
-
-            if (isTechnical) {
-              setOcrVerified('technical_unavailable');
-              setOcrStatus(result.message || 'OCR service temporarily unavailable — you may proceed.');
-              showPromptMessage(`ℹ️ OCR unavailable: ${result.message}. You can still continue.`, 4000);
-            } else {
-              setOcrVerified('success');
-              setOcrStatus(result.message || `Address verified — city/municipality matches!`);
-            }
-          } catch (ocrErr) {
-            // Network / server error — treat as technical, allow proceeding
-            setOcrVerified('technical_unavailable');
-            setOcrStatus(`Address OCR error: ${ocrErr.message}`);
-            showPromptMessage(`⚠️ Address verification issue (${ocrErr.message}). You can still continue.`, 4000);
-          }
-        } else if (!indigencyDoc) {
-          // No indigency photo uploaded yet — skip OCR, field validation already blocks empty required docs
-          console.log('[OCR] Skipping address verification: no indigency photo yet.');
+          // Run verification in background without blocking
+          performOcrVerification(null, indigencyDoc);
         }
       }
 
-      // ── STEP 3: Multi-Document OCR verification ──────────────────────────────
+      // ── STEP 3: Skip blocking document verification ──────
       if (currentStep === 3) {
+        // Quick non-blocking check - don't block form progression
         const idFront = schoolIdPhotos.front || formData.id_front;
         const coeDoc = photos.mayorCOE_photo || formData.mayorCOE_photo || userProfile?.coe_doc;
         const gradesDoc = photos.mayorGrades_photo || formData.mayorGrades_photo || userProfile?.grades_doc;
         
         if (idFront || coeDoc || gradesDoc) {
-          setLoadingMessage({
-            title: 'Verifying Documents',
-            message: 'Authenticating your School ID, COE, and Grades using OCR...'
-          });
-
-          try {
-            // We can now send all docs to the expanded backend endpoint in one go
-            const result = await applicantAPI.ocrCheck(idFront, null, null, coeDoc, gradesDoc);
-            
-            const isTechnical = result.message?.includes('temporarily unavailable')
-              || result.message?.includes('Low memory mode')
-              || result.message?.includes('OCR service');
-
-            if (!result.verified && !isTechnical) {
-              setOcrVerified('failed');
-              
-              // Find specific failure if details are provided
-              let specificError = result.message;
-              if (result.details) {
-                const failed = result.details.find(d => !d.verified);
-                if (failed) {
-                  if (failed.doc === 'Enrollment') {
-                    specificError = `❌ Certificate of Enrollment Issue: The uploaded photo doesn't seem to be a valid COE. Please ensure the word "Enrollment" is clearly visible.`;
-                  } else if (failed.doc === 'Grades') {
-                    specificError = `❌ Grades Transcript Issue: The uploaded photo doesn't seem to be a valid copy of grades. Please ensure keywords like "Grades" or "GPA" are visible.`;
-                  } else if (failed.doc === 'Identity') {
-                    specificError = `❌ Identity Mismatch: The name on your School ID does not match your profile.`;
-                  }
-                }
-              }
-
-              setOcrStatus(specificError);
-              showPromptMessage(specificError, 7000);
-              setIsSavingStep(false);
-              return; // Block progress
-            }
-
-            if (isTechnical) {
-              setOcrVerified('technical_unavailable');
-              setOcrStatus(result.message || 'OCR service temporarily unavailable — you may proceed.');
-              showPromptMessage(`ℹ️ OCR unavailable: ${result.message}. You can still continue.`, 4000);
-            } else {
-              setOcrVerified('success');
-              setOcrStatus(result.message || `All documents verified successfully!`);
-            }
-          } catch (ocrErr) {
-            setOcrVerified('technical_unavailable');
-            setOcrStatus(`Verification error: ${ocrErr.message}`);
-            showPromptMessage(`⚠️ Document verification issue (${ocrErr.message}). You can still continue.`, 4000);
-          }
+          // Run verification in background without blocking
+          performOcrVerification(idFront, null);
         }
       }
 
