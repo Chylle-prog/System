@@ -627,11 +627,9 @@ def submit_application():
                     print("[SUBMIT] Starting OCR verification...")
                     ocr_start = time.time()
                     ocr_ok, ocr_status, _ = verify_id_with_ocr(
-                        id_front_bytes,
-                        first_name=applicant.get('first_name', ''),
-                        last_name=applicant.get('last_name', ''),
-                        town_city_municipality=town_city,
-                        address_image_data=indigency_doc_bytes,
+                        image_bytes=id_front_bytes,
+                        expected_name=f"{applicant.get('first_name', '')} {applicant.get('last_name', '')}",
+                        expected_address=town_city
                     )
                     print(f"[SUBMIT] OCR finished in {time.time() - ocr_start:.2f}s: {ocr_status}")
 
