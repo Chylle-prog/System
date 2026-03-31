@@ -705,53 +705,68 @@ const StudentInfo = () => {
         return;
     }
 
-    try {
-      setIsUploadingVideo(prev => ({ ...prev, [fieldName]: true }));
-      setUploadProgress(prev => ({ ...prev, [fieldName]: 0 }));
-
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${currentUser}_${fieldName}_${Date.now()}.${fileExt}`;
-      
-      // Upload with timeout to prevent hanging
-      const uploadTimeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Upload timed out (60s). Please check your internet connection or try a smaller video.')), 60000)
-      );
-
-      const uploadPromise = supabase.storage
-        .from('document_videos')
-        .upload(fileName, file, {
-          cacheControl: '3600',
-          upsert: false
-        });
-
-      const { data, error } = await Promise.race([uploadPromise, uploadTimeout]);
-
-      if (error) throw error;
-
-      const { data: urlData } = supabase.storage
-        .from('document_videos')
-        .getPublicUrl(fileName);
-
-      const publicUrl = urlData.publicUrl;
-
-      setFormData(prev => ({ ...prev, [fieldName]: publicUrl }));
-      setUploadProgress(prev => ({ ...prev, [fieldName]: 100 }));
-      
-      await applicantAPI.updateProfile({ [fieldName]: publicUrl });
-
-      setPromptMessage('✅ Video uploaded successfully!');
-      setShowPrompt(true);
-    } catch (err) {
-      console.error('Video upload error:', err);
-      let errorMsg = err.message || 'Unknown error during upload';
-      if (err.message === 'Failed to fetch') {
-         errorMsg = 'Network Error: Please check your Supabase URL and CORS settings.';
+    // Check video duration (30 seconds max)
+    const video = document.createElement('video');
+    video.onloadedmetadata = async () => {
+      if (video.duration > 30) {
+        setPromptMessage(`❌ Error: Video duration must be 30 seconds or less. Your video is ${Math.ceil(video.duration)} seconds.`);
+        setShowPrompt(true);
+        return;
       }
-      setPromptMessage(`❌ Video upload failed: ${errorMsg}`);
+
+      try {
+        setIsUploadingVideo(prev => ({ ...prev, [fieldName]: true }));
+        setUploadProgress(prev => ({ ...prev, [fieldName]: 0 }));
+
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${currentUser}_${fieldName}_${Date.now()}.${fileExt}`;
+        
+        // Upload with timeout to prevent hanging
+        const uploadTimeout = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Upload timed out (60s). Please check your internet connection or try a smaller video.')), 60000)
+        );
+
+        const uploadPromise = supabase.storage
+          .from('document_videos')
+          .upload(fileName, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
+
+        const { data, error } = await Promise.race([uploadPromise, uploadTimeout]);
+
+        if (error) throw error;
+
+        const { data: urlData } = supabase.storage
+          .from('document_videos')
+          .getPublicUrl(fileName);
+
+        const publicUrl = urlData.publicUrl;
+
+        setFormData(prev => ({ ...prev, [fieldName]: publicUrl }));
+        setUploadProgress(prev => ({ ...prev, [fieldName]: 100 }));
+        
+        await applicantAPI.updateProfile({ [fieldName]: publicUrl });
+
+        setPromptMessage('✅ Video uploaded successfully!');
+        setShowPrompt(true);
+      } catch (err) {
+        console.error('Video upload error:', err);
+        let errorMsg = err.message || 'Unknown error during upload';
+        if (err.message === 'Failed to fetch') {
+           errorMsg = 'Network Error: Please check your Supabase URL and CORS settings.';
+        }
+        setPromptMessage(`❌ Video upload failed: ${errorMsg}`);
+        setShowPrompt(true);
+      } finally {
+        setIsUploadingVideo(prev => ({ ...prev, [fieldName]: false }));
+      }
+    };
+    video.onerror = () => {
+      setPromptMessage('❌ Error: Could not read video file. Please try another video.');
       setShowPrompt(true);
-    } finally {
-      setIsUploadingVideo(prev => ({ ...prev, [fieldName]: false }));
-    }
+    };
+    video.src = URL.createObjectURL(file);
   };
 
   const openGallery = (type) => {
@@ -2056,7 +2071,7 @@ const StudentInfo = () => {
                     </div>
                   </div>
                   <div className="form-group" style={{marginBottom: 0}}>
-                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov)</label>
+                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov) - Max 30 seconds</label>
                     <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', position: 'relative'}}>
                       {isUploadingVideo.mayorIndigency_video ? (
                         <div style={{display: 'flex', flexDirection: 'column', gap: '5px'}}>
@@ -2291,7 +2306,7 @@ const StudentInfo = () => {
                       </div>
                     </div>
                     <div className="form-group" style={{marginBottom: 0}}>
-                      <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov)</label>
+                      <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov) - Max 30 seconds</label>
                       <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', position: 'relative'}}>
                         {isUploadingVideo.mayorCOE_video ? (
                           <div style={{display: 'flex', flexDirection: 'column', gap: '5px'}}>
@@ -2328,7 +2343,7 @@ const StudentInfo = () => {
                       </div>
                     </div>
                     <div className="form-group" style={{marginBottom: 0}}>
-                      <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov)</label>
+                      <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov) - Max 30 seconds</label>
                       <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', position: 'relative'}}>
                         {isUploadingVideo.mayorGrades_video ? (
                           <div style={{display: 'flex', flexDirection: 'column', gap: '5px'}}>
