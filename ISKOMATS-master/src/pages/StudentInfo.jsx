@@ -2024,8 +2024,9 @@ const StudentInfo = () => {
                           <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorIndigency_photo: null })); setTimeout(() => indigencyPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                         </div>
                       ) : (
-                        <input ref={indigencyPhotoInputRef} type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 1} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                        <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload photo</div>
                       )}
+                      <input ref={indigencyPhotoInputRef} type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 1} style={{display: 'none'}} />
                     </div>
                   </div>
                   <div className="form-group" style={{marginBottom: 0}}>
@@ -2046,8 +2047,9 @@ const StudentInfo = () => {
                           <button type="button" onClick={() => { setFormData(prev => ({ ...prev, mayorIndigency_video: null })); setTimeout(() => indigencyVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                         </div>
                       ) : (
-                        <input ref={indigencyVideoInputRef} type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorIndigency_video', e)} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                        <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload video</div>
                       )}
+                      <input ref={indigencyVideoInputRef} type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorIndigency_video', e)} style={{display: 'none'}} />
                     </div>
                   </div>
                 </div>
@@ -2310,8 +2312,9 @@ const StudentInfo = () => {
                             <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorCOE_photo: null })); setTimeout(() => coePhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                           </div>
                         ) : (
-                          <input ref={coePhotoInputRef} type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                          <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload photo</div>
                         )}
+                        <input ref={coePhotoInputRef} type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} style={{display: 'none'}} />
                       </div>
                     </div>
                     <div className="form-group" style={{marginBottom: 0}}>
@@ -2332,8 +2335,9 @@ const StudentInfo = () => {
                             <button type="button" onClick={() => { setFormData(prev => ({ ...prev, mayorCOE_video: null })); setTimeout(() => coeVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                           </div>
                         ) : (
-                          <input ref={coeVideoInputRef} type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorCOE_video', e)} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                          <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload video</div>
                         )}
+                        <input ref={coeVideoInputRef} type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorCOE_video', e)} style={{display: 'none'}} />
                       </div>
                     </div>
                   </div>
@@ -2356,8 +2360,9 @@ const StudentInfo = () => {
                             <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorGrades_photo: null })); setTimeout(() => gradesPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                           </div>
                         ) : (
-                          <input ref={gradesPhotoInputRef} type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                          <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload photo</div>
                         )}
+                        <input ref={gradesPhotoInputRef} type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} style={{display: 'none'}} />
                       </div>
                     </div>
                     <div className="form-group" style={{marginBottom: 0}}>
@@ -2378,8 +2383,9 @@ const StudentInfo = () => {
                             <button type="button" onClick={() => { setFormData(prev => ({ ...prev, mayorGrades_video: null })); setTimeout(() => gradesVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                           </div>
                         ) : (
-                          <input ref={gradesVideoInputRef} type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorGrades_video', e)} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                          <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload video</div>
                         )}
+                        <input ref={gradesVideoInputRef} type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorGrades_video', e)} style={{display: 'none'}} />
                       </div>
                     </div>
                   </div>
@@ -2482,22 +2488,19 @@ const StudentInfo = () => {
                 </h4>
                 <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1.2rem', paddingLeft: '16px'}}>Match captured photo with your School ID</p>
                 
-                <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem'}}>
-                  <div style={{border: '2px solid #fff', borderRadius: '20px', height: '200px', width: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e1e8f0', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)'}}>
-                    {photos.face_photo ? (
-                      <>
-                        <img src={photos.face_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Face Verification" />
-                        <button type="button" onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); }} style={{position: 'absolute', top: '10px', right: '10px', background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'}}><i className="fas fa-times"></i></button>
-                      </>
-                    ) : (
-                      <button type="button" onClick={openCamera} style={{border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px'}}>
-                        <i className="fas fa-camera" style={{fontSize: '2.5rem'}}></i>
-                        <span style={{fontSize: '0.9rem', fontWeight: '600'}}>Capture Face Photo</span>
-                      </button>
-                    )}
-                  </div>
-                  {photos.face_photo && (
-                    <button type="button" onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); setTimeout(() => openCamera(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.85rem', cursor: 'pointer', fontWeight: '600', textDecoration: 'underline'}}>Change Photo</button>
+                <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
+                  {photos.face_photo ? (
+                    <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                      <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
+                        <i className="fas fa-check-circle"></i> Photo Captured
+                      </div>
+                      <button type="button" onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); setTimeout(() => openCamera(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={openCamera} style={{border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', width: '100%', justifyContent: 'center'}}>
+                      <i className="fas fa-camera" style={{fontSize: '2.5rem'}}></i>
+                      <span style={{fontSize: '0.9rem', fontWeight: '600'}}>Capture Face Photo</span>
+                    </button>
                   )}
                 </div>
               </div>
