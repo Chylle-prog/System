@@ -18,6 +18,7 @@ const STEP_FIELDS = {
   ],
   3: [
     'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course', 'gpa',
+    'id_vid_url',
     'mayorCOE_photo', 'mayorCOE_video', 'mayorGrades_photo', 'mayorGrades_video'
   ],
   4: [
@@ -224,6 +225,7 @@ const StudentInfo = () => {
     // School ID Photos
     schoolIdFront: null,
     schoolIdBack: null,
+    id_vid_url: '',
     
     // Certification
     privacyConsent: false,
@@ -2354,6 +2356,10 @@ const StudentInfo = () => {
                         )}
                       </div>
                     </div>
+                  </div>
+                  <div className="form-group">
+                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>ID Video URL</label>
+                    <input type="url" name="id_vid_url" value={formData.id_vid_url || ''} onChange={handleInputChange} placeholder="https://example.com/video.mp4" style={{border: '1px solid #ccc', borderRadius: '12px', padding: '0.8rem', width: '220px', fontSize: '0.9rem'}} required={currentStep === 3} />
                   </div>
                 </div>
               </div>
