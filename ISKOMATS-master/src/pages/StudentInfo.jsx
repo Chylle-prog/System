@@ -27,6 +27,24 @@ const STEP_FIELDS = {
   ]
 };
 
+const LIPA_CITY_BARANGAYS = [
+  'Adya', 'Anilao', 'Anilao-Labac', 'Antipolo del Norte', 'Antipolo del Sur',
+  'Bagong Pook', 'Balintawak', 'Banaybanay', 'Bolbok', 'Bugtong na Pulo',
+  'Bulacnin', 'Bulaklakan', 'Calamias', 'Cumba', 'Dagatan',
+  'Duhatan', 'Halang', 'Inosloban', 'Kayumanggi', 'Latag',
+  'Lodlod', 'Lumbang', 'Mabini', 'Malagonlong', 'Malitlit',
+  'Marauoy', 'Mataas na Lupa', 'Munting Pulo', 'Pagolingin Bata', 'Pagolingin East',
+  'Pagolingin West', 'Pangao', 'Pinagkawitan', 'Pinagtongulan', 'Plaridel',
+  'Poblacion Barangay 1', 'Poblacion Barangay 2', 'Poblacion Barangay 3', 'Poblacion Barangay 4', 'Poblacion Barangay 5',
+  'Poblacion Barangay 6', 'Poblacion Barangay 7', 'Poblacion Barangay 8', 'Poblacion Barangay 9', 'Poblacion Barangay 9-A',
+  'Poblacion Barangay 10', 'Poblacion Barangay 11', 'Poblacion Barangay 12', 'Pusil', 'Quezon',
+  'Rizal', 'Sabang', 'Sampaguita', 'San Benito', 'San Carlos',
+  'San Celestino', 'San Francisco', 'San Guillermo', 'San Isidro', 'San Jose',
+  'San Lucas', 'San Salvador', 'San Sebastian (Balagbag)', 'Santo Niño', 'Santo Toribio',
+  'Sico', 'Talisay', 'Tambo', 'Tangob', 'Tanguay',
+  'Tibig', 'Tipacan'
+];
+
 const isFileLike = (value) => typeof File !== 'undefined' && value instanceof File;
 const DOCUMENT_IMAGE_FIELDS = new Set([
   'mayorCOE_photo',
@@ -702,8 +720,7 @@ const StudentInfo = () => {
     if (!file) return;
 
     if (!file.type.startsWith('video/')) {
-        setPromptMessage('❌ Error: Please select a valid video file.');
-        setShowPrompt(true);
+        showPromptMessage('❌ Error: Please select a valid video file.');
         return;
     }
 
@@ -711,8 +728,7 @@ const StudentInfo = () => {
     const video = document.createElement('video');
     video.onloadedmetadata = async () => {
       if (video.duration > 30) {
-        setPromptMessage(`❌ Error: Video duration must be 30 seconds or less. Your video is ${Math.ceil(video.duration)} seconds.`);
-        setShowPrompt(true);
+        showPromptMessage(`❌ Error: Video duration must be 30 seconds or less. Your video is ${Math.ceil(video.duration)} seconds.`);
         return;
       }
 
@@ -750,23 +766,20 @@ const StudentInfo = () => {
         
         await applicantAPI.updateProfile({ [fieldName]: publicUrl });
 
-        setPromptMessage('✅ Video uploaded successfully!');
-        setShowPrompt(true);
+        showPromptMessage('✅ Video uploaded successfully!');
       } catch (err) {
         console.error('Video upload error:', err);
         let errorMsg = err.message || 'Unknown error during upload';
         if (err.message === 'Failed to fetch') {
            errorMsg = 'Network Error: Please check your Supabase URL and CORS settings.';
         }
-        setPromptMessage(`❌ Video upload failed: ${errorMsg}`);
-        setShowPrompt(true);
+        showPromptMessage(`❌ Video upload failed: ${errorMsg}`);
       } finally {
         setIsUploadingVideo(prev => ({ ...prev, [fieldName]: false }));
       }
     };
     video.onerror = () => {
-      setPromptMessage('❌ Error: Could not read video file. Please try another video.');
-      setShowPrompt(true);
+      showPromptMessage('❌ Error: Could not read video file. Please try another video.');
     };
     video.src = URL.createObjectURL(file);
   };
@@ -2062,78 +2075,9 @@ const StudentInfo = () => {
                     <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#666', marginBottom: '0.3rem'}}>Street & Barangay</label>
                     <select name="streetBarangay" value={formData.streetBarangay} onChange={handleInputChange} required>
                       <option value="">Select Barangay</option>
-                      <option value="Adya">Adya</option>
-                      <option value="Anilao">Anilao</option>
-                      <option value="Anilao-Labac">Anilao-Labac</option>
-                      <option value="Antipolo del Norte">Antipolo del Norte</option>
-                      <option value="Antipolo del Sur">Antipolo del Sur</option>
-                      <option value="Bagong Pook">Bagong Pook</option>
-                      <option value="Balintawak">Balintawak</option>
-                      <option value="Banaybanay">Banaybanay</option>
-                      <option value="Bolbok">Bolbok</option>
-                      <option value="Bugtong na Pulo">Bugtong na Pulo</option>
-                      <option value="Bulacnin">Bulacnin</option>
-                      <option value="Bulaklakan">Bulaklakan</option>
-                      <option value="Calamias">Calamias</option>
-                      <option value="Cumba">Cumba</option>
-                      <option value="Dagatan">Dagatan</option>
-                      <option value="Duhatan">Duhatan</option>
-                      <option value="Halang">Halang</option>
-                      <option value="Inosloban">Inosloban</option>
-                      <option value="Kayumanggi">Kayumanggi</option>
-                      <option value="Latag">Latag</option>
-                      <option value="Lodlod">Lodlod</option>
-                      <option value="Lumbang">Lumbang</option>
-                      <option value="Mabini">Mabini</option>
-                      <option value="Malagonlong">Malagonlong</option>
-                      <option value="Malitlit">Malitlit</option>
-                      <option value="Marauoy">Marauoy</option>
-                      <option value="Mataas na Lupa">Mataas na Lupa</option>
-                      <option value="Munting Pulo">Munting Pulo</option>
-                      <option value="Pagolingin Bata">Pagolingin Bata</option>
-                      <option value="Pagolingin East">Pagolingin East</option>
-                      <option value="Pagolingin West">Pagolingin West</option>
-                      <option value="Pangao">Pangao</option>
-                      <option value="Pinagkawitan">Pinagkawitan</option>
-                      <option value="Pinagtongulan">Pinagtongulan</option>
-                      <option value="Plaridel">Plaridel</option>
-                      <option value="Poblacion Barangay 1">Poblacion Barangay 1</option>
-                      <option value="Poblacion Barangay 2">Poblacion Barangay 2</option>
-                      <option value="Poblacion Barangay 3">Poblacion Barangay 3</option>
-                      <option value="Poblacion Barangay 4">Poblacion Barangay 4</option>
-                      <option value="Poblacion Barangay 5">Poblacion Barangay 5</option>
-                      <option value="Poblacion Barangay 6">Poblacion Barangay 6</option>
-                      <option value="Poblacion Barangay 7">Poblacion Barangay 7</option>
-                      <option value="Poblacion Barangay 8">Poblacion Barangay 8</option>
-                      <option value="Poblacion Barangay 9">Poblacion Barangay 9</option>
-                      <option value="Poblacion Barangay 9-A">Poblacion Barangay 9-A</option>
-                      <option value="Poblacion Barangay 10">Poblacion Barangay 10</option>
-                      <option value="Poblacion Barangay 11">Poblacion Barangay 11</option>
-                      <option value="Poblacion Barangay 12">Poblacion Barangay 12</option>
-                      <option value="Pusil">Pusil</option>
-                      <option value="Quezon">Quezon</option>
-                      <option value="Rizal">Rizal</option>
-                      <option value="Sabang">Sabang</option>
-                      <option value="Sampaguita">Sampaguita</option>
-                      <option value="San Benito">San Benito</option>
-                      <option value="San Carlos">San Carlos</option>
-                      <option value="San Celestino">San Celestino</option>
-                      <option value="San Francisco">San Francisco</option>
-                      <option value="San Guillermo">San Guillermo</option>
-                      <option value="San Isidro">San Isidro</option>
-                      <option value="San Jose">San Jose</option>
-                      <option value="San Lucas">San Lucas</option>
-                      <option value="San Salvador">San Salvador</option>
-                      <option value="San Sebastian (Balagbag)">San Sebastian (Balagbag)</option>
-                      <option value="Santo Niño">Santo Niño</option>
-                      <option value="Santo Toribio">Santo Toribio</option>
-                      <option value="Sico">Sico</option>
-                      <option value="Talisay">Talisay</option>
-                      <option value="Tambo">Tambo</option>
-                      <option value="Tangob">Tangob</option>
-                      <option value="Tanguay">Tanguay</option>
-                      <option value="Tibig">Tibig</option>
-                      <option value="Tipacan">Tipacan</option>
+                      {LIPA_CITY_BARANGAYS.map(barangay => (
+                        <option key={barangay} value={barangay}>{barangay}</option>
+                      ))}
                     </select>
                   </div>
                   <div>
@@ -2432,8 +2376,23 @@ const StudentInfo = () => {
                     </div>
                   </div>
                   <div className="form-group">
-                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>ID Video URL</label>
-                    <input type="url" name="id_vid_url" value={formData.id_vid_url || ''} onChange={handleInputChange} placeholder="https://example.com/video.mp4" style={{border: '1px solid #ccc', borderRadius: '12px', padding: '0.8rem', width: '220px', fontSize: '0.9rem'}} required={currentStep === 3} />
+                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>ID Video <span style={{color: '#e74c3c'}}>*</span></label>
+                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
+                      <input type="file" accept="video/*" onChange={(e) => handleVideoUpload('id_vid_url', e)} required={currentStep === 3} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
+                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none'}}>
+                        {formData.id_vid_url ? (
+                          <>
+                            <i className="fas fa-video" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
+                            <span>✓ Video Uploaded</span>
+                          </>
+                        ) : (
+                          <>
+                            <i className="fas fa-video" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
+                            <span>Upload ID Video</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
