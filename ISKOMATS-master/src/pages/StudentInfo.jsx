@@ -1579,6 +1579,37 @@ const StudentInfo = () => {
           position: relative;
         }
 
+        .back-button {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.6rem;
+          background: transparent;
+          border: 1px solid var(--gray-2);
+          color: var(--primary);
+          padding: 0.7rem 1.2rem;
+          border-radius: 8px;
+          font-size: 0.95rem;
+          font-weight: 600;
+          cursor: pointer;
+          margin-bottom: 1.5rem;
+          transition: all 0.2s ease;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        .back-button:hover {
+          background: rgba(79, 13, 0, 0.05);
+          border-color: var(--primary);
+          transform: translateX(-2px);
+        }
+
+        .back-button:active {
+          transform: translateX(-1px);
+        }
+
+        .back-button i {
+          font-size: 0.9rem;
+        }
+
         .section-header {
           text-align: center;
           margin-bottom: 2.5rem;
@@ -1932,6 +1963,9 @@ const StudentInfo = () => {
 
       <div className="form-container">
         <div className="form-card">
+          <button className="back-button" onClick={() => navigate('/portal')}>
+            <i className="fas fa-arrow-left"></i> Back to Portal
+          </button>
           <div className="section-header">
             <img src="/iskologo.png" alt="Logo" style={{height: '50px', marginBottom: '1rem', filter: 'grayscale(1) contrast(1.2)'}} />
             <h2>{scholarshipName}</h2>
@@ -2021,13 +2055,23 @@ const StudentInfo = () => {
 
               <div className="form-group">
                 <label>Permanent Address <span style={{color: '#e74c3c'}}>*</span></label>
-                <div className="form-row" style={{gridTemplateColumns: '2fr 1fr 1fr'}}>
-                  <input type="text" name="streetBarangay" value={formData.streetBarangay} onChange={handleInputChange} placeholder="Street & Barangay" required />
-                  <input type="text" name="townCity" value={formData.townCity} onChange={handleInputChange} placeholder="Town/City" required />
-                  <input type="text" name="province" value={formData.province} onChange={handleInputChange} placeholder="Province" required />
+                <div className="form-row" style={{gridTemplateColumns: '2fr 1fr 1fr', gap: '1rem', marginBottom: '0.5rem'}}>
+                  <div>
+                    <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#666', marginBottom: '0.3rem'}}>Street & Barangay</label>
+                    <input type="text" name="streetBarangay" value={formData.streetBarangay} onChange={handleInputChange} placeholder="e.g., 123 Main St, Barangay" required />
+                  </div>
+                  <div>
+                    <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#666', marginBottom: '0.3rem'}}>Town/City</label>
+                    <input type="text" name="townCity" value={formData.townCity} onChange={handleInputChange} placeholder="e.g., Lipa City" required />
+                  </div>
+                  <div>
+                    <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#666', marginBottom: '0.3rem'}}>Province</label>
+                    <input type="text" name="province" value={formData.province} onChange={handleInputChange} placeholder="e.g., Batangas" required />
+                  </div>
                 </div>
-                <div style={{marginTop: '0.5rem', width: '25%'}}>
-                  <input type="text" name="zipCode" value={formData.zipCode} onChange={handleInputChange} placeholder="Zip Code" required />
+                <div style={{width: '25%'}}>
+                  <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#666', marginBottom: '0.3rem'}}>Zip Code</label>
+                  <input type="text" name="zipCode" value={formData.zipCode} onChange={handleInputChange} placeholder="e.g., 4217" required />
                 </div>
               </div>
 
