@@ -9,12 +9,12 @@ const STEP_FIELDS = {
   1: [
     'lastName', 'firstName', 'middleName', 'maidenName', 'dateOfBirth', 'placeOfBirth',
     'streetBarangay', 'townCity', 'province', 'zipCode', 'sex', 'citizenship',
-    'mobileNumber'
+    'mobileNumber', 'mayorIndigency_photo', 'mayorIndigency_video'
   ],
   2: [
     'fatherStatus', 'fatherName', 'fatherOccupation', 'fatherAddress', 'fatherPhoneNumber',
     'motherStatus', 'motherName', 'motherOccupation', 'motherAddress', 'motherPhoneNumber',
-    'parentsGrossIncome', 'numberOfSiblings', 'mayorIndigency_photo', 'mayorIndigency_video'
+    'parentsGrossIncome', 'numberOfSiblings'
   ],
   3: [
     'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course', 'gpa',
@@ -1054,8 +1054,8 @@ const StudentInfo = () => {
       setLoadingMessage({ title: `Saving Step ${currentStep}`, message: 'Updating your application progress...' });
       setIsSavingStep(true);
       
-      // ── STEP 2: Address OCR verification (indigency photo + townCity) ────────
-      if (currentStep === 2) {
+      // ── STEP 1: Address OCR verification (indigency photo + townCity) ────────
+      if (currentStep === 1) {
         const indigencyDoc = photos.mayorIndigency_photo
           || formData.mayorIndigency_photo
           || userProfile?.indigency_doc;
@@ -1085,7 +1085,7 @@ const StudentInfo = () => {
                 7000
               );
               setIsSavingStep(false);
-              return; // Stay on Step 2
+              return; // Stay on Step 1
             }
 
             if (isTechnical) {
@@ -2042,6 +2042,44 @@ const StudentInfo = () => {
                 </div>
               </div>
 
+              {/* Documentary Requirement: Indigency and Address Verification */}
+              <div style={{marginTop: '2rem', background: '#fff', padding: '2rem', borderRadius: '24px', border: '1px solid #edf2f7', boxShadow: '0 4px 12px rgba(0,0,0,0.03)'}}>
+                <h4 style={{fontSize: '1.1rem', color: '#2d3748', fontWeight: '700', marginBottom: '1.5rem', borderLeft: '4px solid #e53e3e', paddingLeft: '15px', lineHeight: '1.2'}}>
+                  Certificate of Indigency <span style={{color: '#e74c3c'}}>*</span>
+                </h4>
+                
+                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem'}}>
+                  <div className="form-group" style={{marginBottom: 0}}>
+                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Photo (.png/jpg)</label>
+                    <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
+                      <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 1} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                    </div>
+                  </div>
+                  <div className="form-group" style={{marginBottom: 0}}>
+                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov)</label>
+                    <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', position: 'relative'}}>
+                      {isUploadingVideo.mayorIndigency_video ? (
+                        <div style={{display: 'flex', flexDirection: 'column', gap: '5px'}}>
+                          <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '600'}}>
+                            <i className="fas fa-spinner fa-spin"></i> Uploading Video... {uploadProgress.mayorIndigency_video}%
+                          </div>
+                          <div style={{fontSize: '0.7rem', color: '#666'}}>If stuck, check internet or file size.</div>
+                        </div>
+                      ) : formData.mayorIndigency_video ? (
+                        <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                          <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
+                            <i className="fas fa-check-circle"></i> Video Uploaded
+                          </div>
+                          <button type="button" onClick={() => setFormData(prev => ({ ...prev, mayorIndigency_video: null }))} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                        </div>
+                      ) : (
+                        <input type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorIndigency_video', e)} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div style={{marginTop: '2rem', display: 'flex', justifyContent: 'flex-end'}}>
                 <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep || Object.values(isUploadingVideo).some(v => v)} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
                   Next: Family Background <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
@@ -2133,44 +2171,6 @@ const StudentInfo = () => {
                 <div className="form-group">
                   <label>Number of Siblings <span style={{color: '#e74c3c'}}>*</span></label>
                   <input type="number" name="numberOfSiblings" value={formData.numberOfSiblings} onChange={handleInputChange} placeholder="0" required={currentStep === 2} />
-                </div>
-              </div>
-
-              {/* Documentary Requirement: Indigency */}
-              <div style={{marginTop: '2rem', background: '#fff', padding: '2rem', borderRadius: '24px', border: '1px solid #edf2f7', boxShadow: '0 4px 12px rgba(0,0,0,0.03)'}}>
-                <h4 style={{fontSize: '1.1rem', color: '#2d3748', fontWeight: '700', marginBottom: '1.5rem', borderLeft: '4px solid #e53e3e', paddingLeft: '15px', lineHeight: '1.2'}}>
-                  Certificate of Indigency <span style={{color: '#e74c3c'}}>*</span>
-                </h4>
-                
-                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem'}}>
-                  <div className="form-group" style={{marginBottom: 0}}>
-                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Photo (.png/jpg)</label>
-                    <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
-                      <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 2} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
-                    </div>
-                  </div>
-                  <div className="form-group" style={{marginBottom: 0}}>
-                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov)</label>
-                    <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', position: 'relative'}}>
-                      {isUploadingVideo.mayorIndigency_video ? (
-                        <div style={{display: 'flex', flexDirection: 'column', gap: '5px'}}>
-                          <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '600'}}>
-                            <i className="fas fa-spinner fa-spin"></i> Uploading Video... {uploadProgress.mayorIndigency_video}%
-                          </div>
-                          <div style={{fontSize: '0.7rem', color: '#666'}}>If stuck, check internet or file size.</div>
-                        </div>
-                      ) : formData.mayorIndigency_video ? (
-                        <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
-                          <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
-                            <i className="fas fa-check-circle"></i> Video Uploaded
-                          </div>
-                          <button type="button" onClick={() => setFormData(prev => ({ ...prev, mayorIndigency_video: null }))} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
-                        </div>
-                      ) : (
-                        <input type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorIndigency_video', e)} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
-                      )}
-                    </div>
-                  </div>
                 </div>
               </div>
 
