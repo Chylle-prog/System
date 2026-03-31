@@ -2067,7 +2067,16 @@ const StudentInfo = () => {
                   <div className="form-group" style={{marginBottom: 0}}>
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Photo (.png/jpg)</label>
                     <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
-                      <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 1} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                      {photos.mayorIndigency_photo || userProfile?.has_mayorIndigency_photo ? (
+                        <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                          <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
+                            <i className="fas fa-check-circle"></i> Photo Uploaded
+                          </div>
+                          <button type="button" onClick={() => setPhotos(prev => ({ ...prev, mayorIndigency_photo: null }))} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                        </div>
+                      ) : (
+                        <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 1} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                      )}
                     </div>
                   </div>
                   <div className="form-group" style={{marginBottom: 0}}>
@@ -2302,7 +2311,16 @@ const StudentInfo = () => {
                     <div className="form-group" style={{marginBottom: 0}}>
                       <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Photo (.png/jpg)</label>
                       <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
-                        <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                        {photos.mayorCOE_photo || userProfile?.has_mayorCOE_photo ? (
+                          <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                            <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
+                              <i className="fas fa-check-circle"></i> Photo Uploaded
+                            </div>
+                            <button type="button" onClick={() => setPhotos(prev => ({ ...prev, mayorCOE_photo: null }))} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                          </div>
+                        ) : (
+                          <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                        )}
                       </div>
                     </div>
                     <div className="form-group" style={{marginBottom: 0}}>
@@ -2339,7 +2357,16 @@ const StudentInfo = () => {
                     <div className="form-group" style={{marginBottom: 0}}>
                       <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Photo (.png/jpg)</label>
                       <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
-                        <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                        {photos.mayorGrades_photo || userProfile?.has_mayorGrades_photo ? (
+                          <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                            <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
+                              <i className="fas fa-check-circle"></i> Photo Uploaded
+                            </div>
+                            <button type="button" onClick={() => setPhotos(prev => ({ ...prev, mayorGrades_photo: null }))} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                          </div>
+                        ) : (
+                          <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                        )}
                       </div>
                     </div>
                     <div className="form-group" style={{marginBottom: 0}}>
