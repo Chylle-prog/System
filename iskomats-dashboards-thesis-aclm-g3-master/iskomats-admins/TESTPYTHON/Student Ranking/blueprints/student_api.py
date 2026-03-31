@@ -10,9 +10,11 @@ from cryptography.fernet import Fernet
 from flask import Blueprint, jsonify, request
 from flask_bcrypt import Bcrypt
 
+import cv2
+import numpy as np
 from services.auth_service import get_secret_key
 from services.db_service import get_db
-from services.ocr_utils import verify_id_with_ocr, verify_face_with_id, extract_school_year, verify_signature_against_id
+from services.ocr_utils import verify_id_with_ocr, verify_face_with_id, extract_school_year, verify_signature_against_id, save_signature_profile
 
 
 student_api_bp = Blueprint('student_api', __name__, url_prefix='/api/student')
@@ -1140,17 +1142,87 @@ def signature_match():
             return jsonify({'verified': False, 'message': 'Invalid image format. Must be base64 data URI.', 'confidence': 0.0}), 400
 
         # Use new signature verification function
-        # This extracts signatures from ID back and compares with submitted signature
-        verified, message, confidence = verify_signature_against_id(signature_bytes, id_back_bytes)
+        # Pass request.user_no (from token) to enable local profile matching
+        student_id = getattr(request, 'user_no', None)
+        verified, message, confidence, sub_img, ext_img = verify_signature_against_id(signature_bytes, id_back_bytes, student_id=student_id)
+        
+        # Convert images to base64 for frontend display
+        processed_submitted = None
+        extracted_signature = None
+        
+        if sub_img is not None:
+             _, buffer = cv2.imencode('.png', sub_img)
+             processed_submitted = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+             
+        if ext_img is not None:
+             _, buffer = cv2.imencode('.png', ext_img)
+             extracted_signature = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
         
         # Ensure all values are native Python types (not numpy types)
         return jsonify({
             'verified': bool(verified),
             'message': str(message),
-            'confidence': float(confidence)
+            'confidence': float(confidence),
+            'processed_submitted': processed_submitted,
+            'extracted_signature': extracted_signature
         })
     except Exception as e:
         print(f"[SIGNATURE-MATCH] Error: {str(e)}", flush=True)
         import traceback
         traceback.print_exc()
         return jsonify({'verified': False, 'message': f'Internal verification error: {str(e)}', 'confidence': 0.0}), 500
+
+
+@student_api_bp.route('/verification/signature-feedback', methods=['POST'])
+@token_required
+def signature_feedback():
+    """
+    Saves a confirmed real signature as a local profile for future matching.
+    Or saves a fake signature to a local blacklist.
+    """
+    data = request.get_json() or {}
+    signature_data = data.get('signature_image')
+    feedback_type = data.get('type') # 'real' or 'fake'
+    student_id = getattr(request, 'user_no', None)
+
+    if not student_id:
+        return jsonify({'success': False, 'message': 'Student ID not found in token.'}), 400
+
+    try:
+        signature_bytes = decode_base64(signature_data)
+        if not signature_bytes:
+            return jsonify({'success': False, 'message': 'Invalid signature image.'}), 400
+        
+        # Now passing feedback_type ('real' or 'fake')
+        success = save_signature_profile(student_id, signature_bytes, profile_type=feedback_type)
+        
+        msg = f"Local signature profile updated. The system has now 'learned' this signature."
+        if feedback_type == 'fake':
+            msg = "Signature blacklisted. The system will now automatically penalize this specific drawing."
+            
+        return jsonify({
+            'success': success,
+            'message': msg if success else f'Failed to save {feedback_type} profile.'
+        })
+    except Exception as e:
+        print(f"[SIGNATURE-FEEDBACK] Error: {str(e)}", flush=True)
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@student_api_bp.route('/verification/clear-knowledge', methods=['POST'])
+@token_required
+def clear_knowledge():
+    """
+    Deletes all local training data (profiles and blacklists) for the current student.
+    """
+    student_id = getattr(request, 'user_no', None)
+    if not student_id:
+        return jsonify({'success': False, 'message': 'Student ID not found in token.'}), 400
+
+    from services.ocr_utils import clear_student_knowledge
+    success = clear_student_knowledge(student_id)
+    
+    return jsonify({
+        'success': success,
+        'message': 'Local training data cleared successfully.' if success else 'Failed to clear data.'
+    })

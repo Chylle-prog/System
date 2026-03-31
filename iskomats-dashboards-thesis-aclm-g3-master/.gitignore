@@ -23,3 +23,9 @@ __pycache__/
 # Dashboard reference files
 iskomats-admins/src/Pages/Dash/*-ref.jsx
 iskomats-admins/references/
+
+# Local Verification Training Data (Do NOT commit to production)
+knowledge/
+**/knowledge/
+*.png_profile
+*.png_fake

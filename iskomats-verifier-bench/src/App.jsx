@@ -13,7 +13,8 @@ import {
   Camera,
   Activity,
   Code,
-  PenTool
+  PenTool,
+  Sparkles
 } from 'lucide-react';
 import * as api from './api';
 
@@ -23,6 +24,7 @@ const App = () => {
   const [apiUrl, setApiUrl] = useState(localStorage.getItem('verifier_api_url') || 'http://localhost:5000/api');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
+  const [lastSignatureImage, setLastSignatureImage] = useState(null);
   
   // Form States
   const [form, setForm] = useState({
@@ -103,11 +105,43 @@ const App = () => {
         throw new Error('Canvas not initialized');
       }
       const signatureData = canvas.toDataURL('image/png');
+      setLastSignatureImage(signatureData);
       
       const res = await api.signatureMatch(signatureData, form.idBackImage);
       setResults({ type: 'signature', data: res });
     } catch (err) {
       setResults({ type: 'error', data: err.response?.data || { message: err.message } });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignatureFeedback = async (type) => {
+    if (!results || results.type !== 'signature' || !lastSignatureImage) return;
+
+    try {
+      setLoading(true);
+      const res = await fetch(`${apiUrl}/student/verification/signature-feedback`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          signature_image: lastSignatureImage,
+          type: type
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message || 'Feedback saved successfully!');
+      } else {
+        alert('Feedback failed: ' + (data.message || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Feedback error:', error);
+      alert('Error sending feedback: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -267,33 +301,108 @@ const App = () => {
   const renderSignatureResults = () => {
     if (!results || results.type !== 'signature') return null;
     const { data } = results;
-    const confidence = data.confidence || 0;
-    
+    const isMatch = data.verified;
+
     return (
-      <div className="results-content">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <h3 style={{ fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <PenTool size={20} className="text-secondary" /> Signature Match Score
-          </h3>
-          <span className={`status-badge ${data.verified ? 'status-success' : 'status-failed'}`}>
-            {data.verified ? 'Signature Valid' : 'Signature Mismatch'}
-          </span>
+      <div className="mt-6 space-y-6">
+        <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <PenTool className="w-5 h-5 text-indigo-400" />
+              Signature Match Score
+            </h3>
+            <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+              isMatch ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
+            }`}>
+              {isMatch ? 'Signature Valid' : 'Signature Mismatch'}
+            </span>
+          </div>
+
+          <div className="relative pt-2">
+            <div className="flex items-center justify-center mb-2">
+              <span className={`text-5xl font-black ${
+                isMatch ? 'text-emerald-400' : 'text-rose-400'
+              }`}>
+                {(data.confidence || 0).toFixed(1)}%
+              </span>
+            </div>
+            <div className="w-full bg-slate-700 rounded-full h-2">
+              <div 
+                className={`h-2 rounded-full transition-all duration-1000 ${
+                  isMatch ? 'bg-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.5)]' : 'bg-rose-500'
+                }`}
+                style={{ width: `${data.confidence || 0}%` }}
+              ></div>
+            </div>
+            <p className="text-center text-slate-400 text-sm mt-2">Signature Match Confidence</p>
+          </div>
         </div>
 
-        <div className="card" style={{ textAlign: 'center', padding: '2rem' }}>
-          <div style={{ fontSize: '3rem', fontWeight: '900', color: data.verified ? '#10b981' : '#ef4444' }}>
-            {confidence.toFixed(1)}%
-          </div>
-          <div className="confidence-bar">
-            <div className="confidence-fill" style={{ width: `${confidence}%` }}></div>
-          </div>
-          <p style={{ color: 'var(--text-muted)' }}>Signature Match Score</p>
-        </div>
-
-        <div style={{ marginTop: '2rem' }}>
-          <p style={{ fontSize: '0.9rem', color: '#f8fafc', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '10px' }}>
-            {data.message}
+        {/* Training Feedback Loop (Adaptive Profile) */}
+        <div className="bg-indigo-900/20 p-4 rounded-xl border border-indigo-500/30">
+          <p className="text-xs text-indigo-300 font-bold uppercase mb-3 flex items-center gap-2">
+            <Sparkles className="w-3 h-3" />
+            Signature Training Loop
           </p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => handleSignatureFeedback('real')}
+              disabled={loading}
+              className="flex-1 py-2 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+            >
+              Mark as Correct (Real)
+            </button>
+            <button
+              onClick={() => handleSignatureFeedback('fake')}
+              disabled={loading}
+              className="flex-1 py-2 px-4 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+            >
+              Mark as Fake
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-400 mt-2 text-center">
+            Confirming a "Real" signature builds your high-fidelity Reference Profile locally.
+          </p>
+        </div>
+
+        {/* Visual Match Analysis */}
+        <div className="bg-slate-900/80 p-5 rounded-xl border border-slate-800 shadow-inner">
+          <h4 className="text-xs font-bold text-indigo-300 uppercase tracking-widest mb-4 flex items-center gap-2">
+            <Search className="w-4 h-4" /> Visual Match Analysis (Zoom)
+          </h4>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div className="text-center space-y-2">
+              <p className="text-[10px] text-slate-500 uppercase font-bold">Extracted from ID</p>
+              <div className="aspect-square bg-white rounded-lg border-2 border-indigo-500/30 flex items-center justify-center overflow-hidden p-2">
+                {data.extracted_signature ? (
+                  <img src={data.extracted_signature} alt="ID Signature" className="max-w-full max-h-full object-contain filter contrast(1.2)" />
+                ) : (
+                  <span className="text-xs text-slate-400 font-mono italic">No Extract</span>
+                )}
+              </div>
+            </div>
+            
+            <div className="text-center space-y-2">
+              <p className="text-[10px] text-slate-500 uppercase font-bold">Processed Submission</p>
+              <div className="aspect-square bg-white rounded-lg border-2 border-slate-700 flex items-center justify-center overflow-hidden p-2">
+                {data.processed_submitted ? (
+                  <img src={data.processed_submitted} alt="My Drawing" className="max-w-full max-h-full object-contain" />
+                ) : (
+                  <span className="text-xs text-slate-400 font-mono italic">No Process</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className={`p-4 rounded-xl border flex gap-3 ${
+          isMatch ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-rose-500/5 border-rose-500/20'
+        }`}>
+          <div className="flex-1">
+            <p className="text-xs font-bold text-slate-300 uppercase mb-1">Result Message:</p>
+            <p className="text-sm text-slate-100">{data.message}</p>
+          </div>
         </div>
       </div>
     );

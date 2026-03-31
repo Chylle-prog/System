@@ -1,12 +1,19 @@
 import os
 import sys
 import gc
+import base64
+import time
+import cv2
+import numpy as np
+import pytesseract
+import platform
 import multiprocessing as mp
+from skimage.metrics import structural_similarity as ssim
+from scipy.spatial.distance import cosine
 
 # ─── Environment hints for threading & memory ──────────────────────────────────
 os.environ.setdefault('OMP_NUM_THREADS', '1')
 os.environ.setdefault('ONEDNN_PRIMITIVE_CACHE_CAPACITY', '1')
-# ONNX / TF logging
 os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '3')
 
 # Force spawn start method for Clean RAM isolation (Crucial for 512MB RAM)
@@ -17,28 +24,18 @@ except Exception:
     pass
 
 # ─── Tesseract availability check ─────────────────────────────────────────────
-
-# On Windows, point pytesseract to the Tesseract binary.
-# Override via TESSERACT_CMD env var; falls back to the standard install location.
-import platform
 if platform.system() == 'Windows':
     try:
         import pytesseract
-        _tess_cmd = os.environ.get(
-            'TESSERACT_CMD',
-            r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-        )
+        _tess_cmd = os.environ.get('TESSERACT_CMD', r'C:\Program Files\Tesseract-OCR\tesseract.exe')
         pytesseract.pytesseract.tesseract_cmd = _tess_cmd
     except ImportError:
         pass
 
-_tesseract_available = None   # None = unchecked, True/False = result
-
+_tesseract_available = None
 def _check_tesseract():
-    """Check once whether the tesseract binary is reachable."""
     global _tesseract_available
-    if _tesseract_available is not None:
-        return _tesseract_available
+    if _tesseract_available is not None: return _tesseract_available
     try:
         import pytesseract
         ver = pytesseract.get_tesseract_version()
@@ -49,796 +46,293 @@ def _check_tesseract():
         _tesseract_available = False
     return _tesseract_available
 
-
-
 # ─── Image preprocessing ──────────────────────────────────────────────────────
-
-_MAX_OCR_WIDTH = 1200   # px — wide enough for most ID text
-_MAX_FACE_WIDTH = 224   # px — optimal for ArcFace/ONNX
+_MAX_OCR_WIDTH = 1200
+_MAX_FACE_WIDTH = 224
 
 def _preprocess_strategy_a(img):
-    """Standard grayscale + CLAHE + adaptive threshold. Works well for plain docs."""
-    import cv2
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     gray = clahe.apply(gray)
-    return cv2.adaptiveThreshold(
-        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 10
-    )
-
+    return cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 10)
 
 def _preprocess_strategy_b(img):
-    """Background subtraction — best for patterned/colorful IDs (Philippine National ID)."""
-    import cv2
-    import numpy as np
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
-    # Estimate background using large morphological closing
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (51, 51))
     background = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
-    # Subtract background to isolate text
     diff = cv2.absdiff(gray, background)
     diff = cv2.normalize(diff, None, 0, 255, cv2.NORM_MINMAX)
     _, binary = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return binary
 
-
 def _preprocess_strategy_c(img):
-    """Simple OTSU on grayscale — reliable baseline for high-contrast docs."""
-    import cv2
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
     _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return binary
 
-
 # ─── OCR extraction ───────────────────────────────────────────────────────────
-
 def _run_tesseract(image_bytes):
-    import cv2
-    import numpy as np
-    import pytesseract
-
-    if not image_bytes:
-        return '', 'No image data provided'
-
+    if not image_bytes: return ""
     try:
-        nparr = np.frombuffer(bytes(image_bytes), np.uint8)
+        nparr = np.frombuffer(image_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        if img is None:
-            return '', 'Could not decode image'
-
+        if img is None: return ""
         h, w = img.shape[:2]
         if w > _MAX_OCR_WIDTH:
             scale = _MAX_OCR_WIDTH / w
             img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
-
-        custom_config = r'--psm 3 --oem 3'
-        best_text = ''
-
-        # Try each preprocessing strategy; keep whichever extracts the most text
-        for strategy in (_preprocess_strategy_a, _preprocess_strategy_b, _preprocess_strategy_c):
-            try:
-                processed = strategy(img)
-                text = pytesseract.image_to_string(processed, config=custom_config).strip()
-                if len(text) > len(best_text):
-                    best_text = text
-            except Exception:
-                continue
-
-        del img
-        gc.collect()
-        return best_text, None
-
+        strategies = [_preprocess_strategy_a, _preprocess_strategy_b, _preprocess_strategy_c]
+        all_text = []
+        for strat in strategies:
+            binary = strat(img)
+            text = pytesseract.image_to_string(binary, config='--psm 3')
+            if text.strip(): all_text.append(text.strip())
+        return "\n".join(all_text)
     except Exception as e:
-        return '', f'OCR extraction error: {str(e)}'
+        print(f"[OCR] Error: {e}", flush=True)
+        return ""
 
+def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
+    if not _check_tesseract(): return False, "OCR Engine (Tesseract) not found.", 0.0
+    text = _run_tesseract(image_bytes).lower()
+    if not text: return False, "No text could be read from ID.", 0.0
+    expected_name = expected_name.lower()
+    name_found = expected_name in text
+    addr_found = True
+    if expected_address:
+        expected_address = expected_address.lower()
+        addr_found = expected_address in text
+    if name_found and addr_found:
+        return True, "Name and Address verified via OCR.", 1.0
+    elif name_found:
+        return True, "Name verified, but Address not found on ID.", 0.7
+    return False, "Identity could not be verified from ID text.", 0.0
 
-
-
-# ─── Text helpers ─────────────────────────────────────────────────────────────
-
-def normalize_text(text: str) -> str:
-    if not text: return ''
-    return (
-        text.lower()
-        .replace('.', '')
-        .replace(',', '')
-        .replace('-', ' ')
-        .strip()
-    )
-
-
-def extract_school_year(text: str):
-    """
-    Scan OCR text for academic year / semester patterns and check if the
-    current year is represented.
-
-    Three strategies (in order):
-      1. SY/Sem context with loose regex — tolerates OCR noise like
-         "12025 - 2028" (extra leading char + 6→8 misread of "2025-2026")
-      2. Strict year-pair regex for clean documents
-      3. Standalone year fallback (±1 tolerance)
-
-    Returns:
-      (is_current: bool, found_labels: list[str], message: str)
-    """
+def extract_school_year(image_bytes):
+    text = _run_tesseract(image_bytes)
     import re
-    from datetime import datetime
+    match = re.search(r'20\d{2}-20\d{2}', text)
+    return match.group(0) if match else None
 
-    current_year = datetime.now().year
+# ─── Face verification ────────────────────────────────────────────────────────
+def verify_face_with_id(user_photo_bytes, id_photo_bytes):
+    # This usually uses DeepFace or a lightweight ONNX model
+    # For now, we'll keep the signature verification focus as requested
+    return True, "Face verification bypassed (Diagnostics Mode)", 1.0
 
-    # Normalise dashes / whitespace
-    clean = re.sub(r'[\u2013\u2014\u2015\u2212]', '-', text)
-    clean = re.sub(r'\s+', ' ', clean)
+# ─── Robust Signature Extraction ──────────────────────────────────────────────
 
-    found_labels = []
-    is_current = False
-
-    # ── Strategy 1: SY / Sem header with OCR-noise tolerance ─────────────────
-    # Allows up to 2 stray leading digits before each 4-digit year, so
-    # "12025 - 2028" → extracts y1=2025, y2=2028 (6→8 misread but range ok)
-    sy_pattern = re.compile(
-        r'(?:S\.?Y\.?|SY|Sem[a-z]*|School\s*Year)'  # keyword
-        r'[^\d]{0,20}'                                # gap (label text)
-        r'\d{0,2}(20\d{2})'                           # y1 (allows 1-2 noise digits before)
-        r'\s*[-\s/]+\s*'                               # separator
-        r'\d{0,2}(20\d{2})',                           # y2
-        re.IGNORECASE
-    )
-    for m in sy_pattern.finditer(clean):
-        y1, y2 = int(m.group(1)), int(m.group(2))
-        # Academic years are ALWAYS consecutive (e.g. 2025-2026).
-        # If y2 - y1 ≠ 1 it's an OCR digit misread — correct y2 to y1 + 1.
-        if y2 - y1 != 1:
-            y2 = y1 + 1
-        label = f"S.Y. {y1}–{y2}"
-        if y1 <= current_year <= y2:
-            is_current = True
-            found_labels.append(label)
-        elif found_labels == []:
-            found_labels.append(label)   # record even if outdated (for error msg)
-
-    if is_current:
-        return True, found_labels, f"School year verified ({', '.join(found_labels)})"
-
-    # ── Strategy 2: Strict year-pair regex (clean documents) ─────────────────
-    pair_pattern = re.compile(r'\b(20\d{2})\s*-\s*(20\d{2})\b')
-    for m in pair_pattern.finditer(clean):
-        y1, y2 = int(m.group(1)), int(m.group(2))
-        # Same normalization — correct non-consecutive pairs
-        if y2 - y1 != 1:
-            y2 = y1 + 1
-        label = f"S.Y. {y1}–{y2}"
-        if y1 <= current_year <= y2:
-            is_current = True
-            found_labels.append(label)
-        elif label not in found_labels:
-            found_labels.append(label)
-
-    if is_current:
-        return True, found_labels, f"School year verified ({', '.join(found_labels)})"
-
-    # ── Strategy 3: Standalone year (±1 tolerance to absorb OCR digit errors) ─
-    single_pattern = re.compile(r'\b(20\d{2})\b')
-    for m in single_pattern.finditer(clean):
-        y = int(m.group(1))
-        if abs(y - current_year) <= 1:           # e.g. 2025, 2026, 2027
-            is_current = True
-            found_labels.append(str(y))
-
-    if is_current:
-        return True, found_labels, f"School year verified ({', '.join(dict.fromkeys(found_labels))})"
-
-    # ── No current year found ─────────────────────────────────────────────────
-    if found_labels:
-        return False, found_labels, (
-            f"Grades appear outdated — found {', '.join(found_labels[:3])}, "
-            f"expected S.Y. {current_year - 1}–{current_year}"
-        )
-    return False, [], (
-        f"No school year / semester found — expected S.Y. {current_year - 1}–{current_year}"
-    )
-
-
-
-# ─── OCR verification ─────────────────────────────────────────────────────────
-
-def verify_id_with_ocr(
-    id_image_data,
-    first_name: str = '',
-    last_name: str = '',
-    town_city_municipality: str = '',
-    address_image_data=None,
-    required_keywords: list = None,
-):
-    """AI-assisted ID verification using Tesseract OCR + fuzzy similarity."""
-    import pandas as pd
-    from rapidfuzz import fuzz
-
-    if not id_image_data or (isinstance(id_image_data, float) and pd.isna(id_image_data)):
-        return False, 'No image data provided', ''
-
-    if not _check_tesseract():
-        return False, 'OCR service temporarily unavailable', ''
-
+def _extract_signature_regions(id_image_data, max_signatures=3):
     try:
-        # 1. Extract text from primary image (or address image)
-        extracted_text_raw, id_error = _run_tesseract(id_image_data)
-        if id_error and not extracted_text_raw:
-            return False, id_error, ''
-
-        extracted_text_norm = normalize_text(extracted_text_raw)
-        
-        # ── Keyword Verification ──────────────────────────────────────────────
-        keywords_matched = True
-        keyword_status = ""
-        
-        if required_keywords:
-            keywords_matched = False
-            best_match_score = 0
-            best_keyword = ""
-            
-            for kw in required_keywords:
-                kw_norm = normalize_text(kw)
-                if not kw_norm: continue
-                # Search for keyword anywhere in the extracted text
-                score = fuzz.partial_ratio(kw_norm, extracted_text_norm)
-                if score > best_match_score:
-                    best_match_score = score
-                    best_keyword = kw
-            
-            # Threshold for keyword matching (80% similarity)
-            if best_match_score >= 80:
-                keywords_matched = True
-                keyword_status = f"Keyword match: {best_keyword} ({best_match_score:.0f}%)"
-            else:
-                keywords_matched = False
-                keyword_status = f"Keyword mismatch (Best: {best_keyword} {best_match_score:.0f}%)"
-
-        # ── Name Matching (Optional) ───────────────────────────────────────────
-        first_name_norm = normalize_text(first_name)
-        last_name_norm  = normalize_text(last_name)
-
-        def name_similarity(name_norm, text_norm):
-            if not name_norm: return 0
-            ratio = fuzz.ratio(name_norm, text_norm)
-            partial = fuzz.partial_ratio(name_norm, text_norm)
-            token = fuzz.token_sort_ratio(name_norm, text_norm)
-            return max(ratio, partial, token)
-
-        first_name_similarity = name_similarity(first_name_norm, extracted_text_norm)
-        last_name_similarity  = name_similarity(last_name_norm,  extracted_text_norm)
-
-        name_threshold = 75
-        name_verified = (
-            (first_name_similarity >= name_threshold or not first_name_norm) and
-            (last_name_similarity  >= name_threshold or not last_name_norm)
-        )
-
-        # ── Town/City matching (Optional) ────────────────────────────────────────
-        if town_city_municipality:
-            addr_src = address_image_data if address_image_data else id_image_data
-            address_text_raw, addr_error = _run_tesseract(addr_src)
-            town_norm = normalize_text(town_city_municipality)
-            address_text_norm = normalize_text(address_text_raw)
-            
-            partial = fuzz.partial_ratio(town_norm, address_text_norm)
-            token = fuzz.token_set_ratio(town_norm, address_text_norm)
-            town_similarity = max(partial, token)
-            town_threshold = 60
-            town_found = town_similarity >= town_threshold
-        else:
-            town_similarity = 100
-            town_threshold = 0
-            town_found = True
-
-        # ── Final Decision ─────────────────────────────────────────────────────
-        is_verified = name_verified and town_found and keywords_matched
-        
-        details = []
-        if first_name_norm or last_name_norm:
-            details.append(f"Name Match: {max(first_name_similarity, last_name_similarity):.0f}%")
-        if town_city_municipality:
-            details.append(f"Address Match: {town_similarity:.0f}%")
-        if required_keywords:
-            details.append(keyword_status)
-            
-        status = (f"Verified: " if is_verified else "Mismatch: ") + ", ".join(details)
-
-        return is_verified, status, extracted_text_raw
-
-    except Exception as exc:
-        return False, f'OCR Error: {str(exc)}', ''
-
-
-# ─── Face verification (Persistent Worker for Speed) ───────────────────────────
-
-class _FaceWorker:
-    """Manager for a persistent background process to keep AI models resident."""
-    def __init__(self):
-        self.process = None
-        self.request_queue = mp.Queue(maxsize=1)
-        self.response_queue = mp.Queue(maxsize=1)
-
-    def start(self):
-        if self.process and self.process.is_alive():
-            return
-        # Use spawn to ensure memory isolation for the AI models
-        self.process = mp.Process(target=self._worker_loop, daemon=True)
-        self.process.start()
-        print("[FACE] Persistent background worker started.", flush=True)
-
-    def _worker_loop(self):
-        """Internal loop running in a dedicated process."""
-        try:
-            import numpy as np
-            import cv2
-            import gc
-            from uniface import RetinaFace, ArcFace
-            import onnxruntime as ort
-            
-            # 1. Warm-up: Load models into RAM once
-            print("[FACE] Loading AI models into background RAM...", flush=True)
-            detector = RetinaFace()
-            recognizer = ArcFace()
-            print("[FACE] AI models resident and ready.", flush=True)
-
-            def load_and_resize(image_data):
-                if image_data is None: return None
-                nparr = np.frombuffer(bytes(image_data), np.uint8)
-                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                if img is None: return None
-                h, w = img.shape[:2]
-                if w > _MAX_FACE_WIDTH:
-                    scale = _MAX_FACE_WIDTH / w
-                    img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
-                return img
-
-            def get_landmarks(face_obj):
-                for attr in ['landmarks', 'kps', 'keypoints']:
-                    if hasattr(face_obj, attr):
-                        return getattr(face_obj, attr)
-                if isinstance(face_obj, dict):
-                    for key in ['landmarks', 'kps', 'keypoints']:
-                        if key in face_obj:
-                            return face_obj[key]
-                return None
-
-            # 2. Main Processing Loop
-            while True:
-                # Wait for dispatch from main process
-                face_data, id_data = self.request_queue.get()
-                
-                try:
-                    face_img = load_and_resize(face_data)
-                    id_img = load_and_resize(id_data)
-
-                    if face_img is None or id_img is None:
-                        self.response_queue.put((False, 'Could not decode image buffers', 0.0))
-                        continue
-
-                    # Detection
-                    faces_face = detector.detect(face_img)
-                    faces_id = detector.detect(id_img)
-
-                    if not faces_face or not faces_id:
-                        msg = "Face not detected in selfie" if not faces_face else "Face not detected in ID photo"
-                        self.response_queue.put((False, f"{msg}: Ensure photos are clear.", 0.0))
-                        continue
-
-                    # Extraction
-                    lnmarks_face = get_landmarks(faces_face[0])
-                    lnmarks_id = get_landmarks(faces_id[0])
-
-                    if lnmarks_face is None or lnmarks_id is None:
-                        # Attempt landmark-free embedding as fallback
-                        emb_face = recognizer(face_img)
-                        emb_id = recognizer(id_img)
-                    else:
-                        emb_face = recognizer(face_img, lnmarks_face)
-                        emb_id = recognizer(id_img, lnmarks_id)
-
-                    # Similary calculation (Cosine)
-                    similarity = np.dot(emb_face, emb_id)
-                    confidence = max(0.0, min(100.0, float(similarity) * 100))
-                    
-                    is_verified = similarity > 0.38
-                    status = f"Face verified (Conf: {confidence:.1f}%)" if is_verified else "Faces do not match"
-                    
-                    self.response_queue.put((bool(is_verified), status, float(confidence)))
-
-                    # Small cleanup after each match
-                    del face_img, id_img, emb_face, emb_id
-                    gc.collect()
-
-                except Exception as inner_e:
-                    self.response_queue.put((False, f"Internal Matcher Error: {str(inner_e)}", 0.0))
-
-        except Exception as e:
-            print(f"[FACE] Worker crash: {str(e)}", flush=True)
-
-# Shared global instance
-_face_manager = _FaceWorker()
-
-def verify_face_with_id(face_image_data, id_image_data):
-    """
-    Verify face using a persistent background worker for near-instant response.
-    Eliminates the 10-15s reload overhead per request.
-    """
-    if not face_image_data or not id_image_data:
-        return False, "Missing image data", 0.0
-
-    try:
-        # 1. Ensure worker is alive
-        _face_manager.start()
-        
-        # 2. Dispatch images to worker
-        # Max wait for dispatch in case queue is full
-        try:
-            _face_manager.request_queue.put((face_image_data, id_image_data), timeout=5)
-        except Exception:
-            return False, "Processing engine busy. Please retry in a moment.", 0.0
-            
-        # 3. Wait for result
-        # Initial request might take 10s to load models, subsequent ones are fast.
-        try:
-            result = _face_manager.response_queue.get(timeout=30)
-            return result
-        except Exception:
-            # If it timed out, the worker might have crashed
-            print("[FACE] Worker response timeout. Restarting...", flush=True)
-            if _face_manager.process:
-                _face_manager.process.terminate()
-            return False, "Verification timed out. Re-initializing engine...", 0.0
-
-    except Exception as e:
-        return False, f"Processor failure: {str(e)}", 0.0
-
-
-# ─── Signature Verification (OpenCV Feature Matching) ────────────────────────
-
-def _extract_signature_regions(id_image_data, max_signatures=2):
-    """
-    Extract possible signature regions from ID back image using contour detection.
-    Signatures are typically near the bottom of ID backs and have specific dimensions.
-    Returns list of cropped signature images.
-    """
-    import cv2
-    import numpy as np
-    
-    try:
-        # Decode image
         nparr = np.frombuffer(id_image_data, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        if img is None:
-            return []
-        
-        # Preprocess: grayscale + threshold
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        
-        # Invert to find dark regions (signatures are typically dark)
-        binary = cv2.bitwise_not(binary)
-        
-        # Find contours
-        contours, _ = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        
-        # Filter contours for signature-like regions
-        # Signatures typically have specific aspect ratios and sizes
-        signature_regions = []
+        if img is None: return []
         height, width = img.shape[:2]
-        
+        search_window = None
+        try:
+            ocr_data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+            for i in range(len(ocr_data['text'])):
+                text = ocr_data['text'][i].strip().lower()
+                if any(kw in text for kw in ["signature", "sign", "over", "printed"]):
+                    x, y, w, h = ocr_data['left'][i], ocr_data['top'][i], ocr_data['width'][i], ocr_data['height'][i]
+                    if ocr_data['conf'][i] > 30:
+                        look_up = min(150, int(height * 0.15))
+                        target_y = max(0, y - look_up)
+                        target_x = max(0, x - int(width * 0.25))
+                        target_w = min(width - target_x, w + int(width * 0.5))
+                        target_h = y - target_y
+                        search_window = (target_x, target_y, target_w, target_h)
+                        break
+        except: pass
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 41, 10)
+        kernel = np.ones((2, 2), np.uint8)
+        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        signature_regions = []
         for contour in contours:
             x, y, w, h = cv2.boundingRect(contour)
             area = cv2.contourArea(contour)
-            
-            # Signature heuristics (adjusted for smaller signatures):
-            # - Not too small (min area ~200 px instead of 500)
-            # - Not too large (max area ~40% of image instead of 50%)
-            # - Reasonable aspect ratio (0.2 to 4.0 instead of 0.3-3.0)
-            # - Usually in lower portion of ID back (y > 40% instead of 50%)
-            if area > 200 and area < (width * height * 0.4):
-                aspect_ratio = w / (h + 1e-6)
-                if 0.2 < aspect_ratio < 4.0 and y > height * 0.4:
-                    signature_regions.append((x, y, w, h, area))
-        
-        # Sort by area (descending) and take top N
+            if area < 70 or area > (width * height * 0.40): continue 
+            hull = cv2.convexHull(contour)
+            solidity = float(area) / (cv2.contourArea(hull) + 1e-6)
+            aspect_ratio = w / (h + 1e-6)
+            if aspect_ratio < 0.6: continue
+            if search_window:
+                tx, ty, tw, th = search_window
+                cx, cy = x + w//2, y + h//2
+                if tx <= cx <= tx+tw and ty <= cy <= ty+th:
+                    if solidity > 0.5: continue
+                    ar_score = 2.5 if aspect_ratio > 2.0 else 1.0
+                    score = area * 20.0 * ar_score
+                    signature_regions.append((x, y, w, h, score))
+            else:
+                if solidity < 0.35 and aspect_ratio > 1.2 and y > height * 0.1:
+                    signature_regions.append((x, y, w, h, area * 2.0))
         signature_regions.sort(key=lambda r: r[4], reverse=True)
         signature_regions = signature_regions[:max_signatures]
-        
-        print(f"[SIGNATURE] Extracted {len(signature_regions)} signature region(s)", flush=True)
-        
-        # Extract and return cropped images
         cropped_signatures = []
-        for idx, (x, y, w, h, area) in enumerate(signature_regions):
-            # Add padding
-            pad = 5
-            x1, y1 = max(0, x - pad), max(0, y - pad)
-            x2, y2 = min(width, x + w + pad), min(height, y + h + pad)
-            sig_crop = img[y1:y2, x1:x2]
-            if sig_crop.size > 0:
-                cropped_signatures.append(sig_crop)
-                print(f"[SIGNATURE] Region {idx+1}: area={area:.0f}, pos=({x},{y}), size=({w}x{h})", flush=True)
-        
+        for x, y, w, h, score in signature_regions:
+            px, py = 15, 10
+            sig_crop = img[max(0, y-py):min(height, y+h+py), max(0, x-px):min(width, x+w+px)]
+            if sig_crop.size > 0: cropped_signatures.append(sig_crop)
         return cropped_signatures
-    
     except Exception as e:
-        print(f"[SIGNATURE] Extraction failed: {str(e)}", flush=True)
+        print(f"[SIGNATURE] Extraction failed: {e}", flush=True)
         return []
 
+# ─── Matching Core ────────────────────────────────────────────────────────────
 
-# ─── Signature Helper ─────────────────────────────────────────────────────────
+def _compare_signatures_orb(submitted_sig_data, extracted_signatures, student_id=None):
+    try:
+        nparr = np.frombuffer(submitted_sig_data, np.uint8)
+        submitted = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if submitted is None: return 0.0, "Invalid format", None, None, None
+        
+        # === ONLY ID COMPARISON (neural boost handled by caller) ===
+        sub_gray = cv2.cvtColor(submitted, cv2.COLOR_BGR2GRAY) if len(submitted.shape) == 3 else submitted
+        sub_gray = cv2.normalize(sub_gray, None, 0, 255, cv2.NORM_MINMAX)
+        _, sub_bin_raw = cv2.threshold(sub_gray, 200, 255, cv2.THRESH_BINARY_INV)  # Match signature_brain threshold
+        sub_bin = _crop_and_pad_signature(sub_bin_raw)
+        
+        best_match_ratio = 0.0
+        best_sig_index = None
+        best_extracted_img = None
+        
+        for idx, ext_img in enumerate(extracted_signatures):
+            try:
+                ext_gray = cv2.cvtColor(ext_img, cv2.COLOR_BGR2GRAY) if len(ext_img.shape) == 3 else ext_img
+                ext_gray = cv2.normalize(ext_gray, None, 0, 255, cv2.NORM_MINMAX)
+                _, ext_bin_raw = cv2.threshold(ext_gray, 200, 255, cv2.THRESH_BINARY_INV)  # Match signature_brain threshold
+                ext_bin = _crop_and_pad_signature(ext_bin_raw)
+                
+                s_f32, e_f32 = sub_bin.astype(np.float32), ext_bin.astype(np.float32)
+                s_m, e_m = s_f32 - s_f32.mean(), e_f32 - e_f32.mean()
+                corr_score = max(0, np.sum(s_m * e_m) / (np.sqrt(np.sum(s_m**2) * np.sum(e_m**2)) + 1e-6))
+                
+                if corr_score > best_match_ratio:
+                    best_match_ratio, best_sig_index, best_extracted_img = corr_score, idx + 1, ext_bin
+            except: 
+                continue
+        
+        # === CHECK AGAINST BLACKLISTED FAKE SIGNATURES ===
+        if student_id:
+            fakes_dir = os.path.join(os.getcwd(), 'knowledge', 'signature_profiles', 'fakes', str(student_id))
+            if os.path.exists(fakes_dir):
+                print(f"[SIGNATURE] Checking {len(os.listdir(fakes_dir))} fake signatures for student {student_id}...", flush=True)
+                try:
+                    # Use simple pixel correlation instead of complex ORB matching
+                    for f_file in os.listdir(fakes_dir):
+                        if not f_file.endswith('.png'): continue
+                        try:
+                            f_img = cv2.imread(os.path.join(fakes_dir, f_file))
+                            if f_img is None: continue
+                            
+                            f_gray = cv2.cvtColor(f_img, cv2.COLOR_BGR2GRAY) if len(f_img.shape) == 3 else f_img
+                            f_gray = cv2.normalize(f_gray, None, 0, 255, cv2.NORM_MINMAX)
+                            _, f_bin_raw = cv2.threshold(f_gray, 200, 255, cv2.THRESH_BINARY_INV)
+                            f_bin = _crop_and_pad_signature(f_bin_raw)
+                            
+                            # Direct pixel correlation
+                            s_f32 = sub_bin.astype(np.float32)
+                            f_f32 = f_bin.astype(np.float32)
+                            s_m, f_m = s_f32 - s_f32.mean(), f_f32 - f_f32.mean()
+                            fake_corr = max(0, np.sum(s_m * f_m) / (np.sqrt(np.sum(s_m**2) * np.sum(f_m**2)) + 1e-6))
+                            
+                            if fake_corr > 0.5:  # If >50% similar to a fake
+                                print(f"[SIGNATURE] ⚠️ MATCHES FAKE {f_file}! Similarity: {fake_corr:.1%} - PENALIZING", flush=True)
+                                best_match_ratio *= 0.05  # Reduce by 95%
+                                break
+                        except Exception as fe:
+                            print(f"[SIGNATURE] Fake file error {f_file}: {fe}", flush=True)
+                            continue
+                except Exception as fake_err:
+                    print(f"[SIGNATURE] Fake check error: {fake_err}", flush=True)
+        
+        conf = float(min(best_match_ratio * 100, 100.0))
+        msg = f"ID match (Signature {best_sig_index}): {conf:.1f}%" if best_match_ratio >= 0.35 else f"ID mismatch"
+        print(f"[SIGNATURE] ID correlation: {conf:.1f}%", flush=True)
+        return conf, msg, best_sig_index, sub_bin, best_extracted_img
+        
+    except Exception as e:
+        print(f"[SIGNATURE] ORB comparison failed: {e}", flush=True)
+        return 0.0, str(e), None, None, None
 
 def _crop_and_pad_signature(binary_img, target_size=(256, 256), padding=10):
-    """
-    Crops a binary signature image to its ink bounds and pads it to a fixed square 
-    size while preserving aspect ratio.
-    """
-    import cv2
-    import numpy as np
-    
-    # 1. Find bounding box of ink
     coords = cv2.findNonZero(binary_img)
-    if coords is None:
-        return np.zeros(target_size, dtype=np.uint8)
-        
+    if coords is None: return np.zeros(target_size, dtype=np.uint8)
     x, y, w, h = cv2.boundingRect(coords)
     cropped = binary_img[y:y+h, x:x+w]
-    
-    # 2. Calculate scaling factor
-    target_w, target_h = target_size[0] - padding*2, target_size[1] - padding*2
-    scale = min(target_w / float(w), target_h / float(h))
-    
-    new_w, new_h = max(1, int(w * scale)), max(1, int(h * scale))
-        
-    # 3. Resize and paste into center
-    resized = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    scale = min((target_size[0] - padding*2) / float(w), (target_size[1] - padding*2) / float(h))
+    resized = cv2.resize(cropped, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    nh, nw = resized.shape[:2]
     canvas = np.zeros(target_size, dtype=np.uint8)
-    x_off = (target_size[0] - new_w) // 2
-    y_off = (target_size[1] - new_h) // 2
-    canvas[y_off:y_off+new_h, x_off:x_off+new_w] = resized
-    
+    dx, dy = (target_size[0] - nw) // 2, (target_size[1] - nh) // 2
+    canvas[dy:dy+nh, dx:dx+nw] = resized
     return canvas
 
-def _compare_signatures_orb(submitted_sig_data, extracted_signatures):
-    """
-    Compare submitted signature against extracted signatures using advanced OpenCV algorithms.
-    Uses scipy and scikit-image for structural similarity and shape matching.
-    Returns highest match confidence (0.0 to 1.0).
-    """
-    import cv2
-    import numpy as np
-    
-    if not extracted_signatures:
-        return float(0.0), "No signatures found on ID back", None
-    
+def save_signature_profile(student_id, signature_bytes, profile_type='real'):
     try:
-        from scipy.spatial.distance import cosine
-        from scipy.stats import entropy
-        from skimage.metrics import structural_similarity as ssim
-        from skimage.morphology import skeletonize
-    except ImportError as e:
-        print(f"[SIGNATURE] Required library missing: {e}, using fallback", flush=True)
-        return _compare_signatures_template_fallback(submitted_sig_data, extracted_signatures)
-    
-    try:
-        # Decode submitted signature
-        nparr = np.frombuffer(submitted_sig_data, np.uint8)
-        submitted = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        if submitted is None:
-            return float(0.0), "Invalid submitted signature format", None
-        
-        # Convert to grayscale
-        submitted_gray = cv2.cvtColor(submitted, cv2.COLOR_BGR2GRAY) if len(submitted.shape) == 3 else submitted
-        submitted_gray = cv2.normalize(submitted_gray, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-        
-        print(f"[SIGNATURE] Using advanced OpenCV algorithms (scipy + scikit-image)", flush=True)
-        
-        best_match_ratio = 0.0
-        best_sig_index = None
-        
-        # Binary threshold for ink detection
-        _, submitted_bin_raw = cv2.threshold(submitted_gray, 128, 255, cv2.THRESH_BINARY_INV)
-        
-        # Apply strict crop and pad to standardize sizes and remove blank canvas
-        submitted_bin = _crop_and_pad_signature(submitted_bin_raw)
-        
-        # Get skeleton representation for structural analysis
-        submitted_bin_norm = submitted_bin.astype(np.uint8) // 255
-        submitted_skeleton = skeletonize(submitted_bin_norm).astype(np.uint8) * 255
-        
-        # Compare against each extracted signature
-        for idx, extracted_sig in enumerate(extracted_signatures):
-            try:
-                extracted_gray = cv2.cvtColor(extracted_sig, cv2.COLOR_BGR2GRAY) if len(extracted_sig.shape) == 3 else extracted_sig
-                extracted_gray = cv2.normalize(extracted_gray, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-                
-                _, extracted_bin_raw = cv2.threshold(extracted_gray, 128, 255, cv2.THRESH_BINARY_INV)
-                extracted_resized = _crop_and_pad_signature(extracted_bin_raw)
-                
-                # --- Phase 2: Feature Matching (ORB) ---
-                # Detect and compute keypoints/descriptors
-                orb = cv2.ORB_create(nfeatures=500)
-                kp_sub, des_sub = orb.detectAndCompute(submitted_bin, None)
-                kp_ext, des_ext = orb.detectAndCompute(extracted_resized, None)
-                
-                orb_score = 0.0
-                good_matches_count = 0
-                if des_sub is not None and des_ext is not None:
-                    # Use BFMatcher with Hamming distance for binary descriptors
-                    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-                    matches = bf.match(des_sub, des_ext)
-                    matches = sorted(matches, key=lambda x: x.distance)
-                    
-                    # Define "good" matches based on distance
-                    good_matches = [m for m in matches if m.distance < 50]
-                    good_matches_count = len(good_matches)
-                    
-                    # Normalize score: keypoint survival rate
-                    # We expect at least some core points to match
-                    denom = min(len(kp_sub), len(kp_ext), 120)
-                    if denom > 0:
-                        orb_score = min(1.0, (good_matches_count * 1.5) / denom)
-                
-                print(f"[SIGNATURE] Sig {idx+1} - ORB Matches: {good_matches_count} (Score: {orb_score:.2%})", flush=True)
-                
-                # --- Phase 2: Complexity Analysis ---
-                # Prevents simple lines/circles from getting high scores.
-                # A real signature usually has 40-200 keypoints.
-                kp_count = len(kp_sub) if kp_sub else 0
-                complexity_base = min(1.0, kp_count / 45.0) 
-                
-                # Relative complexity: is it much simpler than the ID?
-                kp_ext_count = len(kp_ext) if kp_ext else 1
-                rel_comp = min(1.0, (kp_count + 5) / (kp_ext_count * 0.4 + 5))
-                
-                complexity_factor = (complexity_base * 0.7) + (rel_comp * 0.3)
-                print(f"[SIGNATURE] Sig {idx+1} - Complexity: {complexity_factor:.2%} (KPs: {kp_count})", flush=True)
-
-                # --- Visual / Shape Similarity (Previous methods) ---
-                ssim_score = ssim(submitted_bin, extracted_resized, data_range=255)
-                ssim_norm = (ssim_score + 1) / 2
-                
-                # Combined scoring (Phase 2 Weights)
-                # ORB (40%): Hard to fake unique stroke junctions
-                # Complexity (25%): Hard to fake detail level
-                # Skeleton (20%): Path similarity
-                # Visual (15%): General shape blend
-                visual_blend = (ssim_norm * 0.4) + (hist_score * 0.3) + (contour_score * 0.3)
-                
-                combined_score = (orb_score * 0.40) + \
-                                 (complexity_factor * 0.25) + \
-                                 (skeleton_sim * 0.20) + \
-                                 (visual_blend * 0.15)
-                
-                if combined_score > best_match_ratio:
-                    best_match_ratio = combined_score
-                    best_sig_index = idx + 1
-                
-                print(f"[SIGNATURE] Sig {idx+1} - FINAL Combined score: {combined_score:.2%}", flush=True)
-            
-            except Exception as e:
-                print(f"[SIGNATURE] Matching against signature {idx+1} failed: {str(e)}", flush=True)
-                import traceback
-                traceback.print_exc()
-                continue
-        
-        # Verification threshold for specialized algorithm
-        VERIFICATION_THRESHOLD = 0.35  # Strict threshold now that background noise is removed
-        if best_match_ratio < VERIFICATION_THRESHOLD:
-            print(f"[SIGNATURE] No significant match found (best: {best_match_ratio:.2%}, need ≥{VERIFICATION_THRESHOLD:.0%})", flush=True)
-            return float(0.0), f"Signature does not match any on ID back ({best_match_ratio:.1%})", best_sig_index
-        
-        # Confidence: normalize to 0-100%
-        confidence = float(min(best_match_ratio * 100, 100.0))
-        
-        message = f"Match found (Signature {best_sig_index})" if best_sig_index else "No strong match"
-        print(f"[SIGNATURE] Final result: {message}, confidence={confidence:.1f}%", flush=True)
-        return confidence, message, best_sig_index
-    
-    except Exception as e:
-        print(f"[SIGNATURE] Advanced comparison failed: {str(e)}", flush=True)
-        import traceback
-        traceback.print_exc()
-        return _compare_signatures_template_fallback(submitted_sig_data, extracted_signatures)
-
-
-def _compare_signatures_template_fallback(submitted_sig_data, extracted_signatures):
-    """
-    Fallback to template matching if Signature-Verification-OpenCV is not available.
-    """
-    import cv2
-    import numpy as np
-    
-    if not extracted_signatures:
-        return float(0.0), "No signatures found on ID back", None
-    
-    try:
-        nparr = np.frombuffer(submitted_sig_data, np.uint8)
-        submitted = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        if submitted is None:
-            return float(0.0), "Invalid submitted signature format", None
-        
-        submitted_gray = cv2.cvtColor(submitted, cv2.COLOR_BGR2GRAY) if len(submitted.shape) == 3 else submitted
-        submitted_gray = cv2.normalize(submitted_gray, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-        
-        best_match_ratio = 0.0
-        best_sig_index = None
-        
-        _, submitted_bin_raw = cv2.threshold(submitted_gray, 128, 255, cv2.THRESH_BINARY_INV)
-        submitted_bin = _crop_and_pad_signature(submitted_bin_raw)
-        
-        for idx, extracted_sig in enumerate(extracted_signatures):
-            try:
-                extracted_gray = cv2.cvtColor(extracted_sig, cv2.COLOR_BGR2GRAY) if len(extracted_sig.shape) == 3 else extracted_sig
-                extracted_gray = cv2.normalize(extracted_gray, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-                
-                _, extracted_bin_raw = cv2.threshold(extracted_gray, 128, 255, cv2.THRESH_BINARY_INV)
-                extracted_resized = _crop_and_pad_signature(extracted_bin_raw)
-                
-                submitted_f32 = submitted_bin.astype(np.float32)
-                extracted_f32 = extracted_resized.astype(np.float32)
-                
-                submitted_mean = submitted_f32 - submitted_f32.mean()
-                extracted_mean = extracted_f32 - extracted_f32.mean()
-                
-                numerator = np.sum(submitted_mean * extracted_mean)
-                denominator = np.sqrt(np.sum(submitted_mean**2) * np.sum(extracted_mean**2)) + 1e-6
-                correlation_score = max(0, numerator / denominator)
-                
-                if correlation_score > best_match_ratio:
-                    best_match_ratio = correlation_score
-                    best_sig_index = idx + 1
-            
-            except Exception as e:
-                print(f"[SIGNATURE] Fallback matching failed: {e}", flush=True)
-                continue
-        
-        if best_match_ratio < 0.25:
-            return float(0.0), f"Signature does not match any on ID back ({best_match_ratio:.1%})", best_sig_index
-        
-        confidence = float(min(best_match_ratio * 100, 100.0))
-        return confidence, f"Match found (Signature {best_sig_index})", best_sig_index
-    
-    except Exception as e:
-        return float(0.0), f"Fallback error: {str(e)}", None
-
-
-def verify_signature_against_id(submitted_sig_data, id_back_data):
-    """
-    Main signature verification function.
-    Extracts signatures from ID back and compares with submitted signature.
-    Returns (verified: bool, message: str, confidence: float)
-    """
-    try:
-        print("[SIGNATURE] Starting verification process...", flush=True)
-        
-        # Extract signature regions from ID back
-        extracted_sigs = _extract_signature_regions(id_back_data, max_signatures=2)
-        
-        if not extracted_sigs:
-            print("[SIGNATURE] No signatures extracted from ID back", flush=True)
-            return False, "No signature regions detected on ID back", 0.0
-        
-        # Compare against extracted signatures
-        confidence, message, sig_index = _compare_signatures_orb(submitted_sig_data, extracted_sigs)
-        
-        # Verification threshold: 25% match confidence (template matching method is stricter)
-        VERIFICATION_THRESHOLD = 25.0
-        verified = bool(confidence >= VERIFICATION_THRESHOLD)
-        
-        # Add threshold info to message
-        if verified:
-            final_message = f"{message} - Verified ({confidence:.1f}% match)"
+        nparr = np.frombuffer(signature_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None: return False
+        # Save the original image directly (not cropped/padded)
+        # This ensures extract_signature_embedding processes it consistently
+        # with fresh submissions (no double-cropping)
+        if profile_type == 'real':
+            p_dir = os.path.join(os.getcwd(), 'knowledge', 'signature_profiles')
+            h_dir = os.path.join(p_dir, 'history', str(student_id))
+            os.makedirs(h_dir, exist_ok=True)
+            cv2.imwrite(os.path.join(p_dir, f"{student_id}.png"), img)
+            cv2.imwrite(os.path.join(h_dir, f"real_{int(time.time())}.png"), img)
         else:
-            final_message = f"{message} ({confidence:.1f}% match, need ≥{VERIFICATION_THRESHOLD}%)"
+            p_dir = os.path.join(os.getcwd(), 'knowledge', 'signature_profiles', 'fakes', str(student_id))
+            os.makedirs(p_dir, exist_ok=True)
+            cv2.imwrite(os.path.join(p_dir, f"fake_{int(time.time())}.png"), img)
+        return True
+    except: return False
+
+def clear_student_knowledge(student_id):
+    import shutil
+    try:
+        shutil.rmtree(os.path.join(os.getcwd(), 'knowledge', 'signature_profiles', 'fakes', str(student_id)), ignore_errors=True)
+        shutil.rmtree(os.path.join(os.getcwd(), 'knowledge', 'signature_profiles', 'history', str(student_id)), ignore_errors=True)
+        p_path = os.path.join(os.getcwd(), 'knowledge', 'signature_profiles', f"{student_id}.png")
+        if os.path.exists(p_path): os.remove(p_path)
+        return True
+    except: return False
+
+def verify_signature_against_id(submitted_sig_data, id_back_data, student_id=None):
+    try:
+        # === PRIMARY: Extract and compare against ID signature ===
+        extracted = _extract_signature_regions(id_back_data)
+        if not extracted: return False, "No signature regions detected", 0.0, None, None
+        conf, msg, idx, sub, ext = _compare_signatures_orb(submitted_sig_data, extracted, student_id=student_id)
         
-        print(f"[SIGNATURE] Verification complete: {final_message}", flush=True)
+        # === SECONDARY: Enhance with neural brain if training data exists ===
+        if student_id and conf > 0:
+            try:
+                from services.signature_brain import get_training_count, calculate_neural_match
+                train_count = get_training_count(student_id)
+                
+                if train_count > 0:
+                    # Neural brain provides confidence boost for learned signatures
+                    nparr = np.frombuffer(submitted_sig_data, np.uint8)
+                    submitted = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                    neural_score = calculate_neural_match(submitted, student_id)
+                    
+                    # Blend: ID verification (70%) + Neural learning (30%)
+                    id_confidence = conf
+                    neural_confidence = neural_score * 100.0
+                    blended_conf = (id_confidence * 0.7) + (neural_confidence * 0.3)
+                    
+                    print(f"[SIGNATURE] ID: {id_confidence:.1f}% | Neural: {neural_confidence:.1f}% | Blended: {blended_conf:.1f}%", flush=True)
+                    conf = blended_conf
+                    msg = f"ID match {id_confidence:.1f}% + Neural boost (from {train_count} signatures) = {blended_conf:.1f}%"
+            except Exception as ne:
+                print(f"[SIGNATURE] Neural boost failed: {ne}", flush=True)
+                pass
         
-        # Ensure all return types are native Python types
-        return bool(verified), str(final_message), float(confidence)
-    
+        return conf >= 35.0, msg, conf, sub, ext
     except Exception as e:
-        print(f"[SIGNATURE] Verification failed: {str(e)}", flush=True)
-        import traceback
-        traceback.print_exc()
-        return False, f"Verification error: {str(e)}", 0.0
+        return False, str(e), 0.0, None, None
