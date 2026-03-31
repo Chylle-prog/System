@@ -2235,7 +2235,6 @@ const StudentInfo = () => {
                     <option value="STI Academic Center">STI Academic Center</option>
                     <option value="AMA Computer College">AMA Computer College</option>
                     <option value="ICT-ED">ICT-ED</option>
-                    <option value="Other">Other (Please specify in Address)</option>
                   </select>
                 </div>
               </div>

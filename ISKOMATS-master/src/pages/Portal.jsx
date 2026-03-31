@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { applicationAPI, scholarshipAPI, announcementAPI } from '../services/api';
+import { applicantAPI, applicationAPI, scholarshipAPI, announcementAPI } from '../services/api';
 import socketService from '../services/socket';
 
 const Portal = () => {

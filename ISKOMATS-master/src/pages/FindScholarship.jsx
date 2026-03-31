@@ -950,14 +950,26 @@ const FindScholarship = () => {
               </div>
               <div className="form-group">
                 <label>University</label>
-                <input 
-                  type="text" 
+                <select 
                   name="university"
                   value={formData.university}
                   onChange={handleInputChange}
-                  placeholder="Enter your university" 
-                  required 
-                />
+                  required
+                >
+                  <option value="">Select University</option>
+                  <option value="De La Salle University">De La Salle University</option>
+                  <option value="Batangas State University">Batangas State University</option>
+                  <option value="Kolehiyo ng Lungsod ng Lipa">Kolehiyo ng Lungsod ng Lipa</option>
+                  <option value="Philippine State College of Aeronautics">Philippine State College of Aeronautics</option>
+                  <option value="Lipa City Colleges">Lipa City Colleges</option>
+                  <option value="University of Batangas">University of Batangas</option>
+                  <option value="New Era University">New Era University</option>
+                  <option value="Batangas College of Arts and Sciences">Batangas College of Arts and Sciences</option>
+                  <option value="Royal British College">Royal British College</option>
+                  <option value="STI Academic Center">STI Academic Center</option>
+                  <option value="AMA Computer College">AMA Computer College</option>
+                  <option value="ICT-ED">ICT-ED</option>
+                </select>
               </div>
               <div className="form-group">
                 <label>GPA</label>
