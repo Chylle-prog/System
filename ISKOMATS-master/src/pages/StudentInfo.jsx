@@ -191,6 +191,12 @@ const StudentInfo = () => {
   const canvasRef = useRef(null);
   const sigPad = useRef(null);
   const cameraTimeoutRef = useRef(null);
+  const indigencyPhotoInputRef = useRef(null);
+  const indigencyVideoInputRef = useRef(null);
+  const coePhotoInputRef = useRef(null);
+  const coeVideoInputRef = useRef(null);
+  const gradesPhotoInputRef = useRef(null);
+  const gradesVideoInputRef = useRef(null);
 
   const [showSignaturePad, setShowSignaturePad] = useState(false);
 
@@ -2012,10 +2018,10 @@ const StudentInfo = () => {
                           <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
                             <i className="fas fa-check-circle"></i> Photo Uploaded
                           </div>
-                          <button type="button" onClick={() => setPhotos(prev => ({ ...prev, mayorIndigency_photo: null }))} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                          <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorIndigency_photo: null })); setTimeout(() => indigencyPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                         </div>
                       ) : (
-                        <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 1} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                        <input ref={indigencyPhotoInputRef} type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 1} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
                       )}
                     </div>
                   </div>
@@ -2034,10 +2040,10 @@ const StudentInfo = () => {
                           <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
                             <i className="fas fa-check-circle"></i> Video Uploaded
                           </div>
-                          <button type="button" onClick={() => setFormData(prev => ({ ...prev, mayorIndigency_video: null }))} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                          <button type="button" onClick={() => { setFormData(prev => ({ ...prev, mayorIndigency_video: null })); setTimeout(() => indigencyVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                         </div>
                       ) : (
-                        <input type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorIndigency_video', e)} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                        <input ref={indigencyVideoInputRef} type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorIndigency_video', e)} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
                       )}
                     </div>
                   </div>
@@ -2289,10 +2295,10 @@ const StudentInfo = () => {
                             <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
                               <i className="fas fa-check-circle"></i> Photo Uploaded
                             </div>
-                            <button type="button" onClick={() => setPhotos(prev => ({ ...prev, mayorCOE_photo: null }))} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                            <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorCOE_photo: null })); setTimeout(() => coePhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                           </div>
                         ) : (
-                          <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                          <input ref={coePhotoInputRef} type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
                         )}
                       </div>
                     </div>
@@ -2311,10 +2317,10 @@ const StudentInfo = () => {
                             <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
                               <i className="fas fa-check-circle"></i> Video Uploaded
                             </div>
-                            <button type="button" onClick={() => setFormData(prev => ({ ...prev, mayorCOE_video: null }))} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                            <button type="button" onClick={() => { setFormData(prev => ({ ...prev, mayorCOE_video: null })); setTimeout(() => coeVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                           </div>
                         ) : (
-                          <input type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorCOE_video', e)} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                          <input ref={coeVideoInputRef} type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorCOE_video', e)} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
                         )}
                       </div>
                     </div>
@@ -2335,10 +2341,10 @@ const StudentInfo = () => {
                             <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
                               <i className="fas fa-check-circle"></i> Photo Uploaded
                             </div>
-                            <button type="button" onClick={() => setPhotos(prev => ({ ...prev, mayorGrades_photo: null }))} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                            <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorGrades_photo: null })); setTimeout(() => gradesPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                           </div>
                         ) : (
-                          <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                          <input ref={gradesPhotoInputRef} type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
                         )}
                       </div>
                     </div>
@@ -2357,10 +2363,10 @@ const StudentInfo = () => {
                             <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
                               <i className="fas fa-check-circle"></i> Video Uploaded
                             </div>
-                            <button type="button" onClick={() => setFormData(prev => ({ ...prev, mayorGrades_video: null }))} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                            <button type="button" onClick={() => { setFormData(prev => ({ ...prev, mayorGrades_video: null })); setTimeout(() => gradesVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                           </div>
                         ) : (
-                          <input type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorGrades_video', e)} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
+                          <input ref={gradesVideoInputRef} type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorGrades_video', e)} style={{fontSize: '0.85rem', width: '100%', color: '#4a5568'}} />
                         )}
                       </div>
                     </div>
