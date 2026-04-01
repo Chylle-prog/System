@@ -266,14 +266,19 @@ const StudentInfo = () => {
       return;
     }
 
-    sessionStorage.setItem(
-      buildDraftStorageKey(user, searchParams, scholarshipName),
-      JSON.stringify({
+    try {
+      const draftKey = buildDraftStorageKey(user, searchParams, scholarshipName);
+      const draftData = JSON.stringify({
         currentStep: nextStep,
         hasOtherAssistance,
         formData: serializeDraftFormData(nextFormData)
-      })
-    );
+      });
+      
+      sessionStorage.setItem(draftKey, draftData);
+    } catch (err) {
+      // QuotaExceededError is common when saving large base64 images to sessionStorage
+      console.warn('Could not persist draft to sessionStorage:', err.message);
+    }
   };
 
   const clearDraft = (user = currentUser) => {
@@ -589,17 +594,27 @@ const StudentInfo = () => {
       } catch (err) {
         console.warn('Could not pre-fill from profile:', err.message);
       } finally {
-        if (savedDraft?.formData) {
-          setFormData(prev => fillEmptyValuesOnly(prev, savedDraft.formData));
-        }
+        // Load draft after profile load attempt to ensure draft values take precedence
+        try {
+          const draftKey = buildDraftStorageKey(user, searchParams, scholarship || scholarshipName);
+          const rawDraft = sessionStorage.getItem(draftKey);
+          const savedDraft = rawDraft ? JSON.parse(rawDraft) : null;
+          
+          if (savedDraft?.formData) {
+            setFormData(prev => fillEmptyValuesOnly(prev, savedDraft.formData));
+          }
 
-        if (savedDraft?.hasOtherAssistance) {
-          setHasOtherAssistance(savedDraft.hasOtherAssistance);
-        }
+          if (savedDraft?.hasOtherAssistance) {
+            setHasOtherAssistance(savedDraft.hasOtherAssistance);
+          }
 
-        if (savedDraft?.currentStep) {
-          setCurrentStep(savedDraft.currentStep);
+          if (savedDraft?.currentStep) {
+            setCurrentStep(savedDraft.currentStep);
+          }
+        } catch (draftErr) {
+          console.error('Error loading draft from session storage:', draftErr);
         }
+        
         setIsInitialLoading(false);
       }
     };
@@ -1345,6 +1360,19 @@ const StudentInfo = () => {
           --gray-2: #e2e8f0;
           --gray-3: #b0c0d0;
           --text-dark: #121826;
+          --text-soft: #3f4a5c;
+          --white: #ffffff;
+          --success: #0f7b5a;
+          --success-bg: #e1f7f0;
+          --warning: #b65f22;
+          --warning-bg: #ffefe3;
+          --danger: #b13e3e;
+          --danger-bg: #fee9e9;
+          --shadow-sm: 0 4px 10px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.05);
+          --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.04), 0 4px 10px rgba(0, 20, 40, 0.03);
+          --shadow-lg: 0 20px 40px -12px rgba(0, 40, 80, 0.2);
+          --border-light: 1px solid rgba(0, 0, 0, 0.05);
+          --border: #e2e8f0;
         }
 
         .loading-overlay {
@@ -1395,20 +1423,6 @@ const StudentInfo = () => {
         @keyframes fadeIn {
           from { opacity: 0; }
           to { opacity: 1; }
-        }
-          --text-soft: #3f4a5c;
-          --white: #ffffff;
-          --success: #0f7b5a;
-          --success-bg: #e1f7f0;
-          --warning: #b65f22;
-          --warning-bg: #ffefe3;
-          --danger: #b13e3e;
-          --danger-bg: #fee9e9;
-          --shadow-sm: 0 4px 10px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.05);
-          --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.04), 0 4px 10px rgba(0, 20, 40, 0.03);
-          --shadow-lg: 0 20px 40px -12px rgba(0, 40, 80, 0.2);
-          --border-light: 1px solid rgba(0, 0, 0, 0.05);
-          --border: #e2e8f0;
         }
 
         .navbar {
@@ -2021,7 +2035,7 @@ const StudentInfo = () => {
                           <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
                             <i className="fas fa-check-circle"></i> Photo Uploaded
                           </div>
-                          <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorIndigency_photo: null })); setTimeout(() => indigencyPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                          <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorIndigency_photo: null })); setOcrVerified(null); setOcrStatus(''); setTimeout(() => indigencyPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                         </div>
                       ) : (
                         <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload photo</div>
@@ -2044,7 +2058,7 @@ const StudentInfo = () => {
                           <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
                             <i className="fas fa-check-circle"></i> Video Uploaded
                           </div>
-                          <button type="button" onClick={() => { setFormData(prev => ({ ...prev, mayorIndigency_video: null })); setTimeout(() => indigencyVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                          <button type="button" onClick={() => { setFormData(prev => ({ ...prev, mayorIndigency_video: null })); setOcrVerified(null); setOcrStatus(''); setTimeout(() => indigencyVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                         </div>
                       ) : (
                         <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload video</div>
@@ -2494,7 +2508,7 @@ const StudentInfo = () => {
                       <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
                         <i className="fas fa-check-circle"></i> Photo Captured
                       </div>
-                      <button type="button" onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); setTimeout(() => openCamera(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                      <button type="button" onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); setFaceVerified(null); setTimeout(() => openCamera(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                     </div>
                   ) : (
                     <button type="button" onClick={openCamera} style={{border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', width: '100%', justifyContent: 'center'}}>
