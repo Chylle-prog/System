@@ -715,19 +715,6 @@ def update_profile():
             'signature_data': 'signature_image_data',
         }
 
-        # Mapping for verification status columns
-        verify_col_map = {
-            'mayorCOE_photo': 'enrollment_certificate_verification',
-            'enrollment_certificate_doc': 'enrollment_certificate_verification',
-            'mayorCOE_video': 'enrollment_certificate_verification',
-            'mayorGrades_photo': 'grades_verification',
-            'grades_doc': 'grades_verification',
-            'mayorGrades_video': 'grades_verification',
-            'mayorIndigency_photo': 'indigency_verification',
-            'indigency_doc': 'indigency_verification',
-            'mayorIndigency_video': 'indigency_verification',
-        }
-
         for field_key, db_col in binary_fields.items():
             uploaded_file = files_data.get(field_key)
             if uploaded_file:
@@ -735,10 +722,6 @@ def update_profile():
                 if field_key == 'signature_data' and blob_bytes and fernet:
                     blob_bytes = fernet.encrypt(blob_bytes)
                 add_update(db_col, blob_bytes)
-                
-                # Reset verification status when documents are changed
-                if field_key in verify_col_map:
-                    add_update(verify_col_map[field_key], 'unverified')
                 continue
 
             if field_key in data and data[field_key]:
@@ -747,10 +730,6 @@ def update_profile():
                     if field_key == 'signature_data' and blob_bytes and fernet:
                         blob_bytes = fernet.encrypt(blob_bytes)
                     add_update(db_col, blob_bytes)
-                    
-                    # Reset verification status when documents are changed
-                    if field_key in verify_col_map:
-                        add_update(verify_col_map[field_key], 'unverified')
 
         if not updates:
             return jsonify({'message': 'No changes provided'}), 200
