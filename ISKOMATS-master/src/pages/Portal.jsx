@@ -750,10 +750,10 @@ const Portal = () => {
         }
 
         .view-btn {
-          background: #3498db;
+          background: var(--primary);
           color: white;
           border: none;
-          padding: 0.5rem 1.2rem;
+          padding: 0.6rem 1.4rem;
           border-radius: 20px;
           font-size: 0.85rem;
           font-weight: 600;
@@ -762,13 +762,13 @@ const Portal = () => {
           display: flex;
           align-items: center;
           gap: 6px;
-          box-shadow: 0 4px 8px rgba(52, 152, 219, 0.2);
+          box-shadow: 0 4px 8px rgba(79, 13, 0, 0.15);
         }
 
         .view-btn:hover {
-          background: #2980b9;
+          background: #3d0a00;
           transform: translateY(-1px);
-          box-shadow: 0 6px 12px rgba(52, 152, 219, 0.3);
+          box-shadow: 0 6px 12px rgba(79, 13, 0, 0.25);
         }
 
         .navbar {
@@ -1330,6 +1330,13 @@ const Portal = () => {
           border-radius: 40px;
           font-weight: 600;
           font-size: 0.8rem;
+          white-space: nowrap;
+        }
+
+        .application-actions {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
         }
 
         .status-pending {
@@ -1348,20 +1355,24 @@ const Portal = () => {
         }
 
         .cancel-btn {
-          background: none;
-          border: 1px solid var(--danger);
+          background: transparent;
+          border: 1.5px solid var(--danger);
           color: var(--danger);
-          padding: 0.4rem 0.8rem;
-          border-radius: 6px;
-          font-size: 0.8rem;
+          padding: 0.5rem 1.2rem;
+          border-radius: 20px;
+          font-size: 0.85rem;
+          font-weight: 600;
           cursor: pointer;
-          margin-left: 0.5rem;
           transition: all 0.2s;
+          display: flex;
+          align-items: center;
+          gap: 6px;
         }
 
         .cancel-btn:hover {
           background: var(--danger);
           color: white;
+          box-shadow: 0 4px 8px rgba(231, 76, 60, 0.2);
         }
 
         .content-section {
