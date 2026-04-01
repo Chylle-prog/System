@@ -132,8 +132,32 @@ const Login = () => {
     }
 
     try {
-      setLoadingMessage({ title: 'Creating Account', message: 'Setting up your account...' });
+      setLoadingMessage({ title: 'Checking Email', message: 'Verifying email availability...' });
       setShowLoadingOverlay(true);
+      
+      // Check if email exists and what account type it is
+      try {
+        const emailCheckResponse = await authAPI.checkEmail(email);
+        
+        // If email exists and is an applicant account, reject it
+        if (emailCheckResponse.exists && emailCheckResponse.account_type === 'applicant') {
+          setShowLoadingOverlay(false);
+          setErrorMessage('This email is already registered as an applicant. Please use a different email or sign in.');
+          setShowError(true);
+          return;
+        }
+        
+        // If email exists as admin account, allow it but warn user
+        if (emailCheckResponse.exists && emailCheckResponse.account_type === 'admin') {
+          setLoadingMessage({ title: 'Creating Account', message: 'Setting up your account...' });
+          // Allow to proceed - admin can register in applicant portal with different role
+        }
+      } catch (checkErr) {
+        // If check fails, proceed with registration anyway
+        console.warn('Email check failed, proceeding with registration:', checkErr);
+      }
+      
+      setLoadingMessage({ title: 'Creating Account', message: 'Setting up your account...' });
       
       // Register user with backend directly
       const registerResponse = await authAPI.register({

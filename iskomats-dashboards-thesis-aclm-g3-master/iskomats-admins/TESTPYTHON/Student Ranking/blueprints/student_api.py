@@ -291,9 +291,35 @@ def student_check_email():
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute('SELECT 1 FROM email WHERE email_address ILIKE %s', (email,))
-        exists = cur.fetchone()
-        return jsonify({'available': not exists})
+        
+        # Check if email exists and get account type
+        cur.execute('''
+            SELECT email_id, applicant_no, user_no 
+            FROM email 
+            WHERE email_address ILIKE %s
+        ''', (email,))
+        result = cur.fetchone()
+        
+        if result:
+            email_id, applicant_no, user_no = result
+            # Determine account type based on which field is populated
+            account_type = None
+            if applicant_no:
+                account_type = 'applicant'
+            elif user_no:
+                account_type = 'admin'
+            
+            return jsonify({
+                'exists': True,
+                'account_type': account_type,
+                'available': False
+            })
+        else:
+            return jsonify({
+                'exists': False,
+                'account_type': None,
+                'available': True
+            })
     except Exception as exc:
         return jsonify({'message': str(exc)}), 500
     finally:

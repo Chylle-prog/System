@@ -61,6 +61,14 @@ export const authAPI = {
   verifyEmail: (token) =>
     api.post('/admin/auth/verify-email', { token }),
   
+  /**
+   * Check if email is available and get account type
+   * @param {string} email
+   * @returns {Promise} - Response should have format: {data: {exists: boolean, account_type: 'applicant'|'admin'|null}}
+   * - account_type 'admin' if user_no exists in users table
+   * - account_type 'applicant' if applicant_no exists in applicants table
+   * - account_type null if email doesn't exist
+   */
   checkEmail: (email) =>
     api.post('/admin/auth/check-email', { email }),
 };

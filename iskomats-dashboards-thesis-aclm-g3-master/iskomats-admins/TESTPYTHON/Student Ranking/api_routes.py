@@ -963,7 +963,7 @@ def login():
 
 @api_bp.route('/auth/check-email', methods=['POST'])
 def check_email():
-    """Check if email is already registered"""
+    """Check if email is already registered and return account type"""
     data = request.get_json()
     if not data or not data.get('email'):
         return jsonify({'message': 'Email is required'}), 400
@@ -971,15 +971,37 @@ def check_email():
     try:
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM email WHERE email_address ILIKE %s", (data['email'],))
-        exists = cursor.fetchone() is not None
+        
+        # Check if email exists and get account type
+        cursor.execute('''
+            SELECT email_id, applicant_no, user_no 
+            FROM email 
+            WHERE email_address ILIKE %s
+        ''', (data['email'],))
+        result = cursor.fetchone()
         cursor.close()
         conn.close()
         
-        return jsonify({
-            'exists': exists,
-            'message': 'Email already registered' if exists else 'Email available'
-        }), 200
+        if result:
+            email_id, applicant_no, user_no = result
+            # Determine account type based on which field is populated
+            account_type = None
+            if applicant_no:
+                account_type = 'applicant'
+            elif user_no:
+                account_type = 'admin'
+            
+            return jsonify({
+                'exists': True,
+                'account_type': account_type,
+                'message': f'Email already registered as {account_type or "unknown"}'
+            }), 200
+        else:
+            return jsonify({
+                'exists': False,
+                'account_type': None,
+                'message': 'Email available'
+            }), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 

@@ -264,43 +264,6 @@ const ResetPassword = () => {
           justify-content: center;
         }
 
-        .requirements {
-          background: rgba(255, 255, 255, 0.05);
-          border-radius: 12px;
-          padding: 15px;
-          margin-bottom: 20px;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .requirement-item {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          font-size: 12px;
-          margin-bottom: 6px;
-          color: rgba(255, 255, 255, 0.5);
-          transition: all 0.3s;
-        }
-
-        .requirement-item.met {
-          color: #4ade80;
-        }
-
-        .requirement-item i {
-          font-size: 10px;
-          width: 16px;
-          height: 16px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 50%;
-          background: rgba(255, 255, 255, 0.1);
-        }
-
-        .requirement-item.met i {
-          background: rgba(74, 222, 128, 0.2);
-        }
-
         .error-box {
           background: rgba(239, 68, 68, 0.2);
           border: 1px solid rgba(239, 68, 68, 0.4);
@@ -450,24 +413,6 @@ const ResetPassword = () => {
                 >
                   <i className={`fas ${formData.showConfirmPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i>
                 </button>
-              </div>
-            </div>
-
-            <div className="requirements">
-              <div className={`requirement-item ${passwordValidation.errors.length ? 'met' : ''}`}>
-                <i className="fas fa-check"></i> At least 8 characters
-              </div>
-              <div className={`requirement-item ${passwordValidation.errors.uppercase ? 'met' : ''}`}>
-                <i className="fas fa-check"></i> One uppercase letter
-              </div>
-              <div className={`requirement-item ${passwordValidation.errors.lowercase ? 'met' : ''}`}>
-                <i className="fas fa-check"></i> One lowercase letter
-              </div>
-              <div className={`requirement-item ${passwordValidation.errors.numbers ? 'met' : ''}`}>
-                <i className="fas fa-check"></i> One number
-              </div>
-              <div className={`requirement-item ${passwordValidation.errors.special ? 'met' : ''}`}>
-                <i className="fas fa-check"></i> One special character
               </div>
             </div>
 
