@@ -1272,9 +1272,9 @@ def get_announcements():
 
         # Join announcements with scholarship_providers to get the name of the provider
         cur.execute(f"""
-            SELECT a.ann_no, a.ann_title, a.ann_message, {date_col} AS ann_date, sp.provider_name AS pro_name
+            SELECT a.ann_no, a.ann_title, a.ann_message, {date_col} AS ann_date, COALESCE(sp.provider_name, 'Unknown Provider') AS pro_name
             FROM announcements a
-            JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
+            LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
             ORDER BY {order_col}
         """)
 
@@ -1290,12 +1290,11 @@ def get_announcements():
             else:
                 date_str = 'Recent'
             announcements.append({
-                'id': row['ann_no'],
-                'title': row['ann_title'],
-                'content': row['ann_message'],
-                'date': date_str,
-                'provider_name': row['pro_name'],
-                'status': 'active'
+                'ann_no': row['ann_no'],
+                'ann_title': row['ann_title'],
+                'ann_message': row['ann_message'],
+                'created_at': date_str,
+                'provider_name': row['pro_name']
             })
 
         return jsonify(announcements)
