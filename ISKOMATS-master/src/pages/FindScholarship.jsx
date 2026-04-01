@@ -176,8 +176,8 @@ const FindScholarship = () => {
       if (gpa >= 2.62) return 84; // 2.75 -> 83-85
       if (gpa >= 2.37) return 81; // 2.50 -> 80-82
       if (gpa >= 2.12) return 78; // 2.25 -> 77-79
-      if (gpa >= 1.50) return 75; // 2.00 -> 75-76
-      return 70;                  // Below 75 -> 0.00
+      if (gpa >= 1.00) return 75; // 1.00 -> Passing Mark (75) at DLSL
+      return 70;                  // Below 1.00 -> Failing
     }
 
     // Schools using 1.00 as highest (BSU, KLL, PhilSCA, LCC, etc.)
@@ -204,8 +204,8 @@ const FindScholarship = () => {
       if (gpa <= 2.37) return 83; // 2.25 -> 82-84
       if (gpa <= 2.62) return 80; // 2.50 -> 79-81
       if (gpa <= 2.87) return 77; // 2.75 -> 76-78
-      if (gpa <= 4.00) return 75; // 3.00 -> 75
-      return 70;                  // 5.00 -> Below 75
+      if (gpa <= 3.12) return 75; // 3.00 -> Passing Mark (75)
+      return 70;                  // (> 3.12) e.g., 4.00, 5.00 -> Failing
     }
 
     return gpa; // Default fallback
