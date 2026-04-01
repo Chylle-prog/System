@@ -807,7 +807,7 @@ def submit_application():
                     
                     print("[SUBMIT] Starting OCR verification...")
                     ocr_start = time.time()
-                    ocr_ok, ocr_status, _ = verify_id_with_ocr(
+                    ocr_ok, ocr_status, _, _ = verify_id_with_ocr(
                         image_bytes=id_front_bytes,
                         expected_name=f"{applicant.get('first_name', '')} {applicant.get('last_name', '')}",
                         expected_address=town_city
@@ -961,11 +961,17 @@ def ocr_check():
         if enrollment_doc_param:
             doc_bytes = decode_base64(enrollment_doc_param)
             if doc_bytes:
-                v, msg, raw = verify_id_with_ocr(
+                v, msg, raw, _ = verify_id_with_ocr(
                     image_bytes=doc_bytes,
                     expected_name=f"{first_name} {last_name}",
                     expected_address=town_city
                 )
+                # Verify document-specific keywords
+                keywords = ["enrollment", "registration", "admission", "matriculation", "cor", "coe", "form"]
+                kw_found = any(kw in raw.lower() for kw in keywords)
+                if v and not kw_found:
+                    v = False
+                    msg = "Document does not appear to be a Certificate of Enrollment (Keywords not found)."
                 results.append({'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw})
                 if not v: overall_verified = False
 
@@ -973,22 +979,31 @@ def ocr_check():
         if grades_doc_param:
             doc_bytes = decode_base64(grades_doc_param)
             if doc_bytes:
-                v, msg, raw = verify_id_with_ocr(
+                v, msg, raw, _ = verify_id_with_ocr(
                     image_bytes=doc_bytes,
                     expected_name=f"{first_name} {last_name}",
                     expected_address=town_city
                 )
+                # Verify document-specific keywords
+                keywords = ["grades", "transcript", "evaluation", "rating", "scholastic", "record"]
+                kw_found = any(kw in raw.lower() for kw in keywords)
+                if v and not kw_found:
+                    v = False
+                    msg = "Document does not appear to be a Copy of Grades (Keywords not found)."
+                
                 # Additionally verify the school year / semester is current
                 import re
                 year_match = re.search(r'20\d{2}-20\d{2}', raw)
                 year_label = year_match.group(0) if year_match else None
                 year_ok = year_label is not None
                 year_msg = f"School year: {year_label}" if year_ok else "No school year found in document"
+                
                 if v and not year_ok:
                     v = False
-                    msg = year_msg
+                    msg = f"{msg} | {year_msg}"
                 elif v and year_ok:
                     msg = f"{msg} | {year_msg}"
+                    
                 results.append({'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw,
                                 'school_year': year_label if year_label else None})
                 if not v: overall_verified = False
@@ -998,11 +1013,17 @@ def ocr_check():
             # If no other docs, try to fall back to stored indigency or check address
             doc_bytes = get_bytes(indigency_doc_param, applicant.get('indigency_doc'))
             if doc_bytes:
-                v, msg, raw = verify_id_with_ocr(
+                v, msg, raw, _ = verify_id_with_ocr(
                     image_bytes=doc_bytes,
                     expected_name=f"{first_name} {last_name}",
                     expected_address=town_city
                 )
+                # Verify document-specific keywords
+                keywords = ["indigency", "barangay", "residency", "social", "welfare", "indigent"]
+                kw_found = any(kw in raw.lower() for kw in keywords)
+                if v and not kw_found:
+                    v = False
+                    msg = "Document does not appear to be a Certificate of Indigency (Keywords not found)."
                 results.append({'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw})
                 if not v: overall_verified = False
 
@@ -1010,7 +1031,7 @@ def ocr_check():
         if id_front_param:
             doc_bytes = get_bytes(id_front_param, applicant.get('id_img_front'))
             if doc_bytes:
-                v, msg, raw = verify_id_with_ocr(
+                v, msg, raw, _ = verify_id_with_ocr(
                     image_bytes=doc_bytes,
                     expected_name=f"{first_name} {last_name}",
                     expected_address=town_city

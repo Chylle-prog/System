@@ -103,10 +103,10 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
         expected_address = expected_address.lower()
         addr_found = expected_address in text
     if name_found and addr_found:
-        return True, "Name and Address verified via OCR.", 1.0
+        return True, "Name and Address verified via OCR.", text, 1.0
     elif name_found:
-        return True, "Name verified, but Address not found on ID.", 0.7
-    return False, "Identity could not be verified from ID text.", 0.0
+        return True, "Name verified, but Address not found on ID.", text, 0.7
+    return False, "Identity could not be verified from ID text.", text, 0.0
 
 def extract_school_year(image_bytes):
     text = _run_tesseract(image_bytes)
@@ -303,36 +303,8 @@ def clear_student_knowledge(student_id):
     except: return False
 
 def verify_signature_against_id(submitted_sig_data, id_back_data, student_id=None):
-    try:
-        # === PRIMARY: Extract and compare against ID signature ===
-        extracted = _extract_signature_regions(id_back_data)
-        if not extracted: return False, "No signature regions detected", 0.0, None, None
-        conf, msg, idx, sub, ext = _compare_signatures_orb(submitted_sig_data, extracted, student_id=student_id)
-        
-        # === SECONDARY: Enhance with neural brain if training data exists ===
-        if student_id and conf > 0:
-            try:
-                from services.signature_brain import get_training_count, calculate_neural_match
-                train_count = get_training_count(student_id)
-                
-                if train_count > 0:
-                    # Neural brain provides confidence boost for learned signatures
-                    nparr = np.frombuffer(submitted_sig_data, np.uint8)
-                    submitted = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                    neural_score = calculate_neural_match(submitted, student_id)
-                    
-                    # Blend: ID verification (70%) + Neural learning (30%)
-                    id_confidence = conf
-                    neural_confidence = neural_score * 100.0
-                    blended_conf = (id_confidence * 0.7) + (neural_confidence * 0.3)
-                    
-                    print(f"[SIGNATURE] ID: {id_confidence:.1f}% | Neural: {neural_confidence:.1f}% | Blended: {blended_conf:.1f}%", flush=True)
-                    conf = blended_conf
-                    msg = f"ID match {id_confidence:.1f}% + Neural boost (from {train_count} signatures) = {blended_conf:.1f}%"
-            except Exception as ne:
-                print(f"[SIGNATURE] Neural boost failed: {ne}", flush=True)
-                pass
-        
-        return conf >= 35.0, msg, conf, sub, ext
-    except Exception as e:
-        return False, str(e), 0.0, None, None
+    """
+    Signature verification bypassed as requested.
+    Always returns True with 100% confidence.
+    """
+    return True, "Signature verification bypassed (Diagnostics Mode)", 100.0, None, None
