@@ -52,35 +52,12 @@ const VerifyEmail = () => {
     try {
       await authAPI.verifyEmail(token);
       
-      // Try to save pending profile data if it exists
-      const pendingProfileData = localStorage.getItem('pendingProfileData');
-      if (pendingProfileData) {
-        const password = localStorage.getItem('registrationPassword');
-        const regEmail = localStorage.getItem('registrationEmail');
-        
-        try {
-          // Login first to get token
-          const loginResponse = await authAPI.login(regEmail, password);
-          localStorage.setItem('authToken', loginResponse.token);
-          localStorage.setItem('applicantNo', loginResponse.applicant_no);
-          localStorage.setItem('currentUser', regEmail);
-          
-          // Update profile
-          await applicantAPI.updateProfile(JSON.parse(pendingProfileData));
-          localStorage.removeItem('pendingProfileData');
-        } catch (profileError) {
-          console.warn('Could not save profile after verification:', profileError);
-        }
-      }
-      
       setVerificationState("success");
       setFormData({ ...formData, success: true });
       
-      // Redirect to login after 2 seconds
+      // Redirect to profile setup after 2 seconds
       setTimeout(() => {
-        localStorage.removeItem('registrationEmail');
-        localStorage.removeItem('registrationPassword');
-        navigate('/login');
+        navigate('/profile-setup');
       }, 2000);
     } catch (error) {
       setVerificationState("error");
@@ -116,35 +93,12 @@ const VerifyEmail = () => {
     try {
       await authAPI.verifyEmail(formData.verificationCode);
       
-      // Try to save pending profile data if it exists
-      const pendingProfileData = localStorage.getItem('pendingProfileData');
-      if (pendingProfileData) {
-        const password = localStorage.getItem('registrationPassword');
-        const regEmail = localStorage.getItem('registrationEmail');
-        
-        try {
-          // Login first to get token
-          const loginResponse = await authAPI.login(regEmail, password);
-          localStorage.setItem('authToken', loginResponse.token);
-          localStorage.setItem('applicantNo', loginResponse.applicant_no);
-          localStorage.setItem('currentUser', regEmail);
-          
-          // Update profile
-          await applicantAPI.updateProfile(JSON.parse(pendingProfileData));
-          localStorage.removeItem('pendingProfileData');
-        } catch (profileError) {
-          console.warn('Could not save profile after verification:', profileError);
-        }
-      }
-      
       setVerificationState("success");
       setFormData({ ...formData, success: true, isLoading: false });
       
-      // Redirect to login after 2 seconds
+      // Redirect to profile setup after 2 seconds
       setTimeout(() => {
-        localStorage.removeItem('registrationEmail');
-        localStorage.removeItem('registrationPassword');
-        navigate('/login');
+        navigate('/profile-setup');
       }, 2000);
     } catch (error) {
       setVerificationState("error");

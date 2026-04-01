@@ -12,6 +12,7 @@ const Login = () => {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showError, setShowError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [showEmailAlreadyRegisteredOverlay, setShowEmailAlreadyRegisteredOverlay] = useState(false);
   const [profilePicture, setProfilePicture] = useState(null);
   const [isLoginLoading, setIsLoginLoading] = useState(false);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
@@ -131,27 +132,37 @@ const Login = () => {
     }
 
     try {
-      setLoadingMessage({ title: 'Checking Email', message: 'Verifying registration availability...' });
+      setLoadingMessage({ title: 'Creating Account', message: 'Setting up your account...' });
       setShowLoadingOverlay(true);
-      // Check if email already exists
-      const checkResponse = await authAPI.checkEmail(email);
-      if (checkResponse.exists) {
-        setErrorMessage('This email is already registered.');
-        setShowError(true);
-        return;
-      }
+      
+      // Register user with backend directly
+      const registerResponse = await authAPI.register({
+        first_name: '',
+        middle_name: '',
+        last_name: '',
+        email,
+        password
+      });
 
-      // Store credentials temporarily for profile completion
-      setCurrentUser(email);
+      // Store email for next step (email verification)
       localStorage.setItem('registrationEmail', email);
       localStorage.setItem('registrationPassword', password);
-      setShowRegistrationModal(true);
+      
       setShowLoadingOverlay(false);
+      // Redirect to email verification
+      navigate('/verify-email');
       e.target.reset();
     } catch (error) {
-      setErrorMessage(error.message || 'Registration failed. Please try again.');
-      setShowError(true);
       setShowLoadingOverlay(false);
+      const errorMsg = error.message || 'Registration failed. Please try again.';
+      
+      // Check if email is already registered
+      if (errorMsg.includes('already registered')) {
+        setShowEmailAlreadyRegisteredOverlay(true);
+      } else {
+        setErrorMessage(errorMsg);
+        setShowError(true);
+      }
     }
   };
 
@@ -1299,6 +1310,40 @@ const Login = () => {
           <p style={{ color: 'var(--text-soft)', fontSize: '1rem' }}>
             {loadingMessage.message}
           </p>
+        </div>
+      </div>
+
+      {/* Email Already Registered Overlay */}
+      <div className={`loading-overlay ${showEmailAlreadyRegisteredOverlay ? 'active' : ''}`}>
+        <div className="loading-modal">
+          <div style={{ fontSize: '3rem', marginBottom: '1rem', color: 'var(--primary)' }}>⚠️</div>
+          <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
+            Email Already Registered
+          </h3>
+          <p style={{ color: 'var(--text-soft)', fontSize: '1rem', marginBottom: '1.5rem' }}>
+            This email address is already registered. Please use a different email or try logging in with this email.
+          </p>
+          <button
+            onClick={() => {
+              setShowEmailAlreadyRegisteredOverlay(false);
+              setIsLogin(true);
+            }}
+            style={{
+              background: 'var(--primary-gradient)',
+              color: 'white',
+              border: 'none',
+              padding: '0.75rem 1.5rem',
+              borderRadius: '8px',
+              fontSize: '1rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease'
+            }}
+            onMouseEnter={(e) => e.target.style.transform = 'translateY(-2px)'}
+            onMouseLeave={(e) => e.target.style.transform = 'translateY(0)'}
+          >
+            Go to Login
+          </button>
         </div>
       </div>
     </>
