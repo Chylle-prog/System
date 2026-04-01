@@ -8,7 +8,7 @@ sys.stdout.reconfigure(line_buffering=True)
 
 print("[STARTUP] 1. eventlet monkey_patch complete. Loading modules...", flush=True)
 
-# Deployment trigger: 2026-03-27 - Debug Port Scan Timeout
+# Deployment trigger: 2026-04-01 - Force redeploy for STUDENT_FRONTEND_URL
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO
 

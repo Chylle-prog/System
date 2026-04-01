@@ -360,6 +360,8 @@ def student_forgot_password():
         if user:
             reset_token = generate_password_reset_token(user['applicant_no'], user['email_address'])
             reset_url = f"{STUDENT_FRONTEND_URL}/reset-password/{reset_token}"
+            print(f"[PASSWORD RESET] Sending reset email to {user['email_address']}", flush=True)
+            print(f"[PASSWORD RESET] Using portal URL: {STUDENT_FRONTEND_URL}", flush=True)
             send_password_reset_email(user['email_address'], reset_url)
 
         return jsonify({'message': 'If an account exists with this email, a reset link has been sent.'}), 200
