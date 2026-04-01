@@ -294,14 +294,14 @@ def student_check_email():
         
         # Check if email exists and get account type
         cur.execute('''
-            SELECT email_id, applicant_no, user_no 
+            SELECT applicant_no, user_no 
             FROM email 
             WHERE email_address ILIKE %s
         ''', (email,))
         result = cur.fetchone()
         
         if result:
-            email_id, applicant_no, user_no = result
+            applicant_no, user_no = result
             # Determine account type based on which field is populated
             account_type = None
             if applicant_no:
