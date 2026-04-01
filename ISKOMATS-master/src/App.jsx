@@ -6,6 +6,7 @@ import PrivateRoute from './pages/PrivateRoute';
 // Static imports for lightweight pages
 import Homepage from './pages/Homepage';
 import Login from './pages/Login';
+import VerifyEmail from './pages/VerifyEmail';
 
 // Dynamic imports for heavy pages (route-based code splitting)
 const Portal = lazy(() => import('./pages/Portal'));
@@ -36,6 +37,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Homepage />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/forgot-password" element={
             <Suspense fallback={<LoadingFallback />}>
               <ForgotPassword />

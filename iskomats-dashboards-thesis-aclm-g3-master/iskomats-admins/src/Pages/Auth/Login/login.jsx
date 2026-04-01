@@ -84,8 +84,24 @@ const Login = () => {
       if (error.response) {
         if (error.response.status === 404) {
           errorMessage = "Email doesn't exist.";
-        } else if (error.response.status === 403 || error.response.status === 401) {
-          // If the backend doesn't provide a specific message, we provide one
+        } else if (error.response.status === 403) {
+          // Check if it's an email verification error
+          if (error.response.data?.message?.includes('not verified') || 
+              error.response.data?.message?.includes('verify')) {
+            errorMessage = "Please verify your email first. Redirecting to verification page...";
+            localStorage.setItem('registrationEmail', formData.email);
+            setFormData({
+              ...formData,
+              error: errorMessage,
+              isLoading: false,
+            });
+            setTimeout(() => {
+              navigate('/verify-email');
+            }, 2000);
+            return;
+          }
+          errorMessage = error.response.data?.message || "The role is wrong or the password is incorrect.";
+        } else if (error.response.status === 401) {
           errorMessage = error.response.data?.message || "The role is wrong or the password is incorrect.";
         } else if (error.response.data && error.response.data.message) {
           errorMessage = error.response.data.message;

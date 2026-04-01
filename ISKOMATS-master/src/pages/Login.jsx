@@ -83,12 +83,27 @@ const Login = () => {
       }, 500);
     } catch (error) {
       // Handle specific error messages from backend
+      let errorMsg = error.message || 'Login failed. Please try again.';
+      
+      // Check if it's an email verification error
+      if (errorMsg.includes('not verified') || errorMsg.includes('verify') || errorMsg.includes('verification')) {
+        setErrorMessage('Please verify your email first. Redirecting to verification page...');
+        localStorage.setItem('registrationEmail', email);
+        setShowError(true);
+        setIsLoginLoading(false);
+        setShowLoadingOverlay(false);
+        setTimeout(() => {
+          navigate('/verify-email');
+        }, 2000);
+        return;
+      }
+      
       if (error.message.includes('Email not found')) {
         setErrorMessage('Incorrect email.');
       } else if (error.message.includes('Incorrect password')) {
         setErrorMessage('Incorrect password.');
       } else {
-        setErrorMessage(error.message || 'Login failed. Please try again.');
+        setErrorMessage(errorMsg);
       }
       setShowError(true);
       setIsLoginLoading(false);
@@ -169,9 +184,6 @@ const Login = () => {
       const email = localStorage.getItem('registrationEmail');
       const password = localStorage.getItem('registrationPassword');
 
-      let authToken = '';
-      let applicantNo = '';
-
       try {
         // Register user with backend (backend expects snake_case field names)
         const registerResponse = await authAPI.register({
@@ -182,61 +194,40 @@ const Login = () => {
           password
         });
 
-        // Log in user to get token
-        const loginResponse = await authAPI.login(email, password);
-        authToken = loginResponse.token;
-        applicantNo = loginResponse.applicant_no;
+        // Store profile data temporarily for after verification
+        const profilePayload = {
+          firstName,
+          middleName,
+          lastName,
+          dateOfBirth: birthdate,
+          schoolName: school,
+          mobileNumber: mobileNo,
+          streetBarangay: streetBrgy,
+          townCity: townCityMunicipality,
+          province,
+          zipCode,
+        };
+        
+        if (overallGpa) profilePayload.gpa = parseFloat(overallGpa);
+        if (financialIncomeOfParents) profilePayload.parentsGrossIncome = parseInt(financialIncomeOfParents);
+        if (profilePicture) profilePayload.profile_picture = profilePicture;
+
+        localStorage.setItem('pendingProfileData', JSON.stringify(profilePayload));
+        
+        // Redirect to email verification instead of logging in directly
+        setShowLoadingOverlay(false);
+        navigate('/verify-email');
+        return;
       } catch (regError) {
-        // If already registered, just try to login
+        // If already registered, redirect to verify-email
         if (regError.message.includes('already registered')) {
-          const loginResponse = await authAPI.login(email, password);
-          authToken = loginResponse.token;
-          applicantNo = loginResponse.applicant_no;
+          setShowLoadingOverlay(false);
+          navigate('/verify-email');
+          return;
         } else {
           throw regError;
         }
       }
-
-      setCurrentUser(email); // local state
-      if (setCurrentUserState) setCurrentUserState(email); // global AuthContext state
-
-      localStorage.setItem('currentUser', email);
-      localStorage.setItem('authToken', authToken);
-      localStorage.setItem('applicantNo', applicantNo);
-
-      // Now that we have a token, save the rest of the profile data.
-      // Use the exact camelCase keys that match Profile.jsx and the backend field_mapping.
-      const profilePayload = {
-        firstName,
-        middleName,
-        lastName,
-        dateOfBirth: birthdate,
-        schoolName: school,
-        mobileNumber: mobileNo,
-        streetBarangay: streetBrgy,
-        townCity: townCityMunicipality,
-        province,
-        zipCode,
-      };
-      
-      if (overallGpa) profilePayload.gpa = parseFloat(overallGpa);
-      if (financialIncomeOfParents) profilePayload.parentsGrossIncome = parseInt(financialIncomeOfParents);
-      if (profilePicture) profilePayload.profile_picture = profilePicture;
-
-      await applicantAPI.updateProfile(profilePayload);
-
-      // Clear temporary registration data
-      localStorage.removeItem('registrationEmail');
-      localStorage.removeItem('registrationPassword');
-
-      // Show success modal
-      setShowSuccessModal(true);
-
-      // Redirect to portal after delay
-      setTimeout(() => {
-        setShowLoadingOverlay(false);
-        navigate('/portal');
-      }, 2000);
     } catch (error) {
       setErrorMessage(error.message || 'Profile creation failed. Please try again.');
       setShowError(true);

@@ -112,11 +112,10 @@ const Register = () => {
       localStorage.setItem('userName', `${formData.firstName} ${formData.lastName}`);
       localStorage.setItem('userFirstName', formData.firstName);
       localStorage.setItem('userLastName', formData.lastName);
+      localStorage.setItem('registrationEmail', formData.email);
 
-      alert("Registration successful! Please check your email for verification.");
-      
-      // Redirect to login
-      navigate('/login');
+      // Redirect to email verification
+      navigate('/verify-email');
     } catch (error) {
       setFormData({
         ...formData,

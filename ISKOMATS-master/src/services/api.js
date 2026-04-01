@@ -159,6 +159,18 @@ export const authAPI = {
       body: JSON.stringify({ token, newPassword }),
     });
   },
+
+  /**
+   * Verify email with verification code or token
+   * @param {string} token - Verification code or token
+   * @returns {Promise}
+   */
+  verifyEmail: async (token) => {
+    return makeRequest('/student/auth/verify-email', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+  },
 };
 
 /**
