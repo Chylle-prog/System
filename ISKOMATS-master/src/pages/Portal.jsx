@@ -20,6 +20,8 @@ const Portal = () => {
   const [showChatModal, setShowChatModal] = useState(false);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
+  const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
   
   // Custom Modal States for Cancellation
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -426,7 +428,14 @@ const Portal = () => {
     } finally {
       setShowLoadingOverlay(false);
       setPendingCancel(null);
-    }
+  const openAnnouncement = (ann) => {
+    setSelectedAnnouncement(ann);
+    setShowAnnouncementModal(true);
+  };
+
+  const closeAnnouncementModal = () => {
+    setShowAnnouncementModal(false);
+    setSelectedAnnouncement(null);
   };
 
   const totalUnreadMessages = scholarships.reduce((sum, s) => sum + s.unread, 0);
@@ -1399,19 +1408,156 @@ const Portal = () => {
             font-size: 1rem;
           }
           
-          .announcement-card p {
-            font-size: 0.85rem;
-          }
-          
-          .resource-card {
+          .community-post {
+            background: white;
             padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-light);
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
           }
-          
-          .resource-card h4 {
-            font-size: 1rem;
+
+          .community-post:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+            border-color: rgba(79, 13, 0, 0.2);
+            background-color: #fffaf9;
           }
-          
-          .resource-card p {
+
+          .community-post::after {
+            content: 'View Details →';
+            position: absolute;
+            bottom: 0.8rem;
+            right: 1.2rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--primary);
+            opacity: 0;
+            transform: translateX(-5px);
+            transition: all 0.2s ease;
+          }
+
+          .community-post:hover::after {
+            opacity: 1;
+            transform: translateX(0);
+          }
+
+          .announcement-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(12px);
+            z-index: 11000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            animation: modalFadeIn 0.3s ease;
+          }
+
+          .announcement-modal {
+            background: white;
+            width: 100%;
+            max-width: 650px;
+            border-radius: 32px;
+            box-shadow: var(--shadow-lg);
+            overflow: hidden;
+            animation: modalSlideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+          }
+
+          .ann-modal-header {
+            padding: 2.5rem 2.5rem 1.5rem;
+            position: relative;
+            border-bottom: 1px solid var(--gray-1);
+          }
+
+          .ann-modal-close {
+            position: absolute;
+            top: 2rem;
+            right: 2rem;
+            background: var(--gray-1);
+            border: none;
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: var(--text-soft);
+            transition: all 0.2s;
+          }
+
+          .ann-modal-close:hover {
+            background: var(--accent-soft);
+            color: var(--primary);
+            transform: rotate(90deg);
+          }
+
+          .ann-modal-body {
+            padding: 2.5rem;
+            max-height: 70vh;
+            overflow-y: auto;
+          }
+
+          .ann-modal-title {
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: var(--text-dark);
+            line-height: 1.25;
+            letter-spacing: -0.02em;
+            margin-top: 0.5rem;
+          }
+
+          .ann-modal-provider {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            margin-bottom: 0.5rem;
+          }
+
+          .provider-icon {
+            width: 32px;
+            height: 32px;
+            background: var(--accent-soft);
+            color: var(--primary);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+          }
+
+          .provider-name {
+            font-weight: 700;
+            color: var(--primary);
+            font-size: 0.95rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+
+          .ann-modal-meta {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+            color: var(--text-soft);
+            font-size: 0.85rem;
+            font-weight: 500;
+          }
+
+          .ann-modal-message {
+            font-size: 1.1rem;
+            line-height: 1.7;
+            color: var(--text-dark);
+            white-space: pre-wrap;
+          }
             font-size: 0.85rem;
           }
           
@@ -1621,11 +1767,7 @@ const Portal = () => {
             <i className="fas fa-sign-out-alt" style={{marginRight: '6px'}}></i>Logout
           </button>
         </div>
-      </nav>
-
-
-
-      {/* Loading overlay */}
+      </nav>      {/* Loading overlay */}
       <div className={`loading-overlay ${showLoadingOverlay ? 'active' : ''}`}>
         <div className="loading-modal">
           <div className="loading-spinner"></div>
@@ -1677,8 +1819,58 @@ const Portal = () => {
         </div>
       </div>
 
+      {/* Announcement Detail Modal */}
+      {showAnnouncementModal && selectedAnnouncement && (
+        <div 
+          className="announcement-modal-overlay" 
+          onClick={closeAnnouncementModal}
+        >
+          <div 
+            className="announcement-modal" 
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="ann-modal-header">
+              <button className="ann-modal-close" onClick={closeAnnouncementModal}>
+                <i className="fas fa-times"></i>
+              </button>
+              <div className="ann-modal-provider">
+                <div className="provider-icon">
+                  <i className="fas fa-bullhorn"></i>
+                </div>
+                <span className="provider-name">{selectedAnnouncement.provider_name}</span>
+              </div>
+              <h2 className="ann-modal-title">{selectedAnnouncement.ann_title || 'Announcement Details'}</h2>
+              <div className="ann-modal-meta">
+                <span>
+                  <i className="far fa-calendar-alt" style={{marginRight: '8px'}}></i>
+                  Posted on {selectedAnnouncement.created_at || 'Recent'}
+                </span>
+                <span>
+                  <i className="far fa-user" style={{marginRight: '8px'}}></i>
+                  For Scholarship Applicants
+                </span>
+              </div>
+            </div>
+            <div className="ann-modal-body">
+              <div className="ann-modal-message">
+                {selectedAnnouncement.ann_message}
+              </div>
+              <div style={{marginTop: '3rem', padding: '1.5rem', background: 'var(--gray-1)', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '1rem'}}>
+                <div style={{width: '45px', height: '45px', background: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', boxShadow: 'var(--shadow-sm)'}}>
+                  <i className="fas fa-info-circle"></i>
+                </div>
+                <div style={{flex: 1}}>
+                  <h4 style={{fontSize: '0.9rem', color: 'var(--text-dark)', marginBottom: '0.2rem'}}>Need more information?</h4>
+                  <p style={{fontSize: '0.8rem', color: 'var(--text-soft)'}}>You can contact the scholarship provider directly via the chat feature linked to your application.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Portal */}
-      <section>
+      <section className="portal">
         <div className="portal-header">
           <h2>Welcome back, {userProfile?.fullName?.split(' ')[0] || 'Student'}</h2>
           <p>Your personalized scholarship dashboard</p>
@@ -1780,20 +1972,27 @@ const Portal = () => {
                 >
                   <i className="fas fa-calendar-alt" style={{marginRight: '6px'}}></i> View Calendar
                 </button>
-              </div>              <div style={{display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2.5rem'}}>
+              </div>
+              <div style={{display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2.5rem'}}>
                 {dbAnnouncements.length > 0 ? (
                   dbAnnouncements.map((ann, idx) => (
-                    <div key={ann.ann_no || idx} className="community-post" style={{borderLeft: '4px solid var(--primary)', paddingLeft: '1rem', borderRadius: '12px'}}>
-                      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem'}}>
+                    <div 
+                      key={ann.ann_no || idx} 
+                      className="community-post" 
+                      style={{borderLeft: '4px solid var(--primary)', paddingLeft: '1.2rem'}}
+                      onClick={() => openAnnouncement(ann)}
+                    >
+                      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.8rem'}}>
                         <div style={{flex: 1}}>
-                          <h4 style={{margin: 0, color: 'var(--primary)', fontSize: '0.9rem', opacity: 0.8}}>{ann.provider_name}</h4>
-                          {ann.ann_title && <h5 style={{margin: '0.2rem 0 0 0', color: 'var(--text-dark)', fontSize: '1.1rem', fontWeight: '800'}}>{ann.ann_title}</h5>}
+                          <h4 style={{margin: 0, color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px'}}>{ann.provider_name}</h4>
+                          {ann.ann_title && <h5 style={{margin: '0.3rem 0 0 0', color: 'var(--text-dark)', fontSize: '1.15rem', fontWeight: '800', lineHeight: '1.3'}}>{ann.ann_title}</h5>}
                         </div>
-                        <span style={{fontSize: '0.8rem', color: 'var(--text-soft)', background: 'var(--gray-2)', padding: '0.2rem 0.6rem', borderRadius: '20px'}}>
+                        <span style={{fontSize: '0.75rem', color: 'var(--text-soft)', background: 'var(--gray-2)', padding: '0.25rem 0.75rem', borderRadius: '20px', fontWeight: '600'}}>
+                          <i className="far fa-clock" style={{marginRight: '5px'}}></i>
                           {ann.created_at || 'Recent'}
                         </span>
                       </div>
-                      <p style={{marginBottom: '0.5rem', color: 'var(--text-dark)', fontSize: '1rem'}}>
+                      <p style={{marginBottom: '0.5rem', color: 'var(--text-soft)', fontSize: '0.95rem', lineHeight: '1.6', display: '-webkit-box', WebkitLineClamp: '3', WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
                         {ann.ann_message}
                       </p>
                     </div>
@@ -2008,70 +2207,61 @@ const Portal = () => {
           )}
         </div>
       </section>
-      
-      {/* Loading overlay */}
-      <div className={`loading-overlay ${showLoadingOverlay ? 'active' : ''}`}>
-        <div className="loading-modal">
-          <div className="loading-spinner"></div>
-          <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
-            {loadingMessage.title}
-          </h3>
-          <p style={{ color: 'var(--text-soft)', fontSize: '1rem' }}>
-            {loadingMessage.message}
-          </p>
-        </div>
-      </div>
 
       {/* Cancellation Confirmation Modal */}
-      <div className={`loading-overlay ${showCancelConfirm ? 'active' : ''}`}>
-        <div className="loading-modal">
-          <i className="fas fa-exclamation-triangle" style={{ fontSize: '3.5rem', color: '#e67e22', marginBottom: '1.5rem', display: 'block' }}></i>
-          <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '1rem' }}>
-            Confirm Cancellation
-          </h3>
-          <p style={{ color: 'var(--text-soft)', fontSize: '1.05rem', lineHeight: '1.6' }}>
-            Are you sure you want to cancel your application for <br />
-            <strong style={{ color: 'var(--text-dark)' }}>"{pendingCancel?.scholarshipName}"</strong>?
-          </p>
-          <div className="modal-buttons">
-            <button className="modal-btn modal-btn-secondary" onClick={() => setShowCancelConfirm(false)}>
-              No, Keep it
-            </button>
-            <button className="modal-btn modal-btn-primary" onClick={handleConfirmCancel}>
-              Yes, Cancel
-            </button>
+      {showCancelConfirm && (
+        <div className="loading-overlay active">
+          <div className="loading-modal">
+            <i className="fas fa-exclamation-triangle" style={{ fontSize: '3.5rem', color: '#e67e22', marginBottom: '1.5rem', display: 'block' }}></i>
+            <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '1rem' }}>
+              Confirm Cancellation
+            </h3>
+            <p style={{ color: 'var(--text-soft)', fontSize: '1.05rem', lineHeight: '1.6' }}>
+              Are you sure you want to cancel your application for <br />
+              <strong style={{ color: 'var(--text-dark)' }}>"{pendingCancel?.scholarshipName}"</strong>?
+            </p>
+            <div className="modal-buttons">
+              <button className="modal-btn modal-btn-secondary" onClick={() => setShowCancelConfirm(false)}>
+                No, Keep it
+              </button>
+              <button className="modal-btn modal-btn-primary" onClick={handleConfirmCancel}>
+                Yes, Cancel
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Success/Error Status Modal */}
-      <div className={`loading-overlay ${showStatusModal ? 'active' : ''}`}>
-        <div className="loading-modal">
-          <i 
-            className={`fas ${statusInfo.isError ? 'fa-times-circle' : 'fa-check-circle'}`} 
-            style={{ 
-              fontSize: '4rem', 
-              color: statusInfo.isError ? '#e74c3c' : '#27ae60', 
-              marginBottom: '1.5rem', 
-              display: 'block' 
-            }}
-          ></i>
-          <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '1rem' }}>
-            {statusInfo.title}
-          </h3>
-          <p style={{ color: 'var(--text-soft)', fontSize: '1.05rem', lineHeight: '1.6' }}>
-            {statusInfo.message}
-          </p>
-          <div className="modal-buttons">
-            <button 
-              className="modal-btn modal-btn-primary" 
-              onClick={() => setShowStatusModal(false)}
-            >
-              OK
-            </button>
+      {showStatusModal && (
+        <div className="loading-overlay active">
+          <div className="loading-modal">
+            <i 
+              className={`fas ${statusInfo.isError ? 'fa-times-circle' : 'fa-check-circle'}`} 
+              style={{ 
+                fontSize: '4rem', 
+                color: statusInfo.isError ? '#e74c3c' : '#27ae60', 
+                marginBottom: '1.5rem', 
+                display: 'block' 
+              }}
+            ></i>
+            <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '1rem' }}>
+              {statusInfo.title}
+            </h3>
+            <p style={{ color: 'var(--text-soft)', fontSize: '1.05rem', lineHeight: '1.6' }}>
+              {statusInfo.message}
+            </p>
+            <div className="modal-buttons">
+              <button 
+                className="modal-btn modal-btn-primary" 
+                onClick={() => setShowStatusModal(false)}
+              >
+                OK
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </>
   );
 };
