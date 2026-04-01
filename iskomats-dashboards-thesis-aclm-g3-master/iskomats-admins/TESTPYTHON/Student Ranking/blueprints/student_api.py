@@ -971,7 +971,7 @@ def ocr_check():
                 kw_found = any(kw in raw.lower() for kw in keywords)
                 if v and not kw_found:
                     v = False
-                    msg = "Document does not appear to be a Certificate of Enrollment (Keywords not found)."
+                    msg = "Please retry to upload again"
                 results.append({'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw})
                 if not v: overall_verified = False
 
@@ -989,7 +989,7 @@ def ocr_check():
                 kw_found = any(kw in raw.lower() for kw in keywords)
                 if v and not kw_found:
                     v = False
-                    msg = "Document does not appear to be a Copy of Grades (Keywords not found)."
+                    msg = "Please retry to upload again"
                 
                 # Additionally verify the school year / semester is current
                 import re
@@ -1023,7 +1023,7 @@ def ocr_check():
                 kw_found = any(kw in raw.lower() for kw in keywords)
                 if v and not kw_found:
                     v = False
-                    msg = "Document does not appear to be a Certificate of Indigency (Keywords not found)."
+                    msg = "Please retry to upload again"
                 results.append({'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw})
                 if not v: overall_verified = False
 

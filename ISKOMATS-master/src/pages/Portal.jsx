@@ -22,6 +22,8 @@ const Portal = () => {
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [selectedAppForView, setSelectedAppForView] = useState(null);
   
   // Custom Modal States for Cancellation
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -299,6 +301,11 @@ const Portal = () => {
     }
   };
 
+  const handleViewApplication = (app) => {
+    setSelectedAppForView(app);
+    setShowViewModal(true);
+  };
+
   const markAllMessagesRead = () => {
     setScholarships(prev => prev.map(s => ({ ...s, unread: 0 })));
   };
@@ -428,6 +435,9 @@ const Portal = () => {
     } finally {
       setShowLoadingOverlay(false);
       setPendingCancel(null);
+    }
+  };
+
   const openAnnouncement = (ann) => {
     setSelectedAnnouncement(ann);
     setShowAnnouncementModal(true);
@@ -580,6 +590,185 @@ const Portal = () => {
         .modal-btn-secondary:hover {
           background: var(--gray-1);
           border-color: var(--gray-3);
+        }
+
+        /* View Application Modal Styles */
+        .view-modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0.4);
+          backdrop-filter: blur(12px);
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          z-index: 9999;
+          animation: modalFadeIn 0.3s ease-out;
+        }
+
+        .view-modal {
+          background: rgba(255, 255, 255, 0.95);
+          width: 92%;
+          max-width: 900px;
+          max-height: 85vh;
+          border-radius: 32px;
+          box-shadow: var(--shadow-lg);
+          border: 1px solid rgba(255, 255, 255, 0.6);
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          animation: modalSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .view-modal-header {
+          padding: 1.8rem 2.5rem;
+          border-bottom: 1px solid var(--gray-2);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          background: linear-gradient(to right, #ffffff, var(--gray-1));
+        }
+
+        .view-modal-title h2 {
+          color: var(--primary);
+          font-weight: 800;
+          font-size: 1.6rem;
+          margin: 0;
+        }
+
+        .view-modal-content {
+          padding: 2.5rem;
+          overflow-y: auto;
+          flex: 1;
+        }
+
+        .view-section {
+          margin-bottom: 2.5rem;
+        }
+
+        .view-section-title {
+          font-size: 0.95rem;
+          font-weight: 700;
+          color: var(--primary);
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          margin-bottom: 1.2rem;
+          display: flex;
+          align-items: center;
+          gap: 0.8rem;
+        }
+
+        .view-section-title::after {
+          content: "";
+          flex: 1;
+          height: 1px;
+          background: var(--gray-2);
+        }
+
+        .view-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+          gap: 1.5rem;
+        }
+
+        .view-item label {
+          display: block;
+          font-size: 0.8rem;
+          color: var(--text-soft);
+          margin-bottom: 0.4rem;
+          font-weight: 600;
+        }
+
+        .view-item .value {
+          font-size: 1rem;
+          color: var(--text-dark);
+          font-weight: 500;
+        }
+
+        .doc-gallery {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+          gap: 1.2rem;
+          margin-top: 1rem;
+        }
+
+        .doc-card {
+          background: white;
+          border: 1px solid var(--gray-2);
+          border-radius: 16px;
+          padding: 1rem;
+          text-align: center;
+          transition: all 0.2s;
+          cursor: pointer;
+        }
+
+        .doc-card:hover {
+          border-color: var(--primary);
+          transform: translateY(-3px);
+          box-shadow: var(--shadow-md);
+        }
+
+        .doc-icon {
+          font-size: 2rem;
+          color: var(--primary);
+          margin-bottom: 0.8rem;
+        }
+
+        .doc-name {
+          font-size: 0.85rem;
+          font-weight: 600;
+          color: var(--text-dark);
+        }
+
+        .doc-status {
+          font-size: 0.75rem;
+          margin-top: 0.3rem;
+        }
+
+        .doc-status.available { color: var(--success); }
+        .doc-status.missing { color: var(--danger); }
+
+        .view-modal-close {
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          border: none;
+          background: var(--gray-1);
+          color: var(--text-soft);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .view-modal-close:hover {
+          background: var(--danger-bg);
+          color: var(--danger);
+        }
+
+        .view-btn {
+          background: #3498db;
+          color: white;
+          border: none;
+          padding: 0.5rem 1.2rem;
+          border-radius: 20px;
+          font-size: 0.85rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          box-shadow: 0 4px 8px rgba(52, 152, 219, 0.2);
+        }
+
+        .view-btn:hover {
+          background: #2980b9;
+          transform: translateY(-1px);
+          box-shadow: 0 6px 12px rgba(52, 152, 219, 0.3);
         }
 
         .navbar {
@@ -1932,6 +2121,9 @@ const Portal = () => {
                         </div>
                         <div className="application-actions">
                           <span className={`status-badge ${badgeClass}`}>{app.status}</span>
+                          <button className="view-btn" onClick={() => handleViewApplication(app)}>
+                            <i className="fas fa-eye"></i> View
+                          </button>
                           {app.status === 'Pending' && (
                             <button className="cancel-btn" onClick={() => cancelApplication(app.scholarship_no, app.name)}>
                               <i className="fas fa-times-circle"></i> Cancel
@@ -2258,6 +2450,155 @@ const Portal = () => {
               >
                 OK
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* View Application Detail Modal */}
+      {showViewModal && (
+        <div className="view-modal-overlay" onClick={() => setShowViewModal(false)}>
+          <div className="view-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="view-modal-header">
+              <div className="view-modal-title">
+                <h2>Application Details</h2>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-soft)' }}>
+                  For: <strong>{selectedAppForView?.name}</strong>
+                </p>
+              </div>
+              <button className="view-modal-close" onClick={() => setShowViewModal(false)}>
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+            
+            <div className="view-modal-content">
+              {/* Applicant Details */}
+              <div className="view-section">
+                <div className="view-section-title">
+                  <i className="fas fa-user-circle"></i> Applicant Details
+                </div>
+                <div className="view-grid">
+                  <div className="view-item">
+                    <label>Full Name</label>
+                    <div className="value">{userProfile?.first_name} {userProfile?.middle_name} {userProfile?.last_name}</div>
+                  </div>
+                  <div className="view-item">
+                    <label>Sex</label>
+                    <div className="value" style={{ textTransform: 'capitalize' }}>{userProfile?.sex}</div>
+                  </div>
+                  <div className="view-item">
+                    <label>Birth Date</label>
+                    <div className="value">{userProfile?.birthdate}</div>
+                  </div>
+                  <div className="view-item">
+                    <label>Mobile Number</label>
+                    <div className="value">{userProfile?.mobile_no}</div>
+                  </div>
+                  <div className="view-item" style={{ gridColumn: 'span 2' }}>
+                    <label>Home Address</label>
+                    <div className="value">
+                      {userProfile?.street_brgy}, {userProfile?.town_city_municipality}, {userProfile?.province} {userProfile?.zip_code}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Academic Information */}
+              <div className="view-section">
+                <div className="view-section-title">
+                  <i className="fas fa-graduation-cap"></i> Academic Information
+                </div>
+                <div className="view-grid">
+                  <div className="view-item" style={{ gridColumn: 'span 2' }}>
+                    <label>School Name</label>
+                    <div className="value">{userProfile?.school}</div>
+                  </div>
+                  <div className="view-item">
+                    <label>School ID Number</label>
+                    <div className="value">{userProfile?.school_id_no}</div>
+                  </div>
+                  <div className="view-item">
+                    <label>Course / Program</label>
+                    <div className="value">{userProfile?.course}</div>
+                  </div>
+                  <div className="view-item">
+                    <label>Year Level</label>
+                    <div className="value">{userProfile?.year_lvl}</div>
+                  </div>
+                  <div className="view-item">
+                    <label>Overall GPA</label>
+                    <div className="value">{userProfile?.overall_gpa}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Family Background */}
+              <div className="view-section">
+                <div className="view-section-title">
+                  <i className="fas fa-users"></i> Family Background
+                </div>
+                <div className="view-grid">
+                  <div className="view-item">
+                    <label>Father's Name</label>
+                    <div className="value">{userProfile?.father_fname} {userProfile?.father_lname}</div>
+                  </div>
+                  <div className="view-item">
+                    <label>Mother's Name</label>
+                    <div className="value">{userProfile?.mother_fname} {userProfile?.mother_lname}</div>
+                  </div>
+                  <div className="view-item">
+                    <label>Parents' Gross Income</label>
+                    <div className="value">₱{Number(userProfile?.financial_income_of_parents || 0).toLocaleString()}</div>
+                  </div>
+                  <div className="view-item">
+                    <label>Number of Siblings</label>
+                    <div className="value">{userProfile?.sibling_no}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Submitted Documents */}
+              <div className="view-section">
+                <div className="view-section-title">
+                  <i className="fas fa-file-contract"></i> Submitted Documents
+                </div>
+                <div className="doc-gallery">
+                  {userProfile?.profile_picture && (
+                    <div className="doc-card" onClick={() => window.open(userProfile.profile_picture)}>
+                      <div className="doc-icon"><i className="fas fa-user-image"></i></div>
+                      <div className="doc-name">Profile Picture</div>
+                      <div className="doc-status available">View File</div>
+                    </div>
+                  )}
+                  {userProfile?.id_img_front && (
+                    <div className="doc-card" onClick={() => window.open(userProfile.id_img_front)}>
+                      <div className="doc-icon"><i className="fas fa-id-card"></i></div>
+                      <div className="doc-name">School ID (Front)</div>
+                      <div className="doc-status available">View File</div>
+                    </div>
+                  )}
+                  {userProfile?.grades_doc && (
+                    <div className="doc-card" onClick={() => window.open(userProfile.grades_doc)}>
+                      <div className="doc-icon"><i className="fas fa-file-invoice"></i></div>
+                      <div className="doc-name">Scholastic Record</div>
+                      <div className="doc-status available">View File</div>
+                    </div>
+                  )}
+                  {userProfile?.enrollment_certificate_doc && (
+                    <div className="doc-card" onClick={() => window.open(userProfile.enrollment_certificate_doc)}>
+                      <div className="doc-icon"><i className="fas fa-certificate"></i></div>
+                      <div className="doc-name">Enrollment Certificate</div>
+                      <div className="doc-status available">View File</div>
+                    </div>
+                  )}
+                  {userProfile?.indigency_doc && (
+                    <div className="doc-card" onClick={() => window.open(userProfile.indigency_doc)}>
+                      <div className="doc-icon"><i className="fas fa-house-user"></i></div>
+                      <div className="doc-name">Certificate of Indigency</div>
+                      <div className="doc-status available">View File</div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -93,20 +93,25 @@ def _run_tesseract(image_bytes):
         return ""
 
 def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
-    if not _check_tesseract(): return False, "OCR Engine (Tesseract) not found.", 0.0
+    if not _check_tesseract(): 
+        return False, "OCR Engine (Tesseract) not found.", "", 0.0
+    
     text = _run_tesseract(image_bytes).lower()
-    if not text: return False, "No text could be read from ID.", 0.0
+    if not text:
+        return False, "Please retry to upload again", "", 0.0
+    
     expected_name = expected_name.lower()
     name_found = expected_name in text
     addr_found = True
     if expected_address:
         expected_address = expected_address.lower()
         addr_found = expected_address in text
+    
     if name_found and addr_found:
         return True, "Name and Address verified via OCR.", text, 1.0
     elif name_found:
-        return True, "Name verified, but Address not found on ID.", text, 0.7
-    return False, "Identity could not be verified from ID text.", text, 0.0
+        return False, "Address verification doesn't match", text, 0.7
+    return False, "Identity verification doesn't match", text, 0.0
 
 def extract_school_year(image_bytes):
     text = _run_tesseract(image_bytes)
