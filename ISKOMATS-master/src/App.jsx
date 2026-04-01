@@ -8,13 +8,13 @@ import Homepage from './pages/Homepage';
 import Login from './pages/Login';
 import VerifyEmail from './pages/VerifyEmail';
 import ProfileSetup from './pages/ProfileSetup';
+import ApplicantForgotPassword from './pages/ApplicantForgotPassword';
 
 // Dynamic imports for heavy pages (route-based code splitting)
 const Portal = lazy(() => import('./pages/Portal'));
 const FindScholarship = lazy(() => import('./pages/FindScholarship'));
 const Profile = lazy(() => import('./pages/Profile'));
 const StudentInfo = lazy(() => import('./pages/StudentInfo'));
-const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 
 // Loading fallback for lazy routes
@@ -41,9 +41,7 @@ function App() {
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/profile-setup" element={<ProfileSetup />} />
           <Route path="/forgot-password" element={
-            <Suspense fallback={<LoadingFallback />}>
-              <ForgotPassword />
-            </Suspense>
+            <ApplicantForgotPassword />
           } />
           <Route path="/reset-password/:token" element={
             <Suspense fallback={<LoadingFallback />}>
