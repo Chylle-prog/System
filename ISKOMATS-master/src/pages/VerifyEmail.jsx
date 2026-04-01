@@ -168,7 +168,7 @@ const VerifyEmail = () => {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundImage: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      backgroundColor: '#f5f5f5',
       padding: '20px',
       fontFamily: 'Inter, sans-serif'
     }}>
@@ -177,12 +177,12 @@ const VerifyEmail = () => {
         maxWidth: '500px',
         backgroundColor: 'white',
         borderRadius: '12px',
-        boxShadow: '0 10px 40px rgba(0, 0, 0, 0.15)',
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
         overflow: 'hidden'
       }}>
         {/* Header */}
         <div style={{
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          background: 'linear-gradient(to right, #5c3d2e, #8B4513)',
           padding: '40px 30px',
           textAlign: 'center',
           color: 'white'
@@ -227,7 +227,7 @@ const VerifyEmail = () => {
                 width: '40px',
                 height: '40px',
                 border: '4px solid #ddd',
-                borderTop: '4px solid #667eea',
+                borderTop: '4px solid #8B4513',
                 borderRadius: '50%',
                 margin: '0 auto 20px',
                 animation: 'spin 1s linear infinite'
@@ -255,7 +255,7 @@ const VerifyEmail = () => {
                 style={{
                   width: '100%',
                   padding: '12px 20px',
-                  backgroundColor: '#4CAF50',
+                  backgroundColor: '#6f4e37',
                   color: 'white',
                   border: 'none',
                   borderRadius: '6px',
@@ -264,8 +264,8 @@ const VerifyEmail = () => {
                   cursor: 'pointer',
                   transition: 'all 0.3s ease'
                 }}
-                onMouseEnter={(e) => e.target.style.backgroundColor = '#45a049'}
-                onMouseLeave={(e) => e.target.style.backgroundColor = '#4CAF50'}
+                onMouseEnter={(e) => e.target.style.backgroundColor = '#5c3d2e'}
+                onMouseLeave={(e) => e.target.style.backgroundColor = '#6f4e37'}
               >
                 Go to Login
               </button>
@@ -295,7 +295,7 @@ const VerifyEmail = () => {
                 <div style={{ marginBottom: '20px' }}>
                   <label style={{
                     display: 'block',
-                    color: '#333',
+                    color: '#8B4513',
                     fontSize: '14px',
                     fontWeight: '600',
                     marginBottom: '8px'
@@ -321,7 +321,7 @@ const VerifyEmail = () => {
                       transition: 'border-color 0.3s ease',
                       fontFamily: 'monospace'
                     }}
-                    onFocus={(e) => e.target.style.borderColor = '#667eea'}
+                    onFocus={(e) => e.target.style.borderColor = '#8B4513'}
                     onBlur={(e) => e.target.style.borderColor = '#ddd'}
                   />
                   <p style={{
@@ -340,7 +340,7 @@ const VerifyEmail = () => {
                   style={{
                     width: '100%',
                     padding: '12px 20px',
-                    backgroundColor: formData.isLoading ? '#ccc' : '#667eea',
+                    backgroundColor: formData.isLoading ? '#ccc' : '#8B4513',
                     color: 'white',
                     border: 'none',
                     borderRadius: '6px',
@@ -351,10 +351,10 @@ const VerifyEmail = () => {
                     opacity: formData.isLoading ? 0.6 : 1
                   }}
                   onMouseEnter={(e) => {
-                    if (!formData.isLoading) e.target.style.backgroundColor = '#5568d3';
+                    if (!formData.isLoading) e.target.style.backgroundColor = '#6f4e37';
                   }}
                   onMouseLeave={(e) => {
-                    if (!formData.isLoading) e.target.style.backgroundColor = '#667eea';
+                    if (!formData.isLoading) e.target.style.backgroundColor = '#8B4513';
                   }}
                 >
                   {formData.isLoading ? "Verifying..." : "Verify Email"}
@@ -367,14 +367,14 @@ const VerifyEmail = () => {
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: '#667eea',
+                    color: '#8B4513',
                     cursor: 'pointer',
                     fontSize: '14px',
                     textDecoration: 'underline',
                     transition: 'color 0.3s ease'
                   }}
-                  onMouseEnter={(e) => e.target.style.color = '#5568d3'}
-                  onMouseLeave={(e) => e.target.style.color = '#667eea'}
+                  onMouseEnter={(e) => e.target.style.color = '#5c3d2e'}
+                  onMouseLeave={(e) => e.target.style.color = '#8B4513'}
                 >
                   Back to Login
                 </button>
