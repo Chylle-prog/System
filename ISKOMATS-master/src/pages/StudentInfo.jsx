@@ -1025,6 +1025,45 @@ const StudentInfo = () => {
     }
   };
 
+  const verifyDocumentsBeforeStep = async (step) => {
+    // Blocking verification that waits for completion before allowing step progression
+    if (step === 3) {
+      // Step 3: Verify certificate of enrollment and grades documents
+      const coeDoc = photos.mayorCOE_photo || formData.mayorCOE_photo || userProfile?.enrollment_certificate_doc;
+      const gradesDoc = photos.mayorGrades_photo || formData.mayorGrades_photo || userProfile?.grades_doc;
+      
+      if (!coeDoc && !gradesDoc) return true; // No documents to verify
+      
+      try {
+        setLoadingMessage({ title: 'Verifying Documents', message: 'Analyzing your certificate and grades documents...' });
+        setIsSavingStep(true);
+        
+        // Perform blocking OCR verification
+        const result = await applicantAPI.ocrCheck(null, null);
+        
+        if (result.verified) {
+          setMayorCOEVerified('success');
+          setMayorGradesVerified('success');
+          return true;
+        } else {
+          // Mark documents as failed but allow progression with warning
+          setMayorCOEVerified('failed');
+          setMayorGradesVerified('failed');
+          showPromptMessage('⚠️ Document verification in progress. We\'ll continue verifying in the background.');
+          return true;
+        }
+      } catch (err) {
+        console.error('Document verification error:', err);
+        showPromptMessage('Document verification in background - you may continue.');
+        return true;
+      } finally {
+        setIsSavingStep(false);
+      }
+    }
+    
+    return true;
+  };
+
   const showPromptMessage = (message, duration = 3000) => {
     setPromptMessage(message);
     setShowPrompt(true);
@@ -1086,31 +1125,11 @@ const StudentInfo = () => {
       setLoadingMessage({ title: `Saving Step ${currentStep}`, message: 'Updating your application progress...' });
       setIsSavingStep(true);
       
-      // ── STEP 1: Skip blocking address verification ────────
-      if (currentStep === 1) {
-        // Quick non-blocking check - don't block form progression
-        const indigencyDoc = photos.mayorIndigency_photo
-          || formData.mayorIndigency_photo
-          || userProfile?.indigency_doc;
-        const townCity = formData.townCity || userProfile?.town_city_municipality || '';
-
-        if (indigencyDoc && townCity) {
-          // Run verification in background without blocking
-          performOcrVerification(null, indigencyDoc);
-        }
-      }
-
-      // ── STEP 3: Skip blocking document verification ──────
-      if (currentStep === 3) {
-        // Quick non-blocking check - don't block form progression
-        const idFront = schoolIdPhotos.front || formData.id_front;
-        const coeDoc = photos.mayorCOE_photo || formData.mayorCOE_photo || userProfile?.coe_doc;
-        const gradesDoc = photos.mayorGrades_photo || formData.mayorGrades_photo || userProfile?.grades_doc;
-        
-        if (idFront || coeDoc || gradesDoc) {
-          // Run verification in background without blocking
-          performOcrVerification(idFront, null);
-        }
+      // Verify documents before proceeding to next step
+      const verificationPassed = await verifyDocumentsBeforeStep(currentStep);
+      if (!verificationPassed) {
+        showPromptMessage('⚠️ Please ensure all documents are properly uploaded.');
+        return;
       }
 
       await saveCurrentStepProgress(currentStep);
