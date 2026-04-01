@@ -137,9 +137,9 @@ const Login = () => {
       
       // Register user with backend directly
       const registerResponse = await authAPI.register({
-        first_name: '',
+        first_name: 'User',
         middle_name: '',
-        last_name: '',
+        last_name: 'Account',
         email,
         password
       });
