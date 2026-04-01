@@ -12,6 +12,8 @@ const Portal = lazy(() => import('./pages/Portal'));
 const FindScholarship = lazy(() => import('./pages/FindScholarship'));
 const Profile = lazy(() => import('./pages/Profile'));
 const StudentInfo = lazy(() => import('./pages/StudentInfo'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 
 // Loading fallback for lazy routes
 const LoadingFallback = () => (
@@ -34,6 +36,16 @@ function App() {
         <Routes>
           <Route path="/" element={<Homepage />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={
+            <Suspense fallback={<LoadingFallback />}>
+              <ForgotPassword />
+            </Suspense>
+          } />
+          <Route path="/reset-password/:token" element={
+            <Suspense fallback={<LoadingFallback />}>
+              <ResetPassword />
+            </Suspense>
+          } />
           <Route path="/portal" element={
             <PrivateRoute>
               <Suspense fallback={<LoadingFallback />}>

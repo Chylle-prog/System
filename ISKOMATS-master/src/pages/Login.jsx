@@ -272,8 +272,7 @@ const Login = () => {
 
   const handleForgotPassword = (e) => {
     e.preventDefault();
-    // Placeholder for forgot password functionality
-    alert('Password reset functionality will be implemented soon!');
+    navigate('/forgot-password');
   };
 
   return (
@@ -1015,9 +1014,9 @@ const Login = () => {
                   )}
                 </button>
                 <div className="forgot-password">
-                  <a href="#" onClick={handleForgotPassword} style={{ color: 'var(--primary)', textDecoration: 'none', fontSize: '0.9rem' }}>
+                  <Link to="/forgot-password" style={{ color: 'var(--primary)', textDecoration: 'none', fontSize: '0.9rem' }}>
                     Forgot password?
-                  </a>
+                  </Link>
                 </div>
               </form>
             ) : (

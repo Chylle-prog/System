@@ -136,6 +136,29 @@ export const authAPI = {
       method: 'GET',
     });
   },
+
+  /**
+   * Request password reset
+   * @param {string} email
+   */
+  forgotPassword: async (email) => {
+    return makeRequest('/student/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  /**
+   * Reset password with token
+   * @param {string} token
+   * @param {string} newPassword
+   */
+  resetPassword: async (token, newPassword) => {
+    return makeRequest('/student/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, newPassword }),
+    });
+  },
 };
 
 /**

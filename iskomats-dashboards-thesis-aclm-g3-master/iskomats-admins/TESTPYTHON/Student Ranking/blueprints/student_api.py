@@ -25,6 +25,105 @@ ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
 if ENCRYPTION_KEY and isinstance(ENCRYPTION_KEY, str):
     ENCRYPTION_KEY = ENCRYPTION_KEY.encode()
 fernet = Fernet(ENCRYPTION_KEY) if ENCRYPTION_KEY else None
+    
+# Password Reset Config
+PASSWORD_RESET_EXPIRY_MINUTES = int(os.environ.get('PASSWORD_RESET_EXPIRY_MINUTES', '30'))
+# Use a different FRONTEND_URL for students if configured, otherwise fallback to a default or admin URL
+STUDENT_FRONTEND_URL = os.environ.get('STUDENT_FRONTEND_URL', os.environ.get('FRONTEND_URL', 'http://localhost:5173')).rstrip('/')
+GMAIL_SENDER_EMAIL = os.environ.get('GMAIL_SENDER_EMAIL')
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
+GOOGLE_REFRESH_TOKEN = os.environ.get('GOOGLE_REFRESH_TOKEN')
+
+def generate_password_reset_token(user_no, email):
+    """Generate a time-limited password reset token for students."""
+    payload = {
+        'purpose': 'password-reset',
+        'user_no': user_no,
+        'email': email,
+        'type': 'student',
+        'iat': datetime.utcnow(),
+        'exp': datetime.utcnow() + timedelta(minutes=PASSWORD_RESET_EXPIRY_MINUTES),
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+
+def decode_password_reset_token(token):
+    """Validate and decode a password reset token."""
+    payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+    if payload.get('purpose') != 'password-reset':
+        raise jwt.InvalidTokenError('Invalid password reset token')
+    return payload
+
+def fetch_google_access_token():
+    """Exchange the configured refresh token for a Gmail API access token."""
+    from urllib import parse, request as urllib_request, error as urllib_error
+    import json
+    
+    missing_settings = []
+    if not GOOGLE_CLIENT_ID: missing_settings.append('GOOGLE_CLIENT_ID')
+    if not GOOGLE_CLIENT_SECRET: missing_settings.append('GOOGLE_CLIENT_SECRET')
+    if not GOOGLE_REFRESH_TOKEN: missing_settings.append('GOOGLE_REFRESH_TOKEN')
+
+    if missing_settings:
+        raise RuntimeError(f"Google Gmail API credentials are not configured. Missing: {', '.join(missing_settings)}")
+
+    token_request_body = parse.urlencode({
+        'client_id': GOOGLE_CLIENT_ID,
+        'client_secret': GOOGLE_CLIENT_SECRET,
+        'refresh_token': GOOGLE_REFRESH_TOKEN,
+        'grant_type': 'refresh_token',
+    }).encode('utf-8')
+
+    token_request = urllib_request.Request(
+        'https://oauth2.googleapis.com/token',
+        data=token_request_body,
+        headers={'Content-Type': 'application/x-www-form-urlencoded'},
+        method='POST',
+    )
+
+    with urllib_request.urlopen(token_request, timeout=30) as response:
+        payload = json.loads(response.read().decode('utf-8'))
+    
+    return payload.get('access_token')
+
+def send_password_reset_email(receiver_email, reset_url):
+    """Send a password reset email via the Gmail API."""
+    from urllib import request as urllib_request
+    import json
+    
+    if not GMAIL_SENDER_EMAIL:
+        raise RuntimeError('Gmail sender email is not configured.')
+
+    message = f"""Subject: Reset your ISKOMATS Student Password
+To: {receiver_email}
+From: {GMAIL_SENDER_EMAIL}
+Content-Type: text/plain; charset="UTF-8"
+
+Hello,
+
+We received a request to reset your student password for ISKOMATS.
+
+Use the link below to set a new password:
+{reset_url}
+
+This link will expire in {PASSWORD_RESET_EXPIRY_MINUTES} minutes.
+
+If you did not request a password reset, you can ignore this email.
+"""
+
+    access_token = fetch_google_access_token()
+    encoded_message = base64.urlsafe_b64encode(message.encode('utf-8')).decode('utf-8')
+    gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
+    gmail_request = urllib_request.Request(
+        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+        data=gmail_request_body,
+        headers={
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+        },
+        method='POST',
+    )
+    urllib_request.urlopen(gmail_request, timeout=30)
 
 
 def token_required(route_handler):
@@ -206,6 +305,88 @@ def student_check_email():
 @token_required
 def validate_student_token():
     return jsonify({'message': 'Token is valid', 'user_no': request.user_no})
+
+
+@student_api_bp.route('/auth/forgot-password', methods=['POST'])
+def student_forgot_password():
+    """Request password reset for student"""
+    data = request.get_json() or {}
+    email = data.get('email', '').strip()
+    
+    if not email:
+        return jsonify({'message': 'Email is required'}), 400
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT e.applicant_no, e.email_address, a.first_name, a.last_name
+            FROM email e
+            JOIN applicants a ON e.applicant_no = a.applicant_no
+            WHERE e.email_address ILIKE %s
+            LIMIT 1
+            """,
+            (email,),
+        )
+        user = cur.fetchone()
+        
+        if user:
+            reset_token = generate_password_reset_token(user['applicant_no'], user['email_address'])
+            reset_url = f"{STUDENT_FRONTEND_URL}/reset-password/{reset_token}"
+            send_password_reset_email(user['email_address'], reset_url)
+
+        return jsonify({'message': 'If an account exists with this email, a reset link has been sent.'}), 200
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({'message': f'Failed to send reset email: {str(exc)}'}), 500
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+
+@student_api_bp.route('/auth/reset-password', methods=['POST'])
+def student_reset_password():
+    """Reset student password with token"""
+    data = request.get_json() or {}
+    token = data.get('token')
+    new_password = data.get('newPassword')
+    
+    if not all([token, new_password]):
+        return jsonify({'message': 'Token and new password are required'}), 400
+
+    try:
+        payload = decode_password_reset_token(token)
+        password_hash = bcrypt.generate_password_hash(new_password).decode('utf-8')
+
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE email
+            SET password_hash = %s
+            WHERE applicant_no = %s AND email_address ILIKE %s
+            RETURNING em_no
+            """,
+            (password_hash, payload['user_no'], payload['email']),
+        )
+        updated = cur.fetchone()
+        conn.commit()
+        
+        if not updated:
+            return jsonify({'message': 'Invalid or expired token'}), 400
+
+        return jsonify({'message': 'Password reset successfully'}), 200
+    except jwt.ExpiredSignatureError:
+        return jsonify({'message': 'Reset link has expired'}), 400
+    except jwt.InvalidTokenError:
+        return jsonify({'message': 'Invalid reset link'}), 400
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({'message': f'Error resetting password: {str(exc)}'}), 500
+    finally:
+        if 'conn' in locals():
+            conn.close()
 
 
 @student_api_bp.route('/scholarships', methods=['GET'])
