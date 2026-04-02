@@ -1036,35 +1036,8 @@ const StudentInfo = () => {
     // Perform verification based on the current step
     try {
       if (step === 1) {
-        // Step 1: Verify ID Picture
-        const idPicture = idPicturePreview || formData.profile_picture || userProfile?.profile_picture;
-        
-        if (!idPicture) {
-          showPromptMessage('⚠️ Please upload your 2x2 ID Picture.');
-          return false;
-        }
-        
-        setLoadingMessage({ title: 'Verifying Profile Picture', message: 'Analyzing your ID picture for verification...' });
-        setOcrVerified('verifying');
-        
-        try {
-          const result = await applicantAPI.ocrCheck(idPicture, null, null, null, null);
-          
-          if (result.verified) {
-            setOcrVerified('success');
-            showPromptMessage('✅ ID Picture verified successfully!');
-            return true;
-          } else {
-            setOcrVerified('failed');
-            showPromptMessage(`⚠️ ${result.message || 'ID Picture verification failed. Please ensure the image is clear and valid.'}`);
-            return false; // Block progression if verification fails
-          }
-        } catch (err) {
-          console.error('ID picture verification error:', err);
-          const errorMsg = err.response?.data?.message || 'Could not verify ID picture.';
-          showPromptMessage(`⚠️ ${errorMsg}`);
-          return false; // Block progression on error
-        }
+        // Step 1: No verification for profile picture - only for school ID
+        return true;
       }
       
       if (step === 2) {
@@ -1099,12 +1072,13 @@ const StudentInfo = () => {
       }
       
       if (step === 3) {
-        // Step 3: Verify School ID, Mayor's COE, and Mayor's Grades
+        // Step 3: Verify School ID (front and back), Mayor's COE, and Mayor's Grades
         const schoolIdFront = schoolIdPhotos.front || formData.id_front || userProfile?.id_front;
+        const schoolIdBack = schoolIdPhotos.back || formData.id_back || userProfile?.id_back;
         const gradesDoc = photos.mayorGrades_photo || formData.mayorGrades_photo || userProfile?.grades_doc;
         const coeDoc = photos.mayorCOE_photo || formData.mayorCOE_photo || userProfile?.enrollment_certificate_doc;
         
-        if (!schoolIdFront && !gradesDoc && !coeDoc) {
+        if (!schoolIdFront && !schoolIdBack && !gradesDoc && !coeDoc) {
           return true; // No documents to verify, allow progression
         }
         
@@ -1115,12 +1089,13 @@ const StudentInfo = () => {
           
           if (result.verified) {
             if (schoolIdFront) setOcrVerified('success');
+            if (schoolIdBack) setOcrVerified('success');
             if (coeDoc) setMayorCOEVerified('success');
             if (gradesDoc) setMayorGradesVerified('success');
             showPromptMessage('✅ All documents verified successfully!');
             return true;
           } else {
-            if (schoolIdFront) setOcrVerified('failed');
+            if (schoolIdFront || schoolIdBack) setOcrVerified('failed');
             if (coeDoc) setMayorCOEVerified('failed');
             if (gradesDoc) setMayorGradesVerified('failed');
             showPromptMessage(`⚠️ ${result.message || 'Document verification failed. Please ensure all images are clear.'}`);
