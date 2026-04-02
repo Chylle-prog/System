@@ -55,7 +55,14 @@ def index():
 def handle_preflight():
     if request.method == 'OPTIONS':
         origin = request.headers.get('Origin')
-        if origin and is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
+        is_allowed = origin and is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns)
+        
+        # Log preflight requests for debugging
+        print(f"[CORS] Preflight OPTIONS for: {request.path}")
+        print(f"       Origin: {origin}")
+        print(f"       Allowed: {is_allowed}", flush=True)
+
+        if is_allowed:
             response = jsonify({'status': 'ok'})
             response.headers['Access-Control-Allow-Origin'] = origin
             response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, PATCH, OPTIONS'
@@ -69,7 +76,11 @@ def handle_preflight():
             response.headers['Access-Control-Allow-Credentials'] = 'true'
             return response, 200
         else:
-            response = jsonify({'error': 'CORS policy: origin not allowed'})
+            # Rejection - still add CORS headers if origin exists so browser shows 403 instead of "No header"
+            response = jsonify({'error': 'CORS policy: origin not allowed', 'requested_origin': origin})
+            if origin:
+                response.headers['Access-Control-Allow-Origin'] = origin
+                response.headers['Vary'] = 'Origin'
             response.status_code = 403
             return response, 403
     return None

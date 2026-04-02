@@ -1117,6 +1117,7 @@ const StudentInfo = () => {
         
         // If School ID is not required, allow progression without verification
         return true;
+      }
       
       if (step === 4) {
         // Step 4: Verify Face Photo and Signature
@@ -1265,15 +1266,18 @@ const StudentInfo = () => {
     }
 
     setIsSavingStep(true);
+    setLoadingMessage({ title: 'Verifying Documents', message: 'Please wait...' });
     try {
       // Verify documents before proceeding to next step
       const verificationPassed = await verifyDocumentsBeforeStep(currentStep);
       if (!verificationPassed) {
         // Verification function already showed specific error message
+        setLoadingMessage({ title: '', message: '' });
         setIsSavingStep(false);
         return;
       }
 
+      // Verification passed, show saving message
       setLoadingMessage({ title: `Saving Step ${currentStep}`, message: 'Updating your application progress...' });
       await saveCurrentStepProgress(currentStep);
       setCurrentStep(prev => Math.min(prev + 1, 4));
