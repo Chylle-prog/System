@@ -2240,11 +2240,18 @@ const StudentInfo = () => {
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Photo (.png/jpg)</label>
                     <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
                       {photos.mayorIndigency_photo || userProfile?.has_mayorIndigency_photo ? (
-                        <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
-                          <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
-                            <i className="fas fa-check-circle"></i> Photo Uploaded
+                        <div style={{display: 'flex', flexDirection: 'column', gap: '10px', width: '100%'}}>
+                          <img 
+                            src={photos.mayorIndigency_photo || userProfile?.mayorIndigency_photo} 
+                            style={{width: '100%', maxHeight: '150px', objectFit: 'contain', borderRadius: '12px', border: '1px solid #ddd'}} 
+                            alt="Indigency Preview" 
+                          />
+                          <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                            <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
+                              <i className="fas fa-check-circle"></i> Photo Uploaded
+                            </div>
+                            <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorIndigency_photo: null })); setOcrVerified(null); setOcrStatus(''); setTimeout(() => indigencyPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                           </div>
-                          <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorIndigency_photo: null })); setOcrVerified(null); setOcrStatus(''); setTimeout(() => indigencyPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                         </div>
                       ) : (
                         <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload photo</div>
@@ -2263,11 +2270,19 @@ const StudentInfo = () => {
                           <div style={{fontSize: '0.7rem', color: '#666'}}>If stuck, check internet or file size.</div>
                         </div>
                       ) : formData.mayorIndigency_video ? (
-                        <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
-                          <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
-                            <i className="fas fa-check-circle"></i> Video Uploaded
+                        <div style={{display: 'flex', flexDirection: 'column', gap: '10px', width: '100%'}}>
+                          <video 
+                            src={formData.mayorIndigency_video} 
+                            style={{width: '100%', maxHeight: '150px', borderRadius: '12px', background: '#000'}} 
+                            controls 
+                            muted 
+                          />
+                          <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                            <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
+                              <i className="fas fa-check-circle"></i> Video Uploaded
+                            </div>
+                            <button type="button" onClick={() => { setFormData(prev => ({ ...prev, mayorIndigency_video: null })); setOcrVerified(null); setOcrStatus(''); setTimeout(() => indigencyVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                           </div>
-                          <button type="button" onClick={() => { setFormData(prev => ({ ...prev, mayorIndigency_video: null })); setOcrVerified(null); setOcrStatus(''); setTimeout(() => indigencyVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                         </div>
                       ) : (
                         <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload video</div>
@@ -2497,10 +2512,16 @@ const StudentInfo = () => {
                       <input ref={idVideoInputRef} type="file" name="id_vid_url" accept="video/*" onChange={(e) => handleVideoUpload('id_vid_url', e)} required={currentStep === 3 && !formData.id_vid_url} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
                       <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none'}}>
                         {formData.id_vid_url ? (
-                          <>
-                            <i className="fas fa-video" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
-                            <span>✓ Video Uploaded</span>
-                          </>
+                          <div style={{width: '100%', height: '100%'}}>
+                            <video 
+                              src={formData.id_vid_url} 
+                              style={{width: '100%', height: '100%', objectFit: 'cover'}} 
+                              controls 
+                              loop 
+                              muted 
+                              playsInline
+                            />
+                          </div>
                         ) : (
                           <>
                             <i className="fas fa-video" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
@@ -2528,11 +2549,18 @@ const StudentInfo = () => {
                       <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Photo (.png/jpg)</label>
                       <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
                         {photos.mayorCOE_photo || userProfile?.has_mayorCOE_photo ? (
-                          <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
-                            <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
-                              <i className="fas fa-check-circle"></i> Photo Uploaded
+                          <div style={{display: 'flex', flexDirection: 'column', gap: '10px', width: '100%'}}>
+                            <img 
+                              src={photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc} 
+                              style={{width: '100%', maxHeight: '150px', objectFit: 'contain', borderRadius: '12px', border: '1px solid #ddd'}} 
+                              alt="COE Preview" 
+                            />
+                            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                              <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
+                                <i className="fas fa-check-circle"></i> Photo Uploaded
+                              </div>
+                              <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorCOE_photo: null })); setMayorCOEVerified(null); setTimeout(() => coePhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                             </div>
-                            <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorCOE_photo: null })); setMayorCOEVerified(null); setTimeout(() => coePhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                           </div>
                         ) : (
                           <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload photo</div>
@@ -2551,11 +2579,19 @@ const StudentInfo = () => {
                             <div style={{fontSize: '0.7rem', color: '#666'}}>If stuck, check internet or file height.</div>
                           </div>
                         ) : formData.mayorCOE_video ? (
-                          <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
-                            <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
-                              <i className="fas fa-check-circle"></i> Video Uploaded
+                          <div style={{display: 'flex', flexDirection: 'column', gap: '10px', width: '100%'}}>
+                            <video 
+                              src={formData.mayorCOE_video} 
+                              style={{width: '100%', maxHeight: '150px', borderRadius: '12px', background: '#000'}} 
+                              controls 
+                              muted 
+                            />
+                            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                              <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
+                                <i className="fas fa-check-circle"></i> Video Uploaded
+                              </div>
+                              <button type="button" onClick={() => { setFormData(prev => ({ ...prev, mayorCOE_video: null })); setMayorCOEVerified(null); setTimeout(() => coeVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                             </div>
-                            <button type="button" onClick={() => { setFormData(prev => ({ ...prev, mayorCOE_video: null })); setMayorCOEVerified(null); setTimeout(() => coeVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                           </div>
                         ) : (
                           <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload video</div>
@@ -2576,11 +2612,18 @@ const StudentInfo = () => {
                       <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Photo (.png/jpg)</label>
                       <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
                         {photos.mayorGrades_photo || userProfile?.has_mayorGrades_photo ? (
-                          <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
-                            <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
-                              <i className="fas fa-check-circle"></i> Photo Uploaded
+                          <div style={{display: 'flex', flexDirection: 'column', gap: '10px', width: '100%'}}>
+                            <img 
+                              src={photos.mayorGrades_photo || userProfile?.grades_doc} 
+                              style={{width: '100%', maxHeight: '150px', objectFit: 'contain', borderRadius: '12px', border: '1px solid #ddd'}} 
+                              alt="Grades Preview" 
+                            />
+                            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                              <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
+                                <i className="fas fa-check-circle"></i> Photo Uploaded
+                              </div>
+                              <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorGrades_photo: null })); setMayorGradesVerified(null); setTimeout(() => gradesPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                             </div>
-                            <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorGrades_photo: null })); setMayorGradesVerified(null); setTimeout(() => gradesPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                           </div>
                         ) : (
                           <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload photo</div>
@@ -2599,11 +2642,19 @@ const StudentInfo = () => {
                             <div style={{fontSize: '0.7rem', color: '#666'}}>If stuck, check connection.</div>
                           </div>
                         ) : formData.mayorGrades_video ? (
-                          <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
-                            <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
-                              <i className="fas fa-check-circle"></i> Video Uploaded
+                          <div style={{display: 'flex', flexDirection: 'column', gap: '10px', width: '100%'}}>
+                            <video 
+                              src={formData.mayorGrades_video} 
+                              style={{width: '100%', maxHeight: '150px', borderRadius: '12px', background: '#000'}} 
+                              controls 
+                              muted 
+                            />
+                            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                              <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
+                                <i className="fas fa-check-circle"></i> Video Uploaded
+                              </div>
+                              <button type="button" onClick={() => { setFormData(prev => ({ ...prev, mayorGrades_video: null })); setMayorGradesVerified(null); setTimeout(() => gradesVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                             </div>
-                            <button type="button" onClick={() => { setFormData(prev => ({ ...prev, mayorGrades_video: null })); setMayorGradesVerified(null); setTimeout(() => gradesVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                           </div>
                         ) : (
                           <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload video</div>
@@ -2713,11 +2764,19 @@ const StudentInfo = () => {
                 
                 <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
                   {photos.face_photo ? (
-                    <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%'}}>
-                      <div style={{display: 'flex', flexDirection: 'column', gap: '4px'}}>
-                        <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
-                          <i className="fas fa-check-circle"></i> Photo Captured
-                        </div>
+                    <div style={{display: 'flex', flexDirection: 'column', gap: '15px', width: '100%'}}>
+                      <div style={{display: 'flex', justifyContent: 'center'}}>
+                        <img 
+                          src={photos.face_photo} 
+                          style={{width: '120px', height: '120px', objectFit: 'cover', borderRadius: '50%', border: '3px solid var(--primary)'}} 
+                          alt="Face Preview" 
+                        />
+                      </div>
+                      <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%'}}>
+                        <div style={{display: 'flex', flexDirection: 'column', gap: '4px'}}>
+                          <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
+                            <i className="fas fa-check-circle"></i> Photo Captured
+                          </div>
                         {faceVerified && (
                           <div style={{fontSize: '0.75rem', fontWeight: '500'}}>
                             {faceVerified === 'verifying' && <span style={{color: '#f39c12'}}><i className="fas fa-spinner fa-spin"></i> Verifying Match...</span>}
@@ -2727,7 +2786,8 @@ const StudentInfo = () => {
                           </div>
                         )}
                       </div>
-                      <div style={{display: 'flex', gap: '12px'}}>
+                    </div>
+                    <div style={{display: 'flex', gap: '12px'}}>
                         {faceVerified !== 'success' && (
                           <button type="button" onClick={() => verifyDocumentsBeforeStep(4)} style={{background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '4px', padding: '4px 10px', fontSize: '0.75rem', fontWeight: '600', cursor: 'pointer'}}>Verify Match</button>
                         )}
@@ -2794,10 +2854,16 @@ const StudentInfo = () => {
                       <input ref={idVideoInputRef} type="file" name="id_vid_url" accept="video/*" onChange={(e) => handleVideoUpload('id_vid_url', e)} required={currentStep === 4 && !formData.id_vid_url} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
                       <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none'}}>
                         {formData.id_vid_url ? (
-                          <>
-                            <i className="fas fa-video" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
-                            <span>✓ Video Uploaded</span>
-                          </>
+                          <div style={{width: '100%', height: '100%'}}>
+                            <video 
+                              src={formData.id_vid_url} 
+                              style={{width: '100%', height: '100%', objectFit: 'cover'}} 
+                              controls 
+                              loop 
+                              muted 
+                              playsInline
+                            />
+                          </div>
                         ) : (
                           <>
                             <i className="fas fa-video" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
