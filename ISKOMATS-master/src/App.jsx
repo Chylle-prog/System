@@ -17,19 +17,8 @@ const Profile = lazy(() => import('./pages/Profile'));
 const StudentInfo = lazy(() => import('./pages/StudentInfo'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 
-// Loading fallback for lazy routes
-const LoadingFallback = () => (
-  <div style={{
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    height: '100vh',
-    fontSize: '1.2rem',
-    color: '#666'
-  }}>
-    Loading...
-  </div>
-);
+// Loading fallback for lazy routes - returns null to show nothing during load
+const LoadingFallback = () => null;
 
 function App() {
   return (
