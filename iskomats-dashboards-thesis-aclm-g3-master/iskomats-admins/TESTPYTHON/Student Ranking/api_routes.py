@@ -1,7 +1,7 @@
 import sys
 import os
 import json
-from flask import Blueprint, request, jsonify, send_file, url_for
+from flask import Blueprint, request, jsonify, send_file, url_for, session
 from flask_bcrypt import Bcrypt
 from functools import wraps
 from flask_socketio import emit, join_room
@@ -600,6 +600,8 @@ def init_socketio(socketio):
             # Support both student (user_no) and admin (user_id) token formats
             user_id = decoded.get('user_id') or decoded.get('user_no')
             user_role = decoded.get('role', 'student' if 'user_no' in decoded else None)
+            session['role'] = user_role
+            session['user_id'] = user_id
             
             # Normalize user_role before checking against admin_roles
             if user_role and user_role != 'student':
@@ -657,7 +659,11 @@ def init_socketio(socketio):
                         FROM applicant_status ast
                         JOIN scholarships s ON ast.scholarship_no = s.req_no
                         WHERE s.pro_no = %s
-                    """, (pro_no,))
+                        UNION
+                        SELECT DISTINCT applicant_no, pro_no
+                        FROM message
+                        WHERE pro_no = %s
+                    """, (pro_no, pro_no))
                     relevant_pairs = cursor.fetchall()
                     rooms = [f"{p['applicant_no']}+{p['pro_no']}" for p in relevant_pairs]
                 else:
@@ -749,7 +755,7 @@ def init_socketio(socketio):
             cursor = conn.cursor()
             
             # Fetch message history JOINED with current applicant status and applicant info
-            cursor.execute("""
+            query = """
                 SELECT m.m_id, 
                        CASE 
                            WHEN m.username = (a.first_name || ' ' || a.last_name) OR m.username = a.first_name THEN a.first_name 
@@ -765,9 +771,31 @@ def init_socketio(socketio):
                 LEFT JOIN applicant_status s ON m.applicant_no = s.applicant_no
                 LEFT JOIN applicants a ON m.applicant_no = a.applicant_no
                 WHERE m.applicant_no = %s AND m.pro_no = %s
-                ORDER BY m.timestamp ASC 
-                LIMIT 100
-            """, (app_no, pro_no))
+            """
+            params = [app_no, pro_no]
+
+            # If the user is a student, we filter the history so they only see 
+            # messages from their CURRENT application sessions.
+            if session.get('role') == 'student':
+                # Get the oldest creation date among active applications for this provider
+                cursor.execute("""
+                    SELECT MIN(created_at) as session_start
+                    FROM applicant_status ast
+                    JOIN scholarships sch ON ast.scholarship_no = sch.req_no
+                    WHERE ast.applicant_no = %s AND sch.pro_no = %s
+                """, (app_no, pro_no))
+                row = cursor.fetchone()
+                session_start = row.get('session_start') if row else None
+                
+                if session_start:
+                    query += " AND m.timestamp >= %s"
+                    params.append(session_start)
+                else:
+                    # If no active application exists, don't show any history to the student
+                    query += " AND 1=0"
+            
+            query += " ORDER BY m.timestamp ASC LIMIT 100"
+            cursor.execute(query, tuple(params))
             messages = cursor.fetchall()
             
             for msg in messages:

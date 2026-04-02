@@ -118,6 +118,7 @@ const Portal = () => {
         setShowLoadingOverlay(true);
         const apps = await applicationAPI.getUserApplications();
         setApplications(apps || []);
+        hasFetchedApps.current = true;
       } catch (err) {
         console.error("Failed to load applications:", err);
       } finally {
@@ -295,6 +296,33 @@ const Portal = () => {
     setChatInput('');
   };
 
+  const hasFetchedApps = useRef(false);
+
+  // Automated Cleanup: Ensure chat rooms only exist for active applications
+  useEffect(() => {
+    // We only cleanup IF we have successfully fetched the application list at least once
+    // to avoid clearing chat rooms before they've had a chance to match against applications.
+    if (hasFetchedApps.current && scholarships.length > 0) {
+      setScholarships(prev => {
+        const filtered = prev.filter(room => {
+          // Room ID format: applicantNo+proNo
+          const parts = room.id.split('+');
+          if (parts.length < 2) return true; // Keep unidentified room formats
+          
+          const roomProNo = parseInt(parts[1]);
+          // Check if any application matches this provider
+          return applications.some(app => Number(app.pro_no) === roomProNo || Number(app.provider_no) === roomProNo);
+        });
+        
+        // Only update if something was actually filtered out to avoid loops
+        if (filtered.length !== prev.length) {
+          return filtered;
+        }
+        return prev;
+      });
+    }
+  }, [applications, scholarships.length]);
+
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
       sendMessage();
@@ -413,7 +441,24 @@ const Portal = () => {
     setShowLoadingOverlay(true);
     
     try {
+      // 1. Find the application to get the provider ID for the chat room removal
+      const targetApp = applications.find(app => (app.scholarship_no === reqNo || app.req_no === reqNo));
+      const proNo = targetApp?.pro_no;
+      const applicantNo = localStorage.getItem('applicantNo');
+
+      // 2. If we found a provider, send a cancellation message via socket FIRST
+      // This ensures the admin sees WHO cancelled WHAT before the room is detached.
+      if (proNo && applicantNo) {
+        const roomId = `${applicantNo}+${proNo}`;
+        socketService.sendMessage(roomId, applicantNo, `I have cancelled my application for "${scholarshipName}".`);
+        
+        // Remove the room from the applicant's side local state immediately
+        setScholarships(prev => prev.filter(s => s.id !== roomId));
+      }
+
+      // 3. Call the API to delete the application status from the DB
       await applicationAPI.cancel(reqNo);
+
       // Refresh the list after cancellation
       const apps = await applicationAPI.getUserApplications();
       setApplications(apps || []);
@@ -433,7 +478,8 @@ const Portal = () => {
       });
       setShowStatusModal(true);
     } finally {
-      setShowLoadingOverlay(false);
+      setShowLoadingOverlay(true); // Keep overlay for status modal
+      setTimeout(() => setShowLoadingOverlay(false), 500);
       setPendingCancel(null);
     }
   };

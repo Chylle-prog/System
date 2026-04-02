@@ -603,7 +603,11 @@ const StudentInfo = () => {
           setFormData(prev => ({ ...prev, id_vid_url: profile.id_vid_url }));
         }
         
-        // Load final verification ID photo
+        // Load final verification face and ID photo
+        if (profile.face_photo) {
+          setPhotos(prev => ({ ...prev, face_photo: profile.face_photo }));
+          setFaceVerificationPreview(profile.face_photo);
+        }
         if (profile.id_pic) {
           setPhotos(prev => ({ ...prev, mayorValidID_photo: profile.id_pic }));
         }
@@ -1453,41 +1457,16 @@ const StudentInfo = () => {
     setIsSubmitting(true);
 
     try {
-      // ── Automatic Face Verification ────────────────────────────────────────
-      if (photos.face_photo) {
-        const idImg = schoolIdPhotos.front || userProfile?.id_img_front;
-        
-        if (idImg && faceVerified !== 'success') {
-          setLoadingMessage({
-            title: 'Verifying Identity',
-            message: 'Comparing your selfie with your School ID...'
-          });
-          setFaceVerified('verifying');
-
-          try {
-            const result = await applicantAPI.verifyFaceAgainstId(photos.face_photo, idImg);
-            const isTechnical = (result.message?.includes('temporarily unavailable')
-              || result.message?.includes('Low memory mode')
-              || result.message?.includes('service issue'))
-              && !result.message?.includes('Face not detected');
-
-            if (!result.verified) {
-              setFaceVerified('failed');
-              setFaceMatchResult(result);
-              showPromptMessage(`❌ Face Match Error: ${result.message || 'The face photo provided does not match your School ID.'}`, 6000);
-              setIsSubmitting(false);
-              return; // Block submission
-            }
-
-            setFaceVerified('success');
-          } catch (faceErr) {
-            console.error('[FACE] Verification error:', faceErr);
-            setFaceVerified('failed');
-            showPromptMessage(`⚠️ Identity verification service error. Please try again or check your photo clarity.`);
-            setIsSubmitting(false);
-            return;
-          }
-        }
+      // ── Automatic Identity Verification ────────────────────────────────────────
+      setLoadingMessage({
+        title: 'Verifying Identity',
+        message: 'Performing face matching and signature verification...'
+      });
+      
+      const verificationPassed = await verifyDocumentsBeforeStep(4);
+      if (!verificationPassed) {
+        setIsSubmitting(false);
+        return; // Block submission if verification fails
       }
       // ──────────────────────────────────────────────────────────────────────────
       
@@ -2734,11 +2713,26 @@ const StudentInfo = () => {
                 
                 <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
                   {photos.face_photo ? (
-                    <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
-                      <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
-                        <i className="fas fa-check-circle"></i> Photo Captured
+                    <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%'}}>
+                      <div style={{display: 'flex', flexDirection: 'column', gap: '4px'}}>
+                        <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
+                          <i className="fas fa-check-circle"></i> Photo Captured
+                        </div>
+                        {faceVerified && (
+                          <div style={{fontSize: '0.75rem', fontWeight: '500'}}>
+                            {faceVerified === 'verifying' && <span style={{color: '#f39c12'}}><i className="fas fa-spinner fa-spin"></i> Verifying Match...</span>}
+                            {faceVerified === 'success' && <span style={{color: '#27ae60'}}><i className="fas fa-id-badge"></i> Verified {faceMatchResult?.confidence && `(${Math.round(faceMatchResult.confidence * 100)}% match)`}</span>}
+                            {faceVerified === 'failed' && <span style={{color: '#e74c3c'}}><i className="fas fa-exclamation-circle"></i> Match failed</span>}
+                            {faceVerified === 'technical_unavailable' && <span style={{color: '#7f8c8d'}}><i className="fas fa-info-circle"></i> Service Busy - Verified Manually</span>}
+                          </div>
+                        )}
                       </div>
-                      <button type="button" onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); setFaceVerified(null); setTimeout(() => openCamera(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                      <div style={{display: 'flex', gap: '12px'}}>
+                        {faceVerified !== 'success' && (
+                          <button type="button" onClick={() => verifyDocumentsBeforeStep(4)} style={{background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '4px', padding: '4px 10px', fontSize: '0.75rem', fontWeight: '600', cursor: 'pointer'}}>Verify Match</button>
+                        )}
+                        <button type="button" onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); setFaceVerified(null); setTimeout(() => openCamera(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
+                      </div>
                     </div>
                   ) : (
                     <button type="button" onClick={openCamera} style={{border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', width: '100%', justifyContent: 'center'}}>

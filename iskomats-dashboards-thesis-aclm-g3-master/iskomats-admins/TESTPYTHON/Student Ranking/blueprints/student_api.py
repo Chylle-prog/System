@@ -780,6 +780,18 @@ def submit_application():
         conn = get_db()
         cur = conn.cursor()
         
+        # Migration: Ensure created_at column exists in applicant_status
+        cur.execute("""
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                             WHERE table_name='applicant_status' AND column_name='created_at') THEN 
+                    ALTER TABLE applicant_status ADD COLUMN created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+                END IF;
+            END $$;
+        """)
+        conn.commit()
+        
         # Get applicant data
         cur.execute('SELECT * FROM applicants WHERE applicant_no = %s', (current_user_id,))
         applicant = cur.fetchone()
@@ -918,9 +930,10 @@ def submit_application():
         # ── CREATE/UPDATE STATUS ──────────────────────────────────────────────
         cur.execute(
             """
-            INSERT INTO applicant_status (scholarship_no, applicant_no, is_accepted)
-            VALUES (%s, %s, NULL)
-            ON CONFLICT (scholarship_no, applicant_no) DO NOTHING
+            INSERT INTO applicant_status (scholarship_no, applicant_no, is_accepted, created_at)
+            VALUES (%s, %s, NULL, NOW())
+            ON CONFLICT (scholarship_no, applicant_no) 
+            DO UPDATE SET created_at = EXCLUDED.created_at, is_accepted = NULL
             """,
             (scholarship_id, current_user_id),
         )
@@ -1111,23 +1124,10 @@ def cancel_application(scholarship_no):
             (scholarship_no, request.user_no),
         )
         
-        # Delete associated messages between applicant and provider
-        cur.execute(
-            """
-            SELECT pro_no FROM scholarships WHERE req_no = %s
-            """,
-            (scholarship_no,),
-        )
-        scholarship_row = cur.fetchone()
-        if scholarship_row:
-            pro_no = scholarship_row['pro_no']
-            # Delete all messages between applicant and provider
-            cur.execute(
-                """
-                DELETE FROM message WHERE applicant_no = %s AND pro_no = %s
-                """,
-                (request.user_no, pro_no),
-            )
+        # We NO LONGER delete associated messages between applicant and provider 
+        # so that the cancellation notice can be read by the admin.
+        
+        conn.commit()
         
         conn.commit()
 
@@ -1153,12 +1153,13 @@ def get_my_applications():
                 s.req_no as scholarship_no,
                 s.req_no,
                 s.deadline,
+                s.pro_no,
                 CASE
                     WHEN ast.is_accepted = TRUE THEN 'Approved'
                     WHEN ast.is_accepted = FALSE THEN 'Rejected'
                     ELSE 'Pending'
                 END as status,
-                NOW() as created_at
+                ast.created_at
             FROM applicant_status ast
             JOIN scholarships s ON ast.scholarship_no = s.req_no
             WHERE ast.applicant_no = %s
