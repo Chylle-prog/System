@@ -100,17 +100,36 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
     if not text:
         return False, "Please retry to upload again", "", 0.0
     
-    expected_name = expected_name.lower()
-    name_found = expected_name in text
-    addr_found = True
+    # ─── Fuzzy Name Matching ──────────────────────────────────────────────
+    # Instead of strict substring, we check if most words of the name appear
+    name_words = [w.strip() for w in expected_name.lower().split() if len(w.strip()) > 2]
+    if not name_words:
+        name_words = [w.strip() for w in expected_name.lower().split() if w.strip()]
+        
+    found_count = 0
+    for word in name_words:
+        if word in text:
+            found_count += 1
+    
+    # Require at least 80% of name words to be present
+    match_ratio = found_count / len(name_words) if name_words else 0
+    name_verified = match_ratio >= 0.8
+    
+    # ─── Address Matching (if provided) ──────────────────────────────────
+    addr_verified = True
     if expected_address:
         expected_address = expected_address.lower()
-        addr_found = expected_address in text
+        addr_verified = expected_address in text
     
-    if name_found and addr_found:
+    if name_verified and addr_verified:
         return True, "Name and Address verified via OCR.", text, 1.0
-    elif name_found:
+    elif name_verified:
         return False, "Address verification doesn't match", text, 0.7
+    
+    # If match ratio is decent but below 80%, return a clearer error
+    if match_ratio >= 0.5:
+        return False, f"Identity check: Name partially matched ({match_ratio:.0%}). Please ensure image is clear.", text, match_ratio
+        
     return False, "Identity verification doesn't match", text, 0.0
 
 def extract_school_year(image_bytes):

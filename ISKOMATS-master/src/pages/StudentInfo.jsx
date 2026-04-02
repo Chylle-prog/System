@@ -2222,7 +2222,7 @@ const StudentInfo = () => {
                       ) : (
                         <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload photo</div>
                       )}
-                      <input ref={indigencyPhotoInputRef} type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 1} style={{display: 'none'}} />
+                      <input ref={indigencyPhotoInputRef} type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} style={{display: 'none'}} />
                     </div>
                   </div>
                   <div className="form-group" style={{marginBottom: 0}}>
@@ -2510,7 +2510,7 @@ const StudentInfo = () => {
                         ) : (
                           <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload photo</div>
                         )}
-                        <input ref={coePhotoInputRef} type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} style={{display: 'none'}} />
+                        <input ref={coePhotoInputRef} type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} style={{display: 'none'}} />
                       </div>
                     </div>
                     <div className="form-group" style={{marginBottom: 0}}>
@@ -2558,7 +2558,7 @@ const StudentInfo = () => {
                         ) : (
                           <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload photo</div>
                         )}
-                        <input ref={gradesPhotoInputRef} type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} style={{display: 'none'}} />
+                        <input ref={gradesPhotoInputRef} type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} style={{display: 'none'}} />
                       </div>
                     </div>
                     <div className="form-group" style={{marginBottom: 0}}>
