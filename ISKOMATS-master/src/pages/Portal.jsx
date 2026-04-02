@@ -1690,8 +1690,9 @@ const Portal = () => {
             opacity: 1;
             transform: translateX(0);
           }
+        }
 
-          .announcement-modal-overlay {
+        .announcement-modal-overlay {
             position: fixed;
             top: 0;
             left: 0;
@@ -1816,7 +1817,6 @@ const Portal = () => {
             height: 90vh;
             right: 2.5%;
           }
-        }
 
         @media (max-width: 480px) {
           .navbar {

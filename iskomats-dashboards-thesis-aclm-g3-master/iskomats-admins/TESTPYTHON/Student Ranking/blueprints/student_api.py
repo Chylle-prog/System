@@ -1254,16 +1254,19 @@ def get_announcements():
         """)
         has_status_updated = cur.fetchone() is not None
 
-        # Check if 'ann_date' column exists (alternative date column name)
+        # Check if 'time_added' column exists 
         cur.execute("""
             SELECT column_name
             FROM information_schema.columns
-            WHERE table_name = 'announcements' AND column_name = 'ann_date'
+            WHERE table_name = 'announcements' AND column_name = 'time_added'
         """)
-        has_ann_date = cur.fetchone() is not None
+        has_time_added = cur.fetchone() is not None
 
         # Build the date expression based on what columns actually exist
-        if has_status_updated:
+        if has_time_added:
+            date_col = 'a.time_added'
+            order_col = 'a.time_added DESC'
+        elif has_status_updated:
             date_col = 'a.status_updated'
             order_col = 'a.status_updated DESC'
         elif has_ann_date:
@@ -1275,7 +1278,7 @@ def get_announcements():
 
         # Join announcements with scholarship_providers to get the name of the provider
         cur.execute(f"""
-            SELECT a.ann_no, a.ann_title, a.ann_message, {date_col} AS ann_date, COALESCE(sp.provider_name, 'Unknown Provider') AS pro_name
+            SELECT a.ann_no, a.ann_title, a.ann_message, {date_col} AS ann_date, {date_col} AS time_added, COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name
             FROM announcements a
             LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
             ORDER BY {order_col}
