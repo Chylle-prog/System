@@ -986,13 +986,13 @@ def ocr_check():
         grades_doc_param = data.get('grades_doc') or data.get('gradesDoc')
 
         # Request-provided names take precedence over DB values (supports verifier bench testing)
-        first_name = data.get('first_name') or data.get('firstName') or applicant.get('first_name', '')
-        last_name = data.get('last_name') or data.get('lastName') or applicant.get('last_name', '')
-        town_city = data.get('town_city') or data.get('townCity') or applicant.get('town_city_municipality', '')
-        school_name = data.get('school_name') or data.get('schoolName') # New
-        course = data.get('course') # New
-        expected_gpa = data.get('gpa') or data.get('expectedGPA') # New
-        expected_year = data.get('expected_year') or data.get('expectedYear') # New
+        first_name = (data.get('first_name') or data.get('firstName') or applicant.get('first_name', '')).strip()
+        last_name = (data.get('last_name') or data.get('lastName') or applicant.get('last_name', '')).strip()
+        town_city = (data.get('town_city') or data.get('townCity') or applicant.get('town_city_municipality', '')).strip()
+        school_name = (data.get('school_name') or data.get('schoolName') or '').strip() # New
+        course = (data.get('course') or '').strip() # New
+        expected_gpa = (data.get('gpa') or data.get('expectedGPA') or '').strip() # New
+        expected_year = (data.get('expected_year') or data.get('expectedYear') or '').strip() # New
 
 
         # Helper to get bytes

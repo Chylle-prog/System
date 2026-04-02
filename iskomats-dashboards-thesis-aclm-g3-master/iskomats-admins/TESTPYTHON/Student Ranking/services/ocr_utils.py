@@ -118,8 +118,21 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
     # ─── Address Matching (if provided) ──────────────────────────────────
     addr_verified = True
     if expected_address:
-        expected_address = expected_address.lower()
-        addr_verified = expected_address in text
+        expected_address_lower = expected_address.lower()
+        # 1. Strict Substring Match (Fallback/Fast-pass)
+        if expected_address_lower in text:
+            addr_verified = True
+        else:
+            # 2. Fuzzy Word-based matching
+            addr_words = [w.strip() for w in expected_address_lower.split() if len(w.strip()) > 2]
+            if not addr_words:
+                addr_words = [w.strip() for w in expected_address_lower.split() if w.strip()]
+                
+            found_addr_count = sum(1 for word in addr_words if word in text)
+            addr_match_ratio = found_addr_count / len(addr_words) if addr_words else 0
+            
+            # Require at least 50% of address words to be present for fuzzy pass
+            addr_verified = addr_match_ratio >= 0.5
     
     if name_verified and addr_verified:
         return True, "Name and Address verified via OCR.", text, 1.0
