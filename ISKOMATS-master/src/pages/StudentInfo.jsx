@@ -262,6 +262,8 @@ const StudentInfo = () => {
     schoolIdFront: null,
     schoolIdBack: null,
     id_vid_url: '',
+    id_front: null,
+    id_back: null,
     
     // Certification
     privacyConsent: false,
@@ -451,7 +453,7 @@ const StudentInfo = () => {
     document.head.appendChild(googleFontsSheet);
 
     // Image Compression Utility
-    const compressImage = (file, maxWidth = 1024, quality = 0.6) => {
+    const compressImage = (file, maxWidth = 800, quality = 0.5) => {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
@@ -562,11 +564,18 @@ const StudentInfo = () => {
         }
         
         // Load school ID photos (front and back)
-        if (profile.id_img_front) {
-          setSchoolIdPhotos(prev => ({ ...prev, front: profile.id_img_front }));
+        const idFront = profile.id_img_front || profile.id_front;
+        const idBack = profile.id_img_back || profile.id_back;
+        
+        if (idFront) {
+          setSchoolIdPhotos(prev => ({ ...prev, front: idFront }));
+          setPhotos(prev => ({ ...prev, id_front: idFront }));
+          setFormData(prev => ({ ...prev, schoolIdFront: idFront, id_front: idFront }));
         }
-        if (profile.id_img_back) {
-          setSchoolIdPhotos(prev => ({ ...prev, back: profile.id_img_back }));
+        if (idBack) {
+          setSchoolIdPhotos(prev => ({ ...prev, back: idBack }));
+          setPhotos(prev => ({ ...prev, id_back: idBack }));
+          setFormData(prev => ({ ...prev, schoolIdBack: idBack, id_back: idBack }));
         }
         
         // Load documentary requirement photos
@@ -589,6 +598,9 @@ const StudentInfo = () => {
         }
         if (profile.enrollment_certificate_vid_url) {
           setFormData(prev => ({ ...prev, mayorCOE_video: profile.enrollment_certificate_vid_url }));
+        }
+        if (profile.id_vid_url) {
+          setFormData(prev => ({ ...prev, id_vid_url: profile.id_vid_url }));
         }
         
         // Load final verification ID photo
@@ -1125,7 +1137,7 @@ const StudentInfo = () => {
         }
         
         // Only verify School ID (front) for name - don't verify COE or Grades
-        if (schoolIdFront) {
+        if (schoolIdFront && ocrVerified !== 'success') {
           try {
             const result = await applicantAPI.ocrCheck(schoolIdFront, null, null, null, null);
             
@@ -1156,76 +1168,74 @@ const StudentInfo = () => {
         // Step 4: Verify Face Photo and Signature
         const facePhoto = photos.face_photo || faceVerificationPreview || formData.face_photo || userProfile?.face_photo;
         const signature = drawnSignature || signaturePreview || formData.signature_data || userProfile?.signature_data;
-        const idFront = schoolIdPhotos.front || formData.id_front || userProfile?.id_front;
-        const idBack = schoolIdPhotos.back || formData.id_back || userProfile?.id_back;
+        const idFront = schoolIdPhotos.front || photos.id_front || formData.id_front || userProfile?.id_front;
+        const idBack = schoolIdPhotos.back || photos.id_back || formData.id_back || userProfile?.id_back;
         
         if (!facePhoto && !signature) {
           return true; // No documents to verify, allow progression
         }
-        
-        let faceSuccessful = true;
-        let signatureSuccessful = true;
-        
-        // Verify face against ID
-        if (facePhoto && idFront) {
+
+        const verifications = [];
+
+        // Parallel face verification if not already success
+        if (facePhoto && idFront && faceVerified !== 'success') {
           setFaceVerified('verifying');
-          
-          try {
-            const faceResult = await applicantAPI.verifyFaceAgainstId(facePhoto, idFront);
-            
-            if (faceResult.verified) {
-              setFaceVerified('success');
-              showPromptMessage('✅ Face verification successful!');
-            } else {
-              setFaceVerified('failed');
-              faceSuccessful = false;
-              const errorMsg = faceResult.message || 'Face verification failed. Please ensure your face is clearly visible in the photo.';
-              showPersistentError(`⚠️ ${errorMsg}`);
-            }
-          } catch (err) {
-            console.error('Face verification error:', err);
-            if (err.message?.includes('not available') || err.response?.status === 503) {
-              setFaceVerified('technical_unavailable');
-              showPromptMessage('ℹ️ Face verification temporarily unavailable. Proceeding with caution...');
-            } else {
-              const errorMsg = err.response?.data?.message || 'Could not verify face.';
-              showPersistentError(`⚠️ ${errorMsg}`);
-              faceSuccessful = false;
-            }
-          }
+          verifications.push(
+            applicantAPI.verifyFaceAgainstId(facePhoto, idFront)
+              .then(res => {
+                if (res.verified) {
+                  setFaceVerified('success');
+                  return { success: true };
+                } else {
+                  setFaceVerified('failed');
+                  return { success: false, message: res.message || 'Face matching failed' };
+                }
+              })
+              .catch(err => {
+                if (err.message?.includes('not available') || err.response?.status === 503) {
+                  setFaceVerified('technical_unavailable');
+                  return { success: true, note: 'unavailable' };
+                }
+                setFaceVerified('failed');
+                return { success: false, message: `Face verification error: ${err.message}` };
+              })
+          );
         }
-        
-        // Verify signature against ID back
-        if (signature && idBack) {
+
+        // Parallel signature verification if not already success
+        if (signature && idBack && signatureVerified !== 'success') {
           setSignatureVerified('verifying');
-          
-          try {
-            const signatureResult = await applicantAPI.verifySignatureAgainstIdBack(signature, idBack);
-            
-            if (signatureResult.verified) {
-              setSignatureVerified('success');
-              showPromptMessage('✅ Signature verification successful!');
-            } else {
-              setSignatureVerified('failed');
-              signatureSuccessful = false;
-              const errorMsg = signatureResult.message || 'Signature verification failed. Please ensure your signature is clearly visible.';
-              showPersistentError(`⚠️ ${errorMsg}`);
-            }
-          } catch (err) {
-            console.error('Signature verification error:', err);
-            const errorMsg = err.response?.data?.message || 'Could not verify signature.';
-            showPersistentError(`⚠️ ${errorMsg}`);
-            signatureSuccessful = false;
+          verifications.push(
+            applicantAPI.verifySignatureAgainstIdBack(signature, idBack)
+              .then(res => {
+                if (res.verified) {
+                  setSignatureVerified('success');
+                  return { success: true };
+                } else {
+                  setSignatureVerified('failed');
+                  return { success: false, message: res.message || 'Signature matching failed' };
+                }
+              })
+              .catch(err => {
+                setSignatureVerified('failed');
+                return { success: false, message: `Signature matching error: ${err.message}` };
+              })
+          );
+        }
+
+        if (verifications.length > 0) {
+          const results = await Promise.all(verifications);
+          const failure = results.find(r => !r.success);
+          if (failure) {
+            showPersistentError(`⚠️ ${failure.message}`);
+            return false;
           }
         }
         
-        // Block progression if either face or signature failed verification
-        if (!faceSuccessful || !signatureSuccessful) {
-          return false;
-        }
-        
-        return true; // Allow progression if all verifications passed or were unavailable
+        return true;
       }
+
+
       
       return true;
     } catch (err) {
@@ -1292,8 +1302,12 @@ const StudentInfo = () => {
     }
 
     if (currentStep === 3) {
-      if ((!schoolIdPhotos.front && !userProfile?.has_id_img_front) || (!schoolIdPhotos.back && !userProfile?.has_id_img_back)) {
+      if ((!schoolIdPhotos.front && !userProfile?.id_img_front && !userProfile?.id_front) || (!schoolIdPhotos.back && !userProfile?.id_img_back && !userProfile?.id_back)) {
         showPromptMessage('⚠️ Please upload both front and back of your School ID.');
+        return;
+      }
+      if (!formData.id_vid_url && !userProfile?.id_vid_url) {
+        showPromptMessage('⚠️ Please upload your ID Video.');
         return;
       }
     }
@@ -2463,7 +2477,7 @@ const StudentInfo = () => {
                   <div className="form-group" style={{position: 'relative'}}>
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>Front Side</label>
                     <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      <input ref={schoolIdFrontInputRef} type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} required={currentStep === 3} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
+                      <input ref={schoolIdFrontInputRef} type="file" name="id_front" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} required={currentStep === 3 && !schoolIdPhotos.front} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
                       <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none', position: 'absolute', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'}}>
                         {schoolIdPhotos.front ? (
                           <img src={schoolIdPhotos.front} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Front Preview" />
@@ -2482,7 +2496,7 @@ const StudentInfo = () => {
                   <div className="form-group" style={{position: 'relative'}}>
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>Back Side</label>
                     <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      <input ref={schoolIdBackInputRef} type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} required={currentStep === 3} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
+                      <input ref={schoolIdBackInputRef} type="file" name="id_back" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} required={currentStep === 3 && !schoolIdPhotos.back} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
                       <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none', position: 'absolute', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'}}>
                         {schoolIdPhotos.back ? (
                           <img src={schoolIdPhotos.back} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Back Preview" />
@@ -2501,7 +2515,7 @@ const StudentInfo = () => {
                   <div className="form-group" style={{position: 'relative'}}>
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>ID Video <span style={{color: '#e74c3c'}}>*</span></label>
                     <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      <input ref={idVideoInputRef} type="file" accept="video/*" onChange={(e) => handleVideoUpload('id_vid_url', e)} required={currentStep === 3} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
+                      <input ref={idVideoInputRef} type="file" name="id_vid_url" accept="video/*" onChange={(e) => handleVideoUpload('id_vid_url', e)} required={currentStep === 3 && !formData.id_vid_url} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
                       <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none'}}>
                         {formData.id_vid_url ? (
                           <>
@@ -2745,7 +2759,7 @@ const StudentInfo = () => {
                   <div className="form-group" style={{position: 'relative'}}>
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>Front Side</label>
                     <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      <input ref={schoolIdFrontInputRef} type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} required={currentStep === 4} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
+                      <input ref={schoolIdFrontInputRef} type="file" name="id_front" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} required={currentStep === 4 && !schoolIdPhotos.front} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
                       <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none', position: 'absolute', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'}}>
                         {schoolIdPhotos.front ? (
                           <img src={schoolIdPhotos.front} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Front Preview" />
@@ -2764,7 +2778,7 @@ const StudentInfo = () => {
                   <div className="form-group" style={{position: 'relative'}}>
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>Back Side</label>
                     <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      <input ref={schoolIdBackInputRef} type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} required={currentStep === 4} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
+                      <input ref={schoolIdBackInputRef} type="file" name="id_back" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} required={currentStep === 4 && !schoolIdPhotos.back} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
                       <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none', position: 'absolute', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'}}>
                         {schoolIdPhotos.back ? (
                           <img src={schoolIdPhotos.back} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Back Preview" />
@@ -2783,7 +2797,7 @@ const StudentInfo = () => {
                   <div className="form-group" style={{position: 'relative'}}>
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>ID Video <span style={{color: '#e74c3c'}}>*</span></label>
                     <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      <input ref={idVideoInputRef} type="file" accept="video/*" onChange={(e) => handleVideoUpload('id_vid_url', e)} required={currentStep === 4} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
+                      <input ref={idVideoInputRef} type="file" name="id_vid_url" accept="video/*" onChange={(e) => handleVideoUpload('id_vid_url', e)} required={currentStep === 4 && !formData.id_vid_url} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
                       <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none'}}>
                         {formData.id_vid_url ? (
                           <>

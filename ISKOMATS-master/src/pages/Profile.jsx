@@ -107,23 +107,22 @@ const Profile = () => {
 
   useEffect(() => {
     if (currentUser && userProfile) {
-      // Load existing profile data - handle both old and new field names
+      // Load existing profile data - handle snake_case and camelCase field names consistently
       setFormData({
-        firstName: userProfile.first_name || '',
-        middleName: userProfile.middle_name || '',
-        lastName: userProfile.last_name || '',
-        birthdate: userProfile.birthdate || '',
-        school: userProfile.school || '',
-        mobileNo: userProfile.mobile_no || '',
-        streetBrgy: userProfile.street_brgy || '',
-        townCityMunicipality: 'Lipa City',
-        province: 'Batangas',
-        zipCode: '4217',
+        firstName: userProfile.first_name || userProfile.firstName || '',
+        middleName: userProfile.middle_name || userProfile.middleName || '',
+        lastName: userProfile.last_name || userProfile.lastName || '',
+        birthdate: userProfile.birthdate || userProfile.dateOfBirth || '',
+        school: userProfile.school || userProfile.schoolName || '',
+        mobileNo: userProfile.mobile_no || userProfile.mobileNumber || '',
+        streetBrgy: userProfile.street_brgy || userProfile.streetBarangay || '',
+        townCityMunicipality: userProfile.town_city_municipality || userProfile.townCity || 'Lipa City',
+        province: userProfile.province || 'Batangas',
+        zipCode: userProfile.zip_code || userProfile.zipCode || '4217',
         profilePicture: null
       });
       // Restore saved profile picture (base64 from backend), don't reset to null
       setProfilePicture(userProfile.profile_picture || null);
-      setShowEditForm(false);
     } else if (currentUser) {
       // New user, show edit form
       setShowEditForm(true);
@@ -196,20 +195,31 @@ const Profile = () => {
       // Update profile via API
       const updatedData = await applicantAPI.updateProfile(profileData);
 
-      // Re-fetch the full profile from the server so all fields are populated
-      const freshProfile = await applicantAPI.getProfile();
+      // Create a local merged profile to update UI immediately
+      const locallyUpdatedProfile = {
+        ...userProfile,
+        first_name: formData.firstName,
+        middle_name: formData.middleName,
+        last_name: formData.lastName,
+        birthdate: formData.birthdate,
+        school: formData.school,
+        mobile_no: formData.mobileNo,
+        street_brgy: formData.streetBrgy,
+        town_city_municipality: formData.townCityMunicipality,
+        province: formData.province,
+        zip_code: formData.zipCode,
+        profile_picture: profilePicture
+      };
 
-      // Preserve the profile picture we already have in state (server may not return binary)
-      const mergedProfile = { ...freshProfile };
-      if (profilePicture) {
-        mergedProfile.profile_picture = profilePicture;
-      }
-      setUserProfile(mergedProfile);
+      setUserProfile(locallyUpdatedProfile);
 
       // Show success modal
       setShowSuccessModal(true);
 
-      // After success, close edit form and hide loading overlay
+      // After success, wait briefly then close modal and hide loading overlay
+      // We don't automatically close the edit form here to prevent UI flicker; 
+      // the useEffect will handle the transition based on the userProfile state change if needed,
+      // but typically we'll want a deliberate close.
       setTimeout(() => {
         setShowSuccessModal(false);
         setShowEditForm(false);
@@ -981,7 +991,7 @@ const Profile = () => {
                 <label>Town / City / Municipality</label>
                 <input
                   type="text"
-                  value={userProfile.town_city_municipality || ''}
+                  value={userProfile.town_city_municipality || userProfile.townCity || ''}
                   disabled
                   style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
                 />
@@ -999,7 +1009,7 @@ const Profile = () => {
                 <label>Zip Code</label>
                 <input
                   type="text"
-                  value={userProfile.zip_code || ''}
+                  value={userProfile.zip_code || userProfile.zipCode || ''}
                   disabled
                   style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
                 />
@@ -1194,27 +1204,11 @@ const Profile = () => {
                   <label>Town / City / Municipality</label>
                   <input
                     type="text"
-                    readOnly
-                    value="Lipa City"
-                    style={{background: '#f0f0f0', cursor: 'not-allowed'}}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Province</label>
-                  <input
-                    type="text"
-                    readOnly
-                    value="Batangas"
-                    style={{background: '#f0f0f0', cursor: 'not-allowed'}}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Zip Code</label>
-                  <input
-                    type="text"
-                    readOnly
-                    value="4217"
-                    style={{background: '#f0f0f0', cursor: 'not-allowed'}}
+                    name="townCityMunicipality"
+                    value={formData.townCityMunicipality}
+                    onChange={handleInputChange}
+                    placeholder="e.g., Lipa City"
+                    required
                   />
                 </div>
                 <div className="form-group">
@@ -1224,7 +1218,7 @@ const Profile = () => {
                     name="province"
                     value={formData.province}
                     onChange={handleInputChange}
-                    placeholder="e.g., Metro Manila"
+                    placeholder="e.g., Batangas"
                     required
                   />
                 </div>
@@ -1235,7 +1229,7 @@ const Profile = () => {
                     name="zipCode"
                     value={formData.zipCode}
                     onChange={handleInputChange}
-                    placeholder="e.g., 1000"
+                    placeholder="e.g., 4217"
                     required
                   />
                 </div>
