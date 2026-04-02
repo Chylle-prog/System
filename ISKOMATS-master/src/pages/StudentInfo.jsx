@@ -2403,6 +2403,11 @@ const StudentInfo = () => {
                 <i className="fas fa-graduation-cap" style={{marginRight: '12px', fontSize: '1.1rem'}}></i>3. Educational Information
               </h3>
 
+              <div className="form-group">
+                <label>Full Name</label>
+                <input type="text" value={`${formData.firstName} ${formData.middleName ? formData.middleName + ' ' : ''}${formData.lastName}`} readOnly style={{background: '#f1f5f9', cursor: 'not-allowed', color: '#64748b', fontWeight: '500'}} />
+              </div>
+
               <div className="form-row">
                 <div className="form-group">
                   <label>School ID Number <span style={{color: '#e74c3c'}}>*</span></label>

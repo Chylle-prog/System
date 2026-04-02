@@ -238,7 +238,22 @@ const App = () => {
             <div key={idx} className="card" style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '1rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                 <span style={{ fontWeight: '700', color: '#818cf8' }}>{detail.doc} Check</span>
-                {detail.verified ? <CheckCircle2 size={16} color="#10b981" /> : <XCircle size={16} color="#ef4444" />}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {detail.school_year && (
+                    <span style={{ 
+                      fontSize: '0.65rem', 
+                      background: 'rgba(129, 140, 248, 0.2)', 
+                      color: '#a5b4fc', 
+                      padding: '2px 6px', 
+                      borderRadius: '4px',
+                      border: '1px solid rgba(129, 140, 248, 0.3)',
+                      fontWeight: '600'
+                    }}>
+                      A.Y. {detail.school_year}
+                    </span>
+                  )}
+                  {detail.verified ? <CheckCircle2 size={16} color="#10b981" /> : <XCircle size={16} color="#ef4444" />}
+                </div>
               </div>
               <p style={{ fontSize: '0.8rem', color: detail.verified ? '#f8fafc' : '#ef4444' }}>{detail.message}</p>
               {detail.raw_text && (

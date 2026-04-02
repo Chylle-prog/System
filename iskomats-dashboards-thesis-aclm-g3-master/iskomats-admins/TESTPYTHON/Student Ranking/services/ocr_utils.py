@@ -135,8 +135,23 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
 def extract_school_year(image_bytes):
     text = _run_tesseract(image_bytes)
     import re
-    match = re.search(r'20\d{2}-20\d{2}', text)
+    # Match 20XX-20XX or just 20XX
+    match = re.search(r'20\d{2}(?:\s*-\s*20\d{2})?', text)
     return match.group(0) if match else None
+
+def is_current_school_year(year_str, current_year=2026):
+    if not year_str: return False
+    # Today is 2026-04-03. Current active A.Y. is 2025-2026.
+    # Documents for this year will contain '2026'.
+    # We also allow 2026-2027 if the user is advanced.
+    import re
+    years = re.findall(r'20\d{2}', year_str)
+    if not years: return False
+    
+    # Check if the current year (2026) is mentioned in the academic year pair/string
+    return any(int(y) == current_year for y in years)
+
+
 
 # ─── Face verification ────────────────────────────────────────────────────────
 def verify_face_with_id(user_photo_bytes, id_photo_bytes):

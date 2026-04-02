@@ -14,7 +14,7 @@ import cv2
 import numpy as np
 from services.auth_service import get_secret_key
 from services.db_service import get_db
-from services.ocr_utils import verify_id_with_ocr, verify_face_with_id, extract_school_year, verify_signature_against_id, save_signature_profile
+from services.ocr_utils import verify_id_with_ocr, verify_face_with_id, extract_school_year, is_current_school_year, verify_signature_against_id, save_signature_profile
 
 
 student_api_bp = Blueprint('student_api', __name__, url_prefix='/api/student')
@@ -1013,6 +1013,18 @@ def ocr_check():
                 if v and not kw_found:
                     v = False
                     msg = "Please retry to upload again"
+                
+                # Verify academic year is current
+                year_label = extract_school_year(doc_bytes)
+                year_ok = is_current_school_year(year_label)
+                
+                if v and not year_ok:
+                    v = False
+                    year_msg = f"School year: {year_label}" if year_label else "No school year found in document"
+                    msg = f"{msg} | {year_msg} (Verification requires current A.Y. 2025-2026)"
+                elif v and year_ok:
+                    msg = f"{msg} | School year: {year_label}"
+
                 results.append({'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw})
                 if not v: overall_verified = False
 
@@ -1032,21 +1044,19 @@ def ocr_check():
                     v = False
                     msg = "Please retry to upload again"
                 
-                # Additionally verify the school year / semester is current
-                import re
-                year_match = re.search(r'20\d{2}-20\d{2}', raw)
-                year_label = year_match.group(0) if year_match else None
-                year_ok = year_label is not None
-                year_msg = f"School year: {year_label}" if year_ok else "No school year found in document"
+                # Additionally verify the school year is current (Semester is dismissed)
+                year_label = extract_school_year(doc_bytes)
+                year_ok = is_current_school_year(year_label)
                 
                 if v and not year_ok:
                     v = False
-                    msg = f"{msg} | {year_msg}"
+                    year_msg = f"School year: {year_label}" if year_label else "No school year found in document"
+                    msg = f"{msg} | {year_msg} (Verification requires current A.Y. 2025-2026)"
                 elif v and year_ok:
-                    msg = f"{msg} | {year_msg}"
+                    msg = f"{msg} | School year: {year_label}"
                     
                 results.append({'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw,
-                                'school_year': year_label if year_label else None})
+                                'school_year': year_label})
                 if not v: overall_verified = False
 
         # ── Certificate of Indigency / Address ────────────────────────────────
