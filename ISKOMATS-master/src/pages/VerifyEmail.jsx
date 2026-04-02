@@ -116,6 +116,38 @@ const VerifyEmail = () => {
     navigate('/login');
   };
 
+  const handleResendEmail = async () => {
+    if (!email) {
+      setFormData({
+        ...formData,
+        error: "Email address is required",
+      });
+      return;
+    }
+
+    setFormData({ ...formData, isLoading: true, error: "" });
+
+    try {
+      await authAPI.resendVerificationEmail(email);
+      setFormData({
+        ...formData,
+        isLoading: false,
+        success: true,
+        error: "",
+      });
+      // Reset success message after 3 seconds
+      setTimeout(() => {
+        setFormData((prev) => ({ ...prev, success: false }));
+      }, 3000);
+    } catch (error) {
+      setFormData({
+        ...formData,
+        isLoading: false,
+        error: error.message || "Failed to resend verification email",
+      });
+    }
+  };
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -314,6 +346,57 @@ const VerifyEmail = () => {
                   {formData.isLoading ? "Verifying..." : "Verify Email"}
                 </button>
               </form>
+
+              {formData.success && (
+                <div style={{
+                  backgroundColor: '#ecfdf5',
+                  color: '#047857',
+                  padding: '12px',
+                  borderRadius: '6px',
+                  marginBottom: '20px',
+                  fontSize: '14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px'
+                }}>
+                  <span>✓</span>
+                  Verification email has been resent to {email}
+                </div>
+              )}
+
+              <div style={{ textAlign: 'center' }}>
+                <button
+                  type="button"
+                  onClick={handleResendEmail}
+                  disabled={formData.isLoading}
+                  style={{
+                    width: '100%',
+                    padding: '12px 20px',
+                    backgroundColor: 'transparent',
+                    color: '#8B4513',
+                    border: '2px solid #8B4513',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    cursor: formData.isLoading ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.3s ease',
+                    marginBottom: '15px',
+                    opacity: formData.isLoading ? 0.6 : 1
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!formData.isLoading) {
+                      e.target.style.backgroundColor = '#fff1ec';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!formData.isLoading) {
+                      e.target.style.backgroundColor = 'transparent';
+                    }
+                  }}
+                >
+                  {formData.isLoading ? "Sending..." : "Resend Verification Email"}
+                </button>
+              </div>
 
               <div style={{ textAlign: 'center' }}>
                 <button

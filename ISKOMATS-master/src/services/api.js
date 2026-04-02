@@ -174,6 +174,18 @@ export const authAPI = {
       body: JSON.stringify({ token }),
     });
   },
+
+  /**
+   * Resend verification email
+   * @param {string} email - User email
+   * @returns {Promise}
+   */
+  resendVerificationEmail: async (email) => {
+    return makeRequest('/student/auth/resend-verification-email', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
 };
 
 /**

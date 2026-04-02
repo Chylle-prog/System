@@ -2183,7 +2183,6 @@ const Portal = () => {
                       key={ann.ann_no || idx} 
                       className="community-post" 
                       style={{borderLeft: '4px solid var(--primary)', paddingLeft: '1.2rem'}}
-                      onClick={() => openAnnouncement(ann)}
                     >
                       <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.8rem'}}>
                         <div style={{flex: 1}}>
@@ -2195,9 +2194,37 @@ const Portal = () => {
                           {ann.created_at || 'Recent'}
                         </span>
                       </div>
-                      <p style={{marginBottom: '0.5rem', color: 'var(--text-soft)', fontSize: '0.95rem', lineHeight: '1.6', display: '-webkit-box', WebkitLineClamp: '3', WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
+                      <p style={{marginBottom: '1rem', color: 'var(--text-soft)', fontSize: '0.95rem', lineHeight: '1.6', display: '-webkit-box', WebkitLineClamp: '3', WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
                         {ann.ann_message}
                       </p>
+                      <button 
+                        onClick={() => openAnnouncement(ann)}
+                        style={{
+                          background: 'var(--primary-gradient)',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '8px',
+                          padding: '0.6rem 1.2rem',
+                          fontSize: '0.9rem',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          transition: 'all 0.3s ease',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                          boxShadow: '0 4px 12px rgba(79, 13, 0, 0.15)'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.target.style.transform = 'translateY(-2px)';
+                          e.target.style.boxShadow = '0 6px 16px rgba(79, 13, 0, 0.25)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.transform = 'translateY(0)';
+                          e.target.style.boxShadow = '0 4px 12px rgba(79, 13, 0, 0.15)';
+                        }}
+                      >
+                        <i className="fas fa-eye"></i> View Details
+                      </button>
                     </div>
                   ))
                 ) : (
