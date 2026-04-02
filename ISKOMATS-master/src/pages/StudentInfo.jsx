@@ -1033,42 +1033,175 @@ const StudentInfo = () => {
   };
 
   const verifyDocumentsBeforeStep = async (step) => {
-    // Blocking verification that waits for completion before allowing step progression
-    if (step === 3) {
-      // Step 3: Verify certificate of enrollment and grades documents
-      const coeDoc = photos.mayorCOE_photo || formData.mayorCOE_photo || userProfile?.enrollment_certificate_doc;
-      const gradesDoc = photos.mayorGrades_photo || formData.mayorGrades_photo || userProfile?.grades_doc;
-      
-      if (!coeDoc && !gradesDoc) return true; // No documents to verify
-      
-      try {
-        setLoadingMessage({ title: 'Verifying Documents', message: 'Analyzing your certificate and grades documents...' });
-        setIsSavingStep(true);
+    // Perform verification based on the current step
+    try {
+      if (step === 1) {
+        // Step 1: Verify ID Picture
+        const idPicture = idPicturePreview || formData.profile_picture || userProfile?.profile_picture;
         
-        // Perform blocking OCR verification
-        const result = await applicantAPI.ocrCheck(null, null);
-        
-        if (result.verified) {
-          setMayorCOEVerified('success');
-          setMayorGradesVerified('success');
-          return true;
-        } else {
-          // Mark documents as failed but allow progression with warning
-          setMayorCOEVerified('failed');
-          setMayorGradesVerified('failed');
-          showPromptMessage('⚠️ Document verification in progress. We\'ll continue verifying in the background.');
-          return true;
+        if (!idPicture) {
+          showPromptMessage('⚠️ Please upload your 2x2 ID Picture.');
+          return false;
         }
-      } catch (err) {
-        console.error('Document verification error:', err);
-        showPromptMessage('Document verification in background - you may continue.');
-        return true;
-      } finally {
-        setIsSavingStep(false);
+        
+        setLoadingMessage({ title: 'Verifying Profile Picture', message: 'Analyzing your ID picture for verification...' });
+        setOcrVerified('verifying');
+        
+        try {
+          const result = await applicantAPI.ocrCheck(idPicture, null, null, null, null);
+          
+          if (result.verified) {
+            setOcrVerified('success');
+            showPromptMessage('✅ ID Picture verified successfully!');
+            return true;
+          } else {
+            setOcrVerified('failed');
+            showPromptMessage(`⚠️ ${result.message || 'ID Picture verification failed. Please ensure the image is clear and valid.'}`);
+            return true; // Allow progression with warning
+          }
+        } catch (err) {
+          console.error('ID picture verification error:', err);
+          const errorMsg = err.response?.data?.message || 'Could not verify ID picture. Continuing...';
+          showPromptMessage(`⚠️ ${errorMsg}`);
+          return true; // Allow progression
+        }
       }
+      
+      if (step === 2) {
+        // Step 2: Verify Mayor's Indigency Certificate
+        const indigencyDoc = photos.mayorIndigency_photo || formData.mayorIndigency_photo || userProfile?.indigency_doc;
+        
+        if (!indigencyDoc) {
+          return true; // No document to verify
+        }
+        
+        setLoadingMessage({ title: 'Verifying Indigency Certificate', message: 'Analyzing your indigency certificate...' });
+        setMayorIndigencyVerified('verifying');
+        
+        try {
+          const result = await applicantAPI.ocrCheck(null, indigencyDoc, formData.townCity || userProfile?.townCity, null, null);
+          
+          if (result.verified) {
+            setMayorIndigencyVerified('success');
+            showPromptMessage('✅ Indigency Certificate verified successfully!');
+            return true;
+          } else {
+            setMayorIndigencyVerified('failed');
+            showPromptMessage(`⚠️ ${result.message || 'Indigency Certificate verification failed. Please ensure the image is clear and the information matches.'}`);
+            return true; // Allow progression with warning
+          }
+        } catch (err) {
+          console.error('Indigency verification error:', err);
+          const errorMsg = err.response?.data?.message || 'Could not verify indigency certificate. Continuing...';
+          showPromptMessage(`⚠️ ${errorMsg}`);
+          return true; // Allow progression
+        }
+      }
+      
+      if (step === 3) {
+        // Step 3: Verify School ID, Mayor's COE, and Mayor's Grades
+        const schoolIdFront = schoolIdPhotos.front || formData.id_front || userProfile?.id_front;
+        const gradesDoc = photos.mayorGrades_photo || formData.mayorGrades_photo || userProfile?.grades_doc;
+        const coeDoc = photos.mayorCOE_photo || formData.mayorCOE_photo || userProfile?.enrollment_certificate_doc;
+        
+        if (!schoolIdFront && !gradesDoc && !coeDoc) {
+          return true; // No documents to verify
+        }
+        
+        setLoadingMessage({ title: 'Verifying Documents', message: 'Analyzing your school ID, certificate, and grades documents...' });
+        
+        try {
+          const result = await applicantAPI.ocrCheck(schoolIdFront, null, null, coeDoc, gradesDoc);
+          
+          if (result.verified) {
+            if (schoolIdFront) setOcrVerified('success');
+            if (coeDoc) setMayorCOEVerified('success');
+            if (gradesDoc) setMayorGradesVerified('success');
+            showPromptMessage('✅ All documents verified successfully!');
+            return true;
+          } else {
+            if (schoolIdFront) setOcrVerified('failed');
+            if (coeDoc) setMayorCOEVerified('failed');
+            if (gradesDoc) setMayorGradesVerified('failed');
+            showPromptMessage(`⚠️ ${result.message || 'Document verification in progress. We\'ll continue verifying in the background.'}`);
+            return true; // Allow progression with warning
+          }
+        } catch (err) {
+          console.error('Document verification error:', err);
+          const errorMsg = err.response?.data?.message || 'Could not verify documents. Continuing...';
+          showPromptMessage(`⚠️ ${errorMsg}`);
+          return true; // Allow progression
+        }
+      }
+      
+      if (step === 4) {
+        // Step 4: Verify Face Photo and Signature
+        const facePhoto = photos.face_photo || faceVerificationPreview || formData.face_photo || userProfile?.face_photo;
+        const signature = drawnSignature || signaturePreview || formData.signature_data || userProfile?.signature_data;
+        const idFront = schoolIdPhotos.front || formData.id_front || userProfile?.id_front;
+        const idBack = schoolIdPhotos.back || formData.id_back || userProfile?.id_back;
+        
+        if (!facePhoto && !signature) {
+          return true; // No documents to verify
+        }
+        
+        // Verify face against ID
+        if (facePhoto && idFront) {
+          setLoadingMessage({ title: 'Verifying Face', message: 'Matching your face with your ID picture...' });
+          setFaceVerified('verifying');
+          
+          try {
+            const faceResult = await applicantAPI.verifyFaceAgainstId(facePhoto, idFront);
+            
+            if (faceResult.verified) {
+              setFaceVerified('success');
+              showPromptMessage('✅ Face verification successful!');
+            } else {
+              setFaceVerified('failed');
+              showPromptMessage(`⚠️ ${faceResult.message || 'Face verification failed. Please ensure your face is clearly visible in the photo.'}`);
+            }
+          } catch (err) {
+            console.error('Face verification error:', err);
+            if (err.message?.includes('not available') || err.response?.status === 503) {
+              setFaceVerified('technical_unavailable');
+              showPromptMessage('ℹ️ Face verification temporarily unavailable. Continuing...');
+            } else {
+              const errorMsg = err.response?.data?.message || 'Could not verify face. Continuing...';
+              showPromptMessage(`⚠️ ${errorMsg}`);
+            }
+          }
+        }
+        
+        // Verify signature against ID back
+        if (signature && idBack) {
+          setLoadingMessage({ title: 'Verifying Signature', message: 'Matching your signature with your ID back...' });
+          setSignatureVerified('verifying');
+          
+          try {
+            const signatureResult = await applicantAPI.verifySignatureAgainstIdBack(signature, idBack);
+            
+            if (signatureResult.verified) {
+              setSignatureVerified('success');
+              showPromptMessage('✅ Signature verification successful!');
+            } else {
+              setSignatureVerified('failed');
+              showPromptMessage(`⚠️ ${signatureResult.message || 'Signature verification failed. Please ensure your signature is clearly visible.'}`);
+            }
+          } catch (err) {
+            console.error('Signature verification error:', err);
+            const errorMsg = err.response?.data?.message || 'Could not verify signature. Continuing...';
+            showPromptMessage(`⚠️ ${errorMsg}`);
+          }
+        }
+        
+        return true; // Always allow progression in Step 4
+      }
+      
+      return true;
+    } catch (err) {
+      console.error('Verification error:', err);
+      return true; // Allow progression even if verification fails
     }
-    
-    return true;
   };
 
   const showPromptMessage = (message, duration = 3000) => {
