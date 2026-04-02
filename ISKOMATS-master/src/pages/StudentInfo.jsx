@@ -1057,13 +1057,13 @@ const StudentInfo = () => {
           } else {
             setOcrVerified('failed');
             showPromptMessage(`⚠️ ${result.message || 'ID Picture verification failed. Please ensure the image is clear and valid.'}`);
-            return true; // Allow progression with warning
+            return false; // Block progression if verification fails
           }
         } catch (err) {
           console.error('ID picture verification error:', err);
-          const errorMsg = err.response?.data?.message || 'Could not verify ID picture. Continuing...';
+          const errorMsg = err.response?.data?.message || 'Could not verify ID picture.';
           showPromptMessage(`⚠️ ${errorMsg}`);
-          return true; // Allow progression
+          return false; // Block progression on error
         }
       }
       
@@ -1072,7 +1072,7 @@ const StudentInfo = () => {
         const indigencyDoc = photos.mayorIndigency_photo || formData.mayorIndigency_photo || userProfile?.indigency_doc;
         
         if (!indigencyDoc) {
-          return true; // No document to verify
+          return true; // No document to verify, allow progression
         }
         
         setLoadingMessage({ title: 'Verifying Indigency Certificate', message: 'Analyzing your indigency certificate...' });
@@ -1088,13 +1088,13 @@ const StudentInfo = () => {
           } else {
             setMayorIndigencyVerified('failed');
             showPromptMessage(`⚠️ ${result.message || 'Indigency Certificate verification failed. Please ensure the image is clear and the information matches.'}`);
-            return true; // Allow progression with warning
+            return false; // Block progression if verification fails
           }
         } catch (err) {
           console.error('Indigency verification error:', err);
-          const errorMsg = err.response?.data?.message || 'Could not verify indigency certificate. Continuing...';
+          const errorMsg = err.response?.data?.message || 'Could not verify indigency certificate.';
           showPromptMessage(`⚠️ ${errorMsg}`);
-          return true; // Allow progression
+          return false; // Block progression on error
         }
       }
       
@@ -1105,7 +1105,7 @@ const StudentInfo = () => {
         const coeDoc = photos.mayorCOE_photo || formData.mayorCOE_photo || userProfile?.enrollment_certificate_doc;
         
         if (!schoolIdFront && !gradesDoc && !coeDoc) {
-          return true; // No documents to verify
+          return true; // No documents to verify, allow progression
         }
         
         setLoadingMessage({ title: 'Verifying Documents', message: 'Analyzing your school ID, certificate, and grades documents...' });
@@ -1123,14 +1123,14 @@ const StudentInfo = () => {
             if (schoolIdFront) setOcrVerified('failed');
             if (coeDoc) setMayorCOEVerified('failed');
             if (gradesDoc) setMayorGradesVerified('failed');
-            showPromptMessage(`⚠️ ${result.message || 'Document verification in progress. We\'ll continue verifying in the background.'}`);
-            return true; // Allow progression with warning
+            showPromptMessage(`⚠️ ${result.message || 'Document verification failed. Please ensure all images are clear.'}`);
+            return false; // Block progression if verification fails
           }
         } catch (err) {
           console.error('Document verification error:', err);
-          const errorMsg = err.response?.data?.message || 'Could not verify documents. Continuing...';
+          const errorMsg = err.response?.data?.message || 'Could not verify documents.';
           showPromptMessage(`⚠️ ${errorMsg}`);
-          return true; // Allow progression
+          return false; // Block progression on error
         }
       }
       
@@ -1142,8 +1142,11 @@ const StudentInfo = () => {
         const idBack = schoolIdPhotos.back || formData.id_back || userProfile?.id_back;
         
         if (!facePhoto && !signature) {
-          return true; // No documents to verify
+          return true; // No documents to verify, allow progression
         }
+        
+        let faceSuccessful = true;
+        let signatureSuccessful = true;
         
         // Verify face against ID
         if (facePhoto && idFront) {
@@ -1158,16 +1161,18 @@ const StudentInfo = () => {
               showPromptMessage('✅ Face verification successful!');
             } else {
               setFaceVerified('failed');
+              faceSuccessful = false;
               showPromptMessage(`⚠️ ${faceResult.message || 'Face verification failed. Please ensure your face is clearly visible in the photo.'}`);
             }
           } catch (err) {
             console.error('Face verification error:', err);
             if (err.message?.includes('not available') || err.response?.status === 503) {
               setFaceVerified('technical_unavailable');
-              showPromptMessage('ℹ️ Face verification temporarily unavailable. Continuing...');
+              showPromptMessage('ℹ️ Face verification temporarily unavailable. Proceeding with caution...');
             } else {
-              const errorMsg = err.response?.data?.message || 'Could not verify face. Continuing...';
+              const errorMsg = err.response?.data?.message || 'Could not verify face.';
               showPromptMessage(`⚠️ ${errorMsg}`);
+              faceSuccessful = false;
             }
           }
         }
@@ -1185,22 +1190,29 @@ const StudentInfo = () => {
               showPromptMessage('✅ Signature verification successful!');
             } else {
               setSignatureVerified('failed');
+              signatureSuccessful = false;
               showPromptMessage(`⚠️ ${signatureResult.message || 'Signature verification failed. Please ensure your signature is clearly visible.'}`);
             }
           } catch (err) {
             console.error('Signature verification error:', err);
-            const errorMsg = err.response?.data?.message || 'Could not verify signature. Continuing...';
+            const errorMsg = err.response?.data?.message || 'Could not verify signature.';
             showPromptMessage(`⚠️ ${errorMsg}`);
+            signatureSuccessful = false;
           }
         }
         
-        return true; // Always allow progression in Step 4
+        // Block progression if either face or signature failed verification
+        if (!faceSuccessful || !signatureSuccessful) {
+          return false;
+        }
+        
+        return true; // Allow progression if all verifications passed or were unavailable
       }
       
       return true;
     } catch (err) {
       console.error('Verification error:', err);
-      return true; // Allow progression even if verification fails
+      return false; // Block progression on unexpected error
     }
   };
 
