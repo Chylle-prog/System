@@ -1036,12 +1036,7 @@ const StudentInfo = () => {
     // Perform verification based on the current step
     try {
       if (step === 1) {
-        // Step 1: No verification for profile picture - only for school ID
-        return true;
-      }
-      
-      if (step === 2) {
-        // Step 2: Verify Mayor's Indigency Certificate
+        // Step 1: Verify Mayor's Indigency Certificate
         const indigencyDoc = photos.mayorIndigency_photo || formData.mayorIndigency_photo || userProfile?.indigency_doc;
         
         if (!indigencyDoc) {
@@ -1069,6 +1064,11 @@ const StudentInfo = () => {
           showPromptMessage(`⚠️ ${errorMsg}`);
           return false; // Block progression on error
         }
+      }
+      
+      if (step === 2) {
+        // Step 2: No verification
+        return true;
       }
       
       if (step === 3) {
