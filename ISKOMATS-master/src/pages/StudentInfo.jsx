@@ -2413,6 +2413,7 @@ const StudentInfo = () => {
                   <select name="schoolName" value={formData.schoolName} onChange={handleInputChange} required={currentStep === 3}>
                     <option value="">Select School</option>
                     <option value="De La Salle University">De La Salle University</option>
+                    <option value="National University Lipa">National University Lipa</option>
                     <option value="Batangas State University">Batangas State University</option>
                     <option value="Kolehiyo ng Lungsod ng Lipa">Kolehiyo ng Lungsod ng Lipa</option>
                     <option value="Philippine State College of Aeronautics">Philippine State College of Aeronautics</option>
@@ -2459,6 +2460,26 @@ const StudentInfo = () => {
                 <div className="form-group">
                   <label>Current GPA <span style={{color: '#e74c3c'}}>*</span></label>
                   <input type="number" step="0.01" name="gpa" value={formData.gpa} onChange={handleInputChange} placeholder="0.00" required={currentStep === 3} />
+                  {(formData.schoolName === 'National University Lipa') && (
+                    <div style={{
+                      marginTop: '0.8rem', 
+                      background: '#f8fafc', 
+                      padding: '1rem', 
+                      borderRadius: '12px', 
+                      border: '1px solid #e2e8f0',
+                      fontSize: '0.8rem',
+                      color: '#475569',
+                      lineHeight: '1.4'
+                    }}>
+                      <div style={{fontWeight: '700', marginBottom: '0.5rem', color: '#1e293b'}}>NU GPA Conversion Guide:</div>
+                      <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px'}}>
+                        <div>100-96 = 4.0</div><div>95-90 = 3.5</div>
+                        <div>89-84 = 3.0</div><div>83-78 = 2.5</div>
+                        <div>77-72 = 2.0</div><div>71-66 = 1.5</div>
+                        <div>65-60 = 1.0</div><div>Below 60 = R</div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

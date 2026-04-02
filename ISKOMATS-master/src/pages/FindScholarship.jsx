@@ -180,6 +180,18 @@ const FindScholarship = () => {
       return 70;                  // Below 1.00 -> Failing
     }
 
+    // National University (NU) Lipa Scale (4.0 is highest)
+    if (uniName.includes('national university') || uniName.includes('nu lipa') || uniName.includes('nu ')) {
+      if (gpa >= 3.75) return 98; // 4.0 -> 96-100
+      if (gpa >= 3.25) return 92.5; // 3.5 -> 90-95
+      if (gpa >= 2.75) return 86.5; // 3.0 -> 84-89
+      if (gpa >= 2.25) return 80.5; // 2.5 -> 78-83
+      if (gpa >= 1.75) return 74.5; // 2.0 -> 72-77
+      if (gpa >= 1.25) return 68.5; // 1.5 -> 66-71
+      if (gpa >= 1.00) return 62.5; // 1.0 -> 60-65
+      return 50;                  // R (Repeat) -> Failing
+    }
+
     // Schools using 1.00 as highest (BSU, KLL, PhilSCA, LCC, etc.)
     const onePointZeroHighestSchools = [
       'batangas state university', 'bsu',
