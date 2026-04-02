@@ -403,16 +403,23 @@ const StudentInfo = () => {
     }
 
     // If there's JSON data and no files, use JSON request; otherwise use FormData
-    if (Object.keys(jsonData).length > 0 && Array.from(payload.entries()).length === 0) {
-      await applicantAPI.updateProfile(jsonData);
-    } else if (Object.keys(jsonData).length > 0) {
-      // Mix of files and data URIs - append JSON data as string
-      Object.entries(jsonData).forEach(([key, value]) => {
-        payload.append(key, value);
-      });
-      await applicantAPI.updateProfile(payload);
-    } else {
-      await applicantAPI.updateProfile(payload);
+    try {
+      if (Object.keys(jsonData).length > 0 && Array.from(payload.entries()).length === 0) {
+        await applicantAPI.updateProfile(jsonData);
+      } else if (Object.keys(jsonData).length > 0) {
+        // Mix of files and data URIs - append JSON data as string
+        Object.entries(jsonData).forEach(([key, value]) => {
+          payload.append(key, value);
+        });
+        await applicantAPI.updateProfile(payload);
+      } else {
+        await applicantAPI.updateProfile(payload);
+      }
+    } catch (err) {
+      // Extract backend error message for verification failures
+      const backendMessage = err.response?.data?.message || err.message || 'Unknown error';
+      showPromptMessage(`❌ ${backendMessage}`);
+      throw err; // Re-throw so calling code knows the save failed
     }
   };
 
