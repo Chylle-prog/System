@@ -37,7 +37,11 @@ const App = () => {
     gradesDoc: null,
     faceImage: null,
     signatureImage: null,
-    idBackImage: null
+    idBackImage: null,
+    schoolName: 'National University',
+    course: 'BS Information Technology',
+    expectedGPA: '1.25',
+    expectedYear: '2026'
   });
 
   const [previews, setPreviews] = useState({});
@@ -72,7 +76,11 @@ const App = () => {
         grades_doc: form.gradesDoc,
         town_city: form.townCity,
         first_name: form.firstName,
-        last_name: form.lastName
+        last_name: form.lastName,
+        school_name: form.schoolName,
+        course: form.course,
+        gpa: form.expectedGPA,
+        expected_year: form.expectedYear
       });
       setResults({ type: 'ocr', data: res });
     } catch (err) {
@@ -503,6 +511,15 @@ const App = () => {
                     <input placeholder="First Name" value={form.firstName} onChange={(e) => setForm(p=>({...p, firstName: e.target.value}))} />
                     <input placeholder="Last Name" value={form.lastName} onChange={(e) => setForm(p=>({...p, lastName: e.target.value}))} />
                     <input placeholder="Expected Town/City" value={form.townCity} onChange={(e) => setForm(p=>({...p, townCity: e.target.value}))} />
+                  </div>
+                  <div className="input-group" style={{ gridColumn: '1 / -1', marginTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1rem' }}>
+                    <label style={{ fontSize: '0.8rem', color: '#818cf8', display: 'block', marginBottom: '0.5rem' }}>Additional Verifications (OCR Context)</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px' }}>
+                      <input placeholder="School Name" value={form.schoolName} onChange={(e) => setForm(p=>({...p, schoolName: e.target.value}))} />
+                      <input placeholder="Course" value={form.course} onChange={(e) => setForm(p=>({...p, course: e.target.value}))} />
+                      <input placeholder="Expected GPA" value={form.expectedGPA} onChange={(e) => setForm(p=>({...p, expectedGPA: e.target.value}))} />
+                      <input placeholder="Verification Year (e.g. 2026)" value={form.expectedYear} onChange={(e) => setForm(p=>({...p, expectedYear: e.target.value}))} />
+                    </div>
                   </div>
                 </div>
 

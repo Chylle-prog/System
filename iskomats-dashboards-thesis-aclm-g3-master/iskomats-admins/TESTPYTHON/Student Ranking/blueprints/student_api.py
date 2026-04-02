@@ -986,9 +986,14 @@ def ocr_check():
         grades_doc_param = data.get('grades_doc') or data.get('gradesDoc')
 
         # Request-provided names take precedence over DB values (supports verifier bench testing)
-        first_name = data.get('first_name') or applicant.get('first_name', '')
-        last_name = data.get('last_name') or applicant.get('last_name', '')
+        first_name = data.get('first_name') or data.get('firstName') or applicant.get('first_name', '')
+        last_name = data.get('last_name') or data.get('lastName') or applicant.get('last_name', '')
         town_city = data.get('town_city') or data.get('townCity') or applicant.get('town_city_municipality', '')
+        school_name = data.get('school_name') or data.get('schoolName') # New
+        course = data.get('course') # New
+        expected_gpa = data.get('gpa') or data.get('expectedGPA') # New
+        expected_year = data.get('expected_year') or data.get('expectedYear') # New
+
 
         # Helper to get bytes
         def get_bytes(param, db_val):
@@ -1007,25 +1012,44 @@ def ocr_check():
                     expected_name=f"{first_name} {last_name}",
                     expected_address=None
                 )
+                raw_lower = raw.lower()
                 # Verify document-specific keywords
                 keywords = ["enrollment", "registration", "admission", "matriculation", "cor", "coe", "form"]
-                kw_found = any(kw in raw.lower() for kw in keywords)
+                kw_found = any(kw in raw_lower for kw in keywords)
                 if v and not kw_found:
                     v = False
                     msg = "Please retry to upload again"
                 
-                # Verify academic year is current
+                # ── Academic Year ──
                 year_label = extract_school_year(doc_bytes)
-                year_ok = is_current_school_year(year_label)
+                v_year = int(expected_year) if expected_year and str(expected_year).isdigit() else 2026
+                year_ok = is_current_school_year(year_label, current_year=v_year)
                 
-                if v and not year_ok:
-                    v = False
-                    year_msg = f"School year: {year_label}" if year_label else "No school year found in document"
-                    msg = f"{msg} | {year_msg} (Verification requires current A.Y. 2025-2026)"
-                elif v and year_ok:
-                    msg = f"{msg} | School year: {year_label}"
+                # ── School Name ── (Fuzzy check)
+                school_ok = True if not school_name else (school_name.lower() in raw_lower)
+                if school_name and not school_ok:
+                    # Try fuzzy matching common parts if full name doesn't match
+                    school_parts = [p.strip() for p in school_name.lower().split() if len(p.strip()) > 3]
+                    school_ok = any(p in raw_lower for p in school_parts) if school_parts else True
 
-                results.append({'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw})
+                # ── Course ──
+                course_ok = True if not course else (course.lower() in raw_lower)
+
+                if v:
+                    if not year_ok:
+                        v = False
+                        msg = f"Outdated A.Y. ({year_label or 'None'})"
+                    elif not school_ok:
+                        v = False
+                        msg = f"School mismatch ({school_name})"
+                    elif not course_ok:
+                        v = False
+                        msg = f"Course mismatch ({course})"
+                    else:
+                        msg = f"Verified: A.Y. {year_label}"
+                        if school_name: msg += f" | {school_name}"
+
+                results.append({'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label})
                 if not v: overall_verified = False
 
         # ── Certified True Copy of Grades ─────────────────────────────────────
@@ -1037,26 +1061,64 @@ def ocr_check():
                     expected_name=f"{first_name} {last_name}",
                     expected_address=None
                 )
+                raw_lower = raw.lower()
                 # Verify document-specific keywords
                 keywords = ["grades", "transcript", "evaluation", "rating", "scholastic", "record"]
-                kw_found = any(kw in raw.lower() for kw in keywords)
+                kw_found = any(kw in raw_lower for kw in keywords)
                 if v and not kw_found:
                     v = False
                     msg = "Please retry to upload again"
                 
-                # Additionally verify the school year is current (Semester is dismissed)
+                # ── Academic Year ──
                 year_label = extract_school_year(doc_bytes)
-                year_ok = is_current_school_year(year_label)
+                v_year = int(expected_year) if expected_year and str(expected_year).isdigit() else 2026
+                year_ok = is_current_school_year(year_label, current_year=v_year)
                 
-                if v and not year_ok:
-                    v = False
-                    year_msg = f"School year: {year_label}" if year_label else "No school year found in document"
-                    msg = f"{msg} | {year_msg} (Verification requires current A.Y. 2025-2026)"
-                elif v and year_ok:
-                    msg = f"{msg} | School year: {year_label}"
+                # ── School Name ── (Fuzzy check)
+                school_ok = True if not school_name else (school_name.lower() in raw_lower)
+                if school_name and not school_ok:
+                    school_parts = [p.strip() for p in school_name.lower().split() if len(p.strip()) > 3]
+                    school_ok = any(p in raw_lower for p in school_parts) if school_parts else True
+
+                # ── Course ──
+                course_ok = True if not course else (course.lower() in raw_lower)
+
+                # ── GPA ── (New extraction attempt)
+                extracted_gpa = None
+                gpa_ok = True
+                if expected_gpa:
+                    import re
+                    # Look for patterns like "GPA: 1.25", "GWA: 1.25", or just "1.25"
+                    gpa_match = re.search(r'(?:gpa|gwa|grade|average)[:\s]*([0-5]\.\d{1,2})', raw_lower)
+                    if gpa_match:
+                        extracted_gpa = gpa_match.group(1)
+                        # Minimal validation: if extracted equals expected (fuzzy)
+                        gpa_ok = abs(float(extracted_gpa) - float(expected_gpa)) < 0.1
+                    else:
+                        # If not found but expected, we'll just skip failing for now to avoid false negatives
+                        pass
+
+                if v:
+                    if not year_ok:
+                        v = False
+                        msg = f"Outdated A.Y. ({year_label or 'None'})"
+                    elif not school_ok:
+                        v = False
+                        msg = f"School mismatch ({school_name})"
+                    elif not course_ok:
+                        v = False
+                        msg = f"Course mismatch ({course})"
+                    elif expected_gpa and not gpa_ok:
+                        v = False
+                        msg = f"GPA mismatch (Extracted: {extracted_gpa}, Expected: {expected_gpa})"
+                    else:
+                        msg = f"Verified: A.Y. {year_label}"
+                        if school_name: msg += f" | {school_name}"
+                        if extracted_gpa: msg += f" | GPA: {extracted_gpa}"
                     
                 results.append({'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw,
                                 'school_year': year_label})
+
                 if not v: overall_verified = False
 
         # ── Certificate of Indigency / Address ────────────────────────────────
