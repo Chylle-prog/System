@@ -752,6 +752,10 @@ const StudentInfo = () => {
     setPhotos(prev => ({ ...prev, face_photo: dataUrl }));
     setFaceVerificationPreview(dataUrl);
     
+    // Clear persistent error when capturing new face photo
+    setVerificationError(null);
+    setShowPrompt(false);
+    
     closeCamera();
   };
 
@@ -771,6 +775,10 @@ const StudentInfo = () => {
         showPromptMessage(`❌ Error: Video duration must be 30 seconds or less. Your video is ${Math.ceil(video.duration)} seconds.`);
         return;
       }
+
+      // Clear persistent error when starting new video upload
+      setVerificationError(null);
+      setShowPrompt(false);
 
       try {
         setIsUploadingVideo(prev => ({ ...prev, [fieldName]: true }));
@@ -833,6 +841,10 @@ const StudentInfo = () => {
     const fileInput = document.getElementById(`photo_${type}`);
     const file = fileInput?.files[0];
     if (file && window.compressImage) {
+      // Clear persistent error when changing photo
+      setVerificationError(null);
+      setShowPrompt(false);
+      
       window.compressImage(file).then(compressedBase64 => {
         setPhotos(prev => ({ ...prev, [type]: compressedBase64 }));
         if (type === 'face_photo') setFaceVerificationPreview(compressedBase64);
@@ -860,6 +872,11 @@ const StudentInfo = () => {
   const handleInputChange = (e) => {
     const { name, value, type, checked, files } = e.target;
     
+    // Always clear persistent error when user changes anything
+    setVerificationError(null);
+    setShowPrompt(false);
+    setPromptMessage('');
+    
     if (type === 'checkbox') {
       setFormData(prev => ({
         ...prev,
@@ -867,10 +884,6 @@ const StudentInfo = () => {
       }));
     } else if (type === 'file') {
       const file = files[0] || null;
-      
-      // Clear persistent error when user changes files/fields
-      setVerificationError(null);
-      setShowPrompt(false);
       
       // Reset verification states when documents are changed
       if (name === 'mayorCOE_photo') setMayorCOEVerified(null);
@@ -936,6 +949,10 @@ const StudentInfo = () => {
   const handleIdPictureUpload = (e) => {
     const file = e.target.files[0];
     if (file && window.compressImage) {
+      // Clear persistent error when changing ID picture
+      setVerificationError(null);
+      setShowPrompt(false);
+      
       window.compressImage(file, 400).then(compressedBase64 => { // Smaller size for 2x2 ID
         setIdPicturePreview(compressedBase64);
         setFormData(prev => ({ ...prev, profile_picture: compressedBase64 }));
@@ -948,6 +965,10 @@ const StudentInfo = () => {
   const handleSchoolIdPhotoUpload = (side, e) => {
     const file = e.target.files[0];
     if (file && window.compressImage) {
+      // Clear persistent error when changing School ID photos
+      setVerificationError(null);
+      setShowPrompt(false);
+      
       window.compressImage(file).then(compressedBase64 => {
         setSchoolIdPhotos(prev => ({ ...prev, [side]: compressedBase64 }));
         setFormData(prev => ({ 
@@ -996,6 +1017,10 @@ const StudentInfo = () => {
   const handleSignatureUpload = (e) => {
     const file = e.target.files[0];
     if (file && window.compressImage) {
+      // Clear persistent error when uploading signature
+      setVerificationError(null);
+      setShowPrompt(false);
+      
       window.compressImage(file).then(compressedBase64 => {
         setSignaturePreview(compressedBase64);
         
@@ -1007,6 +1032,10 @@ const StudentInfo = () => {
   const handleFaceVerificationUpload = (e) => {
     const file = e.target.files[0];
     if (file && window.compressImage) {
+      // Clear persistent error when uploading face photo
+      setVerificationError(null);
+      setShowPrompt(false);
+      
       window.compressImage(file).then(compressedBase64 => {
         setFaceVerificationPreview(compressedBase64);
         setPhotos(prev => ({ ...prev, face_photo: compressedBase64 }));
@@ -1024,6 +1053,10 @@ const StudentInfo = () => {
 
   const saveSignature = async () => {
     if (sigPad.current && !sigPad.current.isEmpty()) {
+      // Clear persistent error when saving drawn signature
+      setVerificationError(null);
+      setShowPrompt(false);
+      
       const canvas = sigPad.current.getTrimmedCanvas();
       const dataUrl = canvas.toDataURL('image/png');
       setDrawnSignature(dataUrl);
@@ -1218,6 +1251,11 @@ const StudentInfo = () => {
 
   const handleNextStep = async (e) => {
     if (e) e.preventDefault();
+    
+    // Clear any persistent verification errors when attempting to move forward
+    setVerificationError(null);
+    setShowPrompt(false);
+    setPromptMessage('');
     
     const stepContainer = document.querySelector('.step-container.active');
     if (!stepContainer) return;
@@ -2052,10 +2090,6 @@ const StudentInfo = () => {
           </button>
         </div>
       </nav>
-
-      <div className={`small-prompt ${showPrompt ? 'show' : ''}`}>
-        {promptMessage}
-      </div>
 
       <div className="form-container">
         <div className="form-card">
