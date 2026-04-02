@@ -992,7 +992,7 @@ def ocr_check():
                 v, msg, raw, _ = verify_id_with_ocr(
                     image_bytes=doc_bytes,
                     expected_name=f"{first_name} {last_name}",
-                    expected_address=town_city
+                    expected_address=None
                 )
                 # Verify document-specific keywords
                 keywords = ["enrollment", "registration", "admission", "matriculation", "cor", "coe", "form"]
@@ -1010,7 +1010,7 @@ def ocr_check():
                 v, msg, raw, _ = verify_id_with_ocr(
                     image_bytes=doc_bytes,
                     expected_name=f"{first_name} {last_name}",
-                    expected_address=town_city
+                    expected_address=None
                 )
                 # Verify document-specific keywords
                 keywords = ["grades", "transcript", "evaluation", "rating", "scholastic", "record"]
@@ -1062,7 +1062,7 @@ def ocr_check():
                 v, msg, raw, _ = verify_id_with_ocr(
                     image_bytes=doc_bytes,
                     expected_name=f"{first_name} {last_name}",
-                    expected_address=town_city
+                    expected_address=None
                 )
                 results.append({'doc': 'Identity', 'verified': v, 'message': msg, 'raw_text': raw})
                 if not v: overall_verified = False
