@@ -2429,6 +2429,7 @@ def create_announcement(current_user_id, pro_no, role):
     data = request.json
     title = data.get('title')
     message = data.get('content')
+    time_added = data.get('time_added')
     
     if not title or not message:
         return jsonify({'message': 'Title and content are required'}), 400
@@ -2437,10 +2438,10 @@ def create_announcement(current_user_id, pro_no, role):
         conn = get_db()
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO announcements (ann_title, ann_message, pro_no)
-            VALUES (%s, %s, %s)
+            INSERT INTO announcements (ann_title, ann_message, pro_no, time_added)
+            VALUES (%s, %s, %s, %s)
             RETURNING ann_no
-        """, (title, message, pro_no))
+        """, (title, message, pro_no, time_added))
         ann_no = cur.fetchone()['ann_no']
         conn.commit()
         

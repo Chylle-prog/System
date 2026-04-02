@@ -2043,7 +2043,7 @@ const Portal = () => {
               <div className="ann-modal-meta">
                 <span>
                   <i className="far fa-calendar-alt" style={{marginRight: '8px'}}></i>
-                  Posted on {selectedAnnouncement.created_at || 'Recent'}
+                  Posted on {selectedAnnouncement.time_added ? new Date(selectedAnnouncement.time_added).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Recently'}
                 </span>
                 <span>
                   <i className="far fa-user" style={{marginRight: '8px'}}></i>
@@ -2191,7 +2191,7 @@ const Portal = () => {
                         </div>
                         <span style={{fontSize: '0.75rem', color: 'var(--text-soft)', background: 'var(--gray-2)', padding: '0.25rem 0.75rem', borderRadius: '20px', fontWeight: '600'}}>
                           <i className="far fa-clock" style={{marginRight: '5px'}}></i>
-                          {ann.created_at || 'Recent'}
+                          {ann.time_added ? new Date(ann.time_added).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Recent'}
                         </span>
                       </div>
                       <p style={{marginBottom: '1rem', color: 'var(--text-soft)', fontSize: '0.95rem', lineHeight: '1.6', display: '-webkit-box', WebkitLineClamp: '3', WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
@@ -2200,7 +2200,7 @@ const Portal = () => {
                       <button 
                         onClick={() => openAnnouncement(ann)}
                         style={{
-                          background: 'var(--primary-gradient)',
+                          backgroundImage: 'linear-gradient(135deg, #4F0D00, #9b3e22)',
                           color: 'white',
                           border: 'none',
                           borderRadius: '8px',

@@ -554,7 +554,8 @@ export default function DashAfrica() {
     try {
       const announcementData = {
         title: formData.title,
-        content: formData.content
+        content: formData.content,
+        time_added: new Date().toISOString()
       };
 
       const response = await announcementAPI.create(announcementData);
