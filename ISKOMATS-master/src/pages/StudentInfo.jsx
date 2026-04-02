@@ -1263,17 +1263,17 @@ const StudentInfo = () => {
       return;
     }
 
+    setIsSavingStep(true);
     try {
-      setLoadingMessage({ title: `Saving Step ${currentStep}`, message: 'Updating your application progress...' });
-      setIsSavingStep(true);
-      
       // Verify documents before proceeding to next step
       const verificationPassed = await verifyDocumentsBeforeStep(currentStep);
       if (!verificationPassed) {
         // Verification function already showed specific error message
+        setIsSavingStep(false);
         return;
       }
 
+      setLoadingMessage({ title: `Saving Step ${currentStep}`, message: 'Updating your application progress...' });
       await saveCurrentStepProgress(currentStep);
       setCurrentStep(prev => Math.min(prev + 1, 4));
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1281,6 +1281,7 @@ const StudentInfo = () => {
       console.error('Save error:', err);
       showPromptMessage(`⚠️ Could not save Step ${currentStep}. ${err.message}`);
     } finally {
+      setLoadingMessage({ title: '', message: '' });
       setIsSavingStep(false);
     }
   };
