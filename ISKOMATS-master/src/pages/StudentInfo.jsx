@@ -1280,7 +1280,7 @@ const StudentInfo = () => {
       // Verify documents before proceeding to next step
       const verificationPassed = await verifyDocumentsBeforeStep(currentStep);
       if (!verificationPassed) {
-        showPromptMessage('⚠️ Please ensure all documents are properly uploaded.');
+        // Verification function already showed specific error message
         return;
       }
 
