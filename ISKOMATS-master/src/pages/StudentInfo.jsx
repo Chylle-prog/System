@@ -1080,7 +1080,8 @@ const StudentInfo = () => {
       }
       
       if (step === 3) {
-        // Step 3: Verify School ID (front and back), Mayor's COE, and Mayor's Grades
+        // Step 3: Verify School ID only (name verification)
+        // Mayor's COE and Mayor's Grades are NOT verified
         const schoolIdFront = schoolIdPhotos.front || formData.id_front || userProfile?.id_front;
         const schoolIdBack = schoolIdPhotos.back || formData.id_back || userProfile?.id_back;
         const gradesDoc = photos.mayorGrades_photo || formData.mayorGrades_photo || userProfile?.grades_doc;
@@ -1090,32 +1091,32 @@ const StudentInfo = () => {
           return true; // No documents to verify, allow progression
         }
         
-        try {
-          const result = await applicantAPI.ocrCheck(schoolIdFront, null, null, coeDoc, gradesDoc);
-          
-          if (result.verified) {
-            if (schoolIdFront) setOcrVerified('success');
-            if (schoolIdBack) setOcrVerified('success');
-            if (coeDoc) setMayorCOEVerified('success');
-            if (gradesDoc) setMayorGradesVerified('success');
-            setVerificationError(null);
-            showPromptMessage('✅ All documents verified successfully!');
-            return true;
-          } else {
-            if (schoolIdFront || schoolIdBack) setOcrVerified('failed');
-            if (coeDoc) setMayorCOEVerified('failed');
-            if (gradesDoc) setMayorGradesVerified('failed');
-            const errorMsg = result.message || 'Document verification failed. Please ensure all images are clear.';
+        // Only verify School ID (front) for name - don't verify COE or Grades
+        if (schoolIdFront) {
+          try {
+            const result = await applicantAPI.ocrCheck(schoolIdFront, null, null, null, null);
+            
+            if (result.verified) {
+              setOcrVerified('success');
+              setVerificationError(null);
+              showPromptMessage('✅ School ID verified successfully!');
+              return true;
+            } else {
+              setOcrVerified('failed');
+              const errorMsg = result.message || 'School ID verification failed. Please ensure the image is clear.';
+              showPersistentError(`⚠️ ${errorMsg}`);
+              return false; // Block progression if School ID verification fails
+            }
+          } catch (err) {
+            console.error('School ID verification error:', err);
+            const errorMsg = err.response?.data?.message || 'Could not verify School ID.';
             showPersistentError(`⚠️ ${errorMsg}`);
-            return false; // Block progression if verification fails
+            return false; // Block progression on error
           }
-        } catch (err) {
-          console.error('Document verification error:', err);
-          const errorMsg = err.response?.data?.message || 'Could not verify documents.';
-          showPersistentError(`⚠️ ${errorMsg}`);
-          return false; // Block progression on error
         }
-      }
+        
+        // If School ID is not required, allow progression without verification
+        return true;
       
       if (step === 4) {
         // Step 4: Verify Face Photo and Signature
