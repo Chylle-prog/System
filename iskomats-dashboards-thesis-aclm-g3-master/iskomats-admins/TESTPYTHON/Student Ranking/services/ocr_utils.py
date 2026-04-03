@@ -111,53 +111,64 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
     if not _check_tesseract(): 
         return False, "OCR Engine (Tesseract) not found.", "", 0.0
     
-    text = _run_tesseract(image_bytes).lower()
-    if not text:
-        return False, "Please retry to upload again", "", 0.0
-    
-    # ─── Fuzzy Name Matching ──────────────────────────────────────────────
-    # Instead of strict substring, we check if most words of the name appear
-    name_words = [w.strip() for w in expected_name.lower().split() if len(w.strip()) > 2]
-    if not name_words:
-        name_words = [w.strip() for w in expected_name.lower().split() if w.strip()]
+    import re
+    def normalize_for_ocr(s):
+        if not s: return ""
+        # Remove punctuation like . , ( ) etc and normalize spaces
+        return re.sub(r'[^a-z0-9\s]', ' ', s.lower()).strip()
+
+    def check_match(ocr_text, target_name, target_addr):
+        norm_txt = normalize_for_ocr(ocr_text)
         
-    found_count = 0
-    for word in name_words:
-        if word in text:
-            found_count += 1
-    
-    # Require at least 80% of name words to be present
-    match_ratio = found_count / len(name_words) if name_words else 0
-    name_verified = match_ratio >= 0.8
-    
-    # ─── Address Matching (if provided) ──────────────────────────────────
-    addr_verified = True
-    if expected_address:
-        expected_address_lower = expected_address.lower()
-        # 1. Strict Substring Match (Fallback/Fast-pass)
-        if expected_address_lower in text:
-            addr_verified = True
-        else:
-            # 2. Fuzzy Word-based matching
-            addr_words = [w.strip() for w in expected_address_lower.split() if len(w.strip()) > 2]
-            if not addr_words:
-                addr_words = [w.strip() for w in expected_address_lower.split() if w.strip()]
-                
-            found_addr_count = sum(1 for word in addr_words if word in text)
-            addr_match_ratio = found_addr_count / len(addr_words) if addr_words else 0
+        # 1. Fuzzy Name Matching
+        n_words = [w.strip() for w in normalize_for_ocr(target_name).split() if len(w.strip()) >= 2]
+        if not n_words:
+            n_words = [w.strip() for w in normalize_for_ocr(target_name).split() if w.strip()]
             
-            # Require at least 50% of address words to be present for fuzzy pass
-            addr_verified = addr_match_ratio >= 0.5
+        f_count = sum(1 for word in n_words if word in norm_txt)
+        m_ratio = f_count / len(n_words) if n_words else 0
+        n_verified = m_ratio >= 0.8
+        
+        # 2. Address Matching (if provided)
+        a_verified = True
+        if target_addr:
+            norm_target_addr = normalize_for_ocr(target_addr)
+            if norm_target_addr in norm_txt:
+                a_verified = True
+            else:
+                a_words = [w.strip() for w in norm_target_addr.split() if len(w.strip()) >= 2]
+                if not a_words:
+                    a_words = [w.strip() for w in norm_target_addr.split() if w.strip()]
+                f_a_count = sum(1 for word in a_words if word in norm_txt)
+                a_match_ratio = f_a_count / len(a_words) if a_words else 0
+                a_verified = a_match_ratio >= 0.5
+        
+        return n_verified, a_verified, m_ratio
+
+    # Pass 1: Fast Mode
+    text = _run_tesseract(image_bytes, fast_mode=True)
+    name_v, addr_v, ratio = check_match(text, expected_name, expected_address)
     
-    if name_verified and addr_verified:
+    # Pass 2: Retry with Full Preprocessing if identity verification fails
+    if not (name_v and addr_v) and image_bytes:
+        print(f"[OCR] Pass 1 failed (ratio {ratio:.2f}). Retrying with full preprocessing...", flush=True)
+        text_full = _run_tesseract(image_bytes, fast_mode=False)
+        name_v_f, addr_v_f, ratio_f = check_match(text_full, expected_name, expected_address)
+        
+        # Use results from the better pass
+        if (name_v_f and addr_v_f) or ratio_f > ratio:
+            text, name_v, addr_v, ratio = text_full, name_v_f, addr_v_f, ratio_f
+
+    # Final logic
+    if name_v and addr_v:
         return True, "Name and Address verified via OCR.", text, 1.0
-    elif name_verified:
+    elif name_v:
         return False, "Address verification doesn't match", text, 0.7
     
-    # If match ratio is decent but below 80%, return a clearer error
-    if match_ratio >= 0.5:
-        return False, f"Identity check: Name partially matched ({match_ratio:.0%}). Please ensure image is clear.", text, match_ratio
+    if ratio >= 0.5:
+        return False, f"Identity check: Name partially matched ({ratio:.0%}). Please ensure image is clear.", text, ratio
         
+    print(f"[OCR] Verification Failed. Expected: '{expected_name}'. Extracted text snippet: '{text[:100]}...'", flush=True)
     return False, "Identity verification doesn't match", text, 0.0
 
 def extract_school_year_from_text(text):
