@@ -58,6 +58,20 @@ def ensure_verification_columns():
         if 'verification_code' not in existing:
             print("[MIGRATION] Adding verification_code to email table")
             cur.execute("ALTER TABLE email ADD COLUMN verification_code VARCHAR(10)")
+
+        # Create pending_registrations table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS pending_registrations (
+                pr_no SERIAL PRIMARY KEY,
+                email_address TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                first_name TEXT NOT NULL,
+                middle_name TEXT,
+                last_name TEXT NOT NULL,
+                verification_code VARCHAR(10) NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
             
         conn.commit()
         conn.close()
@@ -329,43 +343,41 @@ def student_register():
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute('SELECT applicant_no FROM email WHERE email_address ILIKE %s LIMIT 1', (email,))
+        
+        # 1. Check if email ALREADY exists in permanent table
+        cur.execute('SELECT em_no FROM email WHERE email_address ILIKE %s LIMIT 1', (email,))
         if cur.fetchone():
-            return jsonify({'message': 'Email already registered'}), 400
+            return jsonify({'message': 'Email already registered and verified. Please sign in.'}), 400
 
-        cur.execute(
-            """
-            INSERT INTO applicants (first_name, middle_name, last_name)
-            VALUES (%s, %s, %s)
-            RETURNING applicant_no
-            """,
-            (first_name, middle_name or None, last_name),
-        )
-        applicant_no = cur.fetchone()['applicant_no']
-
-        # Generate verification code
+        # 2. Generate verification code
         verification_code = generate_verification_code()
-
         password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
+
+        # 3. Store in pending_registrations table (Upsert allowed for re-registration)
         cur.execute(
             """
-            INSERT INTO email (email_address, applicant_no, password_hash, is_verified, verification_code)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO pending_registrations (email_address, password_hash, first_name, middle_name, last_name, verification_code)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (email_address) DO UPDATE SET
+                password_hash = EXCLUDED.password_hash,
+                first_name = EXCLUDED.first_name,
+                middle_name = EXCLUDED.middle_name,
+                last_name = EXCLUDED.last_name,
+                verification_code = EXCLUDED.verification_code,
+                created_at = NOW()
             """,
-            (email, applicant_no, password_hash, False, verification_code),
+            (email, password_hash, first_name, middle_name or None, last_name, verification_code),
         )
         conn.commit()
 
-        # Send verification email
+        # 4. Send verification email
         try:
             send_verification_email(email, verification_code)
         except Exception as e:
             print(f"[EMAIL ERROR] Failed to send verification email during registration: {e}", flush=True)
-            # We don't fail registration if email fails, user can "resend" later
 
         return jsonify({
-            'message': 'Registration successful. Please check your email for the verification code.',
-            'user_no': applicant_no,
+            'message': 'Registration initiated. Please check your email for the verification code.',
             'is_applicant': True,
             'requires_verification': True
         }), 201
@@ -389,38 +401,63 @@ def student_verify_email():
         conn = get_db()
         cur = conn.cursor()
         
+        # 1. Look up in pending_registrations
         if email:
-            cur.execute('SELECT em_no, applicant_no, is_verified, verification_code FROM email WHERE email_address ILIKE %s', (email,))
+            cur.execute('SELECT * FROM pending_registrations WHERE email_address ILIKE %s', (email,))
         else:
-            cur.execute('SELECT em_no, applicant_no, is_verified, verification_code FROM email WHERE verification_code = %s', (token,))
+            cur.execute('SELECT * FROM pending_registrations WHERE verification_code = %s', (token,))
             
-        user = cur.fetchone()
+        pending = cur.fetchone()
 
-        if not user:
-            return jsonify({'message': 'Invalid verification code'}), 400
+        if not pending:
+            # Check if already verified
+            if email:
+                cur.execute('SELECT em_no FROM email WHERE email_address ILIKE %s', (email,))
+                if cur.fetchone():
+                    return jsonify({'message': 'Email already verified. Please sign in.'}), 200
+            return jsonify({'message': 'Invalid verification code or link has expired'}), 400
 
-        if user['is_verified']:
-            return jsonify({'message': 'Email already verified'}), 200
-
-        if user['verification_code'] != token:
+        if pending['verification_code'] != token:
             return jsonify({'message': 'Incorrect verification code'}), 400
 
-        # Mark as verified
-        cur.execute('UPDATE email SET is_verified = TRUE, verification_code = NULL WHERE em_no = %s', (user['em_no'],))
+        # 2. Promote to permanent tables
+        # Insert into applicants
+        cur.execute(
+            """
+            INSERT INTO applicants (first_name, middle_name, last_name)
+            VALUES (%s, %s, %s)
+            RETURNING applicant_no
+            """,
+            (pending['first_name'], pending['middle_name'], pending['last_name']),
+        )
+        applicant_no = cur.fetchone()['applicant_no']
+
+        # Insert into email
+        cur.execute(
+            """
+            INSERT INTO email (email_address, applicant_no, password_hash, is_verified)
+            VALUES (%s, %s, %s, TRUE)
+            """,
+            (pending['email_address'], applicant_no, pending['password_hash']),
+        )
+
+        # 3. Cleanup pending registration
+        cur.execute('DELETE FROM pending_registrations WHERE pr_no = %s', (pending['pr_no'],))
+        
         conn.commit()
 
-        # Generate session token
+        # 4. Generate session token
         payload = {
             'exp': datetime.utcnow() + timedelta(days=7),
             'iat': datetime.utcnow(),
-            'user_no': user['applicant_no'],
+            'user_no': applicant_no,
         }
         session_token = jwt.encode(payload, SECRET_KEY, algorithm='HS256')
 
         return jsonify({
             'message': 'Email verified successfully',
             'token': session_token,
-            'user_no': user['applicant_no'],
+            'user_no': applicant_no,
             'is_applicant': True
         }), 200
     except Exception as exc:
@@ -441,22 +478,31 @@ def student_resend_verification_email():
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute('SELECT em_no, is_verified FROM email WHERE email_address ILIKE %s', (email,))
+        
+        # 1. Check if email exists in permanent table (already verified)
+        cur.execute('SELECT is_verified FROM email WHERE email_address ILIKE %s', (email,))
         user = cur.fetchone()
+        if user and user.get('is_verified'):
+            return jsonify({'message': 'Email already verified. Please sign in.'}), 400
 
-        if not user:
-            return jsonify({'message': 'Email not found'}), 404
+        # 2. Check if email exists in pending registrations
+        cur.execute('SELECT pr_no FROM pending_registrations WHERE email_address ILIKE %s', (email,))
+        pending = cur.fetchone()
 
-        if user['is_verified']:
-            return jsonify({'message': 'Email already verified'}), 400
+        if not pending:
+            return jsonify({'message': 'No pending registration found for this email. Please register first.'}), 404
 
-        # Generate new code
+        # 3. Generate new code and update
         new_code = generate_verification_code()
-        cur.execute('UPDATE email SET verification_code = %s WHERE em_no = %s', (new_code, user['em_no']))
+        cur.execute('UPDATE pending_registrations SET verification_code = %s WHERE pr_no = %s', (new_code, pending['pr_no']))
         conn.commit()
 
-        # Send email
-        send_verification_email(email, new_code)
+        # 4. Send email
+        try:
+            send_verification_email(email, new_code)
+        except Exception as e:
+            print(f"[EMAIL ERROR] Failed to resend verification email: {e}", flush=True)
+            return jsonify({'message': f'Failed to send email: {str(e)}'}), 500
 
         return jsonify({'message': 'Verification email resent successfully'}), 200
     except Exception as exc:
