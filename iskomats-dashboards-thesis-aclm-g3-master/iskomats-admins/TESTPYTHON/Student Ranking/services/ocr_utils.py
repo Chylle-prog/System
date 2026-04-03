@@ -151,8 +151,8 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
                 if is_fuzzy: f_count += 1
                 
             m_ratio = f_count / len(n_words) if n_words else 0
-            # Lower thresholds: 40% for Indigency (notoriously messy), 60% for others (robustness)
-            pass_threshold = 0.4 if is_indigency else 0.6
+            # Extremely permissive for Indigency certificates (often non-standard or messy)
+            pass_threshold = 0.25 if is_indigency else 0.6
             n_verified = m_ratio >= pass_threshold
         
         if not n_verified and is_indigency:
@@ -179,8 +179,8 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
                             break
                 
                 a_match_ratio = f_a_count / len(a_words) if a_words else 0
-                # Address matching for Indigency is also more permissive
-                a_verified = a_match_ratio >= 0.4 if is_indigency else 0.5
+                # Address matching for Indigency is also more permissive (25% match required)
+                a_verified = a_match_ratio >= 0.25 if is_indigency else 0.5
         
         return n_verified, a_verified, m_ratio
 
