@@ -11,9 +11,12 @@ const ProfileSetup = () => {
   const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
-    // Check if user has verified email
+    // Check if user has verified email OR is already logged in
     const registrationEmail = localStorage.getItem('registrationEmail');
-    if (!registrationEmail) {
+    const currentUser = localStorage.getItem('currentUser');
+    const authToken = localStorage.getItem('authToken');
+
+    if (!registrationEmail && (!currentUser || !authToken)) {
       navigate('/login');
       return;
     }
@@ -73,15 +76,18 @@ const ProfileSetup = () => {
       setLoadingMessage({ title: 'Saving Profile', message: 'Setting up your profile...' });
       setShowLoadingOverlay(true);
 
-      const email = localStorage.getItem('registrationEmail');
+      const email = localStorage.getItem('registrationEmail') || localStorage.getItem('currentUser');
       const password = localStorage.getItem('registrationPassword');
+      const authToken = localStorage.getItem('authToken');
 
       try {
-        // Login to get token
-        const loginResponse = await authAPI.login(email, password);
-        localStorage.setItem('authToken', loginResponse.token);
-        localStorage.setItem('applicantNo', loginResponse.applicant_no);
-        localStorage.setItem('currentUser', email);
+        // Only login if we don't have a token yet
+        if (!authToken && email && password) {
+          const loginResponse = await authAPI.login(email, password);
+          localStorage.setItem('authToken', loginResponse.token);
+          localStorage.setItem('applicantNo', loginResponse.applicant_no);
+          localStorage.setItem('currentUser', email);
+        }
 
         // Prepare profile payload
         const profilePayload = {

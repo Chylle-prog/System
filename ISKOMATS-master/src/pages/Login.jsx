@@ -76,11 +76,24 @@ const Login = () => {
       localStorage.setItem('applicantNo', response.applicant_no);
       setShowError(false);
 
-      // Navigate to portal
-      setTimeout(() => {
-        setShowLoadingOverlay(false);
-        setIsLoginLoading(false);
-        navigate('/portal');
+      // Navigate based on profile completion
+      setTimeout(async () => {
+        try {
+          const profile = await applicantAPI.getProfile();
+          setShowLoadingOverlay(false);
+          setIsLoginLoading(false);
+          
+          if (profile && profile.first_name === 'User' && profile.last_name === 'Account') {
+            navigate('/profile-setup');
+          } else {
+            navigate('/portal');
+          }
+        } catch (err) {
+          console.warn('Redirect check failed:', err);
+          setShowLoadingOverlay(false);
+          setIsLoginLoading(false);
+          navigate('/portal'); // Fallback
+        }
       }, 500);
     } catch (error) {
       // Handle specific error messages from backend

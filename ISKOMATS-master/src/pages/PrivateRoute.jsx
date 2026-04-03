@@ -11,7 +11,15 @@ const PrivateRoute = ({ children }) => {
     </div>;
   }
 
-  return currentUser ? children : <Navigate to="/login" />;
+  if (currentUser) {
+    // If user has the placeholder name, force them to complete profile setup
+    if (userProfile && userProfile.first_name === 'User' && userProfile.last_name === 'Account') {
+      return <Navigate to="/profile-setup" />;
+    }
+    return children;
+  }
+
+  return <Navigate to="/login" />;
 };
 
 export default PrivateRoute;
