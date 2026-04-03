@@ -1311,9 +1311,8 @@ def ocr_check():
                     return {'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label}
 
                 elif doc_type == 'Indigency':
-                    keywords = ["indigency", "barangay", "residency", "social", "welfare", "indigent"]
-                    if v and not any(kw in raw_lower for kw in keywords):
-                        v, msg = False, "Indigency document type not recognized"
+                    # Note: keyword verification already happens in verify_id_with_ocr()
+                    # Don't re-check here as OCR extraction can be lossy
                     return {'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw}
 
                 elif doc_type == 'SchoolID':

@@ -207,16 +207,23 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
 
     # Slow passes (PSM 11/6) removed to prevent timeouts on Render CPU
 
+    # Ultimate fallback for Indigency: If we found keywords, we are much more lenient on the final result
+    ind_keywords = ["indigent", "indigency", "barangay", "residency", "social", "welfare"]
+    found_ind_kw = any(kw.lower() in text.lower() for kw in ind_keywords)
+    
+    if is_indigency and found_ind_kw and (name_v or addr_v or ratio >= 0.05):
+        return True, f"Indigency verified primarily via keywords ({ratio:.0%} name match).", text, 1.0
+
     if name_v and addr_v:
         return True, "Name and Address verified via OCR.", text, 1.0
     elif name_v:
-        return False, "Address verification doesn't match", text, 0.7
+        return False, "Address mismatch", text, 0.7
     
     if ratio >= 0.3: # Return partial match if at least 30% matches
         return False, f"Identity check: Name partially matched ({ratio:.0%}). Please ensure image is clear.", text, ratio
         
-    print(f"[OCR] Verification Failed. Expected: '{expected_name}'. Snippet: '{text[:100]}...'", flush=True)
-    return False, "Identity verification doesn't match", text, 0.0
+    print(f"[OCR] Verification Failed. Expected: '{expected_name}'. Ratio: {ratio:.2f}", flush=True)
+    return False, "Identity verification mismatch", text, 0.0
 
 def extract_school_year_from_text(text):
     if not text: return None
