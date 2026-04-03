@@ -1241,7 +1241,7 @@ const Login = () => {
                   <i className="fas fa-university"></i>
                   <select name="school" required style={{ width: '100%', padding: '12px 12px 12px 42px', border: '1px solid #ddd', borderRadius: '8px', background: 'white' }}>
                     <option value="">Select University / School</option>
-                    <option value="De La Salle University">De La Salle University</option>
+                    <option value="De La Salle Lipa">De La Salle Lipa</option>
                     <option value="National University Lipa">National University Lipa</option>
                     <option value="Batangas State University">Batangas State University</option>
                     <option value="Kolehiyo ng Lungsod ng Lipa">Kolehiyo ng Lungsod ng Lipa</option>

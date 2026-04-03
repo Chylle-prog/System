@@ -971,7 +971,7 @@ const FindScholarship = () => {
                   required
                 >
                   <option value="">Select University</option>
-                  <option value="De La Salle University">De La Salle University</option>
+                  <option value="De La Salle Lipa">De La Salle Lipa</option>
                   <option value="Batangas State University">Batangas State University</option>
                   <option value="Kolehiyo ng Lungsod ng Lipa">Kolehiyo ng Lungsod ng Lipa</option>
                   <option value="Philippine State College of Aeronautics">Philippine State College of Aeronautics</option>

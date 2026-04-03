@@ -2399,7 +2399,7 @@ const StudentInfo = () => {
                   <label>Name of School <span style={{color: '#e74c3c'}}>*</span></label>
                   <select name="schoolName" value={formData.schoolName} onChange={handleInputChange} required={currentStep === 3}>
                     <option value="">Select School</option>
-                    <option value="De La Salle University">De La Salle University</option>
+                    <option value="De La Salle Lipa">De La Salle Lipa</option>
                     <option value="National University Lipa">National University Lipa</option>
                     <option value="Batangas State University">Batangas State University</option>
                     <option value="Kolehiyo ng Lungsod ng Lipa">Kolehiyo ng Lungsod ng Lipa</option>
