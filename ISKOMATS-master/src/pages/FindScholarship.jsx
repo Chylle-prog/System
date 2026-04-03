@@ -244,12 +244,13 @@ const FindScholarship = () => {
       // Step 1: Save GPA / income to profile
       try {
         await applicantAPI.updateProfile({
-          overall_gpa: gpa,
-          financial_income_of_parents: income,
-          street_brgy: formData.street_brgy,
-          town_city_municipality: formData.town_city_municipality,
+          schoolName: formData.university,
+          gpa: gpa, // Sending converted percentage for ranking consistency
+          parentsGrossIncome: income,
+          streetBarangay: formData.street_brgy,
+          townCity: formData.town_city_municipality,
           province: formData.province,
-          zip_code: formData.zip_code,
+          zipCode: formData.zip_code,
         });
       } catch (saveErr) {
         console.warn('Could not save profile:', saveErr.message);
@@ -999,25 +1000,6 @@ const FindScholarship = () => {
                   placeholder="e.g., 3.5"
                   required
                 />
-                {(formData.university === 'De La Salle Lipa') && (
-                  <div style={{
-                    marginTop: '0.8rem',
-                    background: '#f0f7ff',
-                    padding: '1rem',
-                    borderRadius: '12px',
-                    border: '1px solid #e1effe',
-                    fontSize: '0.75rem',
-                    color: '#1e429f',
-                    lineHeight: '1.4'
-                  }}>
-                    <div style={{ fontWeight: '700', marginBottom: '0.4rem' }}>DLSL Grading Guide:</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
-                      <div>4.0 = 98-100</div><div>3.75 = 95-97</div><div>3.5 = 92-94</div>
-                      <div>3.25 = 89-91</div><div>3.0 = 86-88</div><div>2.75 = 83-85</div>
-                      <div>2.5 = 80-82</div><div>2.25 = 77-79</div><div>2.0 = 75-76</div>
-                    </div>
-                  </div>
-                )}
                 {(formData.university === 'National University Lipa') && (
                   <div style={{
                     marginTop: '0.8rem',
