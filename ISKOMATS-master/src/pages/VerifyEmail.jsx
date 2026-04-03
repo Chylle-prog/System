@@ -15,6 +15,8 @@ const VerifyEmail = () => {
   const [email, setEmail] = useState("");
   const { setCurrentUserState, fetchProfile } = useAuth();
   const [verificationState, setVerificationState] = useState("input"); // input, loading, success, error, auto-verifying
+  const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
 
   useEffect(() => {
     // Add Font Awesome link
@@ -51,6 +53,8 @@ const VerifyEmail = () => {
   }, [searchParams]);
 
   const handleAutoVerification = async (token) => {
+    setLoadingMessage({ title: 'Auto-Verifying', message: 'Checking your verification token...' });
+    setShowLoadingOverlay(true);
     try {
       const response = await authAPI.verifyEmail(token);
       
@@ -70,12 +74,14 @@ const VerifyEmail = () => {
 
       setVerificationState("success");
       setFormData({ ...formData, success: true });
+      setShowLoadingOverlay(false);
       
       // Redirect to profile setup after 2 seconds
       setTimeout(() => {
         navigate('/login?setup=true');
       }, 2000);
     } catch (error) {
+      setShowLoadingOverlay(false);
       setVerificationState("error");
       setFormData({
         ...formData,
@@ -105,6 +111,8 @@ const VerifyEmail = () => {
 
     setFormData({ ...formData, isLoading: true, error: "" });
     setVerificationState("loading");
+    setLoadingMessage({ title: 'Verifying Code', message: 'Authenticating your account...' });
+    setShowLoadingOverlay(true);
 
     try {
       const response = await authAPI.verifyEmail(formData.verificationCode, email);
@@ -123,12 +131,14 @@ const VerifyEmail = () => {
 
       setVerificationState("success");
       setFormData({ ...formData, success: true, isLoading: false });
+      setShowLoadingOverlay(false);
       
       // Redirect to profile setup after 2 seconds
       setTimeout(() => {
         navigate('/login?setup=true');
       }, 2000);
     } catch (error) {
+      setShowLoadingOverlay(false);
       setVerificationState("error");
       setFormData({
         ...formData,
@@ -154,9 +164,12 @@ const VerifyEmail = () => {
     }
 
     setFormData({ ...formData, isLoading: true, error: "" });
+    setLoadingMessage({ title: 'Resending Email', message: 'Sending a new verification code...' });
+    setShowLoadingOverlay(true);
 
     try {
       await authAPI.resendVerificationEmail(email);
+      setShowLoadingOverlay(false);
       setFormData({
         ...formData,
         isLoading: false,
@@ -168,6 +181,7 @@ const VerifyEmail = () => {
         setFormData((prev) => ({ ...prev, success: false }));
       }, 3000);
     } catch (error) {
+      setShowLoadingOverlay(false);
       setFormData({
         ...formData,
         isLoading: false,
@@ -177,15 +191,68 @@ const VerifyEmail = () => {
   };
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: '#f5f5f5',
-      padding: '20px',
-      fontFamily: 'Inter, sans-serif'
-    }}>
+    <>
+      <style>{`
+        .loading-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0.75);
+          backdrop-filter: blur(10px);
+          display: none;
+          justify-content: center;
+          align-items: center;
+          z-index: 9999;
+          animation: fadeIn 0.3s ease;
+        }
+
+        .loading-overlay.active {
+          display: flex;
+        }
+
+        .loading-modal {
+          background: white;
+          padding: 3.5rem;
+          border-radius: 40px;
+          text-align: center;
+          box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
+          max-width: 450px;
+          width: 90%;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .loading-spinner {
+          width: 60px;
+          height: 60px;
+          border: 6px solid #ffe8e3;
+          border-top: 6px solid #4F0D00;
+          border-radius: 50%;
+          margin: 0 auto 1.8rem;
+          animation: spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+      `}</style>
+
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#f5f5f5',
+        padding: '20px',
+        fontFamily: 'Inter, sans-serif'
+      }}>
       <div style={{
         width: '100%',
         maxWidth: '500px',
@@ -196,7 +263,7 @@ const VerifyEmail = () => {
       }}>
         {/* Header */}
         <div style={{
-          background: 'linear-gradient(to right, #5c3d2e, #8B4513)',
+          background: '#4F0D00',
           padding: '40px 30px',
           textAlign: 'center',
           color: 'white'
@@ -241,7 +308,7 @@ const VerifyEmail = () => {
                 width: '40px',
                 height: '40px',
                 border: '4px solid #ddd',
-                borderTop: '4px solid #8B4513',
+                borderTop: '4px solid #4F0D00',
                 borderRadius: '50%',
                 margin: '0 auto 20px',
                 animation: 'spin 1s linear infinite'
@@ -269,7 +336,7 @@ const VerifyEmail = () => {
                 style={{
                   width: '100%',
                   padding: '12px 20px',
-                  backgroundColor: '#6f4e37',
+                  backgroundColor: '#4F0D00',
                   color: 'white',
                   border: 'none',
                   borderRadius: '6px',
@@ -278,8 +345,8 @@ const VerifyEmail = () => {
                   cursor: 'pointer',
                   transition: 'all 0.3s ease'
                 }}
-                onMouseEnter={(e) => e.target.style.backgroundColor = '#5c3d2e'}
-                onMouseLeave={(e) => e.target.style.backgroundColor = '#6f4e37'}
+                onMouseEnter={(e) => e.target.style.backgroundColor = '#3d0a00'}
+                onMouseLeave={(e) => e.target.style.backgroundColor = '#4F0D00'}
               >
                 Go to Login
               </button>
@@ -309,7 +376,7 @@ const VerifyEmail = () => {
                 <div style={{ marginBottom: '20px' }}>
                   <label style={{
                     display: 'block',
-                    color: '#8B4513',
+                    color: '#4F0D00',
                     fontSize: '14px',
                     fontWeight: '600',
                     marginBottom: '8px'
@@ -335,7 +402,7 @@ const VerifyEmail = () => {
                       transition: 'border-color 0.3s ease',
                       fontFamily: 'monospace'
                     }}
-                    onFocus={(e) => e.target.style.borderColor = '#8B4513'}
+                    onFocus={(e) => e.target.style.borderColor = '#4F0D00'}
                     onBlur={(e) => e.target.style.borderColor = '#ddd'}
                   />
                   <p style={{
@@ -354,7 +421,7 @@ const VerifyEmail = () => {
                   style={{
                     width: '100%',
                     padding: '12px 20px',
-                    backgroundColor: formData.isLoading ? '#ccc' : '#8B4513',
+                    backgroundColor: formData.isLoading ? '#ccc' : '#4F0D00',
                     color: 'white',
                     border: 'none',
                     borderRadius: '6px',
@@ -365,10 +432,10 @@ const VerifyEmail = () => {
                     opacity: formData.isLoading ? 0.6 : 1
                   }}
                   onMouseEnter={(e) => {
-                    if (!formData.isLoading) e.target.style.backgroundColor = '#6f4e37';
+                    if (!formData.isLoading) e.target.style.backgroundColor = '#3d0a00';
                   }}
                   onMouseLeave={(e) => {
-                    if (!formData.isLoading) e.target.style.backgroundColor = '#8B4513';
+                    if (!formData.isLoading) e.target.style.backgroundColor = '#4F0D00';
                   }}
                 >
                   {formData.isLoading ? "Verifying..." : "Verify Email"}
@@ -401,8 +468,8 @@ const VerifyEmail = () => {
                     width: '100%',
                     padding: '12px 20px',
                     backgroundColor: 'transparent',
-                    color: '#8B4513',
-                    border: '2px solid #8B4513',
+                    color: '#4F0D00',
+                    border: '2px solid #4F0D00',
                     borderRadius: '6px',
                     fontSize: '14px',
                     fontWeight: 'bold',
@@ -432,14 +499,14 @@ const VerifyEmail = () => {
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: '#8B4513',
+                    color: '#4F0D00',
                     cursor: 'pointer',
                     fontSize: '14px',
                     textDecoration: 'underline',
                     transition: 'color 0.3s ease'
                   }}
-                  onMouseEnter={(e) => e.target.style.color = '#5c3d2e'}
-                  onMouseLeave={(e) => e.target.style.color = '#8B4513'}
+                  onMouseEnter={(e) => e.target.style.color = '#3d0a00'}
+                  onMouseLeave={(e) => e.target.style.color = '#4F0D00'}
                 >
                   Back to Login
                 </button>
@@ -449,6 +516,20 @@ const VerifyEmail = () => {
         </div>
       </div>
     </div>
+
+      {/* Loading overlay */}
+      <div className={`loading-overlay ${showLoadingOverlay ? 'active' : ''}`}>
+        <div className="loading-modal">
+          <div className="loading-spinner"></div>
+          <h3 style={{ color: '#4F0D00', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
+            {loadingMessage.title}
+          </h3>
+          <p style={{ color: '#666', fontSize: '1rem' }}>
+            {loadingMessage.message}
+          </p>
+        </div>
+      </div>
+    </>
   );
 };
 
