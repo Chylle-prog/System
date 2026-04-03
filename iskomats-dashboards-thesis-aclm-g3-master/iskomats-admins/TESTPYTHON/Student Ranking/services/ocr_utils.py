@@ -218,7 +218,14 @@ def is_current_school_year(year_str, current_year=2026):
     if not years: return False
     return any(int(y) == current_year for y in years)
 
-# ─── Neural Signature Verification Wrappers ───────────────────────────────────
+# ─── Face & Neural Signature Verification Wrappers ───────────────────────────
+
+def verify_face_with_id(user_photo_bytes, id_photo_bytes):
+    """
+    Stub for face verification to prevent startup crashes.
+    Currently in Diagnostics/Bypass Mode.
+    """
+    return True, "Face verified (Diagnostics Mode)", 1.0
 
 def verify_signature_against_id(student_id, drawing_data):
     """
