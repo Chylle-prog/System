@@ -412,6 +412,52 @@ export const applicantAPI = {
       body: JSON.stringify({ signature_image: signatureBase64, id_back_image: idBackBase64 }),
     });
   },
+
+  /**
+   * Upload requirement video to database/storage (to Supabase)
+   * @param {string} fieldName - Field name
+   * @param {File} file - Video file
+   * @param {function} onProgress - Progress callback (if supported)
+   * @returns {Promise} - { publicUrl }
+   */
+  uploadRequirementVideo: async (fieldName, file, onProgress) => {
+    try {
+      const { supabase } = await import('../supabaseClient');
+      const user = localStorage.getItem('currentUser');
+      if (!user) throw new Error('User not authenticated');
+
+      // Map frontend field names to storage paths
+      const folderMap = {
+        mayorIndigency_video: 'indigency',
+        mayorCOE_video: 'coe',
+        mayorGrades_video: 'grades',
+        id_vid_url: 'id_verification'
+      };
+
+      const folder = folderMap[fieldName] || 'others';
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user}_${Date.now()}.${fileExt}`;
+      const filePath = `videos/${folder}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('iskomats-files')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('iskomats-files')
+        .getPublicUrl(filePath);
+
+      return { publicUrl };
+    } catch (err) {
+      console.error('Video upload error:', err);
+      throw err;
+    }
+  },
 };
 
 
@@ -450,51 +496,6 @@ export const applicationAPI = {
     });
   },
 
-  /**
-   * Upload requirement video to database/storage (to Supabase)
-   * @param {string} userNo - User identifier
-   * @param {string} fieldName - Field name
-   * @param {File} videoFile - Video file
-   * @returns {Promise} - URL of the uploaded video
-   */
-  uploadRequirementVideo: async (fieldName, file, onProgress) => {
-    try {
-      const { supabase } = await import('../supabaseClient');
-      const user = applicantAPI.getCurrentUser();
-      if (!user) throw new Error('User not authenticated');
-
-      // Map frontend field names to storage paths
-      const folderMap = {
-        mayorIndigency_video: 'indigency',
-        mayorCOE_video: 'coe',
-        mayorGrades_video: 'grades',
-        id_vid_url: 'id_verification'
-      };
-
-      const folder = folderMap[fieldName] || 'others';
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${user}_${Date.now()}.${fileExt}`;
-      const filePath = `videos/${folder}/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('iskomats-files')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: true
-        });
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('iskomats-files')
-        .getPublicUrl(filePath);
-
-      return { publicUrl };
-    } catch (err) {
-      console.error('Video upload error:', err);
-      throw err;
-    }
-  },
 
   /**
    * Get user's applications
