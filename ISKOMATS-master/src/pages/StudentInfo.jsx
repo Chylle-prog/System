@@ -1072,7 +1072,8 @@ const StudentInfo = () => {
         
         try {
           const result = await applicantAPI.ocrCheck(
-            null, 
+            null, // idFront
+            null, // idBack
             indigencyDoc, 
             formData.townCity || userProfile?.townCity, 
             null, 
