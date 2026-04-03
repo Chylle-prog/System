@@ -8,7 +8,7 @@ sys.stdout.reconfigure(line_buffering=True)
 
 print("[STARTUP] 1. eventlet monkey_patch complete. Loading modules...", flush=True)
 
-# Deployment trigger: 2026-04-03 - Force sequential OCR fix & CORS logging
+# Deployment trigger: 2026-04-03 - REVERT COMPLETE - Robust Parallel OCR
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO
 
