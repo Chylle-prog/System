@@ -1323,8 +1323,17 @@ def ocr_check():
                     return {'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label}
 
                 elif doc_type == 'Indigency':
-                    # Note: keyword verification already happens in verify_id_with_ocr()
-                    # Don't re-check here as OCR extraction can be lossy
+                    keywords = ["indigency", "barangay", "residency", "social", "welfare", "indigent", "certificate"]
+                    raw_lower = raw.lower()
+                    has_kw = any(kw in raw_lower for kw in keywords)
+                    
+                    if not v and has_kw and ratio >= 0.1:
+                        # Allow keyword match to supersede a slightly low identity ratio for Indigency
+                        v, msg = True, f"Indigency verified primarily via keywords ({ratio:.0%} name match)"
+                    elif v and not has_kw:
+                        # If name matched but no keywords, warn but don't necessarily fail as layouts vary
+                        msg = f"Name matched but document keywords not clear. Proceeding as Indigency."
+                        
                     return {'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw}
 
                 elif doc_type == 'SchoolID':
