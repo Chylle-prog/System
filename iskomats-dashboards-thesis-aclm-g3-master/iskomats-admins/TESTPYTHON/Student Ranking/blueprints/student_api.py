@@ -1230,7 +1230,8 @@ def ocr_check():
         school_name = (data.get('school_name') or data.get('schoolName') or '').strip()
         course = (data.get('course') or '').strip()
         expected_gpa = (data.get('gpa') or data.get('expectedGPA') or '').strip()
-        expected_year = (data.get('expected_year') or data.get('expectedYear') or '').strip()
+        expected_year = (data.get('expected_year') or data.get('expectedYear') or data.get('yearLevel') or '').strip()
+        expected_id_no = (data.get('id_number') or data.get('idNumber') or '').strip()
 
         # Helper to get bytes
         def get_bytes(param, db_val):
@@ -1266,11 +1267,16 @@ def ocr_check():
                         school_parts = [p.strip() for p in school_name.lower().split() if len(p.strip()) > 3]
                         school_ok = any(p in raw_lower for p in school_parts) if school_parts else True
                     course_ok = True if not course else (course.lower() in raw_lower)
+                    
+                    id_no_ok = True if not expected_id_no else (expected_id_no.lower() in raw_lower)
+                    year_lvl_ok = True if not expected_year else (expected_year.lower() in raw_lower)
 
                     if v:
                         if not year_ok: v, msg = False, f"Outdated A.Y. ({year_label or 'None'})"
                         elif not school_ok: v, msg = False, f"School mismatch ({school_name})"
                         elif not course_ok: v, msg = False, f"Course mismatch ({course})"
+                        elif not id_no_ok: v, msg = False, f"ID number mismatch ({expected_id_no})"
+                        elif not year_lvl_ok: v, msg = False, f"Year Level mismatch ({expected_year})"
                         else: msg = f"Verified: A.Y. {year_label}" + (f" | {school_name}" if school_name else "")
                     
                     return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label}
@@ -1297,10 +1303,6 @@ def ocr_check():
                             extracted_gpa = gpa_match.group(1)
                             gpa_ok = abs(float(extracted_gpa) - float(expected_gpa)) < 0.1
                     
-                    if v:
-                        if not year_ok: v, msg = False, f"Outdated A.Y. ({year_label or 'None'})"
-                        elif not school_ok: v, msg = False, f"School mismatch ({school_name})"
-                        elif not course_ok: v, msg = False, f"Course mismatch ({course})"
                         elif expected_gpa and not gpa_ok: v, msg = False, f"GPA mismatch (Extracted: {extracted_gpa}, Expected: {expected_gpa})"
                         else: msg = f"Verified: A.Y. {year_label}" + (f" | {school_name}" if school_name else "") + (f" | GPA: {extracted_gpa}" if extracted_gpa else "")
                     
@@ -1313,6 +1315,22 @@ def ocr_check():
                     return {'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw}
 
                 elif doc_type == 'SchoolID':
+                    raw_lower = raw.lower()
+                    school_ok = True if not school_name else (school_name.lower() in raw_lower)
+                    if school_name and not school_ok:
+                        school_parts = [p.strip() for p in school_name.lower().split() if len(p.strip()) > 3]
+                        school_ok = any(p in raw_lower for p in school_parts) if school_parts else True
+
+                    id_no_ok = True if not expected_id_no else (expected_id_no.lower() in raw_lower)
+                    # For year Level, we check if the year string (e.g. "1st Year", "2") is present
+                    year_ok = True if not expected_year else (expected_year.lower() in raw_lower)
+
+                    if v:
+                        if not school_ok: v, msg = False, f"School mismatch ({school_name})"
+                        elif not id_no_ok: v, msg = False, f"ID number mismatch ({expected_id_no})"
+                        elif not year_ok: v, msg = False, f"Year mismatch ({expected_year})"
+                        else: msg = "School ID details verified successfully"
+                    
                     return {'doc': 'Identity', 'verified': v, 'message': msg, 'raw_text': raw}
 
                 return None

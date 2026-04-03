@@ -12,8 +12,8 @@ const STEP_FIELDS = {
     'mobileNumber', 'mayorIndigency_photo', 'mayorIndigency_video'
   ],
   2: [
-    'fatherStatus', 'fatherName', 'fatherOccupation', 'fatherAddress', 'fatherPhoneNumber',
-    'motherStatus', 'motherName', 'motherOccupation', 'motherAddress', 'motherPhoneNumber',
+    'fatherStatus', 'fatherName', 'fatherOccupation', 'fatherPhoneNumber',
+    'motherStatus', 'motherName', 'motherOccupation', 'motherPhoneNumber',
     'parentsGrossIncome', 'numberOfSiblings'
   ],
   3: [
@@ -239,12 +239,10 @@ const StudentInfo = () => {
     fatherStatus: '',
     fatherName: '',
     fatherOccupation: '',
-    fatherAddress: '',
     fatherPhoneNumber: '',
     motherStatus: '',
     motherName: '',
     motherOccupation: '',
-    motherAddress: '',
     motherPhoneNumber: '',
     parentsGrossIncome: '',
     numberOfSiblings: '',
@@ -1129,7 +1127,10 @@ const StudentInfo = () => {
               null, 
               null,
               formData.firstName || userProfile?.first_name,
-              formData.lastName || userProfile?.last_name
+              formData.lastName || userProfile?.last_name,
+              formData.schoolName || userProfile?.school,
+              formData.schoolIdNumber || userProfile?.school_id_no,
+              formData.yearLevel || userProfile?.year_lvl
             );
             
             if (result.verified) {
@@ -2322,10 +2323,7 @@ const StudentInfo = () => {
                     <input type="tel" name="fatherPhoneNumber" value={formData.fatherPhoneNumber} onChange={handleInputChange} placeholder="09XXXXXXXXX" required={currentStep === 2} />
                   </div>
                 </div>
-                <div className="form-group">
-                  <label>Address <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="fatherAddress" value={formData.fatherAddress} onChange={handleInputChange} placeholder="Permanent Address" required={currentStep === 2} />
-                </div>
+
               </div>
 
               {/* Mother Information */}
@@ -2357,10 +2355,7 @@ const StudentInfo = () => {
                     <input type="tel" name="motherPhoneNumber" value={formData.motherPhoneNumber} onChange={handleInputChange} placeholder="09XXXXXXXXX" required={currentStep === 2} />
                   </div>
                 </div>
-                <div className="form-group">
-                  <label>Address <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="motherAddress" value={formData.motherAddress} onChange={handleInputChange} placeholder="Permanent Address" required={currentStep === 2} />
-                </div>
+
               </div>
 
               <div className="form-row">
