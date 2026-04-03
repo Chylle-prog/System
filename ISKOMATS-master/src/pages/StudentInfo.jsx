@@ -1118,8 +1118,9 @@ const StudentInfo = () => {
           return true; // No documents to verify, allow progression
         }
         
-        // Only verify School ID (front) for name - don't verify COE or Grades
-        if (schoolIdFront && ocrVerified !== 'success') {
+        // Only verify School ID for identity and current SY
+        if (schoolIdFront) {
+          setOcrVerified('verifying');
           try {
             const result = await applicantAPI.ocrCheck(
               schoolIdFront, 
