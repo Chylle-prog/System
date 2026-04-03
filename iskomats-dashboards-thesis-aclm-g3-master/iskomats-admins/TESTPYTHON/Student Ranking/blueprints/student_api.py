@@ -1213,13 +1213,14 @@ def ocr_check():
 
         # 2. Resolve parameters
         id_front_param = data.get('id_front') or data.get('idFront')
+        id_back_param = data.get('id_back') or data.get('idBack')
         indigency_doc_param = data.get('indigency_doc') or data.get('indigencyDoc')
         enrollment_doc_param = data.get('enrollment_doc') or data.get('enrollmentDoc')
         grades_doc_param = data.get('grades_doc') or data.get('gradesDoc')
 
-        first_name = (data.get('first_name') or data.get('firstName') or applicant.get('first_name', '')).strip()
-        middle_name = (data.get('middle_name') or data.get('middleName') or applicant.get('middle_name', '')).strip()
-        last_name = (data.get('last_name') or data.get('lastName') or applicant.get('last_name', '')).strip()
+        first_name = str(data.get('first_name') or data.get('firstName') or applicant.get('first_name', '')).strip()
+        middle_name = str(data.get('middle_name') or data.get('middleName') or applicant.get('middle_name', '')).strip()
+        last_name = str(data.get('last_name') or data.get('lastName') or applicant.get('last_name', '')).strip()
         
         # Construct full expected name for OCR matching
         # Include middle name only if it's more than a single character or placeholder
@@ -1246,9 +1247,10 @@ def ocr_check():
 
                 # 1. Main OCR Verification (Identity)
                 # For Indigency, we also verify the address (town_city)
+                # For ID Back, we don't expect the name (as year level is the focus)
                 v, msg, raw, _ = verify_id_with_ocr(
                     image_bytes=doc_bytes,
-                    expected_name=full_expected_name,
+                    expected_name=full_expected_name if doc_type != 'SchoolIDBack' else None,
                     expected_address=town_city if doc_type == 'Indigency' else None
                 )
                 raw_lower = raw.lower()
@@ -1322,16 +1324,25 @@ def ocr_check():
                         school_ok = any(p in raw_lower for p in school_parts) if school_parts else True
 
                     id_no_ok = True if not expected_id_no else (expected_id_no.lower() in raw_lower)
-                    # For year Level, we check if the year string (e.g. "1st Year", "2") is present
-                    year_ok = True if not expected_year else (expected_year.lower() in raw_lower)
+                    # For ID front, we only check School Name and ID Number (Year Level is on the back)
 
                     if v:
-                        if not school_ok: v, msg = False, f"School mismatch ({school_name})"
+                        if not school_ok: v, msg = False, f"School name mismatch ({school_name})"
                         elif not id_no_ok: v, msg = False, f"ID number mismatch ({expected_id_no})"
-                        elif not year_ok: v, msg = False, f"Year mismatch ({expected_year})"
-                        else: msg = "School ID details verified successfully"
+                        else: msg = "School ID (front) details verified successfully"
                     
-                    return {'doc': 'Identity', 'verified': v, 'message': msg, 'raw_text': raw}
+                    return {'doc': 'Identity Front', 'verified': v, 'message': msg, 'raw_text': raw}
+
+                elif doc_type == 'SchoolIDBack':
+                    # Year Level is verified from the back of the ID
+                    year_ok = True if not expected_year else (expected_year.lower() in raw_lower)
+                    
+                    if not year_ok:
+                        v, msg = False, f"Year Level mismatch on ID back ({expected_year})"
+                    else:
+                        v, msg = True, f"Year Level {expected_year} verified from ID back"
+                        
+                    return {'doc': 'Identity Back', 'verified': v, 'message': msg, 'raw_text': raw}
 
                 return None
             except Exception as worker_err:
@@ -1346,6 +1357,8 @@ def ocr_check():
             jobs.append(('Indigency', indigency_doc_param, applicant.get('indigency_doc')))
         if id_front_param:
             jobs.append(('SchoolID', id_front_param, applicant.get('id_img_front')))
+        if id_back_param:
+            jobs.append(('SchoolIDBack', id_back_param, applicant.get('id_img_back')))
 
         results = []
         overall_verified = True

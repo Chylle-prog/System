@@ -1122,6 +1122,7 @@ const StudentInfo = () => {
           try {
             const result = await applicantAPI.ocrCheck(
               schoolIdFront, 
+              schoolIdBack,
               null, 
               null, 
               null, 
