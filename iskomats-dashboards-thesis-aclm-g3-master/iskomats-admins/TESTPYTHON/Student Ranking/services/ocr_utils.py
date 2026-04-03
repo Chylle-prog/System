@@ -124,36 +124,39 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
         all_ocr_words = norm_txt.split()
         
         # 1. Fuzzy Name Matching
-        n_words = [w.strip() for w in normalize_for_ocr(target_name).split() if len(w.strip()) >= 2]
-        if not n_words:
-            n_words = [w.strip() for w in normalize_for_ocr(target_name).split() if w.strip()]
-            
-        f_count = 0
-        matched_words = []
-        for word in n_words:
-            # Check for exact substring match first
-            if word in norm_txt:
-                f_count += 1
-                matched_words.append(word)
-                continue
-            
-            # Fuzzy match with individual OCR words
-            is_fuzzy = False
-            for ocr_w in all_ocr_words:
-                if len(ocr_w) < len(word) - 1: continue 
-                if difflib.SequenceMatcher(None, word, ocr_w).ratio() >= (0.7 if is_indigency else 0.8):
-                    is_fuzzy = True
-                    matched_words.append(f"{word}~(as {ocr_w})")
-                    break
-            if is_fuzzy: f_count += 1
-            
-        m_ratio = f_count / len(n_words) if n_words else 0
-        # Lower thresholds: 40% for Indigency (notoriously messy), 60% for others (robustness)
-        pass_threshold = 0.4 if is_indigency else 0.6
-        n_verified = m_ratio >= pass_threshold
+        n_verified = True # Default to true if no name to match
+        m_ratio = 1.0
+        if target_name:
+            n_words = [w.strip() for w in normalize_for_ocr(target_name).split() if len(w.strip()) >= 2]
+            if not n_words:
+                n_words = [w.strip() for w in normalize_for_ocr(target_name).split() if w.strip()]
+                
+            f_count = 0
+            matched_words = []
+            for word in n_words:
+                # Check for exact substring match first
+                if word in norm_txt:
+                    f_count += 1
+                    matched_words.append(word)
+                    continue
+                
+                # Fuzzy match with individual OCR words
+                is_fuzzy = False
+                for ocr_w in all_ocr_words:
+                    if len(ocr_w) < len(word) - 1: continue 
+                    if difflib.SequenceMatcher(None, word, ocr_w).ratio() >= (0.7 if is_indigency else 0.8):
+                        is_fuzzy = True
+                        matched_words.append(f"{word}~(as {ocr_w})")
+                        break
+                if is_fuzzy: f_count += 1
+                
+            m_ratio = f_count / len(n_words) if n_words else 0
+            # Lower thresholds: 40% for Indigency (notoriously messy), 60% for others (robustness)
+            pass_threshold = 0.4 if is_indigency else 0.6
+            n_verified = m_ratio >= pass_threshold
         
         if not n_verified and is_indigency:
-            print(f"[OCR DEBUG] Name mismatch for Indigency. Expected: {n_words} | Matched: {matched_words} | Ratio: {m_ratio:.2f}", flush=True)
+            print(f"[OCR DEBUG] Name mismatch for Indigency. Expected: {target_name} | Ratio: {m_ratio:.2f}", flush=True)
 
         # 2. Address Matching
         a_verified = True
