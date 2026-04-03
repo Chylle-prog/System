@@ -151,12 +151,19 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
                 if is_fuzzy: f_count += 1
                 
             m_ratio = f_count / len(n_words) if n_words else 0
-            # Extremely permissive for Indigency certificates (often non-standard or messy)
+            # Extremely permissive for Indigency certificates.
+            # Fallback: if we find indigency keywords, lower the threshold even more.
+            ind_keywords = ["indigent", "indigency", "barangay", "residency", "social", "welfare"]
+            found_ind_kw = any(kw in norm_txt for kw in ind_keywords)
+            
             pass_threshold = 0.25 if is_indigency else 0.6
+            if is_indigency and found_ind_kw:
+                pass_threshold = 0.05 # Only need 5% name match if keywords are found
+                
             n_verified = m_ratio >= pass_threshold
         
         if not n_verified and is_indigency:
-            print(f"[OCR DEBUG] Name mismatch for Indigency. Expected: {target_name} | Ratio: {m_ratio:.2f}", flush=True)
+            print(f"[OCR DEBUG] Name mismatch for Indigency. Expected: {target_name} | Ratio: {m_ratio:.2f} | KW Found: {found_ind_kw}", flush=True)
 
         # 2. Address Matching
         a_verified = True
