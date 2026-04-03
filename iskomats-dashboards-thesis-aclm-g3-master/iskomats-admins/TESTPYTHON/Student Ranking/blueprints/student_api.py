@@ -1243,7 +1243,19 @@ def ocr_check():
             try:
                 # Use standard doc bytes for provided parameters, fallback to DB only for Indigency/ID
                 doc_bytes = decode_base64(doc_param) if doc_param else (db_bytes(db_val) if db_val else None)
-                if not doc_bytes: return None
+                
+                if doc_type == 'Indigency':
+                    print(f"[INDIGENCY DECODE] doc_param present: {bool(doc_param)}, param is string: {isinstance(doc_param, str)}, param length: {len(doc_param) if isinstance(doc_param, str) else 'N/A'}", flush=True)
+                    print(f"[INDIGENCY DECODE] has comma: {',' in doc_param if isinstance(doc_param, str) else 'N/A'}, doc_bytes obtained: {doc_bytes is not None}", flush=True)
+                    if doc_bytes is None:
+                        print(f"[INDIGENCY DECODE] WARNING: doc_bytes is None! db_val present: {bool(db_val)}", flush=True)
+                        if not doc_param and not db_val:
+                            print(f"[INDIGENCY DECODE] CRITICAL: No data source available", flush=True)
+                
+                if not doc_bytes: 
+                    if doc_type == 'Indigency':
+                        print(f"[INDIGENCY] Early return due to missing doc_bytes", flush=True)
+                    return None
 
                 # 1. Main OCR Verification (Identity)
                 # For Indigency, we also verify the address (town_city)

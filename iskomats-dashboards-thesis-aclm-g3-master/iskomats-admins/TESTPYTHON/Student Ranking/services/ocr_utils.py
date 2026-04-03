@@ -188,6 +188,9 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
                 a_match_ratio = f_a_count / len(a_words) if a_words else 0
                 # Address matching for Indigency is also more permissive (25% match required)
                 a_verified = a_match_ratio >= 0.25 if is_indigency else 0.5
+                
+                if is_indigency:
+                    print(f"[OCR DEBUG] Address matching - Expected: '{target_addr}' | Found {f_a_count}/{len(a_words)} words | Ratio: {a_match_ratio:.2f} | Verified: {a_verified}", flush=True)
         
         return n_verified, a_verified, m_ratio
 
@@ -198,10 +201,18 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
     text = _run_tesseract(image_bytes, fast_mode=True)
     name_v, addr_v, ratio = check_match(text, expected_name, expected_address, is_indigency)
     
+    if is_indigency:
+        print(f"[OCR INDIGENCY] Pass 1 (Fast): name_v={name_v}, addr_v={addr_v}, ratio={ratio:.2f}", flush=True)
+        print(f"[OCR INDIGENCY] Expected - Name: '{expected_name}' | Address: '{expected_address}'", flush=True)
+        print(f"[OCR INDIGENCY] Extracted text (first 200 chars): {text[:200]}", flush=True)
+    
     # Pass 2: Retry with Full Preprocessing
     if not (name_v and addr_v) and image_bytes:
         text_full = _run_tesseract(image_bytes, fast_mode=False)
         name_v_f, addr_v_f, ratio_f = check_match(text_full, expected_name, expected_address, is_indigency)
+        if is_indigency:
+            print(f"[OCR INDIGENCY] Pass 2 (Full): name_v={name_v_f}, addr_v={addr_v_f}, ratio={ratio_f:.2f}", flush=True)
+            print(f"[OCR INDIGENCY] Full Extracted text (first 200 chars): {text_full[:200]}", flush=True)
         if (name_v_f and addr_v_f) or ratio_f > ratio:
             text, name_v, addr_v, ratio = text_full, name_v_f, addr_v_f, ratio_f
 
@@ -211,12 +222,19 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
     ind_keywords = ["indigent", "indigency", "barangay", "residency", "social", "welfare"]
     found_ind_kw = any(kw.lower() in text.lower() for kw in ind_keywords)
     
+    if is_indigency:
+        print(f"[OCR INDIGENCY] Keywords found: {found_ind_kw} | Text contains: {[kw for kw in ind_keywords if kw.lower() in text.lower()]}", flush=True)
+        print(f"[OCR INDIGENCY] Final check: name_v={name_v}, addr_v={addr_v}, ratio={ratio:.2f}, found_ind_kw={found_ind_kw}", flush=True)
+    
     if is_indigency and found_ind_kw and (name_v or addr_v or ratio >= 0.05):
         return True, f"Indigency verified primarily via keywords ({ratio:.0%} name match).", text, 1.0
 
     if name_v and addr_v:
         return True, "Name and Address verified via OCR.", text, 1.0
     elif name_v:
+        # For indigency with keywords, override the address mismatch
+        if is_indigency and found_ind_kw:
+            return True, f"Indigency verified (keywords found, name matched).", text, 1.0
         return False, "Address mismatch", text, 0.7
     
     if ratio >= 0.3: # Return partial match if at least 30% matches
