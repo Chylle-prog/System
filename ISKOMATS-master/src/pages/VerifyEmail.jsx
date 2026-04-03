@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { authAPI, applicantAPI } from '../services/api';
+import { useAuth } from "../contexts/AuthContext";
 
 const VerifyEmail = () => {
   const navigate = useNavigate();
@@ -12,6 +13,7 @@ const VerifyEmail = () => {
     isLoading: false,
   });
   const [email, setEmail] = useState("");
+  const { setCurrentUserState, fetchProfile } = useAuth();
   const [verificationState, setVerificationState] = useState("input"); // input, loading, success, error, auto-verifying
 
   useEffect(() => {
@@ -50,8 +52,22 @@ const VerifyEmail = () => {
 
   const handleAutoVerification = async (token) => {
     try {
-      await authAPI.verifyEmail(token);
+      const response = await authAPI.verifyEmail(token);
       
+      // Update global auth state
+      if (response.token) {
+        localStorage.setItem('authToken', response.token);
+        localStorage.setItem('applicantNo', response.applicant_no || response.user_no);
+        
+        // Find email from state or storage
+        const verifiedEmail = email || localStorage.getItem('registrationEmail');
+        if (verifiedEmail) {
+          localStorage.setItem('currentUser', verifiedEmail);
+          setCurrentUserState(verifiedEmail);
+          fetchProfile(verifiedEmail);
+        }
+      }
+
       setVerificationState("success");
       setFormData({ ...formData, success: true });
       
@@ -91,8 +107,20 @@ const VerifyEmail = () => {
     setVerificationState("loading");
 
     try {
-      await authAPI.verifyEmail(formData.verificationCode, email);
+      const response = await authAPI.verifyEmail(formData.verificationCode, email);
       
+      // Update global auth state
+      if (response.token) {
+        localStorage.setItem('authToken', response.token);
+        localStorage.setItem('applicantNo', response.applicant_no || response.user_no);
+        
+        if (email) {
+          localStorage.setItem('currentUser', email);
+          setCurrentUserState(email);
+          fetchProfile(email);
+        }
+      }
+
       setVerificationState("success");
       setFormData({ ...formData, success: true, isLoading: false });
       
