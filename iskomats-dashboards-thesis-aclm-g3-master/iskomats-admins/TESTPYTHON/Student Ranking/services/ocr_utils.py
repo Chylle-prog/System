@@ -218,9 +218,57 @@ def is_current_school_year(year_str, current_year=2026):
     if not years: return False
     return any(int(y) == current_year for y in years)
 
-# ─── Face & Signature stubs for completeness ──────────────────────────────────
-def verify_face_with_id(user_photo_bytes, id_photo_bytes):
-    return True, "Face verified (Diagnostics Mode)", 1.0
+# ─── Neural Signature Verification Wrappers ───────────────────────────────────
 
-def _extract_signature_regions(id_image_data, max_signatures=3):
-    return [] # Reverted to minimal
+def verify_signature_against_id(student_id, drawing_data):
+    """
+    Neural matching wrapper for student_api consumption.
+    """
+    try:
+        from .signature_brain import calculate_neural_match
+        
+        if not drawing_data: return False, "No drawing data", 0.0
+        
+        # Safe decode base64
+        if isinstance(drawing_data, str):
+            if ',' in drawing_data: drawing_data = drawing_data.split(',')[1]
+            drawing_data = base64.b64decode(drawing_data)
+            
+        nparr = np.frombuffer(drawing_data, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None: return False, "Invalid image data", 0.0
+        
+        score = calculate_neural_match(img, student_id)
+        # Threshold 0.65 as established in previous neural training sessions
+        is_verified = score >= 0.65
+        status = "Neural match successful" if is_verified else "Neural signature mismatch"
+        return is_verified, status, score
+    except Exception as e:
+        print(f"[SIGNATURE] Wrapper error: {e}", flush=True)
+        return False, str(e), 0.0
+
+def save_signature_profile(student_id, drawing_data):
+    """
+    Saves a drawing sample to the student's Neural History for adaptive learning.
+    """
+    try:
+        if not drawing_data: return False
+        
+        # Safe decode base64
+        if isinstance(drawing_data, str):
+            if ',' in drawing_data: drawing_data = drawing_data.split(',')[1]
+            drawing_data = base64.b64decode(drawing_data)
+            
+        history_dir = os.path.join(os.getcwd(), 'knowledge', 'signature_profiles', 'history', str(student_id))
+        os.makedirs(history_dir, exist_ok=True)
+        
+        # Save with high-res timestamp
+        file_path = os.path.join(history_dir, f"{int(time.time() * 1000)}.png")
+        with open(file_path, 'wb') as f:
+            f.write(drawing_data)
+            
+        print(f"[SIGNATURE] Saved training sample for student {student_id}", flush=True)
+        return True
+    except Exception as e:
+        print(f"[SIGNATURE] Save error: {e}", flush=True)
+        return False
