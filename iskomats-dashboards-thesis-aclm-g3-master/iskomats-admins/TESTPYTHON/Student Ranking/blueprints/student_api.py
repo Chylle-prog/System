@@ -1365,13 +1365,22 @@ def ocr_check():
         results = []
         overall_verified = True
         if jobs:
-            with ThreadPoolExecutor(max_workers=len(jobs)) as executor:
+            # Sequential processing is safer for low-memory environments (avoiding OOM crashes)
+            # Use max_workers=1 to process documents one by one
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                # Store by doc_type to ensure we can track which one finished
                 future_results = [executor.submit(process_doc, *job) for job in jobs]
                 for future in future_results:
-                    res = future.result()
-                    if res:
-                        results.append(res)
-                        if not res['verified']: overall_verified = False
+                    try:
+                        res = future.result(timeout=60) # 60 second timeout per doc
+                        if res:
+                            results.append(res)
+                            if not res.get('verified', False):
+                                overall_verified = False
+                    except Exception as future_err:
+                        print(f"[OCR ERROR] {str(future_err)}", flush=True)
+                        results.append({'doc': 'Verification', 'verified': False, 'message': f'Thread timeout/error: {str(future_err)}'})
+                        overall_verified = False
 
         if not results:
             return jsonify({'verified': False, 'message': 'No documents provided for verification'}), 400
