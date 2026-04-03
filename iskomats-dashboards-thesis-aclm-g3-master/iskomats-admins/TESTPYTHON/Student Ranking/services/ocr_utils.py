@@ -112,24 +112,50 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
         return False, "OCR Engine (Tesseract) not found.", "", 0.0
     
     import re
+    import difflib
+    
     def normalize_for_ocr(s):
         if not s: return ""
         # Remove punctuation like . , ( ) etc and normalize spaces
         return re.sub(r'[^a-z0-9\s]', ' ', s.lower()).strip()
 
-    def check_match(ocr_text, target_name, target_addr):
+    def check_match(ocr_text, target_name, target_addr, is_indigency=False):
         norm_txt = normalize_for_ocr(ocr_text)
+        all_ocr_words = norm_txt.split()
         
         # 1. Fuzzy Name Matching
         n_words = [w.strip() for w in normalize_for_ocr(target_name).split() if len(w.strip()) >= 2]
         if not n_words:
             n_words = [w.strip() for w in normalize_for_ocr(target_name).split() if w.strip()]
             
-        f_count = sum(1 for word in n_words if word in norm_txt)
+        f_count = 0
+        matched_words = []
+        for word in n_words:
+            # Check for exact substring match first
+            if word in norm_txt:
+                f_count += 1
+                matched_words.append(word)
+                continue
+            
+            # Fuzzy match with individual OCR words
+            is_fuzzy = False
+            for ocr_w in all_ocr_words:
+                if len(ocr_w) < len(word) - 1: continue 
+                if difflib.SequenceMatcher(None, word, ocr_w).ratio() >= (0.7 if is_indigency else 0.8):
+                    is_fuzzy = True
+                    matched_words.append(f"{word}~(as {ocr_w})")
+                    break
+            if is_fuzzy: f_count += 1
+            
         m_ratio = f_count / len(n_words) if n_words else 0
-        n_verified = m_ratio >= 0.8
+        # Lower thresholds: 40% for Indigency (notoriously messy), 60% for others (robustness)
+        pass_threshold = 0.4 if is_indigency else 0.6
+        n_verified = m_ratio >= pass_threshold
         
-        # 2. Address Matching (if provided)
+        if not n_verified and is_indigency:
+            print(f"[OCR DEBUG] Name mismatch for Indigency. Expected: {n_words} | Matched: {matched_words} | Ratio: {m_ratio:.2f}", flush=True)
+
+        # 2. Address Matching
         a_verified = True
         if target_addr:
             norm_target_addr = normalize_for_ocr(target_addr)
@@ -139,36 +165,79 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
                 a_words = [w.strip() for w in norm_target_addr.split() if len(w.strip()) >= 2]
                 if not a_words:
                     a_words = [w.strip() for w in norm_target_addr.split() if w.strip()]
-                f_a_count = sum(1 for word in a_words if word in norm_txt)
+                
+                f_a_count = 0
+                for word in a_words:
+                    if word in norm_txt: f_a_count += 1; continue
+                    for ocr_w in all_ocr_words:
+                        if len(ocr_w) < 2: continue
+                        if difflib.SequenceMatcher(None, word, ocr_w).ratio() >= 0.7:
+                            f_a_count += 1
+                            break
+                
                 a_match_ratio = f_a_count / len(a_words) if a_words else 0
-                a_verified = a_match_ratio >= 0.5
+                # Address matching for Indigency is also more permissive
+                a_verified = a_match_ratio >= 0.4 if is_indigency else 0.5
         
         return n_verified, a_verified, m_ratio
 
+    # Flag if this is likely an indigency certificate based on expected address presence
+    is_indigency = (expected_address is not None) 
+    
     # Pass 1: Fast Mode
     text = _run_tesseract(image_bytes, fast_mode=True)
-    name_v, addr_v, ratio = check_match(text, expected_name, expected_address)
+    name_v, addr_v, ratio = check_match(text, expected_name, expected_address, is_indigency)
     
-    # Pass 2: Retry with Full Preprocessing if identity verification fails
+    # Pass 2: Retry with Full Preprocessing
     if not (name_v and addr_v) and image_bytes:
-        print(f"[OCR] Pass 1 failed (ratio {ratio:.2f}). Retrying with full preprocessing...", flush=True)
         text_full = _run_tesseract(image_bytes, fast_mode=False)
-        name_v_f, addr_v_f, ratio_f = check_match(text_full, expected_name, expected_address)
-        
-        # Use results from the better pass
+        name_v_f, addr_v_f, ratio_f = check_match(text_full, expected_name, expected_address, is_indigency)
         if (name_v_f and addr_v_f) or ratio_f > ratio:
             text, name_v, addr_v, ratio = text_full, name_v_f, addr_v_f, ratio_f
 
-    # Final logic
+    # Pass 3: PSM 11 (Sparse Text)
+    if not (name_v and addr_v) and image_bytes:
+        try:
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if img is not None:
+                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                text_s = pytesseract.image_to_string(gray, config='--psm 11')
+                name_v_s, addr_v_s, ratio_s = check_match(text_s, expected_name, expected_address, is_indigency)
+                if (name_v_s and addr_v_s) or ratio_s > ratio:
+                    text, name_v, addr_v, ratio = text_s, name_v_s, addr_v_s, ratio_s
+        except: pass
+
+    # Pass 4: Contrast Boosting + PSM 6 (Uniform Block)
+    if not (name_v and addr_v) and image_bytes:
+        try:
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if img is not None:
+                # Boost contrast significantly
+                lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+                l, a, b = cv2.split(lab)
+                clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+                cl = clahe.apply(l)
+                enhanced = cv2.merge((cl,a,b))
+                enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+                gray = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
+                
+                text_c = pytesseract.image_to_string(gray, config='--psm 6')
+                name_v_c, addr_v_c, ratio_c = check_match(text_c, expected_name, expected_address, is_indigency)
+                if (name_v_c and addr_v_c) or ratio_c > ratio:
+                    text, name_v, addr_v, ratio = text_c, name_v_c, addr_v_c, ratio_c
+        except: pass
+
     if name_v and addr_v:
         return True, "Name and Address verified via OCR.", text, 1.0
     elif name_v:
         return False, "Address verification doesn't match", text, 0.7
     
-    if ratio >= 0.5:
+    if ratio >= 0.3: # Return partial match if at least 30% matches
         return False, f"Identity check: Name partially matched ({ratio:.0%}). Please ensure image is clear.", text, ratio
         
-    print(f"[OCR] Verification Failed. Expected: '{expected_name}'. Extracted text snippet: '{text[:100]}...'", flush=True)
+    print(f"[OCR] Verification Failed. Expected: '{expected_name}'. Snippet: '{text[:100]}...'", flush=True)
     return False, "Identity verification doesn't match", text, 0.0
 
 def extract_school_year_from_text(text):

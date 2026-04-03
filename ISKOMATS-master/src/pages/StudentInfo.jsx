@@ -1073,7 +1073,15 @@ const StudentInfo = () => {
         setMayorIndigencyVerified('verifying');
         
         try {
-          const result = await applicantAPI.ocrCheck(null, indigencyDoc, formData.townCity || userProfile?.townCity, null, null);
+          const result = await applicantAPI.ocrCheck(
+            null, 
+            indigencyDoc, 
+            formData.townCity || userProfile?.townCity, 
+            null, 
+            null,
+            formData.firstName || userProfile?.first_name,
+            formData.lastName || userProfile?.last_name
+          );
           
           if (result.verified) {
             setMayorIndigencyVerified('success');
@@ -1114,7 +1122,15 @@ const StudentInfo = () => {
         // Only verify School ID (front) for name - don't verify COE or Grades
         if (schoolIdFront && ocrVerified !== 'success') {
           try {
-            const result = await applicantAPI.ocrCheck(schoolIdFront, null, null, null, null);
+            const result = await applicantAPI.ocrCheck(
+              schoolIdFront, 
+              null, 
+              null, 
+              null, 
+              null,
+              formData.firstName || userProfile?.first_name,
+              formData.lastName || userProfile?.last_name
+            );
             
             if (result.verified) {
               setOcrVerified('success');

@@ -363,10 +363,16 @@ export const applicantAPI = {
 
   /**
    * Run OCR on the applicant's stored id_img_front / id_img_back and verify name.
-   * Call this AFTER uploadIdFrontBack() has stored the images.
-   * @returns {Promise} - {verified, status, front_status, back_status, extracted_text}
+   * @param {string} idFront - Base64 encoded ID front image
+   * @param {string} indigencyDoc - Base64 encoded Indigency document
+   * @param {string} townCity - User's town/city for address verification
+   * @param {string} enrollmentDoc - Base64 encoded Enrollment document
+   * @param {string} gradesDoc - Base64 encoded Grades document
+   * @param {string} firstName - User's current first name for verification
+   * @param {string} lastName - User's current last name for verification
+   * @returns {Promise}
    */
-  ocrCheck: async (idFront = null, indigencyDoc = null, townCity = null, enrollmentDoc = null, gradesDoc = null) => {
+  ocrCheck: async (idFront = null, indigencyDoc = null, townCity = null, enrollmentDoc = null, gradesDoc = null, firstName = null, lastName = null) => {
     return makeRequest('/student/verification/ocr-check', {
       method: 'POST',
       body: JSON.stringify({
@@ -374,7 +380,9 @@ export const applicantAPI = {
         indigency_doc: indigencyDoc,
         enrollment_doc: enrollmentDoc,
         grades_doc: gradesDoc,
-        town_city: townCity
+        town_city: townCity,
+        firstName: firstName,
+        lastName: lastName
       }),
     });
   },

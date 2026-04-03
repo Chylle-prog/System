@@ -1197,7 +1197,7 @@ def ocr_check():
         # 1. Get applicant record from DB
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT applicant_no, first_name, last_name, town_city_municipality, id_img_front, indigency_doc FROM applicants WHERE applicant_no = %s", (request.user_no,))
+        cur.execute("SELECT applicant_no, first_name, middle_name, last_name, town_city_municipality, id_img_front, indigency_doc FROM applicants WHERE applicant_no = %s", (request.user_no,))
         applicant = cur.fetchone()
 
         if not applicant:
@@ -1210,7 +1210,14 @@ def ocr_check():
         grades_doc_param = data.get('grades_doc') or data.get('gradesDoc')
 
         first_name = (data.get('first_name') or data.get('firstName') or applicant.get('first_name', '')).strip()
+        middle_name = (data.get('middle_name') or data.get('middleName') or applicant.get('middle_name', '')).strip()
         last_name = (data.get('last_name') or data.get('lastName') or applicant.get('last_name', '')).strip()
+        
+        # Construct full expected name for OCR matching
+        # Include middle name only if it's more than a single character or placeholder
+        full_expected_name = f"{first_name} {last_name}"
+        if middle_name and len(middle_name) > 1:
+            full_expected_name = f"{first_name} {middle_name} {last_name}"
         town_city = (data.get('town_city') or data.get('townCity') or applicant.get('town_city_municipality', '')).strip()
         school_name = (data.get('school_name') or data.get('schoolName') or '').strip()
         course = (data.get('course') or '').strip()
@@ -1232,7 +1239,7 @@ def ocr_check():
                 # For Indigency, we also verify the address (town_city)
                 v, msg, raw, _ = verify_id_with_ocr(
                     image_bytes=doc_bytes,
-                    expected_name=f"{first_name} {last_name}",
+                    expected_name=full_expected_name,
                     expected_address=town_city if doc_type == 'Indigency' else None
                 )
                 raw_lower = raw.lower()
