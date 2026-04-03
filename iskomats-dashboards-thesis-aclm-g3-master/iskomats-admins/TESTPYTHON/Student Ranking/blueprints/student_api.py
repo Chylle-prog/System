@@ -36,6 +36,39 @@ GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
 GOOGLE_REFRESH_TOKEN = os.environ.get('GOOGLE_REFRESH_TOKEN')
 
+# Database Migration: Ensure email table has verification columns
+def ensure_verification_columns():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        # Check if columns exist
+        cur.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'email' AND column_name IN ('is_verified', 'verification_code')
+        """)
+        existing = [row['column_name'] for row in cur.fetchall()]
+        
+        if 'is_verified' not in existing:
+            print("[MIGRATION] Adding is_verified to email table")
+            cur.execute("ALTER TABLE email ADD COLUMN is_verified BOOLEAN DEFAULT FALSE")
+            cur.execute("UPDATE email SET is_verified = TRUE") # Existing accounts are considered verified
+            
+        if 'verification_code' not in existing:
+            print("[MIGRATION] Adding verification_code to email table")
+            cur.execute("ALTER TABLE email ADD COLUMN verification_code VARCHAR(10)")
+            
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[MIGRATION ERROR] {e}", flush=True)
+
+try:
+    ensure_verification_columns()
+except Exception as e:
+    print(f"[STARTUP ERROR] Verification migration failed: {e}", flush=True)
+
 def generate_password_reset_token(user_no, email):
     """Generate a time-limited password reset token for students."""
     payload = {
@@ -183,6 +216,59 @@ def decode_signature(value):
     return decoded
 
 
+def generate_verification_code():
+    """Generate a random 6-digit verification code."""
+    import random
+    return str(random.randint(100000, 999999))
+
+
+def send_verification_email(receiver_email, code):
+    """Send a verification email via the Gmail API."""
+    from urllib import request as urllib_request
+    import json
+    
+    if not GMAIL_SENDER_EMAIL:
+        raise RuntimeError('Gmail sender email is not configured.')
+
+    message = f"""Subject: Verify your ISKOMATS Account
+To: {receiver_email}
+From: {GMAIL_SENDER_EMAIL}
+Content-Type: text/plain; charset="UTF-8"
+
+Hello,
+
+Thank you for registering with ISKOMATS. To complete your registration, please use the following verification code:
+
+{code}
+
+If you did not register for an account, please ignore this email.
+
+Best regards,
+The ISKOMATS Team
+"""
+
+    encoded_message = base64.urlsafe_b64encode(message.encode('utf-8')).decode('utf-8')
+    
+    try:
+        access_token = fetch_google_access_token()
+    except Exception as e:
+        print(f"[GOOGLE AUTH ERROR] {e}", flush=True)
+        raise RuntimeError(f"Could not authenticate with Google to send email: {e}")
+    
+    email_request = urllib_request.Request(
+        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+        data=json.dumps({'raw': encoded_message}).encode('utf-8'),
+        headers={
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+        },
+        method='POST',
+    )
+    
+    with urllib_request.urlopen(email_request, timeout=30) as response:
+        return json.loads(response.read().decode('utf-8'))
+
+
 @student_api_bp.route('/auth/login', methods=['POST'])
 def student_login():
     data = request.get_json() or {}
@@ -194,7 +280,7 @@ def student_login():
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT em_no, user_no, applicant_no, password_hash
+            SELECT em_no, user_no, applicant_no, password_hash, is_verified
             FROM email
             WHERE email_address ILIKE %s
             """,
@@ -204,6 +290,9 @@ def student_login():
 
         if not user or not bcrypt.check_password_hash(user['password_hash'], password):
             return jsonify({'message': 'Invalid credentials'}), 401
+
+        if not user.get('is_verified'):
+            return jsonify({'message': 'Email not verified. Please verify your email first.'}), 401
 
         payload = {
             'exp': datetime.utcnow() + timedelta(days=7),
@@ -254,29 +343,122 @@ def student_register():
         )
         applicant_no = cur.fetchone()['applicant_no']
 
+        # Generate verification code
+        verification_code = generate_verification_code()
+
         password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
         cur.execute(
             """
-            INSERT INTO email (email_address, applicant_no, password_hash)
-            VALUES (%s, %s, %s)
+            INSERT INTO email (email_address, applicant_no, password_hash, is_verified, verification_code)
+            VALUES (%s, %s, %s, %s, %s)
             """,
-            (email, applicant_no, password_hash),
+            (email, applicant_no, password_hash, False, verification_code),
         )
         conn.commit()
 
+        # Send verification email
+        try:
+            send_verification_email(email, verification_code)
+        except Exception as e:
+            print(f"[EMAIL ERROR] Failed to send verification email during registration: {e}", flush=True)
+            # We don't fail registration if email fails, user can "resend" later
+
+        return jsonify({
+            'message': 'Registration successful. Please check your email for the verification code.',
+            'user_no': applicant_no,
+            'is_applicant': True,
+            'requires_verification': True
+        }), 201
+    except Exception as exc:
+        return jsonify({'message': f'Error: {str(exc)}'}), 500
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+
+@student_api_bp.route('/auth/verify-email', methods=['POST'])
+def student_verify_email():
+    data = request.get_json() or {}
+    email = data.get('email', '').strip()
+    token = data.get('token', '').strip()
+
+    if not token:
+        return jsonify({'message': 'Verification code is required'}), 400
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        if email:
+            cur.execute('SELECT em_no, applicant_no, is_verified, verification_code FROM email WHERE email_address ILIKE %s', (email,))
+        else:
+            cur.execute('SELECT em_no, applicant_no, is_verified, verification_code FROM email WHERE verification_code = %s', (token,))
+            
+        user = cur.fetchone()
+
+        if not user:
+            return jsonify({'message': 'Invalid verification code'}), 400
+
+        if user['is_verified']:
+            return jsonify({'message': 'Email already verified'}), 200
+
+        if user['verification_code'] != token:
+            return jsonify({'message': 'Incorrect verification code'}), 400
+
+        # Mark as verified
+        cur.execute('UPDATE email SET is_verified = TRUE, verification_code = NULL WHERE em_no = %s', (user['em_no'],))
+        conn.commit()
+
+        # Generate session token
         payload = {
             'exp': datetime.utcnow() + timedelta(days=7),
             'iat': datetime.utcnow(),
-            'user_no': applicant_no,
+            'user_no': user['applicant_no'],
         }
-        token = jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+        session_token = jwt.encode(payload, SECRET_KEY, algorithm='HS256')
 
         return jsonify({
-            'message': 'Registration successful',
-            'token': token,
-            'user_no': applicant_no,
-            'is_applicant': True,
-        }), 201
+            'message': 'Email verified successfully',
+            'token': session_token,
+            'user_no': user['applicant_no'],
+            'is_applicant': True
+        }), 200
+    except Exception as exc:
+        return jsonify({'message': f'Error: {str(exc)}'}), 500
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+
+@student_api_bp.route('/auth/resend-verification-email', methods=['POST'])
+def student_resend_verification_email():
+    data = request.get_json() or {}
+    email = data.get('email', '').strip()
+
+    if not email:
+        return jsonify({'message': 'Email is required'}), 400
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute('SELECT em_no, is_verified FROM email WHERE email_address ILIKE %s', (email,))
+        user = cur.fetchone()
+
+        if not user:
+            return jsonify({'message': 'Email not found'}), 404
+
+        if user['is_verified']:
+            return jsonify({'message': 'Email already verified'}), 400
+
+        # Generate new code
+        new_code = generate_verification_code()
+        cur.execute('UPDATE email SET verification_code = %s WHERE em_no = %s', (new_code, user['em_no']))
+        conn.commit()
+
+        # Send email
+        send_verification_email(email, new_code)
+
+        return jsonify({'message': 'Verification email resent successfully'}), 200
     except Exception as exc:
         return jsonify({'message': f'Error: {str(exc)}'}), 500
     finally:

@@ -1249,17 +1249,6 @@ def reset_password():
     except Exception as e:
         return jsonify({'message': f'Failed to reset password: {str(e)}'}), 500
 
-@api_bp.route('/auth/verify-email', methods=['POST'])
-def verify_email():
-    """Verify email with token"""
-    data = request.get_json()
-    
-    if not data or not data.get('token'):
-        return jsonify({'message': 'Verification token is required'}), 400
-    
-    # TODO: Verify token and mark email as verified
-    return jsonify({'message': 'Email verified successfully'}), 200
-
 # ===== ADMIN ENDPOINTS =====
 
 @api_bp.route('/accounts', methods=['GET'])
