@@ -1118,40 +1118,53 @@ const StudentInfo = () => {
           return true; // No documents to verify, allow progression
         }
         
-        // Only verify School ID for identity and current SY
-        if (schoolIdFront) {
-          setOcrVerified('verifying');
+        // Always try to verify School ID, COE, and Grades together if provided
+        if (schoolIdFront || coeDoc || gradesDoc) {
+          if (schoolIdFront) setOcrVerified('verifying');
+          if (coeDoc) setMayorCOEVerified('verifying');
+          if (gradesDoc) setMayorGradesVerified('verifying');
+
           try {
             const result = await applicantAPI.ocrCheck(
               schoolIdFront, 
               schoolIdBack,
-              null, 
-              null, 
-              null, 
-              null,
+              null, // Indigency handled in Step 1
+              null, // town_city not needed here
+              coeDoc,
+              gradesDoc,
               formData.firstName || userProfile?.first_name,
               formData.lastName || userProfile?.last_name,
               formData.schoolName || userProfile?.school,
               formData.schoolIdNumber || userProfile?.school_id_no,
-              formData.yearLevel || userProfile?.year_lvl
+              formData.yearLevel || userProfile?.year_lvl,
+              formData.gpa || userProfile?.overall_gpa
             );
             
+            // Handle per-document results
+            if (result.results && Array.isArray(result.results)) {
+              result.results.forEach(docRes => {
+                if (docRes.doc === 'Identity Front') setOcrVerified(docRes.verified ? 'success' : 'failed');
+                if (docRes.doc === 'Enrollment') setMayorCOEVerified(docRes.verified ? 'success' : 'failed');
+                if (docRes.doc === 'Grades') setMayorGradesVerified(docRes.verified ? 'success' : 'failed');
+              });
+            }
+
             if (result.verified) {
               setOcrVerified('success');
               setVerificationError(null);
-              showPromptMessage('✅ School ID verified successfully!');
+              showPromptMessage('✅ Academic records verified successfully!');
               return true;
             } else {
-              setOcrVerified('failed');
-              const errorMsg = result.message || 'School ID verification failed. Please ensure the image is clear.';
+              // If overall verification failed, determine which one to show first
+              const errorMsg = result.message || 'Academic Record verification failed. Please ensure the images are clear.';
               showPersistentError(`⚠️ ${errorMsg}`);
-              return false; // Block progression if School ID verification fails
+              return false; // Block progression
             }
           } catch (err) {
-            console.error('School ID verification error:', err);
-            const errorMsg = err.response?.data?.message || 'Could not verify School ID.';
+            console.error('Academic verification error:', err);
+            const errorMsg = err.response?.data?.message || 'Could not verify academic records.';
             showPersistentError(`⚠️ ${errorMsg}`);
-            return false; // Block progression on error
+            return false;
           }
         }
         

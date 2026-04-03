@@ -373,7 +373,7 @@ export const applicantAPI = {
    * @param {string} lastName - User's current last name for verification
    * @returns {Promise}
    */
-  ocrCheck: async (idFront = null, idBack = null, indigencyDoc = null, townCity = null, enrollmentDoc = null, gradesDoc = null, firstName = null, lastName = null, schoolName = null, idNumber = null, yearLevel = null) => {
+  ocrCheck: async (idFront = null, idBack = null, indigencyDoc = null, townCity = null, enrollmentDoc = null, gradesDoc = null, firstName = null, lastName = null, schoolName = null, idNumber = null, yearLevel = null, gpa = null) => {
     return makeRequest('/student/verification/ocr-check', {
       method: 'POST',
       body: JSON.stringify({
@@ -387,7 +387,8 @@ export const applicantAPI = {
         lastName: lastName,
         schoolName: schoolName,
         idNumber: idNumber,
-        yearLevel: yearLevel
+        yearLevel: yearLevel,
+        gpa: gpa
       }),
     });
   },
