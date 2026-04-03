@@ -784,68 +784,37 @@ const StudentInfo = () => {
         return;
     }
 
-    // Check video duration (30 seconds max)
-    const video = document.createElement('video');
-    video.onloadedmetadata = async () => {
-      if (video.duration > 30) {
-        showPromptMessage(`❌ Error: Video duration must be 30 seconds or less. Your video is ${Math.ceil(video.duration)} seconds.`);
-        return;
-      }
+    // Basic validation
+    if (file.size > 50 * 1024 * 1024) { // 50MB limit
+      showPromptMessage('❌ Video file is too large. Maximum size is 50MB.');
+      return;
+    }
 
-      // Clear persistent error when starting new video upload
-      setVerificationError(null);
-      setShowPrompt(false);
+    try {
+      setIsUploadingVideo(prev => ({ ...prev, [fieldName]: true }));
+      setUploadProgress(prev => ({ ...prev, [fieldName]: 10 }));
 
-      try {
-        setIsUploadingVideo(prev => ({ ...prev, [fieldName]: true }));
-        setUploadProgress(prev => ({ ...prev, [fieldName]: 0 }));
+      // Use the centralized API service
+      const result = await applicantAPI.uploadRequirementVideo(fieldName, file, (progress) => {
+        setUploadProgress(prev => ({ ...prev, [fieldName]: progress }));
+      });
 
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${currentUser}_${fieldName}_${Date.now()}.${fileExt}`;
-        
-        // Upload with timeout to prevent hanging
-        const uploadTimeout = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Upload timed out (60s). Please check your internet connection or try a smaller video.')), 60000)
-        );
-
-        const uploadPromise = supabase.storage
-          .from('document_videos')
-          .upload(fileName, file, {
-            cacheControl: '3600',
-            upsert: false
-          });
-
-        const { data, error } = await Promise.race([uploadPromise, uploadTimeout]);
-
-        if (error) throw error;
-
-        const { data: urlData } = supabase.storage
-          .from('document_videos')
-          .getPublicUrl(fileName);
-
-        const publicUrl = urlData.publicUrl;
-
-        setFormData(prev => ({ ...prev, [fieldName]: publicUrl }));
+      if (result && result.publicUrl) {
+        // Update both formData and trigger profile update
+        setFormData(prev => ({ ...prev, [fieldName]: result.publicUrl }));
         setUploadProgress(prev => ({ ...prev, [fieldName]: 100 }));
         
-        await applicantAPI.updateProfile({ [fieldName]: publicUrl });
-
+        await applicantAPI.updateProfile({ [fieldName]: result.publicUrl });
         showPromptMessage('✅ Video uploaded successfully!');
-      } catch (err) {
-        console.error('Video upload error:', err);
-        let errorMsg = err.message || 'Unknown error during upload';
-        if (err.message === 'Failed to fetch') {
-           errorMsg = 'Network Error: Please check your Supabase URL and CORS settings.';
-        }
-        showPromptMessage(`❌ Video upload failed: ${errorMsg}`);
-      } finally {
-        setIsUploadingVideo(prev => ({ ...prev, [fieldName]: false }));
+      } else {
+        throw new Error('Upload failed or returned invalid URL');
       }
-    };
-    video.onerror = () => {
-      showPromptMessage('❌ Error: Could not read video file. Please try another video.');
-    };
-    video.src = URL.createObjectURL(file);
+    } catch (err) {
+      console.error('Video upload error:', err);
+      showPromptMessage(`❌ Video upload failed: ${err.message || 'Please try again.'}`);
+    } finally {
+      setIsUploadingVideo(prev => ({ ...prev, [fieldName]: false }));
+    }
   };
 
   const openGallery = (type) => {
@@ -2496,18 +2465,16 @@ const StudentInfo = () => {
                 <div className="form-row" style={{paddingLeft: '16px', gap: '2rem'}}>
                   <div className="form-group" style={{position: 'relative'}}>
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>Front Side</label>
-                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      <input ref={schoolIdFrontInputRef} type="file" name="id_front" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} required={currentStep === 3 && !schoolIdPhotos.front} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
-                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none', position: 'absolute', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'}}>
-                        {schoolIdPhotos.front ? (
-                          <img src={schoolIdPhotos.front} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Front Preview" />
-                        ) : (
-                          <>
-                            <i className="fas fa-camera" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
-                            <span>Upload Front</span>
-                          </>
-                        )}
-                      </div>
+                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}} onClick={() => !schoolIdPhotos.front && schoolIdFrontInputRef.current?.click()}>
+                      {schoolIdPhotos.front ? (
+                        <img src={schoolIdPhotos.front} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Front Preview" />
+                      ) : (
+                        <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', cursor: 'pointer'}}>
+                          <i className="fas fa-camera" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
+                          <span>Upload Front</span>
+                        </div>
+                      )}
+                      <input ref={schoolIdFrontInputRef} type="file" name="id_front" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} style={{display: 'none'}} />
                     </div>
                     {schoolIdPhotos.front && (
                       <button type="button" onClick={() => { setSchoolIdPhotos(prev => ({ ...prev, front: null })); setTimeout(() => schoolIdFrontInputRef.current?.click(), 50); }} style={{marginTop: '0.5rem', background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
@@ -2515,18 +2482,16 @@ const StudentInfo = () => {
                   </div>
                   <div className="form-group" style={{position: 'relative'}}>
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>Back Side</label>
-                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      <input ref={schoolIdBackInputRef} type="file" name="id_back" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} required={currentStep === 3 && !schoolIdPhotos.back} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
-                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none', position: 'absolute', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'}}>
-                        {schoolIdPhotos.back ? (
-                          <img src={schoolIdPhotos.back} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Back Preview" />
-                        ) : (
-                          <>
-                            <i className="fas fa-camera" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
-                            <span>Upload Back</span>
-                          </>
-                        )}
-                      </div>
+                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}} onClick={() => !schoolIdPhotos.back && schoolIdBackInputRef.current?.click()}>
+                      {schoolIdPhotos.back ? (
+                        <img src={schoolIdPhotos.back} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Back Preview" />
+                      ) : (
+                        <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', cursor: 'pointer'}}>
+                          <i className="fas fa-camera" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
+                          <span>Upload Back</span>
+                        </div>
+                      )}
+                      <input ref={schoolIdBackInputRef} type="file" name="id_back" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} style={{display: 'none'}} />
                     </div>
                     {schoolIdPhotos.back && (
                       <button type="button" onClick={() => { setSchoolIdPhotos(prev => ({ ...prev, back: null })); setTimeout(() => schoolIdBackInputRef.current?.click(), 50); }} style={{marginTop: '0.5rem', background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
@@ -2534,27 +2499,25 @@ const StudentInfo = () => {
                   </div>
                   <div className="form-group" style={{position: 'relative'}}>
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>ID Video <span style={{color: '#e74c3c'}}>*</span></label>
-                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      <input ref={idVideoInputRef} type="file" name="id_vid_url" accept="video/*" onChange={(e) => handleVideoUpload('id_vid_url', e)} required={currentStep === 3 && !formData.id_vid_url} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
-                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none'}}>
-                        {formData.id_vid_url ? (
-                          <div style={{width: '100%', height: '100%'}}>
-                            <video 
-                              src={formData.id_vid_url} 
-                              style={{width: '100%', height: '100%', objectFit: 'cover'}} 
-                              controls 
-                              loop 
-                              muted 
-                              playsInline
-                            />
-                          </div>
-                        ) : (
-                          <>
-                            <i className="fas fa-video" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
-                            <span>Upload ID Video</span>
-                          </>
-                        )}
-                      </div>
+                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}} onClick={() => !formData.id_vid_url && idVideoInputRef.current?.click()}>
+                      {formData.id_vid_url ? (
+                        <div style={{width: '100%', height: '100%'}}>
+                          <video 
+                            src={formData.id_vid_url} 
+                            style={{width: '100%', height: '100%', objectFit: 'cover'}} 
+                            controls 
+                            loop 
+                            muted 
+                            playsInline
+                          />
+                        </div>
+                      ) : (
+                        <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', cursor: 'pointer'}}>
+                          <i className="fas fa-video" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
+                          <span>Upload ID Video</span>
+                        </div>
+                      )}
+                      <input ref={idVideoInputRef} type="file" name="id_vid_url" accept="video/*" onChange={(e) => handleVideoUpload('id_vid_url', e)} style={{display: 'none'}} />
                     </div>
                     {formData.id_vid_url && (
                       <button type="button" onClick={() => { setFormData(prev => ({ ...prev, id_vid_url: null })); setTimeout(() => idVideoInputRef.current?.click(), 50); }} style={{marginTop: '0.5rem', background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
@@ -2838,18 +2801,16 @@ const StudentInfo = () => {
                 <div className="form-row" style={{paddingLeft: '16px', gap: '2rem'}}>
                   <div className="form-group" style={{position: 'relative'}}>
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>Front Side</label>
-                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      <input ref={schoolIdFrontInputRef} type="file" name="id_front" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} required={currentStep === 4 && !schoolIdPhotos.front} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
-                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none', position: 'absolute', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'}}>
-                        {schoolIdPhotos.front ? (
-                          <img src={schoolIdPhotos.front} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Front Preview" />
-                        ) : (
-                          <>
-                            <i className="fas fa-camera" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
-                            <span>Upload Front</span>
-                          </>
-                        )}
-                      </div>
+                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}} onClick={() => !schoolIdPhotos.front && schoolIdFrontInputRef.current?.click()}>
+                      {schoolIdPhotos.front ? (
+                        <img src={schoolIdPhotos.front} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Front Preview" />
+                      ) : (
+                        <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', cursor: 'pointer'}}>
+                          <i className="fas fa-camera" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
+                          <span>Upload Front</span>
+                        </div>
+                      )}
+                      <input ref={schoolIdFrontInputRef} type="file" name="id_front" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} style={{display: 'none'}} />
                     </div>
                     {schoolIdPhotos.front && (
                       <button type="button" onClick={() => { setSchoolIdPhotos(prev => ({ ...prev, front: null })); setTimeout(() => schoolIdFrontInputRef.current?.click(), 50); }} style={{marginTop: '0.5rem', background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
@@ -2857,18 +2818,16 @@ const StudentInfo = () => {
                   </div>
                   <div className="form-group" style={{position: 'relative'}}>
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>Back Side</label>
-                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      <input ref={schoolIdBackInputRef} type="file" name="id_back" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} required={currentStep === 4 && !schoolIdPhotos.back} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
-                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none', position: 'absolute', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'}}>
-                        {schoolIdPhotos.back ? (
-                          <img src={schoolIdPhotos.back} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Back Preview" />
-                        ) : (
-                          <>
-                            <i className="fas fa-camera" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
-                            <span>Upload Back</span>
-                          </>
-                        )}
-                      </div>
+                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}} onClick={() => !schoolIdPhotos.back && schoolIdBackInputRef.current?.click()}>
+                      {schoolIdPhotos.back ? (
+                        <img src={schoolIdPhotos.back} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Back Preview" />
+                      ) : (
+                        <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', cursor: 'pointer'}}>
+                          <i className="fas fa-camera" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
+                          <span>Upload Back</span>
+                        </div>
+                      )}
+                      <input ref={schoolIdBackInputRef} type="file" name="id_back" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} style={{display: 'none'}} />
                     </div>
                     {schoolIdPhotos.back && (
                       <button type="button" onClick={() => { setSchoolIdPhotos(prev => ({ ...prev, back: null })); setTimeout(() => schoolIdBackInputRef.current?.click(), 50); }} style={{marginTop: '0.5rem', background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
@@ -2876,27 +2835,25 @@ const StudentInfo = () => {
                   </div>
                   <div className="form-group" style={{position: 'relative'}}>
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>ID Video <span style={{color: '#e74c3c'}}>*</span></label>
-                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                      <input ref={idVideoInputRef} type="file" name="id_vid_url" accept="video/*" onChange={(e) => handleVideoUpload('id_vid_url', e)} required={currentStep === 4 && !formData.id_vid_url} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
-                      <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', pointerEvents: 'none'}}>
-                        {formData.id_vid_url ? (
-                          <div style={{width: '100%', height: '100%'}}>
-                            <video 
-                              src={formData.id_vid_url} 
-                              style={{width: '100%', height: '100%', objectFit: 'cover'}} 
-                              controls 
-                              loop 
-                              muted 
-                              playsInline
-                            />
-                          </div>
-                        ) : (
-                          <>
-                            <i className="fas fa-video" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
-                            <span>Upload ID Video</span>
-                          </>
-                        )}
-                      </div>
+                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}} onClick={() => !formData.id_vid_url && idVideoInputRef.current?.click()}>
+                      {formData.id_vid_url ? (
+                        <div style={{width: '100%', height: '100%'}}>
+                          <video 
+                            src={formData.id_vid_url} 
+                            style={{width: '100%', height: '100%', objectFit: 'cover'}} 
+                            controls 
+                            loop 
+                            muted 
+                            playsInline
+                          />
+                        </div>
+                      ) : (
+                        <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', cursor: 'pointer'}}>
+                          <i className="fas fa-video" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
+                          <span>Upload ID Video</span>
+                        </div>
+                      )}
+                      <input ref={idVideoInputRef} type="file" name="id_vid_url" accept="video/*" onChange={(e) => handleVideoUpload('id_vid_url', e)} style={{display: 'none'}} />
                     </div>
                     {formData.id_vid_url && (
                       <button type="button" onClick={() => { setFormData(prev => ({ ...prev, id_vid_url: null })); setTimeout(() => idVideoInputRef.current?.click(), 50); }} style={{marginTop: '0.5rem', background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>

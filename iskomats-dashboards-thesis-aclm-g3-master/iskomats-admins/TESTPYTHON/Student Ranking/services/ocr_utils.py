@@ -71,23 +71,38 @@ def _preprocess_strategy_c(img):
     return binary
 
 # ─── OCR extraction ───────────────────────────────────────────────────────────
-def _run_tesseract(image_bytes):
+def _run_tesseract(image_bytes, fast_mode=True):
     if not image_bytes: return ""
     try:
         nparr = np.frombuffer(image_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is None: return ""
+        
         h, w = img.shape[:2]
         if w > _MAX_OCR_WIDTH:
             scale = _MAX_OCR_WIDTH / w
             img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
-        strategies = [_preprocess_strategy_a, _preprocess_strategy_b, _preprocess_strategy_c]
-        all_text = []
-        for strat in strategies:
-            binary = strat(img)
-            text = pytesseract.image_to_string(binary, config='--psm 3')
-            if text.strip(): all_text.append(text.strip())
-        return "\n".join(all_text)
+        
+        # Unified Strategy (Fast & Reliable)
+        # Combine CLAHE and Adaptive Threshold into one robust pass
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        gray_clahe = clahe.apply(gray)
+        binary = cv2.adaptiveThreshold(gray_clahe, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 10)
+        
+        text = pytesseract.image_to_string(binary, config='--psm 3')
+        
+        if not text.strip() and not fast_mode:
+            # Fallback only if fast_mode is Off
+            strategies = [_preprocess_strategy_b, _preprocess_strategy_c]
+            all_text = [text] if text.strip() else []
+            for strat in strategies:
+                binary_fallback = strat(img)
+                txt = pytesseract.image_to_string(binary_fallback, config='--psm 3')
+                if txt.strip(): all_text.append(txt.strip())
+            return "\n".join(all_text)
+            
+        return text.strip()
     except Exception as e:
         print(f"[OCR] Error: {e}", flush=True)
         return ""
@@ -145,12 +160,16 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
         
     return False, "Identity verification doesn't match", text, 0.0
 
-def extract_school_year(image_bytes):
-    text = _run_tesseract(image_bytes)
+def extract_school_year_from_text(text):
+    if not text: return None
     import re
     # Match 20XX-20XX or just 20XX
     match = re.search(r'20\d{2}(?:\s*-\s*20\d{2})?', text)
     return match.group(0) if match else None
+
+def extract_school_year(image_bytes):
+    text = _run_tesseract(image_bytes, fast_mode=True)
+    return extract_school_year_from_text(text)
 
 def is_current_school_year(year_str, current_year=2026):
     if not year_str: return False

@@ -14,7 +14,8 @@ import cv2
 import numpy as np
 from services.auth_service import get_secret_key
 from services.db_service import get_db
-from services.ocr_utils import verify_id_with_ocr, verify_face_with_id, extract_school_year, is_current_school_year, verify_signature_against_id, save_signature_profile
+from services.ocr_utils import verify_id_with_ocr, verify_face_with_id, extract_school_year, extract_school_year_from_text, is_current_school_year, verify_signature_against_id, save_signature_profile
+from concurrent.futures import ThreadPoolExecutor
 
 
 student_api_bp = Blueprint('student_api', __name__, url_prefix='/api/student')
@@ -666,6 +667,7 @@ def update_profile():
             'motherPhoneNumber': 'mother_phone_no', 'fatherOccupation': 'father_occupation',
             'motherOccupation': 'mother_occupation', 'parentsGrossIncome': 'financial_income_of_parents',
             'gpa': 'overall_gpa', 'numberOfSiblings': 'sibling_no', 'course': 'course',
+            'id_vid_url': 'id_vid_url',
             'mayorIndigency_video': 'indigency_vid_url',
             'mayorGrades_video': 'grades_vid_url',
             'mayorCOE_video': 'enrollment_certificate_vid_url',
@@ -960,13 +962,7 @@ def submit_application():
 @student_api_bp.route('/verification/ocr-check', methods=['POST'])
 @token_required
 def ocr_check():
-    """OCR verification endpoint — supports multi-document authentication:
-
-    1. Address/Indigency: verifies town_city + keywords ["indigency"]
-    2. Enrollment (COE): verifies keywords ["enrollment", "registration"]
-    3. Grades: verifies keywords ["grades", "transcript", "rating"]
-    4. School ID: verifies Name Match.
-    """
+    """OCR verification endpoint — supports multi-document authentication in parallel."""
     try:
         data = request.get_json(silent=True) or {}
 
@@ -985,184 +981,131 @@ def ocr_check():
         enrollment_doc_param = data.get('enrollment_doc') or data.get('enrollmentDoc')
         grades_doc_param = data.get('grades_doc') or data.get('gradesDoc')
 
-        # Request-provided names take precedence over DB values (supports verifier bench testing)
         first_name = (data.get('first_name') or data.get('firstName') or applicant.get('first_name', '')).strip()
         last_name = (data.get('last_name') or data.get('lastName') or applicant.get('last_name', '')).strip()
         town_city = (data.get('town_city') or data.get('townCity') or applicant.get('town_city_municipality', '')).strip()
-        school_name = (data.get('school_name') or data.get('schoolName') or '').strip() # New
-        course = (data.get('course') or '').strip() # New
-        expected_gpa = (data.get('gpa') or data.get('expectedGPA') or '').strip() # New
-        expected_year = (data.get('expected_year') or data.get('expectedYear') or '').strip() # New
-
+        school_name = (data.get('school_name') or data.get('schoolName') or '').strip()
+        course = (data.get('course') or '').strip()
+        expected_gpa = (data.get('gpa') or data.get('expectedGPA') or '').strip()
+        expected_year = (data.get('expected_year') or data.get('expectedYear') or '').strip()
 
         # Helper to get bytes
         def get_bytes(param, db_val):
             return decode_base64(param) or db_bytes(db_val)
 
-        # Process documents based on what is provided in the request
+        # ── Worker Function for Parallel Processing ──
+        def process_doc(doc_type, doc_param, db_val):
+            try:
+                # Use standard doc bytes for provided parameters, fallback to DB only for Indigency/ID
+                doc_bytes = decode_base64(doc_param) if doc_param else (db_bytes(db_val) if db_val else None)
+                if not doc_bytes: return None
+
+                # 1. Main OCR Verification (Identity)
+                # For Indigency, we also verify the address (town_city)
+                v, msg, raw, _ = verify_id_with_ocr(
+                    image_bytes=doc_bytes,
+                    expected_name=f"{first_name} {last_name}",
+                    expected_address=town_city if doc_type == 'Indigency' else None
+                )
+                raw_lower = raw.lower()
+
+                # 2. Document-Specific Logic (REUSING 'raw' text)
+                if doc_type == 'Enrollment':
+                    keywords = ["enrollment", "registration", "admission", "matriculation", "cor", "coe", "form"]
+                    if v and not any(kw in raw_lower for kw in keywords):
+                        v, msg = False, "Enrollment document type not recognized"
+                    
+                    year_label = extract_school_year_from_text(raw)
+                    v_year = int(expected_year) if expected_year and str(expected_year).isdigit() else 2026
+                    year_ok = is_current_school_year(year_label, current_year=v_year)
+                    school_ok = True if not school_name else (school_name.lower() in raw_lower)
+                    if school_name and not school_ok:
+                        school_parts = [p.strip() for p in school_name.lower().split() if len(p.strip()) > 3]
+                        school_ok = any(p in raw_lower for p in school_parts) if school_parts else True
+                    course_ok = True if not course else (course.lower() in raw_lower)
+
+                    if v:
+                        if not year_ok: v, msg = False, f"Outdated A.Y. ({year_label or 'None'})"
+                        elif not school_ok: v, msg = False, f"School mismatch ({school_name})"
+                        elif not course_ok: v, msg = False, f"Course mismatch ({course})"
+                        else: msg = f"Verified: A.Y. {year_label}" + (f" | {school_name}" if school_name else "")
+                    
+                    return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label}
+
+                elif doc_type == 'Grades':
+                    keywords = ["grades", "transcript", "evaluation", "rating", "scholastic", "record"]
+                    if v and not any(kw in raw_lower for kw in keywords):
+                        v, msg = False, "Grades document type not recognized"
+                    
+                    year_label = extract_school_year_from_text(raw)
+                    v_year = int(expected_year) if expected_year and str(expected_year).isdigit() else 2026
+                    year_ok = is_current_school_year(year_label, current_year=v_year)
+                    school_ok = True if not school_name else (school_name.lower() in raw_lower)
+                    if school_name and not school_ok:
+                        school_parts = [p.strip() for p in school_name.lower().split() if len(p.strip()) > 3]
+                        school_ok = any(p in raw_lower for p in school_parts) if school_parts else True
+                    course_ok = True if not course else (course.lower() in raw_lower)
+
+                    extracted_gpa, gpa_ok = None, True
+                    if expected_gpa:
+                        import re
+                        gpa_match = re.search(r'(?:gpa|gwa|grade|average)[:\s]*([0-5]\.\d{1,2})', raw_lower)
+                        if gpa_match:
+                            extracted_gpa = gpa_match.group(1)
+                            gpa_ok = abs(float(extracted_gpa) - float(expected_gpa)) < 0.1
+                    
+                    if v:
+                        if not year_ok: v, msg = False, f"Outdated A.Y. ({year_label or 'None'})"
+                        elif not school_ok: v, msg = False, f"School mismatch ({school_name})"
+                        elif not course_ok: v, msg = False, f"Course mismatch ({course})"
+                        elif expected_gpa and not gpa_ok: v, msg = False, f"GPA mismatch (Extracted: {extracted_gpa}, Expected: {expected_gpa})"
+                        else: msg = f"Verified: A.Y. {year_label}" + (f" | {school_name}" if school_name else "") + (f" | GPA: {extracted_gpa}" if extracted_gpa else "")
+                    
+                    return {'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label}
+
+                elif doc_type == 'Indigency':
+                    keywords = ["indigency", "barangay", "residency", "social", "welfare", "indigent"]
+                    if v and not any(kw in raw_lower for kw in keywords):
+                        v, msg = False, "Indigency document type not recognized"
+                    return {'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw}
+
+                elif doc_type == 'SchoolID':
+                    return {'doc': 'Identity', 'verified': v, 'message': msg, 'raw_text': raw}
+
+                return None
+            except Exception as worker_err:
+                print(f"[OCR WORKER ERROR] {doc_type}: {str(worker_err)}", flush=True)
+                return {'doc': doc_type, 'verified': False, 'message': f'Processing error: {str(worker_err)}'}
+
+        # 3. Schedule Parallel Jobs
+        jobs = []
+        if enrollment_doc_param: jobs.append(('Enrollment', enrollment_doc_param, None))
+        if grades_doc_param: jobs.append(('Grades', grades_doc_param, None))
+        if indigency_doc_param or (not enrollment_doc_param and not grades_doc_param and not id_front_param):
+            jobs.append(('Indigency', indigency_doc_param, applicant.get('indigency_doc')))
+        if id_front_param:
+            jobs.append(('SchoolID', id_front_param, applicant.get('id_img_front')))
+
         results = []
         overall_verified = True
+        if jobs:
+            with ThreadPoolExecutor(max_workers=len(jobs)) as executor:
+                future_results = [executor.submit(process_doc, *job) for job in jobs]
+                for future in future_results:
+                    res = future.result()
+                    if res:
+                        results.append(res)
+                        if not res['verified']: overall_verified = False
 
-        # ── Certificate of Enrollment (COE) ───────────────────────────────────
-        if enrollment_doc_param:
-            doc_bytes = decode_base64(enrollment_doc_param)
-            if doc_bytes:
-                v, msg, raw, _ = verify_id_with_ocr(
-                    image_bytes=doc_bytes,
-                    expected_name=f"{first_name} {last_name}",
-                    expected_address=None
-                )
-                raw_lower = raw.lower()
-                # Verify document-specific keywords
-                keywords = ["enrollment", "registration", "admission", "matriculation", "cor", "coe", "form"]
-                kw_found = any(kw in raw_lower for kw in keywords)
-                if v and not kw_found:
-                    v = False
-                    msg = "Please retry to upload again"
-                
-                # ── Academic Year ──
-                year_label = extract_school_year(doc_bytes)
-                v_year = int(expected_year) if expected_year and str(expected_year).isdigit() else 2026
-                year_ok = is_current_school_year(year_label, current_year=v_year)
-                
-                # ── School Name ── (Fuzzy check)
-                school_ok = True if not school_name else (school_name.lower() in raw_lower)
-                if school_name and not school_ok:
-                    # Try fuzzy matching common parts if full name doesn't match
-                    school_parts = [p.strip() for p in school_name.lower().split() if len(p.strip()) > 3]
-                    school_ok = any(p in raw_lower for p in school_parts) if school_parts else True
-
-                # ── Course ──
-                course_ok = True if not course else (course.lower() in raw_lower)
-
-                if v:
-                    if not year_ok:
-                        v = False
-                        msg = f"Outdated A.Y. ({year_label or 'None'})"
-                    elif not school_ok:
-                        v = False
-                        msg = f"School mismatch ({school_name})"
-                    elif not course_ok:
-                        v = False
-                        msg = f"Course mismatch ({course})"
-                    else:
-                        msg = f"Verified: A.Y. {year_label}"
-                        if school_name: msg += f" | {school_name}"
-
-                results.append({'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label})
-                if not v: overall_verified = False
-
-        # ── Certified True Copy of Grades ─────────────────────────────────────
-        if grades_doc_param:
-            doc_bytes = decode_base64(grades_doc_param)
-            if doc_bytes:
-                v, msg, raw, _ = verify_id_with_ocr(
-                    image_bytes=doc_bytes,
-                    expected_name=f"{first_name} {last_name}",
-                    expected_address=None
-                )
-                raw_lower = raw.lower()
-                # Verify document-specific keywords
-                keywords = ["grades", "transcript", "evaluation", "rating", "scholastic", "record"]
-                kw_found = any(kw in raw_lower for kw in keywords)
-                if v and not kw_found:
-                    v = False
-                    msg = "Please retry to upload again"
-                
-                # ── Academic Year ──
-                year_label = extract_school_year(doc_bytes)
-                v_year = int(expected_year) if expected_year and str(expected_year).isdigit() else 2026
-                year_ok = is_current_school_year(year_label, current_year=v_year)
-                
-                # ── School Name ── (Fuzzy check)
-                school_ok = True if not school_name else (school_name.lower() in raw_lower)
-                if school_name and not school_ok:
-                    school_parts = [p.strip() for p in school_name.lower().split() if len(p.strip()) > 3]
-                    school_ok = any(p in raw_lower for p in school_parts) if school_parts else True
-
-                # ── Course ──
-                course_ok = True if not course else (course.lower() in raw_lower)
-
-                # ── GPA ── (New extraction attempt)
-                extracted_gpa = None
-                gpa_ok = True
-                if expected_gpa:
-                    import re
-                    # Look for patterns like "GPA: 1.25", "GWA: 1.25", or just "1.25"
-                    gpa_match = re.search(r'(?:gpa|gwa|grade|average)[:\s]*([0-5]\.\d{1,2})', raw_lower)
-                    if gpa_match:
-                        extracted_gpa = gpa_match.group(1)
-                        # Minimal validation: if extracted equals expected (fuzzy)
-                        gpa_ok = abs(float(extracted_gpa) - float(expected_gpa)) < 0.1
-                    else:
-                        # If not found but expected, we'll just skip failing for now to avoid false negatives
-                        pass
-
-                if v:
-                    if not year_ok:
-                        v = False
-                        msg = f"Outdated A.Y. ({year_label or 'None'})"
-                    elif not school_ok:
-                        v = False
-                        msg = f"School mismatch ({school_name})"
-                    elif not course_ok:
-                        v = False
-                        msg = f"Course mismatch ({course})"
-                    elif expected_gpa and not gpa_ok:
-                        v = False
-                        msg = f"GPA mismatch (Extracted: {extracted_gpa}, Expected: {expected_gpa})"
-                    else:
-                        msg = f"Verified: A.Y. {year_label}"
-                        if school_name: msg += f" | {school_name}"
-                        if extracted_gpa: msg += f" | GPA: {extracted_gpa}"
-                    
-                results.append({'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw,
-                                'school_year': year_label})
-
-                if not v: overall_verified = False
-
-        # ── Certificate of Indigency / Address ────────────────────────────────
-        if indigency_doc_param or (not enrollment_doc_param and not grades_doc_param and not id_front_param):
-            # If no other docs, try to fall back to stored indigency or check address
-            doc_bytes = get_bytes(indigency_doc_param, applicant.get('indigency_doc'))
-            if doc_bytes:
-                v, msg, raw, _ = verify_id_with_ocr(
-                    image_bytes=doc_bytes,
-                    expected_name=f"{first_name} {last_name}",
-                    expected_address=town_city
-                )
-                # Verify document-specific keywords
-                keywords = ["indigency", "barangay", "residency", "social", "welfare", "indigent"]
-                kw_found = any(kw in raw.lower() for kw in keywords)
-                if v and not kw_found:
-                    v = False
-                    msg = "Please retry to upload again"
-                results.append({'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw})
-                if not v: overall_verified = False
-
-        # ── School ID / Name Match ───────────────────────────────────────────
-        if id_front_param:
-            doc_bytes = get_bytes(id_front_param, applicant.get('id_img_front'))
-            if doc_bytes:
-                v, msg, raw, _ = verify_id_with_ocr(
-                    image_bytes=doc_bytes,
-                    expected_name=f"{first_name} {last_name}",
-                    expected_address=None
-                )
-                results.append({'doc': 'Identity', 'verified': v, 'message': msg, 'raw_text': raw})
-                if not v: overall_verified = False
-
-        # Consolidate messages
         if not results:
             return jsonify({'verified': False, 'message': 'No documents provided for verification'}), 400
 
         final_msg = " | ".join([f"{r['doc']}: {r['message']}" for r in results])
-        return jsonify({'verified': overall_verified, 'message': final_msg, 'details': results})
-
+        return jsonify({'verified': overall_verified, 'message': final_msg, 'results': results})
 
     except Exception as e:
         traceback.print_exc()
-        return jsonify({'verified': False, 'message': f'Server error during verification: {str(e)}'}), 500
+        return jsonify({'verified': False, 'message': f'Server error: {str(e)}'}), 500
     finally:
         if 'conn' in locals():
             conn.close()
