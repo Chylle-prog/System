@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { authAPI, applicantAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
 
 const Login = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [isLogin, setIsLogin] = useState(true);
+  const [showProfile, setShowProfile] = useState(false);
   const [showRegistrationModal, setShowRegistrationModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showError, setShowError] = useState(false);
@@ -20,8 +22,24 @@ const Login = () => {
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
+    // Check for setup param in URL
+    if (searchParams.get('setup') === 'true') {
+      setShowProfile(true);
+    }
+
     if (localStorage.getItem('authToken') && localStorage.getItem('currentUser')) {
-      navigate('/portal');
+      // If we aren't explicitly in setup mode, check if we should be
+      if (!searchParams.get('setup')) {
+        applicantAPI.getProfile().then(profile => {
+          if (profile && profile.first_name === 'User' && profile.last_name === 'Account') {
+            setShowProfile(true);
+          } else {
+            navigate('/portal');
+          }
+        }).catch(() => {
+          navigate('/portal');
+        });
+      }
     }
 
     // Add Font Awesome link
@@ -83,7 +101,7 @@ const Login = () => {
           setIsLoginLoading(false);
           
           if (profile && profile.first_name === 'User' && profile.last_name === 'Account') {
-            navigate('/profile');
+            setShowProfile(true);
           } else {
             navigate('/portal');
           }
@@ -202,9 +220,78 @@ const Login = () => {
     }
   };
 
+  const handleProfileSubmit = async (e) => {
+    e.preventDefault();
+    const firstName = e.target.firstName?.value || '';
+    const middleName = e.target.middleName?.value || '';
+    const lastName = e.target.lastName?.value || '';
+    const birthdate = e.target.birthdate?.value || '';
+    const school = e.target.school?.value || '';
+    const mobileNo = e.target.mobileNo?.value || '';
+    const streetBrgy = e.target.streetBrgy?.value || '';
+    const townCityMunicipality = e.target.townCityMunicipality?.value || '';
+    const province = e.target.province?.value || '';
+    const zipCode = e.target.zipCode?.value || '';
+
+    // Validate required fields
+    if (!firstName || !lastName || !birthdate || !school || !mobileNo || !streetBrgy || !townCityMunicipality || !province || !zipCode) {
+      setErrorMessage('Please fill in all required fields');
+      setShowError(true);
+      return;
+    }
+
+    try {
+      setLoadingMessage({ title: 'Creating Profile', message: 'Saving your information and setting up your account...' });
+      setShowLoadingOverlay(true);
+      
+      const email = localStorage.getItem('currentUser');
+
+      // Use the exact camelCase keys that match Profile.jsx and the backend field_mapping.
+      const profilePayload = {
+        firstName,
+        middleName,
+        lastName,
+        dateOfBirth: birthdate,
+        schoolName: school,
+        mobileNumber: mobileNo,
+        streetBarangay: streetBrgy,
+        townCity: townCityMunicipality,
+        province,
+        zipCode,
+      };
+      
+      if (profilePicture) profilePayload.profile_picture = profilePicture;
+
+      await applicantAPI.updateProfile(profilePayload);
+
+      // Show success modal
+      setShowSuccessModal(true);
+
+      // Redirect to portal after delay
+      setTimeout(() => {
+        setShowLoadingOverlay(false);
+        navigate('/portal');
+      }, 2000);
+    } catch (error) {
+      setErrorMessage(error.message || 'Profile creation failed. Please try again.');
+      setShowError(true);
+      setShowLoadingOverlay(false);
+    }
+  };
+
+  const handleProfilePictureUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setProfilePicture(ev.target.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const closeRegistrationModal = () => {
     setShowRegistrationModal(false);
-    // After registration, redirect to email verification
     navigate('/verify-email');
   };
 
@@ -339,20 +426,144 @@ const Login = () => {
           min-height: calc(100vh - 80px);
         }
 
-        .auth-card {
-          max-width: 480px;
+        .profile-card {
+          max-width: 720px;
           width: 100%;
           background: rgba(255, 255, 255, 0.75);
           backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
-          border-radius: 48px;
-          padding: 2.8rem 3rem 3.2rem;
+          border-radius: 56px;
+          padding: 3rem 3.5rem;
           box-shadow: var(--shadow-lg);
-          border: 1px solid rgba(255, 255, 255, 0.7);
-          transition: var(--transition);
-          animation: cardFloat 0.8s ease-out;
+          border: 1px solid rgba(255, 255, 255, 0.8);
+          animation: cardFloat 0.7s ease-out;
           margin: 0 auto;
         }
+
+        .profile-card h2 {
+          font-size: 2.22rem;
+          font-weight: 800;
+          background: var(--primary-gradient);
+          -webkit-background-clip: text;
+          background-clip: text;
+          color: transparent;
+          text-align: center;
+          margin-bottom: 2.2rem;
+        }
+
+        .profile-pic-container {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 1.2rem;
+          margin-bottom: 2.5rem;
+        }
+
+        .profile-pic-preview {
+          width: 140px;
+          height: 140px;
+          border-radius: 50%;
+          background: #fff5f2;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 4px solid #fff;
+          box-shadow: 0 10px 25px rgba(79, 13, 0, 0.12);
+          overflow: hidden;
+          position: relative;
+        }
+
+        .profile-pic-preview img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .profile-pic-preview i {
+          font-size: 3rem;
+          color: #ffccbc;
+        }
+
+        .upload-photo-btn {
+          background: #fff;
+          border: 2px dashed #ffab91;
+          padding: 0.6rem 1.4rem;
+          border-radius: 30px;
+          font-size: 0.9rem;
+          font-weight: 600;
+          color: var(--primary);
+          cursor: pointer;
+          transition: var(--transition);
+          display: flex;
+          align-items: center;
+          gap: 0.6rem;
+        }
+
+        .upload-photo-btn:hover {
+          background: #fff3f0;
+          border-color: var(--primary);
+          transform: scale(1.05);
+        }
+
+        .profile-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 1.5rem;
+        }
+
+        @media (max-width: 600px) {
+          .profile-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        .profile-form-group {
+          margin-bottom: 1.2rem;
+        }
+
+        .profile-form-group label {
+          display: block;
+          font-weight: 700;
+          font-size: 0.8rem;
+          text-transform: uppercase;
+          letter-spacing: 0.6px;
+          color: var(--primary-light);
+          margin-bottom: 0.5rem;
+        }
+
+        .profile-input-wrapper {
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+
+        .profile-input-wrapper i {
+          position: absolute;
+          left: 1.2rem;
+          color: var(--gray-3);
+          font-size: 1rem;
+        }
+
+        .profile-input-wrapper input {
+          width: 100%;
+          padding: 1rem 1.2rem 1rem 2.8rem;
+          border: 2px solid transparent;
+          border-radius: 18px;
+          font-size: 0.95rem;
+          background: var(--gray-1);
+          transition: var(--transition);
+        }
+
+        .profile-input-wrapper input:focus {
+          outline: none;
+          border-color: var(--primary);
+          background: white;
+          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
+        }
+
+        .profile-input-wrapper input:focus + i {
+          color: var(--primary);
+        }
+
 
         @keyframes cardFloat {
           0% {
@@ -843,7 +1054,7 @@ const Login = () => {
 
       <div className="auth-wrapper">
         {/* Auth section */}
-        <section id="auth" className="section active">
+        <section id="auth" className={`section ${!showProfile ? 'active' : ''}`}>
           <div className="auth-card">
             <div className="auth-header">
               <h2>{isLogin ? 'Welcome, Iskolar!' : 'Join iskoMats'}</h2>
@@ -885,9 +1096,9 @@ const Login = () => {
                   )}
                 </button>
                 <div className="forgot-password">
-                  <Link to="/forgot-password" style={{ color: 'var(--primary)', textDecoration: 'none', fontSize: '0.9rem' }}>
+                  <a href="#" onClick={handleForgotPassword} style={{ color: 'var(--primary)', textDecoration: 'none', fontSize: '0.9rem' }}>
                     Forgot password?
-                  </Link>
+                  </a>
                 </div>
               </form>
             ) : (
@@ -944,6 +1155,116 @@ const Login = () => {
                 </a>
               </span>
             </div>
+          </div>
+        </section>
+
+        {/* Profile section */}
+        <section id="profile" className={`section ${showProfile ? 'active' : ''}`}>
+          <div className="profile-card">
+            <h2>Complete your Profile!</h2>
+            
+            {showError && (
+              <div className="error-message">
+                <i className="fas fa-exclamation-triangle"></i>
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleProfileSubmit}>
+              <div className="profile-pic-container">
+                <div className="profile-pic-preview">
+                  {profilePicture ? (
+                    <img src={profilePicture} alt="Profile" />
+                  ) : (
+                    <i className="fas fa-camera"></i>
+                  )}
+                </div>
+                <label className="upload-photo-btn">
+                  <i className="fas fa-camera"></i>
+                  upload photo
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleProfilePictureUpload}
+                    hidden
+                  />
+                </label>
+              </div>
+
+              <div className="profile-grid">
+                <div className="profile-form-group">
+                  <label>First Name</label>
+                  <div className="profile-input-wrapper">
+                    <i className="far fa-user"></i>
+                    <input type="text" name="firstName" placeholder="Enter First Name" required />
+                  </div>
+                </div>
+                <div className="profile-form-group">
+                  <label>Last Name</label>
+                  <div className="profile-input-wrapper">
+                    <input type="text" name="lastName" placeholder="Enter Last Name" required />
+                  </div>
+                </div>
+              </div>
+
+              <div className="profile-form-group">
+                <label>Birthdate</label>
+                <div className="profile-input-wrapper">
+                  <i className="far fa-calendar-alt"></i>
+                  <input type="date" name="birthdate" required />
+                </div>
+              </div>
+
+              <div className="profile-form-group">
+                <label>University / School</label>
+                <div className="profile-input-wrapper">
+                  <i className="fas fa-university"></i>
+                  <input type="text" name="school" placeholder="University of Manila" required />
+                </div>
+              </div>
+
+              <div className="profile-form-group">
+                <label>Phone Number</label>
+                <div className="profile-input-wrapper">
+                  <i className="fas fa-phone-alt"></i>
+                  <input type="tel" name="mobileNo" placeholder="+63 ..." required />
+                </div>
+              </div>
+
+              <div className="profile-grid">
+                <div className="profile-form-group">
+                  <label>Street / Barangay</label>
+                  <div className="profile-input-wrapper">
+                    <input type="text" name="streetBrgy" placeholder="123 Main St" required />
+                  </div>
+                </div>
+                <div className="profile-form-group">
+                  <label>Town / City</label>
+                  <div className="profile-input-wrapper">
+                    <input type="text" name="townCityMunicipality" placeholder="Manila" required />
+                  </div>
+                </div>
+              </div>
+
+              <div className="profile-grid">
+                <div className="profile-form-group">
+                  <label>Province</label>
+                  <div className="profile-input-wrapper">
+                    <input type="text" name="province" placeholder="Metro Manila" required />
+                  </div>
+                </div>
+                <div className="profile-form-group">
+                  <label>Zip Code</label>
+                  <div className="profile-input-wrapper">
+                    <input type="text" name="zipCode" placeholder="1000" required />
+                  </div>
+                </div>
+              </div>
+
+              <button type="submit" className="submit-btn" style={{marginTop: '1.5rem'}}>
+                Finish Setup →
+              </button>
+            </form>
           </div>
         </section>
 
