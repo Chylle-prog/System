@@ -524,80 +524,82 @@ const StudentInfo = () => {
         const profile = await applicantAPI.getProfile();
         setUserProfile(profile);
 
-        setFormData(prev => mergeMeaningfulValues(prev, {
-          firstName: profile.first_name || '',
-          lastName: profile.last_name || '',
-          middleName: profile.middle_name || '',
-          maidenName: profile.maiden_name || '',
-          dateOfBirth: profile.birthdate || '',
-          placeOfBirth: profile.birth_place || '',
-          streetBarangay: profile.street_brgy || '',
-          townCity: profile.town_city_municipality || '',
-          province: profile.province || '',
-          zipCode: profile.zip_code || '',
-          sex: profile.sex === 'M' ? 'Male' : profile.sex === 'F' ? 'Female' : (profile.sex || ''),
-          citizenship: profile.citizenship || '',
-          schoolIdNumber: profile.school_id_no || '',
-          schoolName: profile.school || '',
-          schoolAddress: profile.school_address || '',
-          schoolSector: profile.school_sector || '',
-          mobileNumber: profile.mobile_no || '',
-          yearLevel: profile.year_lvl || '',
-          emailAddress: profile.email || user,
-          fatherStatus: profile.father_status === true ? 'Living' : profile.father_status === false ? 'Deceased' : '',
-          fatherName: [profile.father_fname, profile.father_lname].filter(Boolean).join(' '),
-          fatherOccupation: profile.father_occupation || '',
-          fatherPhoneNumber: profile.father_phone_no || '',
-          motherStatus: profile.mother_status === true ? 'Living' : profile.mother_status === false ? 'Deceased' : '',
-          motherName: [profile.mother_fname, profile.mother_lname].filter(Boolean).join(' '),
-          motherOccupation: profile.mother_occupation || '',
-          motherPhoneNumber: profile.mother_phone_no || '',
-          parentsGrossIncome: urlIncome || profile.financial_income_of_parents || '',
-          gpa: urlGpa || profile.overall_gpa || '',
-          numberOfSiblings: profile.sibling_no || '',
-          course: profile.course || ''
-        }));
+        if (profile) {
+          setFormData(prev => mergeMeaningfulValues(prev, {
+            firstName: profile.first_name || '',
+            lastName: profile.last_name || '',
+            middleName: profile.middle_name || '',
+            maidenName: profile.maiden_name || '',
+            dateOfBirth: profile.birthdate || '',
+            placeOfBirth: profile.birth_place || '',
+            streetBarangay: profile.street_brgy || '',
+            townCity: profile.town_city_municipality || '',
+            province: profile.province || '',
+            zipCode: profile.zip_code || '',
+            sex: profile.sex === 'M' ? 'Male' : profile.sex === 'F' ? 'Female' : (profile.sex || ''),
+            citizenship: profile.citizenship || '',
+            schoolIdNumber: profile.school_id_no || '',
+            schoolName: profile.school || '',
+            schoolAddress: profile.school_address || '',
+            schoolSector: profile.school_sector || '',
+            mobileNumber: profile.mobile_no || '',
+            yearLevel: profile.year_lvl || '',
+            emailAddress: profile.email || user,
+            fatherStatus: profile.father_status === true ? 'Living' : profile.father_status === false ? 'Deceased' : '',
+            fatherName: [profile.father_fname, profile.father_lname].filter(Boolean).join(' '),
+            fatherOccupation: profile.father_occupation || '',
+            fatherPhoneNumber: profile.father_phone_no || '',
+            motherStatus: profile.mother_status === true ? 'Living' : profile.mother_status === false ? 'Deceased' : '',
+            motherName: [profile.mother_fname, profile.mother_lname].filter(Boolean).join(' '),
+            motherOccupation: profile.mother_occupation || '',
+            motherPhoneNumber: profile.mother_phone_no || '',
+            parentsGrossIncome: urlIncome || profile.financial_income_of_parents || '',
+            gpa: urlGpa || profile.overall_gpa || '',
+            numberOfSiblings: profile.sibling_no || '',
+            course: profile.course || ''
+          }));
 
-        // Load profile picture
-        if (profile.profile_picture) {
-          setIdPicturePreview(profile.profile_picture);
-        }
-        
-        // Load school ID photos (front and back)
-        const idFront = profile.id_img_front || profile.id_front;
-        const idBack = profile.id_img_back || profile.id_back;
-        
-        if (idFront) {
-          setSchoolIdPhotos(prev => ({ ...prev, front: idFront }));
-          setPhotos(prev => ({ ...prev, id_front: idFront }));
-          setFormData(prev => ({ ...prev, schoolIdFront: idFront, id_front: idFront }));
-        }
-        if (idBack) {
-          setSchoolIdPhotos(prev => ({ ...prev, back: idBack }));
-          setPhotos(prev => ({ ...prev, id_back: idBack }));
-          setFormData(prev => ({ ...prev, schoolIdBack: idBack, id_back: idBack }));
-        }
-        
-        // Load documentary requirement photos
-        if (profile.enrollment_certificate_doc) {
-          setPhotos(prev => ({ ...prev, mayorCOE_photo: profile.enrollment_certificate_doc }));
-        }
-        if (profile.grades_doc) {
-          setPhotos(prev => ({ ...prev, mayorGrades_photo: profile.grades_doc }));
-        }
-        if (profile.indigency_doc) {
-          setPhotos(prev => ({ ...prev, mayorIndigency_photo: profile.indigency_doc }));
-        }
+          // Load profile picture
+          if (profile.profile_picture) {
+            setIdPicturePreview(profile.profile_picture);
+          }
+          
+          // Load school ID photos (front and back)
+          const idFront = profile.id_img_front || profile.id_front;
+          const idBack = profile.id_img_back || profile.id_back;
+          
+          if (idFront) {
+            setSchoolIdPhotos(prev => ({ ...prev, front: idFront }));
+            setPhotos(prev => ({ ...prev, id_front: idFront }));
+            setFormData(prev => ({ ...prev, schoolIdFront: idFront, id_front: idFront }));
+          }
+          if (idBack) {
+            setSchoolIdPhotos(prev => ({ ...prev, back: idBack }));
+            setPhotos(prev => ({ ...prev, id_back: idBack }));
+            setFormData(prev => ({ ...prev, schoolIdBack: idBack, id_back: idBack }));
+          }
+          
+          // Load documentary requirement photos
+          if (profile.enrollment_certificate_doc) {
+            setPhotos(prev => ({ ...prev, mayorCOE_photo: profile.enrollment_certificate_doc }));
+          }
+          if (profile.grades_doc) {
+            setPhotos(prev => ({ ...prev, mayorGrades_photo: profile.grades_doc }));
+          }
+          if (profile.indigency_doc) {
+            setPhotos(prev => ({ ...prev, mayorIndigency_photo: profile.indigency_doc }));
+          }
 
-        // Load documentary requirement videos
-        if (profile.indigency_vid_url) {
-          setFormData(prev => ({ ...prev, mayorIndigency_video: profile.indigency_vid_url }));
-        }
-        if (profile.grades_vid_url) {
-          setFormData(prev => ({ ...prev, mayorGrades_video: profile.grades_vid_url }));
-        }
-        if (profile.enrollment_certificate_vid_url) {
-          setFormData(prev => ({ ...prev, mayorCOE_video: profile.enrollment_certificate_vid_url }));
+          // Load documentary requirement videos
+          if (profile.indigency_vid_url) {
+            setFormData(prev => ({ ...prev, mayorIndigency_video: profile.indigency_vid_url }));
+          }
+          if (profile.grades_vid_url) {
+            setFormData(prev => ({ ...prev, mayorGrades_video: profile.grades_vid_url }));
+          }
+          if (profile.enrollment_certificate_vid_url) {
+            setFormData(prev => ({ ...prev, mayorCOE_video: profile.enrollment_certificate_vid_url }));
+          }
         }
         if (profile.id_vid_url) {
           setFormData(prev => ({ ...prev, id_vid_url: profile.id_vid_url }));

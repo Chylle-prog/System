@@ -1,0 +1,20 @@
+{
+  "applicant_status": [
+    "stat_no",
+    "scholarship_no",
+    "is_accepted",
+    "applicant_no",
+    "status_updated"
+  ],
+  "scholarship_providers": [
+    "pro_no",
+    "provider_name"
+  ],
+  "announcements": [
+    "ann_no",
+    "ann_message",
+    "pro_no",
+    "ann_title",
+    "time_added"
+  ]
+}

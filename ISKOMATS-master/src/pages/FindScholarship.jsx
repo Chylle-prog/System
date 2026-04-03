@@ -78,21 +78,23 @@ const FindScholarship = () => {
         const profile = await applicantAPI.getProfile();
         setUserProfile(profile);
 
-        const fullName = [
-          profile.first_name,
-          profile.last_name
-        ].filter(Boolean).join(' ');
+        if (profile) {
+          const fullName = [
+            profile.first_name,
+            profile.last_name
+          ].filter(Boolean).join(' ');
 
-        setFormData(prev => ({
-          ...prev,
-          fullName,
-          university: profile.school || '',
-          street_brgy: profile.street_brgy || '',
-          town_city_municipality: profile.town_city_municipality || '',
-          province: profile.province || '',
-          zip_code: profile.zip_code || '',
-          // gpa and income intentionally left as '' (empty)
-        }));
+          setFormData(prev => ({
+            ...prev,
+            fullName,
+            university: profile.school || '',
+            street_brgy: profile.street_brgy || '',
+            town_city_municipality: profile.town_city_municipality || '',
+            province: profile.province || '',
+            zip_code: profile.zip_code || '',
+            // gpa and income intentionally left as '' (empty)
+          }));
+        }
 
         try {
           const apps = await applicationAPI.getUserApplications();

@@ -1402,7 +1402,7 @@ def get_my_applications():
                     WHEN ast.is_accepted = FALSE THEN 'Rejected'
                     ELSE 'Pending'
                 END as status,
-                ast.created_at
+                ast.status_updated
             FROM applicant_status ast
             JOIN scholarships s ON ast.scholarship_no = s.req_no
             WHERE ast.applicant_no = %s
@@ -1413,8 +1413,8 @@ def get_my_applications():
         for row in rows:
             if row.get('deadline'):
                 row['deadline'] = str(row['deadline'])
-            if row.get('created_at'):
-                row['created_at'] = str(row['created_at'])
+            if row.get('status_updated'):
+                row['status_updated'] = str(row['status_updated'])
         return jsonify(rows)
     except Exception as exc:
         traceback.print_exc()
@@ -1543,7 +1543,7 @@ def get_announcements():
                 'ann_title': row['ann_title'],
                 'ann_message': row['ann_message'],
                 'created_at': date_str,
-                'provider_name': row['pro_name']
+                'provider_name': row['provider_name']
             })
 
         return jsonify(announcements)
