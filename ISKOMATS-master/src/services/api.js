@@ -441,7 +441,7 @@ export const applicantAPI = {
       const filePath = `videos/${folder}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('iskomats-files')
+        .from('document_videos')
         .upload(filePath, file, {
           cacheControl: '3600',
           upsert: true
@@ -450,7 +450,7 @@ export const applicantAPI = {
       if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage
-        .from('iskomats-files')
+        .from('document_videos')
         .getPublicUrl(filePath);
 
       return { publicUrl };
