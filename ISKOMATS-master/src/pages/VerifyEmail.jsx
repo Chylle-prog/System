@@ -57,7 +57,7 @@ const VerifyEmail = () => {
       
       // Redirect to profile setup after 2 seconds
       setTimeout(() => {
-        navigate('/profile-setup');
+        navigate('/studentinfo');
       }, 2000);
     } catch (error) {
       setVerificationState("error");
@@ -98,7 +98,7 @@ const VerifyEmail = () => {
       
       // Redirect to profile setup after 2 seconds
       setTimeout(() => {
-        navigate('/profile-setup');
+        navigate('/studentinfo');
       }, 2000);
     } catch (error) {
       setVerificationState("error");

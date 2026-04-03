@@ -84,7 +84,7 @@ const Login = () => {
           setIsLoginLoading(false);
           
           if (profile && profile.first_name === 'User' && profile.last_name === 'Account') {
-            navigate('/profile-setup');
+            navigate('/studentinfo');
           } else {
             navigate('/portal');
           }

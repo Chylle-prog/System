@@ -7,7 +7,6 @@ import PrivateRoute from './pages/PrivateRoute';
 import Homepage from './pages/Homepage';
 import Login from './pages/Login';
 import VerifyEmail from './pages/VerifyEmail';
-import ProfileSetup from './pages/ProfileSetup';
 import ApplicantForgotPassword from './pages/ApplicantForgotPassword';
 
 // Dynamic imports for heavy pages (route-based code splitting)
@@ -28,7 +27,13 @@ function App() {
           <Route path="/" element={<Homepage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
-          <Route path="/profile-setup" element={<ProfileSetup />} />
+          <Route path="/profile-setup" element={
+            <PrivateRoute>
+              <Suspense fallback={<LoadingFallback />}>
+                <StudentInfo />
+              </Suspense>
+            </PrivateRoute>
+          } />
           <Route path="/forgot-password" element={
             <ApplicantForgotPassword />
           } />
