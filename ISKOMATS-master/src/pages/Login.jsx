@@ -18,7 +18,7 @@ const Login = () => {
   const [isLoginLoading, setIsLoginLoading] = useState(false);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
-  const { setCurrentUserState } = useAuth();
+  const { setCurrentUserState, fetchProfile } = useAuth();
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
@@ -96,7 +96,7 @@ const Login = () => {
       // Navigate based on profile completion
       setTimeout(async () => {
         try {
-          const profile = await applicantAPI.getProfile();
+          const profile = await fetchProfile(email);
           setShowLoadingOverlay(false);
           setIsLoginLoading(false);
           
@@ -263,6 +263,11 @@ const Login = () => {
       if (profilePicture) profilePayload.profile_picture = profilePicture;
 
       await applicantAPI.updateProfile(profilePayload);
+
+      // Refresh global Auth state to ensure PrivateRoute recognizes the profile as complete
+      if (email && fetchProfile) {
+        await fetchProfile(email);
+      }
 
       // Show success modal
       setShowSuccessModal(true);
@@ -1234,7 +1239,22 @@ const Login = () => {
                 <label>University / School</label>
                 <div className="profile-input-wrapper">
                   <i className="fas fa-university"></i>
-                  <input type="text" name="school" placeholder="University of Manila" required />
+                  <select name="school" required style={{ width: '100%', padding: '12px 12px 12px 42px', border: '1px solid #ddd', borderRadius: '8px', background: 'white' }}>
+                    <option value="">Select University / School</option>
+                    <option value="De La Salle University">De La Salle University</option>
+                    <option value="National University Lipa">National University Lipa</option>
+                    <option value="Batangas State University">Batangas State University</option>
+                    <option value="Kolehiyo ng Lungsod ng Lipa">Kolehiyo ng Lungsod ng Lipa</option>
+                    <option value="Philippine State College of Aeronautics">Philippine State College of Aeronautics</option>
+                    <option value="Lipa City Colleges">Lipa City Colleges</option>
+                    <option value="University of Batangas">University of Batangas</option>
+                    <option value="New Era University">New Era University</option>
+                    <option value="Batangas College of Arts and Sciences">Batangas College of Arts and Sciences</option>
+                    <option value="Royal British College">Royal British College</option>
+                    <option value="STI Academic Center">STI Academic Center</option>
+                    <option value="AMA Computer College">AMA Computer College</option>
+                    <option value="ICT-ED">ICT-ED</option>
+                  </select>
                 </div>
               </div>
 

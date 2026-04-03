@@ -8,8 +8,8 @@ const PrivateRoute = ({ children }) => {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <div className="loading-spinner"></div>
+      <div className="global-loader">
+        <div className="loader-spinner"></div>
       </div>
     );
   }

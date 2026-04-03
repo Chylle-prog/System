@@ -16,8 +16,13 @@ const Profile = lazy(() => import('./pages/Profile'));
 const StudentInfo = lazy(() => import('./pages/StudentInfo'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 
-// Loading fallback for lazy routes - returns null to show nothing during load
-const LoadingFallback = () => null;
+// Loading fallback for lazy routes
+const LoadingFallback = () => (
+  <div className="global-loader">
+    <div className="loader-spinner"></div>
+    <div className="loader-text">Loading iskoMats...</div>
+  </div>
+);
 
 function App() {
   return (
