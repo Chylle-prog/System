@@ -7,7 +7,6 @@ import { useAuth } from '../contexts/AuthContext';
 const Login = () => {
   const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
-  const [showProfile, setShowProfile] = useState(false);
   const [showRegistrationModal, setShowRegistrationModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showError, setShowError] = useState(false);
@@ -84,7 +83,7 @@ const Login = () => {
           setIsLoginLoading(false);
           
           if (profile && profile.first_name === 'User' && profile.last_name === 'Account') {
-            navigate('/studentinfo');
+            navigate('/profile');
           } else {
             navigate('/portal');
           }
@@ -203,100 +202,10 @@ const Login = () => {
     }
   };
 
-  const handleProfileSubmit = async (e) => {
-    e.preventDefault();
-    const firstName = e.target.firstName?.value || '';
-    const middleName = e.target.middleName?.value || '';
-    const lastName = e.target.lastName?.value || '';
-    const birthdate = e.target.birthdate?.value || '';
-    const school = e.target.school?.value || '';
-    const mobileNo = e.target.mobileNo?.value || '';
-    const streetBrgy = e.target.streetBrgy?.value || '';
-    const townCityMunicipality = e.target.townCityMunicipality?.value || '';
-    const province = e.target.province?.value || '';
-    const zipCode = e.target.zipCode?.value || '';
-    const overallGpa = e.target.overallGpa?.value || '';
-    const financialIncomeOfParents = e.target.financialIncomeOfParents?.value || '';
-
-    // Validate required fields
-    if (!firstName || !lastName || !birthdate || !school || !mobileNo || !streetBrgy || !townCityMunicipality || !province || !zipCode) {
-      setErrorMessage('Please fill in all required fields');
-      setShowError(true);
-      return;
-    }
-
-    try {
-      setLoadingMessage({ title: 'Creating Profile', message: 'Saving your information and setting up your account...' });
-      setShowLoadingOverlay(true);
-      // Get registration credentials from localStorage
-      const email = localStorage.getItem('registrationEmail');
-      const password = localStorage.getItem('registrationPassword');
-
-      try {
-        // Register user with backend (backend expects snake_case field names)
-        const registerResponse = await authAPI.register({
-          first_name: firstName,
-          middle_name: middleName,
-          last_name: lastName,
-          email,
-          password
-        });
-
-        // Store profile data temporarily for after verification
-        const profilePayload = {
-          firstName,
-          middleName,
-          lastName,
-          dateOfBirth: birthdate,
-          schoolName: school,
-          mobileNumber: mobileNo,
-          streetBarangay: streetBrgy,
-          townCity: townCityMunicipality,
-          province,
-          zipCode,
-        };
-        
-        if (overallGpa) profilePayload.gpa = parseFloat(overallGpa);
-        if (financialIncomeOfParents) profilePayload.parentsGrossIncome = parseInt(financialIncomeOfParents);
-        if (profilePicture) profilePayload.profile_picture = profilePicture;
-
-        localStorage.setItem('pendingProfileData', JSON.stringify(profilePayload));
-        
-        // Redirect to email verification instead of logging in directly
-        setShowLoadingOverlay(false);
-        navigate('/verify-email');
-        return;
-      } catch (regError) {
-        // If already registered, redirect to verify-email
-        if (regError.message.includes('already registered')) {
-          setShowLoadingOverlay(false);
-          navigate('/verify-email');
-          return;
-        } else {
-          throw regError;
-        }
-      }
-    } catch (error) {
-      setErrorMessage(error.message || 'Profile creation failed. Please try again.');
-      setShowError(true);
-      setShowLoadingOverlay(false);
-    }
-  };
-
-  const handleProfilePictureUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setProfilePicture(ev.target.result);
-    };
-    reader.readAsDataURL(file);
-  };
-
   const closeRegistrationModal = () => {
     setShowRegistrationModal(false);
-    setShowProfile(true); // Switch to profile completion form
+    // After registration, redirect to email verification
+    navigate('/verify-email');
   };
 
   const toggleAuthForm = () => {
@@ -591,83 +500,6 @@ const Login = () => {
           border-bottom-color: var(--primary);
         }
 
-        .profile-card {
-          max-width: 720px;
-          width: 100%;
-          background: rgba(255, 255, 255, 0.75);
-          backdrop-filter: blur(20px);
-          border-radius: 56px;
-          padding: 3rem 3.5rem;
-          box-shadow: var(--shadow-lg);
-          border: 1px solid rgba(255, 255, 255, 0.8);
-          animation: cardFloat 0.7s ease-out;
-          margin: 0 auto;
-        }
-
-        .profile-card h2 {
-          font-size: 2.2rem;
-          font-weight: 800;
-          background: var(--primary-gradient);
-          -webkit-background-clip: text;
-          background-clip: text;
-          color: transparent;
-          text-align: center;
-          margin-bottom: 2rem;
-        }
-
-        .profile-picture-upload {
-          display: flex;
-          align-items: center;
-          gap: 2rem;
-          margin-bottom: 2rem;
-        }
-
-        .profile-pic {
-          width: 100px;
-          height: 100px;
-          border-radius: 50%;
-          background: var(--gray-1);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 2.5rem;
-          color: var(--text-soft);
-          border: 3px solid var(--gray-2);
-          position: relative;
-          overflow: hidden;
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.5rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 600;
-          font-size: 0.85rem;
-          text-transform: uppercase;
-          letter-spacing: 0.3px;
-          color: var(--primary-light);
-          margin-bottom: 0.4rem;
-        }
-
-        .profile-form-group input, .profile-form-group textarea, .profile-form-group select {
-          width: 100%;
-          padding: 0.9rem 1.2rem;
-          border: 1.5px solid var(--gray-2);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          transition: 0.15s;
-          background: var(--gray-1);
-          font-family: 'Inter', sans-serif;
-        }
-
-        .profile-form-group input:focus, .profile-form-group textarea:focus, .profile-form-group select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: var(--white);
-          box-shadow: 0 0 0 4px rgba(79,13,0,0.08);
-        }
 
         .modal-overlay {
           display: none;
@@ -1011,7 +843,7 @@ const Login = () => {
 
       <div className="auth-wrapper">
         {/* Auth section */}
-        <section id="auth" className={`section ${!showProfile ? 'active' : ''}`}>
+        <section id="auth" className="section active">
           <div className="auth-card">
             <div className="auth-header">
               <h2>{isLogin ? 'Welcome, Iskolar!' : 'Join iskoMats'}</h2>
@@ -1115,205 +947,6 @@ const Login = () => {
           </div>
         </section>
 
-        {/* Profile section */}
-        <section id="profile" className={`section ${showProfile ? 'active' : ''}`}>
-          <div className="profile-card">
-            <h2>Complete your Profile!</h2>
-            <form onSubmit={handleProfileSubmit}>
-              <div className="profile-picture-upload">
-                <div
-                  className="profile-pic"
-                  dangerouslySetInnerHTML={{ __html: profilePicture ? `<img src="${profilePicture}" alt="profile" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` : '<span>👤</span>' }}
-                />
-                <div className="profile-form-group">
-                  <label>Profile picture</label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleProfilePictureUpload}
-                  />
-                </div>
-              </div>
-              <div className="profile-form-group">
-                <label>First name</label>
-                <input
-                  type="text"
-                  name="firstName"
-                  placeholder="e.g., Maria"
-                  required
-                />
-              </div>
-              <div className="profile-form-group">
-                <label>Middle name</label>
-                <input
-                  type="text"
-                  name="middleName"
-                  placeholder="e.g., Dela Cruz"
-                />
-              </div>
-              <div className="profile-form-group">
-                <label>Last name</label>
-                <input
-                  type="text"
-                  name="lastName"
-                  placeholder="e.g., Santos"
-                  required
-                />
-              </div>
-              <div className="profile-form-group">
-                <label>Birthdate</label>
-                <input
-                  type="date"
-                  name="birthdate"
-                  required
-                />
-              </div>
-              <div className="profile-form-group">
-                <label>University / School</label>
-                <select
-                  name="school"
-                  required
-                >
-                  <option value="">Select School</option>
-                  <option value="De La Salle University">De La Salle University</option>
-                  <option value="Batangas State University">Batangas State University</option>
-                  <option value="Kolehiyo ng Lungsod ng Lipa">Kolehiyo ng Lungsod ng Lipa</option>
-                  <option value="Philippine State College of Aeronautics">Philippine State College of Aeronautics</option>
-                  <option value="Lipa City Colleges">Lipa City Colleges</option>
-                  <option value="University of Batangas">University of Batangas</option>
-                  <option value="New Era University">New Era University</option>
-                  <option value="Batangas College of Arts and Sciences">Batangas College of Arts and Sciences</option>
-                  <option value="Royal British College">Royal British College</option>
-                  <option value="STI Academic Center">STI Academic Center</option>
-                  <option value="AMA Computer College">AMA Computer College</option>
-                  <option value="ICT-ED">ICT-ED</option>
-                </select>
-              </div>
-              <div className="profile-form-group">
-                <label>Phone number</label>
-                <input
-                  type="tel"
-                  name="mobileNo"
-                  placeholder="+63 ..."
-                  required
-                />
-              </div>
-              <div className="profile-form-group">
-                <label>Street / Barangay</label>
-                <select
-                  name="streetBrgy"
-                  required
-                >
-                  <option value="">Select Barangay</option>
-                  <option value="Adya">Adya</option>
-                  <option value="Anilao">Anilao</option>
-                  <option value="Anilao-Labac">Anilao-Labac</option>
-                  <option value="Antipolo del Norte">Antipolo del Norte</option>
-                  <option value="Antipolo del Sur">Antipolo del Sur</option>
-                  <option value="Bagong Pook">Bagong Pook</option>
-                  <option value="Balintawak">Balintawak</option>
-                  <option value="Banaybanay">Banaybanay</option>
-                  <option value="Bolbok">Bolbok</option>
-                  <option value="Bugtong na Pulo">Bugtong na Pulo</option>
-                  <option value="Bulacnin">Bulacnin</option>
-                  <option value="Bulaklakan">Bulaklakan</option>
-                  <option value="Calamias">Calamias</option>
-                  <option value="Cumba">Cumba</option>
-                  <option value="Dagatan">Dagatan</option>
-                  <option value="Duhatan">Duhatan</option>
-                  <option value="Halang">Halang</option>
-                  <option value="Inosloban">Inosloban</option>
-                  <option value="Kayumanggi">Kayumanggi</option>
-                  <option value="Latag">Latag</option>
-                  <option value="Lodlod">Lodlod</option>
-                  <option value="Lumbang">Lumbang</option>
-                  <option value="Mabini">Mabini</option>
-                  <option value="Malagonlong">Malagonlong</option>
-                  <option value="Malitlit">Malitlit</option>
-                  <option value="Marauoy">Marauoy</option>
-                  <option value="Mataas na Lupa">Mataas na Lupa</option>
-                  <option value="Munting Pulo">Munting Pulo</option>
-                  <option value="Pagolingin Bata">Pagolingin Bata</option>
-                  <option value="Pagolingin East">Pagolingin East</option>
-                  <option value="Pagolingin West">Pagolingin West</option>
-                  <option value="Pangao">Pangao</option>
-                  <option value="Pinagkawitan">Pinagkawitan</option>
-                  <option value="Pinagtongulan">Pinagtongulan</option>
-                  <option value="Plaridel">Plaridel</option>
-                  <option value="Poblacion Barangay 1">Poblacion Barangay 1</option>
-                  <option value="Poblacion Barangay 2">Poblacion Barangay 2</option>
-                  <option value="Poblacion Barangay 3">Poblacion Barangay 3</option>
-                  <option value="Poblacion Barangay 4">Poblacion Barangay 4</option>
-                  <option value="Poblacion Barangay 5">Poblacion Barangay 5</option>
-                  <option value="Poblacion Barangay 6">Poblacion Barangay 6</option>
-                  <option value="Poblacion Barangay 7">Poblacion Barangay 7</option>
-                  <option value="Poblacion Barangay 8">Poblacion Barangay 8</option>
-                  <option value="Poblacion Barangay 9">Poblacion Barangay 9</option>
-                  <option value="Poblacion Barangay 9-A">Poblacion Barangay 9-A</option>
-                  <option value="Poblacion Barangay 10">Poblacion Barangay 10</option>
-                  <option value="Poblacion Barangay 11">Poblacion Barangay 11</option>
-                  <option value="Poblacion Barangay 12">Poblacion Barangay 12</option>
-                  <option value="Pusil">Pusil</option>
-                  <option value="Quezon">Quezon</option>
-                  <option value="Rizal">Rizal</option>
-                  <option value="Sabang">Sabang</option>
-                  <option value="Sampaguita">Sampaguita</option>
-                  <option value="San Benito">San Benito</option>
-                  <option value="San Carlos">San Carlos</option>
-                  <option value="San Celestino">San Celestino</option>
-                  <option value="San Francisco">San Francisco</option>
-                  <option value="San Guillermo">San Guillermo</option>
-                  <option value="San Isidro">San Isidro</option>
-                  <option value="San Jose">San Jose</option>
-                  <option value="San Lucas">San Lucas</option>
-                  <option value="San Salvador">San Salvador</option>
-                  <option value="San Sebastian (Balagbag)">San Sebastian (Balagbag)</option>
-                  <option value="Santo Niño">Santo Niño</option>
-                  <option value="Santo Toribio">Santo Toribio</option>
-                  <option value="Sico">Sico</option>
-                  <option value="Talisay">Talisay</option>
-                  <option value="Tambo">Tambo</option>
-                  <option value="Tangob">Tangob</option>
-                  <option value="Tanguay">Tanguay</option>
-                  <option value="Tibig">Tibig</option>
-                  <option value="Tipacan">Tipacan</option>
-                </select>
-              </div>
-              <div className="profile-form-group">
-                <label>Town / City / Municipality</label>
-                <input
-                  type="text"
-                  name="townCityMunicipality"
-                  readOnly
-                  value="Lipa City"
-                  style={{background: '#f0f0f0', cursor: 'not-allowed'}}
-                />
-              </div>
-              <div className="profile-form-group">
-                <label>Province</label>
-                <input
-                  type="text"
-                  name="province"
-                  readOnly
-                  value="Batangas"
-                  style={{background: '#f0f0f0', cursor: 'not-allowed'}}
-                />
-              </div>
-              <div className="profile-form-group">
-                <label>Zip Code</label>
-                <input
-                  type="text"
-                  name="zipCode"
-                  readOnly
-                  value="4217"
-                  style={{background: '#f0f0f0', cursor: 'not-allowed'}}
-                  required
-                />
-              </div>
-              <button type="submit" className="submit-btn" style={{ marginTop: '0.8rem' }}>Create Profile →</button>
-            </form>
-          </div>
-        </section>
       </div>
 
       {/* Registration Success Modal */}

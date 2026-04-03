@@ -27,13 +27,6 @@ function App() {
           <Route path="/" element={<Homepage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
-          <Route path="/profile-setup" element={
-            <PrivateRoute>
-              <Suspense fallback={<LoadingFallback />}>
-                <StudentInfo />
-              </Suspense>
-            </PrivateRoute>
-          } />
           <Route path="/forgot-password" element={
             <ApplicantForgotPassword />
           } />

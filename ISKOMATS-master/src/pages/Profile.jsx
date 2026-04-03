@@ -220,10 +220,17 @@ const Profile = () => {
       // We don't automatically close the edit form here to prevent UI flicker; 
       // the useEffect will handle the transition based on the userProfile state change if needed,
       // but typically we'll want a deliberate close.
+      const isNewProfile = userProfile && userProfile.first_name === 'User' && userProfile.last_name === 'Account';
+
       setTimeout(() => {
         setShowSuccessModal(false);
         setShowEditForm(false);
         setShowLoadingOverlay(false);
+        
+        // Redirect new users to portal after first profile setup
+        if (isNewProfile) {
+          navigate('/portal');
+        }
       }, 2000);
     } catch (err) {
       setError(err.message || 'Failed to update profile');
