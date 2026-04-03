@@ -169,12 +169,13 @@ export const authAPI = {
   /**
    * Verify email with verification code or token
    * @param {string} token - Verification code or token
+   * @param {string} email - Optional user email for precise lookup
    * @returns {Promise}
    */
-  verifyEmail: async (token) => {
+  verifyEmail: async (token, email = null) => {
     return makeRequest('/student/auth/verify-email', {
       method: 'POST',
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ token, email }),
     });
   },
 

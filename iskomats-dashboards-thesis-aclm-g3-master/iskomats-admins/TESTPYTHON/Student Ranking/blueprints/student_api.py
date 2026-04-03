@@ -137,17 +137,13 @@ def fetch_google_access_token():
 def send_password_reset_email(receiver_email, reset_url):
     """Send a password reset email via the Gmail API."""
     from urllib import request as urllib_request
+    from email.mime.text import MIMEText
     import json
     
     if not GMAIL_SENDER_EMAIL:
         raise RuntimeError('Gmail sender email is not configured.')
 
-    message = f"""Subject: Reset your ISKOMATS Student Password
-To: {receiver_email}
-From: {GMAIL_SENDER_EMAIL}
-Content-Type: text/plain; charset="UTF-8"
-
-Hello,
+    body = f"""Hello,
 
 We received a request to reset your student password for ISKOMATS.
 
@@ -158,9 +154,13 @@ This link will expire in {PASSWORD_RESET_EXPIRY_MINUTES} minutes.
 
 If you did not request a password reset, you can ignore this email.
 """
+    msg = MIMEText(body)
+    msg['Subject'] = 'Reset your ISKOMATS Student Password'
+    msg['From'] = GMAIL_SENDER_EMAIL
+    msg['To'] = receiver_email
 
     access_token = fetch_google_access_token()
-    encoded_message = base64.urlsafe_b64encode(message.encode('utf-8')).decode('utf-8')
+    encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
     gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
     gmail_request = urllib_request.Request(
         'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
@@ -239,17 +239,13 @@ def generate_verification_code():
 def send_verification_email(receiver_email, code):
     """Send a verification email via the Gmail API."""
     from urllib import request as urllib_request
+    from email.mime.text import MIMEText
     import json
     
     if not GMAIL_SENDER_EMAIL:
         raise RuntimeError('Gmail sender email is not configured.')
 
-    message = f"""Subject: Verify your ISKOMATS Account
-To: {receiver_email}
-From: {GMAIL_SENDER_EMAIL}
-Content-Type: text/plain; charset="UTF-8"
-
-Hello,
+    body = f"""Hello,
 
 Thank you for registering with ISKOMATS. To complete your registration, please use the following verification code:
 
@@ -260,8 +256,18 @@ If you did not register for an account, please ignore this email.
 Best regards,
 The ISKOMATS Team
 """
+    msg = MIMEText(body)
+    msg['Subject'] = 'Verify your ISKOMATS Account'
+    msg['From'] = GMAIL_SENDER_EMAIL
+    msg['To'] = receiver_email
 
-    encoded_message = base64.urlsafe_b64encode(message.encode('utf-8')).decode('utf-8')
+    try:
+        access_token = fetch_google_access_token()
+    except Exception as e:
+        print(f"[GOOGLE AUTH ERROR] {e}", flush=True)
+        raise RuntimeError(f"Could not authenticate with Google to send email: {e}")
+
+    encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
     
     try:
         access_token = fetch_google_access_token()
@@ -375,6 +381,8 @@ def student_register():
             send_verification_email(email, verification_code)
         except Exception as e:
             print(f"[EMAIL ERROR] Failed to send verification email during registration: {e}", flush=True)
+            # Rollback or at least inform the user
+            return jsonify({'message': f'Registration failed because the verification email could not be sent: {str(e)}'}), 500
 
         return jsonify({
             'message': 'Registration initiated. Please check your email for the verification code.',

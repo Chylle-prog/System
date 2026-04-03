@@ -91,7 +91,7 @@ const VerifyEmail = () => {
     setVerificationState("loading");
 
     try {
-      await authAPI.verifyEmail(formData.verificationCode);
+      await authAPI.verifyEmail(formData.verificationCode, email);
       
       setVerificationState("success");
       setFormData({ ...formData, success: true, isLoading: false });
