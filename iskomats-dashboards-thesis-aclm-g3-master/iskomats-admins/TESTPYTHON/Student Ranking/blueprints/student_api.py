@@ -1334,15 +1334,17 @@ def ocr_check():
                     return {'doc': 'Identity Front', 'verified': v, 'message': msg, 'raw_text': raw}
 
                 elif doc_type == 'SchoolIDBack':
-                    # Year Level is verified from the back of the ID
-                    year_ok = True if not expected_year else (expected_year.lower() in raw_lower)
+                    # Verify academic year validity from the sticker or text on ID back
+                    year_label = extract_school_year_from_text(raw)
+                    # Use 2026 as the target year as specifically requested for current verification
+                    year_ok = is_current_school_year(year_label, current_year=2026)
                     
-                    if not year_ok:
-                        v, msg = False, f"Year Level mismatch on ID back ({expected_year})"
-                    else:
-                        v, msg = True, f"Year Level {expected_year} verified from ID back"
+                    if v and not year_ok:
+                        v, msg = False, f"ID validity expired or Year Mismatch. Found: '{year_label or 'None'}'. Expected current SY (2026)."
+                    elif v:
+                        msg = f"ID validity verified for Academic Year: {year_label}"
                         
-                    return {'doc': 'Identity Back', 'verified': v, 'message': msg, 'raw_text': raw}
+                    return {'doc': 'Identity Back', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label}
 
                 return None
             except Exception as worker_err:
