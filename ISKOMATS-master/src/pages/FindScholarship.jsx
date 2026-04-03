@@ -17,7 +17,7 @@ const FindScholarship = () => {
   const [successBanner, setSuccessBanner] = useState('');
   const [hasApprovedApplication, setHasApprovedApplication] = useState(false);
 
-  
+
   const [incomeLevel, setIncomeLevel] = useState('');
 
   const [formData, setFormData] = useState({
@@ -170,16 +170,16 @@ const FindScholarship = () => {
 
     // DLSL Scale (4.00 is highest)
     if (uniName.includes('la salle') || uniName.includes('dlsl')) {
-      if (gpa >= 3.87) return 99; // 4.00 -> 98-100
-      if (gpa >= 3.62) return 96; // 3.75 -> 95-97
-      if (gpa >= 3.37) return 93; // 3.50 -> 92-94
-      if (gpa >= 3.12) return 90; // 3.25 -> 89-91
-      if (gpa >= 2.87) return 87; // 3.00 -> 86-88
-      if (gpa >= 2.62) return 84; // 2.75 -> 83-85
-      if (gpa >= 2.37) return 81; // 2.50 -> 80-82
-      if (gpa >= 2.12) return 78; // 2.25 -> 77-79
-      if (gpa >= 1.00) return 75; // 1.00 -> Passing Mark (75) at DLSL
-      return 70;                  // Below 1.00 -> Failing
+      if (gpa >= 4.00) return 99; // 4.00 -> 98-100
+      if (gpa >= 3.75) return 96; // 3.75 -> 95-97
+      if (gpa >= 3.50) return 93; // 3.50 -> 92-94
+      if (gpa >= 3.25) return 90; // 3.25 -> 89-91
+      if (gpa >= 3.00) return 87; // 3.00 -> 86-88
+      if (gpa >= 2.75) return 84; // 2.75 -> 83-85
+      if (gpa >= 2.50) return 81; // 2.50 -> 80-82
+      if (gpa >= 2.25) return 78; // 2.25 -> 77-79
+      if (gpa >= 2.00) return 75.5; // 2.00 -> 75-76
+      return 70;                   // Below 2.00 -> Failing
     }
 
     // National University (NU) Lipa Scale (4.0 is highest)
@@ -237,8 +237,8 @@ const FindScholarship = () => {
       return;
     }
 
-      setLoadingMessage({ title: 'Searching Scholarships', message: 'Analyzing your profile to find the best matches...' });
-      setShowLoadingOverlay(true);
+    setLoadingMessage({ title: 'Searching Scholarships', message: 'Analyzing your profile to find the best matches...' });
+    setShowLoadingOverlay(true);
 
     try {
       // Step 1: Save GPA / income to profile
@@ -934,7 +934,7 @@ const FindScholarship = () => {
         <div className="navbar-menu">
           <span>{globalProfile?.first_name || userProfile?.first_name || localStorage.getItem('userFirstName') || currentUser}</span>
           <button className="logout-btn" onClick={logout}>
-            <i className="fas fa-sign-out-alt" style={{marginRight: '6px'}}></i>Logout
+            <i className="fas fa-sign-out-alt" style={{ marginRight: '6px' }}></i>Logout
           </button>
         </div>
       </nav>
@@ -942,29 +942,29 @@ const FindScholarship = () => {
       {/* FORM VIEW */}
       {showFormView && (
         <div className="form-view">
-          <div style={{maxWidth: '800px', margin: '0 auto', padding: '0 1rem'}}>
+          <div style={{ maxWidth: '800px', margin: '0 auto', padding: '0 1rem' }}>
             <Link to="/portal" className="back-button">
               <i className="fas fa-arrow-left"></i> Back to Portal
             </Link>
-            <h3 style={{color: 'var(--primary)', fontSize: '1.8rem', fontWeight: '700', textAlign: 'center', marginBottom: '1rem'}}>
+            <h3 style={{ color: 'var(--primary)', fontSize: '1.8rem', fontWeight: '700', textAlign: 'center', marginBottom: '1rem' }}>
               Find Scholarships
             </h3>
 
             <form onSubmit={handleScholarshipSearch} className="feedback-form">
               <div className="form-group">
                 <label>Full Name</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   name="fullName"
                   value={formData.fullName}
                   onChange={handleInputChange}
-                  placeholder="Enter your full name" 
-                  required 
+                  placeholder="Enter your full name"
+                  required
                 />
               </div>
               <div className="form-group">
                 <label>University</label>
-                <select 
+                <select
                   name="university"
                   value={formData.university}
                   onChange={handleInputChange}
@@ -972,6 +972,7 @@ const FindScholarship = () => {
                 >
                   <option value="">Select University</option>
                   <option value="De La Salle Lipa">De La Salle Lipa</option>
+                  <option value="National University Lipa">National University Lipa</option>
                   <option value="Batangas State University">Batangas State University</option>
                   <option value="Kolehiyo ng Lungsod ng Lipa">Kolehiyo ng Lungsod ng Lipa</option>
                   <option value="Philippine State College of Aeronautics">Philippine State College of Aeronautics</option>
@@ -987,32 +988,71 @@ const FindScholarship = () => {
               </div>
               <div className="form-group">
                 <label>GPA</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   name="gpa"
                   value={formData.gpa}
                   onChange={handleInputChange}
-                  step="0.01" 
-                  min="0" 
+                  step="0.01"
+                  min="0"
                   max="4"
-                  placeholder="e.g., 3.5" 
-                  required 
+                  placeholder="e.g., 3.5"
+                  required
                 />
+                {(formData.university === 'De La Salle Lipa') && (
+                  <div style={{
+                    marginTop: '0.8rem',
+                    background: '#f0f7ff',
+                    padding: '1rem',
+                    borderRadius: '12px',
+                    border: '1px solid #e1effe',
+                    fontSize: '0.75rem',
+                    color: '#1e429f',
+                    lineHeight: '1.4'
+                  }}>
+                    <div style={{ fontWeight: '700', marginBottom: '0.4rem' }}>DLSL Grading Guide:</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                      <div>4.0 = 98-100</div><div>3.75 = 95-97</div><div>3.5 = 92-94</div>
+                      <div>3.25 = 89-91</div><div>3.0 = 86-88</div><div>2.75 = 83-85</div>
+                      <div>2.5 = 80-82</div><div>2.25 = 77-79</div><div>2.0 = 75-76</div>
+                    </div>
+                  </div>
+                )}
+                {(formData.university === 'National University Lipa') && (
+                  <div style={{
+                    marginTop: '0.8rem',
+                    background: '#f9fafb',
+                    padding: '1rem',
+                    borderRadius: '12px',
+                    border: '1px solid #e5e7eb',
+                    fontSize: '0.75rem',
+                    color: '#4b5563',
+                    lineHeight: '1.4'
+                  }}>
+                    <div style={{ fontWeight: '700', marginBottom: '0.4rem' }}>NU Lipa Grading Guide:</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
+                      <div>4.0 = 100-96</div><div>3.5 = 95-90</div>
+                      <div>3.0 = 89-84</div><div>2.5 = 83-78</div>
+                      <div>2.0 = 77-72</div><div>1.5 = 71-66</div>
+                      <div>1.0 = 65-60</div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Income field with live indicator */}
               <div className="form-group">
                 <label>Income (PHP/month)</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   name="income"
                   value={formData.income}
                   onChange={handleInputChange}
-                  placeholder="e.g., 25000" 
-                  required 
+                  placeholder="e.g., 25000"
+                  required
                 />
                 {incomeLevel && (
-                  <span className="income-indicator" style={{color: incomeLevel.includes('Low') ? 'var(--success)' : incomeLevel.includes('Middle') ? 'var(--warning)' : 'var(--danger)'}}>
+                  <span className="income-indicator" style={{ color: incomeLevel.includes('Low') ? 'var(--success)' : incomeLevel.includes('Middle') ? 'var(--warning)' : 'var(--danger)' }}>
                     {incomeLevel}
                   </span>
                 )}
@@ -1033,9 +1073,9 @@ const FindScholarship = () => {
             <h2>Your Scholarship Matches</h2>
             <p>Based on your profile, we've found these opportunities tailored for you.</p>
           </div>
-          <div style={{textAlign: 'center', marginBottom: '1.5rem'}}>
+          <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
             <button className="back-to-form-btn" onClick={switchToFormView}>
-              <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i>
+              <i className="fas fa-arrow-left" style={{ marginRight: '8px' }}></i>
               Back to search form
             </button>
           </div>
@@ -1068,14 +1108,14 @@ const FindScholarship = () => {
                   <div className="scholarship-benefits">
                     🏆 Match score: <strong>{match.score}</strong> pts
                   </div>
-                  <button 
-                    className="apply-btn" 
+                  <button
+                    className="apply-btn"
                     onClick={() => applyForScholarship(match.name, match.req_no)}
                     disabled={hasApprovedApplication || match.alreadyApplied}
                     style={(hasApprovedApplication || match.alreadyApplied) ? { backgroundColor: 'var(--gray-3)', cursor: 'not-allowed', color: 'white', opacity: 0.8 } : {}}
                   >
-                    {hasApprovedApplication ? 'Limit Reached: Already Approved' : 
-                     match.alreadyApplied ? 'Already Applied' : 'Apply for this Scholarship'}
+                    {hasApprovedApplication ? 'Limit Reached: Already Approved' :
+                      match.alreadyApplied ? 'Already Applied' : 'Apply for this Scholarship'}
                   </button>
                 </div>
               ))
@@ -1091,7 +1131,7 @@ const FindScholarship = () => {
                   <div className="scholarship-provider">
                     {match.location ? `📍 ${match.location}` : '🌐 Open to all locations'}
                   </div>
-                  
+
                   <div style={{ marginBottom: '1rem' }}>
                     <span style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-soft)', textTransform: 'uppercase' }}>Reason for ineligibility:</span>
                     <ul className="reasons-list">
@@ -1110,8 +1150,8 @@ const FindScholarship = () => {
                     )}
                   </div>
 
-                  <button 
-                    className="apply-btn" 
+                  <button
+                    className="apply-btn"
                     disabled={true}
                     style={{ backgroundColor: 'var(--gray-2)', color: 'var(--gray-3)', cursor: 'not-allowed' }}
                   >
@@ -1123,7 +1163,7 @@ const FindScholarship = () => {
 
             {scholarshipMatches.length === 0 && ineligibleMatches.length === 0 && (
               <div className="no-results">
-                <i className="fas fa-search" style={{fontSize: '2rem', opacity: '0.5', marginBottom: '1rem'}}></i>
+                <i className="fas fa-search" style={{ fontSize: '2rem', opacity: '0.5', marginBottom: '1rem' }}></i>
                 <p>No matching scholarships found. Please review your information and try again with different criteria.</p>
               </div>
             )}

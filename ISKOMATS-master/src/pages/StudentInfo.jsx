@@ -2447,6 +2447,25 @@ const StudentInfo = () => {
                 <div className="form-group">
                   <label>Current GPA <span style={{color: '#e74c3c'}}>*</span></label>
                   <input type="number" step="0.01" name="gpa" value={formData.gpa} onChange={handleInputChange} placeholder="0.00" required={currentStep === 3} />
+                  {(formData.schoolName === 'De La Salle Lipa') && (
+                    <div style={{
+                      marginTop: '0.8rem', 
+                      background: '#f0f7ff', 
+                      padding: '1rem', 
+                      borderRadius: '12px', 
+                      border: '1px solid #e1effe',
+                      fontSize: '0.8rem',
+                      color: '#1e429f',
+                      lineHeight: '1.4'
+                    }}>
+                      <div style={{fontWeight: '700', marginBottom: '0.5rem'}}>DLSL Grading Guide:</div>
+                      <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px'}}>
+                        <div>4.0 = 98-100</div><div>3.75 = 95-97</div><div>3.5 = 92-94</div>
+                        <div>3.25 = 89-91</div><div>3.0 = 86-88</div><div>2.75 = 83-85</div>
+                        <div>2.5 = 80-82</div><div>2.25 = 77-79</div><div>2.0 = 75-76</div>
+                      </div>
+                    </div>
+                  )}
                   {(formData.schoolName === 'National University Lipa') && (
                     <div style={{
                       marginTop: '0.8rem', 
