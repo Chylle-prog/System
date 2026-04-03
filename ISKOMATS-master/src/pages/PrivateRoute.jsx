@@ -20,7 +20,7 @@ const PrivateRoute = ({ children }) => {
     const isSetupPage = location.pathname === '/profile-setup' || location.pathname === '/studentinfo';
     
     if (userProfile && userProfile.first_name === 'User' && userProfile.last_name === 'Account' && !isSetupPage) {
-      return <Navigate to="/profile-setup" />;
+      return <Navigate to="/login?setup=true" />;
     }
     return children;
   }

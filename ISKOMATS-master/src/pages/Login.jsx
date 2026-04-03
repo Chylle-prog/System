@@ -426,6 +426,21 @@ const Login = () => {
           min-height: calc(100vh - 80px);
         }
 
+        .auth-card {
+          max-width: 480px;
+          width: 100%;
+          background: rgba(255, 255, 255, 0.75);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border-radius: 48px;
+          padding: 2.8rem 3rem 3.2rem;
+          box-shadow: var(--shadow-lg);
+          border: 1px solid rgba(255, 255, 255, 0.7);
+          transition: var(--transition);
+          animation: cardFloat 0.8s ease-out;
+          margin: 0 auto;
+        }
+
         .profile-card {
           max-width: 720px;
           width: 100%;

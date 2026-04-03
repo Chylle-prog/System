@@ -126,7 +126,7 @@ const VerifyEmail = () => {
       
       // Redirect to profile setup after 2 seconds
       setTimeout(() => {
-        navigate('/profile');
+        navigate('/login?setup=true');
       }, 2000);
     } catch (error) {
       setVerificationState("error");
