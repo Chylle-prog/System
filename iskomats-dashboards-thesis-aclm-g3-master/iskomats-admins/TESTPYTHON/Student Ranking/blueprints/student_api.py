@@ -1226,12 +1226,12 @@ def ocr_check():
         full_expected_name = f"{first_name} {last_name}"
         if middle_name and len(middle_name) > 1:
             full_expected_name = f"{first_name} {middle_name} {last_name}"
-        town_city = (data.get('town_city') or data.get('townCity') or applicant.get('town_city_municipality', '')).strip()
-        school_name = (data.get('school_name') or data.get('schoolName') or '').strip()
-        course = (data.get('course') or '').strip()
-        expected_gpa = (data.get('gpa') or data.get('expectedGPA') or '').strip()
-        expected_year = (data.get('expected_year') or data.get('expectedYear') or data.get('yearLevel') or '').strip()
-        expected_id_no = (data.get('id_number') or data.get('idNumber') or '').strip()
+        town_city = str(data.get('town_city') or data.get('townCity') or applicant.get('town_city_municipality', '')).strip()
+        school_name = str(data.get('school_name') or data.get('schoolName') or '').strip()
+        course = str(data.get('course') or '').strip()
+        expected_gpa = str(data.get('gpa') or data.get('expectedGPA') or '').strip()
+        expected_year = str(data.get('expected_year') or data.get('expectedYear') or data.get('yearLevel') or '').strip()
+        expected_id_no = str(data.get('id_number') or data.get('idNumber') or '').strip()
 
         # Helper to get bytes
         def get_bytes(param, db_val):
