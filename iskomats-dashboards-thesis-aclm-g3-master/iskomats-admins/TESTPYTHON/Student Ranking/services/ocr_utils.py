@@ -47,7 +47,7 @@ def _check_tesseract():
     return _tesseract_available
 
 # ─── Image preprocessing ──────────────────────────────────────────────────────
-_MAX_OCR_WIDTH = 1200
+_MAX_OCR_WIDTH = 900 # Reduced from 1200 for speed
 _MAX_FACE_WIDTH = 224
 
 def _preprocess_strategy_a(img):
@@ -198,39 +198,7 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
         if (name_v_f and addr_v_f) or ratio_f > ratio:
             text, name_v, addr_v, ratio = text_full, name_v_f, addr_v_f, ratio_f
 
-    # Pass 3: PSM 11 (Sparse Text)
-    if not (name_v and addr_v) and image_bytes:
-        try:
-            nparr = np.frombuffer(image_bytes, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            if img is not None:
-                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                text_s = pytesseract.image_to_string(gray, config='--psm 11')
-                name_v_s, addr_v_s, ratio_s = check_match(text_s, expected_name, expected_address, is_indigency)
-                if (name_v_s and addr_v_s) or ratio_s > ratio:
-                    text, name_v, addr_v, ratio = text_s, name_v_s, addr_v_s, ratio_s
-        except: pass
-
-    # Pass 4: Contrast Boosting + PSM 6 (Uniform Block)
-    if not (name_v and addr_v) and image_bytes:
-        try:
-            nparr = np.frombuffer(image_bytes, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            if img is not None:
-                # Boost contrast significantly
-                lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
-                l, a, b = cv2.split(lab)
-                clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
-                cl = clahe.apply(l)
-                enhanced = cv2.merge((cl,a,b))
-                enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
-                gray = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
-                
-                text_c = pytesseract.image_to_string(gray, config='--psm 6')
-                name_v_c, addr_v_c, ratio_c = check_match(text_c, expected_name, expected_address, is_indigency)
-                if (name_v_c and addr_v_c) or ratio_c > ratio:
-                    text, name_v, addr_v, ratio = text_c, name_v_c, addr_v_c, ratio_c
-        except: pass
+    # Slow passes (PSM 11/6) removed to prevent timeouts on Render CPU
 
     if name_v and addr_v:
         return True, "Name and Address verified via OCR.", text, 1.0
