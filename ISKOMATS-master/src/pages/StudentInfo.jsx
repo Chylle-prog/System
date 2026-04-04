@@ -186,6 +186,12 @@ const StudentInfo = () => {
   const [signatureVerified, setSignatureVerified] = useState(null); // null | 'verifying' | 'success' | 'failed'
 
   // Document verification states
+  const [isScanning, setIsScanning] = useState({
+    indigency: false,
+    coe: false,
+    grades: false,
+    schoolId: false
+  });
   const [documentVerified, setDocumentVerified] = useState(null); // null | 'verifying' | 'success' | 'failed'
   const [mayorCOEVerified, setMayorCOEVerified] = useState(null); // null | 'success' | 'failed'
   const [mayorGradesVerified, setMayorGradesVerified] = useState(null); // null | 'success' | 'failed'
@@ -950,9 +956,7 @@ const StudentInfo = () => {
   const handleSchoolIdPhotoUpload = (side, e) => {
     const file = e.target.files[0];
     if (file && window.compressImage) {
-      // Clear persistent error when changing School ID photos
-      setVerificationError(null);
-      setShowPrompt(false);
+      if (side === 'front') setOcrVerified(null);
       
       window.compressImage(file).then(compressedBase64 => {
         setSchoolIdPhotos(prev => ({ ...prev, [side]: compressedBase64 }));
@@ -972,27 +976,6 @@ const StudentInfo = () => {
     }
   };
 
-  const performOcrVerification = async (idFront, indigencyDoc) => {
-    // Non-blocking verification - runs in background without affecting form submission
-    try {
-      setOcrVerified('verifying');
-      setOcrStatus('Verifying your documents (background)...');
-      
-      const result = await applicantAPI.ocrCheck(idFront, indigencyDoc);
-      
-      if (result.verified) {
-        setOcrVerified('success');
-        setOcrStatus(result.message || 'Documents verified!');
-      } else {
-        setOcrVerified('technical_unavailable');
-        setOcrStatus('Verification processed');
-      }
-    } catch (err) {
-      console.error('OCR Error:', err);
-      setOcrVerified('technical_unavailable');
-      setOcrStatus('Using cached verification');
-    }
-  };
 
   const removeSchoolIdPhoto = (side) => {
     setSchoolIdPhotos(prev => ({ ...prev, [side]: null }));
@@ -1052,8 +1035,84 @@ const StudentInfo = () => {
       // Auto-approve signature - no verification needed
       setSignatureVerified('success');
       showPromptMessage(`✅ Signature recorded successfully!`);
-    } else {
-      showPromptMessage('⚠️ Please provide a signature first.');
+    }
+  };
+
+  const scanDocument = async (docType) => {
+    const scanKey = docType === 'Indigency' ? 'indigency' : 
+                   docType === 'Enrollment' ? 'coe' : 
+                   docType === 'Grades' ? 'grades' : 'schoolId';
+    
+    setIsScanning(prev => ({ ...prev, [scanKey]: true }));
+    setLoadingMessage({ title: 'Scanning Document', message: `Analyzing your ${docType}...` });
+    
+    let idFront = null;
+    let idBack = null;
+    let indigencyDoc = null;
+    let enrollmentDoc = null;
+    let gradesDoc = null;
+    
+    if (docType === 'Indigency') {
+      indigencyDoc = photos.mayorIndigency_photo || formData.mayorIndigency_photo || userProfile?.indigency_doc;
+      setMayorIndigencyVerified('verifying');
+    } else if (docType === 'Enrollment') {
+      enrollmentDoc = photos.mayorCOE_photo || formData.mayorCOE_photo || userProfile?.enrollment_certificate_doc;
+      setMayorCOEVerified('verifying');
+    } else if (docType === 'Grades') {
+      gradesDoc = photos.mayorGrades_photo || formData.mayorGrades_photo || userProfile?.grades_doc;
+      setMayorGradesVerified('verifying');
+    } else if (docType === 'School ID') {
+      idFront = schoolIdPhotos.front || formData.id_front || userProfile?.id_front;
+      idBack = schoolIdPhotos.back || formData.id_back || userProfile?.id_back;
+      setOcrVerified('verifying');
+    }
+
+    try {
+      const result = await applicantAPI.ocrCheck(
+        idFront,
+        idBack,
+        indigencyDoc,
+        formData.townCity || userProfile?.town_city_municipality,
+        enrollmentDoc,
+        gradesDoc,
+        formData.firstName || userProfile?.first_name,
+        formData.lastName || userProfile?.last_name,
+        formData.schoolName || userProfile?.school,
+        formData.schoolIdNumber || userProfile?.school_id_no,
+        formData.yearLevel || userProfile?.year_lvl,
+        formData.gpa || userProfile?.overall_gpa
+      );
+
+      if (docType === 'Indigency') {
+        setMayorIndigencyVerified(result.verified ? 'success' : 'failed');
+      } else if (docType === 'Enrollment') {
+        const docRes = result.results?.find(r => r.doc === 'Enrollment');
+        setMayorCOEVerified(docRes ? (docRes.verified ? 'success' : 'failed') : (result.verified ? 'success' : 'failed'));
+      } else if (docType === 'Grades') {
+        const docRes = result.results?.find(r => r.doc === 'Grades');
+        setMayorGradesVerified(docRes ? (docRes.verified ? 'success' : 'failed') : (result.verified ? 'success' : 'failed'));
+      } else if (docType === 'School ID') {
+        const docRes = result.results?.find(r => r.doc === 'Identity Front' || r.doc === 'School ID');
+        setOcrVerified(docRes ? (docRes.verified ? 'success' : 'failed') : (result.verified ? 'success' : 'failed'));
+      }
+
+      if (result.verified) {
+        showPromptMessage(`✅ ${docType} verified successfully!`);
+        setVerificationError(null);
+      } else {
+        showPersistentError(`⚠️ ${result.message || `${docType} verification failed.`}`);
+      }
+    } catch (err) {
+      console.error(`${docType} verification error:`, err);
+      const errorMsg = err.response?.data?.message || `Could not verify ${docType}.`;
+      showPersistentError(`⚠️ ${errorMsg}`);
+      if (docType === 'Indigency') setMayorIndigencyVerified('failed');
+      else if (docType === 'Enrollment') setMayorCOEVerified('failed');
+      else if (docType === 'Grades') setMayorGradesVerified('failed');
+      else if (docType === 'School ID') setOcrVerified('failed');
+    } finally {
+      setIsScanning(prev => ({ ...prev, [scanKey]: false }));
+      setLoadingMessage({ title: '', message: '' });
     }
   };
 
@@ -1067,38 +1126,18 @@ const StudentInfo = () => {
         if (!indigencyDoc) {
           return true; // No document to verify, allow progression
         }
-        
-        setMayorIndigencyVerified('verifying');
-        
-        try {
-          const result = await applicantAPI.ocrCheck(
-            null, // idFront
-            null, // idBack
-            indigencyDoc, 
-            formData.townCity || userProfile?.townCity, 
-            null, 
-            null,
-            formData.firstName || userProfile?.first_name,
-            formData.lastName || userProfile?.last_name
-          );
-          
-          if (result.verified) {
-            setMayorIndigencyVerified('success');
-            setVerificationError(null);
-            showPromptMessage('✅ Indigency Certificate verified successfully!');
-            return true;
+
+        // If not verified, suggest scanning it
+        if (mayorIndigencyVerified !== 'success') {
+          if (mayorIndigencyVerified === 'failed') {
+            showPersistentError('⚠️ Your Certificate of Indigency verification failed. Please check the document and try again.');
           } else {
-            setMayorIndigencyVerified('failed');
-            const errorMsg = result.message || 'Indigency Certificate verification failed. Please ensure the image is clear and the information matches.';
-            showPersistentError(`⚠️ ${errorMsg}`);
-            return false; // Block progression if verification fails
+            showPromptMessage('⚠️ Please scan your Certificate of Indigency before proceeding.');
           }
-        } catch (err) {
-          console.error('Indigency verification error:', err);
-          const errorMsg = err.response?.data?.message || 'Could not verify indigency certificate.';
-          showPersistentError(`⚠️ ${errorMsg}`);
-          return false; // Block progression on error
+          return false;
         }
+        
+        return true;
       }
       
       if (step === 2) {
@@ -1107,68 +1146,41 @@ const StudentInfo = () => {
       }
       
       if (step === 3) {
-        // Step 3: Verify School ID only (name verification)
-        // Mayor's COE and Mayor's Grades are NOT verified
+        // Step 3: Verify School ID, COE, and Grades
         const schoolIdFront = schoolIdPhotos.front || formData.id_front || userProfile?.id_front;
-        const schoolIdBack = schoolIdPhotos.back || formData.id_back || userProfile?.id_back;
         const gradesDoc = photos.mayorGrades_photo || formData.mayorGrades_photo || userProfile?.grades_doc;
         const coeDoc = photos.mayorCOE_photo || formData.mayorCOE_photo || userProfile?.enrollment_certificate_doc;
         
-        if (!schoolIdFront && !schoolIdBack && !gradesDoc && !coeDoc) {
-          return true; // No documents to verify, allow progression
+        // Enforce School ID verification
+        if (schoolIdFront && ocrVerified !== 'success') {
+           if (ocrVerified === 'failed') {
+             showPersistentError('⚠️ School ID verification failed. Please try scanning it again.');
+           } else {
+             showPromptMessage('⚠️ Please scan your School ID before proceeding.');
+           }
+           return false;
         }
-        
-        // Always try to verify School ID, COE, and Grades together if provided
-        if (schoolIdFront || coeDoc || gradesDoc) {
-          if (schoolIdFront) setOcrVerified('verifying');
-          if (coeDoc) setMayorCOEVerified('verifying');
-          if (gradesDoc) setMayorGradesVerified('verifying');
 
-          try {
-            const result = await applicantAPI.ocrCheck(
-              schoolIdFront, 
-              schoolIdBack,
-              null, // Indigency handled in Step 1
-              null, // town_city not needed here
-              coeDoc,
-              gradesDoc,
-              formData.firstName || userProfile?.first_name,
-              formData.lastName || userProfile?.last_name,
-              formData.schoolName || userProfile?.school,
-              formData.schoolIdNumber || userProfile?.school_id_no,
-              formData.yearLevel || userProfile?.year_lvl,
-              formData.gpa || userProfile?.overall_gpa
-            );
-            
-            // Handle per-document results
-            if (result.results && Array.isArray(result.results)) {
-              result.results.forEach(docRes => {
-                if (docRes.doc === 'Identity Front') setOcrVerified(docRes.verified ? 'success' : 'failed');
-                if (docRes.doc === 'Enrollment') setMayorCOEVerified(docRes.verified ? 'success' : 'failed');
-                if (docRes.doc === 'Grades') setMayorGradesVerified(docRes.verified ? 'success' : 'failed');
-              });
-            }
-
-            if (result.verified) {
-              setOcrVerified('success');
-              setVerificationError(null);
-              showPromptMessage('✅ Academic records verified successfully!');
-              return true;
-            } else {
-              // If overall verification failed, determine which one to show first
-              const errorMsg = result.message || 'Academic Record verification failed. Please ensure the images are clear.';
-              showPersistentError(`⚠️ ${errorMsg}`);
-              return false; // Block progression
-            }
-          } catch (err) {
-            console.error('Academic verification error:', err);
-            const errorMsg = err.response?.data?.message || 'Could not verify academic records.';
-            showPersistentError(`⚠️ ${errorMsg}`);
-            return false;
+        // Enforce COE verification
+        if (coeDoc && mayorCOEVerified !== 'success') {
+          if (mayorCOEVerified === 'failed') {
+            showPersistentError('⚠️ Certificate of Enrollment verification failed. Please try scanning it again.');
+          } else {
+            showPromptMessage('⚠️ Please scan your Certificate of Enrollment before proceeding.');
           }
+          return false;
+        }
+
+        // Enforce Grades verification
+        if (gradesDoc && mayorGradesVerified !== 'success') {
+          if (mayorGradesVerified === 'failed') {
+            showPersistentError('⚠️ Academic Grades verification failed. Please try scanning it again.');
+          } else {
+            showPromptMessage('⚠️ Please scan your Academic Grades before proceeding.');
+          }
+          return false;
         }
         
-        // If School ID is not required, allow progression without verification
         return true;
       }
       
@@ -2250,11 +2262,37 @@ const StudentInfo = () => {
                             style={{width: '100%', maxHeight: '150px', objectFit: 'contain', borderRadius: '12px', border: '1px solid #ddd'}} 
                             alt="Indigency Preview" 
                           />
-                          <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
-                            <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
-                              <i className="fas fa-check-circle"></i> Photo Uploaded
+                          <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px'}}>
+                            <div style={{display: 'flex', alignItems: 'center', gap: '8px', color: mayorIndigencyVerified === 'success' ? '#28a745' : (mayorIndigencyVerified === 'failed' ? '#dc3545' : '#718096'), fontSize: '0.85rem', fontWeight: '600'}}>
+                              <i className={`fas ${mayorIndigencyVerified === 'success' ? 'fa-check-circle' : (mayorIndigencyVerified === 'failed' ? 'fa-times-circle' : 'fa-info-circle')}`}></i> 
+                              {mayorIndigencyVerified === 'success' ? 'Verified' : (mayorIndigencyVerified === 'failed' ? 'Verification Failed' : 'Photo Uploaded')}
                             </div>
-                            <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorIndigency_photo: null })); setOcrVerified(null); setOcrStatus(''); setTimeout(() => indigencyPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                            <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
+                              {mayorIndigencyVerified !== 'success' && (
+                                <button 
+                                  type="button" 
+                                  onClick={() => scanDocument('Indigency')} 
+                                  disabled={isScanning.indigency}
+                                  style={{
+                                    background: 'var(--primary)', 
+                                    color: 'white', 
+                                    border: 'none', 
+                                    borderRadius: '8px', 
+                                    padding: '4px 12px', 
+                                    fontSize: '0.8rem', 
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                                  }}
+                                >
+                                  {isScanning.indigency ? <><i className="fas fa-spinner fa-spin"></i> Scanning...</> : <><i className="fas fa-barcode"></i> Scan Document</>}
+                                </button>
+                              )}
+                              <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorIndigency_photo: null })); setMayorIndigencyVerified(null); setOcrVerified(null); setOcrStatus(''); setTimeout(() => indigencyPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
+                            </div>
                           </div>
                         </div>
                       ) : (
@@ -2506,7 +2544,37 @@ const StudentInfo = () => {
                       <input ref={schoolIdFrontInputRef} type="file" name="id_front" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} style={{display: 'none'}} />
                     </div>
                     {schoolIdPhotos.front && (
-                      <button type="button" onClick={() => { setSchoolIdPhotos(prev => ({ ...prev, front: null })); setTimeout(() => schoolIdFrontInputRef.current?.click(), 50); }} style={{marginTop: '0.5rem', background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
+                      <div style={{display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '0.5rem'}}>
+                        <div style={{display: 'flex', alignItems: 'center', gap: '8px', color: ocrVerified === 'success' ? '#28a745' : (ocrVerified === 'failed' ? '#dc3545' : '#718096'), fontSize: '0.75rem', fontWeight: '600'}}>
+                          <i className={`fas ${ocrVerified === 'success' ? 'fa-check-circle' : (ocrVerified === 'failed' ? 'fa-times-circle' : 'fa-info-circle')}`}></i> 
+                          {ocrVerified === 'success' ? 'Verified' : (ocrVerified === 'failed' ? 'Check Failed' : 'ID Uploaded')}
+                        </div>
+                        <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
+                          {ocrVerified !== 'success' && (
+                            <button 
+                              type="button" 
+                              onClick={() => scanDocument('School ID')} 
+                              disabled={isScanning.schoolId}
+                              style={{
+                                background: 'var(--primary)', 
+                                color: 'white', 
+                                border: 'none', 
+                                borderRadius: '4px', 
+                                padding: '3px 8px', 
+                                fontSize: '0.7rem', 
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                            >
+                              {isScanning.schoolId ? <><i className="fas fa-spinner fa-spin"></i> Scanning...</> : <><i className="fas fa-barcode"></i> Scan ID</>}
+                            </button>
+                          )}
+                          <button type="button" onClick={() => { setSchoolIdPhotos(prev => ({ ...prev, front: null })); setOcrVerified(null); setTimeout(() => schoolIdFrontInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
+                        </div>
+                      </div>
                     )}
                   </div>
                   <div className="form-group" style={{position: 'relative'}}>
@@ -2573,11 +2641,37 @@ const StudentInfo = () => {
                               style={{width: '100%', maxHeight: '150px', objectFit: 'contain', borderRadius: '12px', border: '1px solid #ddd'}} 
                               alt="COE Preview" 
                             />
-                            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
-                              <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
-                                <i className="fas fa-check-circle"></i> Photo Uploaded
+                            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px'}}>
+                              <div style={{display: 'flex', alignItems: 'center', gap: '8px', color: mayorCOEVerified === 'success' ? '#28a745' : (mayorCOEVerified === 'failed' ? '#dc3545' : '#718096'), fontSize: '0.85rem', fontWeight: '600'}}>
+                                <i className={`fas ${mayorCOEVerified === 'success' ? 'fa-check-circle' : (mayorCOEVerified === 'failed' ? 'fa-times-circle' : 'fa-info-circle')}`}></i> 
+                                {mayorCOEVerified === 'success' ? 'Verified' : (mayorCOEVerified === 'failed' ? 'Verification Failed' : 'Photo Uploaded')}
                               </div>
-                              <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorCOE_photo: null })); setMayorCOEVerified(null); setTimeout(() => coePhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                              <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
+                                {mayorCOEVerified !== 'success' && (
+                                  <button 
+                                    type="button" 
+                                    onClick={() => scanDocument('Enrollment')} 
+                                    disabled={isScanning.coe}
+                                    style={{
+                                      background: 'var(--primary)', 
+                                      color: 'white', 
+                                      border: 'none', 
+                                      borderRadius: '8px', 
+                                      padding: '4px 12px', 
+                                      fontSize: '0.8rem', 
+                                      fontWeight: '600',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                                    }}
+                                  >
+                                    {isScanning.coe ? <><i className="fas fa-spinner fa-spin"></i> Scanning...</> : <><i className="fas fa-barcode"></i> Scan COE</>}
+                                  </button>
+                                )}
+                                <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorCOE_photo: null })); setMayorCOEVerified(null); setTimeout(() => coePhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
+                              </div>
                             </div>
                           </div>
                         ) : (
@@ -2636,11 +2730,37 @@ const StudentInfo = () => {
                               style={{width: '100%', maxHeight: '150px', objectFit: 'contain', borderRadius: '12px', border: '1px solid #ddd'}} 
                               alt="Grades Preview" 
                             />
-                            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
-                              <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
-                                <i className="fas fa-check-circle"></i> Photo Uploaded
+                            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px'}}>
+                              <div style={{display: 'flex', alignItems: 'center', gap: '8px', color: mayorGradesVerified === 'success' ? '#28a745' : (mayorGradesVerified === 'failed' ? '#dc3545' : '#718096'), fontSize: '0.85rem', fontWeight: '600'}}>
+                                <i className={`fas ${mayorGradesVerified === 'success' ? 'fa-check-circle' : (mayorGradesVerified === 'failed' ? 'fa-times-circle' : 'fa-info-circle')}`}></i> 
+                                {mayorGradesVerified === 'success' ? 'Verified' : (mayorGradesVerified === 'failed' ? 'Verification Failed' : 'Photo Uploaded')}
                               </div>
-                              <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorGrades_photo: null })); setMayorGradesVerified(null); setTimeout(() => gradesPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                              <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
+                                {mayorGradesVerified !== 'success' && (
+                                  <button 
+                                    type="button" 
+                                    onClick={() => scanDocument('Grades')} 
+                                    disabled={isScanning.grades}
+                                    style={{
+                                      background: 'var(--primary)', 
+                                      color: 'white', 
+                                      border: 'none', 
+                                      borderRadius: '8px', 
+                                      padding: '4px 12px', 
+                                      fontSize: '0.8rem', 
+                                      fontWeight: '600',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                                    }}
+                                  >
+                                    {isScanning.grades ? <><i className="fas fa-spinner fa-spin"></i> Scanning...</> : <><i className="fas fa-barcode"></i> Scan Grades</>}
+                                  </button>
+                                )}
+                                <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorGrades_photo: null })); setMayorGradesVerified(null); setTimeout(() => gradesPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
+                              </div>
                             </div>
                           </div>
                         ) : (

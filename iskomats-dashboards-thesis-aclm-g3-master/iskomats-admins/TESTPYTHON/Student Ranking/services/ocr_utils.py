@@ -72,50 +72,73 @@ def _preprocess_strategy_c(img):
     _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return binary
 
-# ─── OCR extraction ───────────────────────────────────────────────────────────
+def _run_tesseract_on_image(img, psm=3, strategies=None):
+    """Internal helper to run OCR on an already decoded/resized image with specified strategies."""
+    if img is None: return ""
+    results = []
+    
+    # Always try the primary (Strategy A) first with the specified PSM
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    gray_clahe = clahe.apply(gray)
+    binary = cv2.adaptiveThreshold(gray_clahe, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 10)
+    
+    text = pytesseract.image_to_string(binary, config=f'--psm {psm}')
+    if text.strip():
+        results.append(text.strip())
+    
+    # If primary failed or multiple strategies requested, try fallbacks
+    if strategies:
+        for strat_fn in strategies:
+            try:
+                processed = strat_fn(img)
+                txt = pytesseract.image_to_string(processed, config=f'--psm {psm}')
+                if txt.strip(): results.append(txt.strip())
+            except Exception as e:
+                print(f"[OCR] Strategy error: {e}", flush=True)
+                
+    return "\n".join(results)
+
 def _run_tesseract(image_bytes, fast_mode=True):
+    """Legacy wrapper for backward compatibility, now optimized."""
     if not image_bytes: return ""
     try:
         nparr = np.frombuffer(image_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is None: return ""
         
+        # Consistent resizing
         h, w = img.shape[:2]
         if w > _MAX_OCR_WIDTH:
             scale = _MAX_OCR_WIDTH / w
             img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
         
-        # Unified Strategy
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        gray_clahe = clahe.apply(gray)
-        binary = cv2.adaptiveThreshold(gray_clahe, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 10)
-        
-        text = pytesseract.image_to_string(binary, config='--psm 3')
-        
-        if not text.strip() and not fast_mode:
-            strategies = [_preprocess_strategy_b, _preprocess_strategy_c]
-            all_text = [text] if text.strip() else []
-            for strat in strategies:
-                binary_fallback = strat(img)
-                txt = pytesseract.image_to_string(binary_fallback, config='--psm 3')
-                if txt.strip(): all_text.append(txt.strip())
-            return "\n".join(all_text)
-            
-        return text.strip()
+        if fast_mode:
+            return _run_tesseract_on_image(img, psm=3)
+        else:
+            return _run_tesseract_on_image(img, psm=3, strategies=[_preprocess_strategy_b, _preprocess_strategy_c])
     except Exception as e:
         print(f"[OCR] Error: {e}", flush=True)
         return ""
 
 def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
+    """
+    Optimized version:
+    1. Decodes and resizes image only ONCE.
+    2. Try unique strategies and PSMs sequentially.
+    3. Exits early on success.
+    """
     if not _check_tesseract(): 
         return False, "OCR Engine (Tesseract) not found.", "", 0.0
-    
+    if not image_bytes:
+        return False, "No image data provided.", "", 0.0
+        
     def normalize_for_ocr(s):
         if not s: return ""
         return re.sub(r'[^a-z0-9\s]', ' ', s.lower()).strip()
 
     def check_match(ocr_text, target_name, target_addr, is_indigency=False):
+        if not ocr_text.strip(): return False, False, 0.0
         norm_txt = normalize_for_ocr(ocr_text)
         all_ocr_words = norm_txt.split()
         
@@ -127,10 +150,12 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
             f_count = 0
             for word in n_words:
                 if word in norm_txt: f_count += 1; continue
+                found_approx = False
                 for ocr_w in all_ocr_words:
                     if len(ocr_w) < len(word) - 1: continue 
                     if difflib.SequenceMatcher(None, word, ocr_w).ratio() >= (0.7 if is_indigency else 0.8):
-                        f_count += 1; break
+                        f_count += 1; found_approx = True; break
+                if found_approx: continue
             m_ratio = f_count / len(n_words) if n_words else 0
             n_verified = m_ratio >= (0.4 if is_indigency else 0.6)
 
@@ -143,65 +168,90 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
                 f_a_count = 0
                 for word in a_words:
                     if word in norm_txt: f_a_count += 1; continue
+                    found_approx = False
                     for ocr_w in all_ocr_words:
                         if len(ocr_w) < 2: continue
                         if difflib.SequenceMatcher(None, word, ocr_w).ratio() >= 0.7:
-                            f_a_count += 1; break
+                            f_a_count += 1; found_approx = True; break
+                    if found_approx: continue
                 a_verified = (f_a_count / len(a_words) if a_words else 0) >= (0.4 if is_indigency else 0.5)
         
         return n_verified, a_verified, m_ratio
 
-    is_indigency = (expected_address is not None) 
+    is_indigency = (expected_address is not None)
     
-    # Pass 1: Fast Mode
-    text = _run_tesseract(image_bytes, fast_mode=True)
-    name_v, addr_v, ratio = check_match(text, expected_name, expected_address, is_indigency)
-    
-    # Pass 2: Full Preprocessing
-    if not (name_v and addr_v) and image_bytes:
-        text_full = _run_tesseract(image_bytes, fast_mode=False)
-        name_v_f, addr_v_f, ratio_f = check_match(text_full, expected_name, expected_address, is_indigency)
-        if (name_v_f and addr_v_f) or ratio_f > ratio:
-            text, name_v, addr_v, ratio = text_full, name_v_f, addr_v_f, ratio_f
-
-    # Pass 3: PSM 11
-    if not (name_v and addr_v) and image_bytes:
-        try:
-            nparr = np.frombuffer(image_bytes, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            if img is not None:
-                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                text_s = pytesseract.image_to_string(gray, config='--psm 11')
-                name_v_s, addr_v_s, ratio_s = check_match(text_s, expected_name, expected_address, is_indigency)
-                if (name_v_s and addr_v_s) or ratio_s > ratio:
-                    text, name_v, addr_v, ratio = text_s, name_v_s, addr_v_s, ratio_s
-        except: pass
-
-    # Pass 4: PSM 6
-    if not (name_v and addr_v) and image_bytes:
-        try:
-            nparr = np.frombuffer(image_bytes, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            if img is not None:
-                lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB); l, a, b = cv2.split(lab)
-                clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8)); cl = clahe.apply(l)
-                enhanced = cv2.merge((cl,a,b)); enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
-                gray = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
-                text_c = pytesseract.image_to_string(gray, config='--psm 6')
-                name_v_c, addr_v_c, ratio_c = check_match(text_c, expected_name, expected_address, is_indigency)
-                if (name_v_c and addr_v_c) or ratio_c > ratio:
-                    text, name_v, addr_v, ratio = text_c, name_v_c, addr_v_c, ratio_c
-        except: pass
-
-    if name_v and addr_v:
-        return True, "Name and Address verified via OCR.", text, 1.0
-    elif name_v:
-        return False, "Address mismatch", text, 0.7
-    
-    if ratio >= 0.3:
-        return False, f"Identity mismatch ({ratio:.0%})", text, ratio
+    # 1. Decode and Resize ONCE
+    try:
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None: return False, "Invalid image format", "", 0.0
         
-    return False, "Identity verification mismatch", text, 0.0
+        h, w = img.shape[:2]
+        if w > _MAX_OCR_WIDTH:
+            scale = _MAX_OCR_WIDTH / w
+            img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+    except Exception as e:
+        return False, f"Preprocessing error: {str(e)}", "", 0.0
+
+    best_text = ""
+    best_ratio = 0.0
+    
+    # --- PASS 1: Primary Preprocessing PSM 3 (Standard) ---
+    text = _run_tesseract_on_image(img, psm=3)
+    name_v, addr_v, ratio = check_match(text, expected_name, expected_address, is_indigency)
+    if name_v and addr_v: return True, "Verified (Strategy 1)", text, 1.0
+    
+    best_text, best_ratio = text, ratio
+
+    # --- PASS 2: PSM 11 (Sparse Text / Rotated Text) ---
+    text_s = _run_tesseract_on_image(img, psm=11)
+    name_v, addr_v, ratio = check_match(text_s, expected_name, expected_address, is_indigency)
+    if name_v and addr_v: return True, "Verified (Strategy PSM11)", text_s, 1.0
+    if ratio > best_ratio: best_text, best_ratio = text_s, ratio
+
+    # --- PASS 3: Fallback Preprocessing (Strategies B/C) - only if no good results yet ---
+    if best_ratio < 0.3:
+        text_f = _run_tesseract_on_image(img, psm=3, strategies=[_preprocess_strategy_b, _preprocess_strategy_c])
+        name_v, addr_v, ratio = check_match(text_f, expected_name, expected_address, is_indigency)
+        if name_v and addr_v: return True, "Verified (Fallback Thresholding)", text_f, 1.0
+        if ratio > best_ratio: best_text, best_ratio = text_f, ratio
+
+    # --- PASS 3b: PSM 6 with Primary Preprocessing ---
+    # Good for documents with a single uniform block of text (like grades/coe)
+    if best_ratio < 0.5:
+        text_p6 = _run_tesseract_on_image(img, psm=6)
+        name_v, addr_v, ratio = check_match(text_p6, expected_name, expected_address, is_indigency)
+        if name_v and addr_v: return True, "Verified (PSM6)", text_p6, 1.0
+        if ratio > best_ratio: best_text, best_ratio = text_p6, ratio
+
+    # --- PASS 4: Enhanced Contrast PSM 6 (Heavy Processing) ---
+    if best_ratio < 0.5:
+        try:
+            lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+            cl = clahe.apply(l)
+            enhanced = cv2.merge((cl,a,b))
+            enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+            gray_e = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
+            text_e = pytesseract.image_to_string(gray_e, config='--psm 6')
+            name_v, addr_v, ratio = check_match(text_e, expected_name, expected_address, is_indigency)
+            if name_v and addr_v: return True, "Verified (Enhanced CLAHE)", text_e, 1.0
+            if ratio > best_ratio: best_text, best_ratio = text_e, ratio
+        except: pass
+
+    # Evaluation
+    if best_ratio >= (0.4 if is_indigency else 0.6):
+         # Check address for the best match text
+         _, addr_ok, _ = check_match(best_text, None, expected_address, is_indigency)
+         if not addr_ok:
+             return False, "Address mismatch", best_text, 0.7
+         return True, "Verified", best_text, 1.0
+
+    if best_ratio >= 0.3:
+        return False, f"Identity mismatch ({best_ratio:.0%})", best_text, best_ratio
+        
+    return False, "Identity verification mismatch", best_text, 0.0
 
 def extract_school_year_from_text(text):
     if not text: return None
