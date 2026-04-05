@@ -14,7 +14,11 @@ import cv2
 import numpy as np
 from services.auth_service import get_secret_key
 from services.db_service import get_db
-from services.ocr_utils import verify_id_with_ocr, verify_face_with_id, extract_school_year, extract_school_year_from_text, is_current_school_year, verify_signature_against_id, save_signature_profile
+from services.ocr_utils import (
+    verify_id_with_ocr, verify_face_with_id, extract_school_year, 
+    extract_school_year_from_text, is_current_school_year, 
+    verify_signature_against_id, save_signature_profile, verify_video_content
+)
 from services.notification_service import create_notification
 from services.google_auth_service import verify_google_token
 from concurrent.futures import ThreadPoolExecutor
@@ -1256,6 +1260,26 @@ def submit_application():
                     face_status = "Face photo or ID front missing"
                     print(f"[SUBMIT] ❌ Face verification skipped/missing: {face_status}")
                     return jsonify({'message': f'Missing verification documents: {face_status}'}), 400
+
+                # ── VIDEO OCR VALIDATION ──────────────────────────────────────────
+                video_requirements = {
+                    'mayorIndigency_video': ['Indigency', 'Barangay'],
+                    'mayorGrades_video': ['Grades', 'Card', 'Evaluation'],
+                    'mayorCOE_video': ['Enrollment', 'Certificate', 'School']
+                }
+
+                for field, keywords in video_requirements.items():
+                    video_file = request.files.get(field)
+                    if video_file:
+                        print(f"[SUBMIT] 🔍 Scanning video for {field}...", flush=True)
+                        video_bytes = video_file.read()
+                        video_file.seek(0) # reset for later saving
+                        
+                        is_valid, v_msg = verify_video_content(video_bytes, keywords)
+                        if not is_valid:
+                            print(f"[SUBMIT] ❌ Video Validation Failed: {v_msg}")
+                            return jsonify({'message': f'Invalid Video Content: {v_msg}'}), 400
+                        print(f"[SUBMIT] ✅ Video Validated: {v_msg}")
 
             except Exception as ai_err:
                 print(f"[SUBMIT] AI Verification Exception: {str(ai_err)}")

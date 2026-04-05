@@ -1,6 +1,7 @@
 import os
 import sys
 import gc
+import tempfile
 import base64
 import time
 import cv2
@@ -252,6 +253,62 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
         return False, f"Identity mismatch ({best_ratio:.0%})", best_text, best_ratio
         
     return False, "Identity verification mismatch", best_text, 0.0
+
+def verify_video_content(video_bytes, keywords):
+    """
+    Captures frames from video bytes and scans for keywords using OCR.
+    Limit to 3 frames (start, middle, end) for performance.
+    """
+    if not video_bytes: return False, "No video data"
+    if not _check_tesseract(): return False, "OCR Engine not found"
+    
+    # Save to temp file because VideoCapture needs a path
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
+        tmp.write(video_bytes)
+        tmp_path = tmp.name
+        
+    try:
+        cap = cv2.VideoCapture(tmp_path)
+        if not cap.isOpened():
+            return False, "Could not open video file"
+            
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if frame_count <= 0:
+            return False, "Invalid video frame count"
+            
+        # Sample points: 10%, 50%, 90%
+        samples = [int(frame_count * 0.1), int(frame_count * 0.5), int(frame_count * 0.9)]
+        
+        all_ocr_text = ""
+        for frame_idx in samples:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ret, frame = cap.read()
+            if not ret or frame is None: continue
+            
+            # Use PSM 11 for sparse/random text detection in video
+            ocr_text = _run_tesseract_on_image(frame, psm=11)
+            all_ocr_text += " " + ocr_text
+            
+        cap.release()
+        
+        # Keyword check (case insensitive, fuzzy via simple substring)
+        found_keywords = []
+        norm_text = all_ocr_text.lower()
+        for kw in keywords:
+            if kw.lower() in norm_text:
+                found_keywords.append(kw)
+                
+        if found_keywords:
+            return True, f"Found: {', '.join(found_keywords)}"
+        
+        return False, f"Required terms ({', '.join(keywords)}) not detected in video."
+        
+    except Exception as e:
+        print(f"[VIDEO OCR] Error: {e}")
+        return False, f"Processing error: {str(e)}"
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 def extract_school_year_from_text(text):
     if not text: return None

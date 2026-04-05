@@ -147,6 +147,11 @@ const StudentInfo = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [isUploadingVideo, setIsUploadingVideo] = useState({
     mayorIndigency_video: false,
+    mayorValidID_photo: false,
+  });
+  
+  const [isVerifyingDocs, setIsVerifyingDocs] = useState(false);
+  const [videoUploadStates, setVideoUploadStates] = useState({
     mayorGrades_video: false,
     mayorCOE_video: false
   });
@@ -1514,6 +1519,8 @@ const StudentInfo = () => {
 
       console.log(`Submitting application (faceVerified: ${faceVerified})...`);
 
+      setIsVerifyingDocs(true);
+
       await saveCurrentStepProgress(4);
 
       const submissionData = new FormData();
@@ -1578,6 +1585,7 @@ const StudentInfo = () => {
       showPromptMessage(`⚠️ Error: ${err.message}`);
     } finally {
       setIsSubmitting(false);
+      setIsVerifyingDocs(false);
     }
   };
 
@@ -2825,7 +2833,32 @@ const StudentInfo = () => {
                 <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
                   <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> Back: Family Background
                 </button>
-                <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep || Object.values(isUploadingVideo).some(v => v)} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
+                <button 
+                  type="button" 
+                  className="submit-btn" 
+                  onClick={() => {
+                    // Critical Validation: Check for required documents
+                    const requiredDocs = [
+                      { key: 'mayorCOE_photo', label: 'COE Photo', type: 'photo' },
+                      { key: 'mayorCOE_video', label: 'COE Video', type: 'video' },
+                      { key: 'mayorGrades_photo', label: 'Grades Photo', type: 'photo' },
+                      { key: 'mayorGrades_video', label: 'Grades Video', type: 'video' }
+                    ];
+
+                    const missing = requiredDocs.filter(doc => {
+                      if (doc.type === 'photo') return !photos[doc.key] && !userProfile?.[`has_${doc.key}`];
+                      return !formData[doc.key];
+                    });
+
+                    if (missing.length > 0) {
+                      showPromptMessage(`⚠️ Please upload the following documents: ${missing.map(m => m.label).join(', ')}`);
+                      return;
+                    }
+                    handleNextStep();
+                  }} 
+                  disabled={isSavingStep || Object.values(isUploadingVideo).some(v => v)} 
+                  style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}
+                >
                   Next: Certification & Verification <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
                 </button>
               </div>
@@ -3100,13 +3133,26 @@ const StudentInfo = () => {
 
       {/* Loading overlay */}
       <div className={`loading-overlay ${isSubmitting || isSavingStep || isInitialLoading ? 'active' : ''}`}>
-        <div className="loading-modal">
+        <div className="loading-modal" style={{padding: '3.5rem', borderRadius: '40px', maxWidth: '500px'}}>
           <div className="loading-spinner"></div>
           <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
             {loadingMessage.title}
           </h3>
-          <p style={{ color: 'var(--text-soft)', fontSize: '1rem' }}>
+          <p style={{ color: 'var(--text-soft)', fontSize: '1.1rem', lineHeight: '1.6' }}>
             {loadingMessage.message}
+          </p>
+        </div>
+      </div>
+
+      {/* Verification overlay */}
+      <div className={`loading-overlay ${isVerifyingDocs ? 'active' : ''}`}>
+        <div className="loading-modal" style={{borderColor: 'var(--primary)'}}>
+          <div className="loading-spinner"></div>
+          <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
+            Verifying Documents
+          </h3>
+          <p style={{ color: 'var(--text-soft)', fontSize: '1.1rem' }}>
+            Automated scanning in progress. We are checking your videos for required content (e.g., Indigency, Grades).
           </p>
         </div>
       </div>
