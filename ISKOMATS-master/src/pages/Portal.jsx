@@ -1916,70 +1916,67 @@ const Portal = () => {
         <div className="navbar-menu">
           <span>{globalProfile?.first_name || userProfile?.first_name || localStorage.getItem('userFirstName') || currentUser}</span>
 
-          {/* MESSAGE ICON WITH DROPDOWN */}
-          <div className="message-wrapper" ref={messageDropdownRef}>
-            <button className="message-btn" onClick={() => setShowMessageDropdown(!showMessageDropdown)}>
-              <i className="fas fa-envelope"></i>
-              {totalUnreadMessages > 0 && (
-                <span className="message-badge">
-                  {totalUnreadMessages > 9 ? '9+' : totalUnreadMessages}
-                </span>
-              )}
-            </button>
-            <div className={`message-dropdown ${showMessageDropdown ? 'show' : ''}`}>
-              <div className="message-header">
-                <span>Scholarship Chats</span>
-              </div>
-              <div className="message-list">
-                {scholarships.length > 0 ? (
-                  scholarships.map(scholar => (
-                    <div 
-                      key={scholar.id}
-                      className={`message-item ${scholar.unread > 0 ? 'unread' : ''}`}
-                      onClick={() => openChat(scholar.id, scholar.name)}
-                    >
-                      <div className="message-icon">
-                        <i className={`fas ${scholar.icon}`}></i>
-                      </div>
-                      <div className="message-content">
-                        <div className="message-sender">{scholar.name}</div>
-                        <div className="message-preview">{scholar.lastMessage}</div>
-                        <div className="message-time">{scholar.time}</div>
-                      </div>
-                      {scholar.unread > 0 && (
-                        <span style={{
-                          background: 'var(--primary)', 
-                          color: 'white', 
-                          borderRadius: '12px', 
-                          padding: '0.2rem 0.6rem', 
-                          fontSize: '0.7rem', 
-                          fontWeight: '600', 
-                          marginLeft: 'auto'
-                        }}>
-                          {scholar.unread}
-                        </span>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <div style={{
-                    padding: '2rem 1rem',
-                    textAlign: 'center',
-                    color: 'var(--text-soft)',
-                    fontSize: '0.9rem'
-                  }}>
-                    <i className="fas fa-comment-slash" style={{ 
-                      display: 'block', 
-                      fontSize: '1.5rem', 
-                      marginBottom: '0.5rem',
-                      opacity: 0.5 
-                    }}></i>
-                    No messages here
-                  </div>
+          {/* MESSAGE ICON WITH DROPDOWN - ONLY SHOW AFTER APPLICATION */}
+          {applications.length > 0 && (
+            <div className="message-wrapper" ref={messageDropdownRef}>
+              <button className="message-btn" onClick={() => setShowMessageDropdown(!showMessageDropdown)}>
+                <i className="fas fa-envelope"></i>
+                {totalUnreadMessages > 0 && (
+                  <span className="message-badge">
+                    {totalUnreadMessages > 9 ? '9+' : totalUnreadMessages}
+                  </span>
                 )}
+              </button>
+              <div className={`message-dropdown ${showMessageDropdown ? 'show' : ''}`}>
+                <div className="message-header">
+                  <span>Scholarship Chats</span>
+                </div>
+                <div className="message-list">
+                  {scholarships.length > 0 ? (
+                    scholarships.map(scholar => (
+                      <div 
+                        key={scholar.id}
+                        className={`message-item ${scholar.unread > 0 ? 'unread' : ''}`}
+                        onClick={() => openChat(scholar.id, scholar.name)}
+                      >
+                        <div className="message-icon">
+                          <i className={`fas ${scholar.icon}`}></i>
+                        </div>
+                        <div className="message-content">
+                          <div className="message-sender">{scholar.name}</div>
+                          <div className="message-preview">{scholar.lastMessage}</div>
+                          <div className="message-time">{scholar.time}</div>
+                        </div>
+                        {scholar.unread > 0 && (
+                          <span style={{
+                            background: 'var(--primary)', 
+                            color: 'white', 
+                            borderRadius: '12px', 
+                            padding: '0.2rem 0.6rem', 
+                            fontSize: '0.7rem', 
+                            fontWeight: '600',
+                            marginLeft: 'auto'
+                          }}>
+                            {scholar.unread}
+                          </span>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="no-messages">
+                      <i className="fas fa-comments" style={{ 
+                        fontSize: '2rem', 
+                        color: 'var(--gray-3)', 
+                        marginBottom: '1rem',
+                        display: 'block'
+                      }}></i>
+                      No messages here
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* NOTIFICATION BELL WITH DROPDOWN */}
           <div className="notification-wrapper" ref={notificationDropdownRef}>

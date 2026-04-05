@@ -673,13 +673,17 @@ def init_socketio(socketio):
                     rooms = [row['room'] for row in cursor.fetchall()]
             else:
                 # Student (Scholar) room format: applicant_id+pro_no
-                # Find all scholarships student applied to
+                # Find all scholarships student applied to OR has messages for
                 cursor.execute("""
                     SELECT DISTINCT ast.applicant_no, s.pro_no 
                     FROM applicant_status ast
                     JOIN scholarships s ON ast.scholarship_no = s.req_no
                     WHERE ast.applicant_no = %s
-                """, (user_id,))
+                    UNION
+                    SELECT DISTINCT applicant_no, pro_no
+                    FROM message
+                    WHERE applicant_no = %s
+                """, (user_id, user_id))
                 student_pairs = cursor.fetchall()
                 rooms = [f"{p['applicant_no']}+{p['pro_no']}" for p in student_pairs]
                 print(f"DEBUG Chat Login: Studentrooms={rooms}")
