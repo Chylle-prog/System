@@ -332,10 +332,6 @@ const StudentInfo = () => {
       } else if (typeof idPicturePreview === 'string' && idPicturePreview.startsWith('data:')) {
         jsonData['profile_picture'] = idPicturePreview;
       }
-      hasPayload = true;
-    }
-
-    if (stepNumber === 2) {
       if (photos.mayorIndigency_photo) {
         if (isFileLike(photos.mayorIndigency_photo)) {
           payload.append('indigency_doc', photos.mayorIndigency_photo);
@@ -344,6 +340,9 @@ const StudentInfo = () => {
         }
         hasPayload = true;
       }
+    }
+
+    if (stepNumber === 2) {
     }
 
     if (stepNumber === 3) {
@@ -1122,9 +1121,16 @@ const StudentInfo = () => {
       if (step === 1) {
         // Step 1: Verify Mayor's Indigency Certificate
         const indigencyDoc = photos.mayorIndigency_photo || formData.mayorIndigency_photo || userProfile?.indigency_doc;
+        const indigencyVid = formData.mayorIndigency_video || userProfile?.indigency_vid_url;
         
         if (!indigencyDoc) {
-          return true; // No document to verify, allow progression
+          showPromptMessage('⚠️ Please upload your Certificate of Indigency photo.');
+          return false;
+        }
+
+        if (!indigencyVid) {
+          showPromptMessage('⚠️ Please upload your Certificate of Indigency video.');
+          return false;
         }
 
         // If not verified, suggest scanning it
@@ -1150,24 +1156,35 @@ const StudentInfo = () => {
         const schoolIdFront = schoolIdPhotos.front || formData.id_front || userProfile?.id_front;
         const gradesDoc = photos.mayorGrades_photo || formData.mayorGrades_photo || userProfile?.grades_doc;
         const coeDoc = photos.mayorCOE_photo || formData.mayorCOE_photo || userProfile?.enrollment_certificate_doc;
-        
-        // Enforce School ID verification
-        if (schoolIdFront && ocrVerified !== 'success') {
-           if (ocrVerified === 'failed') {
-             showPersistentError('⚠️ School ID verification failed. Please try scanning it again.');
-           } else {
-             showPromptMessage('⚠️ Please scan your School ID before proceeding.');
-           }
-           return false;
+        const coeVid = formData.mayorCOE_video || userProfile?.enrollment_certificate_vid_url;
+        const gradesVid = formData.mayorGrades_video || userProfile?.grades_vid_url;
+
+        if (!coeDoc) {
+          showPromptMessage('⚠️ Please upload your Certificate of Enrollment photo.');
+          return false;
+        }
+        if (!coeVid) {
+          showPromptMessage('⚠️ Please upload your Certificate of Enrollment video.');
+          return false;
+        }
+        if (!gradesDoc) {
+          showPromptMessage('⚠️ Please upload your Transcript of Grades photo.');
+          return false;
+        }
+        if (!gradesVid) {
+          showPromptMessage('⚠️ Please upload your Transcript of Grades video.');
+          return false;
         }
 
+        // Enforce School ID verification
+        if (ocrVerified !== 'success') {
+          showPromptMessage('⚠️ Please scan your School ID before proceeding.');
+          return false;
+        }
+        
         // Enforce COE verification
-        if (coeDoc && mayorCOEVerified !== 'success') {
-          if (mayorCOEVerified === 'failed') {
-            showPersistentError('⚠️ Certificate of Enrollment verification failed. Please try scanning it again.');
-          } else {
-            showPromptMessage('⚠️ Please scan your Certificate of Enrollment before proceeding.');
-          }
+        if (mayorCOEVerified !== 'success') {
+          showPromptMessage('⚠️ Please scan your Certificate of Enrollment before proceeding.');
           return false;
         }
 
@@ -2254,11 +2271,11 @@ const StudentInfo = () => {
                 <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem'}}>
                   <div className="form-group" style={{marginBottom: 0}}>
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Photo (.png/jpg)</label>
-                    <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
+                    <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', cursor: 'pointer'}} onClick={() => !photos.mayorIndigency_photo && !userProfile?.has_mayorIndigency_photo && indigencyPhotoInputRef.current?.click()}>
                       {photos.mayorIndigency_photo || userProfile?.has_mayorIndigency_photo ? (
                         <div style={{display: 'flex', flexDirection: 'column', gap: '10px', width: '100%'}}>
                           <img 
-                            src={photos.mayorIndigency_photo || userProfile?.mayorIndigency_photo} 
+                            src={photos.mayorIndigency_photo || userProfile?.indigency_doc} 
                             style={{width: '100%', maxHeight: '150px', objectFit: 'contain', borderRadius: '12px', border: '1px solid #ddd'}} 
                             alt="Indigency Preview" 
                           />
@@ -2271,7 +2288,7 @@ const StudentInfo = () => {
                               {mayorIndigencyVerified !== 'success' && (
                                 <button 
                                   type="button" 
-                                  onClick={() => scanDocument('Indigency')} 
+                                  onClick={(e) => { e.stopPropagation(); scanDocument('Indigency'); }} 
                                   disabled={isScanning.indigency}
                                   style={{
                                     background: 'var(--primary)', 
@@ -2291,19 +2308,19 @@ const StudentInfo = () => {
                                   {isScanning.indigency ? <><i className="fas fa-spinner fa-spin"></i> Scanning...</> : <><i className="fas fa-barcode"></i> Scan Document</>}
                                 </button>
                               )}
-                              <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorIndigency_photo: null })); setMayorIndigencyVerified(null); setOcrVerified(null); setOcrStatus(''); setTimeout(() => indigencyPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
+                              <button type="button" onClick={(e) => { e.stopPropagation(); setPhotos(prev => ({ ...prev, mayorIndigency_photo: null })); setMayorIndigencyVerified(null); setOcrVerified(null); setOcrStatus(''); setTimeout(() => indigencyPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
                             </div>
                           </div>
                         </div>
                       ) : (
-                        <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload photo</div>
+                        <div style={{fontSize: '0.85rem', color: '#4a5568'}}><i className="fas fa-upload" style={{marginRight: '8px'}}></i> Click to upload photo</div>
                       )}
                       <input ref={indigencyPhotoInputRef} type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} style={{display: 'none'}} />
                     </div>
                   </div>
                   <div className="form-group" style={{marginBottom: 0}}>
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov) - Max 30 seconds</label>
-                    <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', position: 'relative'}}>
+                    <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', position: 'relative', cursor: 'pointer'}} onClick={() => !formData.mayorIndigency_video && indigencyVideoInputRef.current?.click()}>
                       {isUploadingVideo.mayorIndigency_video ? (
                         <div style={{display: 'flex', flexDirection: 'column', gap: '5px'}}>
                           <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '600'}}>
@@ -2323,11 +2340,11 @@ const StudentInfo = () => {
                             <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
                               <i className="fas fa-check-circle"></i> Video Uploaded
                             </div>
-                            <button type="button" onClick={() => { setFormData(prev => ({ ...prev, mayorIndigency_video: null })); setOcrVerified(null); setOcrStatus(''); setTimeout(() => indigencyVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); setFormData(prev => ({ ...prev, mayorIndigency_video: null })); setOcrVerified(null); setOcrStatus(''); setTimeout(() => indigencyVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                           </div>
                         </div>
                       ) : (
-                        <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload video</div>
+                        <div style={{fontSize: '0.85rem', color: '#4a5568'}}><i className="fas fa-video" style={{marginRight: '8px'}}></i> Click to upload video</div>
                       )}
                       <input ref={indigencyVideoInputRef} type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorIndigency_video', e)} style={{display: 'none'}} />
                     </div>
@@ -2633,7 +2650,7 @@ const StudentInfo = () => {
                   <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem'}}>
                     <div className="form-group" style={{marginBottom: 0}}>
                       <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Photo (.png/jpg)</label>
-                      <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
+                      <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', cursor: 'pointer'}} onClick={() => !photos.mayorCOE_photo && !userProfile?.has_mayorCOE_photo && coePhotoInputRef.current?.click()}>
                         {photos.mayorCOE_photo || userProfile?.has_mayorCOE_photo ? (
                           <div style={{display: 'flex', flexDirection: 'column', gap: '10px', width: '100%'}}>
                             <img 
@@ -2650,7 +2667,7 @@ const StudentInfo = () => {
                                 {mayorCOEVerified !== 'success' && (
                                   <button 
                                     type="button" 
-                                    onClick={() => scanDocument('Enrollment')} 
+                                    onClick={(e) => { e.stopPropagation(); scanDocument('Enrollment'); }} 
                                     disabled={isScanning.coe}
                                     style={{
                                       background: 'var(--primary)', 
@@ -2670,19 +2687,19 @@ const StudentInfo = () => {
                                     {isScanning.coe ? <><i className="fas fa-spinner fa-spin"></i> Scanning...</> : <><i className="fas fa-barcode"></i> Scan COE</>}
                                   </button>
                                 )}
-                                <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorCOE_photo: null })); setMayorCOEVerified(null); setTimeout(() => coePhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); setPhotos(prev => ({ ...prev, mayorCOE_photo: null })); setMayorCOEVerified(null); setTimeout(() => coePhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
                               </div>
                             </div>
                           </div>
                         ) : (
-                          <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload photo</div>
+                          <div style={{fontSize: '0.85rem', color: '#4a5568'}}><i className="fas fa-upload" style={{marginRight: '8px'}}></i> Click to upload photo</div>
                         )}
                         <input ref={coePhotoInputRef} type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} style={{display: 'none'}} />
                       </div>
                     </div>
                     <div className="form-group" style={{marginBottom: 0}}>
                       <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov) - Max 30 seconds</label>
-                      <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', position: 'relative'}}>
+                      <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', position: 'relative', cursor: 'pointer'}} onClick={() => !formData.mayorCOE_video && coeVideoInputRef.current?.click()}>
                         {isUploadingVideo.mayorCOE_video ? (
                           <div style={{display: 'flex', flexDirection: 'column', gap: '5px'}}>
                             <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '600'}}>
@@ -2702,11 +2719,11 @@ const StudentInfo = () => {
                               <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
                                 <i className="fas fa-check-circle"></i> Video Uploaded
                               </div>
-                              <button type="button" onClick={() => { setFormData(prev => ({ ...prev, mayorCOE_video: null })); setMayorCOEVerified(null); setTimeout(() => coeVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                              <button type="button" onClick={(e) => { e.stopPropagation(); setFormData(prev => ({ ...prev, mayorCOE_video: null })); setMayorCOEVerified(null); setTimeout(() => coeVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                             </div>
                           </div>
                         ) : (
-                          <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload video</div>
+                          <div style={{fontSize: '0.85rem', color: '#4a5568'}}><i className="fas fa-video" style={{marginRight: '8px'}}></i> Click to upload video</div>
                         )}
                         <input ref={coeVideoInputRef} type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorCOE_video', e)} style={{display: 'none'}} />
                       </div>
@@ -2722,7 +2739,7 @@ const StudentInfo = () => {
                   <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem'}}>
                     <div className="form-group" style={{marginBottom: 0}}>
                       <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Photo (.png/jpg)</label>
-                      <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
+                      <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', cursor: 'pointer'}} onClick={() => !photos.mayorGrades_photo && !userProfile?.has_mayorGrades_photo && gradesPhotoInputRef.current?.click()}>
                         {photos.mayorGrades_photo || userProfile?.has_mayorGrades_photo ? (
                           <div style={{display: 'flex', flexDirection: 'column', gap: '10px', width: '100%'}}>
                             <img 
@@ -2739,7 +2756,7 @@ const StudentInfo = () => {
                                 {mayorGradesVerified !== 'success' && (
                                   <button 
                                     type="button" 
-                                    onClick={() => scanDocument('Grades')} 
+                                    onClick={(e) => { e.stopPropagation(); scanDocument('Grades'); }} 
                                     disabled={isScanning.grades}
                                     style={{
                                       background: 'var(--primary)', 
@@ -2759,19 +2776,19 @@ const StudentInfo = () => {
                                     {isScanning.grades ? <><i className="fas fa-spinner fa-spin"></i> Scanning...</> : <><i className="fas fa-barcode"></i> Scan Grades</>}
                                   </button>
                                 )}
-                                <button type="button" onClick={() => { setPhotos(prev => ({ ...prev, mayorGrades_photo: null })); setMayorGradesVerified(null); setTimeout(() => gradesPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); setPhotos(prev => ({ ...prev, mayorGrades_photo: null })); setMayorGradesVerified(null); setTimeout(() => gradesPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
                               </div>
                             </div>
                           </div>
                         ) : (
-                          <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload photo</div>
+                          <div style={{fontSize: '0.85rem', color: '#4a5568'}}><i className="fas fa-upload" style={{marginRight: '8px'}}></i> Click to upload photo</div>
                         )}
                         <input ref={gradesPhotoInputRef} type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} style={{display: 'none'}} />
                       </div>
                     </div>
                     <div className="form-group" style={{marginBottom: 0}}>
                       <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov) - Max 30 seconds</label>
-                      <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', position: 'relative'}}>
+                      <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', position: 'relative', cursor: 'pointer'}} onClick={() => !formData.mayorGrades_video && gradesVideoInputRef.current?.click()}>
                         {isUploadingVideo.mayorGrades_video ? (
                           <div style={{display: 'flex', flexDirection: 'column', gap: '5px'}}>
                             <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '600'}}>
@@ -2791,11 +2808,11 @@ const StudentInfo = () => {
                               <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
                                 <i className="fas fa-check-circle"></i> Video Uploaded
                               </div>
-                              <button type="button" onClick={() => { setFormData(prev => ({ ...prev, mayorGrades_video: null })); setMayorGradesVerified(null); setTimeout(() => gradesVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
+                              <button type="button" onClick={(e) => { e.stopPropagation(); setFormData(prev => ({ ...prev, mayorGrades_video: null })); setMayorGradesVerified(null); setTimeout(() => gradesVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
                             </div>
                           </div>
                         ) : (
-                          <div style={{fontSize: '0.85rem', color: '#4a5568'}}>Click to upload video</div>
+                          <div style={{fontSize: '0.85rem', color: '#4a5568'}}><i className="fas fa-video" style={{marginRight: '8px'}}></i> Click to upload video</div>
                         )}
                         <input ref={gradesVideoInputRef} type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorGrades_video', e)} style={{display: 'none'}} />
                       </div>

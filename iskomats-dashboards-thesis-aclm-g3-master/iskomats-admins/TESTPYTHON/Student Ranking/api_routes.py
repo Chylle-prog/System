@@ -1885,7 +1885,10 @@ def get_applicants(current_user_id, pro_no, role, program):
                     (a.id_img_back IS NOT NULL) as "has_id_img_back",
                     (a.id_pic IS NOT NULL) as "has_id_pic",
                     (a.profile_picture IS NOT NULL) as "has_profile_picture",
-                    (a.signature_image_data IS NOT NULL) as "has_signature"
+                    (a.signature_image_data IS NOT NULL) as "has_signature",
+                    a.indigency_vid_url,
+                    a.enrollment_certificate_vid_url,
+                    a.grades_vid_url
             FROM applicants a
             INNER JOIN applicant_status s ON a.applicant_no = s.applicant_no
             INNER JOIN scholarships esc ON s.scholarship_no = esc.req_no

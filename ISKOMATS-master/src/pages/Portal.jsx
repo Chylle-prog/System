@@ -334,9 +334,6 @@ const Portal = () => {
     setShowViewModal(true);
   };
 
-  const markAllMessagesRead = () => {
-    setScholarships(prev => prev.map(s => ({ ...s, unread: 0 })));
-  };
 
   // Calendar navigation functions
   const navigateMonth = (direction) => {
@@ -999,14 +996,16 @@ const Portal = () => {
         }
 
         .mark-read {
-          font-size: 0.8rem;
-          color: #e74c3c;
           cursor: pointer;
+          color: var(--primary);
+          font-size: 1.15rem;
           font-weight: 500;
+          transition: all 0.2s ease;
         }
 
         .mark-read:hover {
-          color: var(--primary);
+          color: var(--primary-light);
+          text-decoration: underline;
         }
 
         .message-list,
@@ -1920,50 +1919,54 @@ const Portal = () => {
             <div className={`message-dropdown ${showMessageDropdown ? 'show' : ''}`}>
               <div className="message-header">
                 <span>Scholarship Chats</span>
-                <div className="message-actions">
-                  <span className="mark-read" onClick={markAllMessagesRead}>Mark all as read</span>
-                  <button 
-                    className="new-message-btn"
-                    onClick={() => {
-                      // Create new message modal or functionality
-                      alert('New message feature: Select recipient and compose your message');
-                    }}
-                    title="Create new message"
-                  >
-                    <i className="fas fa-plus"></i>
-                  </button>
-                </div>
               </div>
               <div className="message-list">
-                {scholarships.map(scholar => (
-                  <div 
-                    key={scholar.id}
-                    className={`message-item ${scholar.unread > 0 ? 'unread' : ''}`}
-                    onClick={() => openChat(scholar.id, scholar.name)}
-                  >
-                    <div className="message-icon">
-                      <i className={`fas ${scholar.icon}`}></i>
+                {scholarships.length > 0 ? (
+                  scholarships.map(scholar => (
+                    <div 
+                      key={scholar.id}
+                      className={`message-item ${scholar.unread > 0 ? 'unread' : ''}`}
+                      onClick={() => openChat(scholar.id, scholar.name)}
+                    >
+                      <div className="message-icon">
+                        <i className={`fas ${scholar.icon}`}></i>
+                      </div>
+                      <div className="message-content">
+                        <div className="message-sender">{scholar.name}</div>
+                        <div className="message-preview">{scholar.lastMessage}</div>
+                        <div className="message-time">{scholar.time}</div>
+                      </div>
+                      {scholar.unread > 0 && (
+                        <span style={{
+                          background: 'var(--primary)', 
+                          color: 'white', 
+                          borderRadius: '12px', 
+                          padding: '0.2rem 0.6rem', 
+                          fontSize: '0.7rem', 
+                          fontWeight: '600', 
+                          marginLeft: 'auto'
+                        }}>
+                          {scholar.unread}
+                        </span>
+                      )}
                     </div>
-                    <div className="message-content">
-                      <div className="message-sender">{scholar.name}</div>
-                      <div className="message-preview">{scholar.lastMessage}</div>
-                      <div className="message-time">{scholar.time}</div>
-                    </div>
-                    {scholar.unread > 0 && (
-                      <span style={{
-                        background: 'var(--primary)', 
-                        color: 'white', 
-                        borderRadius: '12px', 
-                        padding: '0.2rem 0.6rem', 
-                        fontSize: '0.7rem', 
-                        fontWeight: '600', 
-                        marginLeft: 'auto'
-                      }}>
-                        {scholar.unread}
-                      </span>
-                    )}
+                  ))
+                ) : (
+                  <div style={{
+                    padding: '2rem 1rem',
+                    textAlign: 'center',
+                    color: 'var(--text-soft)',
+                    fontSize: '0.9rem'
+                  }}>
+                    <i className="fas fa-comment-slash" style={{ 
+                      display: 'block', 
+                      fontSize: '1.5rem', 
+                      marginBottom: '0.5rem',
+                      opacity: 0.5 
+                    }}></i>
+                    No messages here
                   </div>
-                ))}
+                )}
               </div>
             </div>
           </div>
