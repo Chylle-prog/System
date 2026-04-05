@@ -15,6 +15,7 @@ import numpy as np
 from services.auth_service import get_secret_key
 from services.db_service import get_db
 from services.ocr_utils import verify_id_with_ocr, verify_face_with_id, extract_school_year, extract_school_year_from_text, is_current_school_year, verify_signature_against_id, save_signature_profile
+from services.notification_service import create_notification
 from concurrent.futures import ThreadPoolExecutor
 
 
@@ -72,6 +73,19 @@ def ensure_verification_columns():
                 created_at TIMESTAMP DEFAULT NOW()
             )
         """)
+        
+        # Create notifications table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS notifications (
+                notif_id SERIAL PRIMARY KEY,
+                user_no INTEGER REFERENCES applicant(applicant_no),
+                title TEXT NOT NULL,
+                message TEXT NOT NULL,
+                type VARCHAR(50), -- 'message', 'announcement', 'scholarship', 'result'
+                is_read BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
             
         conn.commit()
         conn.close()
@@ -102,37 +116,6 @@ def decode_password_reset_token(token):
         raise jwt.InvalidTokenError('Invalid password reset token')
     return payload
 
-def fetch_google_access_token():
-    """Exchange the configured refresh token for a Gmail API access token."""
-    from urllib import parse, request as urllib_request, error as urllib_error
-    import json
-    
-    missing_settings = []
-    if not GOOGLE_CLIENT_ID: missing_settings.append('GOOGLE_CLIENT_ID')
-    if not GOOGLE_CLIENT_SECRET: missing_settings.append('GOOGLE_CLIENT_SECRET')
-    if not GOOGLE_REFRESH_TOKEN: missing_settings.append('GOOGLE_REFRESH_TOKEN')
-
-    if missing_settings:
-        raise RuntimeError(f"Google Gmail API credentials are not configured. Missing: {', '.join(missing_settings)}")
-
-    token_request_body = parse.urlencode({
-        'client_id': GOOGLE_CLIENT_ID,
-        'client_secret': GOOGLE_CLIENT_SECRET,
-        'refresh_token': GOOGLE_REFRESH_TOKEN,
-        'grant_type': 'refresh_token',
-    }).encode('utf-8')
-
-    token_request = urllib_request.Request(
-        'https://oauth2.googleapis.com/token',
-        data=token_request_body,
-        headers={'Content-Type': 'application/x-www-form-urlencoded'},
-        method='POST',
-    )
-
-    with urllib_request.urlopen(token_request, timeout=30) as response:
-        payload = json.loads(response.read().decode('utf-8'))
-    
-    return payload.get('access_token')
 
 def send_password_reset_email(receiver_email, reset_url):
     """Send a password reset email via the Gmail API."""
@@ -287,6 +270,82 @@ The ISKOMATS Team
     
     with urllib_request.urlopen(email_request, timeout=30) as response:
         return json.loads(response.read().decode('utf-8'))
+
+
+
+
+@student_api_bp.route('/notifications', methods=['GET'])
+@token_required
+def get_notifications():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT notif_id as id, title, message, type, is_read as read, created_at
+            FROM notifications
+            WHERE user_no = %s
+            ORDER BY created_at DESC
+            LIMIT 50
+        """, (request.user_no,))
+        rows = cur.fetchall()
+        conn.close()
+        
+        # Format dates for frontend
+        for row in rows:
+            if row['created_at']:
+                row['time'] = row['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+                # Add a relative time if possible, or just keep it simple
+            else:
+                row['time'] = 'Just now'
+            
+            # Map type to icon
+            type_icons = {
+                'message': 'fa-comment-alt',
+                'announcement': 'fa-bullhorn',
+                'scholarship': 'fa-graduation-cap',
+                'result': 'fa-file-signature'
+            }
+            row['icon'] = type_icons.get(row['type'], 'fa-bell')
+            
+        return jsonify(rows), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+
+@student_api_bp.route('/notifications/read/<int:notif_id>', methods=['POST'])
+@token_required
+def mark_notification_read(notif_id):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE notifications 
+            SET is_read = TRUE 
+            WHERE notif_id = %s AND user_no = %s
+        """, (notif_id, request.user_no))
+        conn.commit()
+        conn.close()
+        return jsonify({'message': 'Success'}), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+
+@student_api_bp.route('/notifications/read-all', methods=['POST'])
+@token_required
+def mark_all_notifications_read():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE notifications 
+            SET is_read = TRUE 
+            WHERE user_no = %s
+        """, (request.user_no,))
+        conn.commit()
+        conn.close()
+        return jsonify({'message': 'Success'}), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
 
 
 @student_api_bp.route('/auth/login', methods=['POST'])
@@ -1544,6 +1603,23 @@ def update_application_status(req_no):
             )
 
         conn.commit()
+        
+        # Trigger Notification for the applicant
+        status_label = "Accepted" if status in [True, 1, 'true', 'True'] else "Rejected"
+        cur.execute("SELECT scholarship_name FROM scholarships WHERE req_no = %s", (req_no,))
+        sch_row = cur.fetchone()
+        sch_name = sch_row['scholarship_name'] if sch_row else f"Scholarship #{req_no}"
+        
+        try:
+            create_notification(
+                user_no=applicant_no,
+                title=f"Application Result: {status_label}",
+                message=f"Your application for {sch_name} has been {status_label.lower()}.",
+                notif_type='result'
+            )
+        except Exception as e:
+            print(f"[NOTIF ERROR] Failed to trigger result notification: {e}")
+
         return jsonify({'message': 'Status updated'})
     except Exception as exc:
         return jsonify({'message': str(exc)}), 500

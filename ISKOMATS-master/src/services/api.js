@@ -604,6 +604,42 @@ export const verificationAPI = {
 };
 
 /**
+ * ===== NOTIFICATION ENDPOINTS =====
+ */
+export const notificationAPI = {
+  /**
+   * Get all user notifications
+   * @returns {Promise} - Array of notifications
+   */
+  getAll: async () => {
+    return makeRequest('/student/notifications', {
+      method: 'GET',
+    });
+  },
+
+  /**
+   * Mark a single notification as read
+   * @param {number} notifId - Notification ID
+   * @returns {Promise}
+   */
+  markAsRead: async (notifId) => {
+    return makeRequest(`/student/notifications/read/${notifId}`, {
+      method: 'POST',
+    });
+  },
+
+  /**
+   * Mark all notifications as read
+   * @returns {Promise}
+   */
+  markAllAsRead: async () => {
+    return makeRequest('/student/notifications/read-all', {
+      method: 'POST',
+    });
+  },
+};
+
+/**
  * ===== ANNOUNCEMENT ENDPOINTS =====
  */
 export const announcementAPI = {

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { applicantAPI, applicationAPI, scholarshipAPI, announcementAPI } from '../services/api';
+import { applicantAPI, applicationAPI, scholarshipAPI, announcementAPI, notificationAPI } from '../services/api';
 import socketService from '../services/socket';
 
 const Portal = () => {
@@ -45,35 +45,7 @@ const Portal = () => {
 
   // Notification data structure
   const [dbAnnouncements, setDbAnnouncements] = useState([]);
-  const [notifications, setNotifications] = useState([
-    {
-      id: 1,
-      title: 'Deadline Extended',
-      message: 'Mayor Eric B. Africa Scholarship: Hard copy submission extended to Mar 27.',
-      time: '2 hours ago',
-      read: false,
-      icon: 'fa-calendar-alt',
-      scholarship: 'Mayor Eric B. Africa Scholarship'
-    },
-    {
-      id: 2,
-      title: 'Interview Schedule',
-      message: 'Governor Vilma\'s Scholarship: Initial interviews start Mar 10. Check your email.',
-      time: 'Yesterday',
-      read: false,
-      icon: 'fa-users',
-      scholarship: 'Governor Vilma\'s Scholarship'
-    },
-    {
-      id: 3,
-      title: 'Document Reminder',
-      message: 'CHED Tulong Dunong: Upload latest COR to avoid delays.',
-      time: '3 days ago',
-      read: false,
-      icon: 'fa-file-alt',
-      scholarship: 'CHED Tulong Dunong'
-    },
-  ]);
+  const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
     // Add Font Awesome link
@@ -165,6 +137,19 @@ const Portal = () => {
       }
     };
     fetchAnnouncements();
+
+    const fetchNotifications = async () => {
+      try {
+        const data = await notificationAPI.getAll();
+        setNotifications(data || []);
+      } catch (err) {
+        console.error("Failed to load notifications:", err);
+      }
+    };
+    fetchNotifications();
+
+    // Set up polling for notifications every 30 seconds
+    const notifInterval = setInterval(fetchNotifications, 30000);
 
     // Socket.IO Integration
     let unsubLogged, unsubMsg, unsubRoom;
@@ -262,7 +247,6 @@ const Portal = () => {
       if (document.head.contains(googleFontsLink)) document.head.removeChild(googleFontsLink);
       if (document.head.contains(googleFontsDisplay)) document.head.removeChild(googleFontsDisplay);
       if (document.head.contains(googleFontsSheet)) document.head.removeChild(googleFontsSheet);
-      document.removeEventListener('click', handleClickOutside);
     };
   }, [navigate]);
 
@@ -410,14 +394,40 @@ const Portal = () => {
     return events[day] || null;
   };
 
-  const markAllNotificationsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  const markAllNotificationsRead = async () => {
+    try {
+      await notificationAPI.markAllAsRead();
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    } catch (err) {
+      console.error("Failed to mark all as read:", err);
+    }
   };
 
-  const markNotificationAsRead = (notifId) => {
-    setNotifications(prev => prev.map(n => 
-      n.id === notifId ? { ...n, read: true } : n
-    ));
+  const handleNotificationClick = async (notif) => {
+    // 1. Mark as read in DB if not already
+    if (!notif.read) {
+      try {
+        await notificationAPI.markAsRead(notif.id);
+        setNotifications(prev => prev.map(n => 
+          n.id === notif.id ? { ...n, read: true } : n
+        ));
+      } catch (err) {
+        console.error("Failed to mark notification as read:", err);
+      }
+    }
+
+    // 2. Navigate based on type
+    setShowNotificationDropdown(false);
+    
+    if (notif.type === 'message') {
+      setActiveSection('messages');
+    } else if (notif.type === 'announcement') {
+      setActiveSection('announcements');
+    } else if (notif.type === 'scholarship') {
+      setActiveSection('menu'); // View all scholarships
+    } else if (notif.type === 'result') {
+      setActiveSection('menu'); // View application status
+    }
   };
 
   const cancelApplication = (reqNo, scholarshipName) => {
@@ -1991,7 +2001,7 @@ const Portal = () => {
                   <div 
                     key={notif.id}
                     className={`notification-item ${notif.read ? '' : 'unread'}`}
-                    onClick={() => markNotificationAsRead(notif.id)}
+                    onClick={() => handleNotificationClick(notif)}
                   >
                     <div className="notification-icon">
                       <i className={`fas ${notif.icon}`}></i>

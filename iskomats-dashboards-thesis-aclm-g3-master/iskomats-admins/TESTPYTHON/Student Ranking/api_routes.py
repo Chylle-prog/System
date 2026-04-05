@@ -19,6 +19,7 @@ if PROJECT_DIR not in sys.path:
     sys.path.append(PROJECT_DIR)
 
 from project_config import get_db
+from services.notification_service import create_notification
 
 def convert_bytea_array_to_urls(bytea_array):
     """Convert PostgreSQL bytea[] array to list of base64 data URLs."""
@@ -880,6 +881,20 @@ def init_socketio(socketio):
                 'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
                 'student_status': student_status
             }, to=room)
+            
+            # 6. Trigger Notification for the applicant if the sender is an admin/provider
+            # and the recipient is not the one who sent the message (though in 1-on-1 it's simple)
+            is_admin_sender = not app_row # If not in applicants table, assume admin/provider
+            if is_admin_sender:
+                try:
+                    create_notification(
+                        user_no=app_no,
+                        title=f"New Message from {actual_username}",
+                        message=message_text[:100] + ('...' if len(message_text) > 100 else ''),
+                        notif_type='message'
+                    )
+                except Exception as e:
+                    print(f"[NOTIF ERROR] Failed to trigger message notification: {e}")
         except Exception as e:
             print(f"Error saving message: {e}")
 
@@ -2474,6 +2489,26 @@ def create_announcement(current_user_id, pro_no, role):
             provider_no=pro_no
         )
         
+        # Notify all students associated with this provider
+        try:
+            # Get all students for this provider
+            cur.execute("""
+                SELECT DISTINCT ast.applicant_no 
+                FROM applicant_status ast
+                JOIN scholarships s ON ast.scholarship_no = s.req_no
+                WHERE s.pro_no = %s
+            """, (pro_no,))
+            students = cur.fetchall()
+            for student in students:
+                create_notification(
+                    user_no=student['applicant_no'],
+                    title=f"New Announcement: {title}",
+                    message=message[:100] + ('...' if len(message) > 100 else ''),
+                    notif_type='announcement'
+                )
+        except Exception as e:
+            print(f"[NOTIF ERROR] Failed to trigger announcement notifications: {e}")
+
         return jsonify({'message': 'Announcement created', 'ann_no': ann_no}), 201
     except Exception as e:
         return jsonify({'message': str(e)}), 500
