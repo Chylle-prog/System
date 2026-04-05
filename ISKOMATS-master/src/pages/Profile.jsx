@@ -998,27 +998,27 @@ const Profile = () => {
                 <label>Town / City / Municipality</label>
                 <input
                   type="text"
-                  value={userProfile.town_city_municipality || userProfile.townCity || ''}
+                  value={userProfile ? (userProfile.town_city_municipality || userProfile.townCity || 'Lipa City') : 'Lipa City'}
                   disabled
-                  style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
+                  style={{ backgroundColor: '#f4f6fa', cursor: 'not-allowed', color: '#666' }}
                 />
               </div>
               <div className="form-group">
                 <label>Province</label>
                 <input
                   type="text"
-                  value={userProfile.province || ''}
+                  value={userProfile?.province || 'Batangas'}
                   disabled
-                  style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
+                  style={{ backgroundColor: '#f4f6fa', cursor: 'not-allowed', color: '#666' }}
                 />
               </div>
               <div className="form-group">
                 <label>Zip Code</label>
                 <input
                   type="text"
-                  value={userProfile.zip_code || userProfile.zipCode || ''}
+                  value={userProfile ? (userProfile.zip_code || userProfile.zipCode || '4217') : '4217'}
                   disabled
-                  style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
+                  style={{ backgroundColor: '#f4f6fa', cursor: 'not-allowed', color: '#666' }}
                 />
               </div>
               <button className="edit-profile-btn" onClick={showEditProfile} style={{ width: 'auto', marginTop: '1rem' }}>
@@ -1213,8 +1213,8 @@ const Profile = () => {
                     type="text"
                     name="townCityMunicipality"
                     value={formData.townCityMunicipality}
-                    onChange={handleInputChange}
-                    placeholder="e.g., Lipa City"
+                    readOnly
+                    style={{ backgroundColor: '#f0f0f0', cursor: 'not-allowed', color: '#666' }}
                     required
                   />
                 </div>
@@ -1224,8 +1224,8 @@ const Profile = () => {
                     type="text"
                     name="province"
                     value={formData.province}
-                    onChange={handleInputChange}
-                    placeholder="e.g., Batangas"
+                    readOnly
+                    style={{ backgroundColor: '#f0f0f0', cursor: 'not-allowed', color: '#666' }}
                     required
                   />
                 </div>
@@ -1235,8 +1235,8 @@ const Profile = () => {
                     type="text"
                     name="zipCode"
                     value={formData.zipCode}
-                    onChange={handleInputChange}
-                    placeholder="e.g., 4217"
+                    readOnly
+                    style={{ backgroundColor: '#f0f0f0', cursor: 'not-allowed', color: '#666' }}
                     required
                   />
                 </div>
