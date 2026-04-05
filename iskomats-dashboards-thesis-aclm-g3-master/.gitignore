@@ -29,3 +29,8 @@ knowledge/
 **/knowledge/
 *.png_profile
 *.png_fake
+
+# OAuth2 / Gmail API Local Files
+generate_token.py
+client_secret.json
+
