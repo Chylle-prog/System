@@ -81,6 +81,7 @@ const FindScholarship = () => {
         if (profile) {
           const fullName = [
             profile.first_name,
+            profile.middle_name,
             profile.last_name
           ].filter(Boolean).join(' ');
 
