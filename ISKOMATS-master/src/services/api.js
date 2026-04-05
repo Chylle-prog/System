@@ -101,6 +101,22 @@ export const authAPI = {
   },
 
   /**
+   * Login user with Google OAuth
+   * @param {string} idToken - Google ID token
+   * @returns {Promise} - {token, email, first_name, last_name, applicant_no}
+   */
+  googleLogin: async (idToken) => {
+    const response = await makeRequest('/student/auth/google', {
+      method: 'POST',
+      body: JSON.stringify({ idToken }),
+    });
+    if (response.token) {
+      localStorage.setItem('authToken', response.token);
+    }
+    return response;
+  },
+
+  /**
    * Check if email is available and get account type
    * @param {string} email
    * @returns {Promise} - {exists: boolean, account_type: 'applicant'|'admin'|null}

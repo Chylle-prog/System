@@ -16,6 +16,7 @@ from services.auth_service import get_secret_key
 from services.db_service import get_db
 from services.ocr_utils import verify_id_with_ocr, verify_face_with_id, extract_school_year, extract_school_year_from_text, is_current_school_year, verify_signature_against_id, save_signature_profile
 from services.notification_service import create_notification
+from services.google_auth_service import verify_google_token
 from concurrent.futures import ThreadPoolExecutor
 
 
@@ -623,6 +624,92 @@ def student_check_email():
             conn.close()
 
 
+@student_api_bp.route('/auth/google', methods=['POST'])
+def student_google_login():
+    """Sign in student with Google OAuth"""
+    data = request.get_json() or {}
+    token = data.get('idToken')
+    
+    if not token:
+        return jsonify({'message': 'Google ID token is required'}), 400
+
+    try:
+        # 1. Verify Google token and get profile
+        google_profile = verify_google_token(token)
+        email = google_profile['email']
+        
+        # 2. Check if user exists
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT e.applicant_no, e.email_address, a.first_name, a.last_name
+            FROM email e
+            JOIN applicants a ON e.applicant_no = a.applicant_no
+            WHERE e.email_address ILIKE %s
+            LIMIT 1
+            """,
+            (email,),
+        )
+        user = cur.fetchone()
+        
+        # 3. Create user if doesn't exist (Auto-register)
+        if not user:
+            print(f"[GOOGLE AUTH] New user {email}, creating profile...", flush=True)
+            # Create applicant record first
+            cur.execute(
+                """
+                INSERT INTO applicants (first_name, middle_name, last_name, status)
+                VALUES (%s, %s, %s, 'N')
+                RETURNING applicant_no
+                """,
+                (google_profile['first_name'], '', google_profile['last_name']),
+            )
+            applicant_no = cur.fetchone()[0]
+            
+            # Create email/auth record
+            # We don't set a password for Google accounts
+            cur.execute(
+                """
+                INSERT INTO email (applicant_no, email_address, is_verified)
+                VALUES (%s, %s, TRUE)
+                RETURNING em_no
+                """,
+                (applicant_no, email),
+            )
+            conn.commit()
+            
+            user = {
+                'applicant_no': applicant_no,
+                'email_address': email,
+                'first_name': google_profile['first_name'],
+                'last_name': google_profile['last_name']
+            }
+        
+        # 4. Generate JWT
+        token_payload = {
+            'user_no': user['applicant_no'],
+            'email': user['email_address'],
+            'exp': datetime.utcnow() + timedelta(days=7)
+        }
+        jwt_token = jwt.encode(token_payload, SECRET_KEY, algorithm='HS256')
+
+        return jsonify({
+            'token': jwt_token,
+            'email': user['email_address'],
+            'applicant_no': user['applicant_no'],
+            'first_name': user['first_name'],
+            'last_name': user['last_name']
+        }), 200
+        
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({'message': f'Google authentication failed: {str(exc)}'}), 401
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+
 @student_api_bp.route('/auth/validate', methods=['GET'])
 @token_required
 def validate_student_token():
@@ -659,8 +746,9 @@ def student_forgot_password():
             print(f"[PASSWORD RESET] Sending reset email to {user['email_address']}", flush=True)
             print(f"[PASSWORD RESET] Using portal URL: {STUDENT_FRONTEND_URL}", flush=True)
             send_password_reset_email(user['email_address'], reset_url)
-
-        return jsonify({'message': 'If an account exists with this email, a reset link has been sent.'}), 200
+            return jsonify({'message': 'A reset link has been sent to your email.'}), 200
+        else:
+            return jsonify({'message': 'Email not found in our records.'}), 404
     except Exception as exc:
         traceback.print_exc()
         return jsonify({'message': f'Failed to send reset email: {str(exc)}'}), 500

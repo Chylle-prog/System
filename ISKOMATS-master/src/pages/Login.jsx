@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { authAPI, applicantAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { GoogleLogin } from '@react-oauth/google';
 
 
 const Login = () => {
@@ -305,9 +306,58 @@ const Login = () => {
     setShowError(false);
   };
 
-  const handleGoogleSignUp = () => {
-    // Placeholder for Google sign-up functionality
-    alert('Google sign-up functionality will be implemented soon!');
+  const handleGoogleSuccess = async (credentialResponse) => {
+    const { credential } = credentialResponse;
+    if (!credential) return;
+
+    setIsLoginLoading(true);
+    setLoadingMessage({ title: 'Google Login', message: 'Authenticating with Google...' });
+    setShowLoadingOverlay(true);
+
+    try {
+      // 1. Call backend Google login API
+      const response = await authAPI.googleLogin(credential);
+
+      const email = response.email;
+      setCurrentUser(email);
+      if (setCurrentUserState) setCurrentUserState(email);
+
+      localStorage.setItem('currentUser', email);
+      localStorage.setItem('authToken', response.token);
+      localStorage.setItem('applicantNo', response.applicant_no);
+      setShowError(false);
+
+      // 2. Navigate based on profile status
+      setTimeout(async () => {
+        try {
+          const profile = await fetchProfile(email);
+          setShowLoadingOverlay(false);
+          setIsLoginLoading(false);
+          
+          if (profile && profile.first_name === 'User' && profile.last_name === 'Account') {
+            setShowProfile(true);
+          } else {
+            navigate('/portal');
+          }
+        } catch (err) {
+          console.warn('Redirect check failed:', err);
+          setShowLoadingOverlay(false);
+          setIsLoginLoading(false);
+          navigate('/portal');
+        }
+      }, 500);
+    } catch (error) {
+      console.error('Google Login Error:', error);
+      setErrorMessage(error.message || 'Google authentication failed.');
+      setShowError(true);
+      setShowLoadingOverlay(false);
+      setIsLoginLoading(false);
+    }
+  };
+
+  const handleGoogleError = () => {
+    setErrorMessage('Google Sign-In was unsuccessful. Please try again.');
+    setShowError(true);
   };
 
   const handleForgotPassword = (e) => {
@@ -1115,7 +1165,24 @@ const Login = () => {
                     <>Log in</>
                   )}
                 </button>
-                <div className="forgot-password">
+                {/* Social Login Options */}
+                <div className="social-signup">
+                  <div className="divider">
+                    <span>Or log in with</span>
+                  </div>
+                  <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
+                    <GoogleLogin
+                      onSuccess={handleGoogleSuccess}
+                      onError={handleGoogleError}
+                      theme="outline"
+                      size="large"
+                      width="100%"
+                      shape="pill"
+                      text="continue_with"
+                    />
+                  </div>
+                </div>
+               <div className="forgot-password">
                   <a href="#" onClick={handleForgotPassword} style={{ color: 'var(--primary)', textDecoration: 'none', fontSize: '0.9rem' }}>
                     Forgot password?
                   </a>
@@ -1154,15 +1221,17 @@ const Login = () => {
                   <div className="divider">
                     <span>Or sign up with</span>
                   </div>
-                  <button type="button" className="google-signup-btn" onClick={handleGoogleSignUp}>
-                    <svg width="18" height="18" viewBox="0 0 18 18" style={{ marginRight: '8px' }}>
-                      <path fill="#4285F4" d="M17.64 9.2c0-.63-.06-1.25-.16-1.84H9v3.47h4.84c-.21 1.12-.83 2.07-1.79 2.71v2.24h2.91c1.71-1.58 2.68-3.91 2.68-6.58z" />
-                      <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.24c-.8.54-1.84.85-3.05.85-2.33 0-4.32-1.58-5.02-3.71H.95v2.33C2.43 15.93 5.47 18 9 18z" />
-                      <path fill="#FBBC05" d="M3.98 10.72c-.18-.54-.28-1.12-.28-1.72s.1-1.18.28-1.72V4.95H.95C.35 6.16 0 7.54 0 9s.35 2.84.95 4.05l3.03-2.33z" />
-                      <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.47 1.18 11.43 0 9 0 5.47 0 2.43 2.07.95 5.07L3.98 7.4c.7-2.13 2.69-3.82 5.02-3.82z" />
-                    </svg>
-                    Sign up with Google
-                  </button>
+                  <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
+                    <GoogleLogin
+                      onSuccess={handleGoogleSuccess}
+                      onError={handleGoogleError}
+                      theme="outline"
+                      size="large"
+                      width="100%"
+                      shape="pill"
+                      text="signup_with"
+                    />
+                  </div>
                 </div>
               </form>
             )}
