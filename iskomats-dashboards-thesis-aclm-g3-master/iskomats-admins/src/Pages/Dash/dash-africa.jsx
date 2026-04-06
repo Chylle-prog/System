@@ -105,7 +105,8 @@ export default function DashAfrica() {
     semester: '',
     year: new Date().getFullYear().toString(),
     title: '', // For announcements
-    content: '' // For announcements
+    content: '', // For announcements
+    sendToAllApplicants: true
   });
   const pieRef = useRef(null);
   const lineChartRef = useRef(null);
@@ -398,7 +399,8 @@ export default function DashAfrica() {
       semester: '',
       year: new Date().getFullYear().toString(),
       title: '',
-      content: ''
+      content: '',
+      sendToAllApplicants: true
     });
     setScholarshipImages([]);
     setEditingPost(null);
@@ -571,7 +573,8 @@ export default function DashAfrica() {
       const announcementData = {
         title: formData.title,
         content: formData.content,
-        time_added: new Date().toISOString()
+        time_added: new Date().toISOString(),
+        send_to_all_applicants: formData.sendToAllApplicants
       };
 
       let response;
@@ -605,7 +608,8 @@ export default function DashAfrica() {
       deadline: '',
       eligibility: '',
       slots: '',
-      description: ''
+      description: '',
+      sendToAllApplicants: ann.send_to_all_applicants !== false
     });
     setManageMode('edit');
   };
@@ -1475,17 +1479,45 @@ export default function DashAfrica() {
               </div>
             </>
           ) : (
-            <div className="md:col-span-2">
-              <label className="block text-sm font-semibold text-[#800020] mb-1">Announcement Content *</label>
-              <textarea
-                name="content"
-                value={formData.content}
-                onChange={handleFormChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 min-h-[150px]"
-                placeholder="Write your announcement here..."
-                required
-              />
-            </div>
+            <>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold text-[#800020] mb-1">Announcement Content *</label>
+                <textarea
+                  name="content"
+                  value={formData.content}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 min-h-[150px]"
+                  placeholder="Write your announcement here..."
+                  required
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold text-[#800020] mb-2">Send to:</label>
+                <div className="flex gap-6">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="sendToAllApplicants"
+                      checked={formData.sendToAllApplicants === true}
+                      onChange={() => setFormData({ ...formData, sendToAllApplicants: true })}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-gray-700">All Applicants (Recommended)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="sendToAllApplicants"
+                      checked={formData.sendToAllApplicants === false}
+                      onChange={() => setFormData({ ...formData, sendToAllApplicants: false })}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-gray-700">Africa Scholarship Applicants Only</span>
+                  </label>
+                </div>
+              </div>
+            </>
           )}
 
           <div className="md:col-span-2 flex justify-end gap-2">
