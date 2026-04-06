@@ -59,9 +59,9 @@ def fetch_google_access_token():
             error_payload = json.loads(e.read().decode('utf-8'))
             error_reason = error_payload.get('error', 'unknown_error')
             error_desc = error_payload.get('error_description', 'No description provided')
-            diagnostic = f"Google OAuth rejected the request (error: {error_reason}, description: {error_desc})"
+            diagnostic = f"Google OAuth rejected the request (error: {error_reason}, description: {error_desc}). Using CID: {mask(GOOGLE_CLIENT_ID, 12)}, Secret: {mask(GOOGLE_CLIENT_SECRET, 6)}"
         except:
-            diagnostic = f"HTTP Error {e.code}: {e.reason}"
+            diagnostic = f"HTTP Error {e.code}: {e.reason}. Using CID: {mask(GOOGLE_CLIENT_ID, 12)}, Secret: {mask(GOOGLE_CLIENT_SECRET, 6)}"
         
         print(f"[NOTIF ERROR] Token exchange failed: {diagnostic}")
         raise RuntimeError(diagnostic)
