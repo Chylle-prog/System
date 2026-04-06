@@ -385,7 +385,11 @@ export default function DashTulong() {
       slots: '',
       location: '',
       parentFinance: '',
-      description: ''
+      description: '',
+      semester: '',
+      year: new Date().getFullYear().toString(),
+      title: '',
+      content: ''
     });
     setScholarshipImages([]);
     setEditingPost(null);
@@ -410,7 +414,17 @@ export default function DashTulong() {
   const loadAnnouncements = async () => {
     try {
       const response = await announcementAPI.getAll();
-      setData(prev => ({ ...prev, announcements: response.data || [] }));
+      // Map backend field names to frontend field names
+      const normalizedAnnouncements = (response.data || []).map(ann => ({
+        id: ann.ann_no || ann.id,
+        ann_no: ann.ann_no || ann.id,
+        title: ann.ann_title || ann.title,
+        content: ann.ann_message || ann.message || ann.content,
+        date: ann.created_at || ann.time_added || ann.ann_date || new Date().toISOString(),
+        status: ann.status || 'active',
+        ...ann // Include all original fields too
+      }));
+      setData(prev => ({ ...prev, announcements: normalizedAnnouncements }));
     } catch (error) {
       console.error('Failed to load announcements:', error);
     }
@@ -1239,7 +1253,7 @@ export default function DashTulong() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => deleteAnnouncement(ann.id)}
+                          onClick={() => deleteAnnouncement(ann.ann_no || ann.id)}
                           className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
                           title="Delete Announcement"
                         >

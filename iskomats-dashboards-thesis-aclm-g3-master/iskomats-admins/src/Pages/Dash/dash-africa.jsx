@@ -104,6 +104,8 @@ export default function DashAfrica() {
     description: '', // New field
     semester: '',
     year: new Date().getFullYear().toString(),
+    title: '', // For announcements
+    content: '' // For announcements
   });
   const pieRef = useRef(null);
   const lineChartRef = useRef(null);
@@ -392,7 +394,11 @@ export default function DashAfrica() {
       slots: '',
       location: '',
       parentFinance: '',
-      description: ''
+      description: '',
+      semester: '',
+      year: new Date().getFullYear().toString(),
+      title: '',
+      content: ''
     });
     setScholarshipImages([]);
     setEditingPost(null);
@@ -417,7 +423,17 @@ export default function DashAfrica() {
   const loadAnnouncements = async () => {
     try {
       const response = await announcementAPI.getAll();
-      setData(prev => ({ ...prev, announcements: response.data || [] }));
+      // Map backend field names to frontend field names
+      const normalizedAnnouncements = (response.data || []).map(ann => ({
+        id: ann.ann_no || ann.id,
+        ann_no: ann.ann_no || ann.id,
+        title: ann.ann_title || ann.title,
+        content: ann.ann_message || ann.message || ann.content,
+        date: ann.created_at || ann.time_added || ann.ann_date || new Date().toISOString(),
+        status: ann.status || 'active',
+        ...ann // Include all original fields too
+      }));
+      setData(prev => ({ ...prev, announcements: normalizedAnnouncements }));
     } catch (error) {
       console.error('Failed to load announcements:', error);
     }
@@ -597,7 +613,9 @@ export default function DashAfrica() {
   const deleteAnnouncement = async (annId) => {
     if (confirm('Are you sure you want to delete this announcement?')) {
       try {
-        await announcementAPI.delete(annId);
+        // Use ann_no if available, otherwise use id
+        const idToDelete = annId;
+        await announcementAPI.delete(idToDelete);
         loadAnnouncements();
       } catch (error) {
         console.error('Failed to delete announcement:', error);
@@ -1252,7 +1270,7 @@ export default function DashAfrica() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => deleteAnnouncement(ann.id)}
+                          onClick={() => deleteAnnouncement(ann.ann_no || ann.id)}
                           className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
                           title="Delete Announcement"
                         >
