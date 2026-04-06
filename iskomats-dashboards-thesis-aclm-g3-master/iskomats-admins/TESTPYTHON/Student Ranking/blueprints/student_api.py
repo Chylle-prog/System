@@ -1226,7 +1226,7 @@ def submit_application():
             else:
                 doc_bytes[key] = decode_base64(form_data.get(key)) or db_bytes(applicant.get(doc_column_map[key]))
 
-        # ── OCR & FACE VERIFICATION ───────────────────────────────────────────
+        # ── OCR & FACE VERIFICATION (PARALLEL) ────────────────────────────────
         ocr_ok = True
         ocr_status = "Verification skipped"
         face_ok = True
@@ -1234,62 +1234,70 @@ def submit_application():
         
         if not skip_verify:
             try:
-                if not id_front_bytes:
-                    print("[SUBMIT] Warning: Front of School ID is missing, skipping OCR.")
-                else:
-                    indigency_doc_bytes = doc_bytes.get('mayorIndigency_photo')
-                    # Use the most recent value from the form if available
-                    town_city = form_data.get('townCity') or applicant.get('town_city_municipality', '')
+                from concurrent.futures import ThreadPoolExecutor
+                verification_tasks = {}
+                # Limit to 3 workers to keep peak RAM usage safe on 512MB Render instances
+                with ThreadPoolExecutor(max_workers=3) as executor:
+                    # 1. OCR Identity Check
+                    if id_front_bytes:
+                        town_city = form_data.get('townCity') or applicant.get('town_city_municipality', '')
+                        full_name = f"{applicant.get('first_name', '')} {applicant.get('last_name', '')}"
+                        print(f"[SUBMIT] Scheduling OCR for {full_name}...")
+                        verification_tasks['ocr'] = executor.submit(
+                            verify_id_with_ocr, 
+                            image_bytes=id_front_bytes,
+                            expected_name=full_name,
+                            expected_address=town_city
+                        )
+
+                    # 2. Face Verification
+                    if face_photo_bytes and id_front_bytes:
+                        print("[SUBMIT] Scheduling Face verification...")
+                        verification_tasks['face'] = executor.submit(
+                            verify_face_with_id, face_photo_bytes, id_front_bytes
+                        )
+
+                    # 3. Video OCR Validations
+                    video_requirements = {
+                        'mayorIndigency_video': ['Indigency', 'Barangay'],
+                        'mayorGrades_video': ['Grades', 'Card', 'Evaluation'],
+                        'mayorCOE_video': ['Enrollment', 'Certificate', 'School']
+                    }
+                    for field, keywords in video_requirements.items():
+                        video_file = request.files.get(field)
+                        if video_file:
+                            print(f"[SUBMIT] Scheduling Video scanning for {field}...")
+                            v_bytes = video_file.read()
+                            video_file.seek(0)
+                            verification_tasks[f'video_{field}'] = executor.submit(
+                                verify_video_content, v_bytes, keywords
+                            )
+
+                    # --- GATHER RESULTS ---
+                    if 'ocr' in verification_tasks:
+                        ocr_ok, ocr_status, _, _ = verification_tasks['ocr'].result()
+                        print(f"[SUBMIT] OCR Result: {ocr_status}")
                     
-                    print("[SUBMIT] Starting OCR verification...")
-                    ocr_start = time.time()
-                    ocr_ok, ocr_status, _, _ = verify_id_with_ocr(
-                        image_bytes=id_front_bytes,
-                        expected_name=f"{applicant.get('first_name', '')} {applicant.get('last_name', '')}",
-                        expected_address=town_city
-                    )
-                    print(f"[SUBMIT] OCR finished in {time.time() - ocr_start:.2f}s: {ocr_status}")
+                    if 'face' in verification_tasks:
+                        face_ok, face_status, _ = verification_tasks['face'].result()
+                        print(f"[SUBMIT] Face Result: {face_status}")
+                        if not face_ok:
+                            return jsonify({'message': f'Face Verification Failed: {face_status}', 'face_status': face_status}), 400
+                    elif not skip_verify:
+                         return jsonify({'message': 'Missing verification documents: Face photo or ID front missing'}), 400
 
-                # 2. Face Verification
-                if face_photo_bytes and id_front_bytes:
-                    print("[SUBMIT] Starting Face verification...")
-                    face_start = time.time()
-                    face_ok, face_status, _ = verify_face_with_id(face_photo_bytes, id_front_bytes)
-                    print(f"[SUBMIT] Face verification finished in {time.time() - face_start:.2f}s: {face_status}")
-                    
-                    if not face_ok:
-                        print(f"[SUBMIT] ❌ Face Verification Failed: {face_status}")
-                        return jsonify({
-                            'message': f'Face Verification Failed: {face_status}',
-                            'face_status': face_status
-                        }), 400
-                else:
-                    face_status = "Face photo or ID front missing"
-                    print(f"[SUBMIT] ❌ Face verification skipped/missing: {face_status}")
-                    return jsonify({'message': f'Missing verification documents: {face_status}'}), 400
-
-                # ── VIDEO OCR VALIDATION ──────────────────────────────────────────
-                video_requirements = {
-                    'mayorIndigency_video': ['Indigency', 'Barangay'],
-                    'mayorGrades_video': ['Grades', 'Card', 'Evaluation'],
-                    'mayorCOE_video': ['Enrollment', 'Certificate', 'School']
-                }
-
-                for field, keywords in video_requirements.items():
-                    video_file = request.files.get(field)
-                    if video_file:
-                        print(f"[SUBMIT] 🔍 Scanning video for {field}...", flush=True)
-                        video_bytes = video_file.read()
-                        video_file.seek(0) # reset for later saving
-                        
-                        is_valid, v_msg = verify_video_content(video_bytes, keywords)
-                        if not is_valid:
-                            print(f"[SUBMIT] ❌ Video Validation Failed: {v_msg}")
-                            return jsonify({'message': f'Invalid Video Content: {v_msg}'}), 400
-                        print(f"[SUBMIT] ✅ Video Validated: {v_msg}")
+                    for key in verification_tasks:
+                        if key.startswith('video_'):
+                            is_valid, v_msg = verification_tasks[key].result()
+                            if not is_valid:
+                                print(f"[SUBMIT] ❌ Video Validation Failed ({key}): {v_msg}")
+                                return jsonify({'message': f'Invalid Video Content: {v_msg}'}), 400
+                            print(f"[SUBMIT] ✅ Video Validated ({key}): {v_msg}")
 
             except Exception as ai_err:
-                print(f"[SUBMIT] AI Verification Exception: {str(ai_err)}")
+                import traceback
+                traceback.print_exc()
+                print(f"[SUBMIT] Parallel Verification Exception: {str(ai_err)}")
                 return jsonify({
                     'message': f'Verification service error: {str(ai_err)}. Please ensure your photos are clear and try again.',
                     'face_status': f"Error: {str(ai_err)}"
@@ -1563,8 +1571,8 @@ def ocr_check():
         results = []
         overall_verified = True
         if jobs:
-            # Parallel processing (max_workers=len(jobs)) restored for speed as requested
-            with ThreadPoolExecutor(max_workers=len(jobs)) as executor:
+            # Use a fixed max_workers=2 to prevent excessive parallel Tesseract processes
+            with ThreadPoolExecutor(max_workers=2) as executor:
                 future_results = [executor.submit(process_doc, *job) for job in jobs]
                 for future in future_results:
                     res = future.result()

@@ -13,6 +13,7 @@ import re
 import difflib
 from skimage.metrics import structural_similarity as ssim
 from scipy.spatial.distance import cosine
+from concurrent.futures import ThreadPoolExecutor
 
 # ─── Environment hints for threading & memory ──────────────────────────────────
 os.environ.setdefault('OMP_NUM_THREADS', '1')
@@ -50,7 +51,7 @@ def _check_tesseract():
     return _tesseract_available
 
 # ─── Image preprocessing ──────────────────────────────────────────────────────
-_MAX_OCR_WIDTH = 1200
+_MAX_OCR_WIDTH = 800
 _MAX_FACE_WIDTH = 224
 
 def _preprocess_strategy_a(img):
@@ -197,20 +198,31 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
     best_text = ""
     best_ratio = 0.0
     
-    # --- PASS 1: Primary Preprocessing PSM 3 (Standard) ---
-    text = _run_tesseract_on_image(img, psm=3)
-    name_v, addr_v, ratio = check_match(text, expected_name, expected_address, is_indigency)
-    if name_v and addr_v: return True, "Verified (Strategy 1)", text, 1.0
+    # --- PASS 1: Parallel Strategy Batch (Primary + PSM 11) ---
+    # Running these in parallel provides a massive speed boost on documents that 
+    # would previously fail PASS 1 and wait for PASS 2.
+    # Limit to 2 workers to conserve RAM.
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f1 = executor.submit(_run_tesseract_on_image, img, psm=3)
+        f2 = executor.submit(_run_tesseract_on_image, img, psm=11)
+        
+        t1, t2 = f1.result(), f2.result()
+        
+    # Evaluate PSM 3 match
+    name_v1, addr_v1, r1 = check_match(t1, expected_name, expected_address, is_indigency)
+    if name_v1 and addr_v1: return True, "Verified (Strategy 1)", t1, 1.0
     
-    best_text, best_ratio = text, ratio
+    # Evaluate PSM 11 match
+    name_v2, addr_v2, r2 = check_match(t2, expected_name, expected_address, is_indigency)
+    if name_v2 and addr_v2: return True, "Verified (Strategy PSM11)", t2, 1.0
 
-    # --- PASS 2: PSM 11 (Sparse Text / Rotated Text) ---
-    text_s = _run_tesseract_on_image(img, psm=11)
-    name_v, addr_v, ratio = check_match(text_s, expected_name, expected_address, is_indigency)
-    if name_v and addr_v: return True, "Verified (Strategy PSM11)", text_s, 1.0
-    if ratio > best_ratio: best_text, best_ratio = text_s, ratio
+    # Pick the best text from the initial parallel batch
+    if r1 >= r2:
+        best_text, best_ratio = t1, r1
+    else:
+        best_text, best_ratio = t2, r2
 
-    # --- PASS 3: Fallback Preprocessing (Strategies B/C) - only if no good results yet ---
+    # --- PASS 3: Fallback Preprocessing (Strategies B/C) ---
     if best_ratio < 0.3:
         text_f = _run_tesseract_on_image(img, psm=3, strategies=[_preprocess_strategy_b, _preprocess_strategy_c])
         name_v, addr_v, ratio = check_match(text_f, expected_name, expected_address, is_indigency)
@@ -288,17 +300,20 @@ def verify_video_content(video_bytes, keywords):
                 cap.release()
                 return False, "Low content quality: No document text detected in video."
         
-        all_ocr_text = ""
-        for frame_idx in samples:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-            ret, frame = cap.read()
-            if not ret or frame is None: continue
+        # --- Parallel Frame Processing ---
+        def process_frame(idx):
+            cap_internal = cv2.VideoCapture(tmp_path)
+            cap_internal.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ret_f, frame_f = cap_internal.read()
+            cap_internal.release()
+            if not ret_f or frame_f is None: return ""
+            return _run_tesseract_on_image(frame_f, psm=11)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_to_idx = {executor.submit(process_frame, idx): idx for idx in samples}
+            ocr_results = [f.result() for f in future_to_idx.keys()]
             
-            # Use PSM 11 for sparse/random text detection in video
-            ocr_text = _run_tesseract_on_image(frame, psm=11)
-            all_ocr_text += " " + ocr_text
-            
-        cap.release()
+        all_ocr_text = " ".join(ocr_results)
         
         # Keyword check (case insensitive, fuzzy via simple substring)
         found_keywords = []
