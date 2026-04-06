@@ -925,10 +925,33 @@ const Profile = () => {
                   dangerouslySetInnerHTML={{ __html: getProfilePictureHtml() }}
                 />
                 <div style={{ flex: 1 }}>
-                  <h3 style={{ color: 'var(--primary)', fontSize: '1.5rem', marginBottom: '0.3rem' }}>
+                  <h3 style={{ color: 'var(--primary)', fontSize: '1.5rem', marginBottom: '0.3rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     {userProfile.first_name && userProfile.last_name ? `${userProfile.first_name} ${userProfile.last_name}` : 'No name provided'}
+                    {userProfile.email_verified && (
+                      <i className="fas fa-check-circle" style={{ color: '#28a745', fontSize: '1.1rem' }} title="Verified Account"></i>
+                    )}
                   </h3>
                   <p style={{ color: 'var(--text-soft)', margin: 0 }}>{currentUser}</p>
+                </div>
+              </div>
+
+              {/* Document Status Sync Summary */}
+              <div style={{ background: '#f8fafc', padding: '1.5rem', borderRadius: '16px', marginBottom: '2rem', border: '1px solid #e2e8f0' }}>
+                <h4 style={{ fontSize: '0.9rem', fontWeight: '700', color: '#4a5568', marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Requirement Status
+                </h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+                  {[
+                    { label: 'School ID', key: 'has_id' },
+                    { label: 'COE', key: 'has_mayorCOE_photo' },
+                    { label: 'Grades', key: 'has_mayorGrades_photo' },
+                    { label: 'Indigency', key: 'has_mayorIndigency_photo' }
+                  ].map(doc => (
+                    <div key={doc.key} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', fontWeight: '500', color: userProfile[doc.key] ? '#2d3748' : '#a0aec0' }}>
+                      <i className={`fas ${userProfile[doc.key] ? 'fa-check-circle' : 'fa-circle'}`} style={{ color: userProfile[doc.key] ? '#28a745' : '#e2e8f0' }}></i>
+                      {doc.label}
+                    </div>
+                  ))}
                 </div>
               </div>
               <div className="form-group">

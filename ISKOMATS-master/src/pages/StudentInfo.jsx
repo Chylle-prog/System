@@ -1507,6 +1507,25 @@ const StudentInfo = () => {
         return; // Block submission if verification fails
       }
       // ──────────────────────────────────────────────────────────────────────────
+      // Final Mandatory Document Check
+      const requiredDocs = [
+        { key: 'mayorCOE_photo', label: 'COE Photo', type: 'photo' },
+        { key: 'mayorCOE_video', label: 'COE Video', type: 'video' },
+        { key: 'mayorGrades_photo', label: 'Grades Photo', type: 'photo' },
+        { key: 'mayorGrades_video', label: 'Grades Video', type: 'video' }
+      ];
+
+      const missing = requiredDocs.filter(doc => {
+        if (doc.type === 'photo') return !photos[doc.key] && !userProfile?.[`has_${doc.key}`];
+        return !formData[doc.key];
+      });
+
+      if (missing.length > 0) {
+        showPromptMessage(`⚠️ Cannot submit. Missing: ${missing.map(m => m.label).join(', ')}`);
+        setIsSubmitting(false);
+        return;
+      }
+      // ──────────────────────────────────────────────────────────────────────────
       
       setLoadingMessage({
         title: 'Submitting Application',

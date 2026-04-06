@@ -991,12 +991,19 @@ def get_profile():
                     applicant['id_pic'] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
                     applicant['has_mayorValidID_photo'] = True
                 else:
+                    # Generic mapping for other blob fields if any
                     applicant[f'has_{key}'] = True
                     del applicant[key]
             elif isinstance(value, datetime):
                 applicant[key] = value.isoformat()
             elif key == 'birthdate' and value:
                 applicant[key] = str(value)
+
+        # Ensure account flags are present for frontend synchronization
+        applicant['email_verified'] = applicant.get('is_verified', False)
+        # Google users are verified upon fast-registration
+        if applicant.get('google_id'):
+            applicant['email_verified'] = True
 
         return jsonify(applicant)
     except Exception as exc:

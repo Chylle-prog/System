@@ -279,6 +279,15 @@ def verify_video_content(video_bytes, keywords):
         # Sample points: 10%, 50%, 90%
         samples = [int(frame_count * 0.1), int(frame_count * 0.5), int(frame_count * 0.9)]
         
+        # --- Fast Check: If Frame 1 has no text at all, fail early ---
+        cap.set(cv2.CAP_PROP_POS_FRAMES, samples[0])
+        ret, first_frame = cap.read()
+        if ret and first_frame is not None:
+            fast_text = _run_tesseract_on_image(first_frame, psm=11)
+            if len(fast_text.strip()) < 5:
+                cap.release()
+                return False, "Low content quality: No document text detected in video."
+        
         all_ocr_text = ""
         for frame_idx in samples:
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
