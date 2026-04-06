@@ -1210,19 +1210,26 @@ const StudentInfo = () => {
       
       if (step === 4) {
         // Step 4: Verify Face Photo and Signature
-        const facePhoto = photos.face_photo || faceVerificationPreview || formData.face_photo || userProfile?.face_photo;
-        const signature = drawnSignature || signaturePreview || formData.signature_data || userProfile?.signature_data;
-        const idFront = schoolIdPhotos.front || photos.id_front || formData.id_front || userProfile?.id_front;
-        const idBack = schoolIdPhotos.back || photos.id_back || formData.id_back || userProfile?.id_back;
-        
+        const facePhoto = photos.face_photo || faceVerificationPreview || formData.face_photo;
+        const signature = drawnSignature || signaturePreview;
+        const idFront = schoolIdPhotos.front || photos.id_front || formData.id_front;
+        const idBack = schoolIdPhotos.back || photos.id_back || formData.id_back;
+
+        // Short-circuit: if both already verified in this session, skip re-verification
+        const faceAlreadyVerified = faceVerified === 'success' || faceVerified === 'technical_unavailable';
+        const sigAlreadyVerified  = signatureVerified === 'success' || !signature || !idBack;
+        if (faceAlreadyVerified && sigAlreadyVerified) {
+          return true;
+        }
+
         if (!facePhoto && !signature) {
           return true; // No documents to verify, allow progression
         }
 
         const verifications = [];
 
-        // Parallel face verification if not already success
-        if (facePhoto && idFront && faceVerified !== 'success') {
+        // Face verification — skip if already done this session
+        if (facePhoto && idFront && !faceAlreadyVerified) {
           setFaceVerified('verifying');
           verifications.push(
             applicantAPI.verifyFaceAgainstId(facePhoto, idFront)
@@ -1246,8 +1253,8 @@ const StudentInfo = () => {
           );
         }
 
-        // Parallel signature verification if not already success
-        if (signature && idBack && signatureVerified !== 'success') {
+        // Signature verification — skip if already done, or if missing valid data
+        if (signature && idBack && !sigAlreadyVerified) {
           setSignatureVerified('verifying');
           verifications.push(
             applicantAPI.verifySignatureAgainstIdBack(signature, idBack)

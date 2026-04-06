@@ -1541,14 +1541,13 @@ def ocr_check():
                     keywords = ["indigency", "barangay", "residency", "social", "welfare", "indigent", "certificate"]
                     raw_lower = raw.lower()
                     has_kw = any(kw in raw_lower for kw in keywords)
-                    
-                    if not v and has_kw and ratio >= 0.1:
-                        # Allow keyword match to supersede a slightly low identity ratio for Indigency
-                        v, msg = True, f"Indigency verified primarily via keywords ({ratio:.0%} name match)"
+
+                    if not v and has_kw:
+                        # Keyword match found even though name ratio was low — allow for Indigency
+                        v, msg = True, f"Indigency verified via document keywords"
                     elif v and not has_kw:
-                        # If name matched but no keywords, warn but don't necessarily fail as layouts vary
                         msg = f"Name matched but document keywords not clear. Proceeding as Indigency."
-                        
+
                     return {'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw}
 
                 elif doc_type == 'SchoolID':
@@ -1600,8 +1599,9 @@ def ocr_check():
         results = []
         overall_verified = True
         if jobs:
-            # Use a fixed max_workers=2 to prevent excessive parallel Tesseract processes
-            with ThreadPoolExecutor(max_workers=2) as executor:
+            # max_workers=1 since individual scan buttons now send only one doc at a time;
+            # avoids unnecessary thread overhead and conserves RAM on Render free tier.
+            with ThreadPoolExecutor(max_workers=1) as executor:
                 future_results = [executor.submit(process_doc, *job) for job in jobs]
                 for future in future_results:
                     res = future.result()
