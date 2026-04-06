@@ -8,7 +8,6 @@ const Profile = () => {
   const [userProfile, setUserProfile] = useState(null);
   const [showEditForm, setShowEditForm] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [profilePicture, setProfilePicture] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
@@ -23,11 +22,8 @@ const Profile = () => {
     streetBrgy: '',
     townCityMunicipality: 'Lipa City',
     province: 'Batangas',
-    zipCode: '4217',
-    profilePicture: null
+    zipCode: '4217'
   });
-
-  const profilePictureInputRef = useRef(null);
 
   useEffect(() => {
     // Add Font Awesome link
@@ -72,10 +68,6 @@ const Profile = () => {
       try {
         const profile = await applicantAPI.getProfile();
         setUserProfile(profile);
-        // Load existing profile picture for display
-        if (profile.profile_picture) {
-          setProfilePicture(profile.profile_picture);
-        }
         setShowEditForm(false);
       } catch (err) {
         // If no profile exists yet or any error, show edit form so the user can fill it in
@@ -118,11 +110,8 @@ const Profile = () => {
         streetBrgy: userProfile.street_brgy || userProfile.streetBarangay || '',
         townCityMunicipality: userProfile.town_city_municipality || userProfile.townCity || 'Lipa City',
         province: userProfile.province || 'Batangas',
-        zipCode: userProfile.zip_code || userProfile.zipCode || '4217',
-        profilePicture: null
+        zipCode: userProfile.zip_code || userProfile.zipCode || '4217'
       });
-      // Restore saved profile picture (base64 from backend), don't reset to null
-      setProfilePicture(userProfile.profile_picture || null);
     } else if (currentUser) {
       // New user, show edit form
       setShowEditForm(true);
@@ -136,10 +125,8 @@ const Profile = () => {
         streetBrgy: '',
         townCityMunicipality: 'Lipa City',
         province: 'Batangas',
-        zipCode: '4217',
-        profilePicture: null
+        zipCode: '4217'
       });
-      setProfilePicture(null);
     }
   }, [currentUser, userProfile]);
 
@@ -147,17 +134,6 @@ const Profile = () => {
   const logout = () => {
     localStorage.removeItem('currentUser');
     navigate('/');
-  };
-
-  const handleProfilePictureUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setProfilePicture(ev.target.result);
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleInputChange = (e) => {
@@ -187,11 +163,6 @@ const Profile = () => {
         zipCode: formData.zipCode
       };
 
-      // Only include profile picture if it's a new upload (data URL string)
-      if (profilePicture && typeof profilePicture === 'string' && profilePicture.startsWith('data:')) {
-        profileData.profile_picture = profilePicture;
-      }
-
       // Update profile via API
       const updatedData = await applicantAPI.updateProfile(profileData);
 
@@ -207,8 +178,7 @@ const Profile = () => {
         street_brgy: formData.streetBrgy,
         town_city_municipality: formData.townCityMunicipality,
         province: formData.province,
-        zip_code: formData.zipCode,
-        profile_picture: profilePicture
+        zip_code: formData.zipCode
       };
 
       setUserProfile(locallyUpdatedProfile);
@@ -254,13 +224,6 @@ const Profile = () => {
       month: 'long',
       day: 'numeric'
     });
-  };
-
-  const getProfilePictureHtml = () => {
-    if (profilePicture) {
-      return `<img src="${profilePicture}" alt="profile" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
-    }
-    return '<span>👤</span>';
   };
 
   return (
@@ -919,20 +882,14 @@ const Profile = () => {
           {userProfile && !showEditForm && (
             <div className="form-section active">
               <h2>Your Profile</h2>
-              <div className="profile-picture-upload">
-                <div
-                  className="profile-pic"
-                  dangerouslySetInnerHTML={{ __html: getProfilePictureHtml() }}
-                />
-                <div style={{ flex: 1 }}>
-                  <h3 style={{ color: 'var(--primary)', fontSize: '1.5rem', marginBottom: '0.3rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {userProfile.first_name && userProfile.last_name ? `${userProfile.first_name} ${userProfile.last_name}` : 'No name provided'}
-                    {userProfile.email_verified && (
-                      <i className="fas fa-check-circle" style={{ color: '#28a745', fontSize: '1.1rem' }} title="Verified Account"></i>
-                    )}
-                  </h3>
-                  <p style={{ color: 'var(--text-soft)', margin: 0 }}>{currentUser}</p>
-                </div>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ color: 'var(--primary)', fontSize: '1.5rem', marginBottom: '0.3rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {userProfile.first_name && userProfile.last_name ? `${userProfile.first_name} ${userProfile.last_name}` : 'No name provided'}
+                  {userProfile.email_verified && (
+                    <i className="fas fa-check-circle" style={{ color: '#28a745', fontSize: '1.1rem' }} title="Verified Account"></i>
+                  )}
+                </h3>
+                <p style={{ color: 'var(--text-soft)', margin: 0 }}>{currentUser}</p>
               </div>
 
               <div className="form-group">
@@ -1037,21 +994,6 @@ const Profile = () => {
               <h2>{userProfile ? 'Edit Profile' : 'Complete Profile'}</h2>
               {error && <div style={{ color: 'var(--danger)', marginBottom: '1rem', padding: '0.8rem', backgroundColor: 'var(--danger-bg)', borderRadius: '8px' }}>{error}</div>}
               <form onSubmit={handleProfileSubmit}>
-                <div className="profile-picture-upload">
-                  <div
-                    className="profile-pic"
-                    dangerouslySetInnerHTML={{ __html: getProfilePictureHtml() }}
-                  />
-                  <div className="form-group">
-                    <label>Profile picture</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleProfilePictureUpload}
-                      ref={profilePictureInputRef}
-                    />
-                  </div>
-                </div>
                 <div className="form-group">
                   <label>First name</label>
                   <input
@@ -1103,7 +1045,8 @@ const Profile = () => {
                     required
                   >
                     <option value="">Select School</option>
-                    <option value="De La Salle University">De La Salle University</option>
+                    <option value="DLSL/De La Salle Lipa">DLSL/De La Salle Lipa</option>
+                    <option value="NU/National University Lipa">NU/National University Lipa</option>
                     <option value="Batangas State University">Batangas State University</option>
                     <option value="Kolehiyo ng Lungsod ng Lipa">Kolehiyo ng Lungsod ng Lipa</option>
                     <option value="Philippine State College of Aeronautics">Philippine State College of Aeronautics</option>

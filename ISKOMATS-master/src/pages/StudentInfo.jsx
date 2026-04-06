@@ -14,10 +14,10 @@ const STEP_FIELDS = {
   2: [
     'fatherStatus', 'fatherName', 'fatherOccupation', 'fatherPhoneNumber',
     'motherStatus', 'motherName', 'motherOccupation', 'motherPhoneNumber',
-    'parentsGrossIncome', 'numberOfSiblings'
+    'numberOfSiblings'
   ],
   3: [
-    'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course', 'gpa',
+    'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course',
     'id_vid_url',
     'mayorCOE_photo', 'mayorCOE_video', 'mayorGrades_photo', 'mayorGrades_video'
   ],
@@ -245,7 +245,6 @@ const StudentInfo = () => {
     mobileNumber: '',
     yearLevel: '',
     emailAddress: '',
-    gpa: '',
     
     // Family Background
     fatherStatus: '',
@@ -256,7 +255,6 @@ const StudentInfo = () => {
     motherName: '',
     motherOccupation: '',
     motherPhoneNumber: '',
-    parentsGrossIncome: '',
     numberOfSiblings: '',
     course: '',
     
@@ -507,8 +505,6 @@ const StudentInfo = () => {
 
     // Get scholarship name and search criteria from URL params
     const scholarship = searchParams.get('scholarship');
-    const urlGpa = searchParams.get('gpa');
-    const urlIncome = searchParams.get('income');
     const draftKey = buildDraftStorageKey(user, searchParams, scholarship || scholarshipName);
     let savedDraft = null;
 
@@ -562,8 +558,6 @@ const StudentInfo = () => {
             motherName: [profile.mother_fname, profile.mother_lname].filter(Boolean).join(' '),
             motherOccupation: profile.mother_occupation || '',
             motherPhoneNumber: profile.mother_phone_no || '',
-            parentsGrossIncome: urlIncome || profile.financial_income_of_parents || '',
-            gpa: urlGpa || profile.overall_gpa || '',
             numberOfSiblings: profile.sibling_no || '',
             course: profile.course || ''
           }));
@@ -1095,8 +1089,7 @@ const StudentInfo = () => {
         formData.lastName || userProfile?.last_name,
         formData.schoolName || userProfile?.school,
         formData.schoolIdNumber || userProfile?.school_id_no,
-        formData.yearLevel || userProfile?.year_lvl,
-        formData.gpa || userProfile?.overall_gpa
+        formData.yearLevel || userProfile?.year_lvl
       );
       
       setVerificationProgress(100);  // Complete the progress bar
@@ -1438,7 +1431,6 @@ const StudentInfo = () => {
       { name: 'motherStatus', label: 'Mother Status' },
       { name: 'fatherOccupation', label: 'Father Occupation' },
       { name: 'motherOccupation', label: 'Mother Occupation' },
-      { name: 'parentsGrossIncome', label: "Parents' Gross Income" },
       { name: 'numberOfSiblings', label: 'Number of Siblings' },
       { name: 'course', label: 'Course' }
     ];
@@ -2489,10 +2481,6 @@ const StudentInfo = () => {
 
               <div className="form-row">
                 <div className="form-group">
-                  <label>Parents' Gross Annual Income <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="number" name="parentsGrossIncome" value={formData.parentsGrossIncome} onChange={handleInputChange} placeholder="0.00" required={currentStep === 2} />
-                </div>
-                <div className="form-group">
                   <label>Number of Siblings <span style={{color: '#e74c3c'}}>*</span></label>
                   <input type="number" name="numberOfSiblings" value={formData.numberOfSiblings} onChange={handleInputChange} placeholder="0" required={currentStep === 2} />
                 </div>
@@ -2528,8 +2516,8 @@ const StudentInfo = () => {
                   <label>Name of School <span style={{color: '#e74c3c'}}>*</span></label>
                   <select name="schoolName" value={formData.schoolName} onChange={handleInputChange} required={currentStep === 3}>
                     <option value="">Select School</option>
-                    <option value="De La Salle Lipa">De La Salle Lipa</option>
-                    <option value="National University Lipa">National University Lipa</option>
+                    <option value="DLSL/De La Salle Lipa">DLSL/De La Salle Lipa</option>
+                    <option value="NU/National University Lipa">NU/National University Lipa</option>
                     <option value="Batangas State University">Batangas State University</option>
                     <option value="Kolehiyo ng Lungsod ng Lipa">Kolehiyo ng Lungsod ng Lipa</option>
                     <option value="Philippine State College of Aeronautics">Philippine State College of Aeronautics</option>
@@ -2572,10 +2560,6 @@ const StudentInfo = () => {
                 <div className="form-group">
                   <label>Course/Program <span style={{color: '#e74c3c'}}>*</span></label>
                   <input type="text" name="course" value={formData.course} onChange={handleInputChange} placeholder="B.S. Information Technology" required={currentStep === 3} />
-                </div>
-                <div className="form-group">
-                  <label>Current GPA <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="number" step="0.01" name="gpa" value={formData.gpa} onChange={handleInputChange} placeholder="0.00" required={currentStep === 3} />
                 </div>
               </div>
 
