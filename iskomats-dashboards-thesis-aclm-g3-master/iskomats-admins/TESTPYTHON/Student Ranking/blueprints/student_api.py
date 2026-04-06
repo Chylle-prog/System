@@ -679,7 +679,7 @@ def student_google_login():
                 """,
                 (google_profile['first_name'], '', google_profile['last_name']),
             )
-            applicant_no = cur.fetchone()[0]
+            applicant_no = cur.fetchone()['applicant_no']
             
             # Create email/auth record
             # We don't set a password for Google accounts
@@ -691,6 +691,7 @@ def student_google_login():
                 """,
                 (applicant_no, email),
             )
+            em_no = cur.fetchone()['em_no']
             conn.commit()
             
             user = {
