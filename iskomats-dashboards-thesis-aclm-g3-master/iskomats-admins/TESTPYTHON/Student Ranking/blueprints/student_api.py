@@ -28,6 +28,16 @@ student_api_bp = Blueprint('student_api', __name__, url_prefix='/api/student')
 bcrypt = Bcrypt()
 SECRET_KEY = get_secret_key()
 
+@student_api_bp.route('/debug/env', methods=['GET'])
+def debug_env():
+    """Temporary debug route to check server configuration."""
+    return jsonify({
+        'GOOGLE_CLIENT_ID': os.environ.get('GOOGLE_CLIENT_ID'),
+        'GMAIL_SENDER_EMAIL': os.environ.get('GMAIL_SENDER_EMAIL'),
+        'HAS_ENV_FILE': os.path.exists('.env'),
+        'PROJECT_ROOT': str(os.getcwd())
+    })
+
 ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
 if ENCRYPTION_KEY and isinstance(ENCRYPTION_KEY, str):
     ENCRYPTION_KEY = ENCRYPTION_KEY.encode()
@@ -663,8 +673,8 @@ def student_google_login():
             # Create applicant record first
             cur.execute(
                 """
-                INSERT INTO applicants (first_name, middle_name, last_name, status)
-                VALUES (%s, %s, %s, 'N')
+                INSERT INTO applicants (first_name, middle_name, last_name)
+                VALUES (%s, %s, %s)
                 RETURNING applicant_no
                 """,
                 (google_profile['first_name'], '', google_profile['last_name']),

@@ -16,7 +16,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 ENV_PATH = PROJECT_ROOT / '.env'
 
 if ENV_PATH.exists():
-    load_dotenv(ENV_PATH, override=True)
+    # Only load from .env if the variable isn't already set (prevents overriding Render variables)
+    load_dotenv(ENV_PATH, override=False)
 
 
 def get_db_connection_kwargs():
