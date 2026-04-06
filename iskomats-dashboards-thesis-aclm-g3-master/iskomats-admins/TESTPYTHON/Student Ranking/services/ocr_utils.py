@@ -132,8 +132,9 @@ def assess_image_quality(img):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
         laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
         
-        # Blurry threshold: typical OCR-quality images have variance > 100
-        if laplacian_var < 100:
+        # Blurry threshold: Real-world ID photos often have variance 20-80
+        # Only reject very severely blurred images (< 20)
+        if laplacian_var < 20:
             return False, f"Image too blurry (sharpness: {laplacian_var:.1f})"
         
         # Check brightness (mean pixel value should be between 20-235)

@@ -2604,32 +2604,34 @@ const StudentInfo = () => {
                           <i className={`fas ${ocrVerified === 'success' ? 'fa-check-circle' : (ocrVerified === 'failed' ? 'fa-times-circle' : 'fa-info-circle')}`}></i> 
                           {ocrVerified === 'success' ? 'Verified' : (ocrVerified === 'failed' ? 'Check Failed' : 'ID Uploaded')}
                         </div>
-                        <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
-                          {ocrVerified !== 'success' && (
-                            <button 
-                              type="button" 
-                              onClick={() => scanDocument('School ID')} 
-                              disabled={isScanning.schoolId}
-                              style={{
-                                background: 'var(--primary)', 
-                                color: 'white', 
-                                border: 'none', 
-                                borderRadius: '4px', 
-                                padding: '3px 8px', 
-                                fontSize: '0.7rem', 
-                                fontWeight: '600',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}
-                            >
-                              {isScanning.schoolId ? <><i className="fas fa-spinner fa-spin"></i> Scanning...</> : <><i className="fas fa-barcode"></i> Scan ID</>}
-                            </button>
-                          )}
-                          <button type="button" onClick={() => { setSchoolIdPhotos(prev => ({ ...prev, front: null })); setOcrVerified(null); setTimeout(() => schoolIdFrontInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
-                        </div>
+                        <button type="button" onClick={() => { setSchoolIdPhotos(prev => ({ ...prev, front: null })); setOcrVerified(null); setTimeout(() => schoolIdFrontInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
                       </div>
+                    )}
+                    {schoolIdPhotos.front && ocrVerified !== 'success' && (
+                      <button 
+                        type="button" 
+                        onClick={() => scanDocument('School ID')} 
+                        disabled={isScanning.schoolId}
+                        style={{
+                          marginTop: '0.8rem',
+                          background: 'var(--primary)', 
+                          color: 'white', 
+                          border: 'none', 
+                          borderRadius: '8px', 
+                          padding: '6px 14px', 
+                          fontSize: '0.8rem', 
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                          width: '100%',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        {isScanning.schoolId ? <><i className="fas fa-spinner fa-spin"></i> Scanning...</> : <><i className="fas fa-barcode"></i> Scan ID</>}
+                      </button>
                     )}
                   </div>
                   <div className="form-group" style={{position: 'relative'}}>
@@ -2701,32 +2703,7 @@ const StudentInfo = () => {
                                 <i className={`fas ${mayorCOEVerified === 'success' ? 'fa-check-circle' : (mayorCOEVerified === 'failed' ? 'fa-times-circle' : 'fa-info-circle')}`}></i> 
                                 {mayorCOEVerified === 'success' ? 'Verified' : (mayorCOEVerified === 'failed' ? 'Verification Failed' : 'Photo Uploaded')}
                               </div>
-                              <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
-                                {mayorCOEVerified !== 'success' && (
-                                  <button 
-                                    type="button" 
-                                    onClick={(e) => { e.stopPropagation(); scanDocument('Enrollment'); }} 
-                                    disabled={isScanning.coe}
-                                    style={{
-                                      background: 'var(--primary)', 
-                                      color: 'white', 
-                                      border: 'none', 
-                                      borderRadius: '8px', 
-                                      padding: '4px 12px', 
-                                      fontSize: '0.8rem', 
-                                      fontWeight: '600',
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '6px',
-                                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                                    }}
-                                  >
-                                    {isScanning.coe ? <><i className="fas fa-spinner fa-spin"></i> Scanning...</> : <><i className="fas fa-barcode"></i> Scan COE</>}
-                                  </button>
-                                )}
-                                <button type="button" onClick={(e) => { e.stopPropagation(); setPhotos(prev => ({ ...prev, mayorCOE_photo: null })); setMayorCOEVerified(null); setTimeout(() => coePhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
-                              </div>
+                              <button type="button" onClick={(e) => { e.stopPropagation(); setPhotos(prev => ({ ...prev, mayorCOE_photo: null })); setMayorCOEVerified(null); setTimeout(() => coePhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
                             </div>
                           </div>
                         ) : (
@@ -2734,6 +2711,34 @@ const StudentInfo = () => {
                         )}
                         <input ref={coePhotoInputRef} type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} style={{display: 'none'}} />
                       </div>
+                      {photos.mayorCOE_photo || userProfile?.has_mayorCOE_photo ? (
+                        mayorCOEVerified !== 'success' && (
+                          <button 
+                            type="button" 
+                            onClick={(e) => { e.stopPropagation(); scanDocument('Enrollment'); }} 
+                            disabled={isScanning.coe}
+                            style={{
+                              marginTop: '0.8rem',
+                              background: 'var(--primary)', 
+                              color: 'white', 
+                              border: 'none', 
+                              borderRadius: '8px', 
+                              padding: '6px 14px', 
+                              fontSize: '0.8rem', 
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                              width: '100%',
+                              justifyContent: 'center'
+                            }}
+                          >
+                            {isScanning.coe ? <><i className="fas fa-spinner fa-spin"></i> Scanning...</> : <><i className="fas fa-barcode"></i> Scan COE</>}
+                          </button>
+                        )
+                      ) : null}
                     </div>
                     <div className="form-group" style={{marginBottom: 0}}>
                       <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov) - Max 30 seconds</label>
@@ -2790,32 +2795,7 @@ const StudentInfo = () => {
                                 <i className={`fas ${mayorGradesVerified === 'success' ? 'fa-check-circle' : (mayorGradesVerified === 'failed' ? 'fa-times-circle' : 'fa-info-circle')}`}></i> 
                                 {mayorGradesVerified === 'success' ? 'Verified' : (mayorGradesVerified === 'failed' ? 'Verification Failed' : 'Photo Uploaded')}
                               </div>
-                              <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
-                                {mayorGradesVerified !== 'success' && (
-                                  <button 
-                                    type="button" 
-                                    onClick={(e) => { e.stopPropagation(); scanDocument('Grades'); }} 
-                                    disabled={isScanning.grades}
-                                    style={{
-                                      background: 'var(--primary)', 
-                                      color: 'white', 
-                                      border: 'none', 
-                                      borderRadius: '8px', 
-                                      padding: '4px 12px', 
-                                      fontSize: '0.8rem', 
-                                      fontWeight: '600',
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '6px',
-                                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                                    }}
-                                  >
-                                    {isScanning.grades ? <><i className="fas fa-spinner fa-spin"></i> Scanning...</> : <><i className="fas fa-barcode"></i> Scan Grades</>}
-                                  </button>
-                                )}
-                                <button type="button" onClick={(e) => { e.stopPropagation(); setPhotos(prev => ({ ...prev, mayorGrades_photo: null })); setMayorGradesVerified(null); setTimeout(() => gradesPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
-                              </div>
+                              <button type="button" onClick={(e) => { e.stopPropagation(); setPhotos(prev => ({ ...prev, mayorGrades_photo: null })); setMayorGradesVerified(null); setTimeout(() => gradesPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
                             </div>
                           </div>
                         ) : (
@@ -2823,6 +2803,34 @@ const StudentInfo = () => {
                         )}
                         <input ref={gradesPhotoInputRef} type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} style={{display: 'none'}} />
                       </div>
+                      {photos.mayorGrades_photo || userProfile?.has_mayorGrades_photo ? (
+                        mayorGradesVerified !== 'success' && (
+                          <button 
+                            type="button" 
+                            onClick={(e) => { e.stopPropagation(); scanDocument('Grades'); }} 
+                            disabled={isScanning.grades}
+                            style={{
+                              marginTop: '0.8rem',
+                              background: 'var(--primary)', 
+                              color: 'white', 
+                              border: 'none', 
+                              borderRadius: '8px', 
+                              padding: '6px 14px', 
+                              fontSize: '0.8rem', 
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                              width: '100%',
+                              justifyContent: 'center'
+                            }}
+                          >
+                            {isScanning.grades ? <><i className="fas fa-spinner fa-spin"></i> Scanning...</> : <><i className="fas fa-barcode"></i> Scan Grades</>}
+                          </button>
+                        )
+                      ) : null}
                     </div>
                     <div className="form-group" style={{marginBottom: 0}}>
                       <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov) - Max 30 seconds</label>
@@ -3004,14 +3012,33 @@ const StudentInfo = () => {
                           </div>
                         )}
                       </div>
+                      <button type="button" onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); setFaceVerified(null); setTimeout(() => openCamera(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
                     </div>
-                    <div style={{display: 'flex', gap: '12px'}}>
-                        {faceVerified !== 'success' && (
-                          <button type="button" onClick={() => verifyDocumentsBeforeStep(4)} style={{background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '4px', padding: '4px 10px', fontSize: '0.75rem', fontWeight: '600', cursor: 'pointer'}}>Verify Match</button>
-                        )}
-                        <button type="button" onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); setFaceVerified(null); setTimeout(() => openCamera(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
-                      </div>
-                    </div>
+                    {faceVerified !== 'success' && (
+                      <button 
+                        type="button" 
+                        onClick={() => verifyDocumentsBeforeStep(4)} 
+                        style={{
+                          marginTop: '0.8rem',
+                          background: 'var(--primary)', 
+                          color: 'white', 
+                          border: 'none', 
+                          borderRadius: '8px', 
+                          padding: '6px 14px', 
+                          fontSize: '0.8rem', 
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                          width: '100%',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <i className="fas fa-check"></i> Verify Match
+                      </button>
+                    )}
                   ) : (
                     <button type="button" onClick={openCamera} style={{border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', width: '100%', justifyContent: 'center'}}>
                       <i className="fas fa-camera" style={{fontSize: '2.5rem'}}></i>
