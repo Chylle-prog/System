@@ -66,15 +66,40 @@ def convert_blob_to_media_array(blob, name="document"):
         print(f"ERROR converting blob: {e}", file=sys.stderr)
         return []
 
-def get_applicant_media_metadata(applicant_no, column_name, has_data, name="document"):
-    """Return the media metadata with a URL instead of embedded base64 data for performance."""
+def get_applicant_media_metadata(applicant_no, column_name, has_data, data_value=None, name="document"):
+    """Return the media metadata with a URL instead of embedded base64 data for performance.
+    
+    For image/document columns (BYTEA):
+        - Returns lazy-loaded URL to get_applicant_image endpoint
+        - Type is detected from column name
+    
+    For video URL columns (VARCHAR):
+        - If data_value provided, returns it directly as the src
+        - Otherwise returns None
+    """
     if not has_data:
         return []
-    return [{
-        'src': url_for('admin_api.get_applicant_image', applicant_no=applicant_no, column_name=column_name, _external=True),
-        'type': 'image/jpeg',
-        'name': f"{name} (Lazy Loaded)"
-    }]
+    
+    # Detect if this is a video column based on naming convention
+    is_video = column_name.endswith('_vid_url') if column_name else False
+    media_type = 'video/mp4' if is_video else 'image/jpeg'
+    
+    if is_video and data_value:
+        # For video URLs, use the URL directly from database
+        return [{
+            'src': data_value,
+            'type': media_type,
+            'name': f"{name}"
+        }]
+    elif not is_video:
+        # For binary image/document data, use lazy-loading endpoint
+        return [{
+            'src': url_for('admin_api.get_applicant_image', applicant_no=applicant_no, column_name=column_name, _external=True),
+            'type': media_type,
+            'name': f"{name} (Lazy Loaded)"
+        }]
+    
+    return []
 
 def decrypt_image_to_data_url(encrypted_data):
     """Decrypt binary data and return as base64 data URL for signatures."""
@@ -1984,22 +2009,31 @@ def get_applicants(current_user_id, pro_no, role, program):
                     pass
             
             # Convert document blobs to media arrays (Optimized: use URLs)
-            a['indigencyFiles'] = get_applicant_media_metadata(app_no, 'indigency_doc', a.get('has_indigency_doc'), "Indigency Proof")
-            a['certificateFiles'] = get_applicant_media_metadata(app_no, 'enrollment_certificate_doc', a.get('has_enrollment_certificate_doc'), "Enrollment Certificate")
-            a['gradesFiles'] = get_applicant_media_metadata(app_no, 'grades_doc', a.get('has_grades_doc'), "Grades / Transcript")
+            # Include both image files and video files for each document type
+            a['indigencyFiles'] = get_applicant_media_metadata(app_no, 'indigency_doc', a.get('has_indigency_doc'), None, "Indigency Proof")
+            if a.get('indigency_vid_url'):
+                a['indigencyFiles'].extend(get_applicant_media_metadata(app_no, 'indigency_vid_url', True, a.get('indigency_vid_url'), "Indigency Video"))
+            
+            a['certificateFiles'] = get_applicant_media_metadata(app_no, 'enrollment_certificate_doc', a.get('has_enrollment_certificate_doc'), None, "Enrollment Certificate")
+            if a.get('enrollment_certificate_vid_url'):
+                a['certificateFiles'].extend(get_applicant_media_metadata(app_no, 'enrollment_certificate_vid_url', True, a.get('enrollment_certificate_vid_url'), "Enrollment Certificate Video"))
+            
+            a['gradesFiles'] = get_applicant_media_metadata(app_no, 'grades_doc', a.get('has_grades_doc'), None, "Grades / Transcript")
+            if a.get('grades_vid_url'):
+                a['gradesFiles'].extend(get_applicant_media_metadata(app_no, 'grades_vid_url', True, a.get('grades_vid_url'), "Grades Video"))
             
             # Combine all ID images into idFiles (Optimized: use URLs)
             id_files = []
             if a.get('has_schoolID_photo'): 
-                id_files.extend(get_applicant_media_metadata(app_no, 'schoolID_photo', True, "School ID"))
+                id_files.extend(get_applicant_media_metadata(app_no, 'schoolID_photo', True, None, "School ID"))
             if a.get('has_id_img_front'): 
-                id_files.extend(get_applicant_media_metadata(app_no, 'id_img_front', True, "ID Front"))
+                id_files.extend(get_applicant_media_metadata(app_no, 'id_img_front', True, None, "ID Front"))
             if a.get('has_id_img_back'): 
-                id_files.extend(get_applicant_media_metadata(app_no, 'id_img_back', True, "ID Back"))
+                id_files.extend(get_applicant_media_metadata(app_no, 'id_img_back', True, None, "ID Back"))
             if a.get('has_id_pic'): 
-                id_files.extend(get_applicant_media_metadata(app_no, 'id_pic', True, "ID Photo"))
+                id_files.extend(get_applicant_media_metadata(app_no, 'id_pic', True, None, "ID Photo"))
             if a.get('has_profile_picture'): 
-                id_files.extend(get_applicant_media_metadata(app_no, 'profile_picture', True, "Profile Picture"))
+                id_files.extend(get_applicant_media_metadata(app_no, 'profile_picture', True, None, "Profile Picture"))
             
             a['idFiles'] = id_files
             
@@ -2009,6 +2043,78 @@ def get_applicants(current_user_id, pro_no, role, program):
     
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
+
+@api_bp.route('/applicants/<int:applicant_no>/accept', methods=['POST'])
+@token_required
+def accept_applicant(current_user_id, pro_no, role, applicant_no):
+    """Accept an applicant (move from pending to accepted)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Update applicant status
+        cursor.execute(
+            '''UPDATE applicant_status 
+               SET is_accepted = True, status_updated = CURRENT_DATE
+               WHERE applicant_no = %s''',
+            (applicant_no,)
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({'success': True, 'message': 'Applicant accepted'}), 200
+    
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
+
+@api_bp.route('/applicants/<int:applicant_no>/decline', methods=['POST'])
+@token_required
+def decline_applicant(current_user_id, pro_no, role, applicant_no):
+    """Decline an applicant (move from pending to declined)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Update applicant status
+        cursor.execute(
+            '''UPDATE applicant_status 
+               SET is_accepted = False, status_updated = CURRENT_DATE
+               WHERE applicant_no = %s''',
+            (applicant_no,)
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({'success': True, 'message': 'Applicant declined'}), 200
+    
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
+
+@api_bp.route('/applicants/<int:applicant_no>/cancel', methods=['POST'])
+@token_required
+def cancel_applicant(current_user_id, pro_no, role, applicant_no):
+    """Cancel applicant status (revert to pending/NULL)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Update applicant status back to NULL (pending review)
+        cursor.execute(
+            '''UPDATE applicant_status 
+               SET is_accepted = NULL, status_updated = CURRENT_DATE
+               WHERE applicant_no = %s''',
+            (applicant_no,)
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({'success': True, 'message': 'Applicant status cancelled'}), 200
+    
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
 
 @api_bp.route('/applicants/<program>', methods=['POST'])
 @token_required
@@ -2537,6 +2643,52 @@ def create_announcement(current_user_id, pro_no, role):
             print(f"[NOTIF ERROR] Failed to trigger announcement notifications: {e}")
 
         return jsonify({'message': 'Announcement created', 'ann_no': ann_no}), 201
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+@api_bp.route('/announcements/<int:ann_no>', methods=['PUT'])
+@token_required
+def update_announcement(current_user_id, pro_no, role, ann_no):
+    data = request.json
+    title = data.get('title')
+    message = data.get('content')
+    
+    if not title or not message:
+        return jsonify({'message': 'Title and content are required'}), 400
+        
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        # Check ownership unless super admin
+        if role != 'admin':
+            cur.execute("SELECT pro_no FROM announcements WHERE ann_no = %s", (ann_no,))
+            row = cur.fetchone()
+            if not row:
+                return jsonify({'message': 'Announcement not found'}), 404
+            if row['pro_no'] != pro_no:
+                return jsonify({'message': 'Unauthorized to update this announcement'}), 403
+        
+        cur.execute("""
+            UPDATE announcements 
+            SET ann_title = %s, ann_message = %s
+            WHERE ann_no = %s
+        """, (title, message, ann_no))
+        conn.commit()
+        
+        record_admin_activity(
+            actor_user_no=current_user_id,
+            action='update_announcement',
+            target_type='announcement',
+            target_id=ann_no,
+            target_label=title,
+            provider_no=pro_no
+        )
+        
+        return jsonify({'message': 'Announcement updated', 'ann_no': ann_no}), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
     finally:

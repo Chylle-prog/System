@@ -854,52 +854,94 @@ export default function DashAfrica() {
     setRecommendationModal(false);
   };
 
-  const acceptApplicant = () => {
+  const acceptApplicant = async () => {
     if (!viewApplicant || viewApplicant.listType !== 'all') return;
     const { index } = viewApplicant;
-    setData((d) => {
-      const applicant = d.applicants[index];
-      if (!applicant) return d;
-      return {
-        ...d,
-        applicants: d.applicants.filter((_, i) => i !== index),
-        accepted: [...d.accepted, applicant],
-      };
-    });
-    setViewApplicant(null);
-    setSection('track');
-    setTrackTab('accepted');
+    
+    try {
+      const applicant = data.applicants[index];
+      if (!applicant) return;
+      
+      // Call backend API to persist the change
+      await scholarshipAPI.acceptApplicant(applicant.id);
+      
+      // Update frontend state
+      setData((d) => {
+        const applicant = d.applicants[index];
+        if (!applicant) return d;
+        return {
+          ...d,
+          applicants: d.applicants.filter((_, i) => i !== index),
+          accepted: [...d.accepted, applicant],
+        };
+      });
+      
+      setViewApplicant(null);
+      setSection('track');
+      setTrackTab('accepted');
+    } catch (error) {
+      console.error('Error accepting applicant:', error);
+      alert('Failed to accept applicant. Please try again.');
+    }
   };
 
-  const declineApplicant = () => {
+  const declineApplicant = async () => {
     if (!viewApplicant || viewApplicant.listType !== 'all') return;
     const { index } = viewApplicant;
-    setData((d) => {
-      const applicant = d.applicants[index];
-      if (!applicant) return d;
-      return {
-        ...d,
-        applicants: d.applicants.filter((_, i) => i !== index),
-        declined: [...d.declined, applicant],
-      };
-    });
-    setViewApplicant(null);
-    setSection('track');
-    setTrackTab('declined');
+    
+    try {
+      const applicant = data.applicants[index];
+      if (!applicant) return;
+      
+      // Call backend API to persist the change
+      await scholarshipAPI.declineApplicant(applicant.id);
+      
+      // Update frontend state
+      setData((d) => {
+        const applicant = d.applicants[index];
+        if (!applicant) return d;
+        return {
+          ...d,
+          applicants: d.applicants.filter((_, i) => i !== index),
+          declined: [...d.declined, applicant],
+        };
+      });
+      
+      setViewApplicant(null);
+      setSection('track');
+      setTrackTab('declined');
+    } catch (error) {
+      console.error('Error declining applicant:', error);
+      alert('Failed to decline applicant. Please try again.');
+    }
   };
 
-  const cancelApplicant = (listType, index) => {
-    setData((d) => {
-      const list = d[listType] || [];
+  const cancelApplicant = async (listType, index) => {
+    try {
+      const list = data[listType] || [];
       const applicant = list[index];
-      if (!applicant) return d;
-      return {
-        ...d,
-        applicants: [...d.applicants, applicant],
-        [listType]: list.filter((_, i) => i !== index),
-      };
-    });
-    setTrackTab('all');
+      if (!applicant) return;
+      
+      // Call backend API to persist the change
+      await scholarshipAPI.cancelApplicant(applicant.id);
+      
+      // Update frontend state
+      setData((d) => {
+        const list = d[listType] || [];
+        const applicant = list[index];
+        if (!applicant) return d;
+        return {
+          ...d,
+          applicants: [...d.applicants, applicant],
+          [listType]: list.filter((_, i) => i !== index),
+        };
+      });
+      
+      setTrackTab('all');
+    } catch (error) {
+      console.error('Error canceling applicant:', error);
+      alert('Failed to cancel applicant status. Please try again.');
+    }
   };
 
   const getStudentStatus = (email, name) => {
@@ -1063,7 +1105,7 @@ export default function DashAfrica() {
                       <span className="text-sm font-black text-gray-900">{msg.studentName}</span>
                       <span className="text-[10px] font-bold text-gray-400 uppercase">{formatDate(msg.timestamp)}</span>
                     </div>
-                    <p className="text-xs text-gray-500 line-clamp-1">{msg.subject}</p>
+                    <p className="text-xs text-gray-500 line-clamp-1">{msg.message}</p>
                   </div>
                 </div>
               ))}
@@ -2740,7 +2782,6 @@ export default function DashAfrica() {
                             <FaClock className="text-[10px]" /> {formatDate(msg.timestamp)}
                           </span>
                         </div>
-                        <p className="text-sm font-medium text-[#800020] mb-1">{msg.subject}</p>
                         <p className="text-gray-700 whitespace-pre-wrap text-sm">{msg.message}</p>
                         <div className="mt-2 flex items-center justify-end gap-2">
                           <button type="button" onClick={() => toggleStar(msg.id)} className={`p-2 rounded-lg hover:bg-gray-100 ${msg.starred ? 'text-yellow-500' : 'text-gray-400'}`}>

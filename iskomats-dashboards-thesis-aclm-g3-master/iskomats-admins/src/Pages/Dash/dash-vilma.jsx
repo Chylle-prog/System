@@ -542,10 +542,17 @@ export default function DashVilma() {
         time_added: new Date().toISOString()
       };
 
-      const response = await announcementAPI.create(announcementData);
+      let response;
+      if (manageMode === 'edit' && editingPost) {
+        // Update existing announcement
+        response = await announcementAPI.update(editingPost.id || editingPost.ann_no, announcementData);
+      } else {
+        // Create new announcement
+        response = await announcementAPI.create(announcementData);
+      }
 
       if (response.data.message) {
-        alert('Announcement saved successfully!');
+        alert(`Announcement ${manageMode === 'edit' ? 'updated' : 'created'} successfully!`);
         resetForm();
         loadAnnouncements();
         setManageMode('list');
@@ -816,52 +823,94 @@ export default function DashVilma() {
     setRecommendationModal(false);
   };
 
-  const acceptApplicant = () => {
+  const acceptApplicant = async () => {
     if (!viewApplicant || viewApplicant.listType !== 'all') return;
     const { index } = viewApplicant;
-    setData((d) => {
-      const applicant = d.applicants[index];
-      if (!applicant) return d;
-      return {
-        ...d,
-        applicants: d.applicants.filter((_, i) => i !== index),
-        accepted: [...d.accepted, applicant],
-      };
-    });
-    setViewApplicant(null);
-    setSection('track');
-    setTrackTab('accepted');
+    
+    try {
+      const applicant = data.applicants[index];
+      if (!applicant) return;
+      
+      // Call backend API to persist the change
+      await scholarshipAPI.acceptApplicant(applicant.id);
+      
+      // Update frontend state
+      setData((d) => {
+        const applicant = d.applicants[index];
+        if (!applicant) return d;
+        return {
+          ...d,
+          applicants: d.applicants.filter((_, i) => i !== index),
+          accepted: [...d.accepted, applicant],
+        };
+      });
+      
+      setViewApplicant(null);
+      setSection('track');
+      setTrackTab('accepted');
+    } catch (error) {
+      console.error('Error accepting applicant:', error);
+      alert('Failed to accept applicant. Please try again.');
+    }
   };
 
-  const declineApplicant = () => {
+  const declineApplicant = async () => {
     if (!viewApplicant || viewApplicant.listType !== 'all') return;
     const { index } = viewApplicant;
-    setData((d) => {
-      const applicant = d.applicants[index];
-      if (!applicant) return d;
-      return {
-        ...d,
-        applicants: d.applicants.filter((_, i) => i !== index),
-        declined: [...d.declined, applicant],
-      };
-    });
-    setViewApplicant(null);
-    setSection('track');
-    setTrackTab('declined');
+    
+    try {
+      const applicant = data.applicants[index];
+      if (!applicant) return;
+      
+      // Call backend API to persist the change
+      await scholarshipAPI.declineApplicant(applicant.id);
+      
+      // Update frontend state
+      setData((d) => {
+        const applicant = d.applicants[index];
+        if (!applicant) return d;
+        return {
+          ...d,
+          applicants: d.applicants.filter((_, i) => i !== index),
+          declined: [...d.declined, applicant],
+        };
+      });
+      
+      setViewApplicant(null);
+      setSection('track');
+      setTrackTab('declined');
+    } catch (error) {
+      console.error('Error declining applicant:', error);
+      alert('Failed to decline applicant. Please try again.');
+    }
   };
 
-  const cancelApplicant = (listType, index) => {
-    setData((d) => {
-      const list = d[listType] || [];
+  const cancelApplicant = async (listType, index) => {
+    try {
+      const list = data[listType] || [];
       const applicant = list[index];
-      if (!applicant) return d;
-      return {
-        ...d,
-        applicants: [...d.applicants, applicant],
-        [listType]: list.filter((_, i) => i !== index),
-      };
-    });
-    setTrackTab('all');
+      if (!applicant) return;
+      
+      // Call backend API to persist the change
+      await scholarshipAPI.cancelApplicant(applicant.id);
+      
+      // Update frontend state
+      setData((d) => {
+        const list = d[listType] || [];
+        const applicant = list[index];
+        if (!applicant) return d;
+        return {
+          ...d,
+          applicants: [...d.applicants, applicant],
+          [listType]: list.filter((_, i) => i !== index),
+        };
+      });
+      
+      setTrackTab('all');
+    } catch (error) {
+      console.error('Error canceling applicant:', error);
+      alert('Failed to cancel applicant status. Please try again.');
+    }
   };
 
   const getStudentStatus = (id, name, currentStatus) => {
@@ -1032,7 +1081,7 @@ export default function DashVilma() {
                       <span className="text-sm font-black text-gray-900">{msg.studentName}</span>
                       <span className="text-[10px] font-bold text-gray-400 uppercase">{formatDate(msg.timestamp)}</span>
                     </div>
-                    <p className="text-xs text-gray-500 line-clamp-1">{msg.subject}</p>
+                    <p className="text-xs text-gray-500 line-clamp-1">{msg.message}</p>
                   </div>
                 </div>
               ))}
@@ -1401,11 +1450,11 @@ export default function DashVilma() {
           )}
 
           <div className="md:col-span-2 flex justify-end gap-2">
-            <button type="button" onClick={() => setManageMode('list')} className="px-4 py-2 rounded-lg bg-gray-500 text-white font-semibold hover:bg-gray-600 transition-colors">
+            <button type="button" onClick={() => setManageMode('list')} className="px-4 py-2 rounded-lg bg-gray-500 text-white font-semibold hover:bg-gray-600 transition-colors" disabled={isSaving}>
               Cancel
             </button>
-            <button type="submit" className="px-4 py-2 rounded-lg bg-[#800020] text-white font-semibold hover:bg-[#650018] transition-colors">
-              {manageMode === 'edit' ? 'Update' : 'Publish'} {manageTab === 'scholarship' ? 'Post' : 'Announcement'}
+            <button type="submit" disabled={isSaving} className={`px-4 py-2 rounded-lg bg-[#800020] text-white font-semibold hover:bg-[#650018] transition-colors ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              {isSaving ? 'Saving...' : `${manageMode === 'edit' ? 'Update' : 'Publish'} ${manageTab === 'scholarship' ? 'Post' : 'Announcement'}`}
             </button>
           </div>
         </form>
@@ -2982,7 +3031,6 @@ export default function DashVilma() {
                             <FaClock className="text-[10px]" /> {formatDate(msg.timestamp)}
                           </span>
                         </div>
-                        <p className="text-sm font-medium text-[#800020] mb-1">{msg.subject}</p>
                         <p className="text-gray-700 whitespace-pre-wrap text-sm">{msg.message}</p>
                         <div className="mt-2 flex items-center justify-end gap-2">
                           <button type="button" onClick={() => toggleStar(msg.id)} className={`p-2 rounded-lg hover:bg-gray-100 ${msg.starred ? 'text-yellow-500' : 'text-gray-400'}`}>

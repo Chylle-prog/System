@@ -142,6 +142,16 @@ export const scholarshipAPI = {
   
   getProviders: () =>
     api.get('/admin/providers'),
+
+  // Applicant Status Management
+  acceptApplicant: (applicantId) =>
+    api.post(`/admin/applicants/${applicantId}/accept`),
+  
+  declineApplicant: (applicantId) =>
+    api.post(`/admin/applicants/${applicantId}/decline`),
+  
+  cancelApplicant: (applicantId) =>
+    api.post(`/admin/applicants/${applicantId}/cancel`),
 };
 
 // ===== ANNOUNCEMENT ENDPOINTS =====
@@ -152,6 +162,9 @@ export const announcementAPI = {
   
   create: (announcementData) =>
     api.post('/admin/announcements', announcementData),
+  
+  update: (annNo, announcementData) =>
+    api.put(`/admin/announcements/${annNo}`, announcementData),
   
   delete: (ann_no) =>
     api.delete(`/admin/announcements/${ann_no}`),
