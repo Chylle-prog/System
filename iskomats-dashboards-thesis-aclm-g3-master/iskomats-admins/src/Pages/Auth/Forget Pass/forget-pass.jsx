@@ -53,8 +53,7 @@ const ForgetPass = () => {
       const emailCheckResponse = await authAPI.checkEmail(formData.email.trim());
       console.log('Check Email Response:', emailCheckResponse);
       // available: false means email exists (not available), available: true means email doesn't exist
-      const emailCheckData = emailCheckResponse.data || emailCheckResponse;
-      if (emailCheckData.available !== false) {
+      if (emailCheckResponse.available !== false) {
         setFormData({
           ...formData,
           isLoading: false,

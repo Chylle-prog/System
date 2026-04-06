@@ -196,17 +196,15 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
         return False, f"Preprocessing error: {str(e)}", "", 0.0
 
     best_text = ""
-    best_ratio = 0.0
-
-    # --- PASS 1: Parallel PSM 3 + PSM 11 (fast primary attempt) ---
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        f1 = executor.submit(_run_tesseract_on_image, img, psm=3)
-        f2 = executor.submit(_run_tesseract_on_image, img, psm=11)
-        t1, t2 = f1.result(), f2.result()
-
+    # --- PASS 1: Sequential PSM 3 then PSM 11 (fast primary attempts) ---
+    # Running sequentially avoids spawning multiple Tesseract binaries concurrently,
+    # preventing CPU starvation and memory thrashing on 512MB containers.
+    
+    t1 = _run_tesseract_on_image(img, psm=3)
     name_v1, addr_v1, r1 = check_match(t1, expected_name, expected_address, is_indigency)
     if name_v1 and addr_v1: return True, "Verified (PSM3)", t1, 1.0
 
+    t2 = _run_tesseract_on_image(img, psm=11)
     name_v2, addr_v2, r2 = check_match(t2, expected_name, expected_address, is_indigency)
     if name_v2 and addr_v2: return True, "Verified (PSM11)", t2, 1.0
 
@@ -285,7 +283,8 @@ def verify_video_content(video_bytes, keywords):
                 cap.release()
                 return False, "Low content quality: No document text detected in video."
         
-        # --- Parallel Frame Processing ---
+        # --- Sequential Frame Processing ---
+        # Same as above, serialize to prevent multi-process thrashing
         def process_frame(idx):
             cap_internal = cv2.VideoCapture(tmp_path)
             cap_internal.set(cv2.CAP_PROP_POS_FRAMES, idx)
@@ -294,9 +293,10 @@ def verify_video_content(video_bytes, keywords):
             if not ret_f or frame_f is None: return ""
             return _run_tesseract_on_image(frame_f, psm=11)
 
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            future_to_idx = {executor.submit(process_frame, idx): idx for idx in samples}
-            ocr_results = [f.result() for f in future_to_idx.keys()]
+        ocr_results = []
+        for idx in samples:
+            res = process_frame(idx)
+            if res: ocr_results.append(res)
             
         all_ocr_text = " ".join(ocr_results)
         
