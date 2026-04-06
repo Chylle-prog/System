@@ -1989,9 +1989,17 @@ const Portal = () => {
               )}
             </button>
             <div className={`notification-dropdown ${showNotificationDropdown ? 'show' : ''}`}>
-              <div className="notification-header">
-                <span>Notifications</span>
-                <span className="mark-read" onClick={markAllNotificationsRead}>Mark all as read</span>
+              <div className="notification-header" style={{ background: 'var(--primary)', color: 'white' }}>
+                <span style={{ fontWeight: 700 }}>Notifications</span>
+                {totalUnreadNotifications > 0 ? (
+                  <span className="mark-read" onClick={markAllNotificationsRead} style={{ color: 'white', opacity: 0.9, fontSize: '0.85rem' }}>
+                    Mark all as read
+                  </span>
+                ) : (
+                  <span style={{ color: 'white', fontSize: '0.85rem', opacity: 0.7 }}>
+                    No New Notifications
+                  </span>
+                )}
               </div>
               <div className="notification-list">
                 {notifications.map(notif => (
