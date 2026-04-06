@@ -326,6 +326,11 @@ const Login = () => {
           setShowLoadingOverlay(false);
           setIsLoginLoading(false);
           
+          // Clear registration states to ensure they don't pop up after Google login
+          setShowRegistrationModal(false);
+          setShowEmailAlreadyRegisteredOverlay(false);
+          localStorage.removeItem('registrationEmail'); // Fix: Prevents manual verification redirect loop
+          
           if (profile && profile.first_name === 'User' && profile.last_name === 'Account') {
             setShowProfile(true);
           } else {

@@ -667,8 +667,27 @@ def student_google_login():
         )
         user = cur.fetchone()
         
-        # 3. Create user if doesn't exist (Auto-register)
-        if not user:
+        # 3. Handle Existing vs. New user
+        if user:
+            # For existing users, always force is_verified=TRUE since Google login IS a verification
+            cur.execute("UPDATE email SET is_verified = TRUE WHERE email_address ILIKE %s", (email,))
+            
+            # If the profile is still the default "User Account", update it with Google's real name
+            # This allows the user to go directly to the portal without being forced into 'Profile Setup'
+            if user['first_name'] == 'User' and user['last_name'] == 'Account':
+                cur.execute(
+                    "UPDATE applicants SET first_name = %s, last_name = %s WHERE applicant_no = %s",
+                    (google_profile['first_name'], google_profile['last_name'], user['applicant_no'])
+                )
+                # Update our local record for the JWT and response
+                user['first_name'] = google_profile['first_name']
+                user['last_name'] = google_profile['last_name']
+            
+            conn.commit()
+            print(f"[GOOGLE AUTH] Existing user {email} synced and verified.", flush=True)
+
+        else:
+            # Create user if doesn't exist (Auto-register)
             print(f"[GOOGLE AUTH] New user {email}, creating profile...", flush=True)
             # Create applicant record first
             cur.execute(
@@ -682,7 +701,6 @@ def student_google_login():
             applicant_no = cur.fetchone()['applicant_no']
             
             # Create email/auth record
-            # We don't set a password for Google accounts
             cur.execute(
                 """
                 INSERT INTO email (applicant_no, email_address, is_verified)

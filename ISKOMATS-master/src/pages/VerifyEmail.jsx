@@ -44,13 +44,25 @@ const VerifyEmail = () => {
       setEmail(registrationEmail);
     }
 
+    // Safety: If the user is already authenticated and has a complete profile,
+    // they shouldn't be here. Redirect them to the portal.
+    const authToken = localStorage.getItem('authToken');
+    if (authToken && fetchProfile) {
+      fetchProfile(registrationEmail).then(profile => {
+        if (profile && profile.first_name !== 'User' && profile.last_name !== 'Account') {
+          console.log('[VERIFY] User already verified and has profile, redirecting to portal');
+          navigate('/portal');
+        }
+      });
+    }
+
     // Check if there's a token in the URL (from email link)
     const token = searchParams.get('token');
     if (token) {
       setVerificationState("auto-verifying");
       handleAutoVerification(token);
     }
-  }, [searchParams]);
+  }, [searchParams, fetchProfile, navigate]);
 
   const handleAutoVerification = async (token) => {
     setLoadingMessage({ title: 'Auto-Verifying', message: 'Checking your verification token...' });
