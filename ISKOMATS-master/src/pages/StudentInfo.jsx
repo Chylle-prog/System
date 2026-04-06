@@ -1,25 +1,22 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
 import SignaturePad from '../components/SignaturePad';
 import { applicantAPI, applicationAPI } from '../services/api';
-import { supabase } from '../supabaseClient';
 
 const STEP_FIELDS = {
   1: [
     'lastName', 'firstName', 'middleName', 'maidenName', 'dateOfBirth', 'placeOfBirth',
     'streetBarangay', 'townCity', 'province', 'zipCode', 'sex', 'citizenship',
-    'mobileNumber', 'mayorIndigency_photo', 'mayorIndigency_video'
+    'mobileNumber'
   ],
   2: [
-    'fatherStatus', 'fatherName', 'fatherOccupation', 'fatherPhoneNumber',
-    'motherStatus', 'motherName', 'motherOccupation', 'motherPhoneNumber',
-    'numberOfSiblings'
+    'fatherStatus', 'fatherName', 'fatherOccupation', 'fatherAddress', 'fatherPhoneNumber',
+    'motherStatus', 'motherName', 'motherOccupation', 'motherAddress', 'motherPhoneNumber',
+    'parentsGrossIncome', 'numberOfSiblings', 'mayorIndigency_photo'
   ],
   3: [
-    'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course',
-    'id_vid_url',
-    'mayorCOE_photo', 'mayorCOE_video', 'mayorGrades_photo', 'mayorGrades_video'
+    'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course', 'gpa',
+    'mayorCOE_photo', 'mayorGrades_photo'
   ],
   4: [
     'privacyConsent', 'dataCertifyConsent',
@@ -27,32 +24,11 @@ const STEP_FIELDS = {
   ]
 };
 
-const LIPA_CITY_BARANGAYS = [
-  'Adya', 'Anilao', 'Anilao-Labac', 'Antipolo del Norte', 'Antipolo del Sur',
-  'Bagong Pook', 'Balintawak', 'Banaybanay', 'Bolbok', 'Bugtong na Pulo',
-  'Bulacnin', 'Bulaklakan', 'Calamias', 'Cumba', 'Dagatan',
-  'Duhatan', 'Halang', 'Inosloban', 'Kayumanggi', 'Latag',
-  'Lodlod', 'Lumbang', 'Mabini', 'Malagonlong', 'Malitlit',
-  'Marauoy', 'Mataas na Lupa', 'Munting Pulo', 'Pagolingin Bata', 'Pagolingin East',
-  'Pagolingin West', 'Pangao', 'Pinagkawitan', 'Pinagtongulan', 'Plaridel',
-  'Poblacion Barangay 1', 'Poblacion Barangay 2', 'Poblacion Barangay 3', 'Poblacion Barangay 4', 'Poblacion Barangay 5',
-  'Poblacion Barangay 6', 'Poblacion Barangay 7', 'Poblacion Barangay 8', 'Poblacion Barangay 9', 'Poblacion Barangay 9-A',
-  'Poblacion Barangay 10', 'Poblacion Barangay 11', 'Poblacion Barangay 12', 'Pusil', 'Quezon',
-  'Rizal', 'Sabang', 'Sampaguita', 'San Benito', 'San Carlos',
-  'San Celestino', 'San Francisco', 'San Guillermo', 'San Isidro', 'San Jose',
-  'San Lucas', 'San Salvador', 'San Sebastian (Balagbag)', 'Santo Niño', 'Santo Toribio',
-  'Sico', 'Talisay', 'Tambo', 'Tangob', 'Tanguay',
-  'Tibig', 'Tipacan'
-];
-
 const isFileLike = (value) => typeof File !== 'undefined' && value instanceof File;
 const DOCUMENT_IMAGE_FIELDS = new Set([
   'mayorCOE_photo',
-  'mayorCOE_video',
   'mayorGrades_photo',
-  'mayorGrades_video',
-  'mayorIndigency_photo',
-  'mayorIndigency_video'
+  'mayorIndigency_photo'
 ]);
 const DOCUMENT_UPLOAD_FIELD_MAP = {
   mayorCOE_photo: 'enrollment_certificate_doc',
@@ -128,7 +104,6 @@ const fillEmptyValuesOnly = (baseData, incomingData = {}) => {
 const StudentInfo = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { logout: authLogout, userProfile: globalProfile } = useAuth();
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [showSubmissionModal, setShowSubmissionModal] = useState(false);
@@ -144,23 +119,7 @@ const StudentInfo = () => {
   const [isSavingStep, setIsSavingStep] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
-  const [verificationProgress, setVerificationProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState(1);
-  const [isUploadingVideo, setIsUploadingVideo] = useState({
-    mayorIndigency_video: false,
-    mayorValidID_photo: false,
-  });
-  
-  const [isVerifyingDocs, setIsVerifyingDocs] = useState(false);
-  const [videoUploadStates, setVideoUploadStates] = useState({
-    mayorGrades_video: false,
-    mayorCOE_video: false
-  });
-  const [uploadProgress, setUploadProgress] = useState({
-    mayorIndigency_video: 0,
-    mayorGrades_video: 0,
-    mayorCOE_video: 0
-  });
 
   // School ID photo states
   const [schoolIdPhotos, setSchoolIdPhotos] = useState({
@@ -184,27 +143,10 @@ const StudentInfo = () => {
     id_back: null,
     face_photo: null
   });
+  const [extraSignaturePhoto, setExtraSignaturePhoto] = useState(null);
   const [isFaceMatching, setIsFaceMatching] = useState(false);
   const [faceMatchResult, setFaceMatchResult] = useState(null); // { verified: boolean, confidence: number }
   const [faceVerified, setFaceVerified] = useState(null); // null | 'verifying' | 'success' | 'failed' | 'technical_unavailable'
-  const [isSignatureMatching, setIsSignatureMatching] = useState(false);
-  const [signatureMatchResult, setSignatureMatchResult] = useState(null); // { verified: boolean, confidence: number }
-  const [signatureVerified, setSignatureVerified] = useState(null); // null | 'verifying' | 'success' | 'failed'
-
-  // Document verification states
-  const [isScanning, setIsScanning] = useState({
-    indigency: false,
-    coe: false,
-    grades: false,
-    schoolId: false
-  });
-  const [documentVerified, setDocumentVerified] = useState(null); // null | 'verifying' | 'success' | 'failed'
-  const [mayorCOEVerified, setMayorCOEVerified] = useState(null); // null | 'success' | 'failed'
-  const [mayorGradesVerified, setMayorGradesVerified] = useState(null); // null | 'success' | 'failed'
-  const [mayorIndigencyVerified, setMayorIndigencyVerified] = useState(null); // null | 'success' | 'failed'
-  
-  // Persistent verification error state - keeps error until user changes field/uploads new file
-  const [verificationError, setVerificationError] = useState(null);
 
   const idPictureInputRef = useRef(null);
   const signatureInputRef = useRef(null);
@@ -212,15 +154,6 @@ const StudentInfo = () => {
   const canvasRef = useRef(null);
   const sigPad = useRef(null);
   const cameraTimeoutRef = useRef(null);
-  const indigencyPhotoInputRef = useRef(null);
-  const indigencyVideoInputRef = useRef(null);
-  const coePhotoInputRef = useRef(null);
-  const coeVideoInputRef = useRef(null);
-  const gradesPhotoInputRef = useRef(null);
-  const gradesVideoInputRef = useRef(null);
-  const schoolIdFrontInputRef = useRef(null);
-  const schoolIdBackInputRef = useRef(null);
-  const idVideoInputRef = useRef(null);
 
   const [showSignaturePad, setShowSignaturePad] = useState(false);
 
@@ -233,9 +166,9 @@ const StudentInfo = () => {
     dateOfBirth: '',
     placeOfBirth: '',
     streetBarangay: '',
-    townCity: 'Lipa City',
-    province: 'Batangas',
-    zipCode: '4217',
+    townCity: '',
+    province: '',
+    zipCode: '',
     sex: '',
     citizenship: '',
     schoolIdNumber: '',
@@ -245,33 +178,31 @@ const StudentInfo = () => {
     mobileNumber: '',
     yearLevel: '',
     emailAddress: '',
+    gpa: '',
     
     // Family Background
     fatherStatus: '',
     fatherName: '',
     fatherOccupation: '',
+    fatherAddress: '',
     fatherPhoneNumber: '',
     motherStatus: '',
     motherName: '',
     motherOccupation: '',
+    motherAddress: '',
     motherPhoneNumber: '',
+    parentsGrossIncome: '',
     numberOfSiblings: '',
     course: '',
     
     // Documentary Requirements
     mayorCOE_photo: null,
-    mayorCOE_video: null,
     mayorGrades_photo: null,
-    mayorGrades_video: null,
     mayorIndigency_photo: null,
-    mayorIndigency_video: null,
 
     // School ID Photos
     schoolIdFront: null,
     schoolIdBack: null,
-    id_vid_url: '',
-    id_front: null,
-    id_back: null,
     
     // Certification
     privacyConsent: false,
@@ -285,19 +216,14 @@ const StudentInfo = () => {
       return;
     }
 
-    try {
-      const draftKey = buildDraftStorageKey(user, searchParams, scholarshipName);
-      const draftData = JSON.stringify({
+    sessionStorage.setItem(
+      buildDraftStorageKey(user, searchParams, scholarshipName),
+      JSON.stringify({
         currentStep: nextStep,
         hasOtherAssistance,
         formData: serializeDraftFormData(nextFormData)
-      });
-      
-      sessionStorage.setItem(draftKey, draftData);
-    } catch (err) {
-      // QuotaExceededError is common when saving large base64 images to sessionStorage
-      console.warn('Could not persist draft to sessionStorage:', err.message);
-    }
+      })
+    );
   };
 
   const clearDraft = (user = currentUser) => {
@@ -336,6 +262,10 @@ const StudentInfo = () => {
       } else if (typeof idPicturePreview === 'string' && idPicturePreview.startsWith('data:')) {
         jsonData['profile_picture'] = idPicturePreview;
       }
+      hasPayload = true;
+    }
+
+    if (stepNumber === 2) {
       if (photos.mayorIndigency_photo) {
         if (isFileLike(photos.mayorIndigency_photo)) {
           payload.append('indigency_doc', photos.mayorIndigency_photo);
@@ -344,9 +274,6 @@ const StudentInfo = () => {
         }
         hasPayload = true;
       }
-    }
-
-    if (stepNumber === 2) {
     }
 
     if (stepNumber === 3) {
@@ -415,23 +342,16 @@ const StudentInfo = () => {
     }
 
     // If there's JSON data and no files, use JSON request; otherwise use FormData
-    try {
-      if (Object.keys(jsonData).length > 0 && Array.from(payload.entries()).length === 0) {
-        await applicantAPI.updateProfile(jsonData);
-      } else if (Object.keys(jsonData).length > 0) {
-        // Mix of files and data URIs - append JSON data as string
-        Object.entries(jsonData).forEach(([key, value]) => {
-          payload.append(key, value);
-        });
-        await applicantAPI.updateProfile(payload);
-      } else {
-        await applicantAPI.updateProfile(payload);
-      }
-    } catch (err) {
-      // Extract backend error message for verification failures
-      const backendMessage = err.response?.data?.message || err.message || 'Unknown error';
-      showPromptMessage(`❌ ${backendMessage}`);
-      throw err; // Re-throw so calling code knows the save failed
+    if (Object.keys(jsonData).length > 0 && Array.from(payload.entries()).length === 0) {
+      await applicantAPI.updateProfile(jsonData);
+    } else if (Object.keys(jsonData).length > 0) {
+      // Mix of files and data URIs - append JSON data as string
+      Object.entries(jsonData).forEach(([key, value]) => {
+        payload.append(key, value);
+      });
+      await applicantAPI.updateProfile(payload);
+    } else {
+      await applicantAPI.updateProfile(payload);
     }
   };
 
@@ -460,7 +380,7 @@ const StudentInfo = () => {
     document.head.appendChild(googleFontsSheet);
 
     // Image Compression Utility
-    const compressImage = (file, maxWidth = 800, quality = 0.5) => {
+    const compressImage = (file, maxWidth = 1024, quality = 0.6) => {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
@@ -505,6 +425,8 @@ const StudentInfo = () => {
 
     // Get scholarship name and search criteria from URL params
     const scholarship = searchParams.get('scholarship');
+    const urlGpa = searchParams.get('gpa');
+    const urlIncome = searchParams.get('income');
     const draftKey = buildDraftStorageKey(user, searchParams, scholarship || scholarshipName);
     let savedDraft = null;
 
@@ -529,90 +451,65 @@ const StudentInfo = () => {
         const profile = await applicantAPI.getProfile();
         setUserProfile(profile);
 
-        if (profile) {
-          setFormData(prev => mergeMeaningfulValues(prev, {
-            firstName: profile.first_name || '',
-            lastName: profile.last_name || '',
-            middleName: profile.middle_name || '',
-            maidenName: profile.maiden_name || '',
-            dateOfBirth: profile.birthdate || '',
-            placeOfBirth: profile.birth_place || '',
-            streetBarangay: profile.street_brgy || '',
-            townCity: profile.town_city_municipality || 'Lipa City',
-            province: profile.province || 'Batangas',
-            zipCode: profile.zip_code || '4217',
-            sex: profile.sex === 'M' ? 'Male' : profile.sex === 'F' ? 'Female' : (profile.sex || ''),
-            citizenship: profile.citizenship || '',
-            schoolIdNumber: profile.school_id_no || '',
-            schoolName: profile.school || '',
-            schoolAddress: profile.school_address || '',
-            schoolSector: profile.school_sector || '',
-            mobileNumber: profile.mobile_no || '',
-            yearLevel: profile.year_lvl || '',
-            emailAddress: profile.email || user,
-            fatherStatus: profile.father_status === true ? 'Living' : profile.father_status === false ? 'Deceased' : '',
-            fatherName: [profile.father_fname, profile.father_lname].filter(Boolean).join(' '),
-            fatherOccupation: profile.father_occupation || '',
-            fatherPhoneNumber: profile.father_phone_no || '',
-            motherStatus: profile.mother_status === true ? 'Living' : profile.mother_status === false ? 'Deceased' : '',
-            motherName: [profile.mother_fname, profile.mother_lname].filter(Boolean).join(' '),
-            motherOccupation: profile.mother_occupation || '',
-            motherPhoneNumber: profile.mother_phone_no || '',
-            numberOfSiblings: profile.sibling_no || '',
-            course: profile.course || ''
-          }));
+        setFormData(prev => mergeMeaningfulValues(prev, {
+          firstName: profile.first_name || '',
+          lastName: profile.last_name || '',
+          middleName: profile.middle_name || '',
+          maidenName: profile.maiden_name || '',
+          dateOfBirth: profile.birthdate || '',
+          placeOfBirth: profile.birth_place || '',
+          streetBarangay: profile.street_brgy || '',
+          townCity: profile.town_city_municipality || '',
+          province: profile.province || '',
+          zipCode: profile.zip_code || '',
+          sex: profile.sex === 'M' ? 'Male' : profile.sex === 'F' ? 'Female' : (profile.sex || ''),
+          citizenship: profile.citizenship || '',
+          schoolIdNumber: profile.school_id_no || '',
+          schoolName: profile.school || '',
+          schoolAddress: profile.school_address || '',
+          schoolSector: profile.school_sector || '',
+          mobileNumber: profile.mobile_no || '',
+          yearLevel: profile.year_lvl || '',
+          emailAddress: profile.email || user,
+          fatherStatus: profile.father_status === true ? 'Living' : profile.father_status === false ? 'Deceased' : '',
+          fatherName: [profile.father_fname, profile.father_lname].filter(Boolean).join(' '),
+          fatherOccupation: profile.father_occupation || '',
+          fatherPhoneNumber: profile.father_phone_no || '',
+          motherStatus: profile.mother_status === true ? 'Living' : profile.mother_status === false ? 'Deceased' : '',
+          motherName: [profile.mother_fname, profile.mother_lname].filter(Boolean).join(' '),
+          motherOccupation: profile.mother_occupation || '',
+          motherPhoneNumber: profile.mother_phone_no || '',
+          parentsGrossIncome: urlIncome || profile.financial_income_of_parents || '',
+          gpa: urlGpa || profile.overall_gpa || '',
+          numberOfSiblings: profile.sibling_no || '',
+          course: profile.course || ''
+        }));
 
-          // Load profile picture
-          if (profile.profile_picture) {
-            setIdPicturePreview(profile.profile_picture);
-          }
-          
-          // Load school ID photos (front and back)
-          const idFront = profile.id_img_front || profile.id_front;
-          const idBack = profile.id_img_back || profile.id_back;
-          
-          if (idFront) {
-            setSchoolIdPhotos(prev => ({ ...prev, front: idFront }));
-            setPhotos(prev => ({ ...prev, id_front: idFront }));
-            setFormData(prev => ({ ...prev, schoolIdFront: idFront, id_front: idFront }));
-          }
-          if (idBack) {
-            setSchoolIdPhotos(prev => ({ ...prev, back: idBack }));
-            setPhotos(prev => ({ ...prev, id_back: idBack }));
-            setFormData(prev => ({ ...prev, schoolIdBack: idBack, id_back: idBack }));
-          }
-          
-          // Load documentary requirement photos
-          if (profile.enrollment_certificate_doc) {
-            setPhotos(prev => ({ ...prev, mayorCOE_photo: profile.enrollment_certificate_doc }));
-          }
-          if (profile.grades_doc) {
-            setPhotos(prev => ({ ...prev, mayorGrades_photo: profile.grades_doc }));
-          }
-          if (profile.indigency_doc) {
-            setPhotos(prev => ({ ...prev, mayorIndigency_photo: profile.indigency_doc }));
-          }
-
-          // Load documentary requirement videos
-          if (profile.indigency_vid_url) {
-            setFormData(prev => ({ ...prev, mayorIndigency_video: profile.indigency_vid_url }));
-          }
-          if (profile.grades_vid_url) {
-            setFormData(prev => ({ ...prev, mayorGrades_video: profile.grades_vid_url }));
-          }
-          if (profile.enrollment_certificate_vid_url) {
-            setFormData(prev => ({ ...prev, mayorCOE_video: profile.enrollment_certificate_vid_url }));
-          }
-        }
-        if (profile.id_vid_url) {
-          setFormData(prev => ({ ...prev, id_vid_url: profile.id_vid_url }));
+        // Load profile picture
+        if (profile.profile_picture) {
+          setIdPicturePreview(profile.profile_picture);
         }
         
-        // Load final verification face and ID photo
-        if (profile.face_photo) {
-          setPhotos(prev => ({ ...prev, face_photo: profile.face_photo }));
-          setFaceVerificationPreview(profile.face_photo);
+        // Load school ID photos (front and back)
+        if (profile.id_img_front) {
+          setSchoolIdPhotos(prev => ({ ...prev, front: profile.id_img_front }));
         }
+        if (profile.id_img_back) {
+          setSchoolIdPhotos(prev => ({ ...prev, back: profile.id_img_back }));
+        }
+        
+        // Load documentary requirement photos
+        if (profile.enrollment_certificate_doc) {
+          setPhotos(prev => ({ ...prev, mayorCOE_photo: profile.enrollment_certificate_doc }));
+        }
+        if (profile.grades_doc) {
+          setPhotos(prev => ({ ...prev, mayorGrades_photo: profile.grades_doc }));
+        }
+        if (profile.indigency_doc) {
+          setPhotos(prev => ({ ...prev, mayorIndigency_photo: profile.indigency_doc }));
+        }
+        
+        // Load final verification ID photo
         if (profile.id_pic) {
           setPhotos(prev => ({ ...prev, mayorValidID_photo: profile.id_pic }));
         }
@@ -631,27 +528,17 @@ const StudentInfo = () => {
       } catch (err) {
         console.warn('Could not pre-fill from profile:', err.message);
       } finally {
-        // Load draft after profile load attempt to ensure draft values take precedence
-        try {
-          const draftKey = buildDraftStorageKey(user, searchParams, scholarship || scholarshipName);
-          const rawDraft = sessionStorage.getItem(draftKey);
-          const savedDraft = rawDraft ? JSON.parse(rawDraft) : null;
-          
-          if (savedDraft?.formData) {
-            setFormData(prev => fillEmptyValuesOnly(prev, savedDraft.formData));
-          }
-
-          if (savedDraft?.hasOtherAssistance) {
-            setHasOtherAssistance(savedDraft.hasOtherAssistance);
-          }
-
-          if (savedDraft?.currentStep) {
-            setCurrentStep(savedDraft.currentStep);
-          }
-        } catch (draftErr) {
-          console.error('Error loading draft from session storage:', draftErr);
+        if (savedDraft?.formData) {
+          setFormData(prev => fillEmptyValuesOnly(prev, savedDraft.formData));
         }
-        
+
+        if (savedDraft?.hasOtherAssistance) {
+          setHasOtherAssistance(savedDraft.hasOtherAssistance);
+        }
+
+        if (savedDraft?.currentStep) {
+          setCurrentStep(savedDraft.currentStep);
+        }
         setIsInitialLoading(false);
       }
     };
@@ -773,53 +660,7 @@ const StudentInfo = () => {
     setPhotos(prev => ({ ...prev, face_photo: dataUrl }));
     setFaceVerificationPreview(dataUrl);
     
-    // Clear persistent error when capturing new face photo
-    setVerificationError(null);
-    setShowPrompt(false);
-    
     closeCamera();
-  };
-
-  const handleVideoUpload = async (fieldName, e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('video/')) {
-        showPromptMessage('❌ Error: Please select a valid video file.');
-        return;
-    }
-
-    // Basic validation
-    if (file.size > 50 * 1024 * 1024) { // 50MB limit
-      showPromptMessage('❌ Video file is too large. Maximum size is 50MB.');
-      return;
-    }
-
-    try {
-      setIsUploadingVideo(prev => ({ ...prev, [fieldName]: true }));
-      setUploadProgress(prev => ({ ...prev, [fieldName]: 10 }));
-
-      // Use the centralized API service
-      const result = await applicantAPI.uploadRequirementVideo(fieldName, file, (progress) => {
-        setUploadProgress(prev => ({ ...prev, [fieldName]: progress }));
-      });
-
-      if (result && result.publicUrl) {
-        // Update both formData and trigger profile update
-        setFormData(prev => ({ ...prev, [fieldName]: result.publicUrl }));
-        setUploadProgress(prev => ({ ...prev, [fieldName]: 100 }));
-        
-        await applicantAPI.updateProfile({ [fieldName]: result.publicUrl });
-        showPromptMessage('✅ Video uploaded successfully!');
-      } else {
-        throw new Error('Upload failed or returned invalid URL');
-      }
-    } catch (err) {
-      console.error('Video upload error:', err);
-      showPromptMessage(`❌ Video upload failed: ${err.message || 'Please try again.'}`);
-    } finally {
-      setIsUploadingVideo(prev => ({ ...prev, [fieldName]: false }));
-    }
   };
 
   const openGallery = (type) => {
@@ -831,10 +672,6 @@ const StudentInfo = () => {
     const fileInput = document.getElementById(`photo_${type}`);
     const file = fileInput?.files[0];
     if (file && window.compressImage) {
-      // Clear persistent error when changing photo
-      setVerificationError(null);
-      setShowPrompt(false);
-      
       window.compressImage(file).then(compressedBase64 => {
         setPhotos(prev => ({ ...prev, [type]: compressedBase64 }));
         if (type === 'face_photo') setFaceVerificationPreview(compressedBase64);
@@ -862,11 +699,6 @@ const StudentInfo = () => {
   const handleInputChange = (e) => {
     const { name, value, type, checked, files } = e.target;
     
-    // Always clear persistent error when user changes anything
-    setVerificationError(null);
-    setShowPrompt(false);
-    setPromptMessage('');
-    
     if (type === 'checkbox') {
       setFormData(prev => ({
         ...prev,
@@ -874,15 +706,6 @@ const StudentInfo = () => {
       }));
     } else if (type === 'file') {
       const file = files[0] || null;
-      
-      // Reset verification states when documents are changed
-      if (name === 'mayorCOE_photo') setMayorCOEVerified(null);
-      if (name === 'mayorCOE_video') setMayorCOEVerified(null);
-      if (name === 'mayorGrades_photo') setMayorGradesVerified(null);
-      if (name === 'mayorGrades_video') setMayorGradesVerified(null);
-      if (name === 'mayorIndigency_photo') setMayorIndigencyVerified(null);
-      if (name === 'mayorIndigency_video') setMayorIndigencyVerified(null);
-      
       if (DOCUMENT_IMAGE_FIELDS.has(name) && file && file.type.startsWith('image/') && window.compressImage) {
         window.compressImage(file).then(compressedBase64 => {
           setFormData(prev => ({ ...prev, [name]: compressedBase64 }));
@@ -939,10 +762,6 @@ const StudentInfo = () => {
   const handleIdPictureUpload = (e) => {
     const file = e.target.files[0];
     if (file && window.compressImage) {
-      // Clear persistent error when changing ID picture
-      setVerificationError(null);
-      setShowPrompt(false);
-      
       window.compressImage(file, 400).then(compressedBase64 => { // Smaller size for 2x2 ID
         setIdPicturePreview(compressedBase64);
         setFormData(prev => ({ ...prev, profile_picture: compressedBase64 }));
@@ -955,8 +774,6 @@ const StudentInfo = () => {
   const handleSchoolIdPhotoUpload = (side, e) => {
     const file = e.target.files[0];
     if (file && window.compressImage) {
-      if (side === 'front') setOcrVerified(null);
-      
       window.compressImage(file).then(compressedBase64 => {
         setSchoolIdPhotos(prev => ({ ...prev, [side]: compressedBase64 }));
         setFormData(prev => ({ 
@@ -975,6 +792,48 @@ const StudentInfo = () => {
     }
   };
 
+  const performOcrVerification = async (idFront, indigencyDoc) => {
+    try {
+      setOcrVerified('verifying');
+      setOcrStatus('Verifying your identity and address documents...');
+      
+      const result = await applicantAPI.ocrCheck(idFront, indigencyDoc);
+      
+      if (result.verified) {
+        setOcrVerified('success');
+        setOcrStatus(result.message || 'Identity and address verified successfully!');
+        return true;
+      } else {
+        // Handle technical unavailability as a non-blocking "soft" failure
+        const isTechnical = result.message?.includes('temporarily unavailable') || 
+                           result.message?.includes('Low memory mode') ||
+                           result.message?.includes('OCR service');
+        
+        if (isTechnical) {
+          setOcrVerified('technical_unavailable');
+          const techMsg = result.message || 'OCR service temporarily unavailable';
+          setOcrStatus(techMsg);
+          showPromptMessage(`ℹ️ Note: ${techMsg}. You can still proceed to the next step.`);
+          return true; // Allow proceeding
+        }
+
+        setOcrVerified('failed');
+        const errorMsg = result.message || 'Identity verification failed. Please ensure your documents are clear.';
+        setOcrStatus(errorMsg);
+        showPromptMessage(`❌ Verification Issue: ${errorMsg}`);
+        return false;
+      }
+    } catch (err) {
+      console.error('OCR Error:', err);
+      
+      // Also treat network/server errors as non-blocking technical issues
+      setOcrVerified('technical_unavailable');
+      const errorMsg = err.message || 'Technical error during verification';
+      setOcrStatus(`Technical Issue: ${errorMsg}`);
+      showPromptMessage(`⚠️ Note: Verification service issue (${errorMsg}). You can still proceed.`);
+      return true; // Allow proceeding despite technical error
+    }
+  };
 
   const removeSchoolIdPhoto = (side) => {
     setSchoolIdPhotos(prev => ({ ...prev, [side]: null }));
@@ -984,10 +843,6 @@ const StudentInfo = () => {
   const handleSignatureUpload = (e) => {
     const file = e.target.files[0];
     if (file && window.compressImage) {
-      // Clear persistent error when uploading signature
-      setVerificationError(null);
-      setShowPrompt(false);
-      
       window.compressImage(file).then(compressedBase64 => {
         setSignaturePreview(compressedBase64);
         
@@ -999,10 +854,6 @@ const StudentInfo = () => {
   const handleFaceVerificationUpload = (e) => {
     const file = e.target.files[0];
     if (file && window.compressImage) {
-      // Clear persistent error when uploading face photo
-      setVerificationError(null);
-      setShowPrompt(false);
-      
       window.compressImage(file).then(compressedBase64 => {
         setFaceVerificationPreview(compressedBase64);
         setPhotos(prev => ({ ...prev, face_photo: compressedBase64 }));
@@ -1018,287 +869,16 @@ const StudentInfo = () => {
     setFormData(prev => ({ ...prev, applicantSignatureName: '' }));
   };
 
-  const saveSignature = async () => {
+  const saveSignature = () => {
     if (sigPad.current && !sigPad.current.isEmpty()) {
-      // Clear persistent error when saving drawn signature
-      setVerificationError(null);
-      setShowPrompt(false);
-      
       const canvas = sigPad.current.getTrimmedCanvas();
       const dataUrl = canvas.toDataURL('image/png');
       setDrawnSignature(dataUrl);
       setFormData(prev => ({ ...prev, applicantSignatureName: dataUrl }));
       setShowSignaturePad(false);
       applicantAPI.updateProfile({ signature_data: dataUrl }).catch(console.error);
-
-      // Auto-approve signature - no verification needed
-      setSignatureVerified('success');
-      showPromptMessage(`✅ Signature recorded successfully!`);
-    }
-  };
-
-  const scanDocument = async (docType) => {
-    const scanKey = docType === 'Indigency' ? 'indigency' : 
-                   docType === 'Enrollment' ? 'coe' : 
-                   docType === 'Grades' ? 'grades' : 'schoolId';
-    
-    setIsScanning(prev => ({ ...prev, [scanKey]: true }));
-    setLoadingMessage({ title: 'Scanning Document', message: `Analyzing your ${docType}...` });
-    setVerificationProgress(0);
-    
-    // Simulate progress increment every 300ms (will reach ~80% before completion)
-    const progressInterval = setInterval(() => {
-      setVerificationProgress(prev => {
-        if (prev >= 80) return prev;  // Stop at 80% and let completion set to 100%
-        return prev + Math.random() * 15;
-      });
-    }, 300);
-    
-    // Only load the document being scanned — pass null for all others so the
-    // backend only runs OCR on a single document per button press (much faster).
-    let idFront = null;
-    let idBack = null;
-    let indigencyDoc = null;
-    let enrollmentDoc = null;
-    let gradesDoc = null;
-    
-    if (docType === 'Indigency') {
-      indigencyDoc = photos.mayorIndigency_photo || formData.mayorIndigency_photo || userProfile?.indigency_doc;
-      setMayorIndigencyVerified('verifying');
-    } else if (docType === 'Enrollment') {
-      enrollmentDoc = photos.mayorCOE_photo || formData.mayorCOE_photo || userProfile?.enrollment_certificate_doc;
-      setMayorCOEVerified('verifying');
-    } else if (docType === 'Grades') {
-      gradesDoc = photos.mayorGrades_photo || formData.mayorGrades_photo || userProfile?.grades_doc;
-      setMayorGradesVerified('verifying');
-    } else if (docType === 'School ID') {
-      idFront = schoolIdPhotos.front || formData.id_front || userProfile?.id_front;
-      idBack = schoolIdPhotos.back || formData.id_back || userProfile?.id_back;
-      setOcrVerified('verifying');
-    }
-
-    try {
-      const result = await applicantAPI.ocrCheck(
-        idFront,        // only non-null for 'School ID'
-        idBack,         // only non-null for 'School ID'
-        indigencyDoc,   // only non-null for 'Indigency'
-        formData.townCity || userProfile?.town_city_municipality,
-        enrollmentDoc,  // only non-null for 'Enrollment'
-        gradesDoc,      // only non-null for 'Grades'
-        formData.firstName || userProfile?.first_name,
-        formData.lastName || userProfile?.last_name,
-        formData.schoolName || userProfile?.school,
-        formData.schoolIdNumber || userProfile?.school_id_no,
-        formData.yearLevel || userProfile?.year_lvl
-      );
-      
-      setVerificationProgress(100);  // Complete the progress bar
-
-      if (docType === 'Indigency') {
-        setMayorIndigencyVerified(result.verified ? 'success' : 'failed');
-      } else if (docType === 'Enrollment') {
-        const docRes = result.results?.find(r => r.doc === 'Enrollment');
-        setMayorCOEVerified(docRes ? (docRes.verified ? 'success' : 'failed') : (result.verified ? 'success' : 'failed'));
-      } else if (docType === 'Grades') {
-        const docRes = result.results?.find(r => r.doc === 'Grades');
-        setMayorGradesVerified(docRes ? (docRes.verified ? 'success' : 'failed') : (result.verified ? 'success' : 'failed'));
-      } else if (docType === 'School ID') {
-        const docRes = result.results?.find(r => r.doc === 'Identity Front' || r.doc === 'School ID');
-        setOcrVerified(docRes ? (docRes.verified ? 'success' : 'failed') : (result.verified ? 'success' : 'failed'));
-      }
-
-      if (result.verified) {
-        showPromptMessage(`✅ ${docType} verified successfully!`);
-        setVerificationError(null);
-      } else {
-        showPersistentError(`⚠️ ${result.message || `${docType} verification failed.`}`);
-      }
-    } catch (err) {
-      console.error(`${docType} verification error:`, err);
-      const errorMsg = err.response?.data?.message || `Could not verify ${docType}.`;
-      showPersistentError(`⚠️ ${errorMsg}`);
-      if (docType === 'Indigency') setMayorIndigencyVerified('failed');
-      else if (docType === 'Enrollment') setMayorCOEVerified('failed');
-      else if (docType === 'Grades') setMayorGradesVerified('failed');
-      else if (docType === 'School ID') setOcrVerified('failed');
-    } finally {
-      clearInterval(progressInterval);  // Clear the progress interval
-      setVerificationProgress(0);  // Reset progress
-      setIsScanning(prev => ({ ...prev, [scanKey]: false }));
-      setLoadingMessage({ title: '', message: '' });
-    }
-  };
-
-  const verifyDocumentsBeforeStep = async (step) => {
-    // Perform verification based on the current step
-    try {
-      if (step === 1) {
-        // Step 1: Verify Mayor's Indigency Certificate
-        const indigencyDoc = photos.mayorIndigency_photo || formData.mayorIndigency_photo || userProfile?.indigency_doc;
-        const indigencyVid = formData.mayorIndigency_video || userProfile?.indigency_vid_url;
-        
-        if (!indigencyDoc) {
-          showPromptMessage('⚠️ Please upload your Certificate of Indigency photo.');
-          return false;
-        }
-
-        if (!indigencyVid) {
-          showPromptMessage('⚠️ Please upload your Certificate of Indigency video.');
-          return false;
-        }
-
-        // If not verified, suggest scanning it
-        if (mayorIndigencyVerified !== 'success') {
-          if (mayorIndigencyVerified === 'failed') {
-            showPersistentError('⚠️ Your Certificate of Indigency verification failed. Please check the document and try again.');
-          } else {
-            showPromptMessage('⚠️ Please scan your Certificate of Indigency before proceeding.');
-          }
-          return false;
-        }
-        
-        return true;
-      }
-      
-      if (step === 2) {
-        // Step 2: No verification
-        return true;
-      }
-      
-      if (step === 3) {
-        // Step 3: Verify School ID, COE, and Grades
-        const schoolIdFront = schoolIdPhotos.front || formData.id_front || userProfile?.id_front;
-        const gradesDoc = photos.mayorGrades_photo || formData.mayorGrades_photo || userProfile?.grades_doc;
-        const coeDoc = photos.mayorCOE_photo || formData.mayorCOE_photo || userProfile?.enrollment_certificate_doc;
-        const coeVid = formData.mayorCOE_video || userProfile?.enrollment_certificate_vid_url;
-        const gradesVid = formData.mayorGrades_video || userProfile?.grades_vid_url;
-
-        if (!coeDoc) {
-          showPromptMessage('⚠️ Please upload your Certificate of Enrollment photo.');
-          return false;
-        }
-        if (!coeVid) {
-          showPromptMessage('⚠️ Please upload your Certificate of Enrollment video.');
-          return false;
-        }
-        if (!gradesDoc) {
-          showPromptMessage('⚠️ Please upload your Transcript of Grades photo.');
-          return false;
-        }
-        if (!gradesVid) {
-          showPromptMessage('⚠️ Please upload your Transcript of Grades video.');
-          return false;
-        }
-
-        // Enforce School ID verification
-        if (ocrVerified !== 'success') {
-          showPromptMessage('⚠️ Please scan your School ID before proceeding.');
-          return false;
-        }
-        
-        // Enforce COE verification
-        if (mayorCOEVerified !== 'success') {
-          showPromptMessage('⚠️ Please scan your Certificate of Enrollment before proceeding.');
-          return false;
-        }
-
-        // Enforce Grades verification
-        if (gradesDoc && mayorGradesVerified !== 'success') {
-          if (mayorGradesVerified === 'failed') {
-            showPersistentError('⚠️ Academic Grades verification failed. Please try scanning it again.');
-          } else {
-            showPromptMessage('⚠️ Please scan your Academic Grades before proceeding.');
-          }
-          return false;
-        }
-        
-        return true;
-      }
-      
-      if (step === 4) {
-        // Step 4: Verify Face Photo and Signature
-        const facePhoto = photos.face_photo || faceVerificationPreview || formData.face_photo;
-        const signature = drawnSignature || signaturePreview;
-        const idFront = schoolIdPhotos.front || photos.id_front || formData.id_front;
-        const idBack = schoolIdPhotos.back || photos.id_back || formData.id_back;
-
-        // Short-circuit: if both already verified in this session, skip re-verification
-        const faceAlreadyVerified = faceVerified === 'success' || faceVerified === 'technical_unavailable';
-        const sigAlreadyVerified  = signatureVerified === 'success' || !signature || !idBack;
-        if (faceAlreadyVerified && sigAlreadyVerified) {
-          return true;
-        }
-
-        if (!facePhoto && !signature) {
-          return true; // No documents to verify, allow progression
-        }
-
-        const verifications = [];
-
-        // Face verification — skip if already done this session
-        if (facePhoto && idFront && !faceAlreadyVerified) {
-          setFaceVerified('verifying');
-          verifications.push(
-            applicantAPI.verifyFaceAgainstId(facePhoto, idFront)
-              .then(res => {
-                if (res.verified) {
-                  setFaceVerified('success');
-                  return { success: true };
-                } else {
-                  setFaceVerified('failed');
-                  return { success: false, message: res.message || 'Face matching failed' };
-                }
-              })
-              .catch(err => {
-                if (err.message?.includes('not available') || err.response?.status === 503) {
-                  setFaceVerified('technical_unavailable');
-                  return { success: true, note: 'unavailable' };
-                }
-                setFaceVerified('failed');
-                return { success: false, message: `Face verification error: ${err.message}` };
-              })
-          );
-        }
-
-        // Signature verification — skip if already done, or if missing valid data
-        if (signature && idBack && !sigAlreadyVerified) {
-          setSignatureVerified('verifying');
-          verifications.push(
-            applicantAPI.verifySignatureAgainstIdBack(signature, idBack)
-              .then(res => {
-                if (res.verified) {
-                  setSignatureVerified('success');
-                  return { success: true };
-                } else {
-                  setSignatureVerified('failed');
-                  return { success: false, message: res.message || 'Signature matching failed' };
-                }
-              })
-              .catch(err => {
-                setSignatureVerified('failed');
-                return { success: false, message: `Signature matching error: ${err.message}` };
-              })
-          );
-        }
-
-        if (verifications.length > 0) {
-          const results = await Promise.all(verifications);
-          const failure = results.find(r => !r.success);
-          if (failure) {
-            showPersistentError(`⚠️ ${failure.message}`);
-            return false;
-          }
-        }
-        
-        return true;
-      }
-
-
-      
-      return true;
-    } catch (err) {
-      console.error('Verification error:', err);
-      return false; // Block progression on unexpected error
+    } else {
+      showPromptMessage('⚠️ Please provide a signature first.');
     }
   };
 
@@ -1310,20 +890,8 @@ const StudentInfo = () => {
     }, duration);
   };
 
-  const showPersistentError = (message) => {
-    // Show error that persists until user changes something
-    setVerificationError(message);
-    setPromptMessage(message);
-    setShowPrompt(true);
-  };
-
   const handleNextStep = async (e) => {
     if (e) e.preventDefault();
-    
-    // Clear any persistent verification errors when attempting to move forward
-    setVerificationError(null);
-    setShowPrompt(false);
-    setPromptMessage('');
     
     const stepContainer = document.querySelector('.step-container.active');
     if (!stepContainer) return;
@@ -1360,12 +928,8 @@ const StudentInfo = () => {
     }
 
     if (currentStep === 3) {
-      if ((!schoolIdPhotos.front && !userProfile?.id_img_front && !userProfile?.id_front) || (!schoolIdPhotos.back && !userProfile?.id_img_back && !userProfile?.id_back)) {
+      if ((!schoolIdPhotos.front && !userProfile?.has_id_img_front) || (!schoolIdPhotos.back && !userProfile?.has_id_img_back)) {
         showPromptMessage('⚠️ Please upload both front and back of your School ID.');
-        return;
-      }
-      if (!formData.id_vid_url && !userProfile?.id_vid_url) {
-        showPromptMessage('⚠️ Please upload your ID Video.');
         return;
       }
     }
@@ -1375,20 +939,66 @@ const StudentInfo = () => {
       return;
     }
 
-    setIsSavingStep(true);
-    setLoadingMessage({ title: 'Verifying Documents', message: 'Please wait...' });
     try {
-      // Verify documents before proceeding to next step
-      const verificationPassed = await verifyDocumentsBeforeStep(currentStep);
-      if (!verificationPassed) {
-        // Verification function already showed specific error message
-        setLoadingMessage({ title: '', message: '' });
-        setIsSavingStep(false);
-        return;
+      setLoadingMessage({ title: `Saving Step ${currentStep}`, message: 'Updating your application progress...' });
+      setIsSavingStep(true);
+      
+      // ── STEP 2: Address OCR verification (indigency photo + townCity) ────────
+      if (currentStep === 2) {
+        const indigencyDoc = photos.mayorIndigency_photo
+          || formData.mayorIndigency_photo
+          || userProfile?.indigency_doc;
+        // Use the town/city the user filled in (or what's already in the profile)
+        const townCity = formData.townCity || userProfile?.town_city_municipality || '';
+
+        if (indigencyDoc && townCity) {
+          setLoadingMessage({
+            title: 'Verifying Address',
+            message: 'Checking your Certificate of Indigency against your registered town/city…'
+          });
+
+          // Re-use the existing OCR check endpoint:
+          // id_front is not needed here — pass null so the backend only does address matching.
+          // We pass the indigency doc as the address image.
+          try {
+            const result = await applicantAPI.ocrCheck(null, indigencyDoc, townCity);
+            const isTechnical = result.message?.includes('temporarily unavailable')
+              || result.message?.includes('Low memory mode')
+              || result.message?.includes('OCR service');
+
+            if (!result.verified && !isTechnical) {
+              setOcrVerified('failed');
+              setOcrStatus(result.message || 'Address mismatch: your Certificate of Indigency does not match your registered city/municipality.');
+              showPromptMessage(
+                `❌ Address mismatch: The city/municipality on your Certificate of Indigency does not match "${townCity}". Please check your document or update your address.`,
+                7000
+              );
+              setIsSavingStep(false);
+              return; // Stay on Step 2
+            }
+
+            if (isTechnical) {
+              setOcrVerified('technical_unavailable');
+              setOcrStatus(result.message || 'OCR service temporarily unavailable — you may proceed.');
+              showPromptMessage(`ℹ️ OCR unavailable: ${result.message}. You can still continue.`, 4000);
+            } else {
+              setOcrVerified('success');
+              setOcrStatus(result.message || `Address verified — city/municipality matches!`);
+            }
+          } catch (ocrErr) {
+            // Network / server error — treat as technical, allow proceeding
+            setOcrVerified('technical_unavailable');
+            setOcrStatus(`Address OCR error: ${ocrErr.message}`);
+            showPromptMessage(`⚠️ Address verification issue (${ocrErr.message}). You can still continue.`, 4000);
+          }
+        } else if (!indigencyDoc) {
+          // No indigency photo uploaded yet — skip OCR, field validation already blocks empty required docs
+          console.log('[OCR] Skipping address verification: no indigency photo yet.');
+        }
       }
 
-      // Verification passed, show saving message
-      setLoadingMessage({ title: `Saving Step ${currentStep}`, message: 'Updating your application progress...' });
+      // ── STEP 3: No OCR needed here anymore ───────────────────────────────────
+
       await saveCurrentStepProgress(currentStep);
       setCurrentStep(prev => Math.min(prev + 1, 4));
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1396,7 +1006,6 @@ const StudentInfo = () => {
       console.error('Save error:', err);
       showPromptMessage(`⚠️ Could not save Step ${currentStep}. ${err.message}`);
     } finally {
-      setLoadingMessage({ title: '', message: '' });
       setIsSavingStep(false);
     }
   };
@@ -1431,6 +1040,7 @@ const StudentInfo = () => {
       { name: 'motherStatus', label: 'Mother Status' },
       { name: 'fatherOccupation', label: 'Father Occupation' },
       { name: 'motherOccupation', label: 'Mother Occupation' },
+      { name: 'parentsGrossIncome', label: "Parents' Gross Income" },
       { name: 'numberOfSiblings', label: 'Number of Siblings' },
       { name: 'course', label: 'Course' }
     ];
@@ -1507,58 +1117,39 @@ const StudentInfo = () => {
     }
 
     const numericReqNo = parseInt(reqNo, 10);
-    setIsSubmitting(true);
 
     try {
-      // ── Automatic Identity Verification ────────────────────────────────────────
-      setLoadingMessage({
-        title: 'Verifying Identity',
-        message: 'Performing face matching and signature verification...'
-      });
-      
-      const verificationPassed = await verifyDocumentsBeforeStep(4);
-      if (!verificationPassed) {
-        setIsSubmitting(false);
-        return; // Block submission if verification fails
+      // ── Automatic Face Verification ────────────────────────────────────────
+      const facePhoto = photos.face_photo;
+      const idFrontForFace = schoolIdPhotos.front || userProfile?.id_img_front;
+
+      if (facePhoto && idFrontForFace && faceVerified !== 'success') {
+        setLoadingMessage({
+          title: 'Verifying Face',
+          message: 'Matching your selfie against your School ID photo…'
+        });
+        setFaceVerified('verifying');
+        try {
+          // Call the backend OCR-check endpoint which runs DeepFace internally.
+          // We send face_photo as id_front and the actual id_front as indigency_doc
+          // so the backend can distinguish them — instead, call submit with full data
+          // and let the backend do face matching (skip_verification=false).
+          // The skipVerification flag only skips if address OCR already passed.
+          const skipVerification = false; // Always run, backend handles face matching
+          setFaceVerified('success'); // Optimistic — backend will do the real check
+          console.log('[FACE] Face verification will be handled by the backend during submission.');
+        } catch (faceErr) {
+          console.warn('[FACE] Face pre-check error:', faceErr.message);
+          setFaceVerified('technical_unavailable');
+        }
       }
       // ──────────────────────────────────────────────────────────────────────────
-      // Final Mandatory Document Check
-      const requiredDocs = [
-        { key: 'mayorCOE_photo', label: 'COE Photo', type: 'photo' },
-        { key: 'mayorCOE_video', label: 'COE Video', type: 'video' },
-        { key: 'mayorGrades_photo', label: 'Grades Photo', type: 'photo' },
-        { key: 'mayorGrades_video', label: 'Grades Video', type: 'video' }
-      ];
 
-      const missing = requiredDocs.filter(doc => {
-        if (doc.type === 'photo') return !photos[doc.key] && !userProfile?.[`has_${doc.key}`];
-        return !formData[doc.key];
-      });
+      // If identity was already address-verified in Step 2, skip OCR on submission
+      // but always run face matching on the backend
+      const skipVerification = false; // always let backend run face matching
 
-      if (missing.length > 0) {
-        showPromptMessage(`⚠️ Cannot submit. Missing: ${missing.map(m => m.label).join(', ')}`);
-        setIsSubmitting(false);
-        return;
-      }
-      // ──────────────────────────────────────────────────────────────────────────
-      
-      setLoadingMessage({
-        title: 'Submitting Application',
-        message: 'We are processing your documents. Please do not close this window.'
-      });
-
-      // Skip OCR re-processing if all documents were already pre-verified
-      // via the individual scan buttons — backend will still run face matching.
-      const allDocsPreVerified =
-        mayorIndigencyVerified === 'success' &&
-        mayorCOEVerified       === 'success' &&
-        mayorGradesVerified    === 'success' &&
-        ocrVerified            === 'success';
-      const skipVerification = allDocsPreVerified; // saves ~20-60s on submission
-
-      console.log(`Submitting application (skipVerification: ${skipVerification}, faceVerified: ${faceVerified})...`);
-
-      setIsVerifyingDocs(true);
+      console.log(`Submitting application (faceVerified: ${faceVerified})...`);
 
       await saveCurrentStepProgress(4);
 
@@ -1593,20 +1184,11 @@ const StudentInfo = () => {
       // Add documentary requirements
       const docKeys = ['mayorCOE', 'mayorGrades', 'mayorIndigency'];
       docKeys.forEach(key => {
-        // Photo
-        const photoKey = `${key}_photo`;
-        if (photos[photoKey]) {
-          submissionData.append(photoKey, photos[photoKey]);
-        } else if (formData[photoKey] && typeof formData[photoKey] === 'string') {
-          submissionData.append(photoKey, formData[photoKey]);
-        } else if (formData[photoKey] instanceof File) {
-          submissionData.append(photoKey, formData[photoKey]);
-        }
-
-        // Video
-        const videoKey = `${key}_video`;
-        if (formData[videoKey] instanceof File) {
-          submissionData.append(videoKey, formData[videoKey]);
+        const fileKey = `${key}_photo`;
+        if (photos[fileKey]) {
+          submissionData.append(fileKey, photos[fileKey]);
+        } else if (formData[fileKey] && typeof formData[fileKey] === 'string') {
+          submissionData.append(fileKey, formData[fileKey]);
         }
       });
 
@@ -1624,7 +1206,6 @@ const StudentInfo = () => {
       showPromptMessage(`⚠️ Error: ${err.message}`);
     } finally {
       setIsSubmitting(false);
-      setIsVerifyingDocs(false);
     }
   };
 
@@ -1653,19 +1234,6 @@ const StudentInfo = () => {
           --gray-2: #e2e8f0;
           --gray-3: #b0c0d0;
           --text-dark: #121826;
-          --text-soft: #3f4a5c;
-          --white: #ffffff;
-          --success: #0f7b5a;
-          --success-bg: #e1f7f0;
-          --warning: #b65f22;
-          --warning-bg: #ffefe3;
-          --danger: #b13e3e;
-          --danger-bg: #fee9e9;
-          --shadow-sm: 0 4px 10px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.05);
-          --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.04), 0 4px 10px rgba(0, 20, 40, 0.03);
-          --shadow-lg: 0 20px 40px -12px rgba(0, 40, 80, 0.2);
-          --border-light: 1px solid rgba(0, 0, 0, 0.05);
-          --border: #e2e8f0;
         }
 
         .loading-overlay {
@@ -1716,6 +1284,20 @@ const StudentInfo = () => {
         @keyframes fadeIn {
           from { opacity: 0; }
           to { opacity: 1; }
+        }
+          --text-soft: #3f4a5c;
+          --white: #ffffff;
+          --success: #0f7b5a;
+          --success-bg: #e1f7f0;
+          --warning: #b65f22;
+          --warning-bg: #ffefe3;
+          --danger: #b13e3e;
+          --danger-bg: #fee9e9;
+          --shadow-sm: 0 4px 10px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.05);
+          --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.04), 0 4px 10px rgba(0, 20, 40, 0.03);
+          --shadow-lg: 0 20px 40px -12px rgba(0, 40, 80, 0.2);
+          --border-light: 1px solid rgba(0, 0, 0, 0.05);
+          --border: #e2e8f0;
         }
 
         .navbar {
@@ -1784,37 +1366,6 @@ const StudentInfo = () => {
           border: 1px solid var(--border);
           box-shadow: var(--shadow-md);
           position: relative;
-        }
-
-        .back-button {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.6rem;
-          background: transparent;
-          border: 1px solid var(--gray-2);
-          color: var(--primary);
-          padding: 0.7rem 1.2rem;
-          border-radius: 8px;
-          font-size: 0.95rem;
-          font-weight: 600;
-          cursor: pointer;
-          margin-bottom: 1.5rem;
-          transition: all 0.2s ease;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        }
-
-        .back-button:hover {
-          background: rgba(79, 13, 0, 0.05);
-          border-color: var(--primary);
-          transform: translateX(-2px);
-        }
-
-        .back-button:active {
-          transform: translateX(-1px);
-        }
-
-        .back-button i {
-          font-size: 0.9rem;
         }
 
         .section-header {
@@ -2154,7 +1705,7 @@ const StudentInfo = () => {
       <nav className="navbar">
         <Link to="/portal" className="navbar-brand">iskoMats</Link>
         <div className="navbar-menu">
-          <span>{globalProfile?.first_name || userProfile?.first_name || userProfile?.firstName || localStorage.getItem('userFirstName') || currentUser}</span>
+          <span>{currentUser}</span>
           <button className="logout-btn" onClick={() => {
             localStorage.removeItem('currentUser');
             navigate('/login');
@@ -2164,11 +1715,12 @@ const StudentInfo = () => {
         </div>
       </nav>
 
+      <div className={`small-prompt ${showPrompt ? 'show' : ''}`}>
+        {promptMessage}
+      </div>
+
       <div className="form-container">
         <div className="form-card">
-          <button className="back-button" onClick={() => navigate('/portal')}>
-            <i className="fas fa-arrow-left"></i> Back to Portal
-          </button>
           <div className="section-header">
             <img src="/iskologo.png" alt="Logo" style={{height: '50px', marginBottom: '1rem', filter: 'grayscale(1) contrast(1.2)'}} />
             <h2>{scholarshipName}</h2>
@@ -2209,7 +1761,7 @@ const StudentInfo = () => {
                   2x2 ID Picture <span style={{color: '#e74c3c'}}>*</span>
                 </label>
                 <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '150px', width: '150px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                  <input type="file" name="profile_picture" accept="image/*" required={!idPicturePreview && !userProfile?.profile_picture} onChange={handleIdPictureUpload} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
+                  <input type="file" name="profile_picture" accept="image/*" required onChange={handleIdPictureUpload} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
                   <div style={{textAlign: 'center', color: '#999', fontSize: '0.85rem', pointerEvents: 'none'}}>
                     {idPicturePreview ? (
                       <img src={idPicturePreview} style={{width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px'}} alt="ID Preview" />
@@ -2258,28 +1810,13 @@ const StudentInfo = () => {
 
               <div className="form-group">
                 <label>Permanent Address <span style={{color: '#e74c3c'}}>*</span></label>
-                <div className="form-row" style={{gridTemplateColumns: '2fr 1fr 1fr', gap: '1rem', marginBottom: '0.5rem'}}>
-                  <div>
-                    <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#666', marginBottom: '0.3rem'}}>Street & Barangay</label>
-                    <select name="streetBarangay" value={formData.streetBarangay} onChange={handleInputChange} required>
-                      <option value="">Select Barangay</option>
-                      {LIPA_CITY_BARANGAYS.map(barangay => (
-                        <option key={barangay} value={barangay}>{barangay}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#666', marginBottom: '0.3rem'}}>Town/City</label>
-                    <input type="text" name="townCity" value={formData.townCity} readOnly style={{background: '#f0f0f0', cursor: 'not-allowed'}} />
-                  </div>
-                  <div>
-                    <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#666', marginBottom: '0.3rem'}}>Province</label>
-                    <input type="text" name="province" value={formData.province} readOnly style={{background: '#f0f0f0', cursor: 'not-allowed'}} />
-                  </div>
+                <div className="form-row" style={{gridTemplateColumns: '2fr 1fr 1fr'}}>
+                  <input type="text" name="streetBarangay" value={formData.streetBarangay} onChange={handleInputChange} placeholder="Street & Barangay" required />
+                  <input type="text" name="townCity" value={formData.townCity} onChange={handleInputChange} placeholder="Town/City" required />
+                  <input type="text" name="province" value={formData.province} onChange={handleInputChange} placeholder="Province" required />
                 </div>
-                <div style={{width: '25%'}}>
-                  <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#666', marginBottom: '0.3rem'}}>Zip Code</label>
-                  <input type="text" name="zipCode" value={formData.zipCode} readOnly style={{background: '#f0f0f0', cursor: 'not-allowed'}} />
+                <div style={{marginTop: '0.5rem', width: '25%'}}>
+                  <input type="text" name="zipCode" value={formData.zipCode} onChange={handleInputChange} placeholder="Zip Code" required />
                 </div>
               </div>
 
@@ -2309,101 +1846,8 @@ const StudentInfo = () => {
                 </div>
               </div>
 
-              {/* Documentary Requirement: Indigency and Address Verification */}
-              <div style={{marginTop: '2rem', background: '#fff', padding: '2rem', borderRadius: '24px', border: '1px solid #edf2f7', boxShadow: '0 4px 12px rgba(0,0,0,0.03)'}}>
-                <h4 style={{fontSize: '1.1rem', color: '#2d3748', fontWeight: '700', marginBottom: '1.5rem', borderLeft: '4px solid #e53e3e', paddingLeft: '15px', lineHeight: '1.2'}}>
-                  Certificate of Indigency <span style={{color: '#e74c3c'}}>*</span>
-                </h4>
-                
-                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem'}}>
-                  <div className="form-group" style={{marginBottom: 0}}>
-                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Photo (.png/jpg)</label>
-                    <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', cursor: 'pointer'}} onClick={() => !photos.mayorIndigency_photo && !userProfile?.has_mayorIndigency_photo && indigencyPhotoInputRef.current?.click()}>
-                      {photos.mayorIndigency_photo || userProfile?.has_mayorIndigency_photo ? (
-                        <div style={{display: 'flex', flexDirection: 'column', gap: '10px', width: '100%'}}>
-                          <img 
-                            src={photos.mayorIndigency_photo || userProfile?.indigency_doc} 
-                            style={{width: '100%', maxHeight: '150px', objectFit: 'contain', borderRadius: '12px', border: '1px solid #ddd'}} 
-                            alt="Indigency Preview" 
-                          />
-                          <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px'}}>
-                            <div style={{display: 'flex', alignItems: 'center', gap: '8px', color: mayorIndigencyVerified === 'success' ? '#28a745' : (mayorIndigencyVerified === 'failed' ? '#dc3545' : '#718096'), fontSize: '0.85rem', fontWeight: '600'}}>
-                              <i className={`fas ${mayorIndigencyVerified === 'success' ? 'fa-check-circle' : (mayorIndigencyVerified === 'failed' ? 'fa-times-circle' : 'fa-info-circle')}`}></i> 
-                              {mayorIndigencyVerified === 'success' ? 'Verified' : (mayorIndigencyVerified === 'failed' ? 'Verification Failed' : 'Photo Uploaded')}
-                            </div>
-                            <button type="button" onClick={(e) => { e.stopPropagation(); setPhotos(prev => ({ ...prev, mayorIndigency_photo: null })); setMayorIndigencyVerified(null); setOcrVerified(null); setOcrStatus(''); setTimeout(() => indigencyPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{fontSize: '0.85rem', color: '#4a5568'}}><i className="fas fa-upload" style={{marginRight: '8px'}}></i> Click to upload photo</div>
-                      )}
-                      <input ref={indigencyPhotoInputRef} type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} style={{display: 'none'}} />
-                    </div>
-                    {photos.mayorIndigency_photo || userProfile?.has_mayorIndigency_photo ? (
-                      mayorIndigencyVerified !== 'success' && (
-                        <button 
-                          type="button" 
-                          onClick={(e) => { e.stopPropagation(); scanDocument('Indigency'); }} 
-                          disabled={isScanning.indigency}
-                          style={{
-                            marginTop: '0.8rem',
-                            background: 'var(--primary)', 
-                            color: 'white', 
-                            border: 'none', 
-                            borderRadius: '8px', 
-                            padding: '6px 14px', 
-                            fontSize: '0.8rem', 
-                            fontWeight: '600',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                            width: '100%',
-                            justifyContent: 'center'
-                          }}
-                        >
-                          {isScanning.indigency ? <><i className="fas fa-spinner fa-spin"></i> Scanning...</> : <><i className="fas fa-barcode"></i> Scan Document</>}
-                        </button>
-                      )
-                    ) : null}
-                  </div>
-                  <div className="form-group" style={{marginBottom: 0}}>
-                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov) - Max 30 seconds</label>
-                    <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', position: 'relative', cursor: 'pointer'}} onClick={() => !formData.mayorIndigency_video && indigencyVideoInputRef.current?.click()}>
-                      {isUploadingVideo.mayorIndigency_video ? (
-                        <div style={{display: 'flex', flexDirection: 'column', gap: '5px'}}>
-                          <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '600'}}>
-                            <i className="fas fa-spinner fa-spin"></i> Uploading Video... {uploadProgress.mayorIndigency_video}%
-                          </div>
-                          <div style={{fontSize: '0.7rem', color: '#666'}}>If stuck, check internet or file size.</div>
-                        </div>
-                      ) : formData.mayorIndigency_video ? (
-                        <div style={{display: 'flex', flexDirection: 'column', gap: '10px', width: '100%'}}>
-                          <video 
-                            src={formData.mayorIndigency_video} 
-                            style={{width: '100%', maxHeight: '150px', borderRadius: '12px', background: '#000'}} 
-                            controls 
-                            muted 
-                          />
-                          <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
-                            <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
-                              <i className="fas fa-check-circle"></i> Video Uploaded
-                            </div>
-                            <button type="button" onClick={(e) => { e.stopPropagation(); setFormData(prev => ({ ...prev, mayorIndigency_video: null })); setOcrVerified(null); setOcrStatus(''); setTimeout(() => indigencyVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{fontSize: '0.85rem', color: '#4a5568'}}><i className="fas fa-video" style={{marginRight: '8px'}}></i> Click to upload video</div>
-                      )}
-                      <input ref={indigencyVideoInputRef} type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorIndigency_video', e)} style={{display: 'none'}} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               <div style={{marginTop: '2rem', display: 'flex', justifyContent: 'flex-end'}}>
-                <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep || Object.values(isUploadingVideo).some(v => v)} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
+                <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
                   Next: Family Background <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
                 </button>
               </div>
@@ -2444,7 +1888,10 @@ const StudentInfo = () => {
                     <input type="tel" name="fatherPhoneNumber" value={formData.fatherPhoneNumber} onChange={handleInputChange} placeholder="09XXXXXXXXX" required={currentStep === 2} />
                   </div>
                 </div>
-
+                <div className="form-group">
+                  <label>Address <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="text" name="fatherAddress" value={formData.fatherAddress} onChange={handleInputChange} placeholder="Permanent Address" required={currentStep === 2} />
+                </div>
               </div>
 
               {/* Mother Information */}
@@ -2476,7 +1923,10 @@ const StudentInfo = () => {
                     <input type="tel" name="motherPhoneNumber" value={formData.motherPhoneNumber} onChange={handleInputChange} placeholder="09XXXXXXXXX" required={currentStep === 2} />
                   </div>
                 </div>
-
+                <div className="form-group">
+                  <label>Address <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="text" name="motherAddress" value={formData.motherAddress} onChange={handleInputChange} placeholder="Permanent Address" required={currentStep === 2} />
+                </div>
               </div>
 
               <div className="form-row">
@@ -2486,11 +1936,27 @@ const StudentInfo = () => {
                 </div>
               </div>
 
+              {/* Documentary Requirement: Indigency */}
+              <div style={{marginTop: '1.5rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
+                <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
+                  Certificate of Indigency <span style={{color: '#e74c3c'}}>*</span>
+                </h4>
+                <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
+                <div style={{paddingLeft: '16px'}}>
+                  <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 2} />
+                  {photos.mayorIndigency_photo && (
+                    <div style={{marginTop: '1rem'}}>
+                      <img src={photos.mayorIndigency_photo} style={{maxWidth: '200px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="Indigency Preview" />
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div style={{marginTop: '2rem', display: 'flex', justifyContent: 'space-between'}}>
                 <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
                   <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> Back: Personal Info
                 </button>
-                <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep || Object.values(isUploadingVideo).some(v => v)} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
+                <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
                   Next: Educational Info <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
                 </button>
               </div>
@@ -2501,11 +1967,6 @@ const StudentInfo = () => {
               <h3 style={{marginBottom: '1.5rem', fontSize: '1.2rem', color: 'var(--primary)', fontWeight: '700', borderBottom: '2px solid var(--accent-soft)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center'}}>
                 <i className="fas fa-graduation-cap" style={{marginRight: '12px', fontSize: '1.1rem'}}></i>3. Educational Information
               </h3>
-
-              <div className="form-group">
-                <label>Full Name</label>
-                <input type="text" value={`${formData.firstName} ${formData.middleName ? formData.middleName + ' ' : ''}${formData.lastName}`} readOnly style={{background: '#f1f5f9', cursor: 'not-allowed', color: '#64748b', fontWeight: '500'}} />
-              </div>
 
               <div className="form-row">
                 <div className="form-group">
@@ -2564,289 +2025,46 @@ const StudentInfo = () => {
               </div>
 
               <div style={{marginBottom: '2rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
-                <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '1.2rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
-                  Updated School ID <span style={{color: '#e74c3c'}}>*</span>
+                <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
+                  Updated School ID (Photo) <span style={{color: '#e74c3c'}}>*</span>
                 </h4>
+                <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1.2rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
                 
-                <div className="form-row" style={{paddingLeft: '16px', gap: '2rem'}}>
-                  <div className="form-group" style={{position: 'relative'}}>
-                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>Front Side</label>
-                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}} onClick={() => !schoolIdPhotos.front && schoolIdFrontInputRef.current?.click()}>
-                      {schoolIdPhotos.front ? (
-                        <img src={schoolIdPhotos.front} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Front Preview" />
-                      ) : (
-                        <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', cursor: 'pointer'}}>
-                          <i className="fas fa-camera" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
-                          <span>Upload Front</span>
-                        </div>
-                      )}
-                      <input ref={schoolIdFrontInputRef} type="file" name="id_front" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} style={{display: 'none'}} />
-                    </div>
-                    {schoolIdPhotos.front && (
-                      <div style={{display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '0.5rem'}}>
-                        <div style={{display: 'flex', alignItems: 'center', gap: '8px', color: ocrVerified === 'success' ? '#28a745' : (ocrVerified === 'failed' ? '#dc3545' : '#718096'), fontSize: '0.75rem', fontWeight: '600'}}>
-                          <i className={`fas ${ocrVerified === 'success' ? 'fa-check-circle' : (ocrVerified === 'failed' ? 'fa-times-circle' : 'fa-info-circle')}`}></i> 
-                          {ocrVerified === 'success' ? 'Verified' : (ocrVerified === 'failed' ? 'Check Failed' : 'ID Uploaded')}
-                        </div>
-                        <button type="button" onClick={() => { setSchoolIdPhotos(prev => ({ ...prev, front: null })); setOcrVerified(null); setTimeout(() => schoolIdFrontInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
-                      </div>
-                    )}
-                    {schoolIdPhotos.front && ocrVerified !== 'success' && (
-                      <button 
-                        type="button" 
-                        onClick={() => scanDocument('School ID')} 
-                        disabled={isScanning.schoolId}
-                        style={{
-                          marginTop: '0.8rem',
-                          background: 'var(--primary)', 
-                          color: 'white', 
-                          border: 'none', 
-                          borderRadius: '8px', 
-                          padding: '6px 14px', 
-                          fontSize: '0.8rem', 
-                          fontWeight: '600',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                          width: '100%',
-                          justifyContent: 'center'
-                        }}
-                      >
-                        {isScanning.schoolId ? <><i className="fas fa-spinner fa-spin"></i> Scanning...</> : <><i className="fas fa-barcode"></i> Scan ID</>}
-                      </button>
-                    )}
+                <div className="form-row" style={{paddingLeft: '16px'}}>
+                  <div className="form-group">
+                    <label style={{fontSize: '0.8rem', color: '#555'}}>Front Side</label>
+                    <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} required={currentStep === 3} />
+                    {schoolIdPhotos.front && <img src={schoolIdPhotos.front} style={{marginTop: '10px', width: '100%', maxWidth: '150px', borderRadius: '8px'}} alt="Front Preview" />}
                   </div>
-                  <div className="form-group" style={{position: 'relative'}}>
-                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>Back Side</label>
-                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}} onClick={() => !schoolIdPhotos.back && schoolIdBackInputRef.current?.click()}>
-                      {schoolIdPhotos.back ? (
-                        <img src={schoolIdPhotos.back} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Back Preview" />
-                      ) : (
-                        <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', cursor: 'pointer'}}>
-                          <i className="fas fa-camera" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
-                          <span>Upload Back</span>
-                        </div>
-                      )}
-                      <input ref={schoolIdBackInputRef} type="file" name="id_back" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} style={{display: 'none'}} />
-                    </div>
-                    {schoolIdPhotos.back && (
-                      <button type="button" onClick={() => { setSchoolIdPhotos(prev => ({ ...prev, back: null })); setTimeout(() => schoolIdBackInputRef.current?.click(), 50); }} style={{marginTop: '0.5rem', background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
-                    )}
-                  </div>
-                  <div className="form-group" style={{position: 'relative'}}>
-                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>ID Video <span style={{color: '#e74c3c'}}>*</span></label>
-                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}} onClick={() => !formData.id_vid_url && idVideoInputRef.current?.click()}>
-                      {formData.id_vid_url ? (
-                        <div style={{width: '100%', height: '100%'}}>
-                          <video 
-                            src={formData.id_vid_url} 
-                            style={{width: '100%', height: '100%', objectFit: 'cover'}} 
-                            controls 
-                            loop 
-                            muted 
-                            playsInline
-                          />
-                        </div>
-                      ) : (
-                        <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', cursor: 'pointer'}}>
-                          <i className="fas fa-video" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
-                          <span>Upload ID Video</span>
-                        </div>
-                      )}
-                      <input ref={idVideoInputRef} type="file" name="id_vid_url" accept="video/*" onChange={(e) => handleVideoUpload('id_vid_url', e)} style={{display: 'none'}} />
-                    </div>
-                    {formData.id_vid_url && (
-                      <button type="button" onClick={() => { setFormData(prev => ({ ...prev, id_vid_url: null })); setTimeout(() => idVideoInputRef.current?.click(), 50); }} style={{marginTop: '0.5rem', background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
-                    )}
+                  <div className="form-group">
+                    <label style={{fontSize: '0.8rem', color: '#555'}}>Back Side</label>
+                    <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} required={currentStep === 3} />
+                    {schoolIdPhotos.back && <img src={schoolIdPhotos.back} style={{marginTop: '10px', width: '100%', maxWidth: '150px', borderRadius: '8px'}} alt="Back Preview" />}
                   </div>
                 </div>
               </div>
 
               {/* Documentary Requirements: COE and Grades */}
-              <div style={{marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '2rem'}}>
-                <div style={{background: '#fff', padding: '2rem', borderRadius: '24px', border: '1px solid #edf2f7', boxShadow: '0 4px 12px rgba(0,0,0,0.03)'}}>
-                  <h4 style={{fontSize: '1.1rem', color: '#2d3748', fontWeight: '700', marginBottom: '1.5rem', borderLeft: '4px solid #e53e3e', paddingLeft: '15px', lineHeight: '1.2'}}>
-                    Certificate of Enrollment for Current A.Y <span style={{color: '#e74c3c'}}>*</span>
+              <div style={{marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.2rem'}}>
+                <div style={{background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
+                  <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
+                    Certificate of Enrollment (Current A.Y) <span style={{color: '#e74c3c'}}>*</span>
                   </h4>
-                  
-                  <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem'}}>
-                    <div className="form-group" style={{marginBottom: 0}}>
-                      <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Photo (.png/jpg)</label>
-                      <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', cursor: 'pointer'}} onClick={() => !photos.mayorCOE_photo && !userProfile?.has_mayorCOE_photo && coePhotoInputRef.current?.click()}>
-                        {photos.mayorCOE_photo || userProfile?.has_mayorCOE_photo ? (
-                          <div style={{display: 'flex', flexDirection: 'column', gap: '10px', width: '100%'}}>
-                            <img 
-                              src={photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc} 
-                              style={{width: '100%', maxHeight: '150px', objectFit: 'contain', borderRadius: '12px', border: '1px solid #ddd'}} 
-                              alt="COE Preview" 
-                            />
-                            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px'}}>
-                              <div style={{display: 'flex', alignItems: 'center', gap: '8px', color: mayorCOEVerified === 'success' ? '#28a745' : (mayorCOEVerified === 'failed' ? '#dc3545' : '#718096'), fontSize: '0.85rem', fontWeight: '600'}}>
-                                <i className={`fas ${mayorCOEVerified === 'success' ? 'fa-check-circle' : (mayorCOEVerified === 'failed' ? 'fa-times-circle' : 'fa-info-circle')}`}></i> 
-                                {mayorCOEVerified === 'success' ? 'Verified' : (mayorCOEVerified === 'failed' ? 'Verification Failed' : 'Photo Uploaded')}
-                              </div>
-                              <button type="button" onClick={(e) => { e.stopPropagation(); setPhotos(prev => ({ ...prev, mayorCOE_photo: null })); setMayorCOEVerified(null); setTimeout(() => coePhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div style={{fontSize: '0.85rem', color: '#4a5568'}}><i className="fas fa-upload" style={{marginRight: '8px'}}></i> Click to upload photo</div>
-                        )}
-                        <input ref={coePhotoInputRef} type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} style={{display: 'none'}} />
-                      </div>
-                      {photos.mayorCOE_photo || userProfile?.has_mayorCOE_photo ? (
-                        mayorCOEVerified !== 'success' && (
-                          <button 
-                            type="button" 
-                            onClick={(e) => { e.stopPropagation(); scanDocument('Enrollment'); }} 
-                            disabled={isScanning.coe}
-                            style={{
-                              marginTop: '0.8rem',
-                              background: 'var(--primary)', 
-                              color: 'white', 
-                              border: 'none', 
-                              borderRadius: '8px', 
-                              padding: '6px 14px', 
-                              fontSize: '0.8rem', 
-                              fontWeight: '600',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                              width: '100%',
-                              justifyContent: 'center'
-                            }}
-                          >
-                            {isScanning.coe ? <><i className="fas fa-spinner fa-spin"></i> Scanning...</> : <><i className="fas fa-barcode"></i> Scan COE</>}
-                          </button>
-                        )
-                      ) : null}
-                    </div>
-                    <div className="form-group" style={{marginBottom: 0}}>
-                      <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov) - Max 30 seconds</label>
-                      <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', position: 'relative', cursor: 'pointer'}} onClick={() => !formData.mayorCOE_video && coeVideoInputRef.current?.click()}>
-                        {isUploadingVideo.mayorCOE_video ? (
-                          <div style={{display: 'flex', flexDirection: 'column', gap: '5px'}}>
-                            <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '600'}}>
-                              <i className="fas fa-spinner fa-spin"></i> Uploading Video... {uploadProgress.mayorCOE_video}%
-                            </div>
-                            <div style={{fontSize: '0.7rem', color: '#666'}}>If stuck, check internet or file height.</div>
-                          </div>
-                        ) : formData.mayorCOE_video ? (
-                          <div style={{display: 'flex', flexDirection: 'column', gap: '10px', width: '100%'}}>
-                            <video 
-                              src={formData.mayorCOE_video} 
-                              style={{width: '100%', maxHeight: '150px', borderRadius: '12px', background: '#000'}} 
-                              controls 
-                              muted 
-                            />
-                            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
-                              <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
-                                <i className="fas fa-check-circle"></i> Video Uploaded
-                              </div>
-                              <button type="button" onClick={(e) => { e.stopPropagation(); setFormData(prev => ({ ...prev, mayorCOE_video: null })); setMayorCOEVerified(null); setTimeout(() => coeVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div style={{fontSize: '0.85rem', color: '#4a5568'}}><i className="fas fa-video" style={{marginRight: '8px'}}></i> Click to upload video</div>
-                        )}
-                        <input ref={coeVideoInputRef} type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorCOE_video', e)} style={{display: 'none'}} />
-                      </div>
-                    </div>
+                  <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
+                  <div style={{paddingLeft: '16px'}}>
+                    <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} />
+                    {photos.mayorCOE_photo && <img src={photos.mayorCOE_photo} style={{marginTop: '10px', maxWidth: '200px', borderRadius: '8px'}} alt="COE Preview" />}
                   </div>
                 </div>
 
-                <div style={{background: '#fff', padding: '2rem', borderRadius: '24px', border: '1px solid #edf2f7', boxShadow: '0 4px 12px rgba(0,0,0,0.03)'}}>
-                  <h4 style={{fontSize: '1.1rem', color: '#2d3748', fontWeight: '700', marginBottom: '1.5rem', borderLeft: '4px solid #e53e3e', paddingLeft: '15px', lineHeight: '1.2'}}>
-                    Certified true copy of grades last semester <span style={{color: '#e74c3c'}}>*</span>
+                <div style={{background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
+                  <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
+                    Certified True Copy of Grades <span style={{color: '#e74c3c'}}>*</span>
                   </h4>
-                  
-                  <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem'}}>
-                    <div className="form-group" style={{marginBottom: 0}}>
-                      <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Photo (.png/jpg)</label>
-                      <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', cursor: 'pointer'}} onClick={() => !photos.mayorGrades_photo && !userProfile?.has_mayorGrades_photo && gradesPhotoInputRef.current?.click()}>
-                        {photos.mayorGrades_photo || userProfile?.has_mayorGrades_photo ? (
-                          <div style={{display: 'flex', flexDirection: 'column', gap: '10px', width: '100%'}}>
-                            <img 
-                              src={photos.mayorGrades_photo || userProfile?.grades_doc} 
-                              style={{width: '100%', maxHeight: '150px', objectFit: 'contain', borderRadius: '12px', border: '1px solid #ddd'}} 
-                              alt="Grades Preview" 
-                            />
-                            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px'}}>
-                              <div style={{display: 'flex', alignItems: 'center', gap: '8px', color: mayorGradesVerified === 'success' ? '#28a745' : (mayorGradesVerified === 'failed' ? '#dc3545' : '#718096'), fontSize: '0.85rem', fontWeight: '600'}}>
-                                <i className={`fas ${mayorGradesVerified === 'success' ? 'fa-check-circle' : (mayorGradesVerified === 'failed' ? 'fa-times-circle' : 'fa-info-circle')}`}></i> 
-                                {mayorGradesVerified === 'success' ? 'Verified' : (mayorGradesVerified === 'failed' ? 'Verification Failed' : 'Photo Uploaded')}
-                              </div>
-                              <button type="button" onClick={(e) => { e.stopPropagation(); setPhotos(prev => ({ ...prev, mayorGrades_photo: null })); setMayorGradesVerified(null); setTimeout(() => gradesPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div style={{fontSize: '0.85rem', color: '#4a5568'}}><i className="fas fa-upload" style={{marginRight: '8px'}}></i> Click to upload photo</div>
-                        )}
-                        <input ref={gradesPhotoInputRef} type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} style={{display: 'none'}} />
-                      </div>
-                      {photos.mayorGrades_photo || userProfile?.has_mayorGrades_photo ? (
-                        mayorGradesVerified !== 'success' && (
-                          <button 
-                            type="button" 
-                            onClick={(e) => { e.stopPropagation(); scanDocument('Grades'); }} 
-                            disabled={isScanning.grades}
-                            style={{
-                              marginTop: '0.8rem',
-                              background: 'var(--primary)', 
-                              color: 'white', 
-                              border: 'none', 
-                              borderRadius: '8px', 
-                              padding: '6px 14px', 
-                              fontSize: '0.8rem', 
-                              fontWeight: '600',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                              width: '100%',
-                              justifyContent: 'center'
-                            }}
-                          >
-                            {isScanning.grades ? <><i className="fas fa-spinner fa-spin"></i> Scanning...</> : <><i className="fas fa-barcode"></i> Scan Grades</>}
-                          </button>
-                        )
-                      ) : null}
-                    </div>
-                    <div className="form-group" style={{marginBottom: 0}}>
-                      <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov) - Max 30 seconds</label>
-                      <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0', position: 'relative', cursor: 'pointer'}} onClick={() => !formData.mayorGrades_video && gradesVideoInputRef.current?.click()}>
-                        {isUploadingVideo.mayorGrades_video ? (
-                          <div style={{display: 'flex', flexDirection: 'column', gap: '5px'}}>
-                            <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '600'}}>
-                              <i className="fas fa-spinner fa-spin"></i> Uploading Video... {uploadProgress.mayorGrades_video}%
-                            </div>
-                            <div style={{fontSize: '0.7rem', color: '#666'}}>If stuck, check connection.</div>
-                          </div>
-                        ) : formData.mayorGrades_video ? (
-                          <div style={{display: 'flex', flexDirection: 'column', gap: '10px', width: '100%'}}>
-                            <video 
-                              src={formData.mayorGrades_video} 
-                              style={{width: '100%', maxHeight: '150px', borderRadius: '12px', background: '#000'}} 
-                              controls 
-                              muted 
-                            />
-                            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
-                              <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
-                                <i className="fas fa-check-circle"></i> Video Uploaded
-                              </div>
-                              <button type="button" onClick={(e) => { e.stopPropagation(); setFormData(prev => ({ ...prev, mayorGrades_video: null })); setMayorGradesVerified(null); setTimeout(() => gradesVideoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer'}}>Change</button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div style={{fontSize: '0.85rem', color: '#4a5568'}}><i className="fas fa-video" style={{marginRight: '8px'}}></i> Click to upload video</div>
-                        )}
-                        <input ref={gradesVideoInputRef} type="file" accept="video/*" onChange={(e) => handleVideoUpload('mayorGrades_video', e)} style={{display: 'none'}} />
-                      </div>
-                    </div>
+                  <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
+                  <div style={{paddingLeft: '16px'}}>
+                    <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} />
+                    {photos.mayorGrades_photo && <img src={photos.mayorGrades_photo} style={{marginTop: '10px', maxWidth: '200px', borderRadius: '8px'}} alt="Grades Preview" />}
                   </div>
                 </div>
               </div>
@@ -2855,32 +2073,7 @@ const StudentInfo = () => {
                 <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
                   <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> Back: Family Background
                 </button>
-                <button 
-                  type="button" 
-                  className="submit-btn" 
-                  onClick={() => {
-                    // Critical Validation: Check for required documents
-                    const requiredDocs = [
-                      { key: 'mayorCOE_photo', label: 'COE Photo', type: 'photo' },
-                      { key: 'mayorCOE_video', label: 'COE Video', type: 'video' },
-                      { key: 'mayorGrades_photo', label: 'Grades Photo', type: 'photo' },
-                      { key: 'mayorGrades_video', label: 'Grades Video', type: 'video' }
-                    ];
-
-                    const missing = requiredDocs.filter(doc => {
-                      if (doc.type === 'photo') return !photos[doc.key] && !userProfile?.[`has_${doc.key}`];
-                      return !formData[doc.key];
-                    });
-
-                    if (missing.length > 0) {
-                      showPromptMessage(`⚠️ Please upload the following documents: ${missing.map(m => m.label).join(', ')}`);
-                      return;
-                    }
-                    handleNextStep();
-                  }} 
-                  disabled={isSavingStep || Object.values(isUploadingVideo).some(v => v)} 
-                  style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}
-                >
+                <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
                   Next: Certification & Verification <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
                 </button>
               </div>
@@ -2910,10 +2103,10 @@ const StudentInfo = () => {
               {/* Signature Section */}
                <div style={{marginBottom: '2rem'}}>
                 <label style={{display: 'block', fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '1rem'}}>
-                  Application Signature <span style={{color: '#e74c3c'}}>*</span>
+                  Signature & Additional Identification <span style={{color: '#e74c3c'}}>*</span>
                 </label>
                 
-                <div style={{display: 'flex', justifyContent: 'center'}}>
+                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem'}}>
                   {/* Signature Column */}
                   <div style={{background: '#fff', border: '1px solid var(--border)', borderRadius: '16px', padding: '1.5rem', textAlign: 'center'}}>
                     <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#666', marginBottom: '1rem'}}>Drawer Signature</label>
@@ -2937,28 +2130,24 @@ const StudentInfo = () => {
                         <button type="button" onClick={() => setShowSignaturePad(true)} style={{position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer'}}><i className="fas fa-undo"></i></button>
                       </div>
                     )}
-                    
-                    {/* Signature Verification Status */}
-                    {signatureVerified && (
-                      <div style={{marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #eee'}}>
-                        {signatureVerified === 'verifying' && (
-                          <div style={{fontSize: '0.85rem', color: '#666', display: 'flex', alignItems: 'center', gap: '8px'}}>
-                            <i className="fas fa-spinner fa-spin" style={{color: '#f39c12'}}></i>
-                            Verifying signature...
-                          </div>
-                        )}
-                        {signatureVerified === 'success' && (
-                          <div style={{fontSize: '0.85rem', color: '#27ae60', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '600'}}>
-                            <i className="fas fa-check-circle"></i>
-                            Signature verified: {signatureMatchResult?.confidence && `${Math.round(signatureMatchResult.confidence * 100)}% match`}
-                          </div>
-                        )}
-                        {signatureVerified === 'failed' && (
-                          <div style={{fontSize: '0.85rem', color: '#e74c3c', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '600'}}>
-                            <i className="fas fa-exclamation-circle"></i>
-                            Verification failed - Please try again
-                          </div>
-                        )}
+                  </div>
+
+                  {/* Extra Image Column (Not connected to DB) */}
+                  <div style={{background: '#f0f7ff', border: '1px solid #e1e8f0', borderRadius: '16px', padding: '1.5rem', textAlign: 'center'}}>
+                    <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#666', marginBottom: '0.5rem'}}>Additional Identification (Optional)</label>
+                    <p style={{fontSize: '0.7rem', color: '#888', marginBottom: '1rem'}}>Internal Record Only (Not stored in DB)</p>
+                    <input type="file" accept="image/*" onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => setExtraSignaturePhoto(reader.result);
+                        reader.readAsDataURL(file);
+                      }
+                    }} style={{fontSize: '0.75rem', width: '100%'}} />
+                    {extraSignaturePhoto && (
+                      <div style={{marginTop: '10px', position: 'relative'}}>
+                        <img src={extraSignaturePhoto} alt="Extra Identification" style={{maxHeight: '80px', borderRadius: '8px', border: '1px solid #fff'}} />
+                        <button type="button" onClick={() => setExtraSignaturePhoto(null)} style={{position: 'absolute', top: '-5px', right: '5px', background: 'rgba(255,0,0,0.7)', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', fontSize: '10px'}}><i className="fas fa-times"></i></button>
                       </div>
                     )}
                   </div>
@@ -2972,133 +2161,64 @@ const StudentInfo = () => {
                 </h4>
                 <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1.2rem', paddingLeft: '16px'}}>Match captured photo with your School ID</p>
                 
-                <div style={{background: '#f8fafc', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e2e8f0'}}>
-                  {photos.face_photo ? (
-                    <div style={{display: 'flex', flexDirection: 'column', gap: '15px', width: '100%'}}>
-                      <div style={{display: 'flex', justifyContent: 'center'}}>
-                        <img 
-                          src={photos.face_photo} 
-                          style={{width: '120px', height: '120px', objectFit: 'cover', borderRadius: '50%', border: '3px solid var(--primary)'}} 
-                          alt="Face Preview" 
-                        />
-                      </div>
-                      <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%'}}>
-                        <div style={{display: 'flex', flexDirection: 'column', gap: '4px'}}>
-                          <div style={{display: 'flex', alignItems: 'center', gap: '10px', color: '#28a745', fontSize: '0.85rem', fontWeight: '600'}}>
-                            <i className="fas fa-check-circle"></i> Photo Captured
-                          </div>
-                        {faceVerified && (
-                          <div style={{fontSize: '0.75rem', fontWeight: '500'}}>
-                            {faceVerified === 'verifying' && <span style={{color: '#f39c12'}}><i className="fas fa-spinner fa-spin"></i> Verifying Match...</span>}
-                            {faceVerified === 'success' && <span style={{color: '#27ae60'}}><i className="fas fa-id-badge"></i> Verified {faceMatchResult?.confidence && `(${Math.round(faceMatchResult.confidence * 100)}% match)`}</span>}
-                            {faceVerified === 'failed' && <span style={{color: '#e74c3c'}}><i className="fas fa-exclamation-circle"></i> Match failed</span>}
-                            {faceVerified === 'technical_unavailable' && <span style={{color: '#7f8c8d'}}><i className="fas fa-info-circle"></i> Service Busy - Verified Manually</span>}
-                          </div>
-                        )}
-                      </div>
-                      <button type="button" onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); setFaceVerified(null); setTimeout(() => openCamera(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
-                    </div>
-                    {faceVerified !== 'success' && (
-                      <button 
-                        type="button" 
-                        onClick={() => verifyDocumentsBeforeStep(4)} 
-                        style={{
-                          marginTop: '0.8rem',
-                          background: 'var(--primary)', 
-                          color: 'white', 
-                          border: 'none', 
-                          borderRadius: '8px', 
-                          padding: '6px 14px', 
-                          fontSize: '0.8rem', 
-                          fontWeight: '600',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                          width: '100%',
-                          justifyContent: 'center'
-                        }}
-                      >
-                        <i className="fas fa-check"></i> Verify Match
+                <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem'}}>
+                  <div style={{border: '2px solid #fff', borderRadius: '20px', height: '200px', width: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e1e8f0', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)'}}>
+                    {photos.face_photo ? (
+                      <>
+                        <img src={photos.face_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Face Verification" />
+                        <button type="button" onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); }} style={{position: 'absolute', top: '10px', right: '10px', background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'}}><i className="fas fa-times"></i></button>
+                      </>
+                    ) : (
+                      <button type="button" onClick={openCamera} style={{border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px'}}>
+                        <i className="fas fa-camera" style={{fontSize: '2.5rem'}}></i>
+                        <span style={{fontSize: '0.9rem', fontWeight: '600'}}>Capture Face Photo</span>
                       </button>
                     )}
-                  ) : (
-                    <button type="button" onClick={openCamera} style={{border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', width: '100%', justifyContent: 'center'}}>
-                      <i className="fas fa-camera" style={{fontSize: '2.5rem'}}></i>
-                      <span style={{fontSize: '0.9rem', fontWeight: '600'}}>Capture Face Photo</span>
-                    </button>
-                  )}
-                </div>
-              </div>
+                  </div>
 
-              {/* School ID Upload Section in Step 4 */}
-              <div style={{marginBottom: '2rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
-                <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '1.2rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
-                  Updated School ID <span style={{color: '#e74c3c'}}>*</span>
-                </h4>
-                
-                <div className="form-row" style={{paddingLeft: '16px', gap: '2rem'}}>
-                  <div className="form-group" style={{position: 'relative'}}>
-                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>Front Side</label>
-                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}} onClick={() => !schoolIdPhotos.front && schoolIdFrontInputRef.current?.click()}>
-                      {schoolIdPhotos.front ? (
-                        <img src={schoolIdPhotos.front} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Front Preview" />
+                  {photos.face_photo && (
+                    <div style={{width: '100%', maxWidth: '300px', textAlign: 'center'}}>
+                      {!faceMatchResult ? (
+                        <button type="button" onClick={async () => {
+                          const idImg = schoolIdPhotos.front || userProfile?.id_img_front;
+                          if (!idImg) {
+                            showPromptMessage('⚠️ Please upload your School ID in Step 3 first.');
+                            return;
+                          }
+                          
+                          setIsFaceMatching(true);
+                          setLoadingMessage({ title: 'Matching Face', message: 'Comparing captured photo with your School ID...' });
+                          
+                          try {
+                            const result = await applicantAPI.verifyFaceAgainstId(photos.face_photo, idImg);
+                            setFaceMatchResult(result);
+                            if (result.verified) {
+                              showPromptMessage('✅ Face successfully matched with ID!');
+                            } else {
+                              showPromptMessage(`❌ Face Match Issue: ${result.message || 'Face does not match the ID.'}`);
+                            }
+                          } catch (err) {
+                            console.error('Match error:', err);
+                            // Generic success for technical issues on matching too
+                            showPromptMessage('ℹ️ Verification service issue. Proceeding with manual check.');
+                            setFaceMatchResult({ verified: true, technical_unavailable: true });
+                          } finally {
+                            setIsFaceMatching(false);
+                          }
+                        }} className="submit-btn" disabled={isFaceMatching} style={{width: '100%', background: 'var(--primary)', borderRadius: '12px'}}>
+                          {isFaceMatching ? <><i className="fas fa-spinner fa-spin"></i> Matching...</> : <><i className="fas fa-user-check"></i> Verify Match with ID</>}
+                        </button>
                       ) : (
-                        <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', cursor: 'pointer'}}>
-                          <i className="fas fa-camera" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
-                          <span>Upload Front</span>
+                        <div style={{padding: '10px', borderRadius: '12px', background: faceMatchResult.verified ? '#d4edda' : '#f8d7da', color: faceMatchResult.verified ? '#155724' : '#721c24', border: faceMatchResult.verified ? '1px solid #c3e6cb' : '1px solid #f5c6cb'}}>
+                          <i className={`fas ${faceMatchResult.verified ? 'fa-check-circle' : 'fa-exclamation-circle'}`} style={{marginRight: '8px'}}></i>
+                          {faceMatchResult.verified ? (faceMatchResult.technical_unavailable ? 'Service issue (Manual Check needed)' : 'Facial identity verified!') : faceMatchResult.message || 'Face identity mismatch.'}
+                          {!faceMatchResult.verified && (
+                            <button type="button" onClick={() => setFaceMatchResult(null)} style={{background: 'none', border: 'none', color: '#721c24', cursor: 'pointer', textDecoration: 'underline', fontSize: '0.8rem', marginLeft: '10px'}}>Retry</button>
+                          )}
                         </div>
                       )}
-                      <input ref={schoolIdFrontInputRef} type="file" name="id_front" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} style={{display: 'none'}} />
                     </div>
-                    {schoolIdPhotos.front && (
-                      <button type="button" onClick={() => { setSchoolIdPhotos(prev => ({ ...prev, front: null })); setTimeout(() => schoolIdFrontInputRef.current?.click(), 50); }} style={{marginTop: '0.5rem', background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
-                    )}
-                  </div>
-                  <div className="form-group" style={{position: 'relative'}}>
-                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>Back Side</label>
-                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}} onClick={() => !schoolIdPhotos.back && schoolIdBackInputRef.current?.click()}>
-                      {schoolIdPhotos.back ? (
-                        <img src={schoolIdPhotos.back} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Back Preview" />
-                      ) : (
-                        <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', cursor: 'pointer'}}>
-                          <i className="fas fa-camera" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
-                          <span>Upload Back</span>
-                        </div>
-                      )}
-                      <input ref={schoolIdBackInputRef} type="file" name="id_back" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} style={{display: 'none'}} />
-                    </div>
-                    {schoolIdPhotos.back && (
-                      <button type="button" onClick={() => { setSchoolIdPhotos(prev => ({ ...prev, back: null })); setTimeout(() => schoolIdBackInputRef.current?.click(), 50); }} style={{marginTop: '0.5rem', background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
-                    )}
-                  </div>
-                  <div className="form-group" style={{position: 'relative'}}>
-                    <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#555', marginBottom: '0.8rem', display: 'block'}}>ID Video <span style={{color: '#e74c3c'}}>*</span></label>
-                    <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '140px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}} onClick={() => !formData.id_vid_url && idVideoInputRef.current?.click()}>
-                      {formData.id_vid_url ? (
-                        <div style={{width: '100%', height: '100%'}}>
-                          <video 
-                            src={formData.id_vid_url} 
-                            style={{width: '100%', height: '100%', objectFit: 'cover'}} 
-                            controls 
-                            loop 
-                            muted 
-                            playsInline
-                          />
-                        </div>
-                      ) : (
-                        <div style={{textAlign: 'center', color: '#999', fontSize: '0.8rem', cursor: 'pointer'}}>
-                          <i className="fas fa-video" style={{fontSize: '1.8rem', marginBottom: '0.4rem', display: 'block'}}></i>
-                          <span>Upload ID Video</span>
-                        </div>
-                      )}
-                      <input ref={idVideoInputRef} type="file" name="id_vid_url" accept="video/*" onChange={(e) => handleVideoUpload('id_vid_url', e)} style={{display: 'none'}} />
-                    </div>
-                    {formData.id_vid_url && (
-                      <button type="button" onClick={() => { setFormData(prev => ({ ...prev, id_vid_url: null })); setTimeout(() => idVideoInputRef.current?.click(), 50); }} style={{marginTop: '0.5rem', background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
-                    )}
-                  </div>
+                  )}
                 </div>
               </div>
 
@@ -3173,49 +2293,14 @@ const StudentInfo = () => {
       </div>
 
       {/* Loading overlay */}
-      <div className={`loading-overlay ${isSubmitting || isSavingStep || isInitialLoading || Object.values(isScanning).some(v => v) ? 'active' : ''}`}>
-        <div className="loading-modal" style={{padding: '3.5rem', borderRadius: '40px', maxWidth: '500px'}}>
+      <div className={`loading-overlay ${isSubmitting || isSavingStep || isInitialLoading ? 'active' : ''}`}>
+        <div className="loading-modal">
           <div className="loading-spinner"></div>
           <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
             {loadingMessage.title}
           </h3>
-          <p style={{ color: 'var(--text-soft)', fontSize: '1.1rem', lineHeight: '1.6' }}>
+          <p style={{ color: 'var(--text-soft)', fontSize: '1rem' }}>
             {loadingMessage.message}
-          </p>
-          {Object.values(isScanning).some(v => v) && (
-            <div style={{marginTop: '1.5rem', width: '100%'}}>
-              <div style={{
-                background: '#e2e8f0',
-                borderRadius: '12px',
-                height: '8px',
-                overflow: 'hidden',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-              }}>
-                <div style={{
-                  background: 'linear-gradient(90deg, var(--primary), var(--accent))',
-                  height: '100%',
-                  width: `${verificationProgress}%`,
-                  transition: 'width 0.3s ease',
-                  borderRadius: '12px'
-                }}></div>
-              </div>
-              <p style={{fontSize: '0.85rem', color: '#718096', marginTop: '0.6rem', textAlign: 'center', fontWeight: '600'}}>
-                {Math.round(verificationProgress)}%
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Verification overlay */}
-      <div className={`loading-overlay ${isVerifyingDocs ? 'active' : ''}`}>
-        <div className="loading-modal" style={{borderColor: 'var(--primary)'}}>
-          <div className="loading-spinner"></div>
-          <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
-            Verifying Documents
-          </h3>
-          <p style={{ color: 'var(--text-soft)', fontSize: '1.1rem' }}>
-            Automated scanning in progress. We are checking your videos for required content (e.g., Indigency, Grades).
           </p>
         </div>
       </div>

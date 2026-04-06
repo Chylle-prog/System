@@ -8,15 +8,25 @@ from services.db_service import get_db
 
 def fetch_google_access_token():
     """Exchange the configured refresh token for a Gmail API access token."""
-    GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
-    GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
-    GOOGLE_REFRESH_TOKEN = os.environ.get('GOOGLE_REFRESH_TOKEN')
+    GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '').strip()
+    GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '').strip()
+    GOOGLE_REFRESH_TOKEN = os.environ.get('GOOGLE_REFRESH_TOKEN', '').strip()
     
     missing_settings = []
     if not GOOGLE_CLIENT_ID: missing_settings.append('GOOGLE_CLIENT_ID')
     if not GOOGLE_CLIENT_SECRET: missing_settings.append('GOOGLE_CLIENT_SECRET')
     if not GOOGLE_REFRESH_TOKEN: missing_settings.append('GOOGLE_REFRESH_TOKEN')
 
+    def mask(s, visible=4):
+        if not s: return "None"
+        if len(s) <= visible * 2: return s
+        return f"{s[:visible]}...{s[-visible:]} ({len(s)} chars)"
+
+    # Diagnostic logging: reveal masked characters and lengths for troubleshooting
+    print(f"[NOTIF DEBUG] Authenticating with CID: {mask(GOOGLE_CLIENT_ID, 12)}")
+    # Be more careful with secret masking but show enough for the user to verify against console
+    print(f"[NOTIF DEBUG] Authenticating with Secret: {mask(GOOGLE_CLIENT_SECRET, 6)}")
+    
     if missing_settings:
         error_msg = f"Google Gmail API credentials are not configured. Missing: {', '.join(missing_settings)}"
         print(f"[NOTIF ERROR] {error_msg}")
