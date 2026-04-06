@@ -294,9 +294,9 @@ def verify_video_content(video_bytes, keywords):
             return _run_tesseract_on_image(frame_f, psm=11)
 
         ocr_results = []
-        for idx in samples:
-            res = process_frame(idx)
-            if res: ocr_results.append(res)
+        with ThreadPoolExecutor() as executor:
+            for res in executor.map(process_frame, samples):
+                if res: ocr_results.append(res)
             
         all_ocr_text = " ".join(ocr_results)
         

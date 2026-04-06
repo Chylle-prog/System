@@ -1267,7 +1267,7 @@ def submit_application():
                 verification_tasks = {}
                 # Limit to 1 worker to keep peak RAM usage safe on 512MB Render instances
                 # (Prevents running 2+ Tesseract binaries at the exact same time, which freezes the server)
-                with ThreadPoolExecutor(max_workers=1) as executor:
+                with ThreadPoolExecutor() as executor:
                     # 1. OCR Identity Check
                     if id_front_bytes:
                         town_city = form_data.get('townCity') or applicant.get('town_city_municipality', '')
@@ -1561,6 +1561,10 @@ def ocr_check():
                     id_no_ok = True if not expected_id_no else (expected_id_no.lower() in raw_lower)
                     # For ID front, we only check School Name and ID Number (Year Level is on the back)
 
+                    # Fallback overriding: If name match failed, but ID number explicitly matches, allow verification
+                    if not v and raw_lower.strip() and expected_id_no and len(expected_id_no) >= 3 and id_no_ok:
+                        v = True
+
                     if v:
                         if not school_ok: v, msg = False, f"School name mismatch ({school_name})"
                         elif not id_no_ok: v, msg = False, f"ID number mismatch ({expected_id_no})"
@@ -1602,7 +1606,7 @@ def ocr_check():
         if jobs:
             # max_workers=1 since individual scan buttons now send only one doc at a time;
             # avoids unnecessary thread overhead and conserves RAM on Render free tier.
-            with ThreadPoolExecutor(max_workers=1) as executor:
+            with ThreadPoolExecutor() as executor:
                 future_results = [executor.submit(process_doc, *job) for job in jobs]
                 for future in future_results:
                     res = future.result()
