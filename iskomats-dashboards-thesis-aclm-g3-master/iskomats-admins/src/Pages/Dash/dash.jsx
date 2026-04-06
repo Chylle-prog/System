@@ -28,6 +28,7 @@ import {
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 import { adminAPI } from '../../services/api';
+import socketService from '../../services/socket';
 
 const ACTION_EVENT_OPTIONS = [
   { label: 'Login', value: 'Login' },
@@ -211,6 +212,23 @@ export default function Dash() {
 
   useEffect(() => {
     loadDashboardData();
+
+    // System-wide synchronization: Listen for account changes from other sources
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      socketService.connect(token);
+      
+      const unsubAccount = socketService.subscribe('account_change', (data) => {
+        console.log('[SYNC] Account change detected live:', data);
+        // Silently refresh data to ensure reflection in real-time
+        loadDashboardData(false);
+      });
+
+      return () => {
+        unsubAccount();
+        socketService.disconnect();
+      };
+    }
   }, []);
 
   const filteredManagedAccounts = useMemo(() => {
@@ -340,7 +358,8 @@ export default function Dash() {
         } else {
           await loadDashboardData(false);
         }
-      } else if (accountModal.data?.type === 'Admin') {
+      } else {
+        // Now support editing both Admin and Applicant (Scholar) accounts
         await adminAPI.updateAccount(accountModal.data.id, {
           name: accountForm.fullName.trim(),
           email: accountForm.email.trim(),
@@ -351,8 +370,6 @@ export default function Dash() {
             ? normalizeAccount({ ...account, name: accountForm.fullName.trim(), email: accountForm.email.trim() })
             : account
         )));
-      } else {
-        throw new Error('Student records are view-only in this dashboard because the current database API does not support student account edits here.');
       }
 
       setAccountModal({ open: false, mode: 'add', data: null });
@@ -369,7 +386,7 @@ export default function Dash() {
       open: true,
       type: isLocking ? 'Lock' : 'Unlock',
       targetId: account.id,
-      message: `Are you sure you want to ${isLocking ? 'lock' : 'unlock'} ${account.name}? ${isLocking ? 'This account will not be able to login.' : ''}`,
+      message: `Are you sure you want to ${isLocking ? 'suspend' : 'reactivate'} ${account.name}? ${isLocking ? 'Suspending this account will immediately revoke all access and prevent future logins across the entire system.' : 'Reactivating this account will restore full access immediately.'}`,
       action: async () => {
         try {
           await adminAPI.lockAccount(account.id, isLocking);
@@ -384,16 +401,13 @@ export default function Dash() {
   };
 
   const requestDeleteAccount = (account) => {
-    if (account.type !== 'Admin') {
-      setPageError('Student records are view-only in this dashboard because there is no safe delete API for them in the current schema.');
-      return;
-    }
+    // Super Admin can delete both Admin and Applicant accounts
 
     setConfirmModal({
       open: true,
       type: 'Delete',
       targetId: account.id,
-      message: `Are you sure you want to delete ${account.name}?`,
+      message: `Are you sure you want to PERMANENTLY delete ${account.name}? This action is irreversible and will remove all associated database records immediately.`,
       action: async () => {
         try {
           await adminAPI.deleteAccount(account.id);
@@ -670,15 +684,9 @@ export default function Dash() {
                             </td>
                             <td className="px-8 py-5 text-xs text-gray-400 font-mono">{formatDate(account.joined)}</td>
                             <td className="px-8 py-5 text-right space-x-2">
-                              {account.type === 'Admin' ? (
-                                <>
-                                  <button onClick={() => openAccountModal('edit', account)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all"><FaUserEdit /></button>
-                                  <button onClick={() => requestLockAccount(account)} className={`p-2 rounded-lg transition-all ${account.locked ? 'text-orange-600 hover:bg-orange-50' : 'text-slate-600 hover:bg-slate-50'}`}>{account.locked ? <FaLock /> : <FaUnlock />}</button>
-                                  <button onClick={() => requestDeleteAccount(account)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all"><FaTrash /></button>
-                                </>
-                              ) : (
-                                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">View only</span>
-                              )}
+                               <button onClick={() => openAccountModal('edit', account)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all"><FaUserEdit /></button>
+                               <button onClick={() => requestLockAccount(account)} className={`p-2 rounded-lg transition-all ${account.locked ? 'text-orange-600 hover:bg-orange-50' : 'text-slate-600 hover:bg-slate-50'}`}>{account.locked ? <FaLock /> : <FaUnlock />}</button>
+                               <button onClick={() => requestDeleteAccount(account)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all"><FaTrash /></button>
                             </td>
                           </tr>
                         );

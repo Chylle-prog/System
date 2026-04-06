@@ -37,6 +37,10 @@ class SocketService {
       this._notifyHandlers('add_room', data);
     });
 
+    this.socket.on('account_change', (data) => {
+      this._notifyHandlers('account_change', data);
+    });
+
     this.socket.on('error', (data) => {
       this._notifyHandlers('error', data);
     });

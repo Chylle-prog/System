@@ -251,10 +251,35 @@ def token_required(f):
             current_user_id = data['user_id']
             pro_no = data.get('pro_no')
             role = data.get('role')
+            
+            # Real-time synchronization check: Verify if the account is locked in the database
+            conn = get_db()
+            cursor = conn.cursor()
+            
+            # Check either user_no (for admins) or applicant_no (for scholars)
+            if role and (role.lower() == 'scholar' or role.lower() == 'user'):
+                cursor.execute("SELECT is_locked FROM email WHERE applicant_no = %s", (current_user_id,))
+            else:
+                cursor.execute("SELECT is_locked FROM email WHERE user_no = %s", (current_user_id,))
+            
+            lock_record = cursor.fetchone()
+            if lock_record and lock_record.get('is_locked'):
+                cursor.close()
+                conn.close()
+                return jsonify({'message': 'Account has been suspended. Please contact the administrator.'}), 403
+                
+            cursor.close()
+            conn.close()
+            
         except jwt.ExpiredSignatureError:
             return jsonify({'message': 'Token has expired'}), 401
         except jwt.InvalidTokenError:
             return jsonify({'message': 'Invalid token'}), 401
+        except Exception as e:
+            print(f"[AUTH] Synchronization check failed: {e}")
+            # If database check fails, we allow the request to proceed if the JWT is valid to prevent complete system lock-out
+            # during temporary DB hiccups, but in production, you might want to block this as well.
+
         
         return f(current_user_id, pro_no, role, *args, **kwargs)
     
@@ -1503,6 +1528,9 @@ def create_account(current_user_id, pro_no, role):
             status='success',
         )
         
+        # Real-time synchronization: Notify connected admins
+        emit('account_change', {'action': 'created', 'account_id': account_id}, broadcast=True)
+        
         return jsonify({'success': True, 'account': {
             'id': account_id,
             'email': normalized_email,
@@ -1575,6 +1603,9 @@ def update_account(current_user_id, pro_no, role, account_id):
             status='success',
         )
         
+        # Real-time synchronization: Notify connected admins
+        emit('account_change', {'action': 'updated', 'account_id': account_id}, broadcast=True)
+        
         return jsonify({'success': True, 'message': 'Account updated'}), 200
     
     except Exception as e:
@@ -1622,6 +1653,9 @@ def delete_account(current_user_id, pro_no, role, account_id):
             provider_name=account_context['provider_name'],
             status='success',
         )
+        
+        # Real-time synchronization: Notify connected admins
+        emit('account_change', {'action': 'deleted', 'account_id': account_id}, broadcast=True)
         
         return jsonify({'success': True, 'message': 'Account deleted'}), 200
     
@@ -1672,6 +1706,10 @@ def toggle_account_lock(current_user_id, pro_no, role, account_id):
             provider_name=account_context['provider_name'],
             status='success',
         )
+        
+        # Real-time synchronization: Notify connected admins
+        emit('account_change', {'action': status, 'account_id': account_id}, broadcast=True)
+        
         return jsonify({'success': True, 'message': f'Account {status}'}), 200
     
     except Exception as e:
