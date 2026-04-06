@@ -1050,6 +1050,8 @@ const StudentInfo = () => {
     setIsScanning(prev => ({ ...prev, [scanKey]: true }));
     setLoadingMessage({ title: 'Scanning Document', message: `Analyzing your ${docType}...` });
     
+    // Only load the document being scanned — pass null for all others so the
+    // backend only runs OCR on a single document per button press (much faster).
     let idFront = null;
     let idBack = null;
     let indigencyDoc = null;
@@ -1073,12 +1075,12 @@ const StudentInfo = () => {
 
     try {
       const result = await applicantAPI.ocrCheck(
-        idFront,
-        idBack,
-        indigencyDoc,
+        idFront,        // only non-null for 'School ID'
+        idBack,         // only non-null for 'School ID'
+        indigencyDoc,   // only non-null for 'Indigency'
         formData.townCity || userProfile?.town_city_municipality,
-        enrollmentDoc,
-        gradesDoc,
+        enrollmentDoc,  // only non-null for 'Enrollment'
+        gradesDoc,      // only non-null for 'Grades'
         formData.firstName || userProfile?.first_name,
         formData.lastName || userProfile?.last_name,
         formData.schoolName || userProfile?.school,
@@ -1532,11 +1534,16 @@ const StudentInfo = () => {
         message: 'We are processing your documents. Please do not close this window.'
       });
 
-      // If identity was already address-verified in Step 2, skip OCR on submission
-      // but always run face matching on the backend
-      const skipVerification = false; // always let backend run face matching
+      // Skip OCR re-processing if all documents were already pre-verified
+      // via the individual scan buttons — backend will still run face matching.
+      const allDocsPreVerified =
+        mayorIndigencyVerified === 'success' &&
+        mayorCOEVerified       === 'success' &&
+        mayorGradesVerified    === 'success' &&
+        ocrVerified            === 'success';
+      const skipVerification = allDocsPreVerified; // saves ~20-60s on submission
 
-      console.log(`Submitting application (faceVerified: ${faceVerified})...`);
+      console.log(`Submitting application (skipVerification: ${skipVerification}, faceVerified: ${faceVerified})...`);
 
       setIsVerifyingDocs(true);
 
