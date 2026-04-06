@@ -83,7 +83,7 @@ def ensure_verification_columns():
         cur.execute("""
             CREATE TABLE IF NOT EXISTS notifications (
                 notif_id SERIAL PRIMARY KEY,
-                user_no INTEGER REFERENCES applicant(applicant_no),
+                user_no INTEGER REFERENCES applicants(applicant_no),
                 title TEXT NOT NULL,
                 message TEXT NOT NULL,
                 type VARCHAR(50), -- 'message', 'announcement', 'scholarship', 'result'
