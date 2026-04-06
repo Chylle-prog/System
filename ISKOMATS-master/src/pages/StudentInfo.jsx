@@ -144,6 +144,7 @@ const StudentInfo = () => {
   const [isSavingStep, setIsSavingStep] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
+  const [verificationProgress, setVerificationProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState(1);
   const [isUploadingVideo, setIsUploadingVideo] = useState({
     mayorIndigency_video: false,
@@ -1049,6 +1050,15 @@ const StudentInfo = () => {
     
     setIsScanning(prev => ({ ...prev, [scanKey]: true }));
     setLoadingMessage({ title: 'Scanning Document', message: `Analyzing your ${docType}...` });
+    setVerificationProgress(0);
+    
+    // Simulate progress increment every 300ms (will reach ~80% before completion)
+    const progressInterval = setInterval(() => {
+      setVerificationProgress(prev => {
+        if (prev >= 80) return prev;  // Stop at 80% and let completion set to 100%
+        return prev + Math.random() * 15;
+      });
+    }, 300);
     
     // Only load the document being scanned — pass null for all others so the
     // backend only runs OCR on a single document per button press (much faster).
@@ -1088,6 +1098,8 @@ const StudentInfo = () => {
         formData.yearLevel || userProfile?.year_lvl,
         formData.gpa || userProfile?.overall_gpa
       );
+      
+      setVerificationProgress(100);  // Complete the progress bar
 
       if (docType === 'Indigency') {
         setMayorIndigencyVerified(result.verified ? 'success' : 'failed');
@@ -1117,6 +1129,8 @@ const StudentInfo = () => {
       else if (docType === 'Grades') setMayorGradesVerified('failed');
       else if (docType === 'School ID') setOcrVerified('failed');
     } finally {
+      clearInterval(progressInterval);  // Clear the progress interval
+      setVerificationProgress(0);  // Reset progress
       setIsScanning(prev => ({ ...prev, [scanKey]: false }));
       setLoadingMessage({ title: '', message: '' });
     }
@@ -2325,32 +2339,7 @@ const StudentInfo = () => {
                               <i className={`fas ${mayorIndigencyVerified === 'success' ? 'fa-check-circle' : (mayorIndigencyVerified === 'failed' ? 'fa-times-circle' : 'fa-info-circle')}`}></i> 
                               {mayorIndigencyVerified === 'success' ? 'Verified' : (mayorIndigencyVerified === 'failed' ? 'Verification Failed' : 'Photo Uploaded')}
                             </div>
-                            <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
-                              {mayorIndigencyVerified !== 'success' && (
-                                <button 
-                                  type="button" 
-                                  onClick={(e) => { e.stopPropagation(); scanDocument('Indigency'); }} 
-                                  disabled={isScanning.indigency}
-                                  style={{
-                                    background: 'var(--primary)', 
-                                    color: 'white', 
-                                    border: 'none', 
-                                    borderRadius: '8px', 
-                                    padding: '4px 12px', 
-                                    fontSize: '0.8rem', 
-                                    fontWeight: '600',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                                  }}
-                                >
-                                  {isScanning.indigency ? <><i className="fas fa-spinner fa-spin"></i> Scanning...</> : <><i className="fas fa-barcode"></i> Scan Document</>}
-                                </button>
-                              )}
-                              <button type="button" onClick={(e) => { e.stopPropagation(); setPhotos(prev => ({ ...prev, mayorIndigency_photo: null })); setMayorIndigencyVerified(null); setOcrVerified(null); setOcrStatus(''); setTimeout(() => indigencyPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
-                            </div>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); setPhotos(prev => ({ ...prev, mayorIndigency_photo: null })); setMayorIndigencyVerified(null); setOcrVerified(null); setOcrStatus(''); setTimeout(() => indigencyPhotoInputRef.current?.click(), 50); }} style={{background: 'none', border: 'none', color: '#e74c3c', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600'}}>Change</button>
                           </div>
                         </div>
                       ) : (
@@ -2358,6 +2347,34 @@ const StudentInfo = () => {
                       )}
                       <input ref={indigencyPhotoInputRef} type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} style={{display: 'none'}} />
                     </div>
+                    {photos.mayorIndigency_photo || userProfile?.has_mayorIndigency_photo ? (
+                      mayorIndigencyVerified !== 'success' && (
+                        <button 
+                          type="button" 
+                          onClick={(e) => { e.stopPropagation(); scanDocument('Indigency'); }} 
+                          disabled={isScanning.indigency}
+                          style={{
+                            marginTop: '0.8rem',
+                            background: 'var(--primary)', 
+                            color: 'white', 
+                            border: 'none', 
+                            borderRadius: '8px', 
+                            padding: '6px 14px', 
+                            fontSize: '0.8rem', 
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                            width: '100%',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          {isScanning.indigency ? <><i className="fas fa-spinner fa-spin"></i> Scanning...</> : <><i className="fas fa-barcode"></i> Scan Document</>}
+                        </button>
+                      )
+                    ) : null}
                   </div>
                   <div className="form-group" style={{marginBottom: 0}}>
                     <label style={{fontSize: '0.85rem', fontWeight: '600', color: '#718096', marginBottom: '0.8rem', display: 'block'}}>Video (.mp4/mov) - Max 30 seconds</label>
@@ -3145,7 +3162,7 @@ const StudentInfo = () => {
       </div>
 
       {/* Loading overlay */}
-      <div className={`loading-overlay ${isSubmitting || isSavingStep || isInitialLoading ? 'active' : ''}`}>
+      <div className={`loading-overlay ${isSubmitting || isSavingStep || isInitialLoading || Object.values(isScanning).some(v => v) ? 'active' : ''}`}>
         <div className="loading-modal" style={{padding: '3.5rem', borderRadius: '40px', maxWidth: '500px'}}>
           <div className="loading-spinner"></div>
           <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
@@ -3154,6 +3171,28 @@ const StudentInfo = () => {
           <p style={{ color: 'var(--text-soft)', fontSize: '1.1rem', lineHeight: '1.6' }}>
             {loadingMessage.message}
           </p>
+          {Object.values(isScanning).some(v => v) && (
+            <div style={{marginTop: '1.5rem', width: '100%'}}>
+              <div style={{
+                background: '#e2e8f0',
+                borderRadius: '12px',
+                height: '8px',
+                overflow: 'hidden',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+              }}>
+                <div style={{
+                  background: 'linear-gradient(90deg, var(--primary), var(--accent))',
+                  height: '100%',
+                  width: `${verificationProgress}%`,
+                  transition: 'width 0.3s ease',
+                  borderRadius: '12px'
+                }}></div>
+              </div>
+              <p style={{fontSize: '0.85rem', color: '#718096', marginTop: '0.6rem', textAlign: 'center', fontWeight: '600'}}>
+                {Math.round(verificationProgress)}%
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
