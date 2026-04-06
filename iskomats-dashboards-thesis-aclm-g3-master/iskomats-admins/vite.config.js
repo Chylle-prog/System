@@ -10,6 +10,17 @@ export default defineConfig({
   },
   build: {
     cssMinify: 'esbuild',
-    minify: 'esbuild'
+    minify: 'esbuild',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-core': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-charts': ['chart.js'],
+          'vendor-utils': ['xlsx', 'jspdf', 'jspdf-autotable'],
+          'vendor-icons': ['react-icons'],
+          'vendor-socket': ['socket.io-client']
+        }
+      }
+    }
   }
 })
