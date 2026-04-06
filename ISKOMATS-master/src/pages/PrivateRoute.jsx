@@ -15,11 +15,16 @@ const PrivateRoute = ({ children }) => {
   }
 
   if (currentUser) {
-    // If user has the placeholder name, force them to complete profile setup
-    // but only if they're not already on the setup page (to avoid infinite loop)
-    const isSetupPage = location.pathname === '/profile-setup' || location.pathname === '/studentinfo';
+    // If user has an incomplete profile, force them to complete setup
+    // but only if they're not already on the setup page/modal (to avoid infinite loop)
+    const isSetupQuery = new URLSearchParams(location.search).get('setup') === 'true';
+    const isSetupPath = location.pathname === '/profile-setup' || location.pathname === '/studentinfo';
+    const isLoginPage = location.pathname === '/login';
     
-    if (userProfile && userProfile.first_name === 'User' && userProfile.last_name === 'Account' && !isSetupPage) {
+    // We are on a setup page if the path matches OR if we are on login with the setup flag
+    const isSetupPage = isSetupPath || (isLoginPage && isSetupQuery);
+    
+    if (userProfile && !userProfile.town_city_municipality && !isSetupPage) {
       return <Navigate to="/login?setup=true" />;
     }
     return children;

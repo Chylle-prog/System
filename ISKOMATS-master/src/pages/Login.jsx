@@ -24,15 +24,17 @@ const Login = () => {
 
   useEffect(() => {
     // Check for setup param in URL
-    if (searchParams.get('setup') === 'true') {
+    const isSetup = searchParams.get('setup') === 'true';
+    if (isSetup) {
       setShowProfile(true);
     }
 
     if (localStorage.getItem('authToken') && localStorage.getItem('currentUser')) {
-      // Immediate, silent redirect if we're clearly authenticated
-      // (Advanced profile checks can happen later in PrivateRoute)
-      navigate('/portal', { replace: true });
-      return;
+      // If we're already authenticated, only auto-redirect if we're NOT here for setup
+      if (!isSetup) {
+        navigate('/portal', { replace: true });
+        return;
+      }
     }
 
     // Add Font Awesome link
@@ -93,7 +95,7 @@ const Login = () => {
           setShowLoadingOverlay(false);
           setIsLoginLoading(false);
           
-          if (profile && profile.first_name === 'User' && profile.last_name === 'Account') {
+          if (profile && !profile.town_city_municipality) {
             setShowProfile(true);
           } else {
             navigate('/portal');
@@ -220,6 +222,9 @@ const Login = () => {
     const lastName = e.target.lastName?.value || '';
     const birthdate = e.target.birthdate?.value || '';
     const school = e.target.school?.value || '';
+    const course = e.target.course?.value || '';
+    const gpa = e.target.gpa?.value || '';
+    const income = e.target.income?.value || '';
     const mobileNo = e.target.mobileNo?.value || '';
     const streetBrgy = e.target.streetBrgy?.value || '';
     const townCityMunicipality = e.target.townCityMunicipality?.value || '';
@@ -227,7 +232,7 @@ const Login = () => {
     const zipCode = e.target.zipCode?.value || '';
 
     // Validate required fields
-    if (!firstName || !lastName || !birthdate || !school || !mobileNo || !streetBrgy || !townCityMunicipality || !province || !zipCode) {
+    if (!firstName || !lastName || !birthdate || !school || !course || !gpa || !income || !mobileNo || !streetBrgy || !townCityMunicipality || !province || !zipCode) {
       setErrorMessage('Please fill in all required fields');
       setShowError(true);
       return;
@@ -239,13 +244,16 @@ const Login = () => {
       
       const email = localStorage.getItem('currentUser');
 
-      // Use the exact camelCase keys that match Profile.jsx and the backend field_mapping.
+      // Use the exact names expected by the backend field_mapping
       const profilePayload = {
         firstName,
         middleName,
         lastName,
         dateOfBirth: birthdate,
         schoolName: school,
+        course,
+        gpa,
+        parentsGrossIncome: income,
         mobileNumber: mobileNo,
         streetBarangay: streetBrgy,
         townCity: townCityMunicipality,
@@ -331,7 +339,7 @@ const Login = () => {
           setShowEmailAlreadyRegisteredOverlay(false);
           localStorage.removeItem('registrationEmail'); // Fix: Prevents manual verification redirect loop
           
-          if (profile && profile.first_name === 'User' && profile.last_name === 'Account') {
+          if (profile && !profile.town_city_municipality) {
             setShowProfile(true);
           } else {
             navigate('/portal');
@@ -1286,6 +1294,12 @@ const Login = () => {
                   </div>
                 </div>
                 <div className="profile-form-group">
+                  <label>Middle Name</label>
+                  <div className="profile-input-wrapper">
+                    <input type="text" name="middleName" placeholder="Enter Middle Name" />
+                  </div>
+                </div>
+                <div className="profile-form-group">
                   <label>Last Name</label>
                   <div className="profile-input-wrapper">
                     <input type="text" name="lastName" placeholder="Enter Last Name" required />
@@ -1293,11 +1307,20 @@ const Login = () => {
                 </div>
               </div>
 
-              <div className="profile-form-group">
-                <label>Birthdate</label>
-                <div className="profile-input-wrapper">
-                  <i className="far fa-calendar-alt"></i>
-                  <input type="date" name="birthdate" required />
+              <div className="profile-grid">
+                <div className="profile-form-group">
+                  <label>Birthdate</label>
+                  <div className="profile-input-wrapper">
+                    <i className="far fa-calendar-alt"></i>
+                    <input type="date" name="birthdate" required />
+                  </div>
+                </div>
+                <div className="profile-form-group">
+                  <label>Phone Number</label>
+                  <div className="profile-input-wrapper">
+                    <i className="fas fa-phone-alt"></i>
+                    <input type="tel" name="mobileNo" placeholder="+63 ..." required />
+                  </div>
                 </div>
               </div>
 
@@ -1325,39 +1348,129 @@ const Login = () => {
               </div>
 
               <div className="profile-form-group">
-                <label>Phone Number</label>
+                <label>Course / Program</label>
                 <div className="profile-input-wrapper">
-                  <i className="fas fa-phone-alt"></i>
-                  <input type="tel" name="mobileNo" placeholder="+63 ..." required />
+                  <i className="fas fa-graduation-cap"></i>
+                  <input type="text" name="course" placeholder="e.g. BS Computer Science" required />
                 </div>
               </div>
 
               <div className="profile-grid">
                 <div className="profile-form-group">
-                  <label>Street / Barangay</label>
+                  <label>General Average (GPA)</label>
                   <div className="profile-input-wrapper">
-                    <input type="text" name="streetBrgy" placeholder="123 Main St" required />
+                    <i className="fas fa-star"></i>
+                    <input type="number" name="gpa" step="0.01" placeholder="e.g. 1.25" required />
                   </div>
                 </div>
+                <div className="profile-form-group">
+                  <label>Annual Household Income</label>
+                  <div className="profile-input-wrapper">
+                    <i className="fas fa-coins"></i>
+                    <input type="number" name="income" placeholder="Total Yearly Income" required />
+                  </div>
+                </div>
+              </div>
+
+              <div className="profile-form-group">
+                <label>Street & Barangay</label>
+                <div className="profile-input-wrapper">
+                  <i className="fas fa-map-marker-alt"></i>
+                  <select name="streetBrgy" required style={{ width: '100%', padding: '12px 12px 12px 42px', border: '1px solid #ddd', borderRadius: '8px', background: 'white' }}>
+                    <option value="">Select Barangay</option>
+                    <option value="Adya">Adya</option>
+                    <option value="Anilao">Anilao</option>
+                    <option value="Anilao-Labac">Anilao-Labac</option>
+                    <option value="Antipolo del Norte">Antipolo del Norte</option>
+                    <option value="Antipolo del Sur">Antipolo del Sur</option>
+                    <option value="Bagong Pook">Bagong Pook</option>
+                    <option value="Balintawak">Balintawak</option>
+                    <option value="Banaybanay">Banaybanay</option>
+                    <option value="Bolbok">Bolbok</option>
+                    <option value="Bugtong na Pulo">Bugtong na Pulo</option>
+                    <option value="Bulacnin">Bulacnin</option>
+                    <option value="Bulaklakan">Bulaklakan</option>
+                    <option value="Calamias">Calamias</option>
+                    <option value="Cumba">Cumba</option>
+                    <option value="Dagatan">Dagatan</option>
+                    <option value="Duhatan">Duhatan</option>
+                    <option value="Halang">Halang</option>
+                    <option value="Inosloban">Inosloban</option>
+                    <option value="Kayumanggi">Kayumanggi</option>
+                    <option value="Latag">Latag</option>
+                    <option value="Lodlod">Lodlod</option>
+                    <option value="Lumbang">Lumbang</option>
+                    <option value="Mabini">Mabini</option>
+                    <option value="Malagonlong">Malagonlong</option>
+                    <option value="Malitlit">Malitlit</option>
+                    <option value="Marauoy">Marauoy</option>
+                    <option value="Mataas na Lupa">Mataas na Lupa</option>
+                    <option value="Munting Pulo">Munting Pulo</option>
+                    <option value="Pagolingin Bata">Pagolingin Bata</option>
+                    <option value="Pagolingin East">Pagolingin East</option>
+                    <option value="Pagolingin West">Pagolingin West</option>
+                    <option value="Pangao">Pangao</option>
+                    <option value="Pinagkawitan">Pinagkawitan</option>
+                    <option value="Pinagtongulan">Pinagtongulan</option>
+                    <option value="Plaridel">Plaridel</option>
+                    <option value="Poblacion Barangay 1">Poblacion Barangay 1</option>
+                    <option value="Poblacion Barangay 2">Poblacion Barangay 2</option>
+                    <option value="Poblacion Barangay 3">Poblacion Barangay 3</option>
+                    <option value="Poblacion Barangay 4">Poblacion Barangay 4</option>
+                    <option value="Poblacion Barangay 5">Poblacion Barangay 5</option>
+                    <option value="Poblacion Barangay 6">Poblacion Barangay 6</option>
+                    <option value="Poblacion Barangay 7">Poblacion Barangay 7</option>
+                    <option value="Poblacion Barangay 8">Poblacion Barangay 8</option>
+                    <option value="Poblacion Barangay 9">Poblacion Barangay 9</option>
+                    <option value="Poblacion Barangay 9-A">Poblacion Barangay 9-A</option>
+                    <option value="Poblacion Barangay 10">Poblacion Barangay 10</option>
+                    <option value="Poblacion Barangay 11">Poblacion Barangay 11</option>
+                    <option value="Poblacion Barangay 12">Poblacion Barangay 12</option>
+                    <option value="Pusil">Pusil</option>
+                    <option value="Quezon">Quezon</option>
+                    <option value="Rizal">Rizal</option>
+                    <option value="Sabang">Sabang</option>
+                    <option value="Sampaguita">Sampaguita</option>
+                    <option value="San Benito">San Benito</option>
+                    <option value="San Carlos">San Carlos</option>
+                    <option value="San Celestino">San Celestino</option>
+                    <option value="San Francisco">San Francisco</option>
+                    <option value="San Guillermo">San Guillermo</option>
+                    <option value="San Isidro">San Isidro</option>
+                    <option value="San Jose">San Jose</option>
+                    <option value="San Lucas">San Lucas</option>
+                    <option value="San Salvador">San Salvador</option>
+                    <option value="San Sebastian (Balagbag)">San Sebastian (Balagbag)</option>
+                    <option value="Santo Niño">Santo Niño</option>
+                    <option value="Santo Toribio">Santo Toribio</option>
+                    <option value="Sico">Sico</option>
+                    <option value="Talisay">Talisay</option>
+                    <option value="Tambo">Tambo</option>
+                    <option value="Tangob">Tangob</option>
+                    <option value="Tanguay">Tanguay</option>
+                    <option value="Tibig">Tibig</option>
+                    <option value="Tipacan">Tipacan</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="profile-grid">
                 <div className="profile-form-group">
                   <label>Town / City</label>
                   <div className="profile-input-wrapper">
-                    <input type="text" name="townCityMunicipality" placeholder="Manila" required />
+                    <input type="text" name="townCityMunicipality" value="Lipa City" readOnly style={{ backgroundColor: '#f1f1f1', cursor: 'not-allowed' }} />
                   </div>
                 </div>
-              </div>
-
-              <div className="profile-grid">
                 <div className="profile-form-group">
                   <label>Province</label>
                   <div className="profile-input-wrapper">
-                    <input type="text" name="province" placeholder="Metro Manila" required />
+                    <input type="text" name="province" value="Batangas" readOnly style={{ backgroundColor: '#f1f1f1', cursor: 'not-allowed' }} />
                   </div>
                 </div>
                 <div className="profile-form-group">
                   <label>Zip Code</label>
                   <div className="profile-input-wrapper">
-                    <input type="text" name="zipCode" placeholder="1000" required />
+                    <input type="text" name="zipCode" value="4217" readOnly style={{ backgroundColor: '#f1f1f1', cursor: 'not-allowed' }} />
                   </div>
                 </div>
               </div>
