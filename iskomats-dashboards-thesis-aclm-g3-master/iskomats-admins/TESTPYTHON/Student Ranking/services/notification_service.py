@@ -18,8 +18,9 @@ def fetch_google_access_token():
     if not GOOGLE_REFRESH_TOKEN: missing_settings.append('GOOGLE_REFRESH_TOKEN')
 
     if missing_settings:
-        print(f"[NOTIF ERROR] Google Gmail API credentials are not configured. Missing: {', '.join(missing_settings)}")
-        return None
+        error_msg = f"Google Gmail API credentials are not configured. Missing: {', '.join(missing_settings)}"
+        print(f"[NOTIF ERROR] {error_msg}")
+        raise RuntimeError(error_msg)
 
     token_request_body = parse.urlencode({
         'client_id': GOOGLE_CLIENT_ID,
@@ -38,10 +39,25 @@ def fetch_google_access_token():
     try:
         with urllib_request.urlopen(token_request, timeout=30) as response:
             payload = json.loads(response.read().decode('utf-8'))
-        return payload.get('access_token')
+        
+        access_token = payload.get('access_token')
+        if not access_token:
+            raise RuntimeError("Token exchange succeeded but no access_token was returned.")
+        return access_token
+    except urllib_error.HTTPError as e:
+        try:
+            error_payload = json.loads(e.read().decode('utf-8'))
+            error_reason = error_payload.get('error', 'unknown_error')
+            error_desc = error_payload.get('error_description', 'No description provided')
+            diagnostic = f"Google OAuth rejected the request (error: {error_reason}, description: {error_desc})"
+        except:
+            diagnostic = f"HTTP Error {e.code}: {e.reason}"
+        
+        print(f"[NOTIF ERROR] Token exchange failed: {diagnostic}")
+        raise RuntimeError(diagnostic)
     except Exception as e:
         print(f"[NOTIF ERROR] Token exchange failed: {e}")
-        return None
+        raise RuntimeError(f"Token exchange failed: {str(e)}")
 
 def create_notification(user_no, title, message, notif_type='message'):
     """Create a database notification and send an email alert to the user."""

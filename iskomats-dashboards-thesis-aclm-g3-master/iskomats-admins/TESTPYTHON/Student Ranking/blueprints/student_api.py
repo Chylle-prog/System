@@ -263,15 +263,9 @@ The ISKOMATS Team
         access_token = fetch_google_access_token()
     except Exception as e:
         print(f"[GOOGLE AUTH ERROR] {e}", flush=True)
-        raise RuntimeError(f"Could not authenticate with Google to send email: {e}")
+        raise RuntimeError(f"Authentication with Google failed: {e}")
 
     encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
-    
-    try:
-        access_token = fetch_google_access_token()
-    except Exception as e:
-        print(f"[GOOGLE AUTH ERROR] {e}", flush=True)
-        raise RuntimeError(f"Could not authenticate with Google to send email: {e}")
     
     email_request = urllib_request.Request(
         'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
@@ -283,8 +277,16 @@ The ISKOMATS Team
         method='POST',
     )
     
-    with urllib_request.urlopen(email_request, timeout=30) as response:
-        return json.loads(response.read().decode('utf-8'))
+    try:
+        with urllib_request.urlopen(email_request, timeout=30) as response:
+            return json.loads(response.read().decode('utf-8'))
+    except urllib_error.HTTPError as e:
+        # Most likely Gmail API rejected the access token (expired or revoked)
+        if e.code == 401:
+            raise RuntimeError("Gmail API rejected the access token. Your Google Refresh Token may have expired or been revoked.")
+        raise RuntimeError(f"Gmail API error {e.code}: {e.reason}")
+    except Exception as e:
+        raise RuntimeError(f"Failed to communicate with Gmail API: {str(e)}")
 
 
 
