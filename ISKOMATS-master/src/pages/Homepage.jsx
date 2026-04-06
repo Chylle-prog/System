@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Navbar from './Navbar';
+import { useAuth } from '../contexts/AuthContext';
 import './HomePage.css';
 
 const HomePage = () => {
+  const { currentUser } = useAuth();
   const [activeModal, setActiveModal] = useState(null);
   const [activeFAQ, setActiveFAQ] = useState(null);
   const [activeCategory, setActiveCategory] = useState('all');
@@ -179,7 +181,7 @@ const HomePage = () => {
         <div className="hero">
           <h1>Tulong Isko, Tulong Bayan!</h1>
           <p>Unlock your future with iskoMats – A centralized scholarship matching made simple and smart.</p>
-          <Link to="/login" className="cta-button">Apply Now →</Link>
+          <Link to={currentUser ? "/portal" : "/login"} className="cta-button">Apply Now →</Link>
           <div className="features">
             <div className="feature-card">
               <h3><span style={{fontSize: '1.2rem', marginRight: '0.5rem'}}>🎯</span> 90% match rate</h3>

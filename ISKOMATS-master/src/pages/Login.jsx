@@ -29,18 +29,10 @@ const Login = () => {
     }
 
     if (localStorage.getItem('authToken') && localStorage.getItem('currentUser')) {
-      // If we aren't explicitly in setup mode, check if we should be
-      if (!searchParams.get('setup')) {
-        applicantAPI.getProfile().then(profile => {
-          if (profile && profile.first_name === 'User' && profile.last_name === 'Account') {
-            setShowProfile(true);
-          } else {
-            navigate('/portal');
-          }
-        }).catch(() => {
-          navigate('/portal');
-        });
-      }
+      // Immediate, silent redirect if we're clearly authenticated
+      // (Advanced profile checks can happen later in PrivateRoute)
+      navigate('/portal', { replace: true });
+      return;
     }
 
     // Add Font Awesome link
