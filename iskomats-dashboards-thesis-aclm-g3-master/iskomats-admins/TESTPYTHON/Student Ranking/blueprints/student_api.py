@@ -1295,9 +1295,9 @@ def submit_application():
 
                     # 3. Video OCR Validations
                     video_requirements = {
-                        'mayorIndigency_video': ['Indigency', 'Barangay'],
-                        'mayorGrades_video': ['Grades', 'Card', 'Evaluation'],
-                        'mayorCOE_video': ['Enrollment', 'Certificate', 'School']
+                        'mayorIndigency_video': ['Indigency'],
+                        'mayorGrades_video': ['Grades', 'Evaluation'],
+                        'mayorCOE_video': ['Enrollment', 'Certificate']
                     }
                     for field, keywords in video_requirements.items():
                         video_file = request.files.get(field)
@@ -1305,8 +1305,14 @@ def submit_application():
                             print(f"[SUBMIT] Scheduling Video scanning for {field}...")
                             v_bytes = video_file.read()
                             video_file.seek(0)
+                            
+                            # For Indigency, pass the town/city for address verification
+                            expected_addr = None
+                            if field == 'mayorIndigency_video':
+                                expected_addr = form_data.get('townCity') or applicant.get('town_city_municipality', '')
+                            
                             verification_tasks[f'video_{field}'] = executor.submit(
-                                verify_video_content, v_bytes, keywords
+                                verify_video_content, v_bytes, keywords, expected_addr
                             )
 
                     # --- GATHER RESULTS ---
@@ -1480,21 +1486,33 @@ def ocr_check():
                     return None
 
                 # 1. Main OCR Verification (Identity)
-                # For Indigency, we also verify the address (town_city)
-                # For ID Back, we don't expect the name (as year level is the focus)
+                # For Indigency, we only verify the address and presence of keywords (no requirement for formal name match)
+                # For enrollment/grades, we verify the name on the document
                 v, msg, raw, _ = verify_id_with_ocr(
                     image_bytes=doc_bytes,
-                    expected_name=full_expected_name if doc_type != 'SchoolIDBack' else None,
+                    expected_name=full_expected_name if doc_type not in ['Indigency', 'SchoolIDBack'] else None,
                     expected_address=town_city if doc_type == 'Indigency' else None
                 )
                 raw_lower = raw.lower()
+                
+                # Check for document-specific keywords using our unified helper
+                from .ocr_utils import _perform_text_matching
+                
+                # Define keywords for each document type
+                doc_keywords = {
+                    'Indigency': ['Indigency'],
+                    'Enrollment': ['Enrollment', 'Certificate', 'COR'],
+                    'Grades': ['Grades', 'Transcript', 'Evaluation']
+                }
+                
+                # Double-check keywords
+                if doc_type in doc_keywords:
+                    _, _, found_kw, _ = _perform_text_matching(raw, None, None, doc_keywords[doc_type], is_indigency=True)
+                    if not found_kw:
+                        return {'doc': doc_type, 'verified': False, 'message': f"Document type mismatch: Required '{doc_keywords[doc_type][0]}' not detected.", 'raw_text': raw}
 
                 # 2. Document-Specific Logic (REUSING 'raw' text)
                 if doc_type == 'Enrollment':
-                    keywords = ["enrollment", "registration", "admission", "matriculation", "cor", "coe", "form"]
-                    if v and not any(kw in raw_lower for kw in keywords):
-                        v, msg = False, "Enrollment document type not recognized"
-                    
                     year_label = extract_school_year_from_text(raw)
                     v_year = int(expected_year) if expected_year and str(expected_year).isdigit() else 2026
                     year_ok = is_current_school_year(year_label, current_year=v_year)
@@ -1502,26 +1520,15 @@ def ocr_check():
                     if school_name and not school_ok:
                         school_parts = [p.strip() for p in school_name.lower().split() if len(p.strip()) > 3]
                         school_ok = any(p in raw_lower for p in school_parts) if school_parts else True
-                    course_ok = True if not course else (course.lower() in raw_lower)
-                    
-                    id_no_ok = True if not expected_id_no else (expected_id_no.lower() in raw_lower)
-                    year_lvl_ok = True if not expected_year else (expected_year.lower() in raw_lower)
 
                     if v:
                         if not year_ok: v, msg = False, f"Outdated A.Y. ({year_label or 'None'})"
                         elif not school_ok: v, msg = False, f"School mismatch ({school_name})"
-                        elif not course_ok: v, msg = False, f"Course mismatch ({course})"
-                        elif not id_no_ok: v, msg = False, f"ID number mismatch ({expected_id_no})"
-                        elif not year_lvl_ok: v, msg = False, f"Year Level mismatch ({expected_year})"
                         else: msg = f"Verified: A.Y. {year_label}" + (f" | {school_name}" if school_name else "")
                     
                     return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label}
 
                 elif doc_type == 'Grades':
-                    keywords = ["grades", "transcript", "evaluation", "rating", "scholastic", "record"]
-                    if v and not any(kw in raw_lower for kw in keywords):
-                        v, msg = False, "Grades document type not recognized"
-                    
                     year_label = extract_school_year_from_text(raw)
                     v_year = int(expected_year) if expected_year and str(expected_year).isdigit() else 2026
                     year_ok = is_current_school_year(year_label, current_year=v_year)
@@ -1529,32 +1536,15 @@ def ocr_check():
                     if school_name and not school_ok:
                         school_parts = [p.strip() for p in school_name.lower().split() if len(p.strip()) > 3]
                         school_ok = any(p in raw_lower for p in school_parts) if school_parts else True
-                    course_ok = True if not course else (course.lower() in raw_lower)
 
-                    extracted_gpa, gpa_ok = None, True
-                    if expected_gpa:
-                        import re
-                        gpa_match = re.search(r'(?:gpa|gwa|grade|average)[:\s]*([0-5]\.\d{1,2})', raw_lower)
-                        if gpa_match:
-                            extracted_gpa = gpa_match.group(1)
-                            gpa_ok = abs(float(extracted_gpa) - float(expected_gpa)) < 0.1
-                    
-                        elif expected_gpa and not gpa_ok: v, msg = False, f"GPA mismatch (Extracted: {extracted_gpa}, Expected: {expected_gpa})"
-                        else: msg = f"Verified: A.Y. {year_label}" + (f" | {school_name}" if school_name else "") + (f" | GPA: {extracted_gpa}" if extracted_gpa else "")
+                    if v:
+                        if not year_ok: v, msg = False, f"Outdated A.Y. ({year_label or 'None'})"
+                        elif not school_ok: v, msg = False, f"School mismatch ({school_name})"
+                        else: msg = f"Verified: A.Y. {year_label}" + (f" | {school_name}" if school_name else "")
                     
                     return {'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label}
 
                 elif doc_type == 'Indigency':
-                    keywords = ["indigency", "barangay", "residency", "social", "welfare", "indigent", "certificate"]
-                    raw_lower = raw.lower()
-                    has_kw = any(kw in raw_lower for kw in keywords)
-
-                    if not v and has_kw:
-                        # Keyword match found even though name ratio was low — allow for Indigency
-                        v, msg = True, f"Indigency verified via document keywords"
-                    elif v and not has_kw:
-                        msg = f"Name matched but document keywords not clear. Proceeding as Indigency."
-
                     return {'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw}
 
                 elif doc_type == 'SchoolID':
