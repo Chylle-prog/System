@@ -216,24 +216,11 @@ def _run_tesseract(image_bytes, fast_mode=True):
         print(f"[OCR] Error: {e}", flush=True)
         return ""
 
-def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
-    """
-    Optimized version with multiple improvements:
-    1. Image quality pre-check (Optimization #3)
-    2. OCR result caching by image hash (Optimization #2)
-    3. Parallel PSM execution (Optimization #1)
-    4. Early exit on successful match
-    5. Single decode/resize pass
-    """
-    if not _check_tesseract(): 
-        return False, "OCR Engine (Tesseract) not found.", "", 0.0
-    if not image_bytes:
-        return False, "No image data provided.", "", 0.0
-        
 def normalize_for_ocr(s):
     """Normalize text for fuzzy matching."""
     if not s: return ""
     return re.sub(r'[^a-z0-9\s]', ' ', s.lower()).strip()
+
 
 def _perform_text_matching(ocr_text, target_name=None, target_addr=None, keywords=None, is_indigency=False):
     """
@@ -293,6 +280,21 @@ def _perform_text_matching(ocr_text, target_name=None, target_addr=None, keyword
     
     return n_verified, a_verified, found_keywords, m_ratio
 
+
+def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
+    """
+    Optimized version with multiple improvements:
+    1. Image quality pre-check (Optimization #3)
+    2. OCR result caching by image hash (Optimization #2)
+    3. Parallel PSM execution (Optimization #1)
+    4. Early exit on successful match
+    5. Single decode/resize pass
+    """
+    if not _check_tesseract(): 
+        return False, "OCR Engine (Tesseract) not found.", "", 0.0
+    if not image_bytes:
+        return False, "No image data provided.", "", 0.0
+    
     is_indigency = (expected_address is not None)
     
     # --- OPTIMIZATION #2: Check OCR cache first ---
