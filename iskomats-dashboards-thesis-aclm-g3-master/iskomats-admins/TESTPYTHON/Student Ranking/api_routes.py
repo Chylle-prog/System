@@ -509,8 +509,16 @@ If you did not request a password reset, you can ignore this email.
         raise RuntimeError('Gmail API request failed because the network request could not be completed') from exc
 
 
-def send_announcement_emails(title, message, provider_no, provider_name=None):
-    """Send announcement emails to all applicants of a provider via Gmail API."""
+def send_announcement_emails(title, message, provider_no, provider_name=None, send_to_all=True):
+    """Send announcement emails to applicants via Gmail API.
+    
+    Args:
+        title: Announcement title
+        message: Announcement message
+        provider_no: Provider number
+        provider_name: Provider name (optional)
+        send_to_all: If True, send to ALL applicants in the system. If False, send only to applicants who applied to this provider.
+    """
     if not GMAIL_SENDER_EMAIL:
         print("[EMAIL ERROR] Gmail sender email is not configured")
         return False
@@ -519,15 +527,25 @@ def send_announcement_emails(title, message, provider_no, provider_name=None):
         conn = get_db()
         cur = conn.cursor()
         
-        # Get all applicants for this provider with their emails
-        cur.execute("""
-            SELECT DISTINCT a.applicant_no, a.first_name, a.last_name, e.email_address
-            FROM applicants a
-            INNER JOIN applicant_status ast ON a.applicant_no = ast.applicant_no
-            INNER JOIN scholarships s ON ast.scholarship_no = s.req_no
-            LEFT JOIN email e ON a.applicant_no = e.applicant_no
-            WHERE s.pro_no = %s AND e.email_address IS NOT NULL
-        """, (provider_no,))
+        # Get applicants based on send_to_all flag
+        if send_to_all:
+            # Send to ALL applicants in the system
+            cur.execute("""
+                SELECT DISTINCT a.applicant_no, a.first_name, a.last_name, e.email_address
+                FROM applicants a
+                LEFT JOIN email e ON a.applicant_no = e.applicant_no
+                WHERE e.email_address IS NOT NULL
+            """)
+        else:
+            # Send only to applicants who applied to this provider's scholarships
+            cur.execute("""
+                SELECT DISTINCT a.applicant_no, a.first_name, a.last_name, e.email_address
+                FROM applicants a
+                INNER JOIN applicant_status ast ON a.applicant_no = ast.applicant_no
+                INNER JOIN scholarships s ON ast.scholarship_no = s.req_no
+                LEFT JOIN email e ON a.applicant_no = e.applicant_no
+                WHERE s.pro_no = %s AND e.email_address IS NOT NULL
+            """, (provider_no,))
         
         applicants = cur.fetchall()
         conn.close()
@@ -2940,7 +2958,7 @@ def create_announcement(current_user_id, pro_no, role):
         # Send emails to all applicants when send_to_all_applicants is True
         if send_to_all_applicants:
             try:
-                send_announcement_emails(title, message, pro_no, provider_name)
+                send_announcement_emails(title, message, pro_no, provider_name, send_to_all=True)
             except Exception as e:
                 print(f"[ANNOUNCEMENT EMAIL ERROR] Failed to send announcement emails: {str(e)}")
                 # Don't fail the announcement creation if email sending fails
