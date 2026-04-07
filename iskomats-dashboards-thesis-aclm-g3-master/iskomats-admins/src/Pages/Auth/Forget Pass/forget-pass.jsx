@@ -49,20 +49,10 @@ const ForgetPass = () => {
     }
 
     try {
-      // Check if email exists before sending reset email
-      const emailCheckResponse = await authAPI.checkEmail(formData.email.trim());
-      console.log('Check Email Response:', emailCheckResponse);
-      // available: false means email exists (not available), available: true means email doesn't exist
-      if (!emailCheckResponse.data || emailCheckResponse.data.available !== false) {
-        setFormData({
-          ...formData,
-          isLoading: false,
-          error: "No account found with this email address",
-        });
-        return;
-      }
-
-      await authAPI.forgotPassword(formData.email.trim());
+      // Call forgotPassword directly - backend handles email validation gracefully
+      const response = await authAPI.forgotPassword(formData.email.trim());
+      console.log('Forgot Password Response:', response);
+      
       setFormData((previous) => ({
         ...previous,
         isLoading: false,
@@ -71,6 +61,7 @@ const ForgetPass = () => {
         error: "",
       }));
     } catch (error) {
+      console.error('Forgot Password Error:', error);
       setFormData((previous) => ({
         ...previous,
         isLoading: false,
