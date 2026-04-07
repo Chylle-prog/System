@@ -1520,10 +1520,11 @@ def ocr_check():
                 from services.ocr_utils import _perform_text_matching
                 
                 # Define keywords for each document type
+                # Indigency can be detected as 'Certificate' + other indicators
                 doc_keywords = {
-                    'Indigency': ['Indigency'],
-                    'Enrollment': ['Enrollment', 'Certificate', 'COR'],
-                    'Grades': ['Grades', 'Transcript', 'Evaluation']
+                    'Indigency': ['Indigency', 'Certificate', 'Indigent', 'Pauper'],
+                    'Enrollment': ['Enrollment', 'Certificate', 'COR', 'Certification'],
+                    'Grades': ['Grades', 'Transcript', 'Evaluation', 'GPA', 'Rating']
                 }
                 
                 # Double-check keywords
