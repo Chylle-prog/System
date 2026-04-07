@@ -1595,7 +1595,7 @@ def ocr_check():
                 
                 # Double-check keywords
                 if doc_type in doc_keywords and doc_type != 'SchoolID': # SchoolID keywords are verified in video/header logic
-                    _, _, found_kw, _ = _perform_text_matching(raw, None, None, doc_keywords[doc_type], is_indigency=True)
+                    _, _, found_kw, _ = _perform_text_matching(raw, None, None, None, doc_keywords[doc_type], is_indigency=True)
                     if not found_kw:
                         return {'doc': doc_type, 'verified': False, 'message': f"Document type mismatch: Required '{doc_keywords[doc_type][0]}' not detected.", 'raw_text': raw}
 

@@ -977,63 +977,9 @@ const StudentInfo = () => {
       setLoadingMessage({ title: `Saving Step ${currentStep}`, message: 'Updating your application progress...' });
       setIsSavingStep(true);
       
-      // ── STEP 1: Address OCR verification (indigency photo + townCity) ────────
+      // ── STEP 1: Address verification skipped here, now handled manually via "Scan" button ────────
       if (currentStep === 1) {
-        // If already verified via "Scan" button, skip auto-OCR
-        if (ocrVerified === 'success' || ocrVerified === 'technical_unavailable') {
-          console.log('[OCR] Address already verified or bypassed, skipping auto-scan.');
-        } else {
-          const indigencyDoc = photos.mayorIndigency_photo
-          || formData.mayorIndigency_photo
-          || userProfile?.indigency_doc;
-        // Use the town/city the user filled in (or what's already in the profile)
-        const townCity = formData.townCity || userProfile?.town_city_municipality || '';
-
-        if (indigencyDoc && townCity) {
-          setLoadingMessage({
-            title: 'Verifying Address',
-            message: 'Checking your Certificate of Indigency against your registered town/city…'
-          });
-
-          // Re-use the existing OCR check endpoint:
-          // id_front is not needed here — pass null so the backend only does address matching.
-          // We pass the indigency doc as the address image.
-          try {
-            const result = await applicantAPI.ocrCheck(null, null, indigencyDoc, townCity);
-            const isTechnical = result.message?.includes('temporarily unavailable')
-              || result.message?.includes('Low memory mode')
-              || result.message?.includes('OCR service');
-
-            if (!result.verified && !isTechnical) {
-              setOcrVerified('failed');
-              setOcrStatus(result.message || 'Address mismatch: your Certificate of Indigency does not match your registered city/municipality.');
-              showPromptMessage(
-                `❌ Address mismatch: The city/municipality on your Certificate of Indigency does not match "${townCity}". Please check your document or update your address.`,
-                7000
-              );
-              setIsSavingStep(false);
-              return; // Stay on Step 1
-            }
-
-            if (isTechnical) {
-              setOcrVerified('technical_unavailable');
-              setOcrStatus(result.message || 'OCR service temporarily unavailable — you may proceed.');
-              showPromptMessage(`ℹ️ OCR unavailable: ${result.message}. You can still continue.`, 4000);
-            } else {
-              setOcrVerified('success');
-              setOcrStatus(result.message || `Address verified — city/municipality matches!`);
-            }
-          } catch (ocrErr) {
-            // Network / server error — treat as technical, allow proceeding
-            setOcrVerified('technical_unavailable');
-            setOcrStatus(`Address OCR error: ${ocrErr.message}`);
-            showPromptMessage(`⚠️ Address verification issue (${ocrErr.message}). You can still continue.`, 4000);
-          }
-          } else if (!indigencyDoc) {
-            // No indigency photo uploaded yet — skip OCR, field validation already blocks empty required docs
-            console.log('[OCR] Skipping address verification: no indigency photo yet.');
-          }
-        }
+        console.log('[Step 1] Transitioning to Step 2. Manual verification check already passed.');
       }
 
       // ── STEP 3: No OCR needed here anymore ───────────────────────────────────
@@ -1952,7 +1898,6 @@ const StudentInfo = () => {
                               </div>
                             )}
                           </div>
-                        </div>
                       )}
                     </div>
 
@@ -1973,7 +1918,13 @@ const StudentInfo = () => {
               </div>
 
               <div style={{marginTop: '2rem', display: 'flex', justifyContent: 'flex-end'}}>
-                <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
+                <button 
+                  type="button" 
+                  className="submit-btn" 
+                  onClick={handleNextStep} 
+                  disabled={isSavingStep || !(ocrVerified === 'success' || ocrVerified === 'technical_unavailable')} 
+                  style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}
+                >
                   Next: Family Background <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
                 </button>
               </div>
@@ -2392,7 +2343,12 @@ const StudentInfo = () => {
                 <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
                   <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> Back: Education
                 </button>
-                <button type="submit" className="submit-btn" disabled={isSubmitting || isSavingStep} style={{width: 'auto', padding: '0.8rem 3.5rem', borderRadius: '40px', background: 'var(--success)', border: 'none'}}>
+                <button 
+                  type="submit" 
+                  className="submit-btn" 
+                  disabled={isSubmitting || isSavingStep || !faceMatchResult?.verified} 
+                  style={{width: 'auto', padding: '0.8rem 3.5rem', borderRadius: '40px', background: 'var(--success)', border: 'none'}}
+                >
                   {isSubmitting ? (
                     <><i className="fas fa-spinner fa-spin" style={{marginRight: '10px'}}></i>Submitting...</>
                   ) : (
