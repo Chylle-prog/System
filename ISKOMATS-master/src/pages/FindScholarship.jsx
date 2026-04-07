@@ -1001,26 +1001,6 @@ const FindScholarship = () => {
                   placeholder="e.g., 3.5"
                   required
                 />
-                {(formData.university === 'National University Lipa') && (
-                  <div style={{
-                    marginTop: '0.8rem',
-                    background: '#f9fafb',
-                    padding: '1rem',
-                    borderRadius: '12px',
-                    border: '1px solid #e5e7eb',
-                    fontSize: '0.75rem',
-                    color: '#4b5563',
-                    lineHeight: '1.4'
-                  }}>
-                    <div style={{ fontWeight: '700', marginBottom: '0.4rem' }}>NU Lipa Grading Guide:</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
-                      <div>4.0 = 100-96</div><div>3.5 = 95-90</div>
-                      <div>3.0 = 89-84</div><div>2.5 = 83-78</div>
-                      <div>2.0 = 77-72</div><div>1.5 = 71-66</div>
-                      <div>1.0 = 65-60</div>
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* Income field with live indicator */}
