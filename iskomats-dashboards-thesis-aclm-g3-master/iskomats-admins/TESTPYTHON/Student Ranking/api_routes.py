@@ -1189,6 +1189,50 @@ def init_socketio(socketio):
         except Exception as e:
             print(f"Error saving message: {e}")
 
+    @socketio.on('applicant_accept')
+    def on_applicant_accept(data):
+        """Handle applicant acceptance from admin dashboard"""
+        try:
+            program = data.get('program')
+            applicantId = data.get('applicantId')
+            applicantName = data.get('applicantName')
+            adminName = data.get('adminName')
+            
+            # Broadcast to all other connected admins (except sender)
+            emit('applicant_status_update', {
+                'applicantId': applicantId,
+                'applicantName': applicantName,
+                'program': program,
+                'newStatus': 'Accepted',
+                'adminName': adminName,
+                'timestamp': data.get('timestamp')
+            }, broadcast=True, include_self=False)
+        except Exception as e:
+            print(f"Error broadcasting applicant acceptance: {e}")
+            emit('error', {'msg': f'Failed to broadcast acceptance: {str(e)}'})
+
+    @socketio.on('applicant_decline')
+    def on_applicant_decline(data):
+        """Handle applicant declination from admin dashboard"""
+        try:
+            program = data.get('program')
+            applicantId = data.get('applicantId')
+            applicantName = data.get('applicantName')
+            adminName = data.get('adminName')
+            
+            # Broadcast to all other connected admins (except sender)
+            emit('applicant_status_update', {
+                'applicantId': applicantId,
+                'applicantName': applicantName,
+                'program': program,
+                'newStatus': 'Declined',
+                'adminName': adminName,
+                'timestamp': data.get('timestamp')
+            }, broadcast=True, include_self=False)
+        except Exception as e:
+            print(f"Error broadcasting applicant declination: {e}")
+            emit('error', {'msg': f'Failed to broadcast declination: {str(e)}'})
+
 # Initial check on module load removed as it's handled in init_socketio
 # create_message_table()
 
