@@ -189,8 +189,8 @@ def health_check():
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute('SELECT COUNT(*) FROM email;')
-        count = cur.fetchone()[0]
+        cur.execute('SELECT COUNT(*) as count FROM email;')
+        count = cur.fetchone()['count']
         cur.close()
         conn.close()
         return {

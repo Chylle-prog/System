@@ -1282,7 +1282,10 @@ def check_email():
         conn.close()
         
         if result:
-            applicant_no, user_no = result
+            # result is a dictionary from RealDictCursor
+            applicant_no = result.get('applicant_no')
+            user_no = result.get('user_no')
+            
             # Determine account type based on which field is populated
             account_type = None
             if applicant_no:
