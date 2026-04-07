@@ -1904,8 +1904,8 @@ const StudentInfo = () => {
                 <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
                 <div style={{paddingLeft: '16px'}}>
                   <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem'}}>
-                    <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 1 && !photos.mayorIndigency_photo} style={{fontSize: '0.8rem'}} />
-                    {photos.mayorIndigency_photo && (
+                    <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 1 && !photos.mayorIndigency_photo && !userProfile?.indigency_doc} style={{fontSize: '0.8rem'}} />
+                    {(photos.mayorIndigency_photo || userProfile?.indigency_doc) && (
                       <span style={{fontSize: '0.75rem', color: '#27ae60', fontWeight: '600', padding: '2px 8px', background: '#e8f5e9', borderRadius: '10px', border: '1px solid #c8e6c9'}}>
                         <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> File Active
                       </span>
@@ -1915,11 +1915,9 @@ const StudentInfo = () => {
                   <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1rem'}}>
                     {/* Photo Column */}
                     <div style={{flex: '1', minWidth: '220px'}}>
-                      {photos.mayorIndigency_photo && (
+                      {(photos.mayorIndigency_photo || userProfile?.indigency_doc) && (
                         <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
-                          <img src={photos.mayorIndigency_photo} style={{maxWidth: '100%', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="Indigency Preview" />
-                          
-                          <div style={{display: 'flex', alignItems: 'center', gap: '1rem'}}>
+                            <img src={photos.mayorIndigency_photo || userProfile?.indigency_doc} style={{maxWidth: '280px', height: 'auto', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="Indigency Preview" />
                             <button 
                               type="button" 
                               onClick={handleIndigencyScan}
@@ -2166,8 +2164,8 @@ const StudentInfo = () => {
                   <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
                   <div style={{paddingLeft: '16px'}}>
                     <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem'}}>
-                      <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3 && !photos.mayorCOE_photo} style={{fontSize: '0.8rem'}} />
-                      {photos.mayorCOE_photo && (
+                      <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3 && !photos.mayorCOE_photo && !userProfile?.enrollment_certificate_doc} style={{fontSize: '0.8rem'}} />
+                      {(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && (
                         <span style={{fontSize: '0.75rem', color: '#27ae60', fontWeight: '600', padding: '2px 8px', background: '#e8f5e9', borderRadius: '10px', border: '1px solid #c8e6c9'}}>
                           <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> File Active
                         </span>
@@ -2176,7 +2174,7 @@ const StudentInfo = () => {
                     
                     <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1rem'}}>
                       <div style={{flex: '1', minWidth: '220px'}}>
-                        {photos.mayorCOE_photo && <img src={photos.mayorCOE_photo} style={{width: '100%', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="COE Preview" />}
+                        {(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && <img src={photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc} style={{maxWidth: '280px', height: 'auto', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="COE Preview" />}
                       </div>
                       <div style={{flex: '1', minWidth: '220px'}}>
                         <VideoRecorder 
@@ -2195,8 +2193,8 @@ const StudentInfo = () => {
                   <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
                   <div style={{paddingLeft: '16px'}}>
                     <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem'}}>
-                      <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3 && !photos.mayorGrades_photo} style={{fontSize: '0.8rem'}} />
-                      {photos.mayorGrades_photo && (
+                      <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3 && !photos.mayorGrades_photo && !userProfile?.grades_doc} style={{fontSize: '0.8rem'}} />
+                      {(photos.mayorGrades_photo || userProfile?.grades_doc) && (
                         <span style={{fontSize: '0.75rem', color: '#27ae60', fontWeight: '600', padding: '2px 8px', background: '#e8f5e9', borderRadius: '10px', border: '1px solid #c8e6c9'}}>
                           <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> File Active
                         </span>
@@ -2205,7 +2203,7 @@ const StudentInfo = () => {
                     
                     <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1rem'}}>
                       <div style={{flex: '1', minWidth: '220px'}}>
-                        {photos.mayorGrades_photo && <img src={photos.mayorGrades_photo} style={{width: '100%', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="Grades Preview" />}
+                        {(photos.mayorGrades_photo || userProfile?.grades_doc) && <img src={photos.mayorGrades_photo || userProfile?.grades_doc} style={{maxWidth: '280px', height: 'auto', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="Grades Preview" />}
                       </div>
                       <div style={{flex: '1', minWidth: '220px'}}>
                         <VideoRecorder 

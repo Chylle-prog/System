@@ -222,7 +222,7 @@ def normalize_for_ocr(s):
     return re.sub(r'[^a-z0-9\s]', ' ', s.lower()).strip()
 
 
-def _perform_text_matching(ocr_text, target_first_name=None, target_last_name=None, keywords=None, is_indigency=False):
+def _perform_text_matching(ocr_text, target_first_name=None, target_last_name=None, target_address=None, keywords=None, is_indigency=False):
     """
     Unified fuzzy matching logic for names, addresses, and keywords.
     Checks first name and last name individually if provided.
@@ -266,8 +266,8 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_last_name=No
 
     # 2. Address Matching
     a_verified = True
-    if target_addr:
-        norm_target_addr = normalize_for_ocr(target_addr)
+    if target_address:
+        norm_target_addr = normalize_for_ocr(target_address)
         if norm_target_addr in norm_txt: 
             a_verified = True
         else:
@@ -332,7 +332,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_last_name, exp
     cached_result = _cache_get(image_hash)
     if cached_result is not None:
         cached_text, cached_ratio, cached_message = cached_result
-        name_v, addr_v, found_kw, score = _perform_text_matching(cached_text, expected_name, expected_address, None, is_indigency)
+        name_v, addr_v, found_kw, score = _perform_text_matching(cached_text, expected_first_name, expected_last_name, expected_address, None, is_indigency)
         if name_v and addr_v:
             print(f"[OCR CACHE HIT] Reusing previous results for {image_hash[:8]}...", flush=True)
             return True, f"Verified (cached)", cached_text, 1.0
@@ -370,7 +370,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_last_name, exp
         print(f"[OCR] PSM3 error: {e}", flush=True)
         best_text = ""
     
-    name_v, addr_v, found_kw, best_ratio = _perform_text_matching(best_text, expected_first_name, expected_last_name, None, is_indigency)
+    name_v, addr_v, found_kw, best_ratio = _perform_text_matching(best_text, expected_first_name, expected_last_name, expected_address, None, is_indigency)
     if name_v and addr_v:
         _cache_set(image_hash, (best_text, best_ratio, "verified_psm3"))
         return True, "Verified", best_text, 1.0
@@ -378,7 +378,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_last_name, exp
     # Early exit: if we have a good partial match, check address and return
     threshold = 0.4 if is_indigency else 0.6
     if best_ratio >= threshold:
-        _, addr_ok, _, _ = _perform_text_matching(best_text, None, None, None, is_indigency)
+        _, addr_ok, _, _ = _perform_text_matching(best_text, None, None, None, None, is_indigency)
         if addr_ok:
             _cache_set(image_hash, (best_text, best_ratio, "verified_threshold"))
             return True, "Verified", best_text, 1.0
@@ -446,7 +446,7 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
         all_ocr_text = " ".join(ocr_results)
         
         # Use unified matching logic
-        _, addr_ok, found_keywords, _ = _perform_text_matching(all_ocr_text, None, None, keywords, is_indigency=True)
+        _, addr_ok, found_keywords, _ = _perform_text_matching(all_ocr_text, None, None, None, keywords, is_indigency=True)
         
         missing_kw = [kw for kw in (keywords or []) if kw not in found_keywords]
         
