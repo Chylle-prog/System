@@ -812,7 +812,7 @@ const StudentInfo = () => {
       setOcrVerified('verifying');
       setOcrStatus('Verifying your document address...');
       
-      const result = await applicantAPI.ocrCheck(idFront, indigencyDoc, townCity);
+      const result = await applicantAPI.ocrCheck(idFront, null, indigencyDoc, townCity);
       
       if (result.verified) {
         setOcrVerified('success');
@@ -1003,7 +1003,7 @@ const StudentInfo = () => {
           // id_front is not needed here — pass null so the backend only does address matching.
           // We pass the indigency doc as the address image.
           try {
-            const result = await applicantAPI.ocrCheck(null, indigencyDoc, townCity);
+            const result = await applicantAPI.ocrCheck(null, null, indigencyDoc, townCity);
             const isTechnical = result.message?.includes('temporarily unavailable')
               || result.message?.includes('Low memory mode')
               || result.message?.includes('OCR service');

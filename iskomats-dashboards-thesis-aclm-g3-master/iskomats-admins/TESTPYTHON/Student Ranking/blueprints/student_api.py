@@ -1433,7 +1433,7 @@ def ocr_check():
         # 1. Get applicant record from DB
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT applicant_no, first_name, middle_name, last_name, town_city_municipality, id_img_front, indigency_doc FROM applicants WHERE applicant_no = %s", (request.user_no,))
+        cur.execute("SELECT applicant_no, first_name, middle_name, last_name, town_city_municipality, id_img_front, id_img_back, indigency_doc FROM applicants WHERE applicant_no = %s", (request.user_no,))
         applicant = cur.fetchone()
 
         if not applicant:
@@ -1496,7 +1496,7 @@ def ocr_check():
                 raw_lower = raw.lower()
                 
                 # Check for document-specific keywords using our unified helper
-                from .ocr_utils import _perform_text_matching
+                from services.ocr_utils import _perform_text_matching
                 
                 # Define keywords for each document type
                 doc_keywords = {
