@@ -34,12 +34,30 @@ SECRET_KEY = get_secret_key()
 
 def fetch_video_bytes_from_url(url):
     if not url: return None
+    if not isinstance(url, str) or not url.startswith('http'):
+        print(f"[VIDEO FETCH] Invalid URL type or protocol: {type(url)} | {url}", flush=True)
+        return None
+        
     try:
-        # Use urllib_request to fetch video from URL
-        with urllib_request.urlopen(url) as response:
-            return response.read()
+        print(f"[VIDEO FETCH] Fetching video from: {url}", flush=True)
+        # Use requests with a reasonable timeout and user-agent
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ISKOMATS-Verification-Bot/1.0'
+        }
+        response = requests.get(url, headers=headers, timeout=15)
+        
+        if response.status_code == 200:
+            content = response.content
+            print(f"[VIDEO FETCH] Successfully fetched {len(content)} bytes", flush=True)
+            return content
+        else:
+            print(f"[VIDEO FETCH] HTTP Error {response.status_code} for {url}", flush=True)
+            return None
+    except requests.exceptions.Timeout:
+        print(f"[VIDEO FETCH] Timeout error while fetching {url}", flush=True)
+        return None
     except Exception as e:
-        print(f"[VIDEO FETCH] Error fetching {url}: {e}", flush=True)
+        print(f"[VIDEO FETCH] Unexpected error fetching {url}: {e}", flush=True)
         return None
 
 @student_api_bp.route('/debug/env', methods=['GET'])

@@ -941,8 +941,8 @@ const StudentInfo = () => {
       showPromptMessage('⚠️ Please upload or capture your Certificate of Indigency first.');
       return;
     }
-    if (!videoUrl) {
-      showPromptMessage('⚠️ Please record the required Indigency video first.');
+    if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
+      showPromptMessage('⚠️ Please record and upload the Indigency video first.');
       return;
     }
     if (!townCity) {
@@ -975,8 +975,8 @@ const StudentInfo = () => {
       showPromptMessage('⚠️ Please upload your Certificate of Enrollment first.');
       return;
     }
-    if (!videoUrl) {
-      showPromptMessage('⚠️ Please record the required COE video first.');
+    if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
+      showPromptMessage('⚠️ Please record and upload the COE video first.');
       return;
     }
 
@@ -1006,8 +1006,8 @@ const StudentInfo = () => {
       showPromptMessage('⚠️ Please upload your Grades document first.');
       return;
     }
-    if (!videoUrl) {
-      showPromptMessage('⚠️ Please record the required Grades video first.');
+    if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
+      showPromptMessage('⚠️ Please record and upload the Grades video first.');
       return;
     }
 
