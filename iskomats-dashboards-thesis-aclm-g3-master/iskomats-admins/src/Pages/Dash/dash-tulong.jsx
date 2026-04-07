@@ -71,7 +71,7 @@ export default function DashTulong() {
 
   const [section, setSection] = useState('dashboard'); // dashboard | manage | track | reports | inbox | view-applicant
   const [reportsView, setReportsView] = useState('tables'); // analytics | tables
-  const [trackTab, setTrackTab] = useState('all'); // all | accepted | declined
+  const [trackTab, setTrackTab] = useState('all'); // pending | all | accepted | declined
   const [typeFilter, setTypeFilter] = useState('all');
   const [data, setData] = useState(initialTulongData);
   const [searchTrack, setSearchTrack] = useState('');
@@ -1709,6 +1709,33 @@ export default function DashTulong() {
               </tr>
             </thead>
             <tbody>
+              {trackTab === 'pending' &&
+                pendingTagged.map((a, i) => {
+                  const idx = data.applicants.indexOf(a);
+                  return (
+                    <tr key={`${a.name}-pending-${i}`} className="border-b border-gray-200 hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{a.applicant_no}</span>
+                          <div className="font-semibold">{a.name}</div>
+                        </div>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700">Pending</span>
+                      </td>
+                      <td className="px-4 py-3">{a.grade}</td>
+                      <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                      <td className="px-4 py-3 text-xs">{a.school}</td>
+                      <td className="px-4 py-3 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-1">
+                          <button type="button" onClick={() => viewApplicantFn(idx, 'all')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
+                            View
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+
               {trackTab === 'all' &&
                 allList.map((a, i) => {
                   const statusColors = { all: 'bg-yellow-100 text-yellow-700', accepted: 'bg-green-100 text-green-700', declined: 'bg-red-100 text-red-700' };

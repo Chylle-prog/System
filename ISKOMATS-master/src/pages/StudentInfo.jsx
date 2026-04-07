@@ -140,6 +140,36 @@ const StudentInfo = () => {
     id_back: null,
     face_photo: null
   });
+  
+  // Helper to upload video to Supabase and update local state
+  const handleVideoUpload = async (fieldName, blob) => {
+    try {
+      if (!blob) return;
+      
+      // Show local preview immediately (as a blob URL)
+      const localUrl = URL.createObjectURL(blob);
+      setDocumentVideos(prev => ({ ...prev, [fieldName]: localUrl }));
+      
+      setLoadingMessage({ title: 'Uploading Video', message: 'Securely storing your video requirement...' });
+      setIsSavingStep(true);
+      
+      const result = await applicantAPI.uploadRequirementVideo(fieldName, blob);
+      const publicUrl = result.publicUrl;
+      
+      // Update form data with the remote URL for persistence
+      setFormData(prev => ({ ...prev, [fieldName]: publicUrl }));
+      // Keep the public URL in component state too
+      setDocumentVideos(prev => ({ ...prev, [fieldName]: publicUrl }));
+      
+      console.log(`Video uploaded successfully for ${fieldName}:`, publicUrl);
+    } catch (err) {
+      console.error(`Failed to upload video for ${fieldName}:`, err);
+      alert(`Video upload failed: ${err.message}. Please try again.`);
+    } finally {
+      setIsSavingStep(false);
+    }
+  };
+
   const [extraSignaturePhoto, setExtraSignaturePhoto] = useState(null);
   const [isFaceMatching, setIsFaceMatching] = useState(false);
   const [faceMatchResult, setFaceMatchResult] = useState(null); // { verified: boolean, confidence: number }
@@ -463,34 +493,6 @@ const StudentInfo = () => {
     }
 
     // Pre-fill profile data from backend API
-  // Helper to upload video to Supabase and update local state
-  const handleVideoUpload = async (fieldName, blob) => {
-    try {
-      if (!blob) return;
-      
-      // Show local preview immediately (as a blob URL)
-      const localUrl = URL.createObjectURL(blob);
-      setDocumentVideos(prev => ({ ...prev, [fieldName]: localUrl }));
-      
-      setLoadingMessage({ title: 'Uploading Video', message: 'Securely storing your video requirement...' });
-      setIsSavingStep(true);
-      
-      const result = await applicantAPI.uploadRequirementVideo(fieldName, blob);
-      const publicUrl = result.publicUrl;
-      
-      // Update form data with the remote URL for persistence
-      setFormData(prev => ({ ...prev, [fieldName]: publicUrl }));
-      // Keep the public URL in component state too
-      setDocumentVideos(prev => ({ ...prev, [fieldName]: publicUrl }));
-      
-      console.log(`Video uploaded successfully for ${fieldName}:`, publicUrl);
-    } catch (err) {
-      console.error(`Failed to upload video for ${fieldName}:`, err);
-      alert(`Video upload failed: ${err.message}. Please try again.`);
-    } finally {
-      setIsSavingStep(false);
-    }
-  };
 
   const loadProfile = async () => {
       try {
