@@ -262,15 +262,14 @@ def _perform_text_matching(ocr_text, target_name=None, target_addr=None, keyword
             # For indigency, get last meaningful word (usually city/municipality) - less strict
             # For others, check all address words
             if is_indigency:
-                # For indigency: check first AND last words (e.g., "Lipa City" → ["lipa", "city"])
-                # This avoids false positives from matching generic words like "City" alone
-                # and ensures we match the actual municipality/city name
-                a_words = [w.strip() for w in norm_target_addr.split() if len(w.strip()) >= 2]
-                if len(a_words) > 1:
-                    # Use first and last words for better matching (e.g., "Lipa" AND "City")
-                    a_words = [a_words[0], a_words[-1]]
-                elif not a_words:
-                    a_words = []
+                # For indigency: check all words but ignore generic terms like 'city' or 'municipality'
+                # This ensures we match the actual place name (e.g., "Lipa" instead of just "City")
+                ignore_words = ['city', 'municipality', 'town', 'province']
+                a_words = [w.strip() for w in norm_target_addr.split() if len(w.strip()) >= 2 and w.strip() not in ignore_words]
+                
+                # If everything was filtered out, fallback to original words
+                if not a_words:
+                    a_words = [w.strip() for w in norm_target_addr.split() if len(w.strip()) >= 2]
             else:
                 a_words = [w.strip() for w in norm_target_addr.split() if len(w.strip()) >= 2]
             
@@ -283,7 +282,12 @@ def _perform_text_matching(ocr_text, target_name=None, target_addr=None, keyword
                     if difflib.SequenceMatcher(None, word, ocr_w).ratio() >= 0.7:
                         f_a_count += 1; found_approx = True; break
                 if found_approx: continue
-            a_verified = (f_a_count / len(a_words) if a_words else 0) >= (0.3 if is_indigency else 0.5)
+            
+            # Option A: For indigency, we only need at least one word to match (lenient)
+            if is_indigency:
+                a_verified = f_a_count >= 1
+            else:
+                a_verified = (f_a_count / len(a_words) if a_words else 0) >= 0.5
 
     # 3. Keyword Matching
     found_keywords = []
