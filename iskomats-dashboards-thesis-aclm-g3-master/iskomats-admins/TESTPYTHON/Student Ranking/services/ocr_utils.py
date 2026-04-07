@@ -259,7 +259,18 @@ def _perform_text_matching(ocr_text, target_name=None, target_addr=None, keyword
         if norm_target_addr in norm_txt: 
             a_verified = True
         else:
-            a_words = [w.strip() for w in norm_target_addr.split() if len(w.strip()) >= 2]
+            # For indigency, get last meaningful word (usually city/municipality) - less strict
+            # For others, check all address words
+            if is_indigency:
+                # For indigency: just check the last word (usually city/municipality)
+                # This is more lenient since OCR often gets street addresses wrong
+                a_words = [w.strip() for w in norm_target_addr.split() if len(w.strip()) >= 2]
+                if a_words:
+                    # Use only the last word (usually municipality/city)
+                    a_words = [a_words[-1]]
+            else:
+                a_words = [w.strip() for w in norm_target_addr.split() if len(w.strip()) >= 2]
+            
             f_a_count = 0
             for word in a_words:
                 if word in norm_txt: f_a_count += 1; continue
@@ -269,7 +280,7 @@ def _perform_text_matching(ocr_text, target_name=None, target_addr=None, keyword
                     if difflib.SequenceMatcher(None, word, ocr_w).ratio() >= 0.7:
                         f_a_count += 1; found_approx = True; break
                 if found_approx: continue
-            a_verified = (f_a_count / len(a_words) if a_words else 0) >= (0.4 if is_indigency else 0.5)
+            a_verified = (f_a_count / len(a_words) if a_words else 0) >= (0.3 if is_indigency else 0.5)
 
     # 3. Keyword Matching
     found_keywords = []
