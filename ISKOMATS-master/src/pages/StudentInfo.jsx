@@ -502,25 +502,31 @@ const StudentInfo = () => {
         // Load school ID photos (front and back)
         if (profile.id_img_front) {
           setSchoolIdPhotos(prev => ({ ...prev, front: profile.id_img_front }));
+          setFormData(prev => ({ ...prev, schoolIdFront: profile.id_img_front }));
         }
         if (profile.id_img_back) {
           setSchoolIdPhotos(prev => ({ ...prev, back: profile.id_img_back }));
+          setFormData(prev => ({ ...prev, schoolIdBack: profile.id_img_back }));
         }
         
         // Load documentary requirement photos
         if (profile.enrollment_certificate_doc) {
           setPhotos(prev => ({ ...prev, mayorCOE_photo: profile.enrollment_certificate_doc }));
+          setFormData(prev => ({ ...prev, mayorCOE_photo: profile.enrollment_certificate_doc }));
         }
         if (profile.grades_doc) {
           setPhotos(prev => ({ ...prev, mayorGrades_photo: profile.grades_doc }));
+          setFormData(prev => ({ ...prev, mayorGrades_photo: profile.grades_doc }));
         }
         if (profile.indigency_doc) {
           setPhotos(prev => ({ ...prev, mayorIndigency_photo: profile.indigency_doc }));
+          setFormData(prev => ({ ...prev, mayorIndigency_photo: profile.indigency_doc }));
         }
         
         // Load final verification ID photo
         if (profile.id_pic) {
           setPhotos(prev => ({ ...prev, mayorValidID_photo: profile.id_pic }));
+          setFormData(prev => ({ ...prev, mayorValidID_photo: profile.id_pic }));
         }
         
         // Load signature
@@ -1901,7 +1907,14 @@ const StudentInfo = () => {
                 </h4>
                 <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
                 <div style={{paddingLeft: '16px'}}>
-                  <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 1} />
+                  <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem'}}>
+                    <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 1 && !photos.mayorIndigency_photo} style={{fontSize: '0.8rem'}} />
+                    {photos.mayorIndigency_photo && (
+                      <span style={{fontSize: '0.75rem', color: '#27ae60', fontWeight: '600', padding: '2px 8px', background: '#e8f5e9', borderRadius: '10px', border: '1px solid #c8e6c9'}}>
+                        <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> File Active
+                      </span>
+                    )}
+                  </div>
                   
                   <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1rem'}}>
                     {/* Photo Column */}
@@ -2156,7 +2169,14 @@ const StudentInfo = () => {
                   </h4>
                   <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
                   <div style={{paddingLeft: '16px'}}>
-                    <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} />
+                    <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem'}}>
+                      <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3 && !photos.mayorCOE_photo} style={{fontSize: '0.8rem'}} />
+                      {photos.mayorCOE_photo && (
+                        <span style={{fontSize: '0.75rem', color: '#27ae60', fontWeight: '600', padding: '2px 8px', background: '#e8f5e9', borderRadius: '10px', border: '1px solid #c8e6c9'}}>
+                          <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> File Active
+                        </span>
+                      )}
+                    </div>
                     
                     <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1rem'}}>
                       <div style={{flex: '1', minWidth: '250px'}}>
@@ -2178,7 +2198,14 @@ const StudentInfo = () => {
                   </h4>
                   <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
                   <div style={{paddingLeft: '16px'}}>
-                    <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} />
+                    <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem'}}>
+                      <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3 && !photos.mayorGrades_photo} style={{fontSize: '0.8rem'}} />
+                      {photos.mayorGrades_photo && (
+                        <span style={{fontSize: '0.75rem', color: '#27ae60', fontWeight: '600', padding: '2px 8px', background: '#e8f5e9', borderRadius: '10px', border: '1px solid #c8e6c9'}}>
+                          <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> File Active
+                        </span>
+                      )}
+                    </div>
                     
                     <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1rem'}}>
                       <div style={{flex: '1', minWidth: '250px'}}>
