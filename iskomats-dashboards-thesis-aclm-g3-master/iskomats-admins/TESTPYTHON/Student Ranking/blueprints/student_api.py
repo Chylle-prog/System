@@ -1511,7 +1511,7 @@ def ocr_check():
                 # For enrollment/grades, we verify the name on the document
                 v, msg, raw, _ = verify_id_with_ocr(
                     image_bytes=doc_bytes,
-                    expected_name=full_expected_name if doc_type not in ['Indigency', 'SchoolIDBack'] else None,
+                    expected_name=full_expected_name if doc_type != 'SchoolIDBack' else None,
                     expected_address=town_city if doc_type == 'Indigency' else None
                 )
                 raw_lower = raw.lower()

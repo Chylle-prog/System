@@ -1,6 +1,6 @@
 const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1']);
 const LOCAL_BACKEND_ORIGIN = 'http://localhost:5001';
-const PRODUCTION_BACKEND_ORIGIN = 'https://system-kjbv.onrender.com';
+const PRODUCTION_BACKEND_ORIGIN = 'https://iskomats-backend.onrender.com';
 const API_PREFIX = '/api';
 
 const stripTrailingSlash = (value) => value.replace(/\/+$/, '');
