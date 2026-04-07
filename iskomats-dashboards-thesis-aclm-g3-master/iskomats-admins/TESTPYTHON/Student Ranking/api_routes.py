@@ -1440,11 +1440,13 @@ def register():
         cursor = conn.cursor()
 
         normalized_email = data['email'].strip()
-        cursor.execute("SELECT 1 FROM email WHERE email_address ILIKE %s", (normalized_email,))
+        # Only check if email exists as an ADMIN user (user_no is not NULL)
+        # Applicant emails (applicant_no only) are allowed to register as admin
+        cursor.execute("SELECT 1 FROM email WHERE email_address ILIKE %s AND user_no IS NOT NULL", (normalized_email,))
         if cursor.fetchone():
             cursor.close()
             conn.close()
-            return jsonify({'message': 'Email already exists'}), 409
+            return jsonify({'message': 'Email already exists as admin account'}), 409
 
         password_hash = bcrypt.generate_password_hash(data['password']).decode('utf-8')
         

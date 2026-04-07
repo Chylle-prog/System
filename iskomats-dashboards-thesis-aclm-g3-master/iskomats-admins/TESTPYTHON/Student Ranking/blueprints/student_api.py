@@ -378,11 +378,12 @@ def student_login():
     try:
         conn = get_db()
         cur = conn.cursor()
+        # Only allow applicant logins - must have applicant_no
         cur.execute(
             """
-            SELECT em_no, user_no, applicant_no, password_hash, is_verified
+            SELECT em_no, applicant_no, password_hash, is_verified
             FROM email
-            WHERE email_address ILIKE %s
+            WHERE email_address ILIKE %s AND applicant_no IS NOT NULL
             """,
             (email,),
         )
@@ -397,7 +398,7 @@ def student_login():
         payload = {
             'exp': datetime.utcnow() + timedelta(days=7),
             'iat': datetime.utcnow(),
-            'user_no': user['applicant_no'] if user['applicant_no'] else user['user_no'],
+            'user_no': user['applicant_no'],
         }
         token = jwt.encode(payload, SECRET_KEY, algorithm='HS256')
 
@@ -405,7 +406,7 @@ def student_login():
             'token': token,
             'user_no': payload['user_no'],
             'applicant_no': user['applicant_no'],
-            'is_applicant': bool(user['applicant_no']),
+            'is_applicant': True,
         })
     except Exception as exc:
         return jsonify({'message': f'Error: {str(exc)}'}), 500
@@ -430,10 +431,11 @@ def student_register():
         conn = get_db()
         cur = conn.cursor()
         
-        # 1. Check if email ALREADY exists in permanent table
-        cur.execute('SELECT em_no FROM email WHERE email_address ILIKE %s LIMIT 1', (email,))
+        # 1. Check if email ALREADY exists as an APPLICANT (applicant_no is not NULL)
+        # Admin emails (user_no only) are allowed to register as applicant
+        cur.execute('SELECT em_no FROM email WHERE email_address ILIKE %s AND applicant_no IS NOT NULL LIMIT 1', (email,))
         if cur.fetchone():
-            return jsonify({'message': 'Email already registered and verified. Please sign in.'}), 400
+            return jsonify({'message': 'Email already registered as applicant and verified. Please sign in.'}), 400
 
         # 2. Generate verification code
         verification_code = generate_verification_code()
@@ -498,9 +500,9 @@ def student_verify_email():
         pending = cur.fetchone()
 
         if not pending:
-            # Check if already verified
+            # Check if already verified as applicant
             if email:
-                cur.execute('SELECT em_no FROM email WHERE email_address ILIKE %s', (email,))
+                cur.execute('SELECT em_no FROM email WHERE email_address ILIKE %s AND applicant_no IS NOT NULL', (email,))
                 if cur.fetchone():
                     return jsonify({'message': 'Email already verified. Please sign in.'}), 200
             return jsonify({'message': 'Invalid verification code or link has expired'}), 400
