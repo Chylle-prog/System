@@ -262,12 +262,15 @@ def _perform_text_matching(ocr_text, target_name=None, target_addr=None, keyword
             # For indigency, get last meaningful word (usually city/municipality) - less strict
             # For others, check all address words
             if is_indigency:
-                # For indigency: just check the last word (usually city/municipality)
-                # This is more lenient since OCR often gets street addresses wrong
+                # For indigency: check first AND last words (e.g., "Lipa City" → ["lipa", "city"])
+                # This avoids false positives from matching generic words like "City" alone
+                # and ensures we match the actual municipality/city name
                 a_words = [w.strip() for w in norm_target_addr.split() if len(w.strip()) >= 2]
-                if a_words:
-                    # Use only the last word (usually municipality/city)
-                    a_words = [a_words[-1]]
+                if len(a_words) > 1:
+                    # Use first and last words for better matching (e.g., "Lipa" AND "City")
+                    a_words = [a_words[0], a_words[-1]]
+                elif not a_words:
+                    a_words = []
             else:
                 a_words = [w.strip() for w in norm_target_addr.split() if len(w.strip()) >= 2]
             
@@ -339,42 +342,22 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
         return False, f"Preprocessing error: {str(e)}", "", 0.0
 
     best_text = ""
-    print(f"[OCR] Starting parallel PSM verification...", flush=True)
+    best_ratio = 0.0
+    print(f"[OCR] Running PSM3 verification...", flush=True)
     
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        # Submit both PSM strategies concurrently
-        future_psm3 = executor.submit(_run_tesseract_on_image, img, 3)
-        future_psm11 = executor.submit(_run_tesseract_on_image, img, 11)
-        
-        # Wait for PSM3 result with timeout
-        try:
-            t1 = future_psm3.result(timeout=15)
-        except Exception as e:
-            print(f"[OCR] PSM3 timeout/error: {e}", flush=True)
-            t1 = ""
-        
-        name_v1, addr_v1, found_kw1, r1 = _perform_text_matching(t1, expected_name, expected_address, None, is_indigency)
-        if name_v1 and addr_v1:
-            _cache_set(image_hash, (t1, r1, "verified_psm3"))
-            return True, "Verified (PSM3)", t1, 1.0
-        
-        # Wait for PSM11 result
-        try:
-            t2 = future_psm11.result(timeout=15)
-        except Exception as e:
-            print(f"[OCR] PSM11 timeout/error: {e}", flush=True)
-            t2 = ""
-        
-        name_v2, addr_v2, found_kw2, r2 = _perform_text_matching(t2, expected_name, expected_address, None, is_indigency)
-        if name_v2 and addr_v2:
-            _cache_set(image_hash, (t2, r2, "verified_psm11"))
-            return True, "Verified (PSM11)", t2, 1.0
-        
-        # Pick best result from parallel execution
-        if r1 >= r2:
-            best_text, best_ratio = t1, r1
-        else:
-            best_text, best_ratio = t2, r2
+    # PSM3 is typically best for mixed text layouts (IDs, documents)
+    # Removed parallel PSM11 - saves 15+ seconds, PSM3 alone is sufficient
+    try:
+        best_text = _run_tesseract_on_image(img, 3)
+        print(f"[OCR] PSM3 completed", flush=True)
+    except Exception as e:
+        print(f"[OCR] PSM3 error: {e}", flush=True)
+        best_text = ""
+    
+    name_v, addr_v, found_kw, best_ratio = _perform_text_matching(best_text, expected_name, expected_address, None, is_indigency)
+    if name_v and addr_v:
+        _cache_set(image_hash, (best_text, best_ratio, "verified_psm3"))
+        return True, "Verified", best_text, 1.0
     
     # Early exit: if we have a good partial match, check address and return
     threshold = 0.4 if is_indigency else 0.6
@@ -385,33 +368,8 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
             return True, "Verified", best_text, 1.0
         return False, "Address mismatch", best_text, 0.7
 
-    # --- PASS 2: PSM 6 (uniform text blocks — good for COE/Grades) ---
-    # Only run if primary passes were poor (< 20% match)
-    if best_ratio < 0.2:
-        text_p6 = _run_tesseract_on_image(img, psm=6)
-        name_v, addr_v, found_kw, ratio = _perform_text_matching(text_p6, expected_name, expected_address, None, is_indigency)
-        if name_v and addr_v:
-            _cache_set(image_hash, (text_p6, ratio, "verified_psm6"))
-            return True, "Verified (PSM6)", text_p6, 1.0
-        if ratio > best_ratio: best_text, best_ratio = text_p6, ratio
-
-    # --- PASS 3: Morphological fallback (only for truly unreadable images) ---
-    if best_ratio < 0.15:
-        text_f = _run_tesseract_on_image(img, psm=3, strategies=[_preprocess_strategy_b])
-        name_v, addr_v, found_kw, ratio = _perform_text_matching(text_f, expected_name, expected_address, None, is_indigency)
-        if name_v and addr_v:
-            _cache_set(image_hash, (text_f, ratio, "verified_morph"))
-            return True, "Verified (Morphological)", text_f, 1.0
-        if ratio > best_ratio: best_text, best_ratio = text_f, ratio
-
-    # --- Final evaluation ---
-    if best_ratio >= threshold:
-        _, addr_ok, _, _ = _perform_text_matching(best_text, None, expected_address, None, is_indigency)
-        if not addr_ok:
-            return False, "Address mismatch", best_text, 0.7
-        _cache_set(image_hash, (best_text, best_ratio, "verified_final"))
-        return True, "Verified", best_text, 1.0
-
+    # Return result - no additional fallback passes
+    # (Improved address matching + reduced to first+last word check provides better accuracy with PSM3 alone)
     if best_ratio >= 0.3:
         _cache_set(image_hash, (best_text, best_ratio, "partial_match"))
         return False, f"Identity mismatch ({best_ratio:.0%})", best_text, best_ratio
