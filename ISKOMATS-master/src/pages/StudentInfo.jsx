@@ -1,18 +1,19 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import SignaturePad from '../components/SignaturePad';
+import VideoRecorder from '../components/VideoRecorder';
 import { applicantAPI, applicationAPI } from '../services/api';
 
 const STEP_FIELDS = {
   1: [
     'lastName', 'firstName', 'middleName', 'maidenName', 'dateOfBirth', 'placeOfBirth',
     'streetBarangay', 'townCity', 'province', 'zipCode', 'sex', 'citizenship',
-    'mobileNumber'
+    'mobileNumber', 'mayorIndigency_photo'
   ],
   2: [
     'fatherStatus', 'fatherName', 'fatherOccupation', 'fatherAddress', 'fatherPhoneNumber',
     'motherStatus', 'motherName', 'motherOccupation', 'motherAddress', 'motherPhoneNumber',
-    'parentsGrossIncome', 'numberOfSiblings', 'mayorIndigency_photo'
+    'parentsGrossIncome', 'numberOfSiblings'
   ],
   3: [
     'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course', 'gpa',
@@ -147,6 +148,13 @@ const StudentInfo = () => {
   const [isFaceMatching, setIsFaceMatching] = useState(false);
   const [faceMatchResult, setFaceMatchResult] = useState(null); // { verified: boolean, confidence: number }
   const [faceVerified, setFaceVerified] = useState(null); // null | 'verifying' | 'success' | 'failed' | 'technical_unavailable'
+
+  // Document Video States
+  const [documentVideos, setDocumentVideos] = useState({
+    mayorIndigency_video: null,
+    mayorGrades_video: null,
+    mayorCOE_video: null
+  });
 
   const idPictureInputRef = useRef(null);
   const signatureInputRef = useRef(null);
@@ -792,46 +800,69 @@ const StudentInfo = () => {
     }
   };
 
-  const performOcrVerification = async (idFront, indigencyDoc) => {
+  const performOcrVerification = async (idFront, indigencyDoc, townCity) => {
     try {
       setOcrVerified('verifying');
-      setOcrStatus('Verifying your identity and address documents...');
+      setOcrStatus('Verifying your document address...');
       
-      const result = await applicantAPI.ocrCheck(idFront, indigencyDoc);
+      const result = await applicantAPI.ocrCheck(idFront, indigencyDoc, townCity);
       
       if (result.verified) {
         setOcrVerified('success');
-        setOcrStatus(result.message || 'Identity and address verified successfully!');
+        setOcrStatus(result.message || 'Address verified successfully!');
         return true;
       } else {
-        // Handle technical unavailability as a non-blocking "soft" failure
         const isTechnical = result.message?.includes('temporarily unavailable') || 
                            result.message?.includes('Low memory mode') ||
                            result.message?.includes('OCR service');
         
         if (isTechnical) {
           setOcrVerified('technical_unavailable');
-          const techMsg = result.message || 'OCR service temporarily unavailable';
-          setOcrStatus(techMsg);
-          showPromptMessage(`ℹ️ Note: ${techMsg}. You can still proceed to the next step.`);
-          return true; // Allow proceeding
+          setOcrStatus(result.message || 'OCR service temporarily unavailable');
+          return true;
         }
 
         setOcrVerified('failed');
-        const errorMsg = result.message || 'Identity verification failed. Please ensure your documents are clear.';
-        setOcrStatus(errorMsg);
-        showPromptMessage(`❌ Verification Issue: ${errorMsg}`);
+        setOcrStatus(result.message || 'Address verification failed.');
         return false;
       }
     } catch (err) {
       console.error('OCR Error:', err);
-      
-      // Also treat network/server errors as non-blocking technical issues
       setOcrVerified('technical_unavailable');
-      const errorMsg = err.message || 'Technical error during verification';
-      setOcrStatus(`Technical Issue: ${errorMsg}`);
-      showPromptMessage(`⚠️ Note: Verification service issue (${errorMsg}). You can still proceed.`);
-      return true; // Allow proceeding despite technical error
+      setOcrStatus(`Technical Issue: ${err.message}`);
+      return true;
+    }
+  };
+
+  const handleIndigencyScan = async () => {
+    const indigencyDoc = photos.mayorIndigency_photo || formData.mayorIndigency_photo || userProfile?.indigency_doc;
+    const townCity = formData.townCity || userProfile?.town_city_municipality || '';
+
+    if (!indigencyDoc) {
+      showPromptMessage('⚠️ Please upload or capture your Certificate of Indigency first.');
+      return;
+    }
+    if (!townCity) {
+      showPromptMessage('⚠️ Please fill in your Town/City first.');
+      return;
+    }
+
+    setLoadingMessage({ title: 'Scanning Document', message: 'Comparing your Certificate of Indigency with your registered address...' });
+    setIsSavingStep(true);
+    
+    try {
+      const success = await performOcrVerification(null, indigencyDoc, townCity);
+      if (success) {
+        if (ocrVerified === 'success') {
+          showPromptMessage('✅ Address successfully verified!');
+        } else if (ocrVerified === 'technical_unavailable') {
+          showPromptMessage('ℹ️ OCR service issue. Manual verification will be handled.');
+        }
+      } else {
+        showPromptMessage(`❌ Address mismatch: The document does not match "${townCity}".`);
+      }
+    } finally {
+      setIsSavingStep(false);
     }
   };
 
@@ -945,7 +976,11 @@ const StudentInfo = () => {
       
       // ── STEP 1: Address OCR verification (indigency photo + townCity) ────────
       if (currentStep === 1) {
-        const indigencyDoc = photos.mayorIndigency_photo
+        // If already verified via "Scan" button, skip auto-OCR
+        if (ocrVerified === 'success' || ocrVerified === 'technical_unavailable') {
+          console.log('[OCR] Address already verified or bypassed, skipping auto-scan.');
+        } else {
+          const indigencyDoc = photos.mayorIndigency_photo
           || formData.mayorIndigency_photo
           || userProfile?.indigency_doc;
         // Use the town/city the user filled in (or what's already in the profile)
@@ -991,9 +1026,10 @@ const StudentInfo = () => {
             setOcrStatus(`Address OCR error: ${ocrErr.message}`);
             showPromptMessage(`⚠️ Address verification issue (${ocrErr.message}). You can still continue.`, 4000);
           }
-        } else if (!indigencyDoc) {
-          // No indigency photo uploaded yet — skip OCR, field validation already blocks empty required docs
-          console.log('[OCR] Skipping address verification: no indigency photo yet.');
+          } else if (!indigencyDoc) {
+            // No indigency photo uploaded yet — skip OCR, field validation already blocks empty required docs
+            console.log('[OCR] Skipping address verification: no indigency photo yet.');
+          }
         }
       }
 
@@ -1189,6 +1225,12 @@ const StudentInfo = () => {
           submissionData.append(fileKey, photos[fileKey]);
         } else if (formData[fileKey] && typeof formData[fileKey] === 'string') {
           submissionData.append(fileKey, formData[fileKey]);
+        }
+
+        // Add corresponding video if available
+        const videoKey = `${key}_video`;
+        if (documentVideos[videoKey]) {
+          submissionData.append(videoKey, documentVideos[videoKey], `${videoKey}.webm`);
         }
       });
 
@@ -1855,10 +1897,56 @@ const StudentInfo = () => {
                 <div style={{paddingLeft: '16px'}}>
                   <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 1} />
                   {photos.mayorIndigency_photo && (
-                    <div style={{marginTop: '1rem'}}>
+                    <div style={{marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem'}}>
                       <img src={photos.mayorIndigency_photo} style={{maxWidth: '200px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="Indigency Preview" />
+                      
+                      <div style={{display: 'flex', alignItems: 'center', gap: '1rem'}}>
+                        <button 
+                          type="button" 
+                          onClick={handleIndigencyScan}
+                          disabled={isSavingStep}
+                          style={{
+                            padding: '0.6rem 1.2rem',
+                            borderRadius: '30px',
+                            background: ocrVerified === 'success' ? '#2ecc71' : 'var(--primary)',
+                            color: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            fontSize: '0.9rem',
+                            fontWeight: '600',
+                            transition: 'all 0.3s ease'
+                          }}
+                        >
+                          <i className={`fas ${ocrVerified === 'verifying' ? 'fa-spinner fa-spin' : 'fa-search'}`}></i>
+                          {ocrVerified === 'success' ? 'Verified!' : 'Scan Document'}
+                        </button>
+
+                        {ocrStatus && (
+                          <div style={{
+                            fontSize: '0.85rem', 
+                            color: ocrVerified === 'success' ? '#27ae60' : (ocrVerified === 'failed' ? '#e74c3c' : '#666'),
+                            fontWeight: '500'
+                          }}>
+                            {ocrVerified === 'success' && <i className="fas fa-check-circle" style={{marginRight: '5px'}}></i>}
+                            {ocrStatus}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
+                  
+                  <div style={{marginTop: '1.5rem', borderTop: '1px solid #e1e8f0', paddingTop: '1.5rem'}}>
+                    <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', marginBottom: '0.8rem'}}>
+                      <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video (Optional, but increases accuracy)
+                    </p>
+                    <VideoRecorder 
+                      label="Record Indigency Video" 
+                      onRecordComplete={(blob) => setDocumentVideos(prev => ({ ...prev, mayorIndigency_video: blob }))} 
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -2055,6 +2143,13 @@ const StudentInfo = () => {
                   <div style={{paddingLeft: '16px'}}>
                     <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} />
                     {photos.mayorCOE_photo && <img src={photos.mayorCOE_photo} style={{marginTop: '10px', maxWidth: '200px', borderRadius: '8px'}} alt="COE Preview" />}
+                    
+                    <div style={{marginTop: '1rem'}}>
+                      <VideoRecorder 
+                        label="Record COE Video" 
+                        onRecordComplete={(blob) => setDocumentVideos(prev => ({ ...prev, mayorCOE_video: blob }))} 
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -2066,6 +2161,13 @@ const StudentInfo = () => {
                   <div style={{paddingLeft: '16px'}}>
                     <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} />
                     {photos.mayorGrades_photo && <img src={photos.mayorGrades_photo} style={{marginTop: '10px', maxWidth: '200px', borderRadius: '8px'}} alt="Grades Preview" />}
+                    
+                    <div style={{marginTop: '1rem'}}>
+                      <VideoRecorder 
+                        label="Record Grades Video" 
+                        onRecordComplete={(blob) => setDocumentVideos(prev => ({ ...prev, mayorGrades_video: blob }))} 
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
