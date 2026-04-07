@@ -1641,7 +1641,7 @@ export default function DashVilma() {
 
         <div className="flex flex-wrap gap-2 mb-4 justify-between items-center">
           <div className="flex gap-2">
-            {['pending', 'all', 'accepted', 'declined'].map((t) => (
+            {['all', 'pending', 'accepted', 'declined'].map((t) => (
               <button
                 key={t}
                 type="button"

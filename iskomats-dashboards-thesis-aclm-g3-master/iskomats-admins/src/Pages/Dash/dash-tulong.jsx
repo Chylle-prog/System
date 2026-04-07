@@ -1646,7 +1646,7 @@ export default function DashTulong() {
 
         <div className="flex flex-wrap gap-2 mb-4 justify-between items-center">
           <div className="flex gap-2">
-            {['all', 'accepted', 'declined'].map((t) => (
+            {['all', 'pending', 'accepted', 'declined'].map((t) => (
               <button
                 key={t}
                 type="button"
@@ -1655,9 +1655,10 @@ export default function DashTulong() {
                   }`}
               >
                 {t === 'all' && <FaUsers />}
+                {t === 'pending' && <FaClock />}
                 {t === 'accepted' && <FaCheckCircle />}
                 {t === 'declined' && <FaTimesCircle />}
-                {t === 'all' ? 'All Applicants' : t.charAt(0).toUpperCase() + t.slice(1)}
+                {t === 'pending' ? 'Pending' : t === 'all' ? 'All Applicants' : t.charAt(0).toUpperCase() + t.slice(1)}
               </button>
             ))}
           </div>
