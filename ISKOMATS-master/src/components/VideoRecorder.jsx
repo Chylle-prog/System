@@ -9,7 +9,7 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
  * @param {number} maxDuration - Maximum recording duration in seconds (default 5)
  * @param {string} label - Display label for the recorder
  */
-const VideoRecorder = ({ onRecordComplete, maxDuration = 5, label = "Record Video" }) => {
+const VideoRecorder = ({ onRecordComplete, maxDuration = 30, label = "Record Video" }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [stream, setStream] = useState(null);
@@ -165,7 +165,7 @@ const VideoRecorder = ({ onRecordComplete, maxDuration = 5, label = "Record Vide
               <>
                 <button type="button" onClick={stopCamera} className="back-to-form-btn" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}>Cancel</button>
                 <button type="button" onClick={startRecording} className="submit-btn" style={{ width: 'auto', padding: '0.5rem 1.5rem', height: 'auto', fontSize: '0.8rem', background: '#e74c3c' }}>
-                  Start 5s Recording
+                  Start {maxDuration}s Recording
                 </button>
               </>
             )}

@@ -153,7 +153,8 @@ const StudentInfo = () => {
   const [documentVideos, setDocumentVideos] = useState({
     mayorIndigency_video: null,
     mayorGrades_video: null,
-    mayorCOE_video: null
+    mayorCOE_video: null,
+    face_video: null
   });
 
   const idPictureInputRef = useRef(null);
@@ -1234,6 +1235,11 @@ const StudentInfo = () => {
         }
       });
 
+      // Add Face Verification Video if available
+      if (documentVideos.face_video) {
+        submissionData.append('face_video', documentVideos.face_video, 'face_video.webm');
+      }
+
       // Submit application — always run face matching on the backend
       const result = await applicationAPI.submit(numericReqNo, submissionData, skipVerification);
       console.log('Submission result:', result);
@@ -1896,56 +1902,65 @@ const StudentInfo = () => {
                 <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
                 <div style={{paddingLeft: '16px'}}>
                   <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 1} />
-                  {photos.mayorIndigency_photo && (
-                    <div style={{marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem'}}>
-                      <img src={photos.mayorIndigency_photo} style={{maxWidth: '200px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="Indigency Preview" />
-                      
-                      <div style={{display: 'flex', alignItems: 'center', gap: '1rem'}}>
-                        <button 
-                          type="button" 
-                          onClick={handleIndigencyScan}
-                          disabled={isSavingStep}
-                          style={{
-                            padding: '0.6rem 1.2rem',
-                            borderRadius: '30px',
-                            background: ocrVerified === 'success' ? '#2ecc71' : 'var(--primary)',
-                            color: 'white',
-                            border: 'none',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            fontSize: '0.9rem',
-                            fontWeight: '600',
-                            transition: 'all 0.3s ease'
-                          }}
-                        >
-                          <i className={`fas ${ocrVerified === 'verifying' ? 'fa-spinner fa-spin' : 'fa-search'}`}></i>
-                          {ocrVerified === 'success' ? 'Verified!' : 'Scan Document'}
-                        </button>
+                  
+                  <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1rem'}}>
+                    {/* Photo Column */}
+                    <div style={{flex: '1', minWidth: '250px'}}>
+                      {photos.mayorIndigency_photo && (
+                        <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                          <img src={photos.mayorIndigency_photo} style={{maxWidth: '100%', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="Indigency Preview" />
+                          
+                          <div style={{display: 'flex', alignItems: 'center', gap: '1rem'}}>
+                            <button 
+                              type="button" 
+                              onClick={handleIndigencyScan}
+                              disabled={isSavingStep}
+                              style={{
+                                padding: '0.6rem 1.2rem',
+                                borderRadius: '30px',
+                                background: ocrVerified === 'success' ? '#2ecc71' : 'var(--primary)',
+                                color: 'white',
+                                border: 'none',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                fontSize: '0.9rem',
+                                fontWeight: '600',
+                                transition: 'all 0.3s ease'
+                              }}
+                            >
+                              <i className={`fas ${ocrVerified === 'verifying' ? 'fa-spinner fa-spin' : 'fa-search'}`}></i>
+                              {ocrVerified === 'success' ? 'Verified!' : 'Scan Document'}
+                            </button>
 
-                        {ocrStatus && (
-                          <div style={{
-                            fontSize: '0.85rem', 
-                            color: ocrVerified === 'success' ? '#27ae60' : (ocrVerified === 'failed' ? '#e74c3c' : '#666'),
-                            fontWeight: '500'
-                          }}>
-                            {ocrVerified === 'success' && <i className="fas fa-check-circle" style={{marginRight: '5px'}}></i>}
-                            {ocrStatus}
+                            {ocrStatus && (
+                              <div style={{
+                                fontSize: '0.85rem', 
+                                color: ocrVerified === 'success' ? '#27ae60' : (ocrVerified === 'failed' ? '#e74c3c' : '#666'),
+                                fontWeight: '500'
+                              }}>
+                                {ocrVerified === 'success' && <i className="fas fa-check-circle" style={{marginRight: '5px'}}></i>}
+                                {ocrStatus}
+                              </div>
+                            )}
                           </div>
-                        )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Video Column */}
+                    <div style={{flex: '1', minWidth: '250px'}}>
+                      <div style={{background: '#fff', padding: '1rem', borderRadius: '16px', border: '1px solid #e1e8f0', height: '100%'}}>
+                        <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', marginBottom: '0.8rem'}}>
+                          <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video (Optional)
+                        </p>
+                        <VideoRecorder 
+                          label="Record Indigency Video" 
+                          onRecordComplete={(blob) => setDocumentVideos(prev => ({ ...prev, mayorIndigency_video: blob }))} 
+                        />
                       </div>
                     </div>
-                  )}
-                  
-                  <div style={{marginTop: '1.5rem', borderTop: '1px solid #e1e8f0', paddingTop: '1.5rem'}}>
-                    <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', marginBottom: '0.8rem'}}>
-                      <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video (Optional, but increases accuracy)
-                    </p>
-                    <VideoRecorder 
-                      label="Record Indigency Video" 
-                      onRecordComplete={(blob) => setDocumentVideos(prev => ({ ...prev, mayorIndigency_video: blob }))} 
-                    />
                   </div>
                 </div>
               </div>
@@ -2142,13 +2157,17 @@ const StudentInfo = () => {
                   <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
                   <div style={{paddingLeft: '16px'}}>
                     <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} />
-                    {photos.mayorCOE_photo && <img src={photos.mayorCOE_photo} style={{marginTop: '10px', maxWidth: '200px', borderRadius: '8px'}} alt="COE Preview" />}
                     
-                    <div style={{marginTop: '1rem'}}>
-                      <VideoRecorder 
-                        label="Record COE Video" 
-                        onRecordComplete={(blob) => setDocumentVideos(prev => ({ ...prev, mayorCOE_video: blob }))} 
-                      />
+                    <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1rem'}}>
+                      <div style={{flex: '1', minWidth: '250px'}}>
+                        {photos.mayorCOE_photo && <img src={photos.mayorCOE_photo} style={{width: '100%', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="COE Preview" />}
+                      </div>
+                      <div style={{flex: '1', minWidth: '250px'}}>
+                        <VideoRecorder 
+                          label="Record COE Video" 
+                          onRecordComplete={(blob) => setDocumentVideos(prev => ({ ...prev, mayorCOE_video: blob }))} 
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2160,13 +2179,17 @@ const StudentInfo = () => {
                   <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
                   <div style={{paddingLeft: '16px'}}>
                     <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3} />
-                    {photos.mayorGrades_photo && <img src={photos.mayorGrades_photo} style={{marginTop: '10px', maxWidth: '200px', borderRadius: '8px'}} alt="Grades Preview" />}
                     
-                    <div style={{marginTop: '1rem'}}>
-                      <VideoRecorder 
-                        label="Record Grades Video" 
-                        onRecordComplete={(blob) => setDocumentVideos(prev => ({ ...prev, mayorGrades_video: blob }))} 
-                      />
+                    <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1rem'}}>
+                      <div style={{flex: '1', minWidth: '250px'}}>
+                        {photos.mayorGrades_photo && <img src={photos.mayorGrades_photo} style={{width: '100%', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="Grades Preview" />}
+                      </div>
+                      <div style={{flex: '1', minWidth: '250px'}}>
+                        <VideoRecorder 
+                          label="Record Grades Video" 
+                          onRecordComplete={(blob) => setDocumentVideos(prev => ({ ...prev, mayorGrades_video: blob }))} 
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2264,8 +2287,10 @@ const StudentInfo = () => {
                 </h4>
                 <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1.2rem', paddingLeft: '16px'}}>Match captured photo with your School ID</p>
                 
-                <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem'}}>
-                  <div style={{border: '2px solid #fff', borderRadius: '20px', height: '200px', width: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e1e8f0', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)'}}>
+                <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'flex-start'}}>
+                  {/* Photo Column */}
+                  <div style={{flex: '1', minWidth: '250px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem'}}>
+                    <div style={{border: '2px solid #fff', borderRadius: '20px', height: '220px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e1e8f0', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)'}}>
                     {photos.face_photo ? (
                       <>
                         <img src={photos.face_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Face Verification" />
@@ -2277,10 +2302,27 @@ const StudentInfo = () => {
                         <span style={{fontSize: '0.9rem', fontWeight: '600'}}>Capture Face Photo</span>
                       </button>
                     )}
+                    </div>
                   </div>
 
+                  {/* Video Column */}
+                  <div style={{flex: '1', minWidth: '250px'}}>
+                    <div style={{background: '#fff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0', textAlign: 'center'}}>
+                      <p style={{fontSize: '0.9rem', color: '#333', fontWeight: '700', marginBottom: '1rem'}}>
+                        <i className="fas fa-video" style={{marginRight: '8px', color: 'var(--primary)'}}></i> Live Face Verification Video
+                      </p>
+                      <VideoRecorder 
+                        label="Record Face Video" 
+                        onRecordComplete={(blob) => setDocumentVideos(prev => ({ ...prev, face_video: blob }))} 
+                        maxDuration={30}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{width: '100%', textAlign: 'center', marginTop: '1.5rem'}}>
                   {photos.face_photo && (
-                    <div style={{width: '100%', maxWidth: '300px', textAlign: 'center'}}>
+                    <div style={{width: '100%', maxWidth: '300px', margin: '0 auto'}}>
                       {!faceMatchResult ? (
                         <button type="button" onClick={async () => {
                           const idImg = schoolIdPhotos.front || userProfile?.id_img_front;
