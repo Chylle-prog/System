@@ -602,6 +602,20 @@ def student_resend_verification_email():
 
 @student_api_bp.route('/auth/check-email', methods=['POST'])
 def student_check_email():
+    """
+    Check if email is available for applicant registration.
+    Only rejects if email already has an applicant account.
+    Allows registration even if email is used as admin account.
+    
+    Request body:
+    {
+        "email": "user@example.com"
+    }
+    
+    Response:
+    - If email is NOT used for applicant account: available=true (can register)
+    - If email IS used for applicant account: available=false (conflict)
+    """
     data = request.get_json() or {}
     email = data.get('email', '').strip()
 
@@ -618,24 +632,31 @@ def student_check_email():
         result = cur.fetchone()
         
         if result:
-            applicant_no, user_no = result
-            # Determine account type based on which field is populated
-            account_type = None
-            if applicant_no:
-                account_type = 'applicant'
-            elif user_no:
-                account_type = 'admin'
+            applicant_no = result.get('applicant_no') if hasattr(result, 'get') else result[0]
+            user_no = result.get('user_no') if hasattr(result, 'get') else result[1]
             
-            return jsonify({
-                'exists': True,
-                'account_type': account_type,
-                'available': False
-            })
+            # For applicant registration: only reject if email already has an applicant account
+            if applicant_no:
+                return jsonify({
+                    'exists': True,
+                    'account_type': 'applicant',
+                    'available': False,
+                    'message': 'Email already registered as applicant'
+                })
+            else:
+                # Email may exist as admin, but that's OK for applicant registration
+                return jsonify({
+                    'exists': True,
+                    'account_type': 'admin' if user_no else None,
+                    'available': True,
+                    'message': 'Email available for applicant registration'
+                })
         else:
             return jsonify({
                 'exists': False,
                 'account_type': None,
-                'available': True
+                'available': True,
+                'message': 'Email available'
             })
     except Exception as exc:
         return jsonify({'message': str(exc)}), 500

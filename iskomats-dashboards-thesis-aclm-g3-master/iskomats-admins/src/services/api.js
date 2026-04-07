@@ -67,15 +67,13 @@ export const authAPI = {
   },
   
   /**
-   * Check if email is available and get account type
+   * Check if email is available for registration
    * @param {string} email
-   * @returns {Promise} - Response should have format: {data: {exists: boolean, account_type: 'applicant'|'admin'|null}}
-   * - account_type 'admin' if user_no exists in users table
-   * - account_type 'applicant' if applicant_no exists in applicants table
-   * - account_type null if email doesn't exist
+   * @param {string} accountType - 'admin' or 'applicant' (defaults to 'admin')
+   * @returns {Promise} - Response: {exists, available, account_type, message}
    */
-  checkEmail: (email) =>
-    api.post('/admin/auth/check-email', { email }),
+  checkEmail: (email, accountType = 'admin') =>
+    api.post('/admin/auth/check-email', { email, account_type: accountType }),
 };
 
 // ===== ADMIN ENDPOINTS =====

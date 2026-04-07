@@ -117,12 +117,9 @@ export const authAPI = {
   },
 
   /**
-   * Check if email is available and get account type
+   * Check if email is available for applicant registration
    * @param {string} email
-   * @returns {Promise} - {exists: boolean, account_type: 'applicant'|'admin'|null}
-   * - account_type 'applicant' if applicant_no exists in database
-   * - account_type 'admin' if user_no exists in admin table
-   * - account_type null if email doesn't exist
+   * @returns {Promise} - {exists, available, account_type, message}
    */
   checkEmail: async (email) => {
     return makeRequest('/student/auth/check-email', {

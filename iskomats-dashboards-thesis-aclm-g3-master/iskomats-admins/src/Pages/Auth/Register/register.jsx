@@ -89,10 +89,11 @@ const Register = () => {
 
     try {
       // Check if email already exists and what account type it is
-      const checkResponse = await authAPI.checkEmail(formData.email);
+      // Pass 'admin' to only check for conflicts with admin accounts
+      const checkResponse = await authAPI.checkEmail(formData.email, 'admin');
       
-      // If email exists and is an admin account, reject it
-      if (checkResponse.data && checkResponse.data.exists && checkResponse.data.account_type === 'admin') {
+      // If email is not available for admin registration, reject it
+      if (checkResponse.data && checkResponse.data.available === false) {
         setFormData({
           ...formData,
           error: "This email is already registered as an admin. Please use another email or sign in.",
@@ -101,11 +102,8 @@ const Register = () => {
         return;
       }
       
-      // If email exists as applicant account, allow it but warn user
-      if (checkResponse.data && checkResponse.data.exists && checkResponse.data.account_type === 'applicant') {
-        // Allow to proceed - applicant can register in admin portal with different role
-        console.log('Email exists as applicant account, allowing admin registration');
-      }
+      // If we get here, email is available for admin registration
+      // (whether or not it exists as an applicant account)
 
       // Call backend API for registration
       const response = await authAPI.register(

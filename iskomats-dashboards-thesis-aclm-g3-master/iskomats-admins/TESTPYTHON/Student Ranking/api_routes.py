@@ -359,6 +359,8 @@ def decode_password_reset_token(token):
 
 def fetch_google_access_token():
     """Exchange the configured refresh token for a Gmail API access token."""
+    print("[FETCH_GOOGLE_ACCESS_TOKEN] Starting token exchange...", flush=True)
+    
     missing_settings = []
     if not GOOGLE_CLIENT_ID:
         missing_settings.append('GOOGLE_CLIENT_ID')
@@ -368,9 +370,12 @@ def fetch_google_access_token():
         missing_settings.append('GOOGLE_REFRESH_TOKEN')
 
     if missing_settings:
+        print(f"[FETCH_GOOGLE_ACCESS_TOKEN] ERROR: Missing settings: {missing_settings}", flush=True)
         raise RuntimeError(
             f"Google Gmail API credentials are not configured. Missing: {', '.join(missing_settings)}"
         )
+    
+    print("[FETCH_GOOGLE_ACCESS_TOKEN] All credentials present, exchanging refresh token...", flush=True)
 
     token_request_body = parse.urlencode({
         'client_id': GOOGLE_CLIENT_ID,
@@ -387,18 +392,24 @@ def fetch_google_access_token():
     )
 
     try:
+        print("[FETCH_GOOGLE_ACCESS_TOKEN] Sending token exchange request to OAuth2...", flush=True)
         with urllib_request.urlopen(token_request, timeout=30) as response:
             payload = json.loads(response.read().decode('utf-8'))
+        print("[FETCH_GOOGLE_ACCESS_TOKEN] Token exchange response received", flush=True)
     except urllib_error.HTTPError as exc:
         response_body = exc.read().decode('utf-8', errors='replace')
+        print(f"[FETCH_GOOGLE_ACCESS_TOKEN] OAuth2 HTTP Error: {exc.code} - {response_body}", flush=True)
         raise RuntimeError(f'Google token exchange failed: {response_body}') from exc
     except OSError as exc:
+        print(f"[FETCH_GOOGLE_ACCESS_TOKEN] Network error: {str(exc)}", flush=True)
         raise RuntimeError('Google token exchange failed because the network request could not be completed') from exc
 
     access_token = payload.get('access_token')
     if not access_token:
+        print(f"[FETCH_GOOGLE_ACCESS_TOKEN] ERROR: No access token in response: {payload}", flush=True)
         raise RuntimeError('Google token exchange succeeded but no access token was returned')
 
+    print("[FETCH_GOOGLE_ACCESS_TOKEN] Access token obtained successfully", flush=True)
     return access_token
 
 
@@ -465,7 +476,12 @@ Content-Type: text/plain; charset="UTF-8"
 
 def send_password_reset_email(receiver_email, reset_url, provider_name=None):
     """Send a password reset email via the Gmail API over HTTPS."""
+    print(f"[SEND_PASSWORD_RESET_EMAIL] Starting email send process...", flush=True)
+    print(f"[SEND_PASSWORD_RESET_EMAIL] Recipient: {receiver_email}", flush=True)
+    print(f"[SEND_PASSWORD_RESET_EMAIL] GMAIL_SENDER_EMAIL: {GMAIL_SENDER_EMAIL}", flush=True)
+    
     if not GMAIL_SENDER_EMAIL:
+        print("[SEND_PASSWORD_RESET_EMAIL] ERROR: GMAIL_SENDER_EMAIL not configured", flush=True)
         raise RuntimeError('Gmail sender email is not configured. Missing: GMAIL_SENDER_EMAIL')
 
     provider_label = provider_name or 'ISKOMATS Admin'
@@ -486,7 +502,10 @@ This link will expire in {PASSWORD_RESET_EXPIRY_MINUTES} minutes.
 If you did not request a password reset, you can ignore this email.
 """
 
+    print("[SEND_PASSWORD_RESET_EMAIL] Fetching Google access token...", flush=True)
     access_token = fetch_google_access_token()
+    print("[SEND_PASSWORD_RESET_EMAIL] Access token obtained successfully", flush=True)
+    
     encoded_message = base64.urlsafe_b64encode(message.encode('utf-8')).decode('utf-8')
     gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
     gmail_request = urllib_request.Request(
@@ -500,13 +519,22 @@ If you did not request a password reset, you can ignore this email.
     )
 
     try:
+        print("[SEND_PASSWORD_RESET_EMAIL] Sending request to Gmail API...", flush=True)
         with urllib_request.urlopen(gmail_request, timeout=30) as response:
-            response.read()
+            response_data = response.read()
+            print(f"[SEND_PASSWORD_RESET_EMAIL] Gmail API response: {response_data.decode('utf-8')}", flush=True)
     except urllib_error.HTTPError as exc:
         response_body = exc.read().decode('utf-8', errors='replace')
+        print(f"[SEND_PASSWORD_RESET_EMAIL] Gmail API HTTP Error: {exc.code} - {response_body}", flush=True)
         raise RuntimeError(f'Gmail API send failed: {response_body}') from exc
     except OSError as exc:
+        print(f"[SEND_PASSWORD_RESET_EMAIL] Network error: {str(exc)}", flush=True)
         raise RuntimeError('Gmail API request failed because the network request could not be completed') from exc
+    except Exception as exc:
+        print(f"[SEND_PASSWORD_RESET_EMAIL] Unexpected error: {str(exc)}", flush=True)
+        raise
+        
+    print("[SEND_PASSWORD_RESET_EMAIL] Email sent successfully!", flush=True)
 
 
 def send_announcement_emails(title, message, provider_no, provider_name=None, send_to_all=True):
@@ -1262,10 +1290,27 @@ def login():
 
 @api_bp.route('/auth/check-email', methods=['POST'])
 def check_email():
-    """Check if email is already registered and return account type"""
+    """
+    Check if email is available for registration.
+    Only checks for conflicts with the same account type being registered.
+    
+    Request body:
+    {
+        "email": "user@example.com",
+        "account_type": "admin" or "applicant" (optional, defaults to "admin")
+    }
+    
+    Response:
+    - If email is NOT used for the specified account_type: available=true (can register)
+    - If email IS used for the specified account_type: available=false (conflict)
+    """
     data = request.get_json()
     if not data or not data.get('email'):
         return jsonify({'message': 'Email is required'}), 400
+    
+    account_type_to_check = data.get('account_type', 'admin').lower()  # Default to admin
+    if account_type_to_check not in ['admin', 'applicant']:
+        account_type_to_check = 'admin'
     
     try:
         conn = get_db()
@@ -1282,24 +1327,50 @@ def check_email():
         conn.close()
         
         if result:
-            # result is a dictionary from RealDictCursor
             applicant_no = result.get('applicant_no')
             user_no = result.get('user_no')
             
-            # Determine account type based on which field is populated
-            account_type = None
-            if applicant_no:
-                account_type = 'applicant'
-            elif user_no:
-                account_type = 'admin'
+            # Determine what's currently registered
+            has_admin_account = user_no is not None
+            has_applicant_account = applicant_no is not None
             
-            return jsonify({
-                'exists': True,
-                'available': False,
-                'account_type': account_type,
-                'message': f'Email already registered as {account_type or "unknown"}'
-            }), 200
+            # Check conflict based on what account type is being registered
+            if account_type_to_check == 'admin':
+                # Registering as admin: only reject if email already has a user account
+                if has_admin_account:
+                    return jsonify({
+                        'exists': True,
+                        'available': False,
+                        'account_type': 'admin',
+                        'message': 'Email already registered as admin account'
+                    }), 200
+                else:
+                    # Email may exist as applicant, but that's OK for admin registration
+                    return jsonify({
+                        'exists': True,
+                        'available': True,
+                        'account_type': 'applicant' if has_applicant_account else None,
+                        'message': 'Email available for admin registration'
+                    }), 200
+            else:  # applicant
+                # Registering as applicant: only reject if email already has an applicant account
+                if has_applicant_account:
+                    return jsonify({
+                        'exists': True,
+                        'available': False,
+                        'account_type': 'applicant',
+                        'message': 'Email already registered as applicant account'
+                    }), 200
+                else:
+                    # Email may exist as admin, but that's OK for applicant registration
+                    return jsonify({
+                        'exists': True,
+                        'available': True,
+                        'account_type': 'admin' if has_admin_account else None,
+                        'message': 'Email available for applicant registration'
+                    }), 200
         else:
+            # Email doesn't exist at all
             return jsonify({
                 'exists': False,
                 'available': True,

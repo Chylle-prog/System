@@ -160,23 +160,20 @@ const Login = () => {
       setLoadingMessage({ title: 'Checking Email', message: 'Verifying email availability...' });
       setShowLoadingOverlay(true);
       
-      // Check if email exists and what account type it is
+      // Check if email is available for applicant registration
       try {
         const emailCheckResponse = await authAPI.checkEmail(email);
         
-        // If email exists and is an applicant account, reject it
-        if (emailCheckResponse.exists && emailCheckResponse.account_type === 'applicant') {
+        // If email is not available for applicant registration, reject it
+        if (emailCheckResponse.available === false) {
           setShowLoadingOverlay(false);
           setErrorMessage('This email is already registered as an applicant. Please use a different email or sign in.');
           setShowError(true);
           return;
         }
         
-        // If email exists as admin account, allow it but warn user
-        if (emailCheckResponse.exists && emailCheckResponse.account_type === 'admin') {
-          setLoadingMessage({ title: 'Creating Account', message: 'Setting up your account...' });
-          // Allow to proceed - admin can register in applicant portal with different role
-        }
+        // Email is available for applicant registration
+        // (whether or not it exists as an admin account)
       } catch (checkErr) {
         // If check fails, proceed with registration anyway
         console.warn('Email check failed, proceeding with registration:', checkErr);
