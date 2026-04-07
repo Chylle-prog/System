@@ -778,7 +778,7 @@ def validate_student_token():
 
 @student_api_bp.route('/auth/forgot-password', methods=['POST'])
 def student_forgot_password():
-    """Request password reset for student"""
+    """Request password reset for student - Applicants only"""
     data = request.get_json() or {}
     email = data.get('email', '').strip()
     
@@ -788,6 +788,8 @@ def student_forgot_password():
     try:
         conn = get_db()
         cur = conn.cursor()
+        
+        # Check if email exists as an applicant
         cur.execute(
             """
             SELECT e.applicant_no, e.email_address, a.first_name, a.last_name
@@ -800,6 +802,22 @@ def student_forgot_password():
         )
         user = cur.fetchone()
         
+        # If not found as applicant, check if it exists as an admin user (to treat as not found)
+        if not user:
+            cur.execute(
+                """
+                SELECT e.user_no
+                FROM email e
+                JOIN users u ON e.user_no = u.user_no
+                WHERE e.email_address ILIKE %s
+                LIMIT 1
+                """,
+                (email,),
+            )
+            admin_user = cur.fetchone()
+            if admin_user:
+                print(f"[PASSWORD RESET] Email {email} is registered as admin user, not applicant")
+        
         if user:
             reset_token = generate_password_reset_token(user['applicant_no'], user['email_address'])
             reset_url = f"{STUDENT_FRONTEND_URL}/reset-password/{reset_token}"
@@ -808,6 +826,7 @@ def student_forgot_password():
             send_password_reset_email(user['email_address'], reset_url)
             return jsonify({'message': 'A reset link has been sent to your email.'}), 200
         else:
+            print(f"[PASSWORD RESET] No applicant account found for email: {email}")
             return jsonify({'message': 'Email not found in our records.'}), 404
     except Exception as exc:
         traceback.print_exc()
@@ -1454,7 +1473,7 @@ def ocr_check():
         # 1. Get applicant record from DB
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT applicant_no, first_name, middle_name, last_name, town_city_municipality, id_img_front, id_img_back, indigency_doc FROM applicants WHERE applicant_no = %s", (request.user_no,))
+        cur.execute("SELECT applicant_no, first_name, middle_name, last_name, town_city_municipality, id_img_front, id_img_back, indigency_doc, id_vid_url, indigency_vid_url, enrollment_certificate_vid_url, grades_vid_url FROM applicants WHERE applicant_no = %s", (request.user_no,))
         applicant = cur.fetchone()
 
         if not applicant:
@@ -1486,6 +1505,16 @@ def ocr_check():
         # Helper to get bytes
         def get_bytes(param, db_val):
             return decode_base64(param) or db_bytes(db_val)
+            
+        def fetch_video_bytes(url):
+            if not url: return None
+            try:
+                # Use urllib_request to fetch video from URL
+                with urllib_request.urlopen(url) as response:
+                    return response.read()
+            except Exception as e:
+                print(f"[VIDEO FETCH] Error fetching {url}: {e}", flush=True)
+                return None
 
         # ── Worker Function for Parallel Processing ──
         def process_doc(doc_type, doc_param, db_val):
@@ -1507,17 +1536,52 @@ def ocr_check():
                     return None
 
                 # 1. Main OCR Verification (Identity)
-                # For Indigency, we only verify the address and presence of keywords (no requirement for formal name match)
-                # For enrollment/grades, we verify the name on the document
+                # Determine video URL for this document type
+                vid_url_map = {
+                    'Indigency': applicant.get('indigency_vid_url'),
+                    'SchoolID': applicant.get('id_vid_url'),
+                    'Enrollment': applicant.get('enrollment_certificate_vid_url'),
+                    'Grades': applicant.get('grades_vid_url')
+                }
+                vid_url = vid_url_map.get(doc_type)
+                
+                # Combine first and middle for the first name check pool
+                full_first = first_name
+                if middle_name and len(middle_name) > 1:
+                    full_first = f"{first_name} {middle_name}"
+
                 v, msg, raw, _ = verify_id_with_ocr(
                     image_bytes=doc_bytes,
-                    expected_name=full_expected_name if doc_type != 'SchoolIDBack' else None,
+                    expected_first_name=full_first if doc_type != 'SchoolIDBack' else None,
+                    expected_last_name=last_name if doc_type != 'SchoolIDBack' else None,
                     expected_address=town_city if doc_type == 'Indigency' else None
                 )
                 raw_lower = raw.lower()
                 
                 # Check for document-specific keywords using our unified helper
                 from services.ocr_utils import _perform_text_matching
+                
+                # Identify video keywords (same as document keywords)
+                doc_keywords = {
+                    'Indigency': ['Indigency', 'Certificate', 'Indigent', 'Pauper'],
+                    'Enrollment': ['Enrollment', 'Certificate', 'COR', 'Certification'],
+                    'Grades': ['Grades', 'Transcript', 'Evaluation', 'GPA', 'Rating'],
+                    'SchoolID': ['School', 'ID', 'Identification', 'Card']
+                }
+
+                # 1.a Video Content Verification (if URL present)
+                v_video, msg_video = True, "Not provided"
+                if vid_url:
+                    vid_bytes = fetch_video_bytes(vid_url)
+                    if vid_bytes:
+                        v_video, msg_video = verify_video_content(
+                            video_bytes=vid_bytes,
+                            keywords=doc_keywords.get(doc_type),
+                            expected_address=town_city if doc_type == 'Indigency' else None
+                        )
+                    else:
+                        msg_video = "Video file unreachable"
+                        v_video = False
                 
                 # Define keywords for each document type
                 # Indigency can be detected as 'Certificate' + other indicators
@@ -1528,7 +1592,7 @@ def ocr_check():
                 }
                 
                 # Double-check keywords
-                if doc_type in doc_keywords:
+                if doc_type in doc_keywords and doc_type != 'SchoolID': # SchoolID keywords are verified in video/header logic
                     _, _, found_kw, _ = _perform_text_matching(raw, None, None, doc_keywords[doc_type], is_indigency=True)
                     if not found_kw:
                         return {'doc': doc_type, 'verified': False, 'message': f"Document type mismatch: Required '{doc_keywords[doc_type][0]}' not detected.", 'raw_text': raw}
@@ -1548,7 +1612,7 @@ def ocr_check():
                         elif not school_ok: v, msg = False, f"School mismatch ({school_name})"
                         else: msg = f"Verified: A.Y. {year_label}" + (f" | {school_name}" if school_name else "")
                     
-                    return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label}
+                    return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'Grades':
                     year_label = extract_school_year_from_text(raw)
@@ -1564,10 +1628,10 @@ def ocr_check():
                         elif not school_ok: v, msg = False, f"School mismatch ({school_name})"
                         else: msg = f"Verified: A.Y. {year_label}" + (f" | {school_name}" if school_name else "")
                     
-                    return {'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label}
+                    return {'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'Indigency':
-                    return {'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw}
+                    return {'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'SchoolID':
                     raw_lower = raw.lower()
@@ -1587,8 +1651,8 @@ def ocr_check():
                         if not school_ok: v, msg = False, f"School name mismatch ({school_name})"
                         elif not id_no_ok: v, msg = False, f"ID number mismatch ({expected_id_no})"
                         else: msg = "School ID (front) details verified successfully"
-                    
-                    return {'doc': 'Identity Front', 'verified': v, 'message': msg, 'raw_text': raw}
+
+                    return {'doc': 'Identity Front', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'SchoolIDBack':
                     # Verify academic year validity from the sticker or text on ID back

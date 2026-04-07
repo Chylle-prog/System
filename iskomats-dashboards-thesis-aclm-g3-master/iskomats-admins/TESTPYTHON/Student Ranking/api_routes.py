@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import psycopg2
 import base64
 from urllib import parse, request as urllib_request, error as urllib_error
+from email.mime.text import MIMEText
 from cryptography.fernet import Fernet
 from io import BytesIO
 import traceback
@@ -438,12 +439,11 @@ Best regards,
 The ISKOMATS Team
 """
     
-    message = f"""Subject: Verify your ISKOMATS Admin Account
-To: {receiver_email}
-From: {GMAIL_SENDER_EMAIL}
-Content-Type: text/plain; charset="UTF-8"
-
-{body}"""
+    # Create proper MIME email using MIMEText
+    msg = MIMEText(body)
+    msg['Subject'] = 'Verify your ISKOMATS Admin Account'
+    msg['From'] = GMAIL_SENDER_EMAIL
+    msg['To'] = receiver_email
     
     try:
         access_token = fetch_google_access_token()
@@ -451,7 +451,7 @@ Content-Type: text/plain; charset="UTF-8"
         print(f"[GOOGLE AUTH ERROR] {e}")
         raise RuntimeError(f"Authentication with Google failed: {e}")
 
-    encoded_message = base64.urlsafe_b64encode(message.encode('utf-8')).decode('utf-8')
+    encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
     gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
     
     email_request = urllib_request.Request(
@@ -476,6 +476,8 @@ Content-Type: text/plain; charset="UTF-8"
 
 def send_password_reset_email(receiver_email, reset_url, provider_name=None):
     """Send a password reset email via the Gmail API over HTTPS."""
+    from email.mime.text import MIMEText
+    
     print(f"[SEND_PASSWORD_RESET_EMAIL] Starting email send process...", flush=True)
     print(f"[SEND_PASSWORD_RESET_EMAIL] Recipient: {receiver_email}", flush=True)
     print(f"[SEND_PASSWORD_RESET_EMAIL] GMAIL_SENDER_EMAIL: {GMAIL_SENDER_EMAIL}", flush=True)
@@ -485,12 +487,7 @@ def send_password_reset_email(receiver_email, reset_url, provider_name=None):
         raise RuntimeError('Gmail sender email is not configured. Missing: GMAIL_SENDER_EMAIL')
 
     provider_label = provider_name or 'ISKOMATS Admin'
-    message = f"""Subject: Reset your ISKOMATS password
-To: {receiver_email}
-From: {GMAIL_SENDER_EMAIL}
-Content-Type: text/plain; charset="UTF-8"
-
-Hello,
+    body = f"""Hello,
 
 We received a request to reset your password for {provider_label}.
 
@@ -500,13 +497,22 @@ Use the link below to set a new password:
 This link will expire in {PASSWORD_RESET_EXPIRY_MINUTES} minutes.
 
 If you did not request a password reset, you can ignore this email.
+
+Best regards,
+The ISKOMATS Team
 """
+
+    # Create proper MIME email using MIMEText (like the student API does)
+    msg = MIMEText(body)
+    msg['Subject'] = 'Reset your ISKOMATS password'
+    msg['From'] = GMAIL_SENDER_EMAIL
+    msg['To'] = receiver_email
 
     print("[SEND_PASSWORD_RESET_EMAIL] Fetching Google access token...", flush=True)
     access_token = fetch_google_access_token()
     print("[SEND_PASSWORD_RESET_EMAIL] Access token obtained successfully", flush=True)
     
-    encoded_message = base64.urlsafe_b64encode(message.encode('utf-8')).decode('utf-8')
+    encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
     gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
     gmail_request = urllib_request.Request(
         'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
@@ -592,12 +598,7 @@ def send_announcement_emails(title, message, provider_no, provider_name=None, se
                 email_address = applicant['email_address']
                 first_name = applicant['first_name'] or 'Applicant'
                 
-                email_body = f"""Subject: New Announcement from {provider_label}
-To: {email_address}
-From: {GMAIL_SENDER_EMAIL}
-Content-Type: text/plain; charset="UTF-8"
-
-Hello {first_name},
+                body = f"""Hello {first_name},
 
 You have received a new announcement from {provider_label}:
 
@@ -612,7 +613,13 @@ Best regards,
 ISKOMATS Team
 """
                 
-                encoded_message = base64.urlsafe_b64encode(email_body.encode('utf-8')).decode('utf-8')
+                # Create proper MIME email using MIMEText
+                msg = MIMEText(body)
+                msg['Subject'] = f'New Announcement from {provider_label}'
+                msg['From'] = GMAIL_SENDER_EMAIL
+                msg['To'] = email_address
+                
+                encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
                 gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
                 gmail_request = urllib_request.Request(
                     'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
@@ -1523,7 +1530,7 @@ def logout(current_user_id, pro_no, role):
 
 @api_bp.route('/auth/forgot-password', methods=['POST'])
 def forgot_password():
-    """Request password reset"""
+    """Request password reset - Admin only"""
     data = request.get_json()
     
     if not data or not data.get('email'):
@@ -1533,6 +1540,8 @@ def forgot_password():
         normalized_email = data['email'].strip()
         conn = get_db()
         cursor = conn.cursor()
+        
+        # Check if email exists as an admin user
         cursor.execute(
             '''
             SELECT e.user_no, e.email_address, u.user_name, u.pro_no, p.provider_name
@@ -1545,6 +1554,23 @@ def forgot_password():
             (normalized_email,),
         )
         user = cursor.fetchone()
+        
+        # If not found as admin, check if it exists as an applicant (to treat as not found)
+        if not user:
+            cursor.execute(
+                '''
+                SELECT e.applicant_no
+                FROM email e
+                JOIN applicants a ON e.applicant_no = a.applicant_no
+                WHERE e.email_address ILIKE %s
+                LIMIT 1
+                ''',
+                (normalized_email,),
+            )
+            applicant = cursor.fetchone()
+            if applicant:
+                print(f"[FORGOT PASSWORD] Email {normalized_email} is registered as applicant, not admin user")
+        
         cursor.close()
         conn.close()
 
@@ -1566,7 +1592,7 @@ def forgot_password():
                 traceback.print_exc()
                 raise  # Re-raise to return error to user
         else:
-            print(f"[FORGOT PASSWORD] No account found for email: {normalized_email}")
+            print(f"[FORGOT PASSWORD] No admin account found for email: {normalized_email}")
 
         # Return success for both found and not found (security best practice)
         return jsonify({'message': 'If an account exists with this email, a password reset link has been sent'}), 200

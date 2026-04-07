@@ -222,9 +222,10 @@ def normalize_for_ocr(s):
     return re.sub(r'[^a-z0-9\s]', ' ', s.lower()).strip()
 
 
-def _perform_text_matching(ocr_text, target_name=None, target_addr=None, keywords=None, is_indigency=False):
+def _perform_text_matching(ocr_text, target_first_name=None, target_last_name=None, keywords=None, is_indigency=False):
     """
     Unified fuzzy matching logic for names, addresses, and keywords.
+    Checks first name and last name individually if provided.
     Returns: (name_ok, addr_ok, keywords_found, match_ratio)
     """
     if not ocr_text.strip(): 
@@ -233,24 +234,35 @@ def _perform_text_matching(ocr_text, target_name=None, target_addr=None, keyword
     norm_txt = normalize_for_ocr(ocr_text)
     all_ocr_words = norm_txt.split()
     
-    # 1. Name Matching
+    # 1. Name Matching (Individual First and Last Name Parts)
     n_verified = True
     m_ratio = 1.0
-    if target_name:
-        n_words = [w.strip() for w in normalize_for_ocr(target_name).split() if len(w.strip()) >= 2]
-        if not n_words: n_words = [w.strip() for w in normalize_for_ocr(target_name).split() if w.strip()]
-        f_count = 0
-        for word in n_words:
-            if word in norm_txt: f_count += 1; continue
-            found_approx = False
-            for ocr_w in all_ocr_words:
-                if len(ocr_w) < len(word) - 1: continue 
-                if difflib.SequenceMatcher(None, word, ocr_w).ratio() >= (0.7 if is_indigency else 0.8):
-                    f_count += 1; found_approx = True; break
-            if found_approx: continue
-        m_ratio = f_count / len(n_words) if n_words else 0
-        # If it's an Indigency document, the name check is more lenient or ignored if specified
-        n_verified = m_ratio >= (0.4 if is_indigency else 0.6)
+    
+    if target_first_name or target_last_name:
+        def check_name_part(name_part):
+            if not name_part: return True, 1.0
+            n_words = [w.strip() for w in normalize_for_ocr(name_part).split() if len(w.strip()) >= 2]
+            if not n_words: n_words = [w.strip() for w in normalize_for_ocr(name_part).split() if w.strip()]
+            f_count = 0
+            for word in n_words:
+                if word in norm_txt: f_count += 1; continue
+                found_approx = False
+                for ocr_w in all_ocr_words:
+                    if len(ocr_w) < 2: continue
+                    if difflib.SequenceMatcher(None, word, ocr_w).ratio() >= (0.7 if is_indigency else 0.8):
+                        f_count += 1; found_approx = True; break
+                if found_approx: continue
+            
+            p_ratio = f_count / len(n_words) if n_words else 0
+            # Require at least one word to match or a high ratio
+            return p_ratio >= (0.4 if is_indigency else 0.5), p_ratio
+
+        first_ok, first_ratio = check_name_part(target_first_name)
+        last_ok, last_ratio = check_name_part(target_last_name)
+        
+        # Both must pass for full verification
+        n_verified = first_ok and last_ok
+        m_ratio = (first_ratio + last_ratio) / 2
 
     # 2. Address Matching
     a_verified = True
@@ -299,7 +311,7 @@ def _perform_text_matching(ocr_text, target_name=None, target_addr=None, keyword
     return n_verified, a_verified, found_keywords, m_ratio
 
 
-def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
+def verify_id_with_ocr(image_bytes, expected_first_name, expected_last_name, expected_address=None):
     """
     Optimized version with multiple improvements:
     1. Image quality pre-check (Optimization #3)
@@ -358,7 +370,7 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
         print(f"[OCR] PSM3 error: {e}", flush=True)
         best_text = ""
     
-    name_v, addr_v, found_kw, best_ratio = _perform_text_matching(best_text, expected_name, expected_address, None, is_indigency)
+    name_v, addr_v, found_kw, best_ratio = _perform_text_matching(best_text, expected_first_name, expected_last_name, None, is_indigency)
     if name_v and addr_v:
         _cache_set(image_hash, (best_text, best_ratio, "verified_psm3"))
         return True, "Verified", best_text, 1.0
@@ -366,7 +378,7 @@ def verify_id_with_ocr(image_bytes, expected_name, expected_address=None):
     # Early exit: if we have a good partial match, check address and return
     threshold = 0.4 if is_indigency else 0.6
     if best_ratio >= threshold:
-        _, addr_ok, _, _ = _perform_text_matching(best_text, None, expected_address, None, is_indigency)
+        _, addr_ok, _, _ = _perform_text_matching(best_text, None, None, None, is_indigency)
         if addr_ok:
             _cache_set(image_hash, (best_text, best_ratio, "verified_threshold"))
             return True, "Verified", best_text, 1.0
@@ -434,7 +446,7 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
         all_ocr_text = " ".join(ocr_results)
         
         # Use unified matching logic
-        _, addr_ok, found_keywords, _ = _perform_text_matching(all_ocr_text, None, expected_address, keywords, is_indigency=True)
+        _, addr_ok, found_keywords, _ = _perform_text_matching(all_ocr_text, None, None, keywords, is_indigency=True)
         
         missing_kw = [kw for kw in (keywords or []) if kw not in found_keywords]
         
