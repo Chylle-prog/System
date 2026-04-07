@@ -1543,7 +1543,7 @@ def forgot_password():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if email exists as an admin user
+        # Check if email exists as an ADMIN user ONLY (user_no must be set, applicant_no must be NULL)
         cursor.execute(
             '''
             SELECT e.user_no, e.email_address, u.user_name, u.pro_no, p.provider_name
@@ -1551,27 +1551,30 @@ def forgot_password():
             JOIN users u ON e.user_no = u.user_no
             LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
             WHERE e.email_address ILIKE %s
+            AND e.user_no IS NOT NULL
+            AND e.applicant_no IS NULL
             LIMIT 1
             ''',
             (normalized_email,),
         )
         user = cursor.fetchone()
         
-        # If not found as admin, check if it exists as an applicant (to treat as not found)
+        # If not found as admin-only, check if it exists as an applicant-only (to treat as not found)
         if not user:
             cursor.execute(
                 '''
                 SELECT e.applicant_no
                 FROM email e
-                JOIN applicants a ON e.applicant_no = a.applicant_no
                 WHERE e.email_address ILIKE %s
+                AND e.applicant_no IS NOT NULL
+                AND e.user_no IS NULL
                 LIMIT 1
                 ''',
                 (normalized_email,),
             )
             applicant = cursor.fetchone()
             if applicant:
-                print(f"[FORGOT PASSWORD] Email {normalized_email} is registered as applicant, not admin user")
+                print(f"[FORGOT PASSWORD] Email {normalized_email} is registered as applicant only, not admin user")
         
         cursor.close()
         conn.close()
