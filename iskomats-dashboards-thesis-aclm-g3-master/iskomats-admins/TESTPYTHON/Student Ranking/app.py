@@ -14,7 +14,6 @@ from flask_socketio import SocketIO
 
 print("[STARTUP] 2. Flask/SocketIO imported. Loading blueprints...", flush=True)
 from blueprints import admin_bp, init_admin_socketio, register_admin_routes, student_api_bp
-from api_routes import api_bp
 
 print("[STARTUP] 3. Blueprints imported. Loading services...", flush=True)
 from services.auth_service import get_allowed_origins, get_secret_key, is_origin_allowed, split_allowed_origins
@@ -35,7 +34,6 @@ socketio = SocketIO(app, cors_allowed_origins=allowed_origins)
 
 print("[STARTUP] Registering blueprints...")
 app.register_blueprint(admin_bp)
-app.register_blueprint(api_bp)
 app.register_blueprint(student_api_bp)
 
 register_admin_routes(app)
