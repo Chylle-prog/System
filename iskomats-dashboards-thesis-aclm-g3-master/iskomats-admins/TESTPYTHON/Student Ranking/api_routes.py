@@ -1576,7 +1576,7 @@ def logout(current_user_id, pro_no, role):
 
 @api_bp.route('/auth/forgot-password', methods=['POST'])
 def forgot_password():
-    """Request password reset - Admin only"""
+    """Request password reset - Admin/User accounts only"""
     data = request.get_json()
     
     if not data or not data.get('email'):
@@ -1587,7 +1587,7 @@ def forgot_password():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if email exists as an ADMIN user ONLY (user_no must be set, applicant_no must be NULL)
+        # Check if email exists as a USER account ONLY (user_no must be set, applicant_no must be NULL)
         cursor.execute(
             '''
             SELECT e.user_no, e.email_address, u.user_name, u.pro_no, p.provider_name
@@ -1602,28 +1602,9 @@ def forgot_password():
             (normalized_email,),
         )
         user = cursor.fetchone()
-        
-        # If not found as admin-only, check if it exists as an applicant-only (to treat as not found)
-        if not user:
-            cursor.execute(
-                '''
-                SELECT e.applicant_no
-                FROM email e
-                WHERE e.email_address ILIKE %s
-                AND e.applicant_no IS NOT NULL
-                AND e.user_no IS NULL
-                LIMIT 1
-                ''',
-                (normalized_email,),
-            )
-            applicant = cursor.fetchone()
-            if applicant:
-                print(f"[FORGOT PASSWORD] Email {normalized_email} is registered as applicant only, not admin user")
-        
-        cursor.close()
-        conn.close()
 
         if user:
+            # User account found - send password reset email
             try:
                 reset_token = generate_password_reset_token(
                     user['user_no'],
@@ -1635,16 +1616,40 @@ def forgot_password():
                 print(f"[FORGOT PASSWORD] Attempting to send reset email to {user['email_address']}")
                 send_password_reset_email(user['email_address'], reset_url, user['provider_name'])
                 print(f"[FORGOT PASSWORD] Reset email sent successfully to {user['email_address']}")
+                return jsonify({'message': 'If an account exists with this email, a password reset link has been sent'}), 200
             except Exception as email_error:
                 print(f"[FORGOT PASSWORD ERROR] Failed to send email to {user['email_address']}: {str(email_error)}", flush=True)
                 import traceback
                 traceback.print_exc()
                 raise  # Re-raise to return error to user
         else:
-            print(f"[FORGOT PASSWORD] No admin account found for email: {normalized_email}")
+            # No user account found - check if it's an applicant-only or non-existent
+            cursor.execute(
+                '''
+                SELECT e.applicant_no, e.user_no
+                FROM email e
+                WHERE e.email_address ILIKE %s
+                LIMIT 1
+                ''',
+                (normalized_email,),
+            )
+            existing_email = cursor.fetchone()
+            
+            if existing_email:
+                # Email exists but only as applicant (user_no is NULL)
+                print(f"[FORGOT PASSWORD] Email {normalized_email} is registered as applicant only, not user account")
+            else:
+                # Email doesn't exist in system at all
+                print(f"[FORGOT PASSWORD] No account found for email: {normalized_email}")
+            
+            cursor.close()
+            conn.close()
+            
+            # Return error message - account does not exist
+            return jsonify({'message': 'Account does not exist', 'success': False}), 404
 
-        # Return success for both found and not found (security best practice)
-        return jsonify({'message': 'If an account exists with this email, a password reset link has been sent'}), 200
+        cursor.close()
+        conn.close()
     except Exception as e:
         print(f"[FORGOT PASSWORD ENDPOINT ERROR] {str(e)}", flush=True)
         return jsonify({'message': f'Failed to send password reset email: {str(e)}'}), 500
