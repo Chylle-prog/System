@@ -87,7 +87,7 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video" }) => {
           </label>
         </div>
       ) : (
-        <div style={{ position: 'relative', width: '100%', maxWidth: '300px', margin: '0 auto' }}>
+        <div style={{ position: 'relative', width: '100%', maxWidth: '250px', margin: '0 auto' }}>
           <video 
             src={previewUrl} 
             controls 

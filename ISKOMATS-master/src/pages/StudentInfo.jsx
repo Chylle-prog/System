@@ -1662,7 +1662,7 @@ const StudentInfo = () => {
           background: white;
           padding: 2.5rem;
           border-radius: 32px;
-          max-width: 650px;
+          max-width: 550px;
           width: 90%;
           text-align: center;
         }
@@ -1810,7 +1810,7 @@ const StudentInfo = () => {
                 <label style={{display: 'block', fontSize: '0.85rem', marginBottom: '0.5rem', color: '#444', fontWeight: '600'}}>
                   2x2 ID Picture <span style={{color: '#e74c3c'}}>*</span>
                 </label>
-                <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '150px', width: '150px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
+                <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '130px', width: '130px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
                   <input type="file" name="profile_picture" accept="image/*" required onChange={handleIdPictureUpload} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
                   <div style={{textAlign: 'center', color: '#999', fontSize: '0.85rem', pointerEvents: 'none'}}>
                     {idPicturePreview ? (
@@ -1914,7 +1914,7 @@ const StudentInfo = () => {
                   
                   <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1rem'}}>
                     {/* Photo Column */}
-                    <div style={{flex: '1', minWidth: '250px'}}>
+                    <div style={{flex: '1', minWidth: '220px'}}>
                       {photos.mayorIndigency_photo && (
                         <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
                           <img src={photos.mayorIndigency_photo} style={{maxWidth: '100%', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="Indigency Preview" />
@@ -1959,7 +1959,7 @@ const StudentInfo = () => {
                     </div>
 
                     {/* Video Column */}
-                    <div style={{flex: '1', minWidth: '250px'}}>
+                    <div style={{flex: '1', minWidth: '220px'}}>
                       <div style={{background: '#fff', padding: '1rem', borderRadius: '16px', border: '1px solid #e1e8f0', height: '100%'}}>
                         <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', marginBottom: '0.8rem'}}>
                           <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video (Optional)
@@ -2147,12 +2147,12 @@ const StudentInfo = () => {
                   <div className="form-group">
                     <label style={{fontSize: '0.8rem', color: '#555'}}>Front Side</label>
                     <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} required={currentStep === 3} />
-                    {schoolIdPhotos.front && <img src={schoolIdPhotos.front} style={{marginTop: '10px', width: '100%', maxWidth: '150px', borderRadius: '8px'}} alt="Front Preview" />}
+                    {schoolIdPhotos.front && <img src={schoolIdPhotos.front} style={{marginTop: '10px', width: '100%', maxWidth: '130px', borderRadius: '8px'}} alt="Front Preview" />}
                   </div>
                   <div className="form-group">
                     <label style={{fontSize: '0.8rem', color: '#555'}}>Back Side</label>
                     <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} required={currentStep === 3} />
-                    {schoolIdPhotos.back && <img src={schoolIdPhotos.back} style={{marginTop: '10px', width: '100%', maxWidth: '150px', borderRadius: '8px'}} alt="Back Preview" />}
+                    {schoolIdPhotos.back && <img src={schoolIdPhotos.back} style={{marginTop: '10px', width: '100%', maxWidth: '130px', borderRadius: '8px'}} alt="Back Preview" />}
                   </div>
                 </div>
               </div>
@@ -2175,10 +2175,10 @@ const StudentInfo = () => {
                     </div>
                     
                     <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1rem'}}>
-                      <div style={{flex: '1', minWidth: '250px'}}>
+                      <div style={{flex: '1', minWidth: '220px'}}>
                         {photos.mayorCOE_photo && <img src={photos.mayorCOE_photo} style={{width: '100%', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="COE Preview" />}
                       </div>
-                      <div style={{flex: '1', minWidth: '250px'}}>
+                      <div style={{flex: '1', minWidth: '220px'}}>
                         <VideoRecorder 
                           label="Record COE Video" 
                           onRecordComplete={(blob) => setDocumentVideos(prev => ({ ...prev, mayorCOE_video: blob }))} 
@@ -2204,10 +2204,10 @@ const StudentInfo = () => {
                     </div>
                     
                     <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1rem'}}>
-                      <div style={{flex: '1', minWidth: '250px'}}>
+                      <div style={{flex: '1', minWidth: '220px'}}>
                         {photos.mayorGrades_photo && <img src={photos.mayorGrades_photo} style={{width: '100%', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="Grades Preview" />}
                       </div>
-                      <div style={{flex: '1', minWidth: '250px'}}>
+                      <div style={{flex: '1', minWidth: '220px'}}>
                         <VideoRecorder 
                           label="Record Grades Video" 
                           onRecordComplete={(blob) => setDocumentVideos(prev => ({ ...prev, mayorGrades_video: blob }))} 
@@ -2275,7 +2275,7 @@ const StudentInfo = () => {
                       </div>
                     ) : (
                       <div className="signature-preview-box">
-                        <img src={formData.applicantSignatureName} alt="Signature" style={{maxHeight: '100px'}} />
+                        <img src={formData.applicantSignatureName} alt="Signature" style={{maxHeight: '80px'}} />
                         <button type="button" onClick={() => setShowSignaturePad(true)} style={{position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer'}}><i className="fas fa-undo"></i></button>
                       </div>
                     )}
@@ -2295,7 +2295,7 @@ const StudentInfo = () => {
                     }} style={{fontSize: '0.75rem', width: '100%'}} />
                     {extraSignaturePhoto && (
                       <div style={{marginTop: '10px', position: 'relative'}}>
-                        <img src={extraSignaturePhoto} alt="Extra Identification" style={{maxHeight: '80px', borderRadius: '8px', border: '1px solid #fff'}} />
+                        <img src={extraSignaturePhoto} alt="Extra Identification" style={{maxHeight: '70px', borderRadius: '8px', border: '1px solid #fff'}} />
                         <button type="button" onClick={() => setExtraSignaturePhoto(null)} style={{position: 'absolute', top: '-5px', right: '5px', background: 'rgba(255,0,0,0.7)', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', fontSize: '10px'}}><i className="fas fa-times"></i></button>
                       </div>
                     )}
