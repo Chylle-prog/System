@@ -82,6 +82,7 @@ export default function DashTulong() {
   const [viewMessage, setViewMessage] = useState(null); // { messageId }
   const [replyText, setReplyText] = useState('');
   const [recommendationModal, setRecommendationModal] = useState(false);
+  const [recommendCount, setRecommendCount] = useState(10);
   const [recommended, setRecommended] = useState([]);
   const [imageModalSrc, setImageModalSrc] = useState(null);
   const [scholarshipImages, setScholarshipImages] = useState([]);
@@ -237,10 +238,41 @@ export default function DashTulong() {
         if (roomData.room) myRooms.add(roomData.room);
       });
 
+      // Subscribe to applicant status updates from other admins
+      const unsubStatusUpdate = socketService.subscribe('applicant_status_update', (update) => {
+        if (update.program !== 'tulong') return; // Only handle Tulong updates
+        
+        setData(prev => {
+          const newData = { ...prev };
+          const applicantToMove = newData.applicants.find(
+            a => a.id === update.applicantId || a.name === update.applicantName
+          );
+
+          if (applicantToMove) {
+            newData.applicants = newData.applicants.filter(
+              a => a.id !== update.applicantId && a.name !== update.applicantName
+            );
+
+            if (update.newStatus === 'Accepted') {
+              newData.accepted = [...newData.accepted, applicantToMove];
+            } else if (update.newStatus === 'Declined') {
+              newData.declined = [...newData.declined, applicantToMove];
+            }
+
+            // Recalculate historical data
+            const allApplicants = [...newData.applicants, ...newData.accepted, ...newData.declined];
+            newData.historicalData = calculateHistoricalData(allApplicants);
+          }
+
+          return newData;
+        });
+      });
+
       return () => {
         unsubMsg();
         unsubLogged();
         unsubRoom();
+        unsubStatusUpdate();
         socketService.disconnect();
       };
     }
@@ -821,31 +853,72 @@ export default function DashTulong() {
   };
 
   const recommendStudents = () => {
-    const top = [...data.applicants].sort((a, b) => b.grade - a.grade).slice(0, 3);
+    const count = parseInt(recommendCount) || 10;
+    const top = [...data.applicants].sort((a, b) => b.grade - a.grade).slice(0, count);
     setRecommended(top);
     setRecommendationModal(true);
   };
 
-  const acceptRecommended = (applicant) => {
+  const acceptRecommended = async (applicant) => {
     const idx = data.applicants.findIndex((a) => a.studentContact?.email === applicant.studentContact?.email || a.name === applicant.name);
     if (idx >= 0) {
-      setData((d) => ({
-        ...d,
-        applicants: d.applicants.filter((_, i) => i !== idx),
-        accepted: [...d.accepted, d.applicants[idx]],
-      }));
+      try {
+        // Call API to persist the change
+        const applicantToAccept = data.applicants[idx];
+        await scholarshipAPI.acceptApplicant(applicantToAccept.id);
+        
+        // Update local state
+        setData((d) => ({
+          ...d,
+          applicants: d.applicants.filter((_, i) => i !== idx),
+          accepted: [...d.accepted, d.applicants[idx]],
+        }));
+
+        // Emit socket event to notify other admins
+        socketService.emit('applicant_accept', {
+          applicantId: applicantToAccept.id,
+          applicantName: applicantToAccept.name,
+          program: 'tulong',
+          newStatus: 'Accepted',
+          adminName: userName,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error) {
+        console.error('Failed to accept applicant:', error);
+        alert('Failed to accept applicant. Please try again.');
+      }
     }
     setRecommendationModal(false);
   };
 
-  const declineRecommended = (applicant) => {
+  const declineRecommended = async (applicant) => {
     const idx = data.applicants.findIndex((a) => a.studentContact?.email === applicant.studentContact?.email || a.name === applicant.name);
     if (idx >= 0) {
-      setData((d) => ({
-        ...d,
-        applicants: d.applicants.filter((_, i) => i !== idx),
-        declined: [...d.declined, d.applicants[idx]],
-      }));
+      try {
+        // Call API to persist the change
+        const applicantToDecline = data.applicants[idx];
+        await scholarshipAPI.declineApplicant(applicantToDecline.id);
+        
+        // Update local state
+        setData((d) => ({
+          ...d,
+          applicants: d.applicants.filter((_, i) => i !== idx),
+          declined: [...d.declined, d.applicants[idx]],
+        }));
+
+        // Emit socket event to notify other admins
+        socketService.emit('applicant_decline', {
+          applicantId: applicantToDecline.id,
+          applicantName: applicantToDecline.name,
+          program: 'tulong',
+          newStatus: 'Declined',
+          adminName: userName,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error) {
+        console.error('Failed to decline applicant:', error);
+        alert('Failed to decline applicant. Please try again.');
+      }
     }
     setRecommendationModal(false);
   };
@@ -870,6 +943,16 @@ export default function DashTulong() {
           applicants: d.applicants.filter((_, i) => i !== index),
           accepted: [...d.accepted, applicant],
         };
+      });
+
+      // Emit socket event to notify other admins
+      socketService.emit('applicant_accept', {
+        applicantId: applicant.id,
+        applicantName: applicant.name,
+        program: 'tulong',
+        newStatus: 'Accepted',
+        adminName: userName,
+        timestamp: new Date().toISOString()
       });
       
       setViewApplicant(null);
@@ -901,6 +984,16 @@ export default function DashTulong() {
           applicants: d.applicants.filter((_, i) => i !== index),
           declined: [...d.declined, applicant],
         };
+      });
+
+      // Emit socket event to notify other admins
+      socketService.emit('applicant_decline', {
+        applicantId: applicant.id,
+        applicantName: applicant.name,
+        program: 'tulong',
+        newStatus: 'Declined',
+        adminName: userName,
+        timestamp: new Date().toISOString()
       });
       
       setViewApplicant(null);
@@ -3233,7 +3326,26 @@ export default function DashTulong() {
       {recommendationModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setRecommendationModal(false)}>
           <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-xl font-bold text-[#800020] text-center mb-4">AI Recommended Applicants</h2>
+            <div className="flex items-center justify-between mb-6 border-b pb-4">
+              <h2 className="text-xl font-bold text-[#800020]">AI Recommended Applicants</h2>
+              <div className="flex items-center gap-3 bg-rose-50 px-4 py-2 rounded-xl border border-rose-100">
+                <span className="text-xs font-black text-[#800020] uppercase tracking-wider">Number of Recommendations:</span>
+                <input
+                  type="number"
+                  autoFocus
+                  value={recommendCount}
+                  onChange={(e) => {
+                    setRecommendCount(e.target.value);
+                    // Recalculate recommendations with new count
+                    const count = parseInt(e.target.value) || 10;
+                    const top = [...data.applicants].sort((a, b) => b.grade - a.grade).slice(0, count);
+                    setRecommended(top);
+                  }}
+                  className="w-16 text-center text-lg font-black bg-transparent border-none outline-none text-[#800020]"
+                  min="1"
+                />
+              </div>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {recommended.map((s, i) => (
                 <div key={`${s.name}-${i}`} className="border-2 border-gray-200 rounded-xl p-4 bg-rose-50/40 hover:border-[#800020] hover:shadow-lg transition-all">

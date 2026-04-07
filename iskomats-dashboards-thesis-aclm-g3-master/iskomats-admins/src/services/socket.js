@@ -41,6 +41,10 @@ class SocketService {
       this._notifyHandlers('account_change', data);
     });
 
+    this.socket.on('applicant_status_update', (data) => {
+      this._notifyHandlers('applicant_status_update', data);
+    });
+
     this.socket.on('error', (data) => {
       this._notifyHandlers('error', data);
     });

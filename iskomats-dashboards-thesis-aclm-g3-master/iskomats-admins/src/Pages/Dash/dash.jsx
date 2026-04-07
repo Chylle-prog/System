@@ -140,7 +140,10 @@ export default function Dash() {
   const [accountForm, setAccountForm] = useState({
     fullName: '',
     email: '',
+    username: '',
     password: '',
+    role: 'Admin',
+    status: 'Active',
     scholarship: '',
   });
 
@@ -298,6 +301,7 @@ export default function Dash() {
         password: '',
         role: data.type === 'Admin' ? 'Admin' : 'Scholar',
         status: data.status || 'Active',
+        scholarship: data.scholarship || '',
       });
       return;
     }
@@ -309,6 +313,7 @@ export default function Dash() {
       password: '',
       role: accountType === 'Applicant' ? 'Scholar' : 'Admin',
       status: 'Active',
+      scholarship: '',
     });
   };
 
@@ -342,6 +347,7 @@ export default function Dash() {
           role: accountForm.role === 'Admin' ? 'admin' : 'scholar',
           firstName,
           lastName,
+          scholarship: accountForm.scholarship || 'All',
         });
 
         const createdAccount = response.data?.account;
@@ -363,11 +369,12 @@ export default function Dash() {
         await adminAPI.updateAccount(accountModal.data.id, {
           name: accountForm.fullName.trim(),
           email: accountForm.email.trim(),
+          scholarship: accountForm.scholarship || 'All',
         });
 
         setAccounts((previousAccounts) => previousAccounts.map((account) => (
           account.id === accountModal.data.id
-            ? normalizeAccount({ ...account, name: accountForm.fullName.trim(), email: accountForm.email.trim() })
+            ? normalizeAccount({ ...account, name: accountForm.fullName.trim(), email: accountForm.email.trim(), scholarship: accountForm.scholarship || 'All' })
             : account
         )));
       }
@@ -879,6 +886,23 @@ export default function Dash() {
                       <option value="Scholar">Scholar</option>
                     </select>
                   </div>
+                  <div>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Scholarship Program</label>
+                    <select 
+                      value={accountForm.scholarship} 
+                      onChange={(event) => setAccountForm({ ...accountForm, scholarship: event.target.value })}
+                      className="w-full p-4 bg-gray-50 border-none rounded-2xl text-xs font-black focus:ring-2 focus:ring-[#800020] outline-none"
+                    >
+                      <option value="">Select Program</option>
+                      <option value="All">All / Global</option>
+                      {availablePrograms.map((program) => (
+                        <option key={program} value={program}>{program}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Access Status</label>
                     <select 

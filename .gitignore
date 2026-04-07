@@ -42,3 +42,6 @@ obj/
 # EasyOCR Backups
 iskomats-dashboards-thesis-aclm-g3-master-easyocr/
 ISKOMATS-master-easyocr/
+
+# Old System (archived versions)
+OldSystem/
