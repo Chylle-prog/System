@@ -72,6 +72,7 @@ export default function DashTulong() {
   const [section, setSection] = useState('dashboard'); // dashboard | manage | track | reports | inbox | view-applicant
   const [reportsView, setReportsView] = useState('tables'); // analytics | tables
   const [trackTab, setTrackTab] = useState('all'); // all | accepted | declined
+  const [typeFilter, setTypeFilter] = useState('all');
   const [data, setData] = useState(initialTulongData);
   const [searchTrack, setSearchTrack] = useState('');
   const [reportTab, setReportTab] = useState('pending'); // pending | accepted | declined
@@ -1523,8 +1524,10 @@ export default function DashTulong() {
         const matchesSearch =
           a.name.toLowerCase().includes(search) ||
           (a.school && a.school.toLowerCase().includes(search));
+        const matchesType =
+          typeFilter === 'all' || a.scholarshipName === typeFilter;
 
-        return matchesSearch;
+        return matchesSearch && matchesType;
       });
     };
 
@@ -1586,6 +1589,18 @@ export default function DashTulong() {
               className="bg-transparent border-none outline-none w-full text-sm font-medium"
             />
           </div>
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none font-bold text-[#800020] shadow-sm focus:ring-2 focus:ring-[#800020] transition-all"
+          >
+            <option value="all">All Types</option>
+            {data.scholarshipPosts.map((post) => (
+              <option key={post.reqNo} value={post.scholarshipName}>
+                {post.scholarshipName}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="overflow-x-auto rounded-xl border border-gray-200">
@@ -1695,9 +1710,7 @@ export default function DashTulong() {
           (a.school && a.school.toLowerCase().includes(search));
 
         const matchesType =
-          typeFilter === 'all' ||
-          (typeFilter === 'scholarship' && a.scholarshipName?.toLowerCase().includes('scholarship')) ||
-          (typeFilter === 'grant' && a.scholarshipName?.toLowerCase().includes('financial assistance grant'));
+          typeFilter === 'all' || a.scholarshipName === typeFilter;
 
         return matchesSearch && matchesType;
       });

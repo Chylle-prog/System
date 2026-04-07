@@ -48,10 +48,6 @@ const serializeDraftFormData = (data) => Object.fromEntries(
       return false;
     }
 
-    if (typeof value === 'string' && value.startsWith('data:')) {
-      return false;
-    }
-
     if (typeof value === 'string' && !value.trim()) {
       return false;
     }
