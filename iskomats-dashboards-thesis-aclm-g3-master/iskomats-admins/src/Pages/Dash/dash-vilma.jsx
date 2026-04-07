@@ -1709,7 +1709,7 @@ export default function DashVilma() {
                 pendingTagged.map((a, i) => {
                   const idx = data.applicants.indexOf(a);
                   return (
-                    <tr key={`${a.name}-pending-${i}`} className="border-b border-gray-200 hover:bg-gray-50">
+                    <tr key={`pending-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{a.applicant_no}</span>
@@ -1737,7 +1737,7 @@ export default function DashVilma() {
                   const statusColors = { all: 'bg-yellow-100 text-yellow-700', accepted: 'bg-green-100 text-green-700', declined: 'bg-red-100 text-red-700' };
                   const statusLabels = { all: 'Pending', accepted: 'Accepted', declined: 'Declined' };
                   return (
-                    <tr key={`${a.name}-${a._listType}-${i}`} className="border-b border-gray-200 hover:bg-gray-50">
+                    <tr key={`all-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{a.applicant_no}</span>
@@ -1764,7 +1764,7 @@ export default function DashVilma() {
                 acceptedList.map((a) => {
                   const idx = data.accepted.indexOf(a);
                   return (
-                    <tr key={`${a.name}-${idx}`} className="border-b border-gray-200 hover:bg-gray-50">
+                    <tr key={`accepted-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className="px-4 py-3">{a.name}</td>
                       <td className="px-4 py-3">{a.grade}</td>
                       <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
@@ -1788,7 +1788,7 @@ export default function DashVilma() {
                 declinedList.map((a) => {
                   const idx = data.declined.indexOf(a);
                   return (
-                    <tr key={`${a.name}-${idx}`} className="border-b border-gray-200 hover:bg-gray-50">
+                    <tr key={`declined-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className="px-4 py-3">{a.name}</td>
                       <td className="px-4 py-3">{a.grade}</td>
                       <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
