@@ -1382,9 +1382,13 @@ def register():
 
         # 5. Send verification email
         try:
+            print(f"[VERIFICATION EMAIL] Attempting to send verification code to {normalized_email}")
             send_verification_email(normalized_email, verification_code)
+            print(f"[VERIFICATION EMAIL] Successfully sent verification code to {normalized_email}")
         except Exception as e:
-            print(f"[VERIFICATION EMAIL ERROR] Failed to send verification email to {normalized_email}: {str(e)}")
+            print(f"[VERIFICATION EMAIL ERROR] Failed to send verification email to {normalized_email}: {str(e)}", flush=True)
+            import traceback
+            traceback.print_exc()
             # Don't fail registration if email fails to send, but log it
 
         record_admin_activity(
@@ -1453,17 +1457,29 @@ def forgot_password():
         conn.close()
 
         if user:
-            reset_token = generate_password_reset_token(
-                user['user_no'],
-                user['email_address'],
-                user['provider_name'],
-                user['pro_no'],
-            )
-            reset_url = f"{FRONTEND_URL}/reset-password/{reset_token}"
-            send_password_reset_email(user['email_address'], reset_url, user['provider_name'])
+            try:
+                reset_token = generate_password_reset_token(
+                    user['user_no'],
+                    user['email_address'],
+                    user['provider_name'],
+                    user['pro_no'],
+                )
+                reset_url = f"{FRONTEND_URL}/reset-password/{reset_token}"
+                print(f"[FORGOT PASSWORD] Attempting to send reset email to {user['email_address']}")
+                send_password_reset_email(user['email_address'], reset_url, user['provider_name'])
+                print(f"[FORGOT PASSWORD] Reset email sent successfully to {user['email_address']}")
+            except Exception as email_error:
+                print(f"[FORGOT PASSWORD ERROR] Failed to send email to {user['email_address']}: {str(email_error)}", flush=True)
+                import traceback
+                traceback.print_exc()
+                raise  # Re-raise to return error to user
+        else:
+            print(f"[FORGOT PASSWORD] No account found for email: {normalized_email}")
 
-        return jsonify({'message': 'Password reset link sent to email'}), 200
+        # Return success for both found and not found (security best practice)
+        return jsonify({'message': 'If an account exists with this email, a password reset link has been sent'}), 200
     except Exception as e:
+        print(f"[FORGOT PASSWORD ENDPOINT ERROR] {str(e)}", flush=True)
         return jsonify({'message': f'Failed to send password reset email: {str(e)}'}), 500
 
 @api_bp.route('/auth/reset-password', methods=['POST'])
