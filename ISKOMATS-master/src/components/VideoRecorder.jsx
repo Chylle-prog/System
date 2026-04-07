@@ -1,197 +1,125 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 
 /**
- * VideoRecorder Component
- * Captures a short video from the camera and returns a Blob.
+ * VideoUploader Component (Repurposed from VideoRecorder)
+ * Allows users to upload a video file and preview it.
  * 
  * Props:
- * @param {Function} onRecordComplete - Callback when recording is finished, receives (blob, videoUrl)
- * @param {number} maxDuration - Maximum recording duration in seconds (default 5)
- * @param {string} label - Display label for the recorder
+ * @param {Function} onRecordComplete - Callback when file is selected, receives (file, videoUrl)
+ * @param {string} label - Display label for the uploader
  */
-const VideoRecorder = ({ onRecordComplete, maxDuration = 30, label = "Record Video" }) => {
-  const [isRecording, setIsRecording] = useState(false);
+const VideoRecorder = ({ onRecordComplete, label = "Upload Video" }) => {
   const [previewUrl, setPreviewUrl] = useState(null);
-  const [stream, setStream] = useState(null);
-  const [countdown, setCountdown] = useState(maxDuration);
-  const [isCameraActive, setIsCameraActive] = useState(false);
-  
-  const videoRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const chunksRef = useRef([]);
-  const timerRef = useRef(null);
+  const [fileName, setFileName] = useState('');
 
-  const startCamera = async () => {
-    try {
-      const userStream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment', width: 640, height: 480 }, 
-        audio: false 
-      });
-      setStream(userStream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = userStream;
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('video/')) {
+        alert("Please select a valid video file.");
+        return;
       }
-      setIsCameraActive(true);
-    } catch (err) {
-      console.error("Error accessing camera:", err);
-      alert("Could not access camera. Please ensure permissions are granted.");
-    }
-  };
 
-  const stopCamera = useCallback(() => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
-      setIsCameraActive(false);
-    }
-  }, [stream]);
-
-  const startRecording = () => {
-    if (!stream) return;
-    
-    chunksRef.current = [];
-    const options = { mimeType: 'video/webm;codecs=vp8,opus' };
-    if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-      options.mimeType = 'video/mp4'; // Fallback for Safari
-    }
-    
-    try {
-      const recorder = new MediaRecorder(stream, options);
-      mediaRecorderRef.current = recorder;
+      setFileName(file.name);
+      const url = URL.createObjectURL(file);
+      setPreviewUrl(url);
       
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunksRef.current.push(e.data);
-        }
-      };
-      
-      recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: options.mimeType });
-        const url = URL.createObjectURL(blob);
-        setPreviewUrl(url);
-        if (onRecordComplete) {
-          onRecordComplete(blob, url);
-        }
-        stopCamera();
-      };
-      
-      recorder.start();
-      setIsRecording(true);
-      setCountdown(maxDuration);
-      
-      // Start countdown timer
-      timerRef.current = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) {
-            stopRecording();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      
-    } catch (err) {
-      console.error("Error starting recorder:", err);
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
+      if (onRecordComplete) {
+        onRecordComplete(file, url);
       }
     }
   };
 
   const handleReset = () => {
     setPreviewUrl(null);
+    setFileName('');
     if (onRecordComplete) onRecordComplete(null, null);
-    startCamera();
   };
 
-  useEffect(() => {
-    return () => {
-      stopCamera();
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [stopCamera]);
-
   return (
-    <div className="video-recorder-container" style={{
+    <div className="video-uploader-container" style={{
       width: '100%',
-      background: '#f8f9fa',
+      background: '#fff',
       borderRadius: '16px',
-      padding: '1rem',
-      border: '1px dashed #dee2e6',
-      textAlign: 'center'
+      padding: '1.2rem',
+      border: '1px solid #e1e8f0',
+      textAlign: 'center',
+      boxShadow: '0 4px 15px rgba(0,0,0,0.03)',
+      transition: 'all 0.3s ease'
     }}>
-      {!isCameraActive && !previewUrl ? (
-        <button type="button" onClick={startCamera} className="photo-option-btn" style={{ margin: '0 auto' }}>
-          <i className="fas fa-video"></i> {label}
-        </button>
-      ) : (
-        <div style={{ position: 'relative', width: '100%', maxWidth: '320px', margin: '0 auto' }}>
-          {previewUrl ? (
-            <video src={previewUrl} controls style={{ width: '100%', borderRadius: '12px' }} />
-          ) : (
-            <div style={{ position: 'relative' }}>
-              <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', borderRadius: '12px', background: '#000' }} />
-              {isRecording && (
-                <div style={{
-                  position: 'absolute',
-                  top: '10px',
-                  right: '10px',
-                  background: 'rgba(255,0,0,0.8)',
-                  color: 'white',
-                  padding: '2px 8px',
-                  borderRadius: '20px',
-                  fontSize: '0.8rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  animation: 'pulse 1.5s infinite'
-                }}>
-                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'white' }}></div>
-                  REC {countdown}s
-                </div>
-              )}
+      {!previewUrl ? (
+        <div style={{ padding: '1rem' }}>
+          <label 
+            htmlFor={`v-upload-${label.replace(/\s+/g, '-')}`}
+            style={{ 
+              cursor: 'pointer', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              gap: '12px' 
+            }}
+          >
+            <div style={{ 
+              width: '60px', 
+              height: '60px', 
+              borderRadius: '50%', 
+              background: '#f0f7ff', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              color: 'var(--primary)',
+              fontSize: '1.5rem',
+              border: '2px dashed #b3d7ff'
+            }}>
+              <i className="fas fa-cloud-upload-alt"></i>
             </div>
-          )}
-          
-          <div style={{ marginTop: '1rem', display: 'flex', gap: '10px', justifyContent: 'center' }}>
-            {isCameraActive && !isRecording && (
-              <>
-                <button type="button" onClick={stopCamera} className="back-to-form-btn" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}>Cancel</button>
-                <button type="button" onClick={startRecording} className="submit-btn" style={{ width: 'auto', padding: '0.5rem 1.5rem', height: 'auto', fontSize: '0.8rem', background: '#e74c3c' }}>
-                  Start {maxDuration}s Recording
-                </button>
-              </>
-            )}
+            <span style={{ fontSize: '0.9rem', fontWeight: '600', color: '#444' }}>{label}</span>
+            <span style={{ fontSize: '0.75rem', color: '#888' }}>MP4, WebM or MOV (Max 50MB)</span>
             
-            {isRecording && (
-              <button type="button" onClick={stopRecording} className="submit-btn" style={{ width: 'auto', padding: '0.5rem 1.5rem', height: 'auto', fontSize: '0.8rem', background: '#666' }}>
-                Stop Early
-              </button>
-            )}
-            
-            {previewUrl && (
-              <button type="button" onClick={handleReset} className="back-to-form-btn" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}>
-                <i className="fas fa-redo"></i> Retake
-              </button>
-            )}
+            <input 
+              id={`v-upload-${label.replace(/\s+/g, '-')}`}
+              type="file" 
+              accept="video/*" 
+              onChange={handleFileChange} 
+              style={{ display: 'none' }} 
+            />
+          </label>
+        </div>
+      ) : (
+        <div style={{ position: 'relative', width: '100%', maxWidth: '300px', margin: '0 auto' }}>
+          <video 
+            src={previewUrl} 
+            controls 
+            style={{ 
+              width: '100%', 
+              borderRadius: '12px', 
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+              background: '#000' 
+            }} 
+          />
+          <div style={{ marginTop: '0.8rem', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+            <span style={{ fontSize: '0.8rem', color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {fileName}
+            </span>
+            <button 
+              type="button" 
+              onClick={handleReset} 
+              style={{ 
+                background: 'transparent', 
+                border: 'none', 
+                color: '#e74c3c', 
+                fontSize: '0.8rem', 
+                cursor: 'pointer',
+                fontWeight: '600',
+                textDecoration: 'underline'
+              }}
+            >
+              Change Video
+            </button>
           </div>
         </div>
       )}
-      
-      <style>{`
-        @keyframes pulse {
-          0% { opacity: 1; }
-          50% { opacity: 0.5; }
-          100% { opacity: 1; }
-        }
-      `}</style>
     </div>
   );
 };
