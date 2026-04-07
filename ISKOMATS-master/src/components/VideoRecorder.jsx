@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 /**
  * VideoUploader Component (Repurposed from VideoRecorder)
@@ -7,10 +7,19 @@ import React, { useState } from 'react';
  * Props:
  * @param {Function} onRecordComplete - Callback when file is selected, receives (file, videoUrl)
  * @param {string} label - Display label for the uploader
+ * @param {string} initialVideoUrl - Existing video URL to show as preview
  */
-const VideoRecorder = ({ onRecordComplete, label = "Upload Video" }) => {
+const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoUrl }) => {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [fileName, setFileName] = useState('');
+
+  // Sync with initialVideoUrl if provided (for loading from DB)
+  useEffect(() => {
+    if (initialVideoUrl && !previewUrl) {
+      setPreviewUrl(initialVideoUrl);
+      setFileName('Existing Video Transcript');
+    }
+  }, [initialVideoUrl]);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];

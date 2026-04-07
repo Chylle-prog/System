@@ -329,7 +329,6 @@ const StudentInfo = () => {
         hasPayload = true;
       }
 
-      const signatureData = drawnSignature || signaturePreview;
       if (signatureData) {
         if (isFileLike(signatureData)) {
           payload.append('signature_data', signatureData);
@@ -338,6 +337,15 @@ const StudentInfo = () => {
         }
         hasPayload = true;
       }
+
+      // Handle video URLs (stored in formData as strings starting with http)
+      const videoFields = ['mayorIndigency_video', 'mayorGrades_video', 'mayorCOE_video', 'face_video'];
+      videoFields.forEach(field => {
+        if (formData[field] && typeof formData[field] === 'string' && formData[field].startsWith('http')) {
+          jsonData[field] = formData[field];
+          hasPayload = true;
+        }
+      });
     }
 
     persistDraft(currentUser);
@@ -449,7 +457,36 @@ const StudentInfo = () => {
     }
 
     // Pre-fill profile data from backend API
-    const loadProfile = async () => {
+  // Helper to upload video to Supabase and update local state
+  const handleVideoUpload = async (fieldName, blob) => {
+    try {
+      if (!blob) return;
+      
+      // Show local preview immediately (as a blob URL)
+      const localUrl = URL.createObjectURL(blob);
+      setDocumentVideos(prev => ({ ...prev, [fieldName]: localUrl }));
+      
+      setLoadingMessage({ title: 'Uploading Video', message: 'Securely storing your video requirement...' });
+      setIsSavingStep(true);
+      
+      const result = await applicantAPI.uploadRequirementVideo(fieldName, blob);
+      const publicUrl = result.publicUrl;
+      
+      // Update form data with the remote URL for persistence
+      setFormData(prev => ({ ...prev, [fieldName]: publicUrl }));
+      // Keep the public URL in component state too
+      setDocumentVideos(prev => ({ ...prev, [fieldName]: publicUrl }));
+      
+      console.log(`Video uploaded successfully for ${fieldName}:`, publicUrl);
+    } catch (err) {
+      console.error(`Failed to upload video for ${fieldName}:`, err);
+      alert(`Video upload failed: ${err.message}. Please try again.`);
+    } finally {
+      setIsSavingStep(false);
+    }
+  };
+
+  const loadProfile = async () => {
       try {
         setLoadingMessage({ title: 'Loading Profile', message: 'Retrieving your information to pre-fill the application...' });
         setIsInitialLoading(true);
@@ -535,6 +572,27 @@ const StudentInfo = () => {
           setHasOtherAssistance('Yes');
         } else if (profile.has_other_assistance === false) {
           setHasOtherAssistance('No');
+        }
+
+        // Load video requirements
+        const videoMap = {
+          id_vid_url: 'face_video',
+          indigency_vid_url: 'mayorIndigency_video',
+          grades_vid_url: 'mayorGrades_video',
+          enrollment_certificate_vid_url: 'mayorCOE_video'
+        };
+
+        const loadedVideos = {};
+        Object.entries(videoMap).forEach(([dbField, stateField]) => {
+          if (profile[dbField]) {
+            loadedVideos[stateField] = profile[dbField];
+            // Also ensure it's in formData for saving later
+            setFormData(prev => ({ ...prev, [stateField]: profile[dbField] }));
+          }
+        });
+        
+        if (Object.keys(loadedVideos).length > 0) {
+          setDocumentVideos(prev => ({ ...prev, ...loadedVideos }));
         }
       } catch (err) {
         console.warn('Could not pre-fill from profile:', err.message);
@@ -1909,7 +1967,8 @@ const StudentInfo = () => {
                         </p>
                         <VideoRecorder 
                           label="Record Indigency Video" 
-                          onRecordComplete={(blob) => setDocumentVideos(prev => ({ ...prev, mayorIndigency_video: blob }))} 
+                          onRecordComplete={(blob) => handleVideoUpload('mayorIndigency_video', blob)} 
+                          initialVideoUrl={documentVideos.mayorIndigency_video}
                         />
                       </div>
                     </div>
@@ -2130,7 +2189,8 @@ const StudentInfo = () => {
                       <div style={{flex: '1', minWidth: '220px'}}>
                         <VideoRecorder 
                           label="Record COE Video" 
-                          onRecordComplete={(blob) => setDocumentVideos(prev => ({ ...prev, mayorCOE_video: blob }))} 
+                          onRecordComplete={(blob) => handleVideoUpload('mayorCOE_video', blob)} 
+                          initialVideoUrl={documentVideos.mayorCOE_video}
                         />
                       </div>
                     </div>
@@ -2159,7 +2219,8 @@ const StudentInfo = () => {
                       <div style={{flex: '1', minWidth: '220px'}}>
                         <VideoRecorder 
                           label="Record Grades Video" 
-                          onRecordComplete={(blob) => setDocumentVideos(prev => ({ ...prev, mayorGrades_video: blob }))} 
+                          onRecordComplete={(blob) => handleVideoUpload('mayorGrades_video', blob)} 
+                          initialVideoUrl={documentVideos.mayorGrades_video}
                         />
                       </div>
                     </div>
@@ -2285,7 +2346,8 @@ const StudentInfo = () => {
                       </p>
                       <VideoRecorder 
                         label="Record Face Video" 
-                        onRecordComplete={(blob) => setDocumentVideos(prev => ({ ...prev, face_video: blob }))} 
+                        onRecordComplete={(blob) => handleVideoUpload('face_video', blob)} 
+                        initialVideoUrl={documentVideos.face_video}
                         maxDuration={30}
                       />
                     </div>
