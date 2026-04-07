@@ -227,6 +227,44 @@ def get_mime_type(data):
         
     return 'application/octet-stream'
 
+# ===== DATABASE MIGRATIONS =====
+
+def ensure_verification_columns():
+    """Ensure email table has verification columns for admin registration"""
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        # Check if verification columns exist
+        cur.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'email' AND column_name IN ('is_verified', 'verification_code')
+        """)
+        existing = [row['column_name'] for row in cur.fetchall()]
+        
+        if 'is_verified' not in existing:
+            print("[MIGRATION] Adding is_verified to email table")
+            cur.execute("ALTER TABLE email ADD COLUMN is_verified BOOLEAN DEFAULT FALSE")
+            cur.execute("UPDATE email SET is_verified = TRUE") # Existing accounts are considered verified
+        
+        if 'verification_code' not in existing:
+            print("[MIGRATION] Adding verification_code to email table")
+            cur.execute("ALTER TABLE email ADD COLUMN verification_code VARCHAR(10)")
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("[MIGRATION] Email table verification columns ensured")
+    except Exception as e:
+        print(f"[MIGRATION ERROR] Failed to ensure verification columns: {e}")
+
+# Run migration on startup
+try:
+    ensure_verification_columns()
+except Exception as e:
+    print(f"[STARTUP ERROR] Verification migration failed: {e}")
+
 # ===== DECORATORS =====
 
 def token_required(f):
@@ -362,6 +400,67 @@ def fetch_google_access_token():
         raise RuntimeError('Google token exchange succeeded but no access token was returned')
 
     return access_token
+
+
+def generate_verification_code():
+    """Generate a random 6-digit verification code."""
+    import random
+    return str(random.randint(100000, 999999))
+
+
+def send_verification_email(receiver_email, code):
+    """Send a verification email via the Gmail API."""
+    if not GMAIL_SENDER_EMAIL:
+        raise RuntimeError('Gmail sender email is not configured.')
+
+    body = f"""Hello,
+
+Thank you for registering with ISKOMATS Admin. To complete your registration, please use the following verification code:
+
+{code}
+
+This code will expire in {PASSWORD_RESET_EXPIRY_MINUTES} minutes.
+
+If you did not register for an account, please ignore this email.
+
+Best regards,
+The ISKOMATS Team
+"""
+    
+    message = f"""Subject: Verify your ISKOMATS Admin Account
+To: {receiver_email}
+From: {GMAIL_SENDER_EMAIL}
+Content-Type: text/plain; charset="UTF-8"
+
+{body}"""
+    
+    try:
+        access_token = fetch_google_access_token()
+    except Exception as e:
+        print(f"[GOOGLE AUTH ERROR] {e}")
+        raise RuntimeError(f"Authentication with Google failed: {e}")
+
+    encoded_message = base64.urlsafe_b64encode(message.encode('utf-8')).decode('utf-8')
+    gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
+    
+    email_request = urllib_request.Request(
+        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+        data=gmail_request_body,
+        headers={
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+        },
+        method='POST',
+    )
+    
+    try:
+        with urllib_request.urlopen(email_request, timeout=30) as response:
+            return json.loads(response.read().decode('utf-8'))
+    except urllib_error.HTTPError as exc:
+        response_body = exc.read().decode('utf-8', errors='replace')
+        raise RuntimeError(f'Gmail API send failed: {response_body}') from exc
+    except OSError as exc:
+        raise RuntimeError('Gmail API request failed because the network request could not be completed') from exc
 
 
 def send_password_reset_email(receiver_email, reset_url, provider_name=None):
@@ -1230,7 +1329,7 @@ def get_providers():
 
 @api_bp.route('/auth/register', methods=['POST'])
 def register():
-    """Register endpoint - create new user"""
+    """Register endpoint - create new user and send verification email"""
     data = request.get_json()
     
     required_fields = ['fullName', 'email', 'username', 'password', 'role']
@@ -1259,18 +1358,21 @@ def register():
             pro_no = cursor.fetchone()['pro_no']
         else:
             pro_no = provider['pro_no']
-            
-        # 2. Insert into users table
+        
+        # 2. Generate verification code
+        verification_code = generate_verification_code()
+        
+        # 3. Insert into users table
         cursor.execute(
             "INSERT INTO users (pro_no, user_name) VALUES (%s, %s) RETURNING user_no",
             (pro_no, data['fullName'])
         )
         user_no = cursor.fetchone()['user_no']
         
-        # 3. Insert into email table
+        # 4. Insert into email table with verification code
         cursor.execute(
-            "INSERT INTO email (email_address, password_hash, user_no) VALUES (%s, %s, %s) RETURNING em_no",
-            (normalized_email, password_hash, user_no)
+            "INSERT INTO email (email_address, password_hash, user_no, verification_code, is_verified) VALUES (%s, %s, %s, %s, %s) RETURNING em_no",
+            (normalized_email, password_hash, user_no, verification_code, False)
         )
         em_no = cursor.fetchone()['em_no']
         
@@ -1278,11 +1380,18 @@ def register():
         cursor.close()
         conn.close()
 
+        # 5. Send verification email
+        try:
+            send_verification_email(normalized_email, verification_code)
+        except Exception as e:
+            print(f"[VERIFICATION EMAIL ERROR] Failed to send verification email to {normalized_email}: {str(e)}")
+            # Don't fail registration if email fails to send, but log it
+
         record_admin_activity(
             actor_user_no=user_no,
             actor_name=data['fullName'],
             actor_email=normalized_email,
-            action='Account Registered',
+            action='Account Registered (Awaiting Verification)',
             target_type='Admin',
             target_id=user_no,
             target_label=data['fullName'],
@@ -1293,8 +1402,9 @@ def register():
         
         return jsonify({
             'success': True,
-            'message': 'User registered successfully',
-            'userId': em_no
+            'message': 'Registration successful. Please check your email for the verification code.',
+            'userId': em_no,
+            'email': normalized_email
         }), 201
     
     except psycopg2.IntegrityError:
@@ -1407,18 +1517,57 @@ def reset_password():
 
 @api_bp.route('/auth/verify-email', methods=['POST'])
 def verify_email():
-    """Verify admin email with token or verification code"""
+    """Verify admin email with verification code"""
     data = request.get_json()
     
-    if not data or (not data.get('token') and not data.get('verificationCode')):
-        return jsonify({'message': 'Token or verification code is required'}), 400
+    if not data or not data.get('email') or not data.get('verificationCode'):
+        return jsonify({'message': 'Email and verification code are required'}), 400
 
     try:
-        token_or_code = data.get('token') or data.get('verificationCode')
+        email = data.get('email', '').strip()
+        code = data.get('verificationCode', '').strip()
         
-        # For now, just return success - admin email verification is optional
-        # This endpoint is here for consistency with applicant side
-        # In future, could implement actual verification token validation
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if email exists and code matches
+        cursor.execute(
+            "SELECT user_no, verification_code, is_verified FROM email WHERE email_address ILIKE %s",
+            (email,)
+        )
+        result = cursor.fetchone()
+        
+        if not result:
+            cursor.close()
+            conn.close()
+            return jsonify({'message': 'Email not found'}), 404
+        
+        user_no, stored_code, is_verified = result['user_no'], result['verification_code'], result.get('is_verified', False)
+        
+        # Check if already verified
+        if is_verified:
+            cursor.close()
+            conn.close()
+            return jsonify({
+                'message': 'Email is already verified',
+                'success': True
+            }), 200
+        
+        # Check if code matches
+        if not stored_code or stored_code != code:
+            cursor.close()
+            conn.close()
+            return jsonify({'message': 'Verification code is incorrect'}), 400
+        
+        # Mark email as verified
+        cursor.execute(
+            "UPDATE email SET is_verified = TRUE, verification_code = NULL WHERE email_address ILIKE %s",
+            (email,)
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
         return jsonify({
             'message': 'Email verified successfully',
             'success': True

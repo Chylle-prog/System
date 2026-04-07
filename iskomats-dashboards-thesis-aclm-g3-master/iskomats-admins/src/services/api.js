@@ -58,8 +58,13 @@ export const authAPI = {
   resetPassword: (token, newPassword) =>
     api.post('/admin/auth/reset-password', { token, newPassword }),
   
-  verifyEmail: (token) =>
-    api.post('/admin/auth/verify-email', { token }),
+  verifyEmail: (data) => {
+    // Accept either object {email, verificationCode} or just token string
+    if (typeof data === 'string') {
+      return api.post('/admin/auth/verify-email', { token: data });
+    }
+    return api.post('/admin/auth/verify-email', data);
+  },
   
   /**
    * Check if email is available and get account type

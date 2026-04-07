@@ -32,7 +32,7 @@ const VerifyEmail = () => {
 
   const handleAutoVerification = async (token) => {
     try {
-      await authAPI.verifyEmail(token);
+      await authAPI.verifyEmail({ email, verificationCode: token });
       setVerificationState("success");
       setFormData({ ...formData, success: true });
       
@@ -74,7 +74,7 @@ const VerifyEmail = () => {
     setVerificationState("loading");
 
     try {
-      await authAPI.verifyEmail(formData.verificationCode);
+      await authAPI.verifyEmail({ email, verificationCode: formData.verificationCode });
       setVerificationState("success");
       setFormData({ ...formData, success: true, isLoading: false });
       
