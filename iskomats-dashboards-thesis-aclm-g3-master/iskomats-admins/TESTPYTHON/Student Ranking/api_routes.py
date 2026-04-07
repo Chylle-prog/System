@@ -410,6 +410,91 @@ If you did not request a password reset, you can ignore this email.
         raise RuntimeError('Gmail API request failed because the network request could not be completed') from exc
 
 
+def send_announcement_emails(title, message, provider_no, provider_name=None):
+    """Send announcement emails to all applicants of a provider via Gmail API."""
+    if not GMAIL_SENDER_EMAIL:
+        print("[EMAIL ERROR] Gmail sender email is not configured")
+        return False
+    
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        # Get all applicants for this provider with their emails
+        cur.execute("""
+            SELECT DISTINCT a.applicant_no, a.first_name, a.last_name, e.email_address
+            FROM applicants a
+            INNER JOIN applicant_status ast ON a.applicant_no = ast.applicant_no
+            INNER JOIN scholarships s ON ast.scholarship_no = s.req_no
+            LEFT JOIN email e ON a.applicant_no = e.applicant_no
+            WHERE s.pro_no = %s AND e.email_address IS NOT NULL
+        """, (provider_no,))
+        
+        applicants = cur.fetchall()
+        conn.close()
+        
+        if not applicants:
+            print(f"[EMAIL INFO] No applicants found for provider {provider_no}")
+            return True
+        
+        provider_label = provider_name or 'ISKOMATS'
+        access_token = fetch_google_access_token()
+        success_count = 0
+        fail_count = 0
+        
+        for applicant in applicants:
+            try:
+                email_address = applicant['email_address']
+                first_name = applicant['first_name'] or 'Applicant'
+                
+                email_body = f"""Subject: New Announcement from {provider_label}
+To: {email_address}
+From: {GMAIL_SENDER_EMAIL}
+Content-Type: text/plain; charset="UTF-8"
+
+Hello {first_name},
+
+You have received a new announcement from {provider_label}:
+
+Title: {title}
+
+Message:
+{message}
+
+Please log in to your ISKOMATS account for more details.
+
+Best regards,
+ISKOMATS Team
+"""
+                
+                encoded_message = base64.urlsafe_b64encode(email_body.encode('utf-8')).decode('utf-8')
+                gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
+                gmail_request = urllib_request.Request(
+                    'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+                    data=gmail_request_body,
+                    headers={
+                        'Authorization': f'Bearer {access_token}',
+                        'Content-Type': 'application/json',
+                    },
+                    method='POST',
+                )
+                
+                with urllib_request.urlopen(gmail_request, timeout=30) as response:
+                    response.read()
+                success_count += 1
+                
+            except Exception as e:
+                print(f"[EMAIL ERROR] Failed to send to {applicant['email_address']}: {str(e)}")
+                fail_count += 1
+        
+        print(f"[EMAIL SUCCESS] Sent {success_count} announcement emails (failed: {fail_count}) for provider {provider_no}")
+        return True
+        
+    except Exception as e:
+        print(f"[EMAIL ERROR] Failed to send announcement emails: {str(e)}")
+        return False
+
+
 def ensure_admin_activity_log_table(cursor):
     """Ensure the admin audit table exists before writing or reading logs."""
     cursor.execute(
@@ -2636,6 +2721,7 @@ def create_announcement(current_user_id, pro_no, role):
     title = data.get('title')
     message = data.get('content')
     time_added = data.get('time_added')
+    send_to_all_applicants = data.get('send_to_all_applicants', True)  # Default to True for backward compatibility
     
     if not title or not message:
         return jsonify({'message': 'Title and content are required'}), 400
@@ -2643,6 +2729,12 @@ def create_announcement(current_user_id, pro_no, role):
     try:
         conn = get_db()
         cur = conn.cursor()
+        
+        # Get provider name for email
+        cur.execute("SELECT provider_name FROM scholarship_providers WHERE pro_no = %s", (pro_no,))
+        provider_row = cur.fetchone()
+        provider_name = provider_row['provider_name'] if provider_row else 'ISKOMATS'
+        
         cur.execute("""
             INSERT INTO announcements (ann_title, ann_message, pro_no, time_added)
             VALUES (%s, %s, %s, %s)
@@ -2679,6 +2771,14 @@ def create_announcement(current_user_id, pro_no, role):
                 )
         except Exception as e:
             print(f"[NOTIF ERROR] Failed to trigger announcement notifications: {e}")
+        
+        # Send emails to all applicants when send_to_all_applicants is True
+        if send_to_all_applicants:
+            try:
+                send_announcement_emails(title, message, pro_no, provider_name)
+            except Exception as e:
+                print(f"[ANNOUNCEMENT EMAIL ERROR] Failed to send announcement emails: {str(e)}")
+                # Don't fail the announcement creation if email sending fails
 
         return jsonify({'message': 'Announcement created', 'ann_no': ann_no}), 201
     except Exception as e:
