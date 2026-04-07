@@ -153,6 +153,12 @@ const StudentInfo = () => {
     face_video: null
   });
 
+  // Verification Status States
+  const [coeVerified, setCoeVerified] = useState(null); // null, 'verifying', 'success', 'failed'
+  const [coeStatus, setCoeStatus] = useState('');
+  const [gradesVerified, setGradesVerified] = useState(null); // null, 'verifying', 'success', 'failed'
+  const [gradesStatus, setGradesStatus] = useState('');
+
   const idPictureInputRef = useRef(null);
   const signatureInputRef = useRef(null);
   const videoRef = useRef(null);
@@ -861,16 +867,39 @@ const StudentInfo = () => {
     }
   };
 
-  const performOcrVerification = async (idFront, indigencyDoc, townCity) => {
+  const performOcrVerification = async (docType, docParam, extraParams = {}, videoUrl = null) => {
     try {
-      setOcrVerified('verifying');
-      setOcrStatus('Verifying your document address...');
+      const setStatus = (status) => {
+        if (docType === 'Indigency') { setOcrStatus(status); }
+        else if (docType === 'Enrollment') { setCoeStatus(status); }
+        else if (docType === 'Grades') { setGradesStatus(status); }
+      };
       
-      const result = await applicantAPI.ocrCheck(idFront, null, indigencyDoc, townCity);
+      const setVerified = (v) => {
+        if (docType === 'Indigency') { setOcrVerified(v); }
+        else if (docType === 'Enrollment') { setCoeVerified(v); }
+        else if (docType === 'Grades') { setGradesVerified(v); }
+      };
+
+      setVerified('verifying');
+      setStatus(`Verifying your ${docType} document and video...`);
+      
+      const { townCity, schoolName, idNumber, yearLevel, gpa } = extraParams;
+      
+      const result = await applicantAPI.ocrCheck(
+        null, null, 
+        docType === 'Indigency' ? docParam : null, 
+        townCity, 
+        docType === 'Enrollment' ? docParam : null, 
+        docType === 'Grades' ? docParam : null,
+        null, null, 
+        schoolName, idNumber, yearLevel, gpa,
+        videoUrl
+      );
       
       if (result.verified) {
-        setOcrVerified('success');
-        setOcrStatus(result.message || 'Address verified successfully!');
+        setVerified('success');
+        setStatus(result.message || 'Verification successful!');
         return true;
       } else {
         const isTechnical = result.message?.includes('temporarily unavailable') || 
@@ -878,19 +907,27 @@ const StudentInfo = () => {
                            result.message?.includes('OCR service');
         
         if (isTechnical) {
-          setOcrVerified('technical_unavailable');
-          setOcrStatus(result.message || 'OCR service temporarily unavailable');
+          setVerified('technical_unavailable');
+          setStatus(result.message || 'OCR service temporarily unavailable');
           return true;
         }
 
-        setOcrVerified('failed');
-        setOcrStatus(result.message || 'Address verification failed.');
+        setVerified('failed');
+        setStatus(result.message || 'Verification failed.');
         return false;
       }
     } catch (err) {
       console.error('OCR Error:', err);
-      setOcrVerified('technical_unavailable');
-      setOcrStatus(`Technical Issue: ${err.message}`);
+      if (docType === 'Indigency') {
+        setOcrVerified('technical_unavailable');
+        setOcrStatus(`Technical Issue: ${err.message}`);
+      } else if (docType === 'Enrollment') {
+        setCoeVerified('technical_unavailable');
+        setCoeStatus(`Technical Issue: ${err.message}`);
+      } else if (docType === 'Grades') {
+        setGradesVerified('technical_unavailable');
+        setGradesStatus(`Technical Issue: ${err.message}`);
+      }
       return true;
     }
   };
@@ -898,9 +935,14 @@ const StudentInfo = () => {
   const handleIndigencyScan = async () => {
     const indigencyDoc = photos.mayorIndigency_photo || formData.mayorIndigency_photo || userProfile?.indigency_doc;
     const townCity = formData.townCity || userProfile?.town_city_municipality || '';
+    const videoUrl = formData.mayorIndigency_video || documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url;
 
     if (!indigencyDoc) {
       showPromptMessage('⚠️ Please upload or capture your Certificate of Indigency first.');
+      return;
+    }
+    if (!videoUrl) {
+      showPromptMessage('⚠️ Please record the required Indigency video first.');
       return;
     }
     if (!townCity) {
@@ -908,19 +950,76 @@ const StudentInfo = () => {
       return;
     }
 
-    setLoadingMessage({ title: 'Scanning Document', message: 'Comparing your Certificate of Indigency with your registered address...' });
+    setLoadingMessage({ title: 'Scanning Document', message: 'Verifying your Certificate of Indigency and Video Content...' });
     setIsSavingStep(true);
     
     try {
-      const success = await performOcrVerification(null, indigencyDoc, townCity);
+      const success = await performOcrVerification('Indigency', indigencyDoc, { townCity }, videoUrl);
       if (success) {
-        if (ocrVerified === 'success') {
-          showPromptMessage('✅ Address successfully verified!');
-        } else if (ocrVerified === 'technical_unavailable') {
-          showPromptMessage('ℹ️ OCR service issue. Manual verification will be handled.');
-        }
+        showPromptMessage('✅ Indigency verified successfully!');
       } else {
-        showPromptMessage(`❌ Address mismatch: The document does not match "${townCity}".`);
+        showPromptMessage('❌ Verification failed. Please ensure document and video are clear.');
+      }
+    } finally {
+      setIsSavingStep(false);
+    }
+  };
+
+  const handleCOEScan = async () => {
+    const coeDoc = photos.mayorCOE_photo || formData.mayorCOE_photo || userProfile?.enrollment_certificate_doc;
+    const schoolName = formData.schoolName || userProfile?.school || '';
+    const yearLevel = formData.yearLevel || userProfile?.year_lvl || '';
+    const videoUrl = formData.mayorCOE_video || documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url;
+
+    if (!coeDoc) {
+      showPromptMessage('⚠️ Please upload your Certificate of Enrollment first.');
+      return;
+    }
+    if (!videoUrl) {
+      showPromptMessage('⚠️ Please record the required COE video first.');
+      return;
+    }
+
+    setLoadingMessage({ title: 'Scanning COE', message: 'Verifying your Certificate of Enrollment and Video Content...' });
+    setIsSavingStep(true);
+    
+    try {
+      const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, yearLevel }, videoUrl);
+      if (success) {
+        showPromptMessage('✅ COE verified successfully!');
+      } else {
+        showPromptMessage('❌ COE verification failed.');
+      }
+    } finally {
+      setIsSavingStep(false);
+    }
+  };
+
+  const handleGradesScan = async () => {
+    const gradesDoc = photos.mayorGrades_photo || formData.mayorGrades_photo || userProfile?.grades_doc;
+    const schoolName = formData.schoolName || userProfile?.school || '';
+    const yearLevel = formData.yearLevel || userProfile?.year_lvl || '';
+    const gpa = formData.gpa || userProfile?.overall_gpa || '';
+    const videoUrl = formData.mayorGrades_video || documentVideos.mayorGrades_video || userProfile?.grades_vid_url;
+
+    if (!gradesDoc) {
+      showPromptMessage('⚠️ Please upload your Grades document first.');
+      return;
+    }
+    if (!videoUrl) {
+      showPromptMessage('⚠️ Please record the required Grades video first.');
+      return;
+    }
+
+    setLoadingMessage({ title: 'Scanning Grades', message: 'Verifying your Grades document and Video Content...' });
+    setIsSavingStep(true);
+    
+    try {
+      const success = await performOcrVerification('Grades', gradesDoc, { schoolName, yearLevel, gpa }, videoUrl);
+      if (success) {
+        showPromptMessage('✅ Grades verified successfully!');
+      } else {
+        showPromptMessage('❌ Grades verification failed.');
       }
     } finally {
       setIsSavingStep(false);
@@ -1234,16 +1333,25 @@ const StudentInfo = () => {
           submissionData.append(fileKey, formData[fileKey]);
         }
 
-        // Add corresponding video if available
+        // Add corresponding video if available (Handle both Files and URLs)
         const videoKey = `${key}_video`;
-        if (documentVideos[videoKey]) {
-          submissionData.append(videoKey, documentVideos[videoKey], `${videoKey}.webm`);
+        const videoVal = documentVideos[videoKey];
+        if (videoVal) {
+          if (typeof videoVal === 'string' && videoVal.startsWith('http')) {
+             submissionData.append(videoKey, videoVal); // Send URL
+          } else {
+             submissionData.append(videoKey, videoVal, `${videoKey}.webm`); // Send blob
+          }
         }
       });
 
       // Add Face Verification Video if available
       if (documentVideos.face_video) {
-        submissionData.append('face_video', documentVideos.face_video, 'face_video.webm');
+        if (typeof documentVideos.face_video === 'string' && documentVideos.face_video.startsWith('http')) {
+           submissionData.append('face_video', documentVideos.face_video);
+        } else {
+           submissionData.append('face_video', documentVideos.face_video, 'face_video.webm');
+        }
       }
 
       // Submit application — always run face matching on the backend
@@ -1963,7 +2071,7 @@ const StudentInfo = () => {
                     <div style={{flex: '1', minWidth: '220px'}}>
                       <div style={{background: '#fff', padding: '1rem', borderRadius: '16px', border: '1px solid #e1e8f0', height: '100%'}}>
                         <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', marginBottom: '0.8rem'}}>
-                          <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video (Optional)
+                          <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
                         </p>
                         <VideoRecorder 
                           label="Record Indigency Video" 
@@ -2184,9 +2292,48 @@ const StudentInfo = () => {
                     
                     <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1rem'}}>
                       <div style={{flex: '1', minWidth: '220px'}}>
-                        {(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && <img src={photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc} style={{maxWidth: '280px', height: 'auto', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="COE Preview" />}
+                        {(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && (
+                          <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                            <img src={photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc} style={{maxWidth: '280px', height: 'auto', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="COE Preview" />
+                            <button 
+                              type="button" 
+                              onClick={handleCOEScan}
+                              disabled={isSavingStep}
+                              style={{
+                                padding: '0.6rem 1.2rem',
+                                borderRadius: '30px',
+                                background: coeVerified === 'success' ? '#2ecc71' : 'var(--primary)',
+                                color: 'white',
+                                border: 'none',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                fontSize: '0.9rem',
+                                fontWeight: '600',
+                                transition: 'all 0.3s ease'
+                              }}
+                            >
+                              <i className={`fas ${coeVerified === 'verifying' ? 'fa-spinner fa-spin' : 'fa-search'}`}></i>
+                              {coeVerified === 'success' ? 'Verified!' : 'Scan Document'}
+                            </button>
+                            {coeStatus && (
+                              <div style={{
+                                fontSize: '0.85rem', 
+                                color: coeVerified === 'success' ? '#27ae60' : (coeVerified === 'failed' ? '#e74c3c' : '#666'),
+                                fontWeight: '500'
+                              }}>
+                                {coeVerified === 'success' && <i className="fas fa-check-circle" style={{marginRight: '5px'}}></i>}
+                                {coeStatus}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div style={{flex: '1', minWidth: '220px'}}>
+                        <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', marginBottom: '0.8rem'}}>
+                          <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
+                        </p>
                         <VideoRecorder 
                           label="Record COE Video" 
                           onRecordComplete={(blob) => handleVideoUpload('mayorCOE_video', blob)} 
@@ -2214,9 +2361,48 @@ const StudentInfo = () => {
                     
                     <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1rem'}}>
                       <div style={{flex: '1', minWidth: '220px'}}>
-                        {(photos.mayorGrades_photo || userProfile?.grades_doc) && <img src={photos.mayorGrades_photo || userProfile?.grades_doc} style={{maxWidth: '280px', height: 'auto', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="Grades Preview" />}
+                        {(photos.mayorGrades_photo || userProfile?.grades_doc) && (
+                          <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                            <img src={photos.mayorGrades_photo || userProfile?.grades_doc} style={{maxWidth: '280px', height: 'auto', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="Grades Preview" />
+                            <button 
+                              type="button" 
+                              onClick={handleGradesScan}
+                              disabled={isSavingStep}
+                              style={{
+                                padding: '0.6rem 1.2rem',
+                                borderRadius: '30px',
+                                background: gradesVerified === 'success' ? '#2ecc71' : 'var(--primary)',
+                                color: 'white',
+                                border: 'none',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                fontSize: '0.9rem',
+                                fontWeight: '600',
+                                transition: 'all 0.3s ease'
+                              }}
+                            >
+                              <i className={`fas ${gradesVerified === 'verifying' ? 'fa-spinner fa-spin' : 'fa-search'}`}></i>
+                              {gradesVerified === 'success' ? 'Verified!' : 'Scan Document'}
+                            </button>
+                            {gradesStatus && (
+                              <div style={{
+                                fontSize: '0.85rem', 
+                                color: gradesVerified === 'success' ? '#27ae60' : (gradesVerified === 'failed' ? '#e74c3c' : '#666'),
+                                fontWeight: '500'
+                              }}>
+                                {gradesVerified === 'success' && <i className="fas fa-check-circle" style={{marginRight: '5px'}}></i>}
+                                {gradesStatus}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div style={{flex: '1', minWidth: '220px'}}>
+                        <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', marginBottom: '0.8rem'}}>
+                          <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
+                        </p>
                         <VideoRecorder 
                           label="Record Grades Video" 
                           onRecordComplete={(blob) => handleVideoUpload('mayorGrades_video', blob)} 
@@ -2232,7 +2418,13 @@ const StudentInfo = () => {
                 <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
                   <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> Back: Family Background
                 </button>
-                <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
+                <button 
+                  type="button" 
+                  className="submit-btn" 
+                  onClick={handleNextStep} 
+                  disabled={isSavingStep || !(coeVerified === 'success' || coeVerified === 'technical_unavailable') || !(gradesVerified === 'success' || gradesVerified === 'technical_unavailable')} 
+                  style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}
+                >
                   Next: Certification & Verification <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
                 </button>
               </div>

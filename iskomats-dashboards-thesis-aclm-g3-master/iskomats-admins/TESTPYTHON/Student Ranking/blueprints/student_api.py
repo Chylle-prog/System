@@ -32,6 +32,16 @@ student_api_bp = Blueprint('student_api', __name__, url_prefix='/api/student')
 bcrypt = Bcrypt()
 SECRET_KEY = get_secret_key()
 
+def fetch_video_bytes_from_url(url):
+    if not url: return None
+    try:
+        # Use urllib_request to fetch video from URL
+        with urllib_request.urlopen(url) as response:
+            return response.read()
+    except Exception as e:
+        print(f"[VIDEO FETCH] Error fetching {url}: {e}", flush=True)
+        return None
+
 @student_api_bp.route('/debug/env', methods=['GET'])
 def debug_env():
     """Temporary debug route to check server configuration."""
@@ -1343,12 +1353,21 @@ def submit_application():
                         'mayorCOE_video': ['Enrollment', 'Certificate']
                     }
                     for field, keywords in video_requirements.items():
+                        v_bytes = None
                         video_file = request.files.get(field)
                         if video_file:
-                            print(f"[SUBMIT] Scheduling Video scanning for {field}...")
+                            print(f"[SUBMIT] Processing uploaded Video for {field}...")
                             v_bytes = video_file.read()
                             video_file.seek(0)
-                            
+                        else:
+                            # Try getting URL from form data
+                            video_url = form_data.get(field)
+                            if isinstance(video_url, str) and video_url.startswith('http'):
+                                print(f"[SUBMIT] Processing video URL for {field}...")
+                                v_bytes = fetch_video_bytes_from_url(video_url)
+                        
+                        if v_bytes:
+                            print(f"[SUBMIT] Scheduling Video scanning for {field}...")
                             # For Indigency, pass the town/city for address verification
                             expected_addr = None
                             if field == 'mayorIndigency_video':
@@ -1507,19 +1526,10 @@ def ocr_check():
         expected_year = str(data.get('expected_year') or data.get('expectedYear') or data.get('yearLevel') or '').strip()
         expected_id_no = str(data.get('id_number') or data.get('idNumber') or '').strip()
 
-        # Helper to get bytes
         def get_bytes(param, db_val):
             return decode_base64(param) or db_bytes(db_val)
-            
-        def fetch_video_bytes(url):
-            if not url: return None
-            try:
-                # Use urllib_request to fetch video from URL
-                with urllib_request.urlopen(url) as response:
-                    return response.read()
-            except Exception as e:
-                print(f"[VIDEO FETCH] Error fetching {url}: {e}", flush=True)
-                return None
+        
+        # Now uses global fetch_video_bytes_from_url
 
         # ── Worker Function for Parallel Processing ──
         def process_doc(doc_type, doc_param, db_val):
@@ -1541,32 +1551,17 @@ def ocr_check():
                     return None
 
                 # 1. Main OCR Verification (Identity)
-                # Determine video URL for this document type
+                # Determine video URL for this document type (Prioritize request payload)
+                frontend_video_url = data.get('video_url')
                 vid_url_map = {
-                    'Indigency': applicant.get('indigency_vid_url'),
+                    'Indigency': frontend_video_url or applicant.get('indigency_vid_url'),
                     'SchoolID': applicant.get('id_vid_url'),
-                    'Enrollment': applicant.get('enrollment_certificate_vid_url'),
-                    'Grades': applicant.get('grades_vid_url')
+                    'Enrollment': frontend_video_url or applicant.get('enrollment_certificate_vid_url'),
+                    'Grades': frontend_video_url or applicant.get('grades_vid_url')
                 }
                 vid_url = vid_url_map.get(doc_type)
-                
-                # Combine first and middle for the first name check pool
-                full_first = first_name
-                if middle_name and len(middle_name) > 1:
-                    full_first = f"{first_name} {middle_name}"
-
-                v, msg, raw, _ = verify_id_with_ocr(
-                    image_bytes=doc_bytes,
-                    expected_first_name=full_first if doc_type != 'SchoolIDBack' else None,
-                    expected_last_name=last_name if doc_type != 'SchoolIDBack' else None,
-                    expected_address=town_city if doc_type == 'Indigency' else None
-                )
-                raw_lower = raw.lower()
-                
-                # Check for document-specific keywords using our unified helper
-                from services.ocr_utils import _perform_text_matching
-                
-                # Identify video keywords (same as document keywords)
+                # Define keywords for each document type
+                # Indigency can be detected as 'Certificate' + other indicators
                 doc_keywords = {
                     'Indigency': ['Indigency', 'Certificate', 'Indigent', 'Pauper'],
                     'Enrollment': ['Enrollment', 'Certificate', 'COR', 'Certification'],
@@ -1577,7 +1572,7 @@ def ocr_check():
                 # 1.a Video Content Verification (if URL present)
                 v_video, msg_video = True, "Not provided"
                 if vid_url:
-                    vid_bytes = fetch_video_bytes(vid_url)
+                    vid_bytes = fetch_video_bytes_from_url(vid_url)
                     if vid_bytes:
                         v_video, msg_video = verify_video_content(
                             video_bytes=vid_bytes,
@@ -1587,14 +1582,15 @@ def ocr_check():
                     else:
                         msg_video = "Video file unreachable"
                         v_video = False
+                else:
+                    # Video is now mandatory for these specific documents
+                    if doc_type in ['Indigency', 'Enrollment', 'Grades']:
+                        v_video = False
+                        msg_video = "Mandatory supporting video is missing"
                 
-                # Define keywords for each document type
-                # Indigency can be detected as 'Certificate' + other indicators
-                doc_keywords = {
-                    'Indigency': ['Indigency', 'Certificate', 'Indigent', 'Pauper'],
-                    'Enrollment': ['Enrollment', 'Certificate', 'COR', 'Certification'],
-                    'Grades': ['Grades', 'Transcript', 'Evaluation', 'GPA', 'Rating']
-                }
+                # If video verification fails, the entire document verification fails
+                if not v_video:
+                    return {'doc': doc_type, 'verified': False, 'message': f"Video verification failed: {msg_video}", 'video_verified': False, 'video_message': msg_video}
                 
                 # Double-check keywords
                 if doc_type in doc_keywords and doc_type != 'SchoolID': # SchoolID keywords are verified in video/header logic
