@@ -47,57 +47,82 @@ def convert_video_to_mp4(video_bytes, output_format='mp4'):
         output_path = input_path.replace('.tmp', f'.{output_format}')
         
         try:
-            # Convert to H.264 MP4 with explicit codec/format
-            # This works for any input format (WebM, MOV, MKV, etc.)
+            # First attempt: normal conversion with good quality settings
+            print(f"[VIDEO CONVERT] Starting conversion ({len(video_bytes)} bytes input)...", flush=True)
+            
             cmd = [
                 'ffmpeg',
                 '-i', input_path,
                 '-c:v', 'libx264',        # H.264 video codec
-                '-preset', 'ultrafast',   # Fastest encoding (still good quality)
-                '-crf', '28',             # Quality (0-51, lower=better, 28=faster)
-                '-c:a', 'aac',            # AAC audio codec
+                '-preset', 'medium',      # Balance speed/quality
+                '-crf', '22',             # Quality (0-51, lower=better)
+                '-c:a', 'aac',            # AAC audio codec  
                 '-b:a', '128k',           # Audio bitrate
                 '-movflags', '+faststart',# Enable streaming from start
+                '-loglevel', 'error',     # Only log errors from ffmpeg
                 '-y',                     # Overwrite output without asking
                 output_path
             ]
             
-            print(f"[VIDEO CONVERT] Starting conversion with ffmpeg...", flush=True)
             result = subprocess.run(cmd, 
                                   capture_output=True, 
-                                  timeout=300,  # Increased timeout to 5 minutes
+                                  timeout=300,
                                   text=True)
             
             if result.returncode != 0:
-                stderr = result.stderr if result.stderr else "No error message"
-                print(f"[VIDEO CONVERT] ffmpeg failed with return code {result.returncode}", flush=True)
-                print(f"[VIDEO CONVERT] stderr: {stderr[:500]}", flush=True)  # Log first 500 chars of error
-                return video_bytes  # Return original on error
-            
-            # Read converted file
-            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                with open(output_path, 'rb') as f:
-                    converted_bytes = f.read()
-                
-                print(f"[VIDEO CONVERT] Successfully converted {len(video_bytes)} bytes → {len(converted_bytes)} bytes", flush=True)
-                return converted_bytes
-            else:
-                print(f"[VIDEO CONVERT] Output file not created or empty", flush=True)
+                print(f"[VIDEO CONVERT] Conversion failed (return code: {result.returncode})", flush=True)
+                if result.stderr:
+                    print(f"[VIDEO CONVERT] Error: {result.stderr[:300]}", flush=True)
                 return video_bytes
+            
+            # Verify output exists
+            if not os.path.exists(output_path):
+                print(f"[VIDEO CONVERT] Output file was not created", flush=True)
+                return video_bytes
+            
+            output_size = os.path.getsize(output_path)
+            print(f"[VIDEO CONVERT] Output file size: {output_size} bytes", flush=True)
+            
+            # Check if output is valid MP4 (should start with ftyp signature or have reasonable size)
+            with open(output_path, 'rb') as f:
+                header = f.read(12)
+            
+            # MP4 files should have 'ftyp' or 'mdat' in the first 4-12 bytes
+            has_valid_header = (b'ftyp' in header or b'mdat' in header or b'moov' in header)
+            
+            print(f"[VIDEO CONVERT] Header valid: {has_valid_header}, {repr(header[:12])}", flush=True)
+            
+            # Minimum MP4 file size is ~500 bytes (just moov atom)
+            if output_size < 500 or not has_valid_header:
+                print(f"[VIDEO CONVERT] Output appears corrupted or incomplete, trying fallback...", flush=True)
+                
+                # Fallback: copy original file without conversion
+                # This is better than returning incomplete converted data
+                print(f"[VIDEO CONVERT] Using original video bytes instead", flush=True)
+                return video_bytes
+            
+            # File looks good, read it
+            with open(output_path, 'rb') as f:
+                converted_bytes = f.read()
+            
+            compression_ratio = (1 - len(converted_bytes) / len(video_bytes)) * 100
+            print(f"[VIDEO CONVERT] Success: {len(video_bytes)} → {len(converted_bytes)} bytes ({compression_ratio:.1f}% reduction)", flush=True)
+            return converted_bytes
             
         finally:
             # Cleanup temp files
             for path in [input_path, output_path]:
-                if os.path.exists(path):
-                    try:
+                try:
+                    if os.path.exists(path):
                         os.remove(path)
-                    except Exception as e:
-                        print(f"[VIDEO CONVERT] Warning: Could not delete {path}: {e}", flush=True)
+                except Exception as e:
+                    print(f"[VIDEO CONVERT] Warning: Could not delete {path}: {e}", flush=True)
     
+    except subprocess.TimeoutExpired:
+        print(f"[VIDEO CONVERT] Conversion timed out (>300s)", flush=True)
+        return video_bytes
     except Exception as e:
-        print(f"[VIDEO CONVERT] Exception during conversion: {e}", flush=True)
-        import traceback
-        traceback.print_exc()
+        print(f"[VIDEO CONVERT] Exception: {type(e).__name__}: {e}", flush=True)
         return video_bytes
         return video_bytes  # Return original on error
 
