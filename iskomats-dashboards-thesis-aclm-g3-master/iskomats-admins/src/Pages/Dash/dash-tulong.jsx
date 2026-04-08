@@ -611,7 +611,10 @@ export default function DashTulong() {
       try {
         const response = await scholarshipAPI.deleteScholarship(postId);
         if (response.data.success) {
-          loadScholarships();
+          // Refresh both scholarships and applicants to ensure data consistency
+          // Applicants who applied to this scholarship remain in the system
+          await loadScholarships();
+          await loadApplicants();
         }
       } catch (error) {
         console.error('Failed to delete scholarship:', error);
@@ -999,6 +1002,9 @@ export default function DashTulong() {
         timestamp: new Date().toISOString()
       });
       
+      // Refresh scholarship data to update slot availability
+      await loadScholarships();
+      
       setViewApplicant(null);
       setSection('track');
       setTrackTab('accepted');
@@ -1040,6 +1046,9 @@ export default function DashTulong() {
         timestamp: new Date().toISOString()
       });
       
+      // Refresh scholarship data to update slot availability
+      await loadScholarships();
+      
       setViewApplicant(null);
       setSection('track');
       setTrackTab('declined');
@@ -1069,6 +1078,9 @@ export default function DashTulong() {
           [listType]: list.filter((_, i) => i !== index),
         };
       });
+      
+      // Refresh scholarship data to update slot availability
+      await loadScholarships();
       
       setTrackTab('all');
     } catch (error) {

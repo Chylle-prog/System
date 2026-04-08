@@ -156,6 +156,7 @@ export default function Dash() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pageError, setPageError] = useState('');
+  const [pageSuccess, setPageSuccess] = useState('');
 
   const availablePrograms = useMemo(() => {
     // Use providers from database instead of deriving from accounts
@@ -251,12 +252,19 @@ export default function Dash() {
 
   const filteredManagedAccounts = useMemo(() => {
     const search = accountSearch.trim().toLowerCase();
-    return accounts.filter((account) => {
+    const filtered = accounts.filter((account) => {
       const matchesType = account.type === accountType;
       const matchesProgram = managedAcctProgramFilter === 'All' || account.scholarship === managedAcctProgramFilter;
       const matchesSearch = !search || [account.name, account.email, String(account.id)].some((value) => (value || '').toLowerCase().includes(search));
       return matchesType && matchesProgram && matchesSearch;
     });
+    if (accountType === 'Applicant' && filtered.length === 0 && accounts.length > 0) {
+      console.warn('[DEBUG] No Applicants found. Total accounts:', accounts.length, 'Accounts by type:', {
+        admin: accounts.filter(a => a.type === 'Admin').length,
+        applicant: accounts.filter(a => a.type === 'Applicant').length
+      }, 'Sample accounts:', accounts.slice(0, 3).map(a => ({name: a.name, type: a.type, role: a.role})));
+    }
+    return filtered;
   }, [accounts, accountSearch, accountType, managedAcctProgramFilter]);
 
   const filteredAccountReport = useMemo(() => {
@@ -344,6 +352,7 @@ export default function Dash() {
     event.preventDefault();
     setIsSubmitting(true);
     setPageError('');
+    setPageSuccess('');
 
     try {
       const { firstName, lastName } = splitFullName(accountForm.fullName);
@@ -396,6 +405,13 @@ export default function Dash() {
       }
 
       setAccountModal({ open: false, mode: 'add', data: null });
+      if (accountModal.mode === 'add') {
+        setPageSuccess('Account created successfully!');
+        setTimeout(() => setPageSuccess(''), 3000);
+      } else {
+        setPageSuccess('Account updated successfully!');
+        setTimeout(() => setPageSuccess(''), 3000);
+      }
     } catch (error) {
       setPageError(error.response?.data?.message || error.message || 'Failed to save account.');
     } finally {
@@ -415,6 +431,8 @@ export default function Dash() {
           await adminAPI.lockAccount(account.id, isLocking);
           setAccounts(accounts.map(a => a.id === account.id ? { ...a, locked: isLocking } : a));
           setConfirmModal({ open: false, type: '', targetId: null, message: '', action: null });
+          setPageSuccess(`Account has been ${isLocking ? 'suspended' : 'reactivated'} successfully.`);
+          setTimeout(() => setPageSuccess(''), 3000);
         } catch (error) {
           setPageError(error.response?.data?.message || error.message || `Failed to ${isLocking ? 'lock' : 'unlock'} account.`);
           setConfirmModal({ open: false, type: '', targetId: null, message: '', action: null });
@@ -435,6 +453,8 @@ export default function Dash() {
         try {
           await adminAPI.deleteAccount(account.id);
           setConfirmModal({ open: false, type: '', targetId: null, message: '', action: null });
+          setPageSuccess(`Account for ${account.name} has been permanently deleted.`);
+          setTimeout(() => setPageSuccess(''), 4000);
           await loadDashboardData(false);
         } catch (error) {
           setPageError(error.response?.data?.message || error.message || 'Failed to delete account.');
@@ -588,6 +608,12 @@ export default function Dash() {
           {pageError && (
             <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 px-6 py-4 text-sm font-bold text-red-700">
               {pageError}
+            </div>
+          )}
+
+          {pageSuccess && (
+            <div className="mt-4 rounded-2xl border border-green-100 bg-green-50 px-6 py-4 text-sm font-bold text-green-700">
+              {pageSuccess}
             </div>
           )}
         </div>
