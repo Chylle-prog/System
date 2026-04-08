@@ -3317,11 +3317,11 @@ export default function DashTulong() {
                 key={item.id}
                 type="button"
                 onClick={() => setSection(item.id)}
-                className={`w-full flex items-center gap-3 rounded-xl transition-all ${
+                className={`w-full flex items-center transition-all rounded-xl ${
                   section === item.id ? 'bg-white/20' : 'hover:bg-white/10'
-                } ${sidebarCollapsed ? 'justify-center p-3' : 'px-4 py-3'}`}
+                } ${sidebarCollapsed ? 'justify-center p-3' : 'justify-start px-4 py-3 gap-3'}`}
               >
-                <span className="flex-shrink-0">{item.icon}</span>
+                <span className="flex-shrink-0 text-lg">{item.icon}</span>
                 {!sidebarCollapsed && <span className="whitespace-nowrap">{item.label}</span>}
               </button>
             ))}
