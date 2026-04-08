@@ -161,6 +161,11 @@ const StudentInfo = () => {
       // Keep the public URL in component state too
       setDocumentVideos(prev => ({ ...prev, [fieldName]: publicUrl }));
       
+      // Immediately persist the URL to the DB profile
+      applicantAPI.updateProfile({ [fieldName]: publicUrl }).catch(err => {
+        console.warn(`Could not persist video URL for ${fieldName} to profile:`, err.message);
+      });
+      
       console.log(`Video uploaded successfully for ${fieldName}:`, publicUrl);
     } catch (err) {
       console.error(`Failed to upload video for ${fieldName}:`, err);

@@ -1197,6 +1197,7 @@ def update_profile():
             'mayorIndigency_video': 'indigency_vid_url',
             'mayorGrades_video': 'grades_vid_url',
             'mayorCOE_video': 'enrollment_certificate_vid_url',
+            'schoolId_video': 'schoolId_vid_url',
         }
 
         for frontend_key, db_col in field_mapping.items():
@@ -1466,6 +1467,7 @@ def submit_application():
             'mayorIndigency_video': 'indigency_vid_url',
             'mayorGrades_video': 'grades_vid_url',
             'mayorCOE_video': 'enrollment_certificate_vid_url',
+            'schoolId_video': 'schoolId_vid_url',
         }
 
         for form_key, db_col in field_mapping.items():
