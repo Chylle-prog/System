@@ -2179,8 +2179,27 @@ def convert_and_upload_video():
         # Upload to Supabase
         try:
             from supabase import create_client
+            
+            # Get Supabase credentials - try both possible key names
             supabase_url = os.environ.get('SUPABASE_URL')
-            supabase_key = os.environ.get('SUPABASE_KEY')
+            supabase_key = os.environ.get('SUPABASE_KEY') or os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
+            
+            # Validate credentials
+            if not supabase_url:
+                print(f"[VIDEO-CONVERT-UPLOAD] ERROR: SUPABASE_URL not configured", flush=True)
+                return jsonify({
+                    'success': False, 
+                    'message': 'Server configuration error: Supabase URL not configured'
+                }), 500
+            
+            if not supabase_key:
+                print(f"[VIDEO-CONVERT-UPLOAD] ERROR: SUPABASE_KEY or SUPABASE_SERVICE_ROLE_KEY not configured", flush=True)
+                return jsonify({
+                    'success': False, 
+                    'message': 'Server configuration error: Supabase credentials not configured'
+                }), 500
+            
+            print(f"[VIDEO-CONVERT-UPLOAD] Connecting to Supabase at {supabase_url}", flush=True)
             supabase = create_client(supabase_url, supabase_key)
             
             # Map field names to folders
@@ -2223,19 +2242,29 @@ def convert_and_upload_video():
             })
         
         except Exception as upload_err:
-            print(f"[VIDEO-CONVERT-UPLOAD] Supabase upload error: {str(upload_err)}", flush=True)
-            return jsonify({'success': False, 'message': f'Upload failed: {str(upload_err)}'}), 500
+            error_msg = str(upload_err)
+            print(f"[VIDEO-CONVERT-UPLOAD] Supabase upload error: {error_msg}", flush=True)
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                'success': False, 
+                'message': f'Video upload to storage failed: {error_msg}'
+            }), 500
     
     except Exception as e:
-        print(f"[VIDEO-CONVERT-UPLOAD] Error: {str(e)}", flush=True)
+        error_msg = str(e)
+        print(f"[VIDEO-CONVERT-UPLOAD] Error: {error_msg}", flush=True)
         import traceback
         traceback.print_exc()
-        return jsonify({'success': False, 'message': str(e)}), 500
+        return jsonify({
+            'success': False, 
+            'message': f'Video processing failed: {error_msg}'
+        }), 500
 
 
 @student_api_bp.route('/batch-convert-videos', methods=['POST'])
 @token_required
-def batch_convert_videos(current_user_id, pro_no, role):
+def batch_convert_videos():
     """
     Batch convert existing WebM videos in Supabase to H.264 MP4 format.
     This fixes videos uploaded before the conversion pipeline was added.
@@ -2245,7 +2274,14 @@ def batch_convert_videos(current_user_id, pro_no, role):
         
         from supabase import create_client
         supabase_url = os.environ.get('SUPABASE_URL')
-        supabase_key = os.environ.get('SUPABASE_KEY')
+        supabase_key = os.environ.get('SUPABASE_KEY') or os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
+        
+        if not supabase_url or not supabase_key:
+            return jsonify({
+                'success': False,
+                'message': 'Server error: Supabase credentials not configured'
+            }), 500
+        
         supabase = create_client(supabase_url, supabase_key)
         
         db = get_db()
