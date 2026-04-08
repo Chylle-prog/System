@@ -2139,14 +2139,20 @@ def clear_knowledge():
 
 @student_api_bp.route('/videos/convert-and-upload', methods=['POST'])
 @token_required
-def convert_and_upload_video(current_user_id, pro_no, role):
+def convert_and_upload_video():
     """
     Convert WebM video to H.264 MP4 format for universal browser compatibility,
     then upload to Supabase.
     
     This endpoint ensures all videos are stored in a universally supported format.
+    
+    Expected form data:
+    - video: The video file to upload
+    - field_name: The name of the field (e.g., 'schoolId_video', 'mayorIndigency_video')
     """
     try:
+        current_user_id = request.user_no
+        
         if 'video' not in request.files:
             return jsonify({'success': False, 'message': 'No video file provided'}), 400
         
@@ -2156,7 +2162,7 @@ def convert_and_upload_video(current_user_id, pro_no, role):
         if not video_file or video_file.filename == '':
             return jsonify({'success': False, 'message': 'Empty video file'}), 400
         
-        print(f"[VIDEO-CONVERT-UPLOAD] Received {field_name}: {video_file.filename} ({video_file.content_length} bytes)", flush=True)
+        print(f"[VIDEO-CONVERT-UPLOAD] User {current_user_id}: Received {field_name}: {video_file.filename} ({video_file.content_length} bytes)", flush=True)
         
         # Read video bytes
         video_bytes = video_file.read()
