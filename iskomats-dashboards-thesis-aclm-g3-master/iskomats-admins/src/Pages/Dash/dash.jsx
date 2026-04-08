@@ -517,11 +517,11 @@ export default function Dash() {
   ];
 
   return (
-    <div className="h-screen flex bg-gradient-to-br from-gray-50 to-blue-50/30 pt-20">
+    <div className="min-h-screen flex bg-gradient-to-br from-gray-50 to-blue-50/30 pt-20 fixed-sidebar-layout">
       <aside 
         onMouseEnter={() => setSidebarCollapsed(false)}
         onMouseLeave={() => setSidebarCollapsed(true)}
-        className={`flex-shrink-0 bg-gradient-to-b from-[#800020] to-[#650018] text-white shadow-xl flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'w-20' : 'w-64'}`}
+        className={`fixed left-0 top-20 bottom-0 bg-gradient-to-b from-[#800020] to-[#650018] text-white shadow-xl flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'w-20' : 'w-64'}`}
       >
         <h2 className={`text-center font-bold py-6 flex items-center justify-center gap-2 border-b border-white/10 transition-all ${sidebarCollapsed ? 'px-2' : 'px-4'}`}>
           <FaTachometerAlt className={`flex-shrink-0 transition-all ${sidebarCollapsed ? 'text-2xl' : 'text-lg'}`} />
@@ -567,7 +567,7 @@ export default function Dash() {
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-20' : 'ml-64'} flex-1 flex flex-col overflow-y-auto`} style={{ maxHeight: 'calc(100vh - 5rem)' }}>
         <div className="flex-shrink-0 p-6 pb-4">
           <header className="bg-white rounded-2xl shadow-sm px-8 py-5 flex items-center justify-between border border-gray-100">
             <div>

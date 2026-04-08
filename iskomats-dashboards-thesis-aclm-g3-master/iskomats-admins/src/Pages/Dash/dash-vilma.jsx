@@ -3280,11 +3280,11 @@ export default function DashVilma() {
   );
 
   return (
-    <div className="h-screen flex bg-gradient-to-br from-gray-50 to-blue-50/30 pt-20">
+    <div className="min-h-screen flex bg-gradient-to-br from-gray-50 to-blue-50/30 pt-20 fixed-sidebar-layout">
       <aside
         onMouseEnter={() => setSidebarCollapsed(false)}
         onMouseLeave={() => setSidebarCollapsed(true)}
-        className={`flex-shrink-0 bg-gradient-to-b from-[#800020] to-[#650018] text-white shadow-2xl flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'w-20' : 'w-72'}`}
+        className={`fixed left-0 top-20 bottom-0 bg-gradient-to-b from-[#800020] to-[#650018] text-white shadow-2xl flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'w-20' : 'w-72'}`}
       >
         <div className={`border-b border-white/10 mb-2 flex items-center justify-center transition-all ${sidebarCollapsed ? 'p-3' : 'p-8'}`}>
           <div className="flex flex-col items-center text-center gap-4">
@@ -3324,7 +3324,7 @@ export default function DashVilma() {
         </nav>
       </aside>
 
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-20' : 'ml-72'} flex-1 flex flex-col overflow-y-auto`} style={{ maxHeight: 'calc(100vh - 5rem)' }}>
         <header className="bg-white rounded-xl shadow-sm px-6 py-4 mb-6 flex items-center justify-between">
           <div className="flex items-center gap-2 text-[#800020] font-bold text-xl">
             Vilma Scholarship Dashboard
