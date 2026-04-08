@@ -560,7 +560,9 @@ export default function DashAfrica() {
         slots: post.slots ? post.slots.toString() : '',
         location: post.location || '',
         parentFinance: post.parentFinance ? post.parentFinance.toString() : '',
-        description: post.description || ''
+        description: post.description || '',
+        semester: post.semester || '',
+        year: post.year ? post.year.toString() : new Date().getFullYear().toString()
       };
       console.log('Form data being set:', formData);
       setFormData(formData);

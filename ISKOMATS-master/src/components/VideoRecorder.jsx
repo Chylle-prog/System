@@ -12,6 +12,7 @@ import React, { useState, useEffect } from 'react';
 const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoUrl }) => {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [fileName, setFileName] = useState('');
+  const [videoError, setVideoError] = useState(null);
 
   // Sync with initialVideoUrl if provided (for loading from DB)
   useEffect(() => {
@@ -105,18 +106,85 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
       ) : (
         <div style={{ position: 'relative', width: '100%', maxWidth: '250px', margin: '0 auto' }}>
           {console.log(`Rendering video for ${label}:`, previewUrl)}
-          <video 
-            src={previewUrl} 
-            controls 
-            style={{ 
-              width: '100%', 
-              borderRadius: '12px', 
-              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-              background: '#000' 
-            }} 
-            onLoadedMetadata={() => console.log(`Video loaded for ${label}:`, previewUrl)}
-            onError={(e) => console.error(`Video error for ${label}:`, e.target.error, previewUrl)}
-          />
+          {videoError ? (
+            // Error state: show download link instead
+            <div style={{
+              padding: '1.5rem',
+              textAlign: 'center',
+              background: '#fff5f5',
+              borderRadius: '12px',
+              border: '2px solid #feb2b2',
+              color: '#c53030'
+            }}>
+              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⚠️</div>
+              <p style={{ fontSize: '0.85rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+                Video Format Not Supported
+              </p>
+              <p style={{ fontSize: '0.75rem', color: '#a0aec0', marginBottom: '1rem', lineHeight: '1.4' }}>
+                The video format cannot be played in the browser. However, your video is safely stored.
+              </p>
+              <a
+                href={previewUrl}
+                download
+                style={{
+                  display: 'inline-block',
+                  padding: '0.5rem 1rem',
+                  background: '#c53030',
+                  color: 'white',
+                  textDecoration: 'none',
+                  borderRadius: '6px',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                  marginRight: '0.5rem',
+                  cursor: 'pointer'
+                }}
+              >
+                <i className="fas fa-download" style={{ marginRight: '6px' }}></i>
+                Download Video
+              </a>
+              <button
+                type="button"
+                onClick={() => {
+                  setPreviewUrl(null);
+                  setFileName('');
+                  setVideoError(null);
+                  if (onRecordComplete) onRecordComplete(null, null);
+                }}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: '#e2e8f0',
+                  color: '#2d3748',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                <i className="fas fa-redo" style={{ marginRight: '6px' }}></i>
+                Try Again
+              </button>
+            </div>
+          ) : (
+            <video 
+              src={previewUrl} 
+              controls 
+              style={{ 
+                width: '100%', 
+                borderRadius: '12px', 
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                background: '#000' 
+              }} 
+              onLoadedMetadata={() => {
+                console.log(`Video loaded for ${label}:`, previewUrl);
+                setVideoError(null);
+              }}
+              onError={(e) => {
+                console.error(`Video error for ${label}:`, e.target.error, previewUrl);
+                setVideoError(e.target.error);
+              }}
+            />
+          )}
           <div style={{ marginTop: '0.8rem', display: 'flex', flexDirection: 'column', gap: '5px' }}>
             <span style={{ fontSize: '0.8rem', color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {fileName}
@@ -138,7 +206,7 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
             </button>
           </div>
         </div>
-      )}
+      )}}
     </div>
   );
 };

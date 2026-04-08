@@ -451,7 +451,9 @@ export const applicantAPI = {
         mayorIndigency_video: 'indigency',
         mayorCOE_video: 'coe',
         mayorGrades_video: 'grades',
-        id_vid_url: 'id_verification'
+        schoolId_video: 'school_id',
+        id_vid_url: 'id_verification',
+        face_video: 'id_verification'
       };
 
       const folder = folderMap[fieldName] || 'others';
