@@ -2221,10 +2221,6 @@ def convert_and_upload_video():
             response = supabase.storage.from_('document_videos').upload(
                 file_path,
                 converted_bytes,
-                {
-                    'content-type': 'video/mp4',
-                    'cache-control': '3600'
-                },
                 file_options={'upsert': True}
             )
             
@@ -2355,10 +2351,6 @@ def batch_convert_videos():
                     supabase.storage.from_('document_videos').upload(
                         new_file_path,
                         converted_bytes,
-                        {
-                            'content-type': 'video/mp4',
-                            'cache-control': '3600'
-                        },
                         file_options={'upsert': True}
                     )
                     
