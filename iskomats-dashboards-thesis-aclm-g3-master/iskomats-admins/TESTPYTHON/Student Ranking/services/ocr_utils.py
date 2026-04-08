@@ -453,7 +453,7 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
             return False, f"Address mismatch: Region '{expected_address}' not clearly visible in video."
 
         if keywords and not found_keywords:
-            return False, f"Required terms ({', '.join(keywords)}) not detected in video."
+            return False, "Required document content not detected in video."
         
         # Success message
         msg = f"Validated: Found {', '.join(found_keywords)}"

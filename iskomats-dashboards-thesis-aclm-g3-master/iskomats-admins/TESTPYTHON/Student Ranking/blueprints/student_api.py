@@ -1595,7 +1595,7 @@ def ocr_check():
                 # Indigency can be detected as 'Certificate' + other indicators
                 doc_keywords = {
                     'Indigency': ['Indigency', 'Certificate', 'Indigent', 'Pauper'],
-                    'Enrollment': ['Enrollment', 'Certificate', 'COR', 'Certification'],
+                    'Enrollment': ['Enrollment'],  # Only one necessary word — simplifies video OCR check
                     'Grades': ['Grades', 'Transcript', 'Evaluation', 'GPA', 'Rating'],
                     'SchoolID': ['School', 'ID', 'Identification', 'Card']
                 }
