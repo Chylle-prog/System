@@ -1623,6 +1623,14 @@ def ocr_check():
                 if not v_video:
                     return {'doc': doc_type, 'verified': False, 'message': f"Video verification failed: {msg_video}", 'video_verified': False, 'video_message': msg_video}
                 
+                # 1.b OCR Extraction from document image
+                v, msg, raw, _ = verify_id_with_ocr(doc_bytes, full_expected_name, town_city)
+                raw_lower = raw.lower() if raw else ""
+                
+                # If primary OCR extraction failed, return error
+                if not v:
+                    return {'doc': doc_type, 'verified': False, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                
                 # Double-check keywords
                 if doc_type in doc_keywords and doc_type != 'SchoolID': # SchoolID keywords are verified in video/header logic
                     _, _, found_kw, _ = _perform_text_matching(raw, None, None, None, doc_keywords[doc_type], is_indigency=True)
