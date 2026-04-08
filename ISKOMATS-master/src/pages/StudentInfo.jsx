@@ -618,6 +618,10 @@ const StudentInfo = () => {
 
         const loadedVideos = {};
         Object.entries(videoMap).forEach(([dbField, stateField]) => {
+          console.log(`Checking video field: ${dbField} -> ${stateField}:`, {
+            exists: !!profile[dbField],
+            value: profile[dbField]
+          });
           if (profile[dbField]) {
             loadedVideos[stateField] = profile[dbField];
             // Also ensure it's in formData for saving later
@@ -625,10 +629,18 @@ const StudentInfo = () => {
           }
         });
         
-        console.log('DEBUG: Videos loaded from profile:', loadedVideos);
+        console.log('DEBUG: Videos to load from profile:', loadedVideos);
+        console.log('DEBUG: User profile object keys:', Object.keys(profile));
         
         if (Object.keys(loadedVideos).length > 0) {
-          setDocumentVideos(prev => ({ ...prev, ...loadedVideos }));
+          console.log('Setting documentVideos state with:', loadedVideos);
+          setDocumentVideos(prev => {
+            const updated = { ...prev, ...loadedVideos };
+            console.log('Updated documentVideos state:', updated);
+            return updated;
+          });
+        } else {
+          console.log('No videos found in profile');
         }
       } catch (err) {
         console.warn('Could not pre-fill from profile:', err.message);
@@ -919,7 +931,8 @@ const StudentInfo = () => {
       const { townCity, schoolName, idNumber, yearLevel, gpa } = extraParams;
       
       const result = await applicantAPI.ocrCheck(
-        null, null, 
+        docType === 'SchoolID' ? docParam.front : null,
+        docType === 'SchoolID' ? docParam.back : null,
         docType === 'Indigency' ? docParam : null, 
         townCity, 
         docType === 'Enrollment' ? docParam : null, 
@@ -2132,13 +2145,20 @@ const StudentInfo = () => {
                     {/* Video Column */}
                     <div style={{flex: '1', minWidth: '220px'}}>
                       <div style={{background: '#fff', padding: '1rem', borderRadius: '16px', border: '1px solid #e1e8f0', height: '100%'}}>
-                        <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', marginBottom: '0.8rem'}}>
-                          <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
-                        </p>
+                        <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.8rem'}}>
+                          <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', margin: 0}}>
+                            <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
+                          </p>
+                          {(documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url) && (
+                            <span style={{fontSize: '0.7rem', color: '#27ae60', fontWeight: '600', padding: '0.25rem 0.6rem', backgroundColor: '#d5f4e6', borderRadius: '12px', whiteSpace: 'nowrap'}}>
+                              <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> Video Active
+                            </span>
+                          )}
+                        </div>
                         <VideoRecorder 
                           label="Record Indigency Video" 
                           onRecordComplete={(blob) => handleVideoUpload('mayorIndigency_video', blob)} 
-                          initialVideoUrl={documentVideos.mayorIndigency_video}
+                          initialVideoUrl={documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url}
                         />
                       </div>
                     </div>
@@ -2382,13 +2402,20 @@ const StudentInfo = () => {
 
                 <div style={{marginTop: '1rem'}}>
                   <div style={{flex: '1', minWidth: '220px'}}>
-                    <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', marginBottom: '0.8rem'}}>
-                      <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
-                    </p>
+                    <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.8rem'}}>
+                      <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', margin: 0}}>
+                        <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
+                      </p>
+                      {(documentVideos.schoolId_video || userProfile?.schoolId_vid_url) && (
+                        <span style={{fontSize: '0.75rem', color: '#27ae60', fontWeight: '600', padding: '2px 8px', background: '#e8f5e9', borderRadius: '10px', border: '1px solid #c8e6c9'}}>
+                          <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> Video Active
+                        </span>
+                      )}
+                    </div>
                     <VideoRecorder 
                       label="Record School ID Video" 
                       onRecordComplete={(blob) => handleVideoUpload('schoolId_video', blob)} 
-                      initialVideoUrl={documentVideos.schoolId_video}
+                      initialVideoUrl={documentVideos.schoolId_video || userProfile?.schoolId_vid_url}
                     />
                   </div>
                 </div>
@@ -2452,13 +2479,20 @@ const StudentInfo = () => {
                         )}
                       </div>
                       <div style={{flex: '1', minWidth: '220px'}}>
-                        <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', marginBottom: '0.8rem'}}>
-                          <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
-                        </p>
+                        <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.8rem'}}>
+                          <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', margin: 0}}>
+                            <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
+                          </p>
+                          {(documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url) && (
+                            <span style={{fontSize: '0.75rem', color: '#27ae60', fontWeight: '600', padding: '2px 8px', background: '#e8f5e9', borderRadius: '10px', border: '1px solid #c8e6c9'}}>
+                              <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> Video Active
+                            </span>
+                          )}
+                        </div>
                         <VideoRecorder 
                           label="Record COE Video" 
                           onRecordComplete={(blob) => handleVideoUpload('mayorCOE_video', blob)} 
-                          initialVideoUrl={documentVideos.mayorCOE_video}
+                          initialVideoUrl={documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url}
                         />
                       </div>
                     </div>
@@ -2521,13 +2555,20 @@ const StudentInfo = () => {
                         )}
                       </div>
                       <div style={{flex: '1', minWidth: '220px'}}>
-                        <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', marginBottom: '0.8rem'}}>
-                          <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
-                        </p>
+                        <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.8rem'}}>
+                          <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', margin: 0}}>
+                            <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
+                          </p>
+                          {(documentVideos.mayorGrades_video || userProfile?.grades_vid_url) && (
+                            <span style={{fontSize: '0.75rem', color: '#27ae60', fontWeight: '600', padding: '2px 8px', background: '#e8f5e9', borderRadius: '10px', border: '1px solid #c8e6c9'}}>
+                              <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> Video Active
+                            </span>
+                          )}
+                        </div>
                         <VideoRecorder 
                           label="Record Grades Video" 
                           onRecordComplete={(blob) => handleVideoUpload('mayorGrades_video', blob)} 
-                          initialVideoUrl={documentVideos.mayorGrades_video}
+                          initialVideoUrl={documentVideos.mayorGrades_video || userProfile?.grades_vid_url}
                         />
                       </div>
                     </div>
@@ -2654,13 +2695,20 @@ const StudentInfo = () => {
                   {/* Video Column */}
                   <div style={{flex: '1', minWidth: '250px'}}>
                     <div style={{background: '#fff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0', textAlign: 'center'}}>
-                      <p style={{fontSize: '0.9rem', color: '#333', fontWeight: '700', marginBottom: '1rem'}}>
-                        <i className="fas fa-video" style={{marginRight: '8px', color: 'var(--primary)'}}></i> Live Face Verification Video
-                      </p>
+                      <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '1rem'}}>
+                        <p style={{fontSize: '0.9rem', color: '#333', fontWeight: '700', margin: 0}}>
+                          <i className="fas fa-video" style={{marginRight: '8px', color: 'var(--primary)'}}></i> Live Face Verification Video
+                        </p>
+                        {(documentVideos.face_video || userProfile?.id_vid_url) && (
+                          <span style={{fontSize: '0.7rem', color: '#27ae60', fontWeight: '600', padding: '0.25rem 0.6rem', backgroundColor: '#d5f4e6', borderRadius: '12px', whiteSpace: 'nowrap'}}>
+                            <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> Video Active
+                          </span>
+                        )}
+                      </div>
                       <VideoRecorder 
                         label="Record Face Video" 
                         onRecordComplete={(blob) => handleVideoUpload('face_video', blob)} 
-                        initialVideoUrl={documentVideos.face_video}
+                        initialVideoUrl={documentVideos.face_video || userProfile?.id_vid_url}
                         maxDuration={30}
                       />
                     </div>

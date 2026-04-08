@@ -15,7 +15,14 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
 
   // Sync with initialVideoUrl if provided (for loading from DB)
   useEffect(() => {
-    if (initialVideoUrl && !previewUrl) {
+    console.log('VideoRecorder useEffect triggered:', {
+      initialVideoUrl,
+      currentPreviewUrl: previewUrl,
+      label
+    });
+    
+    if (initialVideoUrl) {
+      console.log(`Setting preview URL for ${label}:`, initialVideoUrl);
       setPreviewUrl(initialVideoUrl);
       setFileName('Existing Video Transcript');
     }
@@ -97,6 +104,7 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
         </div>
       ) : (
         <div style={{ position: 'relative', width: '100%', maxWidth: '250px', margin: '0 auto' }}>
+          {console.log(`Rendering video for ${label}:`, previewUrl)}
           <video 
             src={previewUrl} 
             controls 
@@ -106,6 +114,8 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
               boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
               background: '#000' 
             }} 
+            onLoadedMetadata={() => console.log(`Video loaded for ${label}:`, previewUrl)}
+            onError={(e) => console.error(`Video error for ${label}:`, e.target.error, previewUrl)}
           />
           <div style={{ marginTop: '0.8rem', display: 'flex', flexDirection: 'column', gap: '5px' }}>
             <span style={{ fontSize: '0.8rem', color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

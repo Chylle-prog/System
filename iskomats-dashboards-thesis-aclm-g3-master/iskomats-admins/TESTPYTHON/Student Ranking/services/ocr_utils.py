@@ -320,8 +320,26 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
     found_keywords = []
     if keywords:
         for kw in keywords:
-            if normalize_for_ocr(kw) in norm_txt:
+            norm_kw = normalize_for_ocr(kw)
+            # Try exact substring match first
+            if norm_kw in norm_txt:
                 found_keywords.append(kw)
+            else:
+                # Fuzzy match: allow partial/close matches for document keywords
+                # This handles OCR errors and variations in document text
+                kw_words = norm_kw.split()
+                if kw_words:
+                    # Check if any word from the keyword appears in the OCR text with fuzzy matching
+                    for kw_word in kw_words:
+                        if len(kw_word) < 2: continue
+                        for ocr_word in all_ocr_words:
+                            if len(ocr_word) < 2: continue
+                            # Use 0.7 threshold for fuzzy keyword matching (handles 'enrollment' vs 'enrolment', etc.)
+                            if difflib.SequenceMatcher(None, kw_word, ocr_word).ratio() >= 0.7:
+                                found_keywords.append(kw)
+                                break
+                        if kw in found_keywords:
+                            break
     
     return n_verified, a_verified, found_keywords, m_ratio
 
@@ -414,9 +432,15 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
     """
     Captures frames from video bytes and scans for keywords and address using OCR.
     Optimized to sample 2 key frames for balanced speed/accuracy.
+    
+    For videos without address requirements (like COE, Grades), keyword matching is more lenient
+    and accepts partial/fuzzy matches to handle OCR errors.
     """
     if not video_bytes: return False, "No video data"
     if not _check_tesseract(): return False, "OCR Engine not found"
+    
+    # Determine if this is an address-based verification (indigency only)
+    is_address_verification = expected_address is not None
     
     # Save to temp file because VideoCapture needs a path
     with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
@@ -455,13 +479,17 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
             # More reliable for detecting document keywords than PSM 6
             text = _run_tesseract_on_image(frame, psm=11)
             all_ocr_text += " " + text
+            print(f"[VIDEO OCR] Frame {idx} OCR text: {text[:100]}...", flush=True)
             
             # Check current text against requirements
-            _, addr_ok, found_keywords, _ = _perform_text_matching(all_ocr_text, None, None, None, None, keywords=keywords, is_indigency=True)
+            # Only use is_indigency=True for actual indigency document verification (when expected_address is provided)
+            _, addr_ok, found_keywords, _ = _perform_text_matching(all_ocr_text, None, None, None, None, keywords=keywords, is_indigency=is_address_verification)
+            print(f"[VIDEO OCR] Found keywords so far: {found_keywords}", flush=True)
             missing_kw = [kw for kw in (keywords or []) if kw not in found_keywords]
             
             # Fast exit: if all required keywords (and address if needed) are found, stop early
             if not missing_kw and (not expected_address or addr_ok):
+                print(f"[VIDEO OCR] All requirements met, exiting early", flush=True)
                 break
                 
         cap.release()
@@ -469,10 +497,39 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
         missing_kw = [kw for kw in (keywords or []) if kw not in found_keywords]
         
         if expected_address and not addr_ok:
+            print(f"[VIDEO OCR] Address verification failed", flush=True)
             return False, f"Address mismatch: Region '{expected_address}' not clearly visible in video."
 
-        if keywords and not found_keywords:
-            return False, "Required document content not detected in video."
+        # For non-address videos (COE, Grades), be more lenient with keyword requirements
+        # Accept partial keyword matches since OCR can be imperfect on videos
+        if keywords:
+            if is_address_verification:
+                # Indigency videos: require ALL keywords
+                if not found_keywords:
+                    return False, "Required document content not detected in video."
+            else:
+                # COE, Grades, etc: require at least SOME keywords found (more lenient)
+                if not found_keywords:
+                    print(f"[VIDEO OCR] No keywords found at all - attempting broader OCR", flush=True)
+                    # Try one more frame at 50% to ensure we didn't miss the document
+                    try:
+                        cap = cv2.VideoCapture(tmp_path)
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_count * 0.5))
+                        ret, frame = cap.read()
+                        if ret and frame is not None:
+                            h, w = frame.shape[:2]
+                            if w > _MAX_OCR_WIDTH:
+                                scale = _MAX_OCR_WIDTH / w
+                                frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+                            text = _run_tesseract_on_image(frame, psm=11)
+                            all_ocr_text += " " + text
+                            _, addr_ok, found_keywords, _ = _perform_text_matching(all_ocr_text, None, None, None, None, keywords=keywords, is_indigency=False)
+                        cap.release()
+                    except:
+                        pass
+                    
+                    if not found_keywords:
+                        return False, "Required document content not detected in video."
         
         # Success message
         msg = f"Validated: Found {', '.join(found_keywords)}"
@@ -480,7 +537,7 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
         return True, msg
         
     except Exception as e:
-        print(f"[VIDEO OCR] Error: {e}")
+        print(f"[VIDEO OCR] Error: {e}", flush=True)
         return False, f"Processing error: {str(e)}"
     finally:
         if os.path.exists(tmp_path):

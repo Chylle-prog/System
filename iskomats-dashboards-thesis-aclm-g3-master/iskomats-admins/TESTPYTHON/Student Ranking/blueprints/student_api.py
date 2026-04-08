@@ -1379,9 +1379,9 @@ def submit_application():
 
                     # 3. Video OCR Validations
                     video_requirements = {
-                        'mayorIndigency_video': ['Indigency'],
-                        'mayorGrades_video': ['Grades', 'Evaluation'],
-                        'mayorCOE_video': ['Enrollment', 'Certificate']
+                        'mayorIndigency_video': ['Indigency', 'Barangay'],
+                        'mayorGrades_video': ['Grades', 'Evaluation', 'Academic'],
+                        'mayorCOE_video': ['Enrollment', 'Certificate', 'Enrolled']
                     }
                     for field, keywords in video_requirements.items():
                         v_bytes = None
