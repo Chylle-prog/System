@@ -109,7 +109,7 @@ def decode_base64(data):
     return data
 
 # ─── Image preprocessing & quality assessment (Optimization #3) ──────────────
-_MAX_OCR_WIDTH = 640   # Reduced from 800 — sufficient for OCR, saves ~30% decode time
+_MAX_OCR_WIDTH = 480   # Reduced from 640 — faster processing (~45% faster), still readable for OCR
 _MAX_FACE_WIDTH = 224
 
 def assess_image_quality(img):
@@ -397,7 +397,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_last_name, exp
 def verify_video_content(video_bytes, keywords, expected_address=None):
     """
     Captures frames from video bytes and scans for keywords and address using OCR.
-    Limit to 3 frames (start, middle, end) for performance.
+    Optimized to sample 2 key frames for balanced speed/accuracy.
     """
     if not video_bytes: return False, "No video data"
     if not _check_tesseract(): return False, "OCR Engine not found"
@@ -416,7 +416,8 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
         if frame_count <= 0:
             return False, "Invalid video frame count"
             
-        # Grab frames at 40% and 70% to ensure document visibility while minimizing OCR load
+        # Sample 2 frames at strategic points: 40% and 70% of video
+        # This ensures document visibility while balancing speed/accuracy
         sample_indexes = [int(frame_count * 0.4), int(frame_count * 0.7)]
         all_ocr_text = ""
         found_keywords = []
@@ -434,6 +435,8 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
                 scale = _MAX_OCR_WIDTH / w
                 frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
                 
+            # PSM 11: Sparse text (better for documents with scattered/sparse text)
+            # More reliable for detecting document keywords than PSM 6
             text = _run_tesseract_on_image(frame, psm=11)
             all_ocr_text += " " + text
             

@@ -2043,18 +2043,6 @@ const StudentInfo = () => {
                 </div>
               </div>
 
-              <div className="form-group">
-                <label>Permanent Address <span style={{color: '#e74c3c'}}>*</span></label>
-                <div className="form-row" style={{gridTemplateColumns: '2fr 1fr 1fr'}}>
-                  <input type="text" name="streetBarangay" value={formData.streetBarangay} onChange={handleInputChange} placeholder="Street & Barangay" required />
-                  <input type="text" name="townCity" value={formData.townCity} onChange={handleInputChange} placeholder="Town/City" required />
-                  <input type="text" name="province" value={formData.province} onChange={handleInputChange} placeholder="Province" required />
-                </div>
-                <div style={{marginTop: '0.5rem', width: '25%'}}>
-                  <input type="text" name="zipCode" value={formData.zipCode} onChange={handleInputChange} placeholder="Zip Code" required />
-                </div>
-              </div>
-
               <div className="form-row">
                 <div className="form-group">
                   <label>Sex <span style={{color: '#e74c3c'}}>*</span></label>
@@ -2345,59 +2333,7 @@ const StudentInfo = () => {
                   </div>
                 </div>
 
-                <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1rem'}}>
-                  <div style={{flex: '1', minWidth: '220px'}}>
-                    {(schoolIdPhotos.front || schoolIdPhotos.back) && (
-                      <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
-                        <div style={{display: 'flex', gap: '1rem', flexWrap: 'wrap'}}>
-                          {schoolIdPhotos.front && (
-                            <div style={{flex: '1', minWidth: '150px'}}>
-                              <p style={{fontSize: '0.75rem', color: '#666', fontWeight: '600', marginBottom: '0.5rem'}}>Front</p>
-                              <img src={schoolIdPhotos.front} style={{maxWidth: '100%', height: 'auto', borderRadius: '8px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="ID Front" />
-                            </div>
-                          )}
-                          {schoolIdPhotos.back && (
-                            <div style={{flex: '1', minWidth: '150px'}}>
-                              <p style={{fontSize: '0.75rem', color: '#666', fontWeight: '600', marginBottom: '0.5rem'}}>Back</p>
-                              <img src={schoolIdPhotos.back} style={{maxWidth: '100%', height: 'auto', borderRadius: '8px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="ID Back" />
-                            </div>
-                          )}
-                        </div>
-                        <button 
-                          type="button" 
-                          onClick={handleIdScan}
-                          disabled={isSavingStep}
-                          style={{
-                            padding: '0.6rem 1.2rem',
-                            borderRadius: '30px',
-                            background: idVerified === 'success' ? '#2ecc71' : 'var(--primary)',
-                            color: 'white',
-                            border: 'none',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            fontSize: '0.9rem',
-                            fontWeight: '600',
-                            transition: 'all 0.3s ease'
-                          }}
-                        >
-                          <i className={`fas ${idVerified === 'verifying' ? 'fa-spinner fa-spin' : 'fa-search'}`}></i>
-                          {idVerified === 'success' ? 'ID Verified!' : 'Scan School ID'}
-                        </button>
-                        {idStatus && (
-                          <div style={{
-                            fontSize: '0.85rem', 
-                            color: idVerified === 'success' ? '#27ae60' : (idVerified === 'failed' ? '#e74c3c' : '#666'),
-                            fontWeight: '500'
-                          }}>
-                            {idVerified === 'success' && <i className="fas fa-check-circle" style={{marginRight: '5px'}}></i>}
-                            {idStatus}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                <div style={{marginTop: '1rem'}}>
                   <div style={{flex: '1', minWidth: '220px'}}>
                     <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', marginBottom: '0.8rem'}}>
                       <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
