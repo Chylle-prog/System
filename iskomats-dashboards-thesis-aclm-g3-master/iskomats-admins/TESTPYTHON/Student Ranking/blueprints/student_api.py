@@ -34,10 +34,9 @@ bcrypt = Bcrypt()
 SECRET_KEY = get_secret_key()
 
 def fetch_video_bytes_from_url(url):
-    if not url: return None
+    if not url: return None, "No URL provided"
     if not isinstance(url, str) or not url.startswith('http'):
-        print(f"[VIDEO FETCH] Invalid URL type or protocol: {type(url)} | {url}", flush=True)
-        return None
+        return None, f"Invalid URL: {url}"
         
     try:
         print(f"[VIDEO FETCH] Fetching video from: {url}", flush=True)
@@ -45,21 +44,29 @@ def fetch_video_bytes_from_url(url):
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ISKOMATS-Verification-Bot/1.0'
         }
+        
+        # If it's a Supabase URL, try to use the Service Role Key for authentication
+        # (This allows fetching from private buckets)
+        supabase_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
+        if supabase_key and 'supabase.co' in url:
+            headers['apikey'] = supabase_key
+            headers['Authorization'] = f"Bearer {supabase_key}"
+            print("[VIDEO FETCH] Attaching Supabase Service Role credentials...", flush=True)
+
         response = requests.get(url, headers=headers, timeout=15)
         
         if response.status_code == 200:
             content = response.content
             print(f"[VIDEO FETCH] Successfully fetched {len(content)} bytes", flush=True)
-            return content
+            return content, None
         else:
-            print(f"[VIDEO FETCH] HTTP Error {response.status_code} for {url}", flush=True)
-            return None
+            err_msg = f"HTTP {response.status_code}"
+            print(f"[VIDEO FETCH] {err_msg} for {url}", flush=True)
+            return None, err_msg
     except requests.exceptions.Timeout:
-        print(f"[VIDEO FETCH] Timeout error while fetching {url}", flush=True)
-        return None
+        return None, "Connection timeout"
     except Exception as e:
-        print(f"[VIDEO FETCH] Unexpected error fetching {url}: {e}", flush=True)
-        return None
+        return None, str(e)
 
 @student_api_bp.route('/debug/env', methods=['GET'])
 def debug_env():
@@ -1383,7 +1390,7 @@ def submit_application():
                             video_url = form_data.get(field)
                             if isinstance(video_url, str) and video_url.startswith('http'):
                                 print(f"[SUBMIT] Processing video URL for {field}...")
-                                v_bytes = fetch_video_bytes_from_url(video_url)
+                                v_bytes, _ = fetch_video_bytes_from_url(video_url)
                         
                         if v_bytes:
                             print(f"[SUBMIT] Scheduling Video scanning for {field}...")
@@ -1591,7 +1598,7 @@ def ocr_check():
                 # 1.a Video Content Verification (if URL present)
                 v_video, msg_video = True, "Not provided"
                 if vid_url:
-                    vid_bytes = fetch_video_bytes_from_url(vid_url)
+                    vid_bytes, fetch_err = fetch_video_bytes_from_url(vid_url)
                     if vid_bytes:
                         v_video, msg_video = verify_video_content(
                             video_bytes=vid_bytes,
@@ -1599,7 +1606,7 @@ def ocr_check():
                             expected_address=town_city if doc_type == 'Indigency' else None
                         )
                     else:
-                        msg_video = "Video file unreachable"
+                        msg_video = f"Video file unreachable ({fetch_err})"
                         v_video = False
                 else:
                     # Video is now mandatory for these specific documents
