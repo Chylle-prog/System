@@ -1133,23 +1133,18 @@ def init_socketio(socketio):
             # Determine the sender's actual name from the database
             actual_username = username
             
-            # Check if sender is the applicant
+            # Check if sender is the applicant (student)
             cursor.execute("SELECT first_name FROM applicants WHERE applicant_no = %s", (sender_id,))
             app_row = cursor.fetchone()
             if app_row:
+                # Sender is a student - use their first name
                 actual_username = app_row['first_name']
             else:
-                # Sender is an admin/provider - use provider name instead of personal name
-                cursor.execute("SELECT provider_name FROM scholarship_providers WHERE pro_no = %s", (pro_no,))
-                provider_row = cursor.fetchone()
-                if provider_row:
-                    actual_username = provider_row['provider_name']
-                else:
-                    # Fallback to user name if provider not found
-                    cursor.execute("SELECT user_name FROM users WHERE user_no = %s", (sender_id,))
-                    user_row = cursor.fetchone()
-                    if user_row:
-                        actual_username = user_row['user_name']
+                # Sender is an admin/provider
+                # The username field from frontend should already contain the provider name
+                # (e.g., 'Africa Scholarship Program', 'Vilma Scholarship Program', etc.)
+                # Trust what the frontend sent rather than overwriting it
+                actual_username = username
             
             # Insert message with explicit IDs and correct username
             cursor.execute("""
