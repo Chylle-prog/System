@@ -180,6 +180,7 @@ const StudentInfo = () => {
     mayorIndigency_video: null,
     mayorGrades_video: null,
     mayorCOE_video: null,
+    schoolId_video: null,
     face_video: null
   });
 
@@ -188,6 +189,8 @@ const StudentInfo = () => {
   const [coeStatus, setCoeStatus] = useState('');
   const [gradesVerified, setGradesVerified] = useState(null); // null, 'verifying', 'success', 'failed'
   const [gradesStatus, setGradesStatus] = useState('');
+  const [idVerified, setIdVerified] = useState(null); // null, 'verifying', 'success', 'failed'
+  const [idStatus, setIdStatus] = useState('');
 
   const idPictureInputRef = useRef(null);
   const signatureInputRef = useRef(null);
@@ -375,7 +378,7 @@ const StudentInfo = () => {
       }
 
       // Handle video URLs (stored in formData as strings starting with http)
-      const videoFields = ['mayorIndigency_video', 'mayorGrades_video', 'mayorCOE_video', 'face_video'];
+      const videoFields = ['mayorIndigency_video', 'mayorGrades_video', 'mayorCOE_video', 'schoolId_video', 'face_video'];
       videoFields.forEach(field => {
         if (formData[field] && typeof formData[field] === 'string' && formData[field].startsWith('http')) {
           jsonData[field] = formData[field];
@@ -875,12 +878,14 @@ const StudentInfo = () => {
         if (docType === 'Indigency') { setOcrStatus(status); }
         else if (docType === 'Enrollment') { setCoeStatus(status); }
         else if (docType === 'Grades') { setGradesStatus(status); }
+        else if (docType === 'SchoolID') { setIdStatus(status); }
       };
       
       const setVerified = (v) => {
         if (docType === 'Indigency') { setOcrVerified(v); }
         else if (docType === 'Enrollment') { setCoeVerified(v); }
         else if (docType === 'Grades') { setGradesVerified(v); }
+        else if (docType === 'SchoolID') { setIdVerified(v); }
       };
 
       setVerified('verifying');
@@ -920,17 +925,21 @@ const StudentInfo = () => {
       }
     } catch (err) {
       console.error('OCR Error:', err);
+      const errMsg = `Technical Issue: ${err.message}`;
       if (docType === 'Indigency') {
-        setOcrVerified('technical_unavailable');
-        setOcrStatus(`Technical Issue: ${err.message}`);
+        setOcrVerified('failed');
+        setOcrStatus(errMsg);
       } else if (docType === 'Enrollment') {
-        setCoeVerified('technical_unavailable');
-        setCoeStatus(`Technical Issue: ${err.message}`);
+        setCoeVerified('failed');
+        setCoeStatus(errMsg);
       } else if (docType === 'Grades') {
-        setGradesVerified('technical_unavailable');
-        setGradesStatus(`Technical Issue: ${err.message}`);
+        setGradesVerified('failed');
+        setGradesStatus(errMsg);
+      } else if (docType === 'SchoolID') {
+        setIdVerified('failed');
+        setIdStatus(errMsg);
       }
-      return true;
+      return false;
     }
   };
 
@@ -1022,6 +1031,35 @@ const StudentInfo = () => {
         showPromptMessage('✅ Grades verified successfully!');
       } else {
         showPromptMessage('❌ Grades verification failed.');
+      }
+    } finally {
+      setIsSavingStep(false);
+    }
+  };
+
+  const handleIdScan = async () => {
+    const idFront = schoolIdPhotos.front;
+    const idBack = schoolIdPhotos.back;
+    const videoUrl = formData.schoolId_video || documentVideos.schoolId_video;
+
+    if (!idFront || !idBack) {
+      showPromptMessage('⚠️ Please upload both front and back of your School ID first.');
+      return;
+    }
+    if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
+      showPromptMessage('⚠️ Please record and upload the School ID video first.');
+      return;
+    }
+
+    setLoadingMessage({ title: 'Scanning School ID', message: 'Verifying your School ID images and Video Content...' });
+    setIsSavingStep(true);
+    
+    try {
+      const success = await performOcrVerification('SchoolID', { front: idFront, back: idBack }, {}, videoUrl);
+      if (success) {
+        showPromptMessage('✅ School ID verified successfully!');
+      } else {
+        showPromptMessage('❌ School ID verification failed.');
       }
     } finally {
       setIsSavingStep(false);
@@ -1353,6 +1391,15 @@ const StudentInfo = () => {
            submissionData.append('face_video', documentVideos.face_video);
         } else {
            submissionData.append('face_video', documentVideos.face_video, 'face_video.webm');
+        }
+      }
+
+      // Add School ID Video if available
+      if (documentVideos.schoolId_video) {
+        if (typeof documentVideos.schoolId_video === 'string' && documentVideos.schoolId_video.startsWith('http')) {
+           submissionData.append('schoolId_video', documentVideos.schoolId_video);
+        } else {
+           submissionData.append('schoolId_video', documentVideos.schoolId_video, 'schoolId_video.webm');
         }
       }
 
@@ -2091,7 +2138,7 @@ const StudentInfo = () => {
                   type="button" 
                   className="submit-btn" 
                   onClick={handleNextStep} 
-                  disabled={isSavingStep || !(ocrVerified === 'success' || ocrVerified === 'technical_unavailable')} 
+                  disabled={isSavingStep || ocrVerified !== 'success'} 
                   style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}
                 >
                   Next: Family Background <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
@@ -2257,11 +2304,11 @@ const StudentInfo = () => {
 
               <div style={{marginBottom: '2rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
                 <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
-                  Updated School ID (Photo) <span style={{color: '#e74c3c'}}>*</span>
+                  Updated School ID (Photo & Video) <span style={{color: '#e74c3c'}}>*</span>
                 </h4>
-                <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1.2rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
+                <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1.2rem', paddingLeft: '16px'}}>Photo (.png/jpg) and Video recording</p>
                 
-                <div className="form-row" style={{paddingLeft: '16px'}}>
+                <div className="form-row" style={{paddingLeft: '16px', marginBottom: '1.5rem'}}>
                   <div className="form-group">
                     <label style={{fontSize: '0.8rem', color: '#555'}}>Front Side</label>
                     <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} required={currentStep === 3} />
@@ -2271,6 +2318,71 @@ const StudentInfo = () => {
                     <label style={{fontSize: '0.8rem', color: '#555'}}>Back Side</label>
                     <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} required={currentStep === 3} />
                     {schoolIdPhotos.back && <img src={schoolIdPhotos.back} style={{marginTop: '10px', width: '100%', maxWidth: '130px', borderRadius: '8px'}} alt="Back Preview" />}
+                  </div>
+                </div>
+
+                <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1rem'}}>
+                  <div style={{flex: '1', minWidth: '220px'}}>
+                    {(schoolIdPhotos.front || schoolIdPhotos.back) && (
+                      <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                        <div style={{display: 'flex', gap: '1rem', flexWrap: 'wrap'}}>
+                          {schoolIdPhotos.front && (
+                            <div style={{flex: '1', minWidth: '150px'}}>
+                              <p style={{fontSize: '0.75rem', color: '#666', fontWeight: '600', marginBottom: '0.5rem'}}>Front</p>
+                              <img src={schoolIdPhotos.front} style={{maxWidth: '100%', height: 'auto', borderRadius: '8px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="ID Front" />
+                            </div>
+                          )}
+                          {schoolIdPhotos.back && (
+                            <div style={{flex: '1', minWidth: '150px'}}>
+                              <p style={{fontSize: '0.75rem', color: '#666', fontWeight: '600', marginBottom: '0.5rem'}}>Back</p>
+                              <img src={schoolIdPhotos.back} style={{maxWidth: '100%', height: 'auto', borderRadius: '8px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="ID Back" />
+                            </div>
+                          )}
+                        </div>
+                        <button 
+                          type="button" 
+                          onClick={handleIdScan}
+                          disabled={isSavingStep}
+                          style={{
+                            padding: '0.6rem 1.2rem',
+                            borderRadius: '30px',
+                            background: idVerified === 'success' ? '#2ecc71' : 'var(--primary)',
+                            color: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            fontSize: '0.9rem',
+                            fontWeight: '600',
+                            transition: 'all 0.3s ease'
+                          }}
+                        >
+                          <i className={`fas ${idVerified === 'verifying' ? 'fa-spinner fa-spin' : 'fa-search'}`}></i>
+                          {idVerified === 'success' ? 'ID Verified!' : 'Scan School ID'}
+                        </button>
+                        {idStatus && (
+                          <div style={{
+                            fontSize: '0.85rem', 
+                            color: idVerified === 'success' ? '#27ae60' : (idVerified === 'failed' ? '#e74c3c' : '#666'),
+                            fontWeight: '500'
+                          }}>
+                            {idVerified === 'success' && <i className="fas fa-check-circle" style={{marginRight: '5px'}}></i>}
+                            {idStatus}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{flex: '1', minWidth: '220px'}}>
+                    <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', marginBottom: '0.8rem'}}>
+                      <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
+                    </p>
+                    <VideoRecorder 
+                      label="Record School ID Video" 
+                      onRecordComplete={(blob) => handleVideoUpload('schoolId_video', blob)} 
+                      initialVideoUrl={documentVideos.schoolId_video}
+                    />
                   </div>
                 </div>
               </div>
