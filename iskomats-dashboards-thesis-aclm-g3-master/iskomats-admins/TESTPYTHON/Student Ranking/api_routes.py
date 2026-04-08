@@ -2761,8 +2761,7 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
             'location': 'location',
             'slots': 'slots',
             'deadline': 'deadline',
-            'description': '"desc"',
-            'year': 'year'
+            'description': '"desc"'
         }
         
         for json_key, db_col in field_map.items():
