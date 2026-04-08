@@ -3149,8 +3149,11 @@ export default function DashTulong() {
                           socketService.loadHistory(room);
                         }
                       }}
-                      className={`p-4 cursor-pointer transition-colors hover:bg-blue-50/50 ${isActive ? 'bg-blue-50 border-l-4 border-[#800020]' : ''
-                        } ${conv.unreadCount > 0 ? 'bg-blue-50/30' : ''}`}
+                      className={`p-4 cursor-pointer transition-colors border-l-4 ${
+                        isActive
+                          ? 'bg-blue-100 border-l-4 border-[#800020] shadow-sm'
+                          : `border-l-4 border-transparent hover:bg-blue-50/50 ${conv.unreadCount > 0 ? 'bg-blue-50/30' : ''}`
+                      }`}
                     >
                       <div className="flex items-start gap-3">
                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#800020] to-[#650018] flex items-center justify-center text-white font-semibold flex-shrink-0">
