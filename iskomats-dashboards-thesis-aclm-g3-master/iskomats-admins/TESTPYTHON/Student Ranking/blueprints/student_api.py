@@ -1608,7 +1608,7 @@ def ocr_check():
                         v_video, msg_video = verify_video_content(
                             video_bytes=vid_bytes,
                             keywords=doc_keywords.get(doc_type),
-                            expected_address=town_city if doc_type == 'Indigency' else None
+                            expected_address=None  # Address matching in videos is unreliable and slow; keywords alone are sufficient
                         )
                     else:
                         msg_video = f"Video file unreachable ({fetch_err})"
@@ -1708,7 +1708,7 @@ def ocr_check():
         jobs = []
         if enrollment_doc_param: jobs.append(('Enrollment', enrollment_doc_param, None))
         if grades_doc_param: jobs.append(('Grades', grades_doc_param, None))
-        if indigency_doc_param or (not enrollment_doc_param and not grades_doc_param and not id_front_param):
+        if indigency_doc_param:  # Only run Indigency if a doc was explicitly sent; no fallback guessing
             jobs.append(('Indigency', indigency_doc_param, applicant.get('indigency_doc')))
         if id_front_param:
             jobs.append(('SchoolID', id_front_param, applicant.get('id_img_front')))
@@ -1718,9 +1718,9 @@ def ocr_check():
         results = []
         overall_verified = True
         if jobs:
-            # max_workers=1 since individual scan buttons now send only one doc at a time;
-            # avoids unnecessary thread overhead and conserves RAM on Render free tier.
-            with ThreadPoolExecutor() as executor:
+            # max_workers=1: individual scan buttons send only one doc at a time.
+            # Enforcing this prevents OOM crashes on Render's 512MB free-tier RAM.
+            with ThreadPoolExecutor(max_workers=1) as executor:
                 future_results = [executor.submit(process_doc, *job) for job in jobs]
                 for future in future_results:
                     res = future.result()
