@@ -642,6 +642,16 @@ export default function DashVilma() {
         resetForm();
         loadAnnouncements();
         setManageMode('list');
+        
+        // Notify other admins of the announcement update via socket
+        socketService.emit('announcement_update', {
+          program: 'vilma',
+          action: manageMode === 'edit' ? 'updated' : 'created',
+          title: formData.title,
+          annNo: editingPost?.id || editingPost?.ann_no || null,
+          adminName: userName,
+          timestamp: new Date().toISOString()
+        });
       }
     } catch (error) {
       console.error('Failed to save announcement:', error);
