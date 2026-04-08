@@ -73,30 +73,54 @@ def create_notification(user_no, title, message, notif_type='message'):
     """Create a database notification and send an email alert to the user."""
     GMAIL_SENDER_EMAIL = os.environ.get('GMAIL_SENDER_EMAIL')
     
+    conn = None
     try:
         conn = get_db()
         cur = conn.cursor()
         
-        # 1. Insert into database
-        cur.execute("""
-            INSERT INTO notifications (user_no, title, message, type)
-            VALUES (%s, %s, %s, %s)
-            RETURNING notif_id
-        """, (user_no, title, message, notif_type))
+        # DEBUG: Verify applicant exists first (check if foreign key will fail)
+        cur.execute("SELECT applicant_no FROM applicants WHERE applicant_no = %s LIMIT 1", (user_no,))
+        applicant_check = cur.fetchone()
+        if not applicant_check:
+            print(f"[NOTIF ERROR] Applicant {user_no} not found in applicants table - cannot create notification (FK constraint)")
+            conn.close()
+            return
         
-        # Get user's email
+        # 1. Insert into database
+        try:
+            cur.execute("""
+                INSERT INTO notifications (user_no, title, message, type)
+                VALUES (%s, %s, %s, %s)
+                RETURNING notif_id
+            """, (user_no, title, message, notif_type))
+            notif_result = cur.fetchone()  # Fetch the RETURNING result
+            if notif_result:
+                notif_id = notif_result['notif_id']
+                print(f"[NOTIF] Database notification created: notif_id={notif_id}, user_no={user_no}, type={notif_type}")
+            else:
+                print(f"[NOTIF ERROR] INSERT returned no result for user {user_no}")
+                conn.rollback()
+                conn.close()
+                return
+        except Exception as db_err:
+            print(f"[NOTIF ERROR] Database INSERT failed for user {user_no}: {db_err}")
+            if 'conn' in locals():
+                conn.rollback()
+            raise
+        
+        # 2. Get user's email
         cur.execute("SELECT email_address FROM email WHERE applicant_no = %s OR user_no = %s LIMIT 1", (user_no, user_no))
         user_row = cur.fetchone()
         conn.commit()
-        conn.close()
         
         if not user_row or not user_row['email_address']:
-            print(f"[NOTIF ERROR] No email found for user {user_no}")
+            print(f"[NOTIF WARN] No email found for user {user_no} - database notification created but no email sent")
+            conn.close()
             return
             
         receiver_email = user_row['email_address']
         
-        # 2. Send Email alert via Gmail API
+        # 3. Send Email alert via Gmail API
         if GMAIL_SENDER_EMAIL:
             # Prepare email
             email_body = f"""Hello,
@@ -120,6 +144,7 @@ The ISKOMATS Team
                 access_token = fetch_google_access_token()
                 if not access_token:
                     print(f"[NOTIF EMAIL ERROR] No access token, skipping email.")
+                    conn.close()
                     return
 
                 encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
@@ -136,9 +161,17 @@ The ISKOMATS Team
                 
                 with urllib_request.urlopen(email_request, timeout=30) as response:
                     print(f"[NOTIF] Email sent to {receiver_email}")
-            except Exception as e:
-                print(f"[NOTIF EMAIL ERROR] Failed to send email to {receiver_email}: {e}")
+            except Exception as email_err:
+                print(f"[NOTIF EMAIL ERROR] Failed to send email to {receiver_email}: {email_err}")
+        else:
+            print(f"[NOTIF] GMAIL_SENDER_EMAIL not configured - notification saved but email not sent to {receiver_email if receiver_email else 'unknown'}")
+        
+        conn.close()
         
     except Exception as e:
-        print(f"[NOTIF ERROR] {e}")
-        if 'conn' in locals() and conn: conn.close()
+        print(f"[NOTIF ERROR] Notification creation failed: {e}", flush=True)
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
