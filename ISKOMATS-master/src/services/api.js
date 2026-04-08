@@ -442,41 +442,30 @@ export const applicantAPI = {
    */
   uploadRequirementVideo: async (fieldName, file, onProgress) => {
     try {
-      const { supabase } = await import('../supabaseClient');
-      const user = localStorage.getItem('currentUser');
-      if (!user) throw new Error('User not authenticated');
+      console.log(`[VIDEO-UPLOAD] Uploading ${fieldName}: ${file.name}`, file.size, 'bytes');
+      
+      // Create FormData for backend
+      const formData = new FormData();
+      formData.append('video', file);
+      formData.append('field_name', fieldName);
 
-      // Map frontend field names to storage paths
-      const folderMap = {
-        mayorIndigency_video: 'indigency',
-        mayorCOE_video: 'coe',
-        mayorGrades_video: 'grades',
-        schoolId_video: 'school_id',
-        id_vid_url: 'id_verification',
-        face_video: 'id_verification'
-      };
+      // Call backend endpoint that converts WebM to H.264 MP4, then uploads
+      console.log('[VIDEO-UPLOAD] Sending to backend for conversion and upload...');
+      const response = await makeRequest('/student/videos/convert-and-upload', {
+        method: 'POST',
+        body: formData
+      });
 
-      const folder = folderMap[fieldName] || 'others';
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${user}_${Date.now()}.${fileExt}`;
-      const filePath = `videos/${folder}/${fileName}`;
+      if (!response.success) {
+        throw new Error(response.message || 'Upload failed');
+      }
 
-      const { error: uploadError } = await supabase.storage
-        .from('document_videos')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: true
-        });
+      console.log('[VIDEO-UPLOAD] Backend returned public URL:', response.publicUrl);
+      console.log('[VIDEO-UPLOAD] Original:', response.originalSize, 'bytes → Converted:', response.convertedSize, 'bytes');
 
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('document_videos')
-        .getPublicUrl(filePath);
-
-      return { publicUrl };
+      return { publicUrl: response.publicUrl };
     } catch (err) {
-      console.error('Video upload error:', err);
+      console.error('[VIDEO-UPLOAD] Error:', err);
       throw err;
     }
   },

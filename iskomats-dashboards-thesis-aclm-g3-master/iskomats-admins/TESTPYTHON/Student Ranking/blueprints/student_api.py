@@ -19,6 +19,7 @@ import cv2
 import numpy as np
 from services.auth_service import get_secret_key
 from services.db_service import get_db
+from services.video_converter import convert_video_to_mp4
 from services.ocr_utils import (
     verify_id_with_ocr, verify_face_with_id, extract_school_year, 
     extract_school_year_from_text, is_current_school_year, 
@@ -2134,3 +2135,93 @@ def clear_knowledge():
         'success': success,
         'message': 'Local training data cleared successfully.' if success else 'Failed to clear data.'
     })
+
+
+@student_api_bp.route('/videos/convert-and-upload', methods=['POST'])
+@token_required
+def convert_and_upload_video(current_user_id, pro_no, role):
+    """
+    Convert WebM video to H.264 MP4 format for universal browser compatibility,
+    then upload to Supabase.
+    
+    This endpoint ensures all videos are stored in a universally supported format.
+    """
+    try:
+        if 'video' not in request.files:
+            return jsonify({'success': False, 'message': 'No video file provided'}), 400
+        
+        video_file = request.files['video']
+        field_name = request.form.get('field_name', 'unknown')
+        
+        if not video_file or video_file.filename == '':
+            return jsonify({'success': False, 'message': 'Empty video file'}), 400
+        
+        print(f"[VIDEO-CONVERT-UPLOAD] Received {field_name}: {video_file.filename} ({video_file.content_length} bytes)", flush=True)
+        
+        # Read video bytes
+        video_bytes = video_file.read()
+        
+        # Convert to H.264 MP4
+        print(f"[VIDEO-CONVERT-UPLOAD] Converting {field_name} to H.264 MP4...", flush=True)
+        converted_bytes = convert_video_to_mp4(video_bytes)
+        
+        # If conversion failed, use original
+        if not converted_bytes or len(converted_bytes) == 0:
+            print(f"[VIDEO-CONVERT-UPLOAD] Conversion failed, using original bytes", flush=True)
+            converted_bytes = video_bytes
+        
+        # Upload to Supabase
+        try:
+            from supabase import create_client
+            supabase_url = os.environ.get('SUPABASE_URL')
+            supabase_key = os.environ.get('SUPABASE_KEY')
+            supabase = create_client(supabase_url, supabase_key)
+            
+            # Map field names to folders
+            folder_map = {
+                'mayorIndigency_video': 'indigency',
+                'mayorCOE_video': 'coe',
+                'mayorGrades_video': 'grades',
+                'schoolId_video': 'school_id',
+                'id_vid_url': 'id_verification',
+                'face_video': 'id_verification'
+            }
+            
+            folder = folder_map.get(field_name, 'others')
+            file_name = f"{current_user_id}_{int(time.time())}.mp4"
+            file_path = f"videos/{folder}/{file_name}"
+            
+            print(f"[VIDEO-CONVERT-UPLOAD] Uploading to Supabase: {file_path} ({len(converted_bytes)} bytes)", flush=True)
+            
+            response = supabase.storage.from_('document_videos').upload(
+                file_path,
+                converted_bytes,
+                {
+                    'content-type': 'video/mp4',
+                    'cache-control': '3600',
+                    'upsert': True
+                }
+            )
+            
+            # Get public URL
+            public_url = supabase.storage.from_('document_videos').get_public_url(file_path)
+            
+            print(f"[VIDEO-CONVERT-UPLOAD] Successfully uploaded: {public_url}", flush=True)
+            
+            return jsonify({
+                'success': True,
+                'message': 'Video uploaded successfully',
+                'publicUrl': public_url,
+                'originalSize': len(video_bytes),
+                'convertedSize': len(converted_bytes)
+            })
+        
+        except Exception as upload_err:
+            print(f"[VIDEO-CONVERT-UPLOAD] Supabase upload error: {str(upload_err)}", flush=True)
+            return jsonify({'success': False, 'message': f'Upload failed: {str(upload_err)}'}), 500
+    
+    except Exception as e:
+        print(f"[VIDEO-CONVERT-UPLOAD] Error: {str(e)}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(e)}), 500
