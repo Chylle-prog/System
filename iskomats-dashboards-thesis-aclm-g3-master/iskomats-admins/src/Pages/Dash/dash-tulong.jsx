@@ -1107,8 +1107,8 @@ export default function DashTulong() {
   const unreadCount = allMessages.filter((m) => !m.read).length;
   const conversations = useMemo(() => groupMessagesByStudent(allMessages), [allMessages]);
   const currentMessage = viewMessage ? allMessages.find((m) => m.id === viewMessage.messageId) : null;
-  const currentConversation = currentMessage
-    ? conversations.find((c) => c.studentEmail === currentMessage.studentEmail || c.studentName === currentMessage.studentName)
+  const currentConversation = viewMessage?.applicant_no
+    ? conversations.find((c) => c.applicant_no?.toString() === viewMessage.applicant_no?.toString())
     : null;
   const filteredConversations = useMemo(() => {
     let filtered = conversations;
@@ -3136,16 +3136,14 @@ export default function DashTulong() {
             {filteredConversations.length > 0 ? (
               <div className="divide-y divide-gray-100">
                 {filteredConversations.map((conv) => {
-                  const isActive =
-                    currentConversation &&
-                    (currentConversation.studentEmail === conv.studentEmail || currentConversation.studentName === conv.studentName);
+                  const isActive = currentConversation && currentConversation.applicant_no?.toString() === conv.applicant_no?.toString();
                   return (
                     <div
                       key={conv.studentEmail || conv.studentName}
                       onClick={() => {
                         if (conv.messages.length > 0) {
                           const room = conv.messages[0].room;
-                          setViewMessage({ messageId: conv.lastMessage.id });
+                          setViewMessage({ messageId: conv.lastMessage.id, applicant_no: conv.applicant_no });
                           socketService.loadHistory(room);
                         }
                       }}
