@@ -1091,7 +1091,7 @@ export default function DashVilma() {
 
   const sendReply = (messageId) => {
     if (!replyText.trim() || !currentMessage?.room) return;
-    socketService.sendMessage(currentMessage.room, userName, replyText);
+    socketService.sendMessage(currentMessage.room, userName, replyText, 'Vilma Scholarship Program');
     setReplyText('');
   };
 

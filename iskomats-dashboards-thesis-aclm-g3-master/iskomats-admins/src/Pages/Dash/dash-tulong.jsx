@@ -1097,7 +1097,7 @@ export default function DashTulong() {
 
   const sendReply = (messageId) => {
     if (!replyText.trim() || !currentMessage?.room) return;
-    socketService.sendMessage(currentMessage.room, userName, replyText);
+    socketService.sendMessage(currentMessage.room, userName, replyText, 'Tulong Dunong Program');
     setReplyText('');
   };
 

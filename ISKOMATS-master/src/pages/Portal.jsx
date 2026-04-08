@@ -13,6 +13,7 @@ const Portal = () => {
   const [showMessageDropdown, setShowMessageDropdown] = useState(false);
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
   const [currentChatId, setCurrentChatId] = useState(null);
+  const [currentChatProviderName, setCurrentChatProviderName] = useState(null);
   const [chatInput, setChatInput] = useState('');
   const [applications, setApplications] = useState([]);
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -260,6 +261,10 @@ const Portal = () => {
     setShowChatModal(true);
     socketService.loadHistory(scholarId);
     
+    // Get the provider name from the scholarships array
+    const scholarship = scholarships.find(s => s.id === scholarId);
+    setCurrentChatProviderName(scholarship?.name || null);
+    
     // Mark scholarship as read when opening chat
     setScholarships(prev => prev.map(s => 
       s.id === scholarId ? { ...s, unread: 0 } : s
@@ -269,6 +274,7 @@ const Portal = () => {
   const closeChat = () => {
     setShowChatModal(false);
     setCurrentChatId(null);
+    setCurrentChatProviderName(null);
     setChatInput('');
   };
 
@@ -276,7 +282,7 @@ const Portal = () => {
     const message = chatInput.trim();
     if (!message || !currentChatId) return;
     const applicantNo = localStorage.getItem('applicantNo');
-    socketService.sendMessage(currentChatId, applicantNo, message);
+    socketService.sendMessage(currentChatId, applicantNo, message, currentChatProviderName);
     setChatInput('');
   };
 
@@ -457,7 +463,9 @@ const Portal = () => {
       // This ensures the admin sees WHO cancelled WHAT before the room is detached.
       if (proNo && applicantNo) {
         const roomId = `${applicantNo}+${proNo}`;
-        socketService.sendMessage(roomId, applicantNo, `I have cancelled my application for "${scholarshipName}".`);
+        const scholarship = scholarships.find(s => s.id === roomId);
+        const providerName = scholarship?.name || null;
+        socketService.sendMessage(roomId, applicantNo, `I have cancelled my application for "${scholarshipName}".`, providerName);
         
         // Remove the room from the applicant's side local state immediately
         setScholarships(prev => prev.filter(s => s.id !== roomId));

@@ -89,12 +89,13 @@ class SocketService {
     }
   }
 
-  sendMessage(room, username, message) {
+  sendMessage(room, username, message, providerName = null) {
     this.emit('message', { 
       room, 
       username: username || this.username, 
       message,
-      sender_id: this.userId
+      sender_id: this.userId,
+      ...(providerName && { provider_name: providerName })
     });
   }
 

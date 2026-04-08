@@ -1113,7 +1113,7 @@ export default function DashAfrica() {
   const sendReply = (messageId) => {
     if (!replyText.trim() || !currentMessage?.room) return;
     
-    socketService.sendMessage(currentMessage.room, userName, replyText);
+    socketService.sendMessage(currentMessage.room, userName, replyText, 'Africa Scholarship Program');
     setReplyText('');
   };
 

@@ -1139,11 +1139,17 @@ def init_socketio(socketio):
             if app_row:
                 actual_username = app_row['first_name']
             else:
-                # Check if sender is a provider/admin
-                cursor.execute("SELECT user_name FROM users WHERE user_no = %s", (sender_id,))
-                user_row = cursor.fetchone()
-                if user_row:
-                    actual_username = user_row['user_name']
+                # Sender is an admin/provider - use provider name instead of personal name
+                cursor.execute("SELECT provider_name FROM scholarship_providers WHERE pro_no = %s", (pro_no,))
+                provider_row = cursor.fetchone()
+                if provider_row:
+                    actual_username = provider_row['provider_name']
+                else:
+                    # Fallback to user name if provider not found
+                    cursor.execute("SELECT user_name FROM users WHERE user_no = %s", (sender_id,))
+                    user_row = cursor.fetchone()
+                    if user_row:
+                        actual_username = user_row['user_name']
             
             # Insert message with explicit IDs and correct username
             cursor.execute("""
