@@ -134,18 +134,10 @@ def convert_video_to_mp4(video_bytes, output_format='mp4'):
         print(f"[VIDEO CONVERT] Error: {e}", flush=True)
         return video_bytes
 
-def transcode_video_for_streaming(video_bytes):
-    """
-    Transcode video for smooth streaming with multiple quality levels.
-    For now, just ensures H.264 MP4 format for compatibility.
-    """
-    return convert_video_to_mp4(video_bytes)
-        return video_bytes  # Return original on error
 
 def transcode_video_for_streaming(video_bytes):
     """
     Transcode video for smooth streaming with multiple quality levels.
     For now, just ensures H.264 MP4 format for compatibility.
     """
-    log_msg("[VIDEO CONVERT] transcode_video_for_streaming called")
     return convert_video_to_mp4(video_bytes)
