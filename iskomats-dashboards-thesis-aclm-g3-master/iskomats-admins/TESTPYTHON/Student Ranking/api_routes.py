@@ -2748,7 +2748,6 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
             'slots': 'slots',
             'deadline': 'deadline',
             'description': '"desc"',
-            'semester': 'semester',
             'year': 'year'
         }
         
