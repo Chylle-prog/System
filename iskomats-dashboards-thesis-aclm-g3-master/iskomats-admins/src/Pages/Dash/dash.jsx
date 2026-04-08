@@ -704,16 +704,16 @@ export default function Dash() {
                   </div>
                   <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
                     <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-gray-50/50 text-left border-b border-gray-100">
-                        <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Identified User</th>
-                        <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Scholarship</th>
-                        <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Account Status</th>
-                        <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Joined</th>
-                        <th className="px-8 py-4 text-right font-black text-gray-400 uppercase tracking-widest text-[10px]">Control</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
+                      <thead>
+                        <tr className="bg-gray-50/50 text-left border-b border-gray-100">
+                          <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Identified User</th>
+                          <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Scholarship</th>
+                          <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Account Status</th>
+                          <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Joined</th>
+                          <th className="px-8 py-4 text-right font-black text-gray-400 uppercase tracking-widest text-[10px]">Control</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
                       {filteredManagedAccounts.map((account) => {
                         const statusStyle = statusClasses(account.status);
                         return (
@@ -780,10 +780,10 @@ export default function Dash() {
                 <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden max-h-[calc(100vh-400px)]">
                   <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
                     <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-gray-50/50 text-left border-b border-gray-100">
-                        <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Identified User</th>
-                        <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">System Role</th>
+                      <thead>
+                        <tr className="bg-gray-50/50 text-left border-b border-gray-100">
+                          <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Identified User</th>
+                          <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">System Role</th>
                         <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Scholarship Program</th>
                         <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Account Status</th>
                         <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Registration Date</th>
@@ -816,6 +816,7 @@ export default function Dash() {
                   </table>
                 </div>
               </div>
+            </div>
             )}
 
             {activeTab === 'activity-reports' && (
