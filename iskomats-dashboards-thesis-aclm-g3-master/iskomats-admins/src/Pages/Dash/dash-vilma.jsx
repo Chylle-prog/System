@@ -438,6 +438,27 @@ export default function DashVilma() {
       loadScholarships();
       loadAnnouncements();
     }
+    
+    // Listen for scholarship updates from other admins
+    const unsubScholarships = socketService.onScholarshipUpdate((data) => {
+      if (data.program === 'vilma') {
+        console.log('[SCHOLARSHIP UPDATE] Received update:', data);
+        loadScholarships();
+      }
+    });
+    
+    // Listen for announcement updates from other admins
+    const unsubAnnouncements = socketService.onAnnouncementUpdate((data) => {
+      if (data.program === 'vilma') {
+        console.log('[ANNOUNCEMENT UPDATE] Received update:', data);
+        loadAnnouncements();
+      }
+    });
+    
+    return () => {
+      unsubScholarships();
+      unsubAnnouncements();
+    };
   }, [section]);
 
   const loadAnnouncements = async () => {
@@ -511,6 +532,16 @@ export default function DashVilma() {
         resetForm();
         await loadScholarships();
         setManageMode('list');
+        
+        // Notify other admins of the update via socket
+        socketService.emit('scholarship_update', {
+          program: 'vilma',
+          action: manageMode === 'edit' ? 'updated' : 'created',
+          scholarshipName: formData.scholarshipName,
+          reqNo: editingPost?.reqNo || null,
+          adminName: userName,
+          timestamp: new Date().toISOString()
+        });
       } else {
         alert('Error: ' + (response.data.message || 'Unknown error occurred'));
       }

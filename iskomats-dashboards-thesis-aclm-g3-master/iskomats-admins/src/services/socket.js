@@ -71,6 +71,15 @@ class SocketService {
     return () => this.unsubscribe(event, callback);
   }
 
+  // Helper to subscribe and listen for scholarship updates
+  onScholarshipUpdate(callback) {
+    return this.subscribe('scholarship_update', callback);
+  }
+
+  onAnnouncementUpdate(callback) {
+    return this.subscribe('announcement_update', callback);
+  }
+
   unsubscribe(event, callback) {
     if (this.handlers.has(event)) {
       this.handlers.get(event).delete(callback);

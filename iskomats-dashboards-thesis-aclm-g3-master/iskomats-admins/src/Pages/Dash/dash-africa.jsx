@@ -453,6 +453,27 @@ export default function DashAfrica() {
       loadScholarships();
       loadAnnouncements();
     }
+    
+    // Listen for scholarship updates from other admins
+    const unsubScholarships = socketService.onScholarshipUpdate((data) => {
+      if (data.program === 'africa') {
+        console.log('[SCHOLARSHIP UPDATE] Received update:', data);
+        loadScholarships();
+      }
+    });
+    
+    // Listen for announcement updates from other admins
+    const unsubAnnouncements = socketService.onAnnouncementUpdate((data) => {
+      if (data.program === 'africa') {
+        console.log('[ANNOUNCEMENT UPDATE] Received update:', data);
+        loadAnnouncements();
+      }
+    });
+    
+    return () => {
+      unsubScholarships();
+      unsubAnnouncements();
+    };
   }, [section]);
 
   const loadAnnouncements = async () => {
@@ -526,6 +547,16 @@ export default function DashAfrica() {
         resetForm();
         await loadScholarships();
         setManageMode('list');
+        
+        // Notify other admins of the update via socket
+        socketService.emit('scholarship_update', {
+          program: 'africa',
+          action: manageMode === 'edit' ? 'updated' : 'created',
+          scholarshipName: formData.scholarshipName,
+          reqNo: editingPost?.reqNo || null,
+          adminName: userName,
+          timestamp: new Date().toISOString()
+        });
       } else {
         alert('Error: ' + (response.data.message || 'Unknown error occurred'));
       }
@@ -626,6 +657,16 @@ export default function DashAfrica() {
         resetForm();
         loadAnnouncements();
         setManageMode('list');
+        
+        // Notify other admins of the announcement update via socket
+        socketService.emit('announcement_update', {
+          program: 'africa',
+          action: manageMode === 'edit' ? 'updated' : 'created',
+          title: formData.title,
+          annNo: editingPost?.id || editingPost?.ann_no || null,
+          adminName: userName,
+          timestamp: new Date().toISOString()
+        });
       }
     } catch (error) {
       console.error('Failed to save announcement:', error);

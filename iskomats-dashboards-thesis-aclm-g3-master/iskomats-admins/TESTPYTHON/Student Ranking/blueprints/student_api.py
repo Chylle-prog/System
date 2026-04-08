@@ -431,8 +431,20 @@ def student_login():
         )
         user = cur.fetchone()
 
-        if not user or not bcrypt.check_password_hash(user['password_hash'], password):
-            return jsonify({'message': 'Invalid credentials'}), 401
+        # If email not found in permanent email table, check if it exists in pending registrations
+        if not user:
+            cur.execute(
+                "SELECT email_address FROM pending_registrations WHERE email_address ILIKE %s",
+                (email,),
+            )
+            pending_reg = cur.fetchone()
+            if pending_reg:
+                return jsonify({'message': 'Email not verified. Please check your email and enter the verification code to complete registration.', 'requires_verification': True}), 401
+            else:
+                return jsonify({'message': 'Email does not exist. Please register first.'}), 401
+
+        if not bcrypt.check_password_hash(user['password_hash'], password):
+            return jsonify({'message': 'Incorrect password'}), 401
 
         if not user.get('is_verified'):
             return jsonify({'message': 'Email not verified. Please verify your email first.'}), 401

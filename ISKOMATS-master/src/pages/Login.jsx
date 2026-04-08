@@ -112,8 +112,8 @@ const Login = () => {
       let errorMsg = error.message || 'Login failed. Please try again.';
       
       // Check if it's an email verification error
-      if (errorMsg.includes('not verified') || errorMsg.includes('verify') || errorMsg.includes('verification')) {
-        setErrorMessage('Please verify your email first. Redirecting to verification page...');
+      if (errorMsg.includes('not verified') || errorMsg.includes('verify') || errorMsg.includes('verification') || errorMsg.includes('requires_verification')) {
+        setErrorMessage('Email not verified. Please check your email for the verification code.');
         localStorage.setItem('registrationEmail', email);
         setShowError(true);
         setIsLoginLoading(false);
@@ -124,10 +124,12 @@ const Login = () => {
         return;
       }
       
-      if (error.message.includes('Email not found')) {
-        setErrorMessage('Incorrect email.');
+      if (error.message.includes('does not exist')) {
+        setErrorMessage('Email does not exist. Please register first.');
       } else if (error.message.includes('Incorrect password')) {
         setErrorMessage('Incorrect password.');
+      } else if (error.message.includes('Invalid credentials')) {
+        setErrorMessage('Invalid email or password.');
       } else {
         setErrorMessage(errorMsg);
       }
