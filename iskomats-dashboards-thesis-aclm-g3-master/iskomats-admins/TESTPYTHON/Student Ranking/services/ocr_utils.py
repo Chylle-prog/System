@@ -439,9 +439,11 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
             return _run_tesseract_on_image(frame_f, psm=11)
 
         ocr_results = []
-        with ThreadPoolExecutor() as executor:
-            for res in executor.map(process_frame, samples):
-                if res: ocr_results.append(res)
+        # Run sequentially. Do NOT use ThreadPoolExecutor here, as multiple Tesseract 
+        # binaries running concurrently will cause an instant OOM crash on Render's 512MB RAM tier.
+        for idx in samples:
+            res = process_frame(idx)
+            if res: ocr_results.append(res)
             
         all_ocr_text = " ".join(ocr_results)
         

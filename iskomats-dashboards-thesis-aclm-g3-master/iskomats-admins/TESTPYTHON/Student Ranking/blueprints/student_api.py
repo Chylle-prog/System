@@ -1356,7 +1356,7 @@ def submit_application():
                 verification_tasks = {}
                 # Limit to 1 worker to keep peak RAM usage safe on 512MB Render instances
                 # (Prevents running 2+ Tesseract binaries at the exact same time, which freezes the server)
-                with ThreadPoolExecutor() as executor:
+                with ThreadPoolExecutor(max_workers=1) as executor:
                     # 1. OCR Identity Check
                     if id_front_bytes:
                         town_city = form_data.get('townCity') or applicant.get('town_city_municipality', '')
