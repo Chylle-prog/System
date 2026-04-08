@@ -39,65 +39,66 @@ def convert_video_to_mp4(video_bytes, output_format='mp4'):
         return video_bytes
     
     try:
-        # Create temp files for input and output
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.webm') as input_file:
+        # Create temp files - input can be any format, try common extensions
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.tmp') as input_file:
             input_file.write(video_bytes)
             input_path = input_file.name
         
-        output_path = input_path.replace('.webm', f'.{output_format}')
+        output_path = input_path.replace('.tmp', f'.{output_format}')
         
         try:
-            # Convert WebM to MP4 with H.264 codec
-            # -c:v libx264: Use H.264 codec (widely supported)
-            # -preset fast: Fast encoding (balance quality/speed)
-            # -crf 23: Quality (0-51, lower=better, 23=default)
-            # -c:a aac: Use AAC audio codec (widely supported)
-            # -movflags +faststart: Enable streaming from start
+            # Convert to H.264 MP4 with explicit codec/format
+            # This works for any input format (WebM, MOV, MKV, etc.)
             cmd = [
                 'ffmpeg',
                 '-i', input_path,
-                '-c:v', 'libx264',        # H.264 codec
-                '-preset', 'fast',         # Fast encoding
-                '-crf', '23',              # Quality
-                '-c:a', 'aac',             # Audio codec
-                '-b:a', '128k',            # Audio bitrate
-                '-movflags', '+faststart', # Enable streaming
-                '-y',                      # Overwrite output
+                '-c:v', 'libx264',        # H.264 video codec
+                '-preset', 'ultrafast',   # Fastest encoding (still good quality)
+                '-crf', '28',             # Quality (0-51, lower=better, 28=faster)
+                '-c:a', 'aac',            # AAC audio codec
+                '-b:a', '128k',           # Audio bitrate
+                '-movflags', '+faststart',# Enable streaming from start
+                '-y',                     # Overwrite output without asking
                 output_path
             ]
             
-            # Run ffmpeg
+            print(f"[VIDEO CONVERT] Starting conversion with ffmpeg...", flush=True)
             result = subprocess.run(cmd, 
                                   capture_output=True, 
-                                  timeout=120,
+                                  timeout=300,  # Increased timeout to 5 minutes
                                   text=True)
             
             if result.returncode != 0:
-                print(f"[VIDEO CONVERT] ffmpeg error: {result.stderr}", flush=True)
+                stderr = result.stderr if result.stderr else "No error message"
+                print(f"[VIDEO CONVERT] ffmpeg failed with return code {result.returncode}", flush=True)
+                print(f"[VIDEO CONVERT] stderr: {stderr[:500]}", flush=True)  # Log first 500 chars of error
                 return video_bytes  # Return original on error
             
             # Read converted file
-            with open(output_path, 'rb') as f:
-                converted_bytes = f.read()
-            
-            print(f"[VIDEO CONVERT] Successfully converted {len(video_bytes)} bytes to {len(converted_bytes)} bytes", flush=True)
-            return converted_bytes
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                with open(output_path, 'rb') as f:
+                    converted_bytes = f.read()
+                
+                print(f"[VIDEO CONVERT] Successfully converted {len(video_bytes)} bytes → {len(converted_bytes)} bytes", flush=True)
+                return converted_bytes
+            else:
+                print(f"[VIDEO CONVERT] Output file not created or empty", flush=True)
+                return video_bytes
             
         finally:
             # Cleanup temp files
-            if os.path.exists(input_path):
-                try:
-                    os.remove(input_path)
-                except:
-                    pass
-            if os.path.exists(output_path):
-                try:
-                    os.remove(output_path)
-                except:
-                    pass
+            for path in [input_path, output_path]:
+                if os.path.exists(path):
+                    try:
+                        os.remove(path)
+                    except Exception as e:
+                        print(f"[VIDEO CONVERT] Warning: Could not delete {path}: {e}", flush=True)
     
     except Exception as e:
-        print(f"[VIDEO CONVERT] Error converting video: {e}", flush=True)
+        print(f"[VIDEO CONVERT] Exception during conversion: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return video_bytes
         return video_bytes  # Return original on error
 
 def transcode_video_for_streaming(video_bytes):
