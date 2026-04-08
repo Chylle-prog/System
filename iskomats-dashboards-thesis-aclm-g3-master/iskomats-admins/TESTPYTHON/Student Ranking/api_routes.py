@@ -14,6 +14,7 @@ from email.mime.text import MIMEText
 from cryptography.fernet import Fernet
 from io import BytesIO
 import traceback
+import threading
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_DIR not in sys.path:
@@ -544,7 +545,7 @@ The ISKOMATS Team
 
 
 def send_announcement_emails(title, message, provider_no, provider_name=None, send_to_all=True):
-    """Send announcement emails to applicants via Gmail API.
+    """Send announcement emails to applicants via Gmail API (runs asynchronously).
     
     Args:
         title: Announcement title
@@ -585,15 +586,17 @@ def send_announcement_emails(title, message, provider_no, provider_name=None, se
         conn.close()
         
         if not applicants:
-            print(f"[EMAIL INFO] No applicants found for provider {provider_no}")
+            print(f"[EMAIL INFO] No applicants found to send announcement, provider {provider_no}")
             return True
+        
+        print(f"[EMAIL BACKGROUND] Starting email batch job for announcement - {len(applicants)} recipients")
         
         provider_label = provider_name or 'ISKOMATS'
         access_token = fetch_google_access_token()
         success_count = 0
         fail_count = 0
         
-        for applicant in applicants:
+        for idx, applicant in enumerate(applicants):
             try:
                 email_address = applicant['email_address']
                 first_name = applicant['first_name'] or 'Applicant'
@@ -635,15 +638,20 @@ ISKOMATS Team
                     response.read()
                 success_count += 1
                 
+                # Log progress every 10 emails
+                if (idx + 1) % 10 == 0:
+                    print(f"[EMAIL BACKGROUND] Progress: {idx + 1}/{len(applicants)} emails sent")
+                
             except Exception as e:
-                print(f"[EMAIL ERROR] Failed to send to {applicant['email_address']}: {str(e)}")
+                print(f"[EMAIL ERROR] Failed to send to {applicant['email_address']}: {str(e)}", flush=True)
                 fail_count += 1
         
-        print(f"[EMAIL SUCCESS] Sent {success_count} announcement emails (failed: {fail_count}) for provider {provider_no}")
+        print(f"[EMAIL COMPLETE] Sent {success_count}/{len(applicants)} announcement emails (failed: {fail_count}) for provider {provider_no}", flush=True)
         return True
         
     except Exception as e:
-        print(f"[EMAIL ERROR] Failed to send announcement emails: {str(e)}")
+        print(f"[EMAIL ERROR] Critical error in background email job: {str(e)}", flush=True)
+        traceback.print_exc()
         return False
 
 
@@ -3108,13 +3116,17 @@ def create_announcement(current_user_id, pro_no, role):
         except Exception as e:
             print(f"[NOTIF ERROR] Failed to trigger announcement notifications: {e}")
         
-        # Send emails to all applicants when send_to_all_applicants is True
+        # Send emails to all applicants asynchronously when send_to_all_applicants is True
         if send_to_all_applicants:
-            try:
-                send_announcement_emails(title, message, pro_no, provider_name, send_to_all=True)
-            except Exception as e:
-                print(f"[ANNOUNCEMENT EMAIL ERROR] Failed to send announcement emails: {str(e)}")
-                # Don't fail the announcement creation if email sending fails
+            # Start email sending in a background thread to avoid blocking the API response
+            email_thread = threading.Thread(
+                target=send_announcement_emails,
+                args=(title, message, pro_no, provider_name),
+                kwargs={'send_to_all': True},
+                daemon=True
+            )
+            email_thread.start()
+            print(f"[ANNOUNCEMENT] Email sending started in background for announcement {ann_no}")
 
         return jsonify({'message': 'Announcement created', 'ann_no': ann_no}), 201
     except Exception as e:
