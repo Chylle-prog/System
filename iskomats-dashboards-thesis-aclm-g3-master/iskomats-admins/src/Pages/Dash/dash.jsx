@@ -125,6 +125,7 @@ export default function Dash() {
 
   const [accountType, setAccountType] = useState('Admin');
   const [accountSearch, setAccountSearch] = useState('');
+  const [managedAcctProgramFilter, setManagedAcctProgramFilter] = useState('All');
   const [accReportFilter, setAccReportFilter] = useState({ program: 'All', role: 'All', search: '' });
   const [actReportFilter, setActReportFilter] = useState({ program: 'All', action: 'All', search: '' });
   const [reportForm, setReportForm] = useState({
@@ -149,25 +150,30 @@ export default function Dash() {
 
   const [accounts, setAccounts] = useState([]);
   const [activities, setActivities] = useState([]);
+  const [providers, setProviders] = useState([]);
   const [statistics, setStatistics] = useState(emptyStatistics);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pageError, setPageError] = useState('');
 
   const availablePrograms = useMemo(() => {
-    const programs = new Set();
-    accounts.forEach((account) => {
-      if (account.scholarship && account.scholarship !== 'All') {
-        programs.add(account.scholarship);
-      }
+    // Use providers from database instead of deriving from accounts
+    return providers.map(p => p.provider_name).sort();
+  }, [providers]);
+
+  const providerStats = useMemo(() => {
+    // Calculate users and applicants per provider
+    return providers.map((provider) => {
+      const usersCount = accounts.filter((a) => a.scholarship === provider.provider_name && a.type === 'Admin').length;
+      const applicantsCount = accounts.filter((a) => a.scholarship === provider.provider_name && a.type === 'Applicant').length;
+      return {
+        ...provider,
+        usersCount,
+        applicantsCount,
+        totalAccounts: usersCount + applicantsCount,
+      };
     });
-    activities.forEach((activity) => {
-      if (activity.scholarship && activity.scholarship !== 'All') {
-        programs.add(activity.scholarship);
-      }
-    });
-    return Array.from(programs).sort((left, right) => left.localeCompare(right));
-  }, [accounts, activities]);
+  }, [providers, accounts]);
 
   const loadDashboardData = async (showLoader = true) => {
     if (showLoader) {
@@ -175,10 +181,11 @@ export default function Dash() {
     }
     setPageError('');
 
-    const [accountsResult, statisticsResult, logsResult] = await Promise.allSettled([
+    const [accountsResult, statisticsResult, logsResult, providersResult] = await Promise.allSettled([
       adminAPI.getAllAccounts(),
       adminAPI.getDashboardStats(),
       adminAPI.getActivityLogs(),
+      scholarshipAPI.getProviders(),
     ]);
 
     const errors = [];
@@ -204,6 +211,13 @@ export default function Dash() {
     } else {
       errors.push('activity logs');
       setActivities([]);
+    }
+
+    if (providersResult.status === 'fulfilled') {
+      setProviders(providersResult.value.data || []);
+    } else {
+      errors.push('scholarship providers');
+      setProviders([]);
     }
 
     if (errors.length > 0) {
@@ -238,10 +252,11 @@ export default function Dash() {
     const search = accountSearch.trim().toLowerCase();
     return accounts.filter((account) => {
       const matchesType = account.type === accountType;
+      const matchesProgram = managedAcctProgramFilter === 'All' || account.scholarship === managedAcctProgramFilter;
       const matchesSearch = !search || [account.name, account.email, String(account.id)].some((value) => (value || '').toLowerCase().includes(search));
-      return matchesType && matchesSearch;
+      return matchesType && matchesProgram && matchesSearch;
     });
-  }, [accounts, accountSearch, accountType]);
+  }, [accounts, accountSearch, accountType, managedAcctProgramFilter]);
 
   const filteredAccountReport = useMemo(() => {
     return accounts.filter((account) => {
@@ -613,17 +628,19 @@ export default function Dash() {
                     <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
                       <h4 className="font-black text-gray-900 uppercase tracking-widest text-xs mb-6 border-l-4 border-[#800020] pl-4">Program Distribution</h4>
                       <div className="space-y-6">
-                        {availablePrograms.length === 0 ? (
-                          <p className="text-sm font-bold text-gray-400">No program-linked accounts found.</p>
+                        {providerStats.length === 0 ? (
+                          <p className="text-sm font-bold text-gray-400">No scholarship providers found.</p>
                         ) : (
-                          availablePrograms.map((program) => {
-                            const count = accounts.filter((account) => account.scholarship === program).length;
-                            const percentage = accounts.length > 0 ? (count / accounts.length) * 100 : 0;
+                          providerStats.map((provider) => {
+                            const percentage = accounts.length > 0 ? (provider.totalAccounts / accounts.length) * 100 : 0;
                             return (
-                              <div key={program} className="space-y-2">
-                                <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-gray-500 gap-4">
-                                  <span>{program}</span>
-                                  <span>{count} Accounts</span>
+                              <div key={provider.pro_no} className="space-y-2">
+                                <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-gray-500 gap-2">
+                                  <span>{provider.provider_name}</span>
+                                  <span className="text-right flex gap-2">
+                                    <span style={{color: '#800020'}}>👤 {provider.usersCount}</span>
+                                    <span style={{color: '#16a34a'}}>👨‍🎓 {provider.applicantsCount}</span>
+                                  </span>
                                 </div>
                                 <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
                                   <div className="bg-[#800020] h-full rounded-full" style={{ width: `${percentage}%` }}></div>
@@ -641,13 +658,22 @@ export default function Dash() {
 
             {activeTab === 'manage-accounts' && (
               <div className="space-y-6">
-                <div className="flex justify-between items-center bg-white p-4 rounded-3xl shadow-sm border border-gray-100 gap-4">
-                  <div className="flex bg-gray-100 p-1 rounded-2xl">
-                    {['Admin', 'Applicant'].map((type) => (
-                      <button key={type} onClick={() => setAccountType(type)} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${accountType === type ? 'bg-white text-[#800020] shadow-sm' : 'text-gray-500 hover:bg-white/50'}`}>
-                        {type === 'Applicant' ? 'Students' : `${type}s`}
-                      </button>
-                    ))}
+                <div className="flex justify-between items-center bg-white p-4 rounded-3xl shadow-sm border border-gray-100 gap-4 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <div className="flex bg-gray-100 p-1 rounded-2xl">
+                      {['Admin', 'Applicant'].map((type) => (
+                        <button key={type} onClick={() => setAccountType(type)} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${accountType === type ? 'bg-white text-[#800020] shadow-sm' : 'text-gray-500 hover:bg-white/50'}`}>
+                          {type === 'Applicant' ? 'Students' : `${type}s`}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="text-xs text-gray-400 font-bold">FILTER:</div>
+                    <select value={managedAcctProgramFilter} onChange={(event) => setManagedAcctProgramFilter(event.target.value)} className="px-4 py-2 bg-gray-100 border-none rounded-xl text-xs font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]">
+                      <option value="All">All Programs</option>
+                      {availablePrograms.map((program) => (
+                        <option key={program} value={program}>{program}</option>
+                      ))}
+                    </select>
                   </div>
                   <button onClick={() => openAccountModal('add')} className="px-6 py-2 bg-[#800020] text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-[#800020]/20 flex items-center gap-2 hover:bg-[#650018] transition-all">
                     <FaPlus /> New {accountType === 'Applicant' ? 'Student' : accountType}
@@ -843,99 +869,123 @@ export default function Dash() {
       </main>
 
       {accountModal.open && (
-        <div className="fixed inset-0 bg-[#800020]/20 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl border border-white/50 animate-in fade-in zoom-in duration-300">
-            <div className="bg-[#800020] p-10 text-white relative overflow-hidden">
-              <FaUsersCog className="absolute -top-4 -right-4 text-9xl text-white/10 rotate-12" />
-              <h3 className="text-3xl font-black uppercase tracking-tighter">Create Account</h3>
-              <p className="text-[10px] font-black opacity-70 uppercase tracking-[3px] mt-2">Iscomats Identity Access</p>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl border border-gray-200">
+            {/* Header */}
+            <div className="bg-[#800020] px-12 py-8 text-white">
+              <h3 className="text-2xl font-black uppercase tracking-wide">Create Account</h3>
+              <p className="text-xs font-bold opacity-80 uppercase tracking-widest mt-1">ISKOMATS Identity Access</p>
             </div>
-            <form onSubmit={handleAccountSubmit} className="p-10 space-y-6">
-              <div className="space-y-4">
+
+            {/* Form */}
+            <form onSubmit={handleAccountSubmit} className="p-12 space-y-8">
+              {/* Full Name */}
+              <div>
+                <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-3">Legal Full Name</label>
+                <input 
+                  required 
+                  value={accountForm.fullName} 
+                  onChange={(event) => setAccountForm({ ...accountForm, fullName: event.target.value })} 
+                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all" 
+                  placeholder=""
+                />
+              </div>
+
+              {/* Email & Username */}
+              <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Legal Full Name</label>
-                  <input required value={accountForm.fullName} onChange={(event) => setAccountForm({ ...accountForm, fullName: event.target.value })} className="w-full p-4 bg-gray-50 border-none rounded-2xl text-xs font-black focus:ring-2 focus:ring-[#800020] outline-none" />
+                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-3">Email Address</label>
+                  <input 
+                    required 
+                    type="email" 
+                    value={accountForm.email} 
+                    onChange={(event) => setAccountForm({ ...accountForm, email: event.target.value })} 
+                    className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all" 
+                  />
                 </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Email Address</label>
-                    <input required type="email" value={accountForm.email} onChange={(event) => setAccountForm({ ...accountForm, email: event.target.value })} className="w-full p-4 bg-gray-50 border-none rounded-2xl text-xs font-black focus:ring-2 focus:ring-[#800020] outline-none" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Username</label>
-                    <input required value={accountForm.username} onChange={(event) => setAccountForm({ ...accountForm, username: event.target.value })} className="w-full p-4 bg-gray-50 border-none rounded-2xl text-xs font-black focus:ring-2 focus:ring-[#800020] outline-none" />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">System Role</label>
-                    <select 
-                      value={accountForm.role} 
-                      onChange={(event) => {
-                        const newRole = event.target.value;
-                        setAccountForm({ 
-                          ...accountForm, 
-                          role: newRole
-                        });
-                      }}
-                      className="w-full p-4 bg-gray-50 border-none rounded-2xl text-xs font-black focus:ring-2 focus:ring-[#800020] outline-none"
-                    >
-                      <option value="Admin">Admin</option>
-                      <option value="Scholar">Scholar</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Scholarship Program</label>
-                    <select 
-                      value={accountForm.scholarship} 
-                      onChange={(event) => setAccountForm({ ...accountForm, scholarship: event.target.value })}
-                      className="w-full p-4 bg-gray-50 border-none rounded-2xl text-xs font-black focus:ring-2 focus:ring-[#800020] outline-none"
-                    >
-                      <option value="">Select Program</option>
-                      <option value="All">All / Global</option>
-                      {availablePrograms.map((program) => (
-                        <option key={program} value={program}>{program}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Access Status</label>
-                    <select 
-                      value={accountForm.status} 
-                      onChange={(event) => setAccountForm({ ...accountForm, status: event.target.value })}
-                      className="w-full p-4 bg-gray-50 border-none rounded-2xl text-xs font-black focus:ring-2 focus:ring-[#800020] outline-none"
-                    >
-                      <option value="Active">Active</option>
-                      <option value="Inactive">Inactive</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  {accountModal.mode === 'add' ? (
-                    <div>
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Secure Password</label>
-                      <input required type="password" value={accountForm.password} onChange={(event) => setAccountForm({ ...accountForm, password: event.target.value })} className="w-full p-4 bg-gray-50 border-none rounded-2xl text-xs font-black focus:ring-2 focus:ring-[#800020] outline-none" />
-                    </div>
-                  ) : (
-                    <div className="invisible"></div>
-                  )}
+                <div>
+                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-3">Username</label>
+                  <input 
+                    required 
+                    value={accountForm.username} 
+                    onChange={(event) => setAccountForm({ ...accountForm, username: event.target.value })} 
+                    className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all" 
+                  />
                 </div>
               </div>
-               
-                <div className="grid grid-cols-2 gap-8 pt-8 items-center">
-                  <button type="button" onClick={() => setAccountModal({ open: false, mode: 'add', data: null })} className="font-black text-gray-400 hover:text-gray-600 transition-all uppercase text-[10px] tracking-[4px] text-center">
-                    Cancel
-                  </button>
-                  <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-[#800020] text-white font-black rounded-3xl shadow-2xl shadow-[#800020]/20 hover:bg-[#650018] transition-all uppercase text-[10px] tracking-[4px] disabled:opacity-60">
-                    {isSubmitting ? 'Executing...' : 'Confirm'}
-                  </button>
+
+              {/* System Role & Scholarship */}
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-3">System Role</label>
+                  <select 
+                    value={accountForm.role} 
+                    onChange={(event) => setAccountForm({ ...accountForm, role: event.target.value })}
+                    className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all cursor-pointer"
+                  >
+                    <option value="Admin">Admin</option>
+                    <option value="Scholar">Scholar</option>
+                  </select>
                 </div>
+                <div>
+                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-3">Scholarship Program</label>
+                  <select 
+                    value={accountForm.scholarship} 
+                    onChange={(event) => setAccountForm({ ...accountForm, scholarship: event.target.value })}
+                    className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all cursor-pointer"
+                  >
+                    <option value="All">All / Global</option>
+                    {availablePrograms.map((program) => (
+                      <option key={program} value={program}>{program}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Access Status */}
+              <div>
+                <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-3">Access Status</label>
+                <select 
+                  value={accountForm.status} 
+                  onChange={(event) => setAccountForm({ ...accountForm, status: event.target.value })}
+                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all cursor-pointer"
+                >
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                </select>
+              </div>
+
+              {/* Password (only for add mode) */}
+              {accountModal.mode === 'add' && (
+                <div>
+                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-3">Secure Passcode</label>
+                  <input 
+                    required 
+                    type="password" 
+                    value={accountForm.password} 
+                    onChange={(event) => setAccountForm({ ...accountForm, password: event.target.value })} 
+                    className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all" 
+                  />
+                </div>
+              )}
+
+              {/* Buttons */}
+              <div className="flex gap-6 pt-8">
+                <button 
+                  type="button" 
+                  onClick={() => setAccountModal({ open: false, mode: 'add', data: null })} 
+                  className="flex-1 py-4 text-gray-500 font-black uppercase text-xs tracking-widest hover:text-gray-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={isSubmitting} 
+                  className="flex-1 py-4 bg-[#800020] text-white font-black uppercase rounded-2xl text-xs tracking-widest shadow-lg shadow-[#800020]/30 hover:bg-[#650018] transition-all disabled:opacity-60"
+                >
+                  {isSubmitting ? 'Processing...' : 'Confirm'}
+                </button>
+              </div>
             </form>
           </div>
         </div>
