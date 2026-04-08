@@ -3324,7 +3324,7 @@ export default function DashVilma() {
         </nav>
       </aside>
 
-      <main className="flex-1 p-6 overflow-y-auto h-full">
+      <main className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-white rounded-xl shadow-sm px-6 py-4 mb-6 flex items-center justify-between">
           <div className="flex items-center gap-2 text-[#800020] font-bold text-xl">
             Vilma Scholarship Dashboard
@@ -3429,4 +3429,5 @@ export default function DashVilma() {
     </div>
   );
 }
+
 

@@ -1715,7 +1715,7 @@ export default function DashAfrica() {
           </select>
         </div>
 
-        <div className="overflow-y-auto rounded-xl border border-gray-200" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+        <div className="overflow-y-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-[#800020] text-white">
@@ -2175,7 +2175,7 @@ export default function DashAfrica() {
                 {/* Monthly Trends Table */}
                 <div className="lg:col-span-7 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                   <h4 className="text-lg font-bold text-gray-800 mb-6">Monthly Applications</h4>
-                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                  <div className="overflow-y-auto">
                     <table className="w-full text-left text-sm">
                       <thead className="sticky top-0 bg-gray-50">
                         <tr className="bg-gray-50 border-b border-gray-100">
@@ -2235,7 +2235,7 @@ export default function DashAfrica() {
                 {/* Course Distribution Table */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                   <h4 className="text-lg font-bold text-gray-800 mb-6">Course Distribution</h4>
-                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                  <div className="overflow-y-auto">
                     <table className="w-full text-left text-sm">
                       <thead className="sticky top-0 bg-gray-50">
                         <tr className="bg-gray-50 border-b border-gray-100">
@@ -2285,7 +2285,7 @@ export default function DashAfrica() {
                 {/* Financial Breakdown Table */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                   <h4 className="text-lg font-bold text-gray-800 mb-6">Financial Background</h4>
-                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                  <div className="overflow-y-auto">
                     <table className="w-full text-left text-sm">
                       <thead className="sticky top-0 bg-gray-50">
                         <tr className="bg-gray-50 border-b border-gray-100">
@@ -2312,7 +2312,7 @@ export default function DashAfrica() {
                 {/* Location Stats Table */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                   <h4 className="text-lg font-bold text-gray-800 mb-6">Location Analytics</h4>
-                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                  <div className="overflow-y-auto">
                     <table className="w-full text-left text-sm">
                       <thead className="sticky top-0 bg-gray-50">
                         <tr className="bg-gray-50 border-b border-gray-100">
@@ -2351,7 +2351,7 @@ export default function DashAfrica() {
                 {/* School Analytics Table */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                   <h4 className="text-lg font-bold text-gray-800 mb-6">School Distribution Table</h4>
-                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                  <div className="overflow-y-auto">
                     <table className="w-full text-left text-sm">
                       <thead className="sticky top-0 bg-gray-50">
                         <tr className="bg-gray-50 border-b border-gray-100">
@@ -3352,7 +3352,7 @@ export default function DashAfrica() {
         </nav>
       </aside>
 
-      <main className="flex-1 p-6 overflow-y-auto h-full">
+      <main className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-white rounded-xl shadow-sm px-6 py-4 mb-6 flex items-center justify-between">
           <div className="flex items-center gap-2 text-[#800020] font-bold text-xl">
             Africa Scholarship Dashboard
@@ -3557,3 +3557,5 @@ export default function DashAfrica() {
     </div>
   );
 }
+
+

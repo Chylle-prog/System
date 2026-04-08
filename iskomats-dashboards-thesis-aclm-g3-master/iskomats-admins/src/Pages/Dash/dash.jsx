@@ -567,35 +567,38 @@ export default function Dash() {
         </div>
       </aside>
 
-      <main className="flex-1 p-6 overflow-y-auto h-full">
-        <header className="bg-white rounded-2xl shadow-sm px-8 py-5 mb-8 flex items-center justify-between border border-gray-100">
-          <div>
-            <h1 className="text-2xl font-black text-[#800020] tracking-tight uppercase">{activeTab.replace('-', ' ')}</h1>
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Database-Backed Administrator Control Panel</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="text-sm font-black text-gray-900">{userName}</p>
-              <p className="text-[10px] font-bold text-green-600 uppercase">Live Database Mode</p>
+      <main className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-shrink-0 p-6 pb-4">
+          <header className="bg-white rounded-2xl shadow-sm px-8 py-5 flex items-center justify-between border border-gray-100">
+            <div>
+              <h1 className="text-2xl font-black text-[#800020] tracking-tight uppercase">{activeTab.replace('-', ' ')}</h1>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Database-Backed Administrator Control Panel</p>
             </div>
-            <div className="w-10 h-10 rounded-full bg-[#800020] flex items-center justify-center text-white font-black">
-              {userName.charAt(0)}
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-sm font-black text-gray-900">{userName}</p>
+                <p className="text-[10px] font-bold text-green-600 uppercase">Live Database Mode</p>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-[#800020] flex items-center justify-center text-white font-black">
+                {userName.charAt(0)}
+              </div>
             </div>
-          </div>
-        </header>
+          </header>
 
-        {pageError && (
-          <div className="mb-6 rounded-2xl border border-red-100 bg-red-50 px-6 py-4 text-sm font-bold text-red-700">
-            {pageError}
-          </div>
-        )}
+          {pageError && (
+            <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 px-6 py-4 text-sm font-bold text-red-700">
+              {pageError}
+            </div>
+          )}
+        </div>
 
-        {isLoading ? (
-          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-10 text-center">
-            <p className="text-sm font-black uppercase tracking-widest text-gray-500">Loading dashboard data from PostgreSQL...</p>
-          </div>
-        ) : (
-          <>
+        <div className="flex-1 overflow-hidden px-6 pb-6">
+          {isLoading ? (
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-10 text-center h-full flex items-center justify-center">
+              <p className="text-sm font-black uppercase tracking-widest text-gray-500">Loading dashboard data from PostgreSQL...</p>
+            </div>
+          ) : (
+            <>
             {activeTab === 'dashboard' && (
               <div className="space-y-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -672,8 +675,8 @@ export default function Dash() {
             )}
 
             {activeTab === 'manage-accounts' && (
-              <div className="space-y-6">
-                <div className="flex justify-between items-center bg-white p-4 rounded-3xl shadow-sm border border-gray-100 gap-4 flex-wrap">
+              <div className="flex flex-col h-full space-y-4">
+                <div className="flex-shrink-0 flex justify-between items-center bg-white p-4 rounded-3xl shadow-sm border border-gray-100 gap-4 flex-wrap">
                   <div className="flex items-center gap-3">
                     <div className="flex bg-gray-100 p-1 rounded-2xl">
                       {['Admin', 'Applicant'].map((type) => (
@@ -695,14 +698,14 @@ export default function Dash() {
                   </button>
                 </div>
 
-                <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden max-h-[calc(100vh-400px)]">
-                  <div className="p-6 border-b border-gray-50 flex items-center gap-4">
+                <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col flex-1">
+                  <div className="flex-shrink-0 p-6 border-b border-gray-50 flex items-center gap-4">
                     <div className="relative flex-1">
                       <FaSearch className="absolute left-4 top-3.5 text-gray-300" />
                       <input value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} type="text" placeholder="Search by name, email, or ID..." className="w-full pl-12 pr-4 py-3 bg-gray-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-[#800020]" />
                     </div>
                   </div>
-                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                  <div className="flex-1 overflow-y-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="bg-gray-50/50 text-left border-b border-gray-100">
@@ -753,8 +756,8 @@ export default function Dash() {
             )}
 
             {activeTab === 'account-reports' && (
-              <div className="space-y-6">
-                <div className="flex justify-between items-center bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex-wrap gap-4">
+              <div className="flex flex-col h-full space-y-4">
+                <div className="flex-shrink-0 flex justify-between items-center bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex-wrap gap-4">
                   <h2 className="text-xl font-black text-gray-900 uppercase">Account Distribution</h2>
                   <div className="flex items-center gap-3 flex-wrap">
                     <div className="relative">
@@ -777,8 +780,8 @@ export default function Dash() {
                     </button>
                   </div>
                 </div>
-                <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden max-h-[calc(100vh-400px)]">
-                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col flex-1">
+                  <div className="flex-1 overflow-y-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="bg-gray-50/50 text-left border-b border-gray-100">
@@ -820,8 +823,8 @@ export default function Dash() {
             )}
 
             {activeTab === 'activity-reports' && (
-              <div className="space-y-6">
-                <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex justify-between items-center flex-wrap gap-4">
+              <div className="flex flex-col h-full space-y-4">
+                <div className="flex-shrink-0 bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex justify-between items-center flex-wrap gap-4">
                   <h2 className="text-xl font-black text-gray-900 uppercase">Audit Intelligence</h2>
                   <div className="flex items-center gap-3 flex-wrap">
                     <div className="relative">
@@ -845,8 +848,8 @@ export default function Dash() {
                     </button>
                   </div>
                 </div>
-                <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden max-h-[calc(100vh-400px)]">
-                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col flex-1">
+                  <div className="flex-1 overflow-y-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="bg-gray-50/50 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100">
@@ -885,6 +888,7 @@ export default function Dash() {
             )}
           </>
         )}
+        </div>
       </main>
 
       {accountModal.open && (
