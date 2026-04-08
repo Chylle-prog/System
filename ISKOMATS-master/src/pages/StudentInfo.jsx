@@ -502,6 +502,19 @@ const StudentInfo = () => {
         setLoadingMessage({ title: 'Loading Profile', message: 'Retrieving your information to pre-fill the application...' });
         setIsInitialLoading(true);
         const profile = await applicantAPI.getProfile();
+        console.log('DEBUG: Loaded profile from API:', {
+          id_img_front: profile.id_img_front,
+          id_img_back: profile.id_img_back,
+          indigency_doc: profile.indigency_doc,
+          grades_doc: profile.grades_doc,
+          enrollment_certificate_doc: profile.enrollment_certificate_doc,
+          id_pic: profile.id_pic,
+          id_vid_url: profile.id_vid_url,
+          indigency_vid_url: profile.indigency_vid_url,
+          grades_vid_url: profile.grades_vid_url,
+          enrollment_certificate_vid_url: profile.enrollment_certificate_vid_url,
+          schoolId_video: profile.schoolId_video
+        });
         setUserProfile(profile);
 
         setFormData(prev => mergeMeaningfulValues(prev, {
@@ -573,6 +586,15 @@ const StudentInfo = () => {
           setFormData(prev => ({ ...prev, mayorValidID_photo: profile.id_pic }));
         }
         
+        console.log('DEBUG: Photos loaded to state:', {
+          mayorCOE_photo: profile.enrollment_certificate_doc,
+          mayorGrades_photo: profile.grades_doc,
+          mayorIndigency_photo: profile.indigency_doc,
+          mayorValidID_photo: profile.id_pic,
+          schoolIdFront: profile.id_img_front,
+          schoolIdBack: profile.id_img_back
+        });
+        
         // Load signature
         if (profile.signature_image_data) {
           setFormData(prev => ({ ...prev, applicantSignatureName: profile.signature_image_data }));
@@ -601,6 +623,8 @@ const StudentInfo = () => {
             setFormData(prev => ({ ...prev, [stateField]: profile[dbField] }));
           }
         });
+        
+        console.log('DEBUG: Videos loaded from profile:', loadedVideos);
         
         if (Object.keys(loadedVideos).length > 0) {
           setDocumentVideos(prev => ({ ...prev, ...loadedVideos }));
