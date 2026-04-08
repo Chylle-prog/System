@@ -22,7 +22,8 @@ from services.db_service import get_db
 from services.ocr_utils import (
     verify_id_with_ocr, verify_face_with_id, extract_school_year, 
     extract_school_year_from_text, is_current_school_year, 
-    verify_signature_against_id, save_signature_profile, verify_video_content
+    verify_signature_against_id, save_signature_profile, verify_video_content,
+    _perform_text_matching
 )
 from services.notification_service import create_notification, fetch_google_access_token
 from services.google_auth_service import verify_google_token
