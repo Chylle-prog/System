@@ -45,15 +45,19 @@ def fetch_video_bytes_from_url(url):
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ISKOMATS-Verification-Bot/1.0'
         }
         
+        url_to_fetch = url
         # If it's a Supabase URL, try to use the Service Role Key for authentication
         # (This allows fetching from private buckets)
         supabase_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
         if supabase_key and 'supabase.co' in url:
+            if '/object/public/' in url:
+                url_to_fetch = url.replace('/object/public/', '/object/authenticated/')
+                
             headers['apikey'] = supabase_key
             headers['Authorization'] = f"Bearer {supabase_key}"
-            print("[VIDEO FETCH] Attaching Supabase Service Role credentials...", flush=True)
+            print("[VIDEO FETCH] Attaching Supabase Service Role credentials to authenticated endpoint...", flush=True)
 
-        response = requests.get(url, headers=headers, timeout=15)
+        response = requests.get(url_to_fetch, headers=headers, timeout=15)
         
         if response.status_code == 200:
             content = response.content
@@ -61,7 +65,7 @@ def fetch_video_bytes_from_url(url):
             return content, None
         else:
             err_msg = f"HTTP {response.status_code}"
-            print(f"[VIDEO FETCH] {err_msg} for {url}", flush=True)
+            print(f"[VIDEO FETCH] {err_msg} for {url_to_fetch}", flush=True)
             return None, err_msg
     except requests.exceptions.Timeout:
         return None, "Connection timeout"
