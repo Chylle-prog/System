@@ -222,10 +222,11 @@ def normalize_for_ocr(s):
     return re.sub(r'[^a-z0-9\s]', ' ', s.lower()).strip()
 
 
-def _perform_text_matching(ocr_text, target_first_name=None, target_last_name=None, target_address=None, keywords=None, is_indigency=False):
+def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=None, target_last_name=None, target_address=None, keywords=None, is_indigency=False):
     """
     Unified fuzzy matching logic for names, addresses, and keywords.
-    Checks first name and last name individually if provided.
+    Checks first name, middle name (full or initial), and last name individually if provided.
+    Middle name can match either the full name or just the first letter (initial).
     Returns: (name_ok, addr_ok, keywords_found, match_ratio)
     """
     if not ocr_text.strip(): 
@@ -234,35 +235,49 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_last_name=No
     norm_txt = normalize_for_ocr(ocr_text)
     all_ocr_words = norm_txt.split()
     
-    # 1. Name Matching (Individual First and Last Name Parts)
+    # 1. Name Matching (Individual First, Middle, and Last Name Parts)
     n_verified = True
     m_ratio = 1.0
     
-    if target_first_name or target_last_name:
-        def check_name_part(name_part):
+    if target_first_name or target_middle_name or target_last_name:
+        def check_name_part(name_part, is_middle=False):
             if not name_part: return True, 1.0
             n_words = [w.strip() for w in normalize_for_ocr(name_part).split() if len(w.strip()) >= 2]
             if not n_words: n_words = [w.strip() for w in normalize_for_ocr(name_part).split() if w.strip()]
             f_count = 0
             for word in n_words:
-                if word in norm_txt: f_count += 1; continue
-                found_approx = False
-                for ocr_w in all_ocr_words:
-                    if len(ocr_w) < 2: continue
-                    if difflib.SequenceMatcher(None, word, ocr_w).ratio() >= (0.7 if is_indigency else 0.8):
-                        f_count += 1; found_approx = True; break
-                if found_approx: continue
+                # For middle names, also accept just the first letter (initial)
+                words_to_check = [word]
+                if is_middle and len(word) > 1:
+                    words_to_check.append(word[0])  # Add initial
+                
+                found = False
+                for check_word in words_to_check:
+                    if check_word in norm_txt: f_count += 1; found = True; break
+                    found_approx = False
+                    for ocr_w in all_ocr_words:
+                        if len(ocr_w) < 2: continue
+                        if difflib.SequenceMatcher(None, check_word, ocr_w).ratio() >= (0.7 if is_indigency else 0.8):
+                            f_count += 1; found_approx = True; break
+                    if found_approx: found = True; break
             
             p_ratio = f_count / len(n_words) if n_words else 0
             # Require at least one word to match or a high ratio
             return p_ratio >= (0.4 if is_indigency else 0.5), p_ratio
 
-        first_ok, first_ratio = check_name_part(target_first_name)
-        last_ok, last_ratio = check_name_part(target_last_name)
+        first_ok, first_ratio = check_name_part(target_first_name, is_middle=False)
+        middle_ok, middle_ratio = check_name_part(target_middle_name, is_middle=True)
+        last_ok, last_ratio = check_name_part(target_last_name, is_middle=False)
         
-        # Both must pass for full verification
-        n_verified = first_ok and last_ok
-        m_ratio = (first_ratio + last_ratio) / 2
+        # All present names must pass for full verification
+        n_verified = first_ok and middle_ok and last_ok
+        num_names = sum([bool(target_first_name), bool(target_middle_name), bool(target_last_name)])
+        if num_names > 0:
+            m_ratio = sum([first_ratio if target_first_name else 0, 
+                          middle_ratio if target_middle_name else 0, 
+                          last_ratio if target_last_name else 0]) / num_names
+        else:
+            m_ratio = 1.0
 
     # 2. Address Matching
     a_verified = True
@@ -311,7 +326,7 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_last_name=No
     return n_verified, a_verified, found_keywords, m_ratio
 
 
-def verify_id_with_ocr(image_bytes, expected_first_name, expected_last_name, expected_address=None):
+def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, expected_last_name, expected_address=None):
     """
     Optimized version with multiple improvements:
     1. Image quality pre-check (Optimization #3)
@@ -319,6 +334,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_last_name, exp
     3. Parallel PSM execution (Optimization #1)
     4. Early exit on successful match
     5. Single decode/resize pass
+    6. Middle name validation: accepts full middle name or initial
     """
     if not _check_tesseract(): 
         return False, "OCR Engine (Tesseract) not found.", "", 0.0
@@ -332,7 +348,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_last_name, exp
     cached_result = _cache_get(image_hash)
     if cached_result is not None:
         cached_text, cached_ratio, cached_message = cached_result
-        name_v, addr_v, found_kw, score = _perform_text_matching(cached_text, expected_first_name, expected_last_name, expected_address, None, is_indigency)
+        name_v, addr_v, found_kw, score = _perform_text_matching(cached_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, None, is_indigency)
         if name_v and addr_v:
             print(f"[OCR CACHE HIT] Reusing previous results for {image_hash[:8]}...", flush=True)
             return True, f"Verified (cached)", cached_text, 1.0
@@ -370,7 +386,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_last_name, exp
         print(f"[OCR] PSM3 error: {e}", flush=True)
         best_text = ""
     
-    name_v, addr_v, found_kw, best_ratio = _perform_text_matching(best_text, expected_first_name, expected_last_name, expected_address, None, is_indigency)
+    name_v, addr_v, found_kw, best_ratio = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, None, is_indigency)
     if name_v and addr_v:
         _cache_set(image_hash, (best_text, best_ratio, "verified_psm3"))
         return True, "Verified", best_text, 1.0

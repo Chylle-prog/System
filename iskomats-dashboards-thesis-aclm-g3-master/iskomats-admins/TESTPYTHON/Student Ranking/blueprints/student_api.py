@@ -1624,7 +1624,7 @@ def ocr_check():
                     return {'doc': doc_type, 'verified': False, 'message': f"Video verification failed: {msg_video}", 'video_verified': False, 'video_message': msg_video}
                 
                 # 1.b OCR Extraction from document image
-                v, msg, raw, _ = verify_id_with_ocr(doc_bytes, full_expected_name, town_city)
+                v, msg, raw, _ = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, town_city)
                 raw_lower = raw.lower() if raw else ""
                 
                 # If primary OCR extraction failed, return error
