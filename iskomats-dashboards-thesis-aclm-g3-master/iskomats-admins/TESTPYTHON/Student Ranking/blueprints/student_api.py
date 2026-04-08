@@ -2223,9 +2223,9 @@ def convert_and_upload_video():
                 converted_bytes,
                 {
                     'content-type': 'video/mp4',
-                    'cache-control': '3600',
-                    'upsert': True
-                }
+                    'cache-control': '3600'
+                },
+                file_options={'upsert': True}
             )
             
             # Get public URL
@@ -2357,9 +2357,9 @@ def batch_convert_videos():
                         converted_bytes,
                         {
                             'content-type': 'video/mp4',
-                            'cache-control': '3600',
-                            'upsert': True
-                        }
+                            'cache-control': '3600'
+                        },
+                        file_options={'upsert': True}
                     )
                     
                     new_url = supabase.storage.from_('document_videos').get_public_url(new_file_path)
