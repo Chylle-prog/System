@@ -612,7 +612,8 @@ const StudentInfo = () => {
           id_vid_url: 'face_video',
           indigency_vid_url: 'mayorIndigency_video',
           grades_vid_url: 'mayorGrades_video',
-          enrollment_certificate_vid_url: 'mayorCOE_video'
+          enrollment_certificate_vid_url: 'mayorCOE_video',
+          schoolId_vid_url: 'schoolId_video'
         };
 
         const loadedVideos = {};
@@ -1062,9 +1063,9 @@ const StudentInfo = () => {
   };
 
   const handleIdScan = async () => {
-    const idFront = schoolIdPhotos.front;
-    const idBack = schoolIdPhotos.back;
-    const videoUrl = formData.schoolId_video || documentVideos.schoolId_video;
+    const idFront = schoolIdPhotos.front || userProfile?.id_img_front;
+    const idBack = schoolIdPhotos.back || userProfile?.id_img_back;
+    const videoUrl = formData.schoolId_video || documentVideos.schoolId_video || userProfile?.schoolId_vid_url;
 
     if (!idFront || !idBack) {
       showPromptMessage('⚠️ Please upload both front and back of your School ID first.');
@@ -1183,7 +1184,7 @@ const StudentInfo = () => {
     }
 
     if (currentStep === 3) {
-      if ((!schoolIdPhotos.front && !userProfile?.has_id_img_front) || (!schoolIdPhotos.back && !userProfile?.has_id_img_back)) {
+      if ((!schoolIdPhotos.front && !userProfile?.id_img_front) || (!schoolIdPhotos.back && !userProfile?.id_img_back)) {
         showPromptMessage('⚠️ Please upload both front and back of your School ID.');
         return;
       }
@@ -1287,9 +1288,9 @@ const StudentInfo = () => {
     // Validate Identity Verification
     // Both front/back School ID are still required for the backend
     if (
-      (!photos.id_front && !userProfile?.has_id_img_front) ||
-      (!photos.id_back && !userProfile?.has_id_img_back) ||
-      (!photos.face_photo && !userProfile?.has_face_photo)
+      (!schoolIdPhotos.front && !userProfile?.id_img_front) ||
+      (!schoolIdPhotos.back && !userProfile?.id_img_back) ||
+      (!photos.face_photo && !userProfile?.id_pic)
     ) {
       showPromptMessage('⚠️ Please complete Identity Verification: Upload Front/Back School ID and a Face Photo.');
       return;
@@ -2320,18 +2321,64 @@ const StudentInfo = () => {
                 </h4>
                 <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1.2rem', paddingLeft: '16px'}}>Photo (.png/jpg) and Video recording</p>
                 
+                <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem', paddingLeft: '16px'}}>
+                  <span style={{fontSize: '0.8rem', color: '#555', fontWeight: '600'}}>ID Photos</span>
+                  {(schoolIdPhotos.front || schoolIdPhotos.back || userProfile?.id_img_front || userProfile?.id_img_back) && (
+                    <span style={{fontSize: '0.75rem', color: '#27ae60', fontWeight: '600', padding: '2px 8px', background: '#e8f5e9', borderRadius: '10px', border: '1px solid #c8e6c9'}}>
+                      <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> Files Active
+                    </span>
+                  )}
+                </div>
                 <div className="form-row" style={{paddingLeft: '16px', marginBottom: '1.5rem'}}>
                   <div className="form-group">
                     <label style={{fontSize: '0.8rem', color: '#555'}}>Front Side</label>
                     <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} required={currentStep === 3} />
-                    {schoolIdPhotos.front && <img src={schoolIdPhotos.front} style={{marginTop: '10px', width: '100%', maxWidth: '130px', borderRadius: '8px'}} alt="Front Preview" />}
+                    {(schoolIdPhotos.front || userProfile?.id_img_front) && <img src={schoolIdPhotos.front || userProfile?.id_img_front} style={{marginTop: '10px', width: '100%', maxWidth: '130px', borderRadius: '8px'}} alt="Front Preview" />}
                   </div>
                   <div className="form-group">
                     <label style={{fontSize: '0.8rem', color: '#555'}}>Back Side</label>
                     <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} required={currentStep === 3} />
-                    {schoolIdPhotos.back && <img src={schoolIdPhotos.back} style={{marginTop: '10px', width: '100%', maxWidth: '130px', borderRadius: '8px'}} alt="Back Preview" />}
+                    {(schoolIdPhotos.back || userProfile?.id_img_back) && <img src={schoolIdPhotos.back || userProfile?.id_img_back} style={{marginTop: '10px', width: '100%', maxWidth: '130px', borderRadius: '8px'}} alt="Back Preview" />}
                   </div>
                 </div>
+
+                {(schoolIdPhotos.front || userProfile?.id_img_front) && (schoolIdPhotos.back || userProfile?.id_img_back) && (
+                  <div style={{paddingLeft: '16px', marginBottom: '1rem'}}>
+                    <button 
+                      type="button" 
+                      onClick={handleIdScan}
+                      disabled={isSavingStep}
+                      style={{
+                        padding: '0.6rem 1.2rem',
+                        borderRadius: '30px',
+                        background: idVerified === 'success' ? '#2ecc71' : 'var(--primary)',
+                        color: 'white',
+                        border: 'none',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '0.9rem',
+                        fontWeight: '600',
+                        transition: 'all 0.3s ease'
+                      }}
+                    >
+                      <i className={`fas ${idVerified === 'verifying' ? 'fa-spinner fa-spin' : 'fa-search'}`}></i>
+                      {idVerified === 'success' ? 'Verified!' : 'Scan School ID'}
+                    </button>
+                    {idStatus && (
+                      <div style={{
+                        fontSize: '0.85rem', 
+                        color: idVerified === 'success' ? '#27ae60' : (idVerified === 'failed' ? '#e74c3c' : '#666'),
+                        fontWeight: '500',
+                        marginTop: '0.5rem'
+                      }}>
+                        {idVerified === 'success' && <i className="fas fa-check-circle" style={{marginRight: '5px'}}></i>}
+                        {idStatus}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div style={{marginTop: '1rem'}}>
                   <div style={{flex: '1', minWidth: '220px'}}>

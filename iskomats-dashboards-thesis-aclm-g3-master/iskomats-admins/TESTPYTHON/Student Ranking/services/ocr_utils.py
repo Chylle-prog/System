@@ -394,7 +394,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     # Early exit: if we have a good partial match, check address and return
     threshold = 0.4 if is_indigency else 0.6
     if best_ratio >= threshold:
-        _, addr_ok, _, _ = _perform_text_matching(best_text, None, None, None, None, is_indigency)
+        _, addr_ok, _, _ = _perform_text_matching(best_text, None, None, None, None, None, is_indigency)
         if addr_ok:
             _cache_set(image_hash, (best_text, best_ratio, "verified_threshold"))
             return True, "Verified", best_text, 1.0
@@ -457,7 +457,7 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
             all_ocr_text += " " + text
             
             # Check current text against requirements
-            _, addr_ok, found_keywords, _ = _perform_text_matching(all_ocr_text, None, None, None, keywords, is_indigency=True)
+            _, addr_ok, found_keywords, _ = _perform_text_matching(all_ocr_text, None, None, None, None, keywords=keywords, is_indigency=True)
             missing_kw = [kw for kw in (keywords or []) if kw not in found_keywords]
             
             # Fast exit: if all required keywords (and address if needed) are found, stop early
