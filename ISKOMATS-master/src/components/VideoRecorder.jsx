@@ -107,7 +107,7 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
         <div style={{ position: 'relative', width: '100%', maxWidth: '250px', margin: '0 auto' }}>
           {console.log(`Rendering video for ${label}:`, previewUrl)}
           {videoError ? (
-            // Error state: show download link instead
+            // Error state: show helpful message and download link
             <div style={{
               padding: '1.5rem',
               textAlign: 'center',
@@ -117,53 +117,69 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
               color: '#c53030'
             }}>
               <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⚠️</div>
-              <p style={{ fontSize: '0.85rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+              <p style={{ fontSize: '0.85rem', fontWeight: '600', marginBottom: '0.25rem' }}>
                 Video Format Not Supported
               </p>
-              <p style={{ fontSize: '0.75rem', color: '#a0aec0', marginBottom: '1rem', lineHeight: '1.4' }}>
-                The video format cannot be played in the browser. However, your video is safely stored.
+              <p style={{ fontSize: '0.7rem', color: '#a0aec0', marginBottom: '1rem', lineHeight: '1.5' }}>
+                This video is stored in a format that your browser cannot play directly. 
+                <br />
+                The system is being updated to convert these videos automatically.
+                <br />
+                You can download the video to view it locally, or upload a new MP4 file.
               </p>
-              <a
-                href={previewUrl}
-                download
-                style={{
-                  display: 'inline-block',
-                  padding: '0.5rem 1rem',
-                  background: '#c53030',
-                  color: 'white',
-                  textDecoration: 'none',
-                  borderRadius: '6px',
-                  fontSize: '0.85rem',
-                  fontWeight: '600',
-                  marginRight: '0.5rem',
-                  cursor: 'pointer'
-                }}
-              >
-                <i className="fas fa-download" style={{ marginRight: '6px' }}></i>
-                Download Video
-              </a>
-              <button
-                type="button"
-                onClick={() => {
-                  setPreviewUrl(null);
-                  setFileName('');
-                  setVideoError(null);
-                  if (onRecordComplete) onRecordComplete(null, null);
-                }}
-                style={{
-                  padding: '0.5rem 1rem',
-                  background: '#e2e8f0',
-                  color: '#2d3748',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '0.85rem',
-                  fontWeight: '600',
-                  cursor: 'pointer'
-                }}
-              >
-                <i className="fas fa-redo" style={{ marginRight: '6px' }}></i>
-                Try Again
-              </button>
+              
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                <a
+                  href={previewUrl}
+                  download
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    padding: '0.5rem 0.75rem',
+                    background: '#c53030',
+                    color: 'white',
+                    textDecoration: 'none',
+                    borderRadius: '6px',
+                    fontSize: '0.8rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    border: 'none'
+                  }}
+                >
+                  <i className="fas fa-download" style={{ marginRight: '4px' }}></i>
+                  Download
+                </a>
+                
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviewUrl(null);
+                    setFileName('');
+                    setVideoError(null);
+                    if (onRecordComplete) onRecordComplete(null, null);
+                  }}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    background: '#e2e8f0',
+                    color: '#2d3748',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '0.8rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center'
+                  }}
+                >
+                  <i className="fas fa-redo" style={{ marginRight: '4px' }}></i>
+                  Upload New
+                </button>
+              </div>
+              
+              <p style={{ fontSize: '0.65rem', color: '#718096', marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid #fed7d7' }}>
+                <i className="fas fa-info-circle" style={{ marginRight: '4px' }}></i>
+                Video ID: {previewUrl ? previewUrl.split('/').pop()?.slice(0, 20) : 'Unknown'}
+              </p>
             </div>
           ) : (
             <video 
