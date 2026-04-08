@@ -27,7 +27,7 @@ import {
   FaUsersCog,
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
-import { adminAPI } from '../../services/api';
+import { adminAPI, scholarshipAPI } from '../../services/api';
 import socketService from '../../services/socket';
 
 const ACTION_EVENT_OPTIONS = [
