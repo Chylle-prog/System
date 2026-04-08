@@ -52,110 +52,77 @@ def convert_video_to_mp4(video_bytes, output_format='mp4'):
         bytes: Converted video data, or original bytes if conversion fails
     """
     if not video_bytes:
-        log_msg(f"[VIDEO CONVERT] Empty input, returning empty")
         return video_bytes
-    
-    log_msg(f"[VIDEO CONVERT] Starting conversion: {len(video_bytes)} bytes input")
-    
+
     # Check if ffmpeg is available
     if not is_ffmpeg_available():
-        log_msg("[VIDEO CONVERT] ffmpeg not available, returning original bytes")
+        log_msg("[VIDEO CONVERT] ffmpeg not available, returning original video bytes")
         return video_bytes
-    
-    input_path = None
-    output_path = None
-    
+
     try:
-        # Create temp input file
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.tmp') as input_file:
+        # Create temp files for input and output
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.webm') as input_file:
             input_file.write(video_bytes)
             input_path = input_file.name
-        
-        output_path = input_path.replace('.tmp', f'.{output_format}')
-        log_msg(f"[VIDEO CONVERT] Input written to: {input_path}")
-        
-        # First, try to get input info
-        log_msg(f"[VIDEO CONVERT] Probing input file...")
-        probe_cmd = ['ffmpeg', '-i', input_path, '-hide_banner']
-        probe_result = subprocess.run(probe_cmd, capture_output=True, timeout=30, text=True)
-        probe_stderr = probe_result.stderr
-        
-        # Log first part of probe output
-        log_msg(f"[VIDEO CONVERT] Probe output (first 300 chars): {probe_stderr[:300]}")
-        
-        # Try conversion with minimal encoding
-        log_msg(f"[VIDEO CONVERT] Running FFmpeg conversion...")
-        cmd = [
-            'ffmpeg',
-            '-i', input_path,           # Input
-            '-c:v', 'libx264',          # H.264 video codec
-            '-preset', 'ultrafast',     # Fastest preset
-            '-crf', '30',               # Lower quality for speed (0-51)
-            '-c:a', 'aac',              # AAC audio
-            '-b:a', '96k',              # Lower audio bitrate
-            '-movflags', '+faststart',  # Enable progressive download
-            '-hide_banner',
-            '-loglevel', 'info',
-            '-y',                       # Overwrite without asking
-            output_path
-        ]
-        
-        log_msg(f"[VIDEO CONVERT] FFmpeg command: {' '.join(cmd)}")
-        
-        result = subprocess.run(cmd, capture_output=True, timeout=300, text=True)
-        
-        log_msg(f"[VIDEO CONVERT] FFmpeg return code: {result.returncode}")
-        if result.stderr:
-            log_msg(f"[VIDEO CONVERT] FFmpeg stderr (first 500 chars): {result.stderr[:500]}")
-        
-        # Check if file was created
-        if not os.path.exists(output_path):
-            log_msg(f"[VIDEO CONVERT] ERROR: Output file not created at {output_path}")
-            log_msg(f"[VIDEO CONVERT] Directory exists: {os.path.exists(os.path.dirname(output_path))}")
-            return video_bytes
-        
-        output_size = os.path.getsize(output_path)
-        log_msg(f"[VIDEO CONVERT] Output file size: {output_size} bytes")
-        
-        # Read the output file
-        with open(output_path, 'rb') as f:
-            output_data = f.read()
-        
-        actual_size = len(output_data)
-        log_msg(f"[VIDEO CONVERT] Actual bytes read: {actual_size}")
-        
-        # Validate the output is a valid MP4
-        if actual_size < 1000:
-            log_msg(f"[VIDEO CONVERT] Output file too small ({actual_size} bytes), likely corrupted")
-            return video_bytes
-        
-        # Check for MP4 signature
-        if not (output_data[4:8] == b'ftyp' or output_data.find(b'ftyp') > -1):
-            log_msg(f"[VIDEO CONVERT] Output missing ftyp header, likely corrupted")
-            log_msg(f"[VIDEO CONVERT] First 20 bytes: {output_data[:20]}")
-            return video_bytes
-        
-        compression = (1 - actual_size / len(video_bytes)) * 100
-        log_msg(f"[VIDEO CONVERT] SUCCESS: {len(video_bytes)} → {actual_size} bytes ({compression:.1f}% reduction)")
-        return output_data
-        
-    except subprocess.TimeoutExpired:
-        log_msg(f"[VIDEO CONVERT] ERROR: FFmpeg timeout (>300s)")
-        return video_bytes
-    except Exception as e:
-        log_msg(f"[VIDEO CONVERT] ERROR: {type(e).__name__}: {str(e)}")
-        import traceback
-        log_msg(traceback.format_exc())
-        return video_bytes
-    finally:
-        # Cleanup temp files
-        for path in [input_path, output_path]:
-            if path and os.path.exists(path):
+
+        output_path = input_path.replace('.webm', f'.{output_format}')
+
+        try:
+            log_msg(f"[VIDEO CONVERT] Starting conversion: {len(video_bytes)} bytes")
+            
+            # Convert WebM to MP4 with H.264 codec
+            # -c:v libx264: Use H.264 codec (widely supported)
+            # -preset fast: Fast encoding (balance quality/speed)
+            # -crf 23: Quality (0-51, lower=better, 23=default)
+            # -c:a aac: Use AAC audio codec (widely supported)
+            # -movflags +faststart: Enable streaming from start
+            cmd = [
+                'ffmpeg',
+                '-i', input_path,
+                '-c:v', 'libx264',        # H.264 codec
+                '-preset', 'fast',         # Fast encoding
+                '-crf', '23',              # Quality
+                '-c:a', 'aac',             # Audio codec
+                '-b:a', '128k',            # Audio bitrate
+                '-movflags', '+faststart', # Enable streaming
+                '-y',                      # Overwrite output
+                output_path
+            ]
+
+            log_msg(f"[VIDEO CONVERT] Running ffmpeg command")
+            # Run ffmpeg
+            result = subprocess.run(cmd,
+                                  capture_output=True,
+                                  timeout=120,
+                                  text=True)
+
+            if result.returncode != 0:
+                log_msg(f"[VIDEO CONVERT] ffmpeg error: {result.stderr[:300]}")
+                return video_bytes  # Return original on error
+
+            # Read converted file
+            with open(output_path, 'rb') as f:
+                converted_bytes = f.read()
+
+            log_msg(f"[VIDEO CONVERT] Successfully converted {len(video_bytes)} bytes to {len(converted_bytes)} bytes")
+            return converted_bytes
+
+        finally:
+            # Cleanup temp files
+            if os.path.exists(input_path):
                 try:
-                    os.remove(path)
-                    log_msg(f"[VIDEO CONVERT] Deleted temp file: {path}")
-                except Exception as e:
-                    log_msg(f"[VIDEO CONVERT] Failed to delete {path}: {e}")
+                    os.remove(input_path)
+                except:
+                    pass
+            if os.path.exists(output_path):
+                try:
+                    os.remove(output_path)
+                except:
+                    pass
+
+    except Exception as e:
+        log_msg(f"[VIDEO CONVERT] Error converting video: {e}")
+        return video_bytes  # Return original on error
         return video_bytes  # Return original on error
 
 def transcode_video_for_streaming(video_bytes):
