@@ -416,39 +416,36 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
         if frame_count <= 0:
             return False, "Invalid video frame count"
             
-        # Sample points: 10%, 50%, 90%
-        samples = [int(frame_count * 0.1), int(frame_count * 0.5), int(frame_count * 0.9)]
+        # Grab frames at 40% and 70% to ensure document visibility while minimizing OCR load
+        sample_indexes = [int(frame_count * 0.4), int(frame_count * 0.7)]
+        all_ocr_text = ""
+        found_keywords = []
+        addr_ok = False
         
-        # --- Fast Check: If Frame 1 has no text at all, fail early ---
-        cap.set(cv2.CAP_PROP_POS_FRAMES, samples[0])
-        ret, first_frame = cap.read()
-        if ret and first_frame is not None:
-            fast_text = _run_tesseract_on_image(first_frame, psm=11)
-            if len(fast_text.strip()) < 5:
-                cap.release()
-                return False, "Low content quality: No document text detected in video."
-        
-        # --- Sequential Frame Processing ---
-        # Same as above, serialize to prevent multi-process thrashing
-        def process_frame(idx):
-            cap_internal = cv2.VideoCapture(tmp_path)
-            cap_internal.set(cv2.CAP_PROP_POS_FRAMES, idx)
-            ret_f, frame_f = cap_internal.read()
-            cap_internal.release()
-            if not ret_f or frame_f is None: return ""
-            return _run_tesseract_on_image(frame_f, psm=11)
-
-        ocr_results = []
-        # Run sequentially. Do NOT use ThreadPoolExecutor here, as multiple Tesseract 
-        # binaries running concurrently will cause an instant OOM crash on Render's 512MB RAM tier.
-        for idx in samples:
-            res = process_frame(idx)
-            if res: ocr_results.append(res)
+        for idx in sample_indexes:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ret, frame = cap.read()
+            if not ret or frame is None: continue
             
-        all_ocr_text = " ".join(ocr_results)
-        
-        # Use unified matching logic
-        _, addr_ok, found_keywords, _ = _perform_text_matching(all_ocr_text, None, None, None, keywords, is_indigency=True)
+            # Resize frame down to OCR bounds to drastically reduce Tesseract processing time
+            # (Mobile videos are often 1080p/4K, which crashes or severely lags Tesseract)
+            h, w = frame.shape[:2]
+            if w > _MAX_OCR_WIDTH:
+                scale = _MAX_OCR_WIDTH / w
+                frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+                
+            text = _run_tesseract_on_image(frame, psm=11)
+            all_ocr_text += " " + text
+            
+            # Check current text against requirements
+            _, addr_ok, found_keywords, _ = _perform_text_matching(all_ocr_text, None, None, None, keywords, is_indigency=True)
+            missing_kw = [kw for kw in (keywords or []) if kw not in found_keywords]
+            
+            # Fast exit: if all required keywords (and address if needed) are found, stop early
+            if not missing_kw and (not expected_address or addr_ok):
+                break
+                
+        cap.release()
         
         missing_kw = [kw for kw in (keywords or []) if kw not in found_keywords]
         
