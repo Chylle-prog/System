@@ -177,7 +177,7 @@ def batch_convert_videos():
                         {
                             'content-type': 'video/mp4',
                             'cache-control': '3600',
-                            'upsert': True
+                            'upsert': 'true'
                         }
                     )
                     

@@ -71,7 +71,7 @@ def upload_converted_video_to_supabase(converted_bytes, original_url, field_name
             {
                 'content-type': 'video/mp4',
                 'cache-control': '3600',
-                'upsert': True  # Replace existing file
+                'upsert': 'true'  # Replace existing file
             }
         )
         

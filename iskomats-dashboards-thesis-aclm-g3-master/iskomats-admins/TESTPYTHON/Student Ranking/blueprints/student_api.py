@@ -2221,7 +2221,7 @@ def convert_and_upload_video():
             response = supabase.storage.from_('document_videos').upload(
                 file_path,
                 converted_bytes,
-                file_options={'upsert': True}
+                file_options={'upsert': 'true'}
             )
             
             # Get public URL
@@ -2351,7 +2351,7 @@ def batch_convert_videos():
                     supabase.storage.from_('document_videos').upload(
                         new_file_path,
                         converted_bytes,
-                        file_options={'upsert': True}
+                        file_options={'upsert': 'true'}
                     )
                     
                     new_url = supabase.storage.from_('document_videos').get_public_url(new_file_path)
