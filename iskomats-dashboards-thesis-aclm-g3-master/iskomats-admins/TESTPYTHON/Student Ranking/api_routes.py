@@ -3096,15 +3096,25 @@ def create_announcement(current_user_id, pro_no, role):
             provider_no=pro_no
         )
         
-        # Notify all students associated with this provider
+        # Notify students based on send_to_all_applicants flag
         try:
-            # Get all students for this provider
-            cur.execute("""
-                SELECT DISTINCT ast.applicant_no 
-                FROM applicant_status ast
-                JOIN scholarships s ON ast.scholarship_no = s.req_no
-                WHERE s.pro_no = %s
-            """, (pro_no,))
+            if send_to_all_applicants:
+                # Send to all applicants in the system
+                cur.execute("""
+                    SELECT DISTINCT a.applicant_no 
+                    FROM applicants a
+                    LEFT JOIN email e ON a.applicant_no = e.applicant_no
+                    WHERE e.email_address IS NOT NULL
+                """)
+            else:
+                # Send only to applicants who applied to this provider's scholarships
+                cur.execute("""
+                    SELECT DISTINCT ast.applicant_no 
+                    FROM applicant_status ast
+                    JOIN scholarships s ON ast.scholarship_no = s.req_no
+                    WHERE s.pro_no = %s
+                """, (pro_no,))
+            
             students = cur.fetchall()
             for student in students:
                 create_notification(
@@ -3122,7 +3132,7 @@ def create_announcement(current_user_id, pro_no, role):
             email_thread = threading.Thread(
                 target=send_announcement_emails,
                 args=(title, message, pro_no, provider_name),
-                kwargs={'send_to_all': True},
+                kwargs={'send_to_all': send_to_all_applicants},
                 daemon=True
             )
             email_thread.start()
