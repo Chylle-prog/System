@@ -117,6 +117,7 @@ function statusClasses(status) {
 export default function Dash() {
   const [submenus, setSubmenus] = useState({ reports: false });
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const userName = localStorage.getItem('userName') || 'Admin';
 
   const [accountModal, setAccountModal] = useState({ open: false, mode: 'add', data: null });
@@ -516,43 +517,57 @@ export default function Dash() {
   ];
 
   return (
-    <div className="min-h-screen flex bg-gradient-to-br from-gray-50 to-blue-50/30 pt-20">
-      <aside className="w-64 flex-shrink-0 bg-gradient-to-b from-[#800020] to-[#650018] text-white shadow-xl flex flex-col">
-        <h2 className="text-center text-xl font-bold py-6 flex items-center justify-center gap-2 border-b border-white/10 mx-4">
-          <FaTachometerAlt className="text-2xl" /> Iskomats Admin
+    <div className="h-screen flex bg-gradient-to-br from-gray-50 to-blue-50/30 pt-20">
+      <aside 
+        onMouseEnter={() => setSidebarCollapsed(false)}
+        onMouseLeave={() => setSidebarCollapsed(true)}
+        className={`flex-shrink-0 bg-gradient-to-b from-[#800020] to-[#650018] text-white shadow-xl flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'w-20' : 'w-64'}`}
+      >
+        <h2 className={`text-center font-bold py-6 flex items-center justify-center gap-2 border-b border-white/10 transition-all ${sidebarCollapsed ? 'px-2' : 'px-4'}`}>
+          <FaTachometerAlt className={`flex-shrink-0 transition-all ${sidebarCollapsed ? 'text-2xl' : 'text-lg'}`} />
+          {!sidebarCollapsed && <span className="text-xl font-bold whitespace-nowrap">Iskomats Admin</span>}
         </h2>
-        <nav className="flex-1 px-4 space-y-2 py-6">
-          <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'dashboard' ? 'bg-white/20' : 'hover:bg-white/10'}`}>
-            <FaTachometerAlt /> Dashboard
-          </button>
-          <button onClick={() => setActiveTab('manage-accounts')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'manage-accounts' ? 'bg-white/20' : 'hover:bg-white/10'}`}>
-            <FaUsersCog /> Manage Accounts
-          </button>
-
-          <div className="space-y-1">
-            <button onClick={() => toggleSubmenu('reports')} className="w-full flex items-center justify-between px-4 py-3 rounded-xl hover:bg-white/10">
-              <div className="flex items-center gap-3"><FaChartBar /> Reports</div>
-              <FaChevronDown className={`transition-transform ${submenus.reports ? 'rotate-180' : ''}`} />
+        <nav className="flex-1 space-y-2 overflow-y-auto transition-all">
+          <div className={`${sidebarCollapsed ? 'px-1' : 'px-4'} py-6 space-y-2`}>
+            <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-3 rounded-xl transition-all ${activeTab === 'dashboard' ? 'bg-white/20' : 'hover:bg-white/10'} ${sidebarCollapsed ? 'justify-center p-3' : 'px-4 py-3'}`}>
+              <FaTachometerAlt className="flex-shrink-0" />
+              {!sidebarCollapsed && <span>Dashboard</span>}
             </button>
-            {submenus.reports && (
-              <div className="ml-4 space-y-1 mt-1 border-l border-white/20 pl-2">
-                <button onClick={() => setActiveTab('account-reports')} className={`w-full text-left px-4 py-2 rounded-lg text-sm hover:bg-white/10 ${activeTab === 'account-reports' ? 'bg-white/20' : ''}`}>Account Reports</button>
-                <button onClick={() => setActiveTab('activity-reports')} className={`w-full text-left px-4 py-2 rounded-lg text-sm hover:bg-white/10 ${activeTab === 'activity-reports' ? 'bg-white/20' : ''}`}>Activity Reports</button>
-              </div>
-            )}
+            <button onClick={() => setActiveTab('manage-accounts')} className={`w-full flex items-center gap-3 rounded-xl transition-all ${activeTab === 'manage-accounts' ? 'bg-white/20' : 'hover:bg-white/10'} ${sidebarCollapsed ? 'justify-center p-3' : 'px-4 py-3'}`}>
+              <FaUsersCog className="flex-shrink-0" />
+              {!sidebarCollapsed && <span>Manage Accounts</span>}
+            </button>
+
+            <div className="space-y-1">
+              <button onClick={() => toggleSubmenu('reports')} className={`w-full flex items-center justify-between rounded-xl hover:bg-white/10 transition-all ${sidebarCollapsed ? 'justify-center p-3' : 'px-4 py-3'}`}>
+                <div className="flex items-center gap-3">
+                  <FaChartBar className="flex-shrink-0" />
+                  {!sidebarCollapsed && <span>Reports</span>}
+                </div>
+                {!sidebarCollapsed && <FaChevronDown className={`transition-transform ${submenus.reports ? 'rotate-180' : ''}`} />}
+              </button>
+              {submenus.reports && !sidebarCollapsed && (
+                <div className="ml-4 space-y-1 mt-1 border-l border-white/20 pl-2">
+                  <button onClick={() => setActiveTab('account-reports')} className={`w-full text-left px-4 py-2 rounded-lg text-sm hover:bg-white/10 ${activeTab === 'account-reports' ? 'bg-white/20' : ''}`}>Account Reports</button>
+                  <button onClick={() => setActiveTab('activity-reports')} className={`w-full text-left px-4 py-2 rounded-lg text-sm hover:bg-white/10 ${activeTab === 'activity-reports' ? 'bg-white/20' : ''}`}>Activity Reports</button>
+                </div>
+              )}
+            </div>
           </div>
         </nav>
-        <div className="p-4 border-t border-white/10 space-y-3">
-          <button onClick={() => setReportModal({ open: true })} className="w-full py-3 bg-white text-[#800020] font-black rounded-xl shadow-lg hover:bg-gray-100 transition-all flex items-center justify-center gap-2">
-            <FaPrint /> Generate Report
+        <div className={`border-t border-white/10 space-y-3 transition-all ${sidebarCollapsed ? 'p-2' : 'p-4'}`}>
+          <button onClick={() => setReportModal({ open: true })} className={`w-full py-3 bg-white text-[#800020] font-black rounded-xl shadow-lg hover:bg-gray-100 transition-all flex items-center justify-center gap-2 ${sidebarCollapsed ? 'p-3' : 'px-4'}`}>
+            <FaPrint className="flex-shrink-0" />
+            {!sidebarCollapsed && <span className="whitespace-nowrap">Generate Report</span>}
           </button>
-          <button onClick={() => loadDashboardData(false)} className="w-full py-3 bg-white/10 text-white font-black rounded-xl hover:bg-white/15 transition-all text-xs uppercase tracking-widest">
-            Refresh Data
+          <button onClick={() => loadDashboardData(false)} className={`w-full py-3 bg-white/10 text-white font-black rounded-xl hover:bg-white/15 transition-all text-xs uppercase tracking-widest flex items-center justify-center gap-2 ${sidebarCollapsed ? 'p-3' : 'px-4'}`}>
+            <span className="flex-shrink-0">⟳</span>
+            {!sidebarCollapsed && <span className="whitespace-nowrap">Refresh Data</span>}
           </button>
         </div>
       </aside>
 
-      <main className="flex-1 p-6 overflow-y-auto">
+      <main className="flex-1 p-6 overflow-y-auto h-full">
         <header className="bg-white rounded-2xl shadow-sm px-8 py-5 mb-8 flex items-center justify-between border border-gray-100">
           <div>
             <h1 className="text-2xl font-black text-[#800020] tracking-tight uppercase">{activeTab.replace('-', ' ')}</h1>
@@ -680,14 +695,15 @@ export default function Dash() {
                   </button>
                 </div>
 
-                <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden max-h-[calc(100vh-400px)]">
                   <div className="p-6 border-b border-gray-50 flex items-center gap-4">
                     <div className="relative flex-1">
                       <FaSearch className="absolute left-4 top-3.5 text-gray-300" />
                       <input value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} type="text" placeholder="Search by name, email, or ID..." className="w-full pl-12 pr-4 py-3 bg-gray-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-[#800020]" />
                     </div>
                   </div>
-                  <table className="w-full text-sm">
+                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                    <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-gray-50/50 text-left border-b border-gray-100">
                         <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Identified User</th>
@@ -731,6 +747,7 @@ export default function Dash() {
                       )}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               </div>
             )}
@@ -760,8 +777,9 @@ export default function Dash() {
                     </button>
                   </div>
                 </div>
-                <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-                  <table className="w-full text-sm">
+                <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden max-h-[calc(100vh-400px)]">
+                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                    <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-gray-50/50 text-left border-b border-gray-100">
                         <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Identified User</th>
@@ -826,8 +844,8 @@ export default function Dash() {
                     </button>
                   </div>
                 </div>
-                <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
-                  <div className="overflow-x-auto">
+                <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden max-h-[calc(100vh-400px)]">
+                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="bg-gray-50/50 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100">

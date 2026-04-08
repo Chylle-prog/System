@@ -61,6 +61,7 @@ export default function DashVilma() {
   const userFirstName = localStorage.getItem('userFirstName') || 'Admin';
 
   const [section, setSection] = useState('dashboard'); // dashboard | manage | track | reports | inbox | view-applicant
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [reportsView, setReportsView] = useState('tables'); // analytics | tables
   const [trackTab, setTrackTab] = useState('all'); // pending | all | accepted | declined
   const [typeFilter, setTypeFilter] = useState('all');
@@ -1692,7 +1693,7 @@ export default function DashVilma() {
           </select>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-gray-200">
+        <div className="overflow-y-auto rounded-xl border border-gray-200" style={{ maxHeight: 'calc(100vh - 500px)' }}>
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-[#800020] text-white">
@@ -2152,7 +2153,7 @@ export default function DashVilma() {
                 {/* Monthly Trends Table */}
                 <div className="lg:col-span-7 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                   <h4 className="text-lg font-bold text-gray-800 mb-6">Monthly Applications</h4>
-                  <div className="overflow-x-auto max-h-72">
+                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
                     <table className="w-full text-left text-sm">
                       <thead className="sticky top-0 bg-gray-50">
                         <tr className="bg-gray-50 border-b border-gray-100">
@@ -2212,7 +2213,7 @@ export default function DashVilma() {
                 {/* Course Distribution Table */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                   <h4 className="text-lg font-bold text-gray-800 mb-6">Course Distribution</h4>
-                  <div className="overflow-x-auto max-h-60">
+                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
                     <table className="w-full text-left text-sm">
                       <thead className="sticky top-0 bg-gray-50">
                         <tr className="bg-gray-50 border-b border-gray-100">
@@ -2262,7 +2263,7 @@ export default function DashVilma() {
                 {/* Financial Breakdown Table */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                   <h4 className="text-lg font-bold text-gray-800 mb-6">Financial Background</h4>
-                  <div className="overflow-x-auto max-h-60">
+                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
                     <table className="w-full text-left text-sm">
                       <thead className="sticky top-0 bg-gray-50">
                         <tr className="bg-gray-50 border-b border-gray-100">
@@ -2289,7 +2290,7 @@ export default function DashVilma() {
                 {/* Location Stats Table */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                   <h4 className="text-lg font-bold text-gray-800 mb-6">Location Analytics</h4>
-                  <div className="overflow-x-auto max-h-96">
+                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
                     <table className="w-full text-left text-sm">
                       <thead className="sticky top-0 bg-gray-50">
                         <tr className="bg-gray-50 border-b border-gray-100">
@@ -2328,7 +2329,7 @@ export default function DashVilma() {
                 {/* School Analytics Table */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                   <h4 className="text-lg font-bold text-gray-800 mb-6">School Distribution Table</h4>
-                  <div className="overflow-x-auto max-h-96">
+                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
                     <table className="w-full text-left text-sm">
                       <thead className="sticky top-0 bg-gray-50">
                         <tr className="bg-gray-50 border-b border-gray-100">
@@ -3279,49 +3280,51 @@ export default function DashVilma() {
   );
 
   return (
-    <div className="min-h-screen flex bg-gradient-to-br from-gray-50 to-blue-50/30 pt-20">
-      <aside className="w-72 flex-shrink-0 bg-gradient-to-b from-[#800020] to-[#650018] text-white shadow-2xl flex flex-col">
-        <div className="p-8 border-b border-white/10 mb-2">
+    <div className="h-screen flex bg-gradient-to-br from-gray-50 to-blue-50/30 pt-20">
+      <aside
+        onMouseEnter={() => setSidebarCollapsed(false)}
+        onMouseLeave={() => setSidebarCollapsed(true)}
+        className={`flex-shrink-0 bg-gradient-to-b from-[#800020] to-[#650018] text-white shadow-2xl flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'w-20' : 'w-72'}`}
+      >
+        <div className={`border-b border-white/10 mb-2 flex items-center justify-center transition-all ${sidebarCollapsed ? 'p-3' : 'p-8'}`}>
           <div className="flex flex-col items-center text-center gap-4">
-            <div className="w-20 h-20 rounded-2xl bg-white/10 backdrop-blur-md p-2 shadow-inner border border-white/20 flex items-center justify-center group overflow-hidden">
+            <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-md p-2 shadow-inner border border-white/20 flex items-center justify-center group overflow-hidden flex-shrink-0">
               <img src={logo} alt="Scholarship Logo" className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-500" />
             </div>
-            <div>
-              <h2 className="text-xl font-black tracking-tight leading-tight uppercase">Vilma</h2>
-              <p className="text-[10px] font-bold text-rose-200 tracking-[0.2em] uppercase opacity-70">Scholarship Program</p>
-            </div>
+            {!sidebarCollapsed && (
+              <div>
+                <h2 className="text-xl font-black tracking-tight leading-tight uppercase">Vilma</h2>
+                <p className="text-[10px] font-bold text-rose-200 tracking-[0.2em] uppercase opacity-70">Scholarship Program</p>
+              </div>
+            )}
           </div>
         </div>
-        <nav className="flex-1">
-          {[
-            { id: 'dashboard', label: 'Dashboard', icon: <FaChevronDown className="opacity-0" /> },
-            { id: 'manage', label: 'Manage', icon: <FaChevronDown className="opacity-0" /> },
-            { id: 'track', label: 'Track', icon: <FaChevronDown className="opacity-0" /> },
-            { id: 'reports', label: 'Reports', icon: <FaChevronDown className="opacity-0" /> },
-            { id: 'inbox', label: 'Inbox', icon: <FaChevronDown className="opacity-0" /> },
-          ].map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setSection(item.id)}
-              className={`w-full px-4 py-3 flex items-center justify-between hover:bg-[#650018] border-l-4 ${section === item.id ? 'border-rose-200 bg-[#650018]' : 'border-transparent'
-                }`}
-            >
-              <span className="flex items-center gap-2">
-                {item.id === 'dashboard' && <FaTachometerAlt />}
-                {item.id === 'manage' && <FaFilter />}
-                {item.id === 'track' && <FaUsers />}
-                {item.id === 'reports' && <FaChartBar />}
-                {item.id === 'inbox' && <FaInbox />}
-                {item.label}
-              </span>
-              {item.icon}
-            </button>
-          ))}
+        <nav className="flex-1 overflow-y-auto transition-all">
+          <div className={`${sidebarCollapsed ? 'px-1' : 'px-2'} py-4 space-y-1`}>
+            {[
+              { id: 'dashboard', label: 'Dashboard', icon: <FaTachometerAlt /> },
+              { id: 'manage', label: 'Manage', icon: <FaFilter /> },
+              { id: 'track', label: 'Track', icon: <FaUsers /> },
+              { id: 'reports', label: 'Reports', icon: <FaChartBar /> },
+              { id: 'inbox', label: 'Inbox', icon: <FaInbox /> },
+            ].map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setSection(item.id)}
+                className={`w-full flex items-center gap-3 rounded-xl transition-all ${
+                  section === item.id ? 'bg-white/20' : 'hover:bg-white/10'
+                } ${sidebarCollapsed ? 'justify-center p-3' : 'px-4 py-3'}`}
+              >
+                <span className="flex-shrink-0">{item.icon}</span>
+                {!sidebarCollapsed && <span className="whitespace-nowrap">{item.label}</span>}
+              </button>
+            ))}
+          </div>
         </nav>
       </aside>
 
-      <main className="flex-1 p-6 overflow-y-auto">
+      <main className="flex-1 p-6 overflow-y-auto h-full">
         <header className="bg-white rounded-xl shadow-sm px-6 py-4 mb-6 flex items-center justify-between">
           <div className="flex items-center gap-2 text-[#800020] font-bold text-xl">
             Vilma Scholarship Dashboard
