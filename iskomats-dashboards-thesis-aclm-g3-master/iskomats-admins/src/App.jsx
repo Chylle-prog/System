@@ -10,6 +10,7 @@ import ForgetPass from './Pages/Auth/Forget Pass/forget-pass'
 import Login from './Pages/Auth/Login/login'
 import Register from './Pages/Auth/Register/register'
 import ResetPass from './Pages/Auth/Reset Pass/reset-pass'
+import Suspended from './Pages/Auth/Suspended/suspended'
 import VerifyEmail from './Pages/Auth/VerifyE/verify-email'
 
 // Protected Route Component
@@ -48,6 +49,11 @@ function AppContent() {
   const location = useLocation();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState('');
+  const isSuspended = localStorage.getItem('accountSuspended') === 'true';
+
+  if (isSuspended && location.pathname !== '/suspended') {
+    return <Navigate to="/suspended" replace />;
+  }
 
   // Routes that should show navbar
   const dashboardRoutes = ['/dash', '/dash-africa', '/dash-vilma', '/dash-tulong'];
@@ -68,6 +74,7 @@ function AppContent() {
         <Route path='/' element={<Navigate to="/login" replace />} />
         <Route path='/login' element={<Login />} />
         <Route path='/register' element={<Register />} />
+        <Route path='/suspended' element={<Suspended />} />
         <Route path='/forget-password' element={<ForgetPass />} />
         <Route path='/reset-password' element={<ResetPass />} />
         <Route path='/reset-password/:token' element={<ResetPass />} />

@@ -7,6 +7,7 @@ import PrivateRoute from './pages/PrivateRoute';
 // Static imports for lightweight pages
 import Homepage from './pages/Homepage';
 import Login from './pages/Login';
+import Suspended from './pages/Suspended';
 import VerifyEmail from './pages/VerifyEmail';
 import ApplicantForgotPassword from './pages/ApplicantForgotPassword';
 
@@ -25,6 +26,65 @@ const LoadingFallback = () => (
   </div>
 );
 
+function RouteContent() {
+  const isSuspended = localStorage.getItem('accountSuspended') === 'true';
+
+  return (
+    <Routes>
+      <Route path="/suspended" element={<Suspended />} />
+      {isSuspended ? (
+        <Route path="*" element={<Navigate to="/suspended" replace />} />
+      ) : (
+        <>
+          <Route path="/" element={<Homepage />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/forgot-password" element={<ApplicantForgotPassword />} />
+          <Route path="/reset-password" element={
+            <Suspense fallback={<LoadingFallback />}>
+              <ResetPassword />
+            </Suspense>
+          } />
+          <Route path="/reset-password/:token" element={
+            <Suspense fallback={<LoadingFallback />}>
+              <ResetPassword />
+            </Suspense>
+          } />
+          <Route path="/portal" element={
+            <PrivateRoute>
+              <Suspense fallback={<LoadingFallback />}>
+                <Portal />
+              </Suspense>
+            </PrivateRoute>
+          } />
+          <Route path="/findscholarship" element={
+            <PrivateRoute>
+              <Suspense fallback={<LoadingFallback />}>
+                <FindScholarship />
+              </Suspense>
+            </PrivateRoute>
+          } />
+          <Route path="/profile" element={
+            <PrivateRoute>
+              <Suspense fallback={<LoadingFallback />}>
+                <Profile />
+              </Suspense>
+            </PrivateRoute>
+          } />
+          <Route path="/studentinfo" element={
+            <PrivateRoute>
+              <Suspense fallback={<LoadingFallback />}>
+                <StudentInfo />
+              </Suspense>
+            </PrivateRoute>
+          } />
+          <Route path="*" element={<Navigate to="/" />} />
+        </>
+      )}
+    </Routes>
+  );
+}
+
 function App() {
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -32,53 +92,7 @@ function App() {
     <GoogleOAuthProvider clientId={googleClientId}>
       <Router>
         <AuthProvider>
-          <Routes>
-            <Route path="/" element={<Homepage />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/verify-email" element={<VerifyEmail />} />
-            <Route path="/forgot-password" element={
-              <ApplicantForgotPassword />
-            } />
-            <Route path="/reset-password" element={
-              <Suspense fallback={<LoadingFallback />}>
-                <ResetPassword />
-              </Suspense>
-            } />
-            <Route path="/reset-password/:token" element={
-              <Suspense fallback={<LoadingFallback />}>
-                <ResetPassword />
-              </Suspense>
-            } />
-            <Route path="/portal" element={
-              <PrivateRoute>
-                <Suspense fallback={<LoadingFallback />}>
-                  <Portal />
-                </Suspense>
-              </PrivateRoute>
-            } />
-            <Route path="/findscholarship" element={
-              <PrivateRoute>
-                <Suspense fallback={<LoadingFallback />}>
-                  <FindScholarship />
-                </Suspense>
-              </PrivateRoute>
-            } />
-            <Route path="/profile" element={
-              <PrivateRoute>
-                <Suspense fallback={<LoadingFallback />}>
-                  <Profile />
-                </Suspense>
-              </PrivateRoute>
-            } />
-            <Route path="/studentinfo" element={
-              <PrivateRoute>
-                <Suspense fallback={<LoadingFallback />}>
-                  <StudentInfo />
-                </Suspense>
-              </PrivateRoute>
-            } />
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
+          <RouteContent />
         </AuthProvider>
       </Router>
     </GoogleOAuthProvider>

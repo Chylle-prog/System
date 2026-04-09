@@ -27,6 +27,10 @@ const Login = () => {
       setFormData(prev => ({ ...prev, error: "Your session has expired. Please log in again." }));
       localStorage.removeItem('session_expired');
     }
+
+    if (localStorage.getItem('accountSuspended') === 'true') {
+      navigate('/suspended', { replace: true });
+    }
   }, []);
 
   const handleChange = (e) => {
@@ -48,6 +52,7 @@ const Login = () => {
     try {
       // Call backend API for login
       const response = await authAPI.login(formData.email, formData.password);
+      localStorage.removeItem('accountSuspended');
       
       // Save authentication data to localStorage
       localStorage.setItem('authToken', response.data.token);
@@ -83,6 +88,11 @@ const Login = () => {
         if (error.response.status === 404) {
           errorMessage = "Email doesn't exist.";
         } else if (error.response.status === 403) {
+          if (error.response.data?.suspended) {
+            localStorage.setItem('accountSuspended', 'true');
+            navigate('/suspended', { replace: true });
+            return;
+          }
           // Check if it's an email verification error
           if (error.response.data?.message?.includes('not verified') || 
               error.response.data?.message?.includes('verify')) {

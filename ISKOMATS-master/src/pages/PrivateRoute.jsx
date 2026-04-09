@@ -6,6 +6,10 @@ const PrivateRoute = ({ children }) => {
   const { currentUser, userProfile, loading } = useAuth();
   const location = useLocation();
 
+  if (localStorage.getItem('accountSuspended') === 'true') {
+    return <Navigate to="/suspended" replace />;
+  }
+
   if (loading) {
     return (
       <div className="global-loader">

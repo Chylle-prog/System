@@ -25,6 +25,21 @@ api.interceptors.response.use(
   (error) => {
     const isLoginRequest = error.config?.url?.includes('/auth/login');
     const isLoginPage = window.location.pathname === '/login' || window.location.pathname === '/';
+    const errBody = error.response?.data || {};
+
+    if (error.response?.status === 403 && errBody.suspended) {
+      localStorage.setItem('accountSuspended', 'true');
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('isLoggedIn');
+      localStorage.removeItem('userRole');
+      localStorage.removeItem('userName');
+      localStorage.removeItem('userFirstName');
+      localStorage.removeItem('userEmail');
+
+      if (window.location.pathname !== '/suspended') {
+        window.location.href = '/suspended';
+      }
+    }
 
     if (error.response?.status === 401 && !isLoginRequest && !isLoginPage) {
       // Token expired or invalid

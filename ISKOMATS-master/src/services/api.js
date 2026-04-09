@@ -60,11 +60,12 @@ const makeRequest = async (endpoint, options = {}) => {
         let errBody;
         try { errBody = await response.json(); } catch (_) { errBody = {}; }
         if (errBody.suspended) {
+          localStorage.setItem('accountSuspended', 'true');
           localStorage.removeItem('authToken');
           localStorage.removeItem('currentUser');
           localStorage.removeItem('applicantNo');
-          if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-            window.location.href = '/login?suspended=1';
+          if (typeof window !== 'undefined' && window.location.pathname !== '/suspended') {
+            window.location.href = '/suspended';
           }
           throw new Error(errBody.message || 'Account has been suspended.');
         }
@@ -108,6 +109,7 @@ export const authAPI = {
       body: JSON.stringify({ email, password }),
     });
     if (response.token) {
+      localStorage.removeItem('accountSuspended');
       localStorage.setItem('authToken', response.token);
     }
     return response;
@@ -124,6 +126,7 @@ export const authAPI = {
       body: JSON.stringify({ idToken }),
     });
     if (response.token) {
+      localStorage.removeItem('accountSuspended');
       localStorage.setItem('authToken', response.token);
     }
     return response;

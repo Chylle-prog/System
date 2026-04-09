@@ -322,7 +322,7 @@ def token_required(f):
             if lock_record and lock_record.get('is_locked'):
                 cursor.close()
                 conn.close()
-                return jsonify({'message': 'Account has been suspended. Please contact the administrator.'}), 403
+                return jsonify({'message': 'Account has been suspended. Please contact the administrator.', 'suspended': True}), 403
                 
             cursor.close()
             conn.close()
@@ -1358,7 +1358,7 @@ def login():
                 provider_name=provider_name,
                 status='failed',
             )
-            return jsonify({'message': 'Account is locked. Please contact administrator.'}), 403
+            return jsonify({'message': 'Account has been suspended. Please contact the administrator.', 'suspended': True}), 403
         
         # Normalize role for frontend routing
         prov_name = provider_name

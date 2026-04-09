@@ -35,6 +35,11 @@ const Login = () => {
       setShowSuspensionModal(true);
     }
 
+    if (localStorage.getItem('accountSuspended') === 'true') {
+      navigate('/suspended', { replace: true });
+      return;
+    }
+
     if (localStorage.getItem('authToken') && localStorage.getItem('currentUser')) {
       // If we're already authenticated, only auto-redirect if we're NOT here for setup
       if (!isSetup) {
@@ -137,7 +142,8 @@ const Login = () => {
       } else if (error.message.includes('Invalid credentials')) {
         setErrorMessage('Invalid email or password.');
       } else if (error.message.toLowerCase().includes('suspended') || error.message.toLowerCase().includes('locked')) {
-        setShowSuspensionModal(true);
+        localStorage.setItem('accountSuspended', 'true');
+        navigate('/suspended', { replace: true });
         setShowError(false);
         setIsLoginLoading(false);
         setShowLoadingOverlay(false);
