@@ -32,7 +32,8 @@ const VerifyEmail = () => {
 
   const handleAutoVerification = async (token) => {
     try {
-      await authAPI.verifyEmail({ email, verificationCode: token });
+      const emailForVerify = localStorage.getItem('registrationEmail') || localStorage.getItem('userEmail') || email;
+      await authAPI.verifyEmail({ email: emailForVerify, verificationCode: token });
       setVerificationState("success");
       setFormData({ ...formData, success: true });
       

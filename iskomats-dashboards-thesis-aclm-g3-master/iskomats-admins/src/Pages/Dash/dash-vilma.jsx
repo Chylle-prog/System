@@ -1763,7 +1763,7 @@ export default function DashVilma() {
             <tbody>
               {trackTab === 'pending' &&
                 pendingTagged.map((a, i) => {
-                  const idx = data.applicants.indexOf(a);
+                  const idx = a._listIdx;
                   return (
                     <tr key={`pending-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className="px-4 py-3">
@@ -1818,7 +1818,7 @@ export default function DashVilma() {
 
               {trackTab === 'accepted' &&
                 acceptedList.map((a) => {
-                  const idx = data.accepted.indexOf(a);
+                  const idx = a._listIdx;
                   return (
                     <tr key={`accepted-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className="px-4 py-3">{a.name}</td>
@@ -1842,7 +1842,7 @@ export default function DashVilma() {
 
               {trackTab === 'declined' &&
                 declinedList.map((a) => {
-                  const idx = data.declined.indexOf(a);
+                  const idx = a._listIdx;
                   return (
                     <tr key={`declined-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className="px-4 py-3">{a.name}</td>
