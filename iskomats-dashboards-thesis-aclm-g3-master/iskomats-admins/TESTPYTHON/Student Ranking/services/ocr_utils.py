@@ -168,7 +168,7 @@ def _preprocess_strategy_c(img):
     _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return binary
 
-def _run_tesseract_on_image(img, psm=3, strategies=None):
+def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     """Internal helper to run OCR on an already decoded/resized image with specified strategies."""
     if img is None: return ""
     results = []
@@ -179,16 +179,17 @@ def _run_tesseract_on_image(img, psm=3, strategies=None):
     if text1.strip():
         results.append(text1.strip())
         
-    # Pass 2: Adaptive Thresholding (Fails on white-on-dark, but great for shadows on white paper)
-    try:
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        gray_clahe = clahe.apply(gray)
-        binary = cv2.adaptiveThreshold(gray_clahe, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 10)
-        text2 = pytesseract.image_to_string(binary, config=f'--psm {psm}')
-        if text2.strip() and text2.strip() not in results:
-            results.append(text2.strip())
-    except:
-        pass
+    # Pass 2: Adaptive Thresholding (Fails on white-on-dark, but great for shadows on paper)
+    if not skip_pass2:
+        try:
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            gray_clahe = clahe.apply(gray)
+            binary = cv2.adaptiveThreshold(gray_clahe, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 10)
+            text2 = pytesseract.image_to_string(binary, config=f'--psm {psm}')
+            if text2.strip() and text2.strip() not in results:
+                results.append(text2.strip())
+        except:
+            pass
     
     # If primary failed or multiple strategies requested, try fallbacks
     if strategies:
@@ -510,9 +511,10 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
             enhanced = preprocess_frame_for_ocr(frame)
 
             # Try PSM 3 (document layout) first, then PSM 11 (sparse) as fallback
-            text = _run_tesseract_on_image(enhanced, psm=3)
+            # skip_pass2 securely removes 50% of raw computational overhead per frame.
+            text = _run_tesseract_on_image(enhanced, psm=3, skip_pass2=True)
             if len(text.strip()) < 20:
-                text += " " + _run_tesseract_on_image(enhanced, psm=11)
+                text += " " + _run_tesseract_on_image(enhanced, psm=11, skip_pass2=True)
 
             text_accumulator += " " + text
             print(f"[VIDEO OCR] Frame {idx} scanned ({len(text.strip())} chars)...", flush=True)
