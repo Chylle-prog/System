@@ -2191,6 +2191,14 @@ def upload_video():
             
         print(f"[VIDEO-UPLOAD] Direct upload for User {current_user_id}: {field_name} "
               f"({file_size} bytes as {content_type}{ext})", flush=True)
+              
+        # OPTION A: Fix the Chrome MEDIA_ELEMENT_ERROR for mp4 local streams
+        # We only run the faststart copier for mp4/mov formats (takes 0mb memory)
+        # WebM handles streaming natively without container reconstruction.
+        from services.video_converter import faststart_video_stream
+        if ext in ['.mp4', '.mov']:
+            video_bytes = faststart_video_stream(video_bytes, ext=ext)
+            file_size = len(video_bytes)
 
         try:
             from supabase import create_client
