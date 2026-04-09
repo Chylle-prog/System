@@ -922,33 +922,64 @@ def student_reset_password():
 
     try:
         payload = decode_password_reset_token(token)
-        password_hash = bcrypt.generate_password_hash(new_password).decode('utf-8')
+        hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
+        # Robust payload extraction
+        user_no_raw = payload.get('user_no')
+        email = payload.get('email')
+        
+        try:
+            user_no = int(user_no_raw) if user_no_raw is not None else None
+        except (ValueError, TypeError):
+            print(f"[AUTH ERROR] Invalid user_no in token: {user_no_raw}", flush=True)
+            return jsonify({'message': 'Invalid token payload: invalid user identification'}), 400
+
+        print(f"[AUTH] Resetting password for student #{user_no} ({email})", flush=True)
+
+        if not user_no or not email:
+            print(f"[AUTH ERROR] Missing user_no or email in token: user_no={user_no}, email={email}", flush=True)
+            return jsonify({'message': 'Invalid token payload'}), 400
 
         conn = get_db()
+        if not conn:
+            print("[AUTH ERROR] Database connection failed during password reset", flush=True)
+            return jsonify({'message': 'Database connection error'}), 500
+            
         cur = conn.cursor()
+        
+        # Check if record exists first (for better error reporting)
+        cur.execute("SELECT applicant_no FROM email WHERE applicant_no = %s AND email_address ILIKE %s", (user_no, email))
+        if not cur.fetchone():
+            print(f"[AUTH ERROR] No matching student record found for applicant_no={user_no} and email={email}", flush=True)
+            cur.close()
+            conn.close()
+            return jsonify({'message': 'No matching account found. The link might be for a different user.'}), 404
+
+        # Update password
         cur.execute(
-            """
-            UPDATE email
-            SET password_hash = %s
-            WHERE applicant_no = %s AND email_address ILIKE %s
-            RETURNING em_no
-            """,
-            (password_hash, payload['user_no'], payload['email']),
+            "UPDATE email SET password_hash = %s WHERE applicant_no = %s AND email_address ILIKE %s",
+            (hashed_password, user_no, email)
         )
-        updated = cur.fetchone()
         conn.commit()
         
-        if not updated:
-            return jsonify({'message': 'Invalid or expired token'}), 400
+        affected = cur.rowcount
+        print(f"[AUTH SUCCESS] Rows updated: {affected}", flush=True)
+        
+        cur.close()
+        conn.close()
+        
+        if affected == 0:
+            return jsonify({'message': 'Failed to update password. Student record not found or unauthorized.'}), 404
 
-        return jsonify({'message': 'Password reset successfully'}), 200
+        return jsonify({'message': 'Password reset successful'})
     except jwt.ExpiredSignatureError:
+        print("[AUTH ERROR] Password reset token expired", flush=True)
         return jsonify({'message': 'Reset link has expired'}), 400
-    except jwt.InvalidTokenError:
+    except jwt.InvalidTokenError as e:
+        print(f"[AUTH ERROR] Invalid password reset token: {str(e)}", flush=True)
         return jsonify({'message': 'Invalid reset link'}), 400
-    except Exception as exc:
-        traceback.print_exc()
-        return jsonify({'message': f'Error resetting password: {str(exc)}'}), 500
+    except Exception as e:
+        print(f"[AUTH ERROR] Password reset exception: {traceback.format_exc()}", flush=True)
+        return jsonify({'message': f'An error occurred: {str(e)}'}), 500
     finally:
         if 'conn' in locals():
             conn.close()

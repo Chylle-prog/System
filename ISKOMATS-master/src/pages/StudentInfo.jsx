@@ -7,7 +7,8 @@ import { applicantAPI, applicationAPI } from '../services/api';
 const STEP_FIELDS = {
   1: [
     'lastName', 'firstName', 'middleName', 'maidenName', 'dateOfBirth', 'placeOfBirth',
-    'streetBarangay', 'townCity', 'province', 'zipCode', 'sex', 'citizenship',
+    'houseNo', 'streetName', 'subdivision', 'barangay',
+    'townCity', 'province', 'zipCode', 'sex', 'citizenship',
     'mobileNumber', 'mayorIndigency_photo'
   ],
   2: [
@@ -213,8 +214,10 @@ const StudentInfo = () => {
     firstName: '',
     middleName: '',
     maidenName: '',
-    dateOfBirth: '',
-    placeOfBirth: '',
+    houseNo: '',
+    streetName: '',
+    subdivision: '',
+    barangay: '',
     streetBarangay: '',
     townCity: '',
     province: '',
@@ -290,6 +293,8 @@ const StudentInfo = () => {
     let hasPayload = false;
 
     for (const fieldName of STEP_FIELDS[stepNumber] || []) {
+      if (['houseNo', 'streetName', 'subdivision', 'barangay', 'streetBarangay'].includes(fieldName)) continue;
+
       let value = formData[fieldName];
 
       if (value === undefined || value === null || value === '') {
@@ -304,6 +309,22 @@ const StudentInfo = () => {
       const payloadFieldName = DOCUMENT_UPLOAD_FIELD_MAP[fieldName] || fieldName;
       payload.append(payloadFieldName, typeof value === 'boolean' ? String(value) : value);
       hasPayload = true;
+    }
+
+    // Special handling for Step 1 Address concatenation
+    if (stepNumber === 1) {
+      const addrParts = [
+        formData.houseNo,
+        formData.streetName,
+        formData.subdivision,
+        formData.barangay
+      ].filter(p => p && p.trim() !== '');
+      
+      const combinedAddress = addrParts.length > 0 ? addrParts.join(', ') : formData.streetBarangay;
+      if (combinedAddress) {
+        payload.append('street_brgy', combinedAddress);
+        hasPayload = true;
+      }
     }
 
     if (stepNumber === 1 && idPicturePreview) {
@@ -1250,7 +1271,8 @@ const StudentInfo = () => {
       { name: 'middleName', label: 'Middle Name' },
       { name: 'dateOfBirth', label: 'Date of Birth' },
       { name: 'placeOfBirth', label: 'Place of Birth' },
-      { name: 'streetBarangay', label: 'Street & Barangay' },
+      { name: 'streetName', label: 'Street Name' },
+      { name: 'barangay', label: 'Barangay' },
       { name: 'townCity', label: 'Town/City' },
       { name: 'province', label: 'Province' },
       { name: 'zipCode', label: 'Zip Code' },
@@ -2079,9 +2101,24 @@ const StudentInfo = () => {
               </div>
 
               <div className="form-row">
-                <div className="form-group" style={{flex: '1'}}>
-                  <label>Street & Barangay <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="streetBarangay" value={formData.streetBarangay} onChange={handleInputChange} placeholder="Lot/Block/Street/Barangay" required />
+                <div className="form-group">
+                  <label>House / Block / Lot No.</label>
+                  <input type="text" name="houseNo" value={formData.houseNo} onChange={handleInputChange} placeholder="No. 123" />
+                </div>
+                <div className="form-group">
+                  <label>Street Name <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="text" name="streetName" value={formData.streetName} onChange={handleInputChange} placeholder="Narra Street" required />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Subdivision / Village</label>
+                  <input type="text" name="subdivision" value={formData.subdivision} onChange={handleInputChange} placeholder="Greenview Subd." />
+                </div>
+                <div className="form-group">
+                  <label>Barangay <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="text" name="barangay" value={formData.barangay} onChange={handleInputChange} placeholder="Barangay 1" required />
                 </div>
               </div>
 

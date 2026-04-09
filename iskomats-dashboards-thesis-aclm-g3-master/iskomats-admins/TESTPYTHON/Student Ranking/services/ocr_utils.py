@@ -18,7 +18,7 @@ from collections import OrderedDict
 
 # Global OCR Concurrency Control: Render free tier only has ~512MB RAM and 1-2 CPUs.
 # Running too many Tesserect/OCR tasks in parallel will cause OOM or freeze the whole process.
-OCR_SEMAPHORE = eventlet.semaphore.Semaphore(2)
+OCR_SEMAPHORE = eventlet.semaphore.Semaphore(1)
 
 
 # ─── Environment hints for threading & memory ──────────────────────────────────
@@ -492,14 +492,20 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
                 _cache_set(vid_hash, (False, "Invalid video frame count"))
                 return False, "Invalid video frame count"
             
-            # Frame positions to sample: frame 0 (best for static image-to-video), then 25%, 50%, 75%
-            # Frame 0 is tried first because converting an image to video always produces a clear first frame.
-            sample_positions = [0, 0.25, 0.5, 0.75]
+            # Frame positions to sample: Reduced to 2 for improved speed on Render Free Tier
+            sample_positions = [0, 0.5]
             sample_indices = []
             for pos in sample_positions:
                 idx = int(frame_count * pos)
                 if idx not in sample_indices:
                     sample_indices.append(idx)
+
+            # Insert cooperative yield for eventlet to prevent blocking other requests
+            try:
+                import eventlet
+                eventlet.sleep(0)
+            except ImportError:
+                pass
 
             all_ocr_text = ""
             found_keywords = []
