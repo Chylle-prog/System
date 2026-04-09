@@ -114,7 +114,7 @@ def decode_base64(data):
 
 # ─── Image preprocessing & quality assessment (Optimization #3) ──────────────
 _MAX_OCR_WIDTH = 800       # Higher resolution for A4 document legibility (Indigency/COE)
-_MAX_VIDEO_OCR_WIDTH = 800 # Match resolution to ensure A4 document videos (Grades) can be read
+_MAX_VIDEO_OCR_WIDTH = 600 # Reduced from 800 for 30% speed boost; enough for bold keywords
 _MAX_FACE_WIDTH = 224
 
 # Module-level CLAHE instance (reused across all OCR calls instead of recreating each time)
@@ -181,9 +181,12 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     
     # Pass 1: Raw Grayscale (Best for modern LSTM Tesseract, handles white-on-black perfectly)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
-    text1 = pytesseract.image_to_string(gray, config=f'--psm {psm}')
+    text1 = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 1')
     if text1.strip():
         results.append(text1.strip())
+        # If Pass 1 is very successful, skip Pass 2 to save significant time
+        if len(text1.strip()) > 50:
+            return text1.strip()
         
     # Pass 2: Adaptive Thresholding (Fails on white-on-dark, but great for shadows on paper)
     if not skip_pass2:
@@ -512,6 +515,7 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
             addr_ok = False
 
             def process_frame(idx, text_accumulator, keywords_found, address_ok_val):
+                # Faster Video OCR Strategy
                 cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
                 ret, frame = cap.read()
                 if not ret or frame is None: return text_accumulator, keywords_found, address_ok_val
@@ -521,15 +525,12 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
                     scale = _MAX_VIDEO_OCR_WIDTH / w
                     frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
 
-                enhanced = _preprocess_frame_for_ocr(frame)
-                text = _run_tesseract_on_image(enhanced, psm=3, skip_pass2=True)
-                if len(text.strip()) < 30:
-                    text += " " + _run_tesseract_on_image(enhanced, psm=11, skip_pass2=True)
-                if len(text.strip()) < 30:
-                    text += " " + _run_tesseract_on_image(enhanced, psm=3, skip_pass2=False)
-
+                # Use raw grayscale (fastest for modern Tesseract)
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                text = pytesseract.image_to_string(gray, config='--psm 3 --oem 1')
+                
                 text_accumulator += " " + text
-                print(f"[VIDEO OCR] Frame {idx} scanned ({len(text.strip())} chars)...", flush=True)
+                print(f"[VIDEO OCR] Frame {idx} fast-scanned ({len(text.strip())} chars)...", flush=True)
 
                 _, new_addr, new_kws, _ = _perform_text_matching(text_accumulator, None, None, None, None, keywords=keywords, is_indigency=is_address_verification)
                 return text_accumulator, new_kws, new_addr
