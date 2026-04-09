@@ -94,6 +94,15 @@ function normalizeLog(log) {
   };
 }
 
+function isNoScholarshipAssignment(value) {
+  const normalizedValue = (value || '').trim().toLowerCase();
+  return !normalizedValue || normalizedValue === 'all' || normalizedValue === 'unassigned' || normalizedValue === 'no scholarship';
+}
+
+function formatScholarshipLabel(value) {
+  return isNoScholarshipAssignment(value) ? 'No Scholarship' : value;
+}
+
 function statusClasses(status) {
   const normalizedStatus = (status || '').toLowerCase();
   if (normalizedStatus === 'success' || normalizedStatus === 'accepted' || normalizedStatus === 'registered') {
@@ -254,7 +263,9 @@ export default function Dash() {
     const search = accountSearch.trim().toLowerCase();
     const filtered = accounts.filter((account) => {
       const matchesType = account.type === accountType;
-      const matchesProgram = managedAcctProgramFilter === 'All' || account.scholarship === managedAcctProgramFilter;
+        const matchesProgram = managedAcctProgramFilter === 'All'
+          || (managedAcctProgramFilter === 'No Scholarship' && isNoScholarshipAssignment(account.scholarship))
+          || account.scholarship === managedAcctProgramFilter;
       const matchesSearch = !search || [account.name, account.email, String(account.id)].some((value) => (value || '').toLowerCase().includes(search));
       return matchesType && matchesProgram && matchesSearch;
     });
@@ -269,7 +280,9 @@ export default function Dash() {
 
   const filteredAccountReport = useMemo(() => {
     return accounts.filter((account) => {
-      const matchesProgram = accReportFilter.program === 'All' || account.scholarship === accReportFilter.program;
+      const matchesProgram = accReportFilter.program === 'All'
+        || (accReportFilter.program === 'No Scholarship' && isNoScholarshipAssignment(account.scholarship))
+        || account.scholarship === accReportFilter.program;
       const matchesRole = accReportFilter.role === 'All' || account.role === accReportFilter.role.toLowerCase();
       const search = accReportFilter.search.trim().toLowerCase();
       const matchesSearch = !search || [account.name, account.email].some((value) => (value || '').toLowerCase().includes(search));
@@ -279,7 +292,9 @@ export default function Dash() {
 
   const filteredActivityReport = useMemo(() => {
     return activities.filter((activity) => {
-      const matchesProgram = actReportFilter.program === 'All' || activity.scholarship === actReportFilter.program;
+      const matchesProgram = actReportFilter.program === 'All'
+        || (actReportFilter.program === 'No Scholarship' && isNoScholarshipAssignment(activity.scholarship))
+        || activity.scholarship === actReportFilter.program;
       const matchesAction = actReportFilter.action === 'All'
         || (activity.activity || '').toLowerCase().includes(actReportFilter.action.toLowerCase());
       const search = actReportFilter.search.trim().toLowerCase();
@@ -325,7 +340,7 @@ export default function Dash() {
         password: '',
         role: data.type === 'Admin' ? 'Admin' : 'Scholar',
         status: data.status || 'Active',
-        scholarship: data.scholarship || '',
+        scholarship: isNoScholarshipAssignment(data.scholarship) ? 'All' : (data.scholarship || 'All'),
       });
       return;
     }
@@ -714,6 +729,7 @@ export default function Dash() {
                     <div className="text-xs text-gray-400 font-bold">FILTER:</div>
                     <select value={managedAcctProgramFilter} onChange={(event) => setManagedAcctProgramFilter(event.target.value)} className="px-4 py-2 bg-gray-100 border-none rounded-xl text-xs font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]">
                       <option value="All">All Programs</option>
+                      <option value="No Scholarship">No Scholarship</option>
                       {availablePrograms.map((program) => (
                         <option key={program} value={program}>{program}</option>
                       ))}
@@ -752,7 +768,7 @@ export default function Dash() {
                               <p className="text-xs text-gray-400">{account.email}</p>
                             </td>
                             <td className="px-8 py-5">
-                              <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-gray-100 bg-gray-50 text-gray-600">{account.scholarship}</span>
+                              <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-gray-100 bg-gray-50 text-gray-600">{formatScholarshipLabel(account.scholarship)}</span>
                             </td>
                             <td className="px-8 py-5">
                               <div className="flex items-center gap-2">
@@ -792,6 +808,7 @@ export default function Dash() {
                     </div>
                     <select value={accReportFilter.program} onChange={(event) => setAccReportFilter({ ...accReportFilter, program: event.target.value })} className="px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]">
                       <option value="All">All Programs</option>
+                      <option value="No Scholarship">No Scholarship</option>
                       {availablePrograms.map((program) => (
                         <option key={program} value={program}>{program}</option>
                       ))}
@@ -830,7 +847,7 @@ export default function Dash() {
                             <td className="px-8 py-5">
                               <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${account.role === 'admin' ? 'bg-purple-50 text-purple-600 border border-purple-100' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>{account.role}</span>
                             </td>
-                            <td className="px-8 py-5 font-bold text-gray-600">{account.scholarship}</td>
+                            <td className="px-8 py-5 font-bold text-gray-600">{formatScholarshipLabel(account.scholarship)}</td>
                             <td className="px-8 py-5">
                               <div className="flex items-center gap-2">
                                 <span className={`w-2 h-2 rounded-full ${statusStyle.dot}`}></span>
@@ -859,6 +876,7 @@ export default function Dash() {
                     </div>
                     <select value={actReportFilter.program} onChange={(event) => setActReportFilter({ ...actReportFilter, program: event.target.value })} className="px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]">
                       <option value="All">All Programs</option>
+                      <option value="No Scholarship">No Scholarship</option>
                       {availablePrograms.map((program) => (
                         <option key={program} value={program}>{program}</option>
                       ))}
@@ -896,7 +914,7 @@ export default function Dash() {
                                 <span className="font-bold text-gray-600">{activity.activity}</span>
                               </div>
                             </td>
-                            <td className="px-8 py-4"><span className="text-[10px] font-black text-[#800020] border border-[#800020]/20 px-2 py-0.5 rounded uppercase tracking-widest">{activity.scholarship}</span></td>
+                            <td className="px-8 py-4"><span className="text-[10px] font-black text-[#800020] border border-[#800020]/20 px-2 py-0.5 rounded uppercase tracking-widest">{formatScholarshipLabel(activity.scholarship)}</span></td>
                             <td className="px-8 py-4 font-mono text-xs text-gray-400 italic">{formatActivityTimestamp(activity.date)}</td>
                             <td className="px-8 py-4 text-center"><div className="flex justify-center">{getActivityIcon(activity.status)}</div></td>
                           </tr>
@@ -983,7 +1001,7 @@ export default function Dash() {
                     onChange={(event) => setAccountForm({ ...accountForm, scholarship: event.target.value })}
                     className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all cursor-pointer"
                   >
-                    <option value="All">All / Global</option>
+                    <option value="All">No Scholarship</option>
                     {availablePrograms.map((program) => (
                       <option key={program} value={program}>{program}</option>
                     ))}

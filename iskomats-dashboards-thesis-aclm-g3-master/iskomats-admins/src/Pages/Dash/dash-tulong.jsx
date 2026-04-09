@@ -73,7 +73,8 @@ export default function DashTulong() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [reportsView, setReportsView] = useState('tables'); // analytics | tables
   const [trackTab, setTrackTab] = useState('all'); // pending | all | accepted | declined
-  const [typeFilter, setTypeFilter] = useState('all');
+  const [analyticsScholarshipFilter, setAnalyticsScholarshipFilter] = useState('all');
+  const [trackScholarshipFilter, setTrackScholarshipFilter] = useState('all');
   const [data, setData] = useState(initialTulongData);
   const [searchTrack, setSearchTrack] = useState('');
   const [reportTab, setReportTab] = useState('pending'); // pending | accepted | declined
@@ -713,15 +714,57 @@ export default function DashTulong() {
     });
   }, [data.announcements, manageSearch]);
 
+  const scholarshipFilterOptions = useMemo(() => {
+    return (data.scholarshipPosts || []).map((post) => {
+      const value = String(post.reqNo || post.id || post.scholarshipName || post.title || '').trim();
+      const label = post.scholarshipName || post.title || 'Untitled Scholarship';
+      return value ? { value, label } : null;
+    }).filter(Boolean);
+  }, [data.scholarshipPosts]);
+
+  const matchesScholarshipSelection = (applicant, selectedValue) => {
+    if (selectedValue === 'all') {
+      return true;
+    }
+
+    const selectedOption = scholarshipFilterOptions.find((option) => option.value === selectedValue);
+    const selectedValues = [selectedValue, selectedOption?.label]
+      .filter(Boolean)
+      .map((value) => String(value).toLowerCase());
+
+    const applicantValues = [
+      applicant.appliedScholarshipId,
+      applicant.reqNo,
+      applicant.req_no,
+      applicant.request_no,
+      applicant.scholarshipId,
+      applicant.scholarship_id,
+      applicant.scholarshipNo,
+      applicant.scholarship_no,
+      applicant.scholarshipName,
+      applicant.scholarship_name,
+      applicant.appliedScholarship,
+      applicant.scholarship,
+      applicant.scholarshipTitle,
+    ]
+      .filter(Boolean)
+      .map((value) => String(value).toLowerCase());
+
+    return selectedValues.some((value) => applicantValues.includes(value));
+  };
+
   const stats = useMemo(() => {
-    const total = data.applicants.length + data.accepted.length + data.declined.length;
+    const filteredPending = data.applicants.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
+    const filteredAccepted = data.accepted.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
+    const filteredDeclined = data.declined.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
+    const total = filteredPending.length + filteredAccepted.length + filteredDeclined.length;
     return {
       total,
-      accepted: data.accepted.length,
-      declined: data.declined.length,
-      pending: data.applicants.length,
+      accepted: filteredAccepted.length,
+      declined: filteredDeclined.length,
+      pending: filteredPending.length,
     };
-  }, [data]);
+  }, [analyticsScholarshipFilter, data]);
 
   useEffect(() => {
     if (section !== 'reports') return;
@@ -1672,11 +1715,12 @@ export default function DashTulong() {
         const search = searchTrack.toLowerCase();
         const matchesSearch =
           a.name.toLowerCase().includes(search) ||
-          (a.school && a.school.toLowerCase().includes(search));
-        const matchesType =
-          typeFilter === 'all' || a.scholarshipName === typeFilter;
+          (a.school && a.school.toLowerCase().includes(search)) ||
+          (a.municipality && a.municipality.toLowerCase().includes(search)) ||
+          (a.mobileNumber && a.mobileNumber.toLowerCase().includes(search));
+        const matchesScholarship = matchesScholarshipSelection(a, trackScholarshipFilter);
 
-        return matchesSearch && matchesType;
+        return matchesSearch && matchesScholarship;
       });
     };
 
@@ -1740,14 +1784,14 @@ export default function DashTulong() {
             />
           </div>
           <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
+            value={trackScholarshipFilter}
+            onChange={(e) => setTrackScholarshipFilter(e.target.value)}
             className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none font-bold text-[#800020] shadow-sm focus:ring-2 focus:ring-[#800020] transition-all"
           >
-            <option value="all">All Types</option>
-            {data.scholarshipPosts.map((post) => (
-              <option key={post.reqNo} value={post.scholarshipName}>
-                {post.scholarshipName}
+            <option value="all">All Scholarship Types</option>
+            {scholarshipFilterOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
@@ -1884,12 +1928,12 @@ export default function DashTulong() {
         const search = searchTrack.toLowerCase();
         const matchesSearch =
           a.name.toLowerCase().includes(search) ||
-          (a.school && a.school.toLowerCase().includes(search));
+          (a.school && a.school.toLowerCase().includes(search)) ||
+          (a.municipality && a.municipality.toLowerCase().includes(search)) ||
+          (a.mobileNumber && a.mobileNumber.toLowerCase().includes(search));
+        const matchesScholarship = matchesScholarshipSelection(a, trackScholarshipFilter);
 
-        const matchesType =
-          typeFilter === 'all' || a.scholarshipName === typeFilter;
-
-        return matchesSearch && matchesType;
+        return matchesSearch && matchesScholarship;
       });
 
       const fileName = `Tulong_Tracking_Full_${new Date().toISOString().split('T')[0]}`;
@@ -1980,15 +2024,17 @@ export default function DashTulong() {
   const renderReports = () => {
     const { historicalData } = data;
 
-    const allApplicants = [...data.applicants, ...data.accepted, ...data.declined];
-    const filteredApplicants = allApplicants;
+    const filteredPending = data.applicants.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
+    const filteredAccepted = data.accepted.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
+    const filteredDeclined = data.declined.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
+    const filteredApplicants = [...filteredPending, ...filteredAccepted, ...filteredDeclined];
     const monthlyStats = generateMonthlyStats(filteredApplicants);
 
     const kpiCards = [
       { label: 'Total Applicants', value: filteredApplicants.length.toLocaleString(), trend: '+12.5%', color: 'blue' },
-      { label: 'New Applicants', value: data.applicants.length.toLocaleString(), trend: '+5.2%', color: 'green' },
-      { label: 'Accepted', value: data.accepted.length.toLocaleString(), trend: '+8.1%', color: 'purple' },
-      { label: 'Declined', value: data.declined.length.toLocaleString(), trend: '-2.4%', color: 'red' },
+      { label: 'New Applicants', value: filteredPending.length.toLocaleString(), trend: '+5.2%', color: 'green' },
+      { label: 'Accepted', value: filteredAccepted.length.toLocaleString(), trend: '+8.1%', color: 'purple' },
+      { label: 'Declined', value: filteredDeclined.length.toLocaleString(), trend: '-2.4%', color: 'red' },
       { label: 'Avg. Processing', value: `${historicalData.performanceMetrics.averageProcessingTime}d`, trend: '-0.5d', color: 'amber' },
       { label: 'Completion Rate', value: `${historicalData.performanceMetrics.applicationCompletionRate}%`, trend: '+1.2%', color: 'indigo' },
     ];
@@ -2013,6 +2059,16 @@ export default function DashTulong() {
                 className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${reportsView === 'tables' ? 'bg-white text-[#800020] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >Tables</button>
             </div>
+            <select
+              value={analyticsScholarshipFilter}
+              onChange={(e) => setAnalyticsScholarshipFilter(e.target.value)}
+              className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-[#800020] shadow-sm focus:ring-2 focus:ring-[#800020] transition-all outline-none"
+            >
+              <option value="all">All Scholarship Types</option>
+              {scholarshipFilterOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -2456,16 +2512,16 @@ export default function DashTulong() {
                   {reportTab === 'pending' && (
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
                       <h5 className="text-sm font-black text-amber-600 uppercase mb-4 flex items-center gap-2">
-                        <FaClock /> Pending Review ({data.applicants.length})
+                        <FaClock /> Pending Review ({filteredPending.length})
                       </h5>
                       <div className="overflow-x-auto max-h-72">
                         <table className="w-full text-left text-xs border-collapse">
                           <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact & Address</th></tr></thead>
                           <tbody className="divide-y divide-gray-100">
-                            {data.applicants.map((a) => (
+                            {filteredPending.map((a) => (
                               <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50"><td className="p-3 font-bold text-gray-800">{a.name}</td><td className="p-3">{a.grade}</td><td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td><td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {a.municipality || 'N/A'}</td></tr>
                             ))}
-                            {data.applicants.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-gray-400 italic">No applicants found</td></tr>}
+                            {filteredPending.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-gray-400 italic">No pending applicants found for this scholarship</td></tr>}
                           </tbody>
                         </table>
                       </div>
@@ -2476,16 +2532,16 @@ export default function DashTulong() {
                   {reportTab === 'accepted' && (
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
                       <h5 className="text-sm font-black text-green-600 uppercase mb-4 flex items-center gap-2">
-                        <FaCheckCircle /> Accepted Scholars ({data.accepted.length})
+                        <FaCheckCircle /> Accepted Scholars ({filteredAccepted.length})
                       </h5>
                       <div className="overflow-x-auto max-h-72">
                         <table className="w-full text-left text-xs border-collapse">
                           <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact & Address</th></tr></thead>
                           <tbody className="divide-y divide-gray-100">
-                            {data.accepted.map((a) => (
+                            {filteredAccepted.map((a) => (
                               <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50"><td className="p-3 font-bold text-gray-800">{a.name}</td><td className="p-3">{a.grade}</td><td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td><td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {a.municipality || 'N/A'}</td></tr>
                             ))}
-                            {data.accepted.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-gray-400 italic">No accepted scholars found</td></tr>}
+                            {filteredAccepted.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-gray-400 italic">No accepted scholars found for this scholarship</td></tr>}
                           </tbody>
                         </table>
                       </div>
@@ -2496,16 +2552,16 @@ export default function DashTulong() {
                   {reportTab === 'declined' && (
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
                       <h5 className="text-sm font-black text-red-600 uppercase mb-4 flex items-center gap-2">
-                        <FaTimesCircle /> Declined / Cancelled ({data.declined.length})
+                        <FaTimesCircle /> Declined / Cancelled ({filteredDeclined.length})
                       </h5>
                       <div className="overflow-x-auto max-h-72">
                         <table className="w-full text-left text-xs border-collapse">
                           <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact & Address</th></tr></thead>
                           <tbody className="divide-y divide-gray-100">
-                            {data.declined.map((a) => (
+                            {filteredDeclined.map((a) => (
                               <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50"><td className="p-3 font-bold text-gray-800">{a.name}</td><td className="p-3">{a.grade}</td><td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td><td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {a.municipality || 'N/A'}</td></tr>
                             ))}
-                            {data.declined.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-gray-400 italic">No declined applicants found</td></tr>}
+                            {filteredDeclined.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-gray-400 italic">No declined applicants found for this scholarship</td></tr>}
                           </tbody>
                         </table>
                       </div>
@@ -2648,7 +2704,7 @@ export default function DashTulong() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.applicants.map((a) => (
+                  {filteredPending.map((a) => (
                     <tr key={a.id || a.applicant_no || a.name}>
                       <td className="border p-2 font-bold">{a.name}</td>
                       <td className="border p-2">{a.grade}</td>
@@ -2672,7 +2728,7 @@ export default function DashTulong() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.accepted.map((a) => (
+                  {filteredAccepted.map((a) => (
                     <tr key={a.id || a.applicant_no || a.name}>
                       <td className="border p-2 font-bold">{a.name}</td>
                       <td className="border p-2">{a.grade}</td>
@@ -2696,7 +2752,7 @@ export default function DashTulong() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.declined.map((a) => (
+                  {filteredDeclined.map((a) => (
                     <tr key={a.id || a.applicant_no || a.name}>
                       <td className="border p-2 font-bold">{a.name}</td>
                       <td className="border p-2">{a.grade}</td>

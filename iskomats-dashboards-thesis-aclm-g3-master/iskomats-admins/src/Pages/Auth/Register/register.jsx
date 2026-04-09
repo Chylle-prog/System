@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { FaUser, FaLock, FaEnvelope, FaEye, FaEyeSlash, FaGraduationCap, FaUserPlus, FaPhone, FaIdCard, FaSchool, FaChevronDown } from "react-icons/fa";
+import { FaUser, FaLock, FaEnvelope, FaEye, FaEyeSlash, FaUserPlus, FaChevronDown } from "react-icons/fa";
 import { authAPI, scholarshipAPI } from "../../../services/api";
+import authBg from "../../../assets/ad1.jpg";
+import logo from "../../../assets/logo.png";
 
 const FALLBACK_PROVIDERS = [
   { pro_no: 'africa', provider_name: 'Africa' },
@@ -139,25 +141,24 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 pt-20 bg-gradient-to-br from-red-900 via-red-800 to-red-950 relative overflow-hidden">
-      {/* Background */}
-      <div className="absolute inset-0 opacity-30 pointer-events-none"
+    <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 relative overflow-hidden bg-black">
+      <div
+        className="absolute inset-0 z-0"
         style={{
-          backgroundImage:
-            "linear-gradient(rgba(255,255,255,.15) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.15) 1px, transparent 1px)",
-          backgroundSize: "60px 60px",
+          backgroundImage: `url(${authBg})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
         }}
       />
+      <div className="absolute inset-0 z-0 bg-gradient-to-b from-black/70 via-black/50 to-black/80" />
 
-      {/* Card */}
-      <div className="w-full max-w-4xl relative z-10">
+      <div className="w-full max-w-3xl relative z-10">
         <div className="bg-white/10 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/30 overflow-hidden">
           <div className="flex flex-col lg:flex-row">
 
-            {/* Left Side - Header */}
-            <div className="bg-gradient-to-r from-red-800 to-red-700 p-6 lg:p-8 text-center lg:text-left lg:w-2/5">
-              <div className="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto lg:mx-0 mb-4">
-                <FaGraduationCap className="text-2xl sm:text-3xl lg:text-4xl text-white" />
+            <div className="bg-gradient-to-r from-[#800020] to-[#650018] p-6 lg:p-7 text-center lg:w-2/5 flex flex-col justify-center items-center border-r border-white/10">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 bg-white/10 backdrop-blur-md rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl border border-white/20 p-2">
+                <img src={logo} alt="Iskomats Logo" className="w-full h-full object-contain" />
               </div>
 
               <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white mb-3">
@@ -168,15 +169,14 @@ const Register = () => {
               </p>
             </div>
 
-            {/* Right Side - Form */}
-            <div className="p-4 sm:p-6 lg:p-8 lg:w-3/5">
+            <div className="p-4 sm:p-5 lg:p-6 lg:w-3/5">
               {formData.error && (
                 <div className="bg-red-600 text-white p-3 rounded-xl mb-5 text-sm text-center">
                   {formData.error}
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-5">
+              <form onSubmit={handleSubmit} className="space-y-3">
 
                 {/* Name Fields */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -193,7 +193,7 @@ const Register = () => {
                         onChange={handleChange}
                         placeholder="Enter your first name"
                         required
-                        className="w-full pl-9 pr-3 py-1.5 rounded-md bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
                       />
                     </div>
                   </div>
@@ -202,7 +202,7 @@ const Register = () => {
                       Last Name
                     </label>
                     <div className="relative mt-2">
-                      <FaUser className="absolute left-2.5 top-1/2 -translate-y-1/2 text-red-300" />
+                      <FaUser className="absolute left-3.5 top-1/2 -translate-y-1/2 text-red-300" />
                       <input
                         type="text"
                         name="lastName"
@@ -210,7 +210,7 @@ const Register = () => {
                         onChange={handleChange}
                         placeholder="Enter your last name"
                         required
-                        className="w-full pl-9 pr-3 py-1.5 rounded-md bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
                       />
                     </div>
                   </div>
@@ -222,7 +222,7 @@ const Register = () => {
                     Email Address
                   </label>
                   <div className="relative mt-2">
-                    <FaEnvelope className="absolute left-2.5 top-1/2 -translate-y-1/2 text-red-300" />
+                    <FaEnvelope className="absolute left-3.5 top-1/2 -translate-y-1/2 text-red-300" />
                     <input
                       type="email"
                       name="email"
@@ -230,7 +230,7 @@ const Register = () => {
                       onChange={handleChange}
                       placeholder="Enter your email"
                       required
-                      className="w-full pl-9 pr-3 py-1.5 rounded-md bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
                     />
                   </div>
                 </div>
@@ -246,7 +246,7 @@ const Register = () => {
                       value={formData.role}
                       onChange={handleChange}
                       required
-                      className="w-full px-3 py-1.5 rounded-md bg-white/10 border border-white/30 text-white focus:outline-none focus:border-white appearance-none"
+                      className="w-full px-4 py-2.5 rounded-xl bg-white/10 border border-white/30 text-white focus:outline-none focus:border-white appearance-none"
                     >
                       <option value="" disabled className="bg-red-900 text-white">
                         {isLoadingProviders ? 'Loading scholarship roles...' : 'Select scholarship role'}
@@ -257,7 +257,7 @@ const Register = () => {
                         </option>
                       ))}
                     </select>
-                    <FaChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-red-300 pointer-events-none text-xs" />
+                    <FaChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-red-300 pointer-events-none text-xs" />
                   </div>
                 </div>
 
@@ -267,7 +267,7 @@ const Register = () => {
                     Password
                   </label>
                   <div className="relative mt-2">
-                    <FaLock className="absolute left-2.5 top-1/2 -translate-y-1/2 text-red-300" />
+                    <FaLock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-red-300" />
                     <input
                       type={formData.showPassword ? "text" : "password"}
                       name="password"
@@ -275,12 +275,12 @@ const Register = () => {
                       onChange={handleChange}
                       placeholder="Enter your password"
                       required
-                      className="w-full pl-9 pr-10 py-1.5 rounded-md bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
+                      className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
                     />
                     <button
                       type="button"
                       onClick={() => togglePassword("showPassword")}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-red-300 hover:text-white"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-red-300 hover:text-white"
                     >
                       {formData.showPassword ? <FaEyeSlash /> : <FaEye />}
                     </button>
@@ -293,7 +293,7 @@ const Register = () => {
                     Confirm Password
                   </label>
                   <div className="relative mt-2">
-                    <FaLock className="absolute left-2.5 top-1/2 -translate-y-1/2 text-red-300" />
+                    <FaLock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-red-300" />
                     <input
                       type={formData.showConfirmPassword ? "text" : "password"}
                       name="confirmPassword"
@@ -301,12 +301,12 @@ const Register = () => {
                       onChange={handleChange}
                       placeholder="Confirm your password"
                       required
-                      className="w-full pl-9 pr-10 py-1.5 rounded-md bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
+                      className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
                     />
                     <button
                       type="button"
                       onClick={() => togglePassword("showConfirmPassword")}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-red-300 hover:text-white"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-red-300 hover:text-white"
                     >
                       {formData.showConfirmPassword ? <FaEyeSlash /> : <FaEye />}
                     </button>
@@ -330,7 +330,7 @@ const Register = () => {
                 <button
                   type="submit"
                   disabled={formData.isLoading}
-                  className="w-full py-1.5 rounded-md bg-gradient-to-r from-red-800 to-red-700 text-white font-bold flex items-center justify-center gap-2 hover:-translate-y-0.5 transition disabled:opacity-60"
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-[#800020] to-[#650018] text-white font-bold flex items-center justify-center gap-3 hover:-translate-y-1 transition disabled:opacity-60 shadow-lg shadow-black/20"
                 >
                   {formData.isLoading ? (
                     <>
@@ -355,7 +355,7 @@ const Register = () => {
                   </a>
                 </p>
                 <p className="text-xs text-white/60 mt-2">
-                  2025 Iskomats Scholarships
+                  &copy; 2025 Iskomats Scholarships
                 </p>
               </div>
             </div>
