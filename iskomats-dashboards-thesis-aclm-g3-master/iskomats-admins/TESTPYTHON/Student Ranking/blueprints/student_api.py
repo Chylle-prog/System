@@ -2153,16 +2153,11 @@ def clear_knowledge():
 
 @student_api_bp.route('/videos/convert-and-upload', methods=['POST'])
 @token_required
-def convert_and_upload_video():
+def upload_video():
     """
-    Convert WebM video to H.264 MP4 format for universal browser compatibility,
-    then upload to Supabase.
-    
-    This endpoint ensures all videos are stored in a universally supported format.
-    
-    Expected form data:
-    - video: The video file to upload
-    - field_name: The name of the field (e.g., 'schoolId_video', 'mayorIndigency_video')
+    Directly upload the video to Supabase while preserving its original format and MIME type.
+    This bypasses slow/heavy server-side conversion, preventing 502 Bad Gateway and OOM crashes,
+    while correctly serving the exact formats browsers recorded in (preventing Format errors).
     """
     try:
         current_user_id = request.user_no
@@ -2176,47 +2171,41 @@ def convert_and_upload_video():
         if not video_file or video_file.filename == '':
             return jsonify({'success': False, 'message': 'Empty video file'}), 400
         
-        print(f"[VIDEO-CONVERT-UPLOAD] User {current_user_id}: Received {field_name}: {video_file.filename} ({video_file.content_length} bytes)", flush=True)
-        
-        # Read video bytes
+        # Read file bytes into memory
         video_bytes = video_file.read()
+        file_size = len(video_bytes)
         
-        # Convert to H.264 MP4
-        print(f"[VIDEO-CONVERT-UPLOAD] Converting {field_name} to H.264 MP4...", flush=True)
-        converted_bytes = convert_video_to_mp4(video_bytes)
+        # Determine the accurate extension and MIME type to avoid browser format errors
+        content_type = video_file.mimetype or 'video/mp4'
+        original_ext = os.path.splitext(video_file.filename)[1].lower() if video_file.filename else ''
         
-        # If conversion failed, use original
-        if not converted_bytes or len(converted_bytes) == 0:
-            print(f"[VIDEO-CONVERT-UPLOAD] Conversion failed, using original bytes", flush=True)
-            converted_bytes = video_bytes
-        
-        # Upload to Supabase
+        ext = '.mp4'
+        if 'webm' in content_type.lower() or original_ext == '.webm':
+            ext = '.webm'
+            content_type = 'video/webm'
+        elif 'quicktime' in content_type.lower() or original_ext == '.mov':
+            ext = '.mov'
+            content_type = 'video/quicktime'
+        elif original_ext:
+            ext = original_ext
+            
+        print(f"[VIDEO-UPLOAD] Direct upload for User {current_user_id}: {field_name} "
+              f"({file_size} bytes as {content_type}{ext})", flush=True)
+
         try:
             from supabase import create_client
             
-            # Get Supabase credentials - try both possible key names
             supabase_url = os.environ.get('SUPABASE_URL')
             supabase_key = os.environ.get('SUPABASE_KEY') or os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
             
-            # Validate credentials
-            if not supabase_url:
-                print(f"[VIDEO-CONVERT-UPLOAD] ERROR: SUPABASE_URL not configured", flush=True)
-                return jsonify({
-                    'success': False, 
-                    'message': 'Server configuration error: Supabase URL not configured'
-                }), 500
-            
-            if not supabase_key:
-                print(f"[VIDEO-CONVERT-UPLOAD] ERROR: SUPABASE_KEY or SUPABASE_SERVICE_ROLE_KEY not configured", flush=True)
+            if not supabase_url or not supabase_key:
                 return jsonify({
                     'success': False, 
                     'message': 'Server configuration error: Supabase credentials not configured'
                 }), 500
             
-            print(f"[VIDEO-CONVERT-UPLOAD] Connecting to Supabase at {supabase_url}", flush=True)
             supabase = create_client(supabase_url, supabase_key)
             
-            # Map field names to folders
             folder_map = {
                 'mayorIndigency_video': 'indigency',
                 'mayorCOE_video': 'coe',
@@ -2227,23 +2216,13 @@ def convert_and_upload_video():
             }
             
             folder = folder_map.get(field_name, 'others')
-            file_name = f"{current_user_id}_{int(time.time())}.mp4"
+            file_name = f"{current_user_id}_{int(time.time())}{ext}"
             file_path = f"videos/{folder}/{file_name}"
             
-            # Prevent MEDIA_ELEMENT_ERROR (Format error) if ffmpeg fallback returns original WebM bytes
-            content_type = 'video/mp4'
-            if converted_bytes == video_bytes and len(converted_bytes) >= 4:
-                # WebM magic bytes: 1A 45 DF A3
-                if converted_bytes.startswith(b'\x1a\x45\xdf\xa3'):
-                    content_type = 'video/webm'
-                    file_path = file_path.replace('.mp4', '.webm')
-                    print(f"[VIDEO-CONVERT-UPLOAD] Detected WebM fallback. Changing upload to {content_type}", flush=True)
-
-            print(f"[VIDEO-CONVERT-UPLOAD] Uploading to Supabase: {file_path} ({len(converted_bytes)} bytes as {content_type})", flush=True)
-            
+            # Direct stream upload bypasses heavy memory buffers
             response = supabase.storage.from_('document_videos').upload(
                 file_path,
-                converted_bytes,
+                video_bytes,
                 file_options={
                     'content-type': content_type,
                     'cache-control': '3600',
@@ -2251,24 +2230,20 @@ def convert_and_upload_video():
                 }
             )
             
-            # Get public URL
             public_url = supabase.storage.from_('document_videos').get_public_url(file_path)
-            
-            print(f"[VIDEO-CONVERT-UPLOAD] Successfully uploaded: {public_url}", flush=True)
+            print(f"[VIDEO-UPLOAD] Successfully verified and uploaded: {public_url}", flush=True)
             
             return jsonify({
                 'success': True,
                 'message': 'Video uploaded successfully',
                 'publicUrl': public_url,
-                'originalSize': len(video_bytes),
-                'convertedSize': len(converted_bytes)
+                'originalSize': file_size,
+                'convertedSize': file_size  # Kept for frontend compatibility
             })
-        
+            
         except Exception as upload_err:
             error_msg = str(upload_err)
-            print(f"[VIDEO-CONVERT-UPLOAD] Supabase upload error: {error_msg}", flush=True)
-            import traceback
-            traceback.print_exc()
+            print(f"[VIDEO-UPLOAD] Supabase upload error: {error_msg}", flush=True)
             return jsonify({
                 'success': False, 
                 'message': f'Video upload to storage failed: {error_msg}'
