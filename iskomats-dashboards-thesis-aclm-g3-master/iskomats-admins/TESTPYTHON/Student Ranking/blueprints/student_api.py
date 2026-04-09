@@ -1238,6 +1238,7 @@ def update_profile():
             'lastName': 'last_name', 'firstName': 'first_name', 'middleName': 'middle_name',
             'maidenName': 'maiden_name', 'dateOfBirth': 'birthdate', 'placeOfBirth': 'birth_place',
             'streetBarangay': 'street_brgy', 'townCity': 'town_city_municipality',
+            'townCityMunicipality': 'town_city_municipality',
             'province': 'province', 'zipCode': 'zip_code', 'sex': 'sex',
             'citizenship': 'citizenship', 'schoolIdNumber': 'school_id_no',
             'schoolName': 'school', 'schoolAddress': 'school_address',

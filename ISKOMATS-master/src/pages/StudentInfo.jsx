@@ -4,11 +4,29 @@ import SignaturePad from '../components/SignaturePad';
 import VideoRecorder from '../components/VideoRecorder';
 import { applicantAPI, applicationAPI } from '../services/api';
 
+const BARANGAYS = [
+  "Adya", "Anilao", "Anilao-Labac", "Antipolo del Norte", "Antipolo del Sur",
+  "Bagong Pook", "Balintawak", "Banaybanay", "Bolbok", "Bugtong na Pulo",
+  "Bulacnin", "Bulaklakan", "Calamias", "Cumba", "Dagatan", "Duhatan",
+  "Halang", "Inosloban", "Kayumanggi", "Latag", "Lodlod", "Lumbang",
+  "Mabini", "Malagonlong", "Malitlit", "Marauoy", "Mataas na Lupa",
+  "Munting Pulo", "Pagolingin Bata", "Pagolingin East", "Pagolingin West",
+  "Pangao", "Pinagkawitan", "Pinagtongulan", "Plaridel",
+  "Poblacion Barangay 1", "Poblacion Barangay 2", "Poblacion Barangay 3",
+  "Poblacion Barangay 4", "Poblacion Barangay 5", "Poblacion Barangay 6",
+  "Poblacion Barangay 7", "Poblacion Barangay 8", "Poblacion Barangay 9",
+  "Poblacion Barangay 9-A", "Poblacion Barangay 10", "Poblacion Barangay 11",
+  "Poblacion Barangay 12", "Pusil", "Quezon", "Rizal", "Sabang",
+  "Sampaguita", "San Benito", "San Carlos", "San Celestino", "San Francisco",
+  "San Guillermo", "San Isidro", "San Jose", "San Lucas", "San Salvador",
+  "San Sebastian (Balagbag)", "Santo Niño", "Santo Toribio", "Sico",
+  "Talisay", "Tambo", "Tangob", "Tanguay", "Tibig", "Tipacan"
+];
+
 const STEP_FIELDS = {
   1: [
     'lastName', 'firstName', 'middleName', 'maidenName', 'dateOfBirth', 'placeOfBirth',
-    'houseNo', 'streetName', 'subdivision', 'barangay',
-    'townCity', 'province', 'zipCode', 'sex', 'citizenship',
+    'streetBarangay', 'townCityMunicipality', 'province', 'zipCode', 'sex', 'citizenship',
     'mobileNumber', 'mayorIndigency_photo'
   ],
   2: [
@@ -119,13 +137,11 @@ const StudentInfo = () => {
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
   const [currentStep, setCurrentStep] = useState(1);
 
-  // School ID photo states
   const [schoolIdPhotos, setSchoolIdPhotos] = useState({
     front: null,
     back: null
   });
 
-  // Verification States
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   const [cameraInitializing, setCameraInitializing] = useState(false);
@@ -134,7 +150,7 @@ const StudentInfo = () => {
   const [currentStream, setCurrentStream] = useState(null);
   const [cameraPermissionStatus, setCameraPermissionStatus] = useState('');
   const [ocrError, setOcrError] = useState('');
-  const [ocrVerified, setOcrVerified] = useState(null); // null, 'verifying', 'success', 'failed'
+  const [ocrVerified, setOcrVerified] = useState(null); 
   const [ocrStatus, setOcrStatus] = useState('');
   const [lightboxSrc, setLightboxSrc] = useState(null);
   const [photos, setPhotos] = useState({
@@ -143,12 +159,10 @@ const StudentInfo = () => {
     face_photo: null
   });
   
-  // Helper to upload video to Supabase and update local state
   const handleVideoUpload = async (fieldName, blob) => {
     try {
       if (!blob) return;
       
-      // Show local preview immediately (as a blob URL)
       const localUrl = URL.createObjectURL(blob);
       setDocumentVideos(prev => ({ ...prev, [fieldName]: localUrl }));
       
@@ -158,12 +172,9 @@ const StudentInfo = () => {
       const result = await applicantAPI.uploadRequirementVideo(fieldName, blob);
       const publicUrl = result.publicUrl;
       
-      // Update form data with the remote URL for persistence
       setFormData(prev => ({ ...prev, [fieldName]: publicUrl }));
-      // Keep the public URL in component state too
       setDocumentVideos(prev => ({ ...prev, [fieldName]: publicUrl }));
       
-      // Immediately persist the URL to the DB profile
       applicantAPI.updateProfile({ [fieldName]: publicUrl }).catch(err => {
         console.warn(`Could not persist video URL for ${fieldName} to profile:`, err.message);
       });
@@ -179,10 +190,9 @@ const StudentInfo = () => {
 
   const [extraSignaturePhoto, setExtraSignaturePhoto] = useState(null);
   const [isFaceMatching, setIsFaceMatching] = useState(false);
-  const [faceMatchResult, setFaceMatchResult] = useState(null); // { verified: boolean, confidence: number }
-  const [faceVerified, setFaceVerified] = useState(null); // null | 'verifying' | 'success' | 'failed' | 'technical_unavailable'
+  const [faceMatchResult, setFaceMatchResult] = useState(null); 
+  const [faceVerified, setFaceVerified] = useState(null); 
 
-  // Document Video States
   const [documentVideos, setDocumentVideos] = useState({
     mayorIndigency_video: null,
     mayorGrades_video: null,
@@ -191,12 +201,11 @@ const StudentInfo = () => {
     face_video: null
   });
 
-  // Verification Status States
-  const [coeVerified, setCoeVerified] = useState(null); // null, 'verifying', 'success', 'failed'
+  const [coeVerified, setCoeVerified] = useState(null); 
   const [coeStatus, setCoeStatus] = useState('');
-  const [gradesVerified, setGradesVerified] = useState(null); // null, 'verifying', 'success', 'failed'
+  const [gradesVerified, setGradesVerified] = useState(null); 
   const [gradesStatus, setGradesStatus] = useState('');
-  const [idVerified, setIdVerified] = useState(null); // null, 'verifying', 'success', 'failed'
+  const [idVerified, setIdVerified] = useState(null); 
   const [idStatus, setIdStatus] = useState('');
 
   const idPictureInputRef = useRef(null);
@@ -209,19 +218,14 @@ const StudentInfo = () => {
   const [showSignaturePad, setShowSignaturePad] = useState(false);
 
   const [formData, setFormData] = useState({
-    // Personal Information
     lastName: '',
     firstName: '',
     middleName: '',
     maidenName: '',
-    houseNo: '',
-    streetName: '',
-    subdivision: '',
-    barangay: '',
     streetBarangay: '',
-    townCity: '',
-    province: '',
-    zipCode: '',
+    townCityMunicipality: 'Lipa City',
+    province: 'Batangas',
+    zipCode: '4217',
     sex: '',
     citizenship: '',
     schoolIdNumber: '',
@@ -233,7 +237,6 @@ const StudentInfo = () => {
     emailAddress: '',
     gpa: '',
     
-    // Family Background
     fatherStatus: '',
     fatherName: '',
     fatherOccupation: '',
@@ -248,16 +251,13 @@ const StudentInfo = () => {
     numberOfSiblings: '',
     course: '',
     
-    // Documentary Requirements
     mayorCOE_photo: null,
     mayorGrades_photo: null,
     mayorIndigency_photo: null,
 
-    // School ID Photos
     schoolIdFront: null,
     schoolIdBack: null,
     
-    // Certification
     privacyConsent: false,
     dataCertifyConsent: false,
     applicantSignatureName: '',
@@ -293,15 +293,12 @@ const StudentInfo = () => {
     let hasPayload = false;
 
     for (const fieldName of STEP_FIELDS[stepNumber] || []) {
-      if (['houseNo', 'streetName', 'subdivision', 'barangay', 'streetBarangay'].includes(fieldName)) continue;
-
       let value = formData[fieldName];
 
       if (value === undefined || value === null || value === '') {
         continue;
       }
 
-      // Convert display values back to database values
       if (fieldName === 'sex') {
         value = value === 'Male' ? 'M' : value === 'Female' ? 'F' : value;
       }
@@ -309,22 +306,6 @@ const StudentInfo = () => {
       const payloadFieldName = DOCUMENT_UPLOAD_FIELD_MAP[fieldName] || fieldName;
       payload.append(payloadFieldName, typeof value === 'boolean' ? String(value) : value);
       hasPayload = true;
-    }
-
-    // Special handling for Step 1 Address concatenation
-    if (stepNumber === 1) {
-      const addrParts = [
-        formData.houseNo,
-        formData.streetName,
-        formData.subdivision,
-        formData.barangay
-      ].filter(p => p && p.trim() !== '');
-      
-      const combinedAddress = addrParts.length > 0 ? addrParts.join(', ') : formData.streetBarangay;
-      if (combinedAddress) {
-        payload.append('street_brgy', combinedAddress);
-        hasPayload = true;
-      }
     }
 
     if (stepNumber === 1 && idPicturePreview) {
@@ -404,7 +385,6 @@ const StudentInfo = () => {
         hasPayload = true;
       }
 
-      // Handle video URLs (stored in formData as strings starting with http)
       const videoFields = ['mayorIndigency_video', 'mayorGrades_video', 'mayorCOE_video', 'schoolId_video', 'face_video'];
       videoFields.forEach(field => {
         if (formData[field] && typeof formData[field] === 'string' && formData[field].startsWith('http')) {
@@ -420,11 +400,9 @@ const StudentInfo = () => {
       return;
     }
 
-    // If there's JSON data and no files, use JSON request; otherwise use FormData
     if (Object.keys(jsonData).length > 0 && Array.from(payload.entries()).length === 0) {
       await applicantAPI.updateProfile(jsonData);
     } else if (Object.keys(jsonData).length > 0) {
-      // Mix of files and data URIs - append JSON data as string
       Object.entries(jsonData).forEach(([key, value]) => {
         payload.append(key, value);
       });
@@ -435,13 +413,11 @@ const StudentInfo = () => {
   };
 
   useEffect(() => {
-    // Add Font Awesome link
     const fontAwesomeLink = document.createElement('link');
     fontAwesomeLink.rel = 'stylesheet';
     fontAwesomeLink.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css';
     document.head.appendChild(fontAwesomeLink);
 
-    // Add Google Fonts link
     const googleFontsLink = document.createElement('link');
     googleFontsLink.rel = 'preconnect';
     googleFontsLink.href = 'https://fonts.googleapis.com';
@@ -458,7 +434,6 @@ const StudentInfo = () => {
     googleFontsSheet.href = 'https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap';
     document.head.appendChild(googleFontsSheet);
 
-    // Image Compression Utility
     const compressImage = (file, maxWidth = 1024, quality = 0.6) => {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -481,7 +456,6 @@ const StudentInfo = () => {
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, width, height);
             
-            // Get compressed base64
             const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
             resolve(compressedBase64);
           };
@@ -490,9 +464,8 @@ const StudentInfo = () => {
         reader.onerror = reject;
       });
     };
-    window.compressImage = compressImage; // Make it available globally in the component scope
+    window.compressImage = compressImage; 
 
-    // Load user data
     const user = localStorage.getItem('currentUser');
     
     if (!user) {
@@ -502,7 +475,6 @@ const StudentInfo = () => {
 
     setCurrentUser(user);
 
-    // Get scholarship name and search criteria from URL params
     const scholarship = searchParams.get('scholarship');
     const urlGpa = searchParams.get('gpa');
     const urlIncome = searchParams.get('income');
@@ -516,45 +488,25 @@ const StudentInfo = () => {
       savedDraft = null;
     }
     
-    // Ensure each scholarship form always starts from step 1
     setCurrentStep(1);
     if (scholarship) {
       setScholarshipName(scholarship);
     }
-
-    // Pre-fill profile data from backend API
 
   const loadProfile = async () => {
       try {
         setLoadingMessage({ title: 'Loading Profile', message: 'Retrieving your information to pre-fill the application...' });
         setIsInitialLoading(true);
         const profile = await applicantAPI.getProfile();
-        console.log('DEBUG: Loaded profile from API:', {
-          id_img_front: profile.id_img_front,
-          id_img_back: profile.id_img_back,
-          indigency_doc: profile.indigency_doc,
-          grades_doc: profile.grades_doc,
-          enrollment_certificate_doc: profile.enrollment_certificate_doc,
-          id_pic: profile.id_pic,
-          id_vid_url: profile.id_vid_url,
-          indigency_vid_url: profile.indigency_vid_url,
-          grades_vid_url: profile.grades_vid_url,
-          enrollment_certificate_vid_url: profile.enrollment_certificate_vid_url,
-          schoolId_video: profile.schoolId_video
-        });
         setUserProfile(profile);
 
-        setFormData(prev => mergeMeaningfulValues(prev, {
+        const updates = {
           firstName: profile.first_name || '',
           lastName: profile.last_name || '',
           middleName: profile.middle_name || '',
           maidenName: profile.maiden_name || '',
           dateOfBirth: profile.birthdate || '',
           placeOfBirth: profile.birth_place || '',
-          streetBarangay: profile.street_brgy || '',
-          townCity: profile.town_city_municipality || '',
-          province: profile.province || '',
-          zipCode: profile.zip_code || '',
           sex: profile.sex === 'M' ? 'Male' : profile.sex === 'F' ? 'Female' : (profile.sex || ''),
           citizenship: profile.citizenship || '',
           schoolIdNumber: profile.school_id_no || '',
@@ -576,14 +528,27 @@ const StudentInfo = () => {
           gpa: urlGpa || profile.overall_gpa || '',
           numberOfSiblings: profile.sibling_no || '',
           course: profile.course || ''
-        }));
+        };
 
-        // Load profile picture
+        if (profile.street_brgy || profile.streetBarangay) {
+          updates.streetBarangay = profile.street_brgy || profile.streetBarangay;
+        }
+        if (profile.town_city_municipality || profile.townCity) {
+          updates.townCityMunicipality = profile.town_city_municipality || profile.townCity;
+        }
+        if (profile.province) {
+          updates.province = profile.province;
+        }
+        if (profile.zip_code || profile.zipCode) {
+          updates.zipCode = profile.zip_code || profile.zipCode;
+        }
+
+        setFormData(prev => mergeMeaningfulValues(prev, updates));
+
         if (profile.profile_picture) {
           setIdPicturePreview(profile.profile_picture);
         }
         
-        // Load school ID photos (front and back)
         if (profile.id_img_front) {
           setSchoolIdPhotos(prev => ({ ...prev, front: profile.id_img_front }));
           setFormData(prev => ({ ...prev, schoolIdFront: profile.id_img_front }));
@@ -593,7 +558,6 @@ const StudentInfo = () => {
           setFormData(prev => ({ ...prev, schoolIdBack: profile.id_img_back }));
         }
         
-        // Load documentary requirement photos
         if (profile.enrollment_certificate_doc) {
           setPhotos(prev => ({ ...prev, mayorCOE_photo: profile.enrollment_certificate_doc }));
           setFormData(prev => ({ ...prev, mayorCOE_photo: profile.enrollment_certificate_doc }));
@@ -607,22 +571,11 @@ const StudentInfo = () => {
           setFormData(prev => ({ ...prev, mayorIndigency_photo: profile.indigency_doc }));
         }
         
-        // Load final verification ID photo
         if (profile.id_pic) {
           setPhotos(prev => ({ ...prev, face_photo: profile.id_pic, mayorValidID_photo: profile.id_pic }));
           setFormData(prev => ({ ...prev, face_photo: profile.id_pic, mayorValidID_photo: profile.id_pic }));
         }
         
-        console.log('DEBUG: Photos loaded to state:', {
-          mayorCOE_photo: profile.enrollment_certificate_doc,
-          mayorGrades_photo: profile.grades_doc,
-          mayorIndigency_photo: profile.indigency_doc,
-          mayorValidID_photo: profile.id_pic,
-          schoolIdFront: profile.id_img_front,
-          schoolIdBack: profile.id_img_back
-        });
-        
-        // Load signature
         if (profile.signature_image_data) {
           setFormData(prev => ({ ...prev, applicantSignatureName: profile.signature_image_data }));
           setSignaturePreview(profile.signature_image_data);
@@ -634,7 +587,6 @@ const StudentInfo = () => {
           setHasOtherAssistance('No');
         }
 
-        // Load video requirements
         const videoMap = {
           id_vid_url: 'face_video',
           indigency_vid_url: 'mayorIndigency_video',
@@ -645,29 +597,14 @@ const StudentInfo = () => {
 
         const loadedVideos = {};
         Object.entries(videoMap).forEach(([dbField, stateField]) => {
-          console.log(`Checking video field: ${dbField} -> ${stateField}:`, {
-            exists: !!profile[dbField],
-            value: profile[dbField]
-          });
           if (profile[dbField]) {
             loadedVideos[stateField] = profile[dbField];
-            // Also ensure it's in formData for saving later
             setFormData(prev => ({ ...prev, [stateField]: profile[dbField] }));
           }
         });
         
-        console.log('DEBUG: Videos to load from profile:', loadedVideos);
-        console.log('DEBUG: User profile object keys:', Object.keys(profile));
-        
         if (Object.keys(loadedVideos).length > 0) {
-          console.log('Setting documentVideos state with:', loadedVideos);
-          setDocumentVideos(prev => {
-            const updated = { ...prev, ...loadedVideos };
-            console.log('Updated documentVideos state:', updated);
-            return updated;
-          });
-        } else {
-          console.log('No videos found in profile');
+          setDocumentVideos(prev => ({ ...prev, ...loadedVideos }));
         }
       } catch (err) {
         console.warn('Could not pre-fill from profile:', err.message);
@@ -696,14 +633,13 @@ const StudentInfo = () => {
       document.head.removeChild(googleFontsSheet);
       
       if (currentStream) {
-
         currentStream.getTracks().forEach(track => track.stop());
       }
       if (cameraTimeoutRef.current) {
         clearTimeout(cameraTimeoutRef.current);
       }
     };
-  }, [navigate, searchParams]); // Removed currentStream from dependencies to avoid infinite loops if it changes
+  }, [navigate, searchParams]);
 
   useEffect(() => {
     if (!currentUser) {
@@ -713,7 +649,6 @@ const StudentInfo = () => {
     persistDraft(currentUser);
   }, [currentUser, formData, hasOtherAssistance, currentStep, scholarshipName, searchParams]);
 
-  // Camera functions
   const openCamera = async () => {
     setShowCameraModal(true);
     setCameraInitializing(true);
@@ -799,7 +734,6 @@ const StudentInfo = () => {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    // Apply slightly higher quality for face photo as it's critical
     const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
     setPhotos(prev => ({ ...prev, face_photo: dataUrl }));
     setFaceVerificationPreview(dataUrl);
@@ -820,7 +754,6 @@ const StudentInfo = () => {
         setPhotos(prev => ({ ...prev, [type]: compressedBase64 }));
         if (type === 'face_photo') setFaceVerificationPreview(compressedBase64);
         
-        // Keep face verification local; the backend has a single id_pic slot.
         if (type !== 'face_photo') {
           applicantAPI.updateProfile({ [type]: compressedBase64 }).catch(console.error);
         }
@@ -855,11 +788,9 @@ const StudentInfo = () => {
           setFormData(prev => ({ ...prev, [name]: compressedBase64 }));
           setPhotos(prev => ({ ...prev, [name]: compressedBase64 }));
           
-          // Auto-save progress
           applicantAPI.updateProfile({ [name]: compressedBase64 }).catch(console.error);
         });
         
-        // Handle previews
         if (name === 'mayorValidID_photo') {
           setValidIdPreview(file ? URL.createObjectURL(file) : null);
         }
@@ -886,7 +817,6 @@ const StudentInfo = () => {
             setValidIdPreview(compressedBase64);
           }
           
-          // Auto-save progress
           applicantAPI.updateProfile({ [name]: compressedBase64 }).catch(console.error);
         });
       } else {
@@ -906,7 +836,7 @@ const StudentInfo = () => {
   const handleIdPictureUpload = (e) => {
     const file = e.target.files[0];
     if (file && window.compressImage) {
-      window.compressImage(file, 400).then(compressedBase64 => { // Smaller size for 2x2 ID
+      window.compressImage(file, 400).then(compressedBase64 => { 
         setIdPicturePreview(compressedBase64);
         setFormData(prev => ({ ...prev, profile_picture: compressedBase64 }));
         
@@ -924,11 +854,9 @@ const StudentInfo = () => {
           ...prev, 
           [`schoolId${side.charAt(0).toUpperCase() + side.slice(1)}`]: compressedBase64
         }));
-        // Also update the photos state for Step 5 validation and backend
         const photoKey = side === 'front' ? 'id_front' : 'id_back';
         setPhotos(prev => ({ ...prev, [photoKey]: compressedBase64 }));
         
-        // Auto-save progress
         applicantAPI.updateProfile({ 
           [photoKey]: compressedBase64
         }).catch(console.error);
@@ -1010,7 +938,7 @@ const StudentInfo = () => {
 
   const handleIndigencyScan = async () => {
     const indigencyDoc = photos.mayorIndigency_photo || formData.mayorIndigency_photo || userProfile?.indigency_doc;
-    const townCity = formData.townCity || userProfile?.town_city_municipality || '';
+    const townCity = formData.townCityMunicipality || userProfile?.town_city_municipality || '';
     const videoUrl = formData.mayorIndigency_video || documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url;
 
     if (!indigencyDoc) {
@@ -1239,12 +1167,9 @@ const StudentInfo = () => {
       setLoadingMessage({ title: `Saving Step ${currentStep}`, message: 'Updating your application progress...' });
       setIsSavingStep(true);
       
-      // ── STEP 1: Address verification skipped here, now handled manually via "Scan" button ────────
       if (currentStep === 1) {
         console.log('[Step 1] Transitioning to Step 2. Manual verification check already passed.');
       }
-
-      // ── STEP 3: No OCR needed here anymore ───────────────────────────────────
 
       await saveCurrentStepProgress(currentStep);
       setCurrentStep(prev => Math.min(prev + 1, 4));
@@ -1271,9 +1196,8 @@ const StudentInfo = () => {
       { name: 'middleName', label: 'Middle Name' },
       { name: 'dateOfBirth', label: 'Date of Birth' },
       { name: 'placeOfBirth', label: 'Place of Birth' },
-      { name: 'streetName', label: 'Street Name' },
-      { name: 'barangay', label: 'Barangay' },
-      { name: 'townCity', label: 'Town/City' },
+      { name: 'streetBarangay', label: 'Barangay' },
+      { name: 'townCityMunicipality', label: 'Town/City' },
       { name: 'province', label: 'Province' },
       { name: 'zipCode', label: 'Zip Code' },
       { name: 'sex', label: 'Sex' },
@@ -1306,7 +1230,6 @@ const StudentInfo = () => {
       return;
     }
 
-    // Validate Required Documents
     const requiredDocs = [
       { name: 'mayorCOE_photo', label: 'COE Photo' },
       { name: 'mayorGrades_photo', label: 'Grades Photo' },
@@ -1326,8 +1249,6 @@ const StudentInfo = () => {
       return;
     }
 
-    // Validate Identity Verification
-    // Both front/back School ID are still required for the backend
     if (
       (!schoolIdPhotos.front && !userProfile?.id_img_front) ||
       (!schoolIdPhotos.back && !userProfile?.id_img_back) ||
@@ -1337,7 +1258,6 @@ const StudentInfo = () => {
       return;
     }
 
-    // Validate Checkboxes
     if (!formData.privacyConsent) {
       showPromptMessage('⚠️ Please accept the Privacy Policy to proceed.');
       return;
@@ -1347,13 +1267,11 @@ const StudentInfo = () => {
       return;
     }
 
-    // Check if either signature image is uploaded or drawn
     if (!signaturePreview && !drawnSignature && !userProfile?.has_signature) {
       showPromptMessage('⚠️ Please either upload a signature photo or draw your signature.');
       return;
     }
 
-    // Try to get numeric ID from URL parameters
     let reqNo = searchParams.get('reqNo');
     if (!reqNo || isNaN(parseInt(reqNo))) {
       reqNo = searchParams.get('scholarship_id');
@@ -1368,7 +1286,6 @@ const StudentInfo = () => {
     setIsSubmitting(true);
 
     try {
-      // ── Automatic Face Verification ────────────────────────────────────────
       const facePhoto = photos.face_photo;
       const idFrontForFace = schoolIdPhotos.front || userProfile?.id_img_front;
 
@@ -1379,24 +1296,16 @@ const StudentInfo = () => {
         });
         setFaceVerified('verifying');
         try {
-          // Call the backend OCR-check endpoint which runs DeepFace internally.
-          // We send face_photo as id_front and the actual id_front as indigency_doc
-          // so the backend can distinguish them — instead, call submit with full data
-          // and let the backend do face matching (skip_verification=false).
-          // The skipVerification flag only skips if address OCR already passed.
-          const skipVerification = true; // Skip strict verification, allow application to proceed
-          setFaceVerified('success'); // Optimistic — backend will do the real check
+          const skipVerification = true; 
+          setFaceVerified('success'); 
           console.log('[FACE] Face verification will be handled by the backend during submission.');
         } catch (faceErr) {
           console.warn('[FACE] Face pre-check error:', faceErr.message);
           setFaceVerified('technical_unavailable');
         }
       }
-      // ──────────────────────────────────────────────────────────────────────────
 
-      // If identity was already address-verified in Step 2, skip OCR on submission
-      // but always run face matching on the backend
-      const skipVerification = true; // Skip strict verification to allow form submission
+      const skipVerification = true; 
 
       console.log(`Submitting application (faceVerified: ${faceVerified})...`);
 
@@ -1404,21 +1313,18 @@ const StudentInfo = () => {
 
       const submissionData = new FormData();
       
-      // Define image keys to exclude from general formData loop to avoid double-sending
       const imageKeys = [
         'profile_picture', 'id_front', 'id_back', 'face_photo', 
         'mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo',
         'applicantSignatureName', 'signature_data'
       ];
 
-      // Append all text fields from formData, excluding images
       Object.keys(formData).forEach(key => {
         if (!imageKeys.includes(key) && formData[key] !== null && formData[key] !== undefined) {
           submissionData.append(key, formData[key]);
         }
       });
 
-      // Append photos and documents explicitly once from the photos state
       if (photos.profile_picture) submissionData.append('profile_picture', photos.profile_picture);
       if (photos.id_front || schoolIdPhotos.front) submissionData.append('id_front', photos.id_front || schoolIdPhotos.front);
       if (photos.id_back  || schoolIdPhotos.back)  submissionData.append('id_back',  photos.id_back  || schoolIdPhotos.back);
@@ -1430,7 +1336,6 @@ const StudentInfo = () => {
         submissionData.append('signature_data', signaturePreview);
       }
       
-      // Add documentary requirements
       const docKeys = ['mayorCOE', 'mayorGrades', 'mayorIndigency'];
       docKeys.forEach(key => {
         const fileKey = `${key}_photo`;
@@ -1440,19 +1345,17 @@ const StudentInfo = () => {
           submissionData.append(fileKey, formData[fileKey]);
         }
 
-        // Add corresponding video if available (Handle both Files and URLs)
         const videoKey = `${key}_video`;
         const videoVal = documentVideos[videoKey];
         if (videoVal) {
           if (typeof videoVal === 'string' && videoVal.startsWith('http')) {
-             submissionData.append(videoKey, videoVal); // Send URL
+             submissionData.append(videoKey, videoVal); 
           } else {
-             submissionData.append(videoKey, videoVal, `${videoKey}.webm`); // Send blob
+             submissionData.append(videoKey, videoVal, `${videoKey}.webm`); 
           }
         }
       });
 
-      // Add Face Verification Video if available
       if (documentVideos.face_video) {
         if (typeof documentVideos.face_video === 'string' && documentVideos.face_video.startsWith('http')) {
            submissionData.append('face_video', documentVideos.face_video);
@@ -1461,7 +1364,6 @@ const StudentInfo = () => {
         }
       }
 
-      // Add School ID Video if available
       if (documentVideos.schoolId_video) {
         if (typeof documentVideos.schoolId_video === 'string' && documentVideos.schoolId_video.startsWith('http')) {
            submissionData.append('schoolId_video', documentVideos.schoolId_video);
@@ -1470,7 +1372,6 @@ const StudentInfo = () => {
         }
       }
 
-      // Submit application — always run face matching on the backend
       const result = await applicationAPI.submit(numericReqNo, submissionData, skipVerification);
       console.log('Submission result:', result);
 
@@ -2103,30 +2004,25 @@ const StudentInfo = () => {
 
               <div className="form-row">
                 <div className="form-group">
-                  <label>House / Block / Lot No.</label>
-                  <input type="text" name="houseNo" value={formData.houseNo} onChange={handleInputChange} placeholder="No. 123" />
-                </div>
-                <div className="form-group">
-                  <label>Street Name <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="streetName" value={formData.streetName} onChange={handleInputChange} placeholder="Narra Street" required />
-                </div>
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Subdivision / Village</label>
-                  <input type="text" name="subdivision" value={formData.subdivision} onChange={handleInputChange} placeholder="Greenview Subd." />
-                </div>
-                <div className="form-group">
                   <label>Barangay <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="barangay" value={formData.barangay} onChange={handleInputChange} placeholder="Barangay 1" required />
+                  <select 
+                    name="streetBarangay" 
+                    value={formData.streetBarangay} 
+                    onChange={handleInputChange} 
+                    required
+                  >
+                    <option value="">Select Barangay</option>
+                    {BARANGAYS.map(brgy => (
+                      <option key={brgy} value={brgy}>{brgy}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
               <div className="form-row">
                 <div className="form-group">
-                  <label>Town / City <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="townCity" value={formData.townCity} onChange={handleInputChange} placeholder="City/Municipality" required />
+                  <label>Town / City / Municipality <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="text" name="townCityMunicipality" value={formData.townCityMunicipality} onChange={handleInputChange} placeholder="Lipa City" required />
                 </div>
                 <div className="form-group">
                   <label>Province <span style={{color: '#e74c3c'}}>*</span></label>
