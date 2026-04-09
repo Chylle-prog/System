@@ -1100,19 +1100,40 @@ export default function DashVilma() {
       const list = data[listType] || [];
       const applicant = list[index];
       if (!applicant) return;
+      const applicantKey = applicant.id || applicant.applicant_no || applicant.studentContact?.email || applicant.name;
       
       // Call backend API to persist the change
       await scholarshipAPI.cancelApplicant(applicant.id);
       
       // Update frontend state
       setData((d) => {
-        const list = d[listType] || [];
-        const applicant = list[index];
-        if (!applicant) return d;
+        const sourceList = d[listType] || [];
+        const applicantToRestore = sourceList.find((item) => (
+          (item.id || item.applicant_no || item.studentContact?.email || item.name) === applicantKey
+        ));
+        if (!applicantToRestore) return d;
+
+        const restoredApplicant = {
+          ...applicantToRestore,
+          status: 'Pending',
+        };
+
+        const updatedApplicants = [
+          ...d.applicants.filter((item) => (item.id || item.applicant_no || item.studentContact?.email || item.name) !== applicantKey),
+          restoredApplicant,
+        ];
+        const updatedSourceList = sourceList.filter((item) => (
+          (item.id || item.applicant_no || item.studentContact?.email || item.name) !== applicantKey
+        ));
+        const nextAccepted = listType === 'accepted' ? updatedSourceList : d.accepted;
+        const nextDeclined = listType === 'declined' ? updatedSourceList : d.declined;
+        const historicalData = calculateHistoricalData([...updatedApplicants, ...nextAccepted, ...nextDeclined]);
+
         return {
           ...d,
-          applicants: [...d.applicants, applicant],
-          [listType]: list.filter((_, i) => i !== index),
+          applicants: updatedApplicants,
+          [listType]: updatedSourceList,
+          historicalData,
         };
       });
       
