@@ -1926,7 +1926,7 @@ const StudentInfo = () => {
             ))}
           </div>
 
-          <form onSubmit={handleApplicationSubmit}>
+          <form onSubmit={handleApplicationSubmit} noValidate>
 
             {/* Step 1: Personal Information */}
             <div className={`step-container ${currentStep === 1 ? 'active' : ''}`}>
