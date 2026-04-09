@@ -2230,13 +2230,22 @@ def convert_and_upload_video():
             file_name = f"{current_user_id}_{int(time.time())}.mp4"
             file_path = f"videos/{folder}/{file_name}"
             
-            print(f"[VIDEO-CONVERT-UPLOAD] Uploading to Supabase: {file_path} ({len(converted_bytes)} bytes)", flush=True)
+            # Prevent MEDIA_ELEMENT_ERROR (Format error) if ffmpeg fallback returns original WebM bytes
+            content_type = 'video/mp4'
+            if converted_bytes == video_bytes and len(converted_bytes) >= 4:
+                # WebM magic bytes: 1A 45 DF A3
+                if converted_bytes.startswith(b'\x1a\x45\xdf\xa3'):
+                    content_type = 'video/webm'
+                    file_path = file_path.replace('.mp4', '.webm')
+                    print(f"[VIDEO-CONVERT-UPLOAD] Detected WebM fallback. Changing upload to {content_type}", flush=True)
+
+            print(f"[VIDEO-CONVERT-UPLOAD] Uploading to Supabase: {file_path} ({len(converted_bytes)} bytes as {content_type})", flush=True)
             
             response = supabase.storage.from_('document_videos').upload(
                 file_path,
                 converted_bytes,
                 file_options={
-                    'content-type': 'video/mp4',
+                    'content-type': content_type,
                     'cache-control': '3600',
                     'upsert': 'true'
                 }

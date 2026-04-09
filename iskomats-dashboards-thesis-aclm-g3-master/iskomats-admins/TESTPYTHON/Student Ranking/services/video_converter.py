@@ -39,30 +39,33 @@ def convert_video_to_mp4(video_bytes, output_format='mp4'):
         return video_bytes
 
     try:
-        # Create temp files for input and output
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.webm') as input_file:
+        # Create temp files for input and output, use generic bin extension so ffmpeg sniffs headers
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.bin') as input_file:
             input_file.write(video_bytes)
             input_path = input_file.name
 
-        output_path = input_path.replace('.webm', f'.{output_format}')
+        output_path = input_path + f'.{output_format}'
 
         try:
             # Convert WebM to MP4 with H.264 codec
             # -c:v libx264: Use H.264 codec (widely supported)
+            # -pix_fmt yuv420p: Ensure pixel format is perfectly supported by HTML5/iOS
             # -preset fast: Fast encoding (balance quality/speed)
             # -crf 23: Quality (0-51, lower=better, 23=default)
-            # -c:a aac: Use AAC audio codec (widely supported)
+            # -c:a aac: Use AAC audio codec
+            # -b:a 128k: Audio bitrate
             # -movflags +faststart: Enable streaming from start
             cmd = [
                 'ffmpeg',
                 '-i', input_path,
-                '-c:v', 'libx264',        # H.264 codec
-                '-preset', 'fast',         # Fast encoding
-                '-crf', '23',              # Quality
-                '-c:a', 'aac',             # Audio codec
-                '-b:a', '128k',            # Audio bitrate
-                '-movflags', '+faststart', # Enable streaming
-                '-y',                      # Overwrite output
+                '-c:v', 'libx264',
+                '-pix_fmt', 'yuv420p',
+                '-preset', 'fast',
+                '-crf', '23',
+                '-c:a', 'aac',
+                '-b:a', '128k',
+                '-movflags', '+faststart',
+                '-y',
                 output_path
             ]
 
@@ -79,6 +82,14 @@ def convert_video_to_mp4(video_bytes, output_format='mp4'):
             # Read converted file
             with open(output_path, 'rb') as f:
                 converted_bytes = f.read()
+
+            # Safety check: If ffmpeg dropped the video track due to some error, it could produce 
+            # a tiny file (e.g. 37KB) from a large input (e.g. 1MB). If the size shrunk by > 90% 
+            # and is under 100KB, it's highly likely corrupted/dropped track.
+            if len(converted_bytes) < 100000 and len(video_bytes) > len(converted_bytes) * 10:
+                print(f"[VIDEO CONVERT] Warning: Converted file suspiciously small ({len(converted_bytes)}B). Reverting to original bytes.", flush=True)
+                print(f"[VIDEO CONVERT] FFmpeg Output: {result.stderr}", flush=True)
+                return video_bytes
 
             print(f"[VIDEO CONVERT] Successfully converted {len(video_bytes)} bytes to {len(converted_bytes)} bytes", flush=True)
             return converted_bytes
