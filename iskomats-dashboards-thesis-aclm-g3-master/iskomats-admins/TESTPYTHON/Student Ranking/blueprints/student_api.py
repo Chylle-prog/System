@@ -925,7 +925,7 @@ def student_reset_password():
         hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
         # Robust payload extraction
         user_no_raw = payload.get('user_no')
-        email = payload.get('email')
+        email = (payload.get('email') or '').strip().lower()
         
         try:
             user_no = int(user_no_raw) if user_no_raw is not None else None
@@ -933,11 +933,11 @@ def student_reset_password():
             print(f"[AUTH ERROR] Invalid user_no in token: {user_no_raw}", flush=True)
             return jsonify({'message': 'Invalid token payload: invalid user identification'}), 400
 
-        print(f"[AUTH] Resetting password for student #{user_no} ({email})", flush=True)
-
         if not user_no or not email:
             print(f"[AUTH ERROR] Missing user_no or email in token: user_no={user_no}, email={email}", flush=True)
             return jsonify({'message': 'Invalid token payload'}), 400
+
+        print(f"[AUTH] Resetting password for student #{user_no} ({email})", flush=True)
 
         conn = get_db()
         if not conn:
@@ -947,16 +947,21 @@ def student_reset_password():
         cur = conn.cursor()
         
         # Check if record exists first (for better error reporting)
-        cur.execute("SELECT applicant_no FROM email WHERE applicant_no = %s AND email_address ILIKE %s", (user_no, email))
+        # Use TRIM and ILIKE for robustness
+        cur.execute("SELECT applicant_no FROM email WHERE applicant_no = %s AND TRIM(email_address) ILIKE %s", (user_no, email))
         if not cur.fetchone():
-            print(f"[AUTH ERROR] No matching student record found for applicant_no={user_no} and email={email}", flush=True)
+            # Debug: Check if email exists AT ALL for this applicant_no
+            cur.execute("SELECT email_address FROM email WHERE applicant_no = %s", (user_no,))
+            actual_record = cur.fetchone()
+            actual_email = actual_record[0] if actual_record else "NOT FOUND"
+            print(f"[AUTH ERROR] No matching student record found. Input: applicant_no={user_no}, email='{email}'. DB Record Email: '{actual_email}'", flush=True)
             cur.close()
             conn.close()
             return jsonify({'message': 'No matching account found. The link might be for a different user.'}), 404
 
         # Update password
         cur.execute(
-            "UPDATE email SET password_hash = %s WHERE applicant_no = %s AND email_address ILIKE %s",
+            "UPDATE email SET password_hash = %s WHERE applicant_no = %s AND TRIM(email_address) ILIKE %s",
             (hashed_password, user_no, email)
         )
         conn.commit()
