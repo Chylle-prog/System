@@ -234,8 +234,6 @@ const Login = () => {
     const birthdate = e.target.birthdate?.value || '';
     const school = e.target.school?.value || '';
     const course = e.target.course?.value || '';
-    const gpa = e.target.gpa?.value || '';
-    const income = e.target.income?.value || '';
     const mobileNo = e.target.mobileNo?.value || '';
     const streetBrgy = e.target.streetBrgy?.value || '';
     const townCityMunicipality = e.target.townCityMunicipality?.value || '';
@@ -243,7 +241,7 @@ const Login = () => {
     const zipCode = e.target.zipCode?.value || '';
 
     // Validate required fields
-    if (!firstName || !lastName || !birthdate || !school || !course || !gpa || !income || !mobileNo || !streetBrgy || !townCityMunicipality || !province || !zipCode) {
+    if (!firstName || !lastName || !birthdate || !school || !course || !mobileNo || !streetBrgy || !townCityMunicipality || !province || !zipCode) {
       setErrorMessage('Please fill in all required fields');
       setShowError(true);
       return;
@@ -263,8 +261,6 @@ const Login = () => {
         dateOfBirth: birthdate,
         schoolName: school,
         course,
-        gpa,
-        parentsGrossIncome: income,
         mobileNumber: mobileNo,
         streetBarangay: streetBrgy,
         townCity: townCityMunicipality,
@@ -1363,23 +1359,6 @@ const Login = () => {
                 <div className="profile-input-wrapper">
                   <i className="fas fa-graduation-cap"></i>
                   <input type="text" name="course" placeholder="e.g. BS Computer Science" required />
-                </div>
-              </div>
-
-              <div className="profile-grid">
-                <div className="profile-form-group">
-                  <label>General Average (GPA)</label>
-                  <div className="profile-input-wrapper">
-                    <i className="fas fa-star"></i>
-                    <input type="number" name="gpa" step="0.01" placeholder="e.g. 1.25" required />
-                  </div>
-                </div>
-                <div className="profile-form-group">
-                  <label>Annual Household Income</label>
-                  <div className="profile-input-wrapper">
-                    <i className="fas fa-coins"></i>
-                    <input type="number" name="income" placeholder="Total Yearly Income" required />
-                  </div>
                 </div>
               </div>
 
