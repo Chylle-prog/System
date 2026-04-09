@@ -55,15 +55,20 @@ const makeRequest = async (endpoint, options = {}) => {
         }
       }
 
-      let errorData;
-      try {
-        errorData = await response.json();
-      } catch (e) {
-        // If response is not JSON, or empty, provide a generic error
-        throw new Error(`Server Error (${response.status}): ${response.statusText}`);
+      // Handle 403 — account suspended mid-session
+      if (response.status === 403) {
+        let errBody;
+        try { errBody = await response.json(); } catch (_) { errBody = {}; }
+        if (errBody.suspended) {
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('currentUser');
+          localStorage.removeItem('applicantNo');
+          if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+            window.location.href = '/login?suspended=1';
+          }
+          throw new Error(errBody.message || 'Account has been suspended.');
+        }
       }
-      throw new Error(errorData.message || errorData.error || `Request failed with status ${response.status}`);
-    }
 
     // Try to parse JSON, but allow for responses with no body (e.g., 204 No Content)
     try {

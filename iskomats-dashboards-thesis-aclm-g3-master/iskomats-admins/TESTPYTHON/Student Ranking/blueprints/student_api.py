@@ -233,7 +233,22 @@ def token_required(route_handler):
             if token.startswith('Bearer '):
                 token = token[7:]
             data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-            request.user_no = data.get('user_no')
+            applicant_no = data.get('user_no')
+            request.user_no = applicant_no
+
+            # Real-time suspension check
+            try:
+                conn = get_db()
+                cur = conn.cursor()
+                cur.execute('SELECT is_locked FROM email WHERE applicant_no = %s', (applicant_no,))
+                lock_row = cur.fetchone()
+                cur.close()
+                conn.close()
+                if lock_row and lock_row.get('is_locked'):
+                    return jsonify({'message': 'Account has been suspended. Please contact the administrator.', 'suspended': True}), 403
+            except Exception as lock_err:
+                print(f'[AUTH] Lock check error: {lock_err}', flush=True)
+
         except jwt.ExpiredSignatureError:
             return jsonify({'message': 'Token has expired'}), 401
         except jwt.InvalidTokenError:
@@ -423,7 +438,7 @@ def student_login():
         # Only allow applicant logins - must have applicant_no
         cur.execute(
             """
-            SELECT em_no, applicant_no, password_hash, is_verified
+            SELECT em_no, applicant_no, password_hash, is_verified, is_locked
             FROM email
             WHERE email_address ILIKE %s AND applicant_no IS NOT NULL
             """,
@@ -445,6 +460,9 @@ def student_login():
 
         if not bcrypt.check_password_hash(user['password_hash'], password):
             return jsonify({'message': 'Incorrect password'}), 401
+
+        if user.get('is_locked'):
+            return jsonify({'message': 'Account has been suspended. Please contact the administrator.', 'suspended': True}), 403
 
         if not user.get('is_verified'):
             return jsonify({'message': 'Email not verified. Please verify your email first.'}), 401

@@ -15,6 +15,7 @@ const Login = () => {
   const [showError, setShowError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [showEmailAlreadyRegisteredOverlay, setShowEmailAlreadyRegisteredOverlay] = useState(false);
+  const [showSuspensionModal, setShowSuspensionModal] = useState(false);
   const [profilePicture, setProfilePicture] = useState(null);
   const [isLoginLoading, setIsLoginLoading] = useState(false);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
@@ -27,6 +28,11 @@ const Login = () => {
     const isSetup = searchParams.get('setup') === 'true';
     if (isSetup) {
       setShowProfile(true);
+    }
+
+    // Show suspension notice if redirected from a locked session
+    if (searchParams.get('suspended') === '1') {
+      setShowSuspensionModal(true);
     }
 
     if (localStorage.getItem('authToken') && localStorage.getItem('currentUser')) {
@@ -130,6 +136,12 @@ const Login = () => {
         setErrorMessage('Incorrect password.');
       } else if (error.message.includes('Invalid credentials')) {
         setErrorMessage('Invalid email or password.');
+      } else if (error.message.toLowerCase().includes('suspended') || error.message.toLowerCase().includes('locked')) {
+        setShowSuspensionModal(true);
+        setShowError(false);
+        setIsLoginLoading(false);
+        setShowLoadingOverlay(false);
+        return;
       } else {
         setErrorMessage(errorMsg);
       }
@@ -1550,6 +1562,44 @@ const Login = () => {
           </button>
         </div>
       </div>
+
+      {/* Account Suspended Modal */}
+      {showSuspensionModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+          background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: '28px', padding: '2.5rem', maxWidth: '420px',
+            width: '90%', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
+          }}>
+            <div style={{
+              width: '72px', height: '72px', borderRadius: '50%',
+              background: '#fee2e2', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', margin: '0 auto 1.5rem', fontSize: '2rem', color: '#dc2626'
+            }}>
+              <i className="fas fa-ban"></i>
+            </div>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: '800', color: '#991b1b', marginBottom: '0.75rem' }}>
+              Account Suspended
+            </h2>
+            <p style={{ color: '#555', fontSize: '0.95rem', lineHeight: '1.6', marginBottom: '1.5rem' }}>
+              Your account has been suspended by the administrator.<br />
+              Please contact the Mayor's Scholarship Office for assistance.
+            </p>
+            <button
+              onClick={() => setShowSuspensionModal(false)}
+              style={{
+                background: '#991b1b', color: 'white', border: 'none', borderRadius: '40px',
+                padding: '0.75rem 2.5rem', fontWeight: '700', fontSize: '0.95rem', cursor: 'pointer'
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 };
