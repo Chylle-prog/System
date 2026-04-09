@@ -1,5 +1,12 @@
-import eventlet
-eventlet.monkey_patch()
+import warnings
+with warnings.catch_warnings():
+    warnings.filterwarnings('ignore', category=DeprecationWarning)
+    # Eventlet is deprecated but we suppress the warning since it's fundamentally embedded in Flask-SocketIO's current setup.
+    try:
+        import eventlet
+        eventlet.monkey_patch()
+    except ImportError:
+        pass
 import os
 import sys
 import time
@@ -122,8 +129,10 @@ def add_cors_headers(response):
     
     # Debug: Log responses with potential CORS issues
     if not response.headers.get('Access-Control-Allow-Origin') and request.method != 'OPTIONS':
-        print(f"[CORS] WARNING: No CORS header for response to {request.method} {request.path}", flush=True)
-        print(f"       Origin: {origin}", flush=True)
+        # Don't log missing CORS for simple health check pings without Origin
+        if origin or request.path not in ['/', '/_health', '/api/health']:
+            print(f"[CORS] WARNING: No CORS header for response to {request.method} {request.path}", flush=True)
+            print(f"       Origin: {origin}", flush=True)
 
     return response
 

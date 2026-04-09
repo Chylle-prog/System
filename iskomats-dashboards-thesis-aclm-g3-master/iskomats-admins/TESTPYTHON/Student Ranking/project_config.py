@@ -48,8 +48,9 @@ def get_db_connection_kwargs():
 
 def get_db(cursor_factory=RealDictCursor):
     connection_kwargs = get_db_connection_kwargs()
-    max_attempts = int(os.environ.get('DB_CONNECT_RETRIES', '3'))
-    retry_delay = float(os.environ.get('DB_CONNECT_RETRY_DELAY', '1.0'))
+    # Increase defaults to handle slow DNS initialization common in Render free tier
+    max_attempts = int(os.environ.get('DB_CONNECT_RETRIES', '10'))
+    retry_delay_base = float(os.environ.get('DB_CONNECT_RETRY_DELAY', '2.0'))
     last_error = None
 
     for attempt in range(1, max_attempts + 1):
@@ -61,7 +62,8 @@ def get_db(cursor_factory=RealDictCursor):
             last_error = exc
             if attempt == max_attempts:
                 break
-            time.sleep(retry_delay)
+            print(f"[DB WARN] Database connection failed (attempt {attempt}/{max_attempts}): {exc}. Retrying...")
+            time.sleep(retry_delay_base)
 
     raise last_error
 
