@@ -44,13 +44,15 @@ def faststart_video_stream(video_bytes, ext='.mp4'):
         cmd = [
             'ffmpeg',
             '-i', input_path,
+            '-vf', 'scale=-2:480',    # Downscale to 480p height max (drastic speedup, massive pixel cut)
+            '-r', '24',               # Cap framerate to 24fps
             '-c:v', 'libx264',
             '-pix_fmt', 'yuv420p',
             '-preset', 'ultrafast',   # Drastically lowers memory and CPU spikes
-            '-crf', '28',             # Slightly higher compression to save process time
+            '-crf', '30',             # Slightly higher compression to save process time
             '-threads', '1',          # Restrict to 1 CPU thread (Critical to prevent OOM)
             '-c:a', 'aac',
-            '-b:a', '128k',
+            '-b:a', '64k',            # Reduced audio bitrate for faster packaging
             '-movflags', '+faststart', # Crucial: Fixes Chrome HTTP streaming
             '-y',
             output_path

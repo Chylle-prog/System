@@ -1197,7 +1197,7 @@ def update_profile():
             'mayorIndigency_video': 'indigency_vid_url',
             'mayorGrades_video': 'grades_vid_url',
             'mayorCOE_video': 'enrollment_certificate_vid_url',
-            'schoolId_video': 'schoolId_vid_url',
+            'schoolId_video': 'id_vid_url',
         }
 
         for frontend_key, db_col in field_mapping.items():
@@ -1467,7 +1467,7 @@ def submit_application():
             'mayorIndigency_video': 'indigency_vid_url',
             'mayorGrades_video': 'grades_vid_url',
             'mayorCOE_video': 'enrollment_certificate_vid_url',
-            'schoolId_video': 'schoolId_vid_url',
+            'schoolId_video': 'id_vid_url',
         }
 
         for form_key, db_col in field_mapping.items():
@@ -1639,10 +1639,12 @@ def ocr_check():
                     return {'doc': doc_type, 'verified': False, 'message': f"Video verification failed: {msg_video}", 'video_verified': False, 'video_message': msg_video}
                 
                 # 1.b OCR Extraction from document image
+                target_address = town_city if doc_type == 'Indigency' else None
+                
                 if doc_type == 'SchoolIDBack':
                     v, msg, raw, _ = verify_id_with_ocr(doc_bytes, None, None, None, None)
                 else:
-                    v, msg, raw, _ = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, town_city)
+                    v, msg, raw, _ = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address)
                 raw_lower = raw.lower() if raw else ""
                 
                 # If primary OCR extraction failed, return error
