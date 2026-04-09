@@ -109,7 +109,8 @@ def decode_base64(data):
     return data
 
 # ─── Image preprocessing & quality assessment (Optimization #3) ──────────────
-_MAX_OCR_WIDTH = 480   # Reduced from 640 — faster processing (~45% faster), still readable for OCR
+_MAX_OCR_WIDTH = 800       # Higher resolution for A4 document legibility (Indigency/COE)
+_MAX_VIDEO_OCR_WIDTH = 480 # Lower resolution strictly for videos to maintain scan speed
 _MAX_FACE_WIDTH = 224
 
 def assess_image_quality(img):
@@ -439,6 +440,14 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
     if not video_bytes: return False, "No video data"
     if not _check_tesseract(): return False, "OCR Engine not found"
     
+    # --- SPEED OPTIMIZATION: Check Video Cache ---
+    # Instantly returns result if this specific video byte signature was already scanned
+    vid_hash = _hash_image(video_bytes)
+    cached_res = _cache_get(vid_hash)
+    if cached_res is not None:
+        print(f"[VIDEO CACHE] Reusing extremely fast cached result for {vid_hash[:8]}...", flush=True)
+        return cached_res
+
     # Determine if this is an address-based verification (indigency only)
     is_address_verification = expected_address is not None
     
@@ -452,88 +461,83 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
         if not cap.isOpened():
             return False, "Could not open video file"
             
+        # Ensure frame count is perfectly accessible
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         if frame_count <= 0:
+            _cache_set(vid_hash, (False, "Invalid video frame count"))
             return False, "Invalid video frame count"
             
-        # Sample 2 frames at strategic points: 40% and 70% of video
-        # This ensures document visibility while balancing speed/accuracy
-        sample_indexes = [int(frame_count * 0.4), int(frame_count * 0.7)]
+        # --- OPTIMIZATION #1: Single Frame Priority ---
+        # Sample just exactly 1 centralized frame first (50% timestamp). 
+        # This doubles verification speed. We only fallback if this single frame fails.
+        primary_idx = int(frame_count * 0.5)
+        fallback_idx = int(frame_count * 0.7)
+        
         all_ocr_text = ""
         found_keywords = []
         addr_ok = False
         
-        for idx in sample_indexes:
+        def process_frame(idx, text_accumulator, keywords_found, address_ok):
             cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
             ret, frame = cap.read()
-            if not ret or frame is None: continue
+            if not ret or frame is None: return text_accumulator, keywords_found, address_ok
             
-            # Resize frame down to OCR bounds to drastically reduce Tesseract processing time
-            # (Mobile videos are often 1080p/4K, which crashes or severely lags Tesseract)
+            # Sub-frame extraction bounds logic
             h, w = frame.shape[:2]
-            if w > _MAX_OCR_WIDTH:
-                scale = _MAX_OCR_WIDTH / w
+            if w > _MAX_VIDEO_OCR_WIDTH:
+                scale = _MAX_VIDEO_OCR_WIDTH / w
                 frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
                 
-            # PSM 11: Sparse text (better for documents with scattered/sparse text)
-            # More reliable for detecting document keywords than PSM 6
             text = _run_tesseract_on_image(frame, psm=11)
-            all_ocr_text += " " + text
-            print(f"[VIDEO OCR] Frame {idx} OCR text: {text[:100]}...", flush=True)
+            text_accumulator += " " + text
+            print(f"[VIDEO OCR] Frame {idx} scanned...", flush=True)
             
-            # Check current text against requirements
-            # Only use is_indigency=True for actual indigency document verification (when expected_address is provided)
-            _, addr_ok, found_keywords, _ = _perform_text_matching(all_ocr_text, None, None, None, None, keywords=keywords, is_indigency=is_address_verification)
-            print(f"[VIDEO OCR] Found keywords so far: {found_keywords}", flush=True)
-            missing_kw = [kw for kw in (keywords or []) if kw not in found_keywords]
-            
-            # Fast exit: if all required keywords (and address if needed) are found, stop early
-            if not missing_kw and (not expected_address or addr_ok):
-                print(f"[VIDEO OCR] All requirements met, exiting early", flush=True)
-                break
-                
-        cap.release()
+            _, new_addr, new_kws, _ = _perform_text_matching(text_accumulator, None, None, None, None, keywords=keywords, is_indigency=is_address_verification)
+            return text_accumulator, new_kws, new_addr
+
+        # Execute Initial Primary Scan
+        all_ocr_text, found_keywords, addr_ok = process_frame(primary_idx, all_ocr_text, found_keywords, addr_ok)
         
         missing_kw = [kw for kw in (keywords or []) if kw not in found_keywords]
         
+        # Determine if we successfully gathered requirements from 1st scan
+        is_success = False
+        if not missing_kw and (not expected_address or addr_ok):
+            is_success = True
+        elif not is_address_verification and found_keywords:
+            # Lenient mode for non-indigency allowed partial keywords
+            is_success = True
+
+        # If primary scan failed, run the 1-time fallback scan
+        if not is_success:
+            print(f"[VIDEO OCR] Requirements missing, launching fallback trace at 70%", flush=True)
+            all_ocr_text, found_keywords, addr_ok = process_frame(fallback_idx, all_ocr_text, found_keywords, addr_ok)
+            
+            # Recheck
+            missing_kw = [kw for kw in (keywords or []) if kw not in found_keywords]
+            if not missing_kw and (not expected_address or addr_ok):
+                is_success = True
+            elif not is_address_verification and found_keywords:
+                is_success = True
+                
+        cap.release()
+        
         if expected_address and not addr_ok:
             print(f"[VIDEO OCR] Address verification failed", flush=True)
-            return False, f"Address mismatch: Region '{expected_address}' not clearly visible in video."
+            fail_msg = f"Address mismatch: Region '{expected_address}' not clearly visible in video."
+            _cache_set(vid_hash, (False, fail_msg))
+            return False, fail_msg
 
-        # For non-address videos (COE, Grades), be more lenient with keyword requirements
-        # Accept partial keyword matches since OCR can be imperfect on videos
-        if keywords:
-            if is_address_verification:
-                # Indigency videos: require ALL keywords
-                if not found_keywords:
-                    return False, "Required document content not detected in video."
-            else:
-                # COE, Grades, etc: require at least SOME keywords found (more lenient)
-                if not found_keywords:
-                    print(f"[VIDEO OCR] No keywords found at all - attempting broader OCR", flush=True)
-                    # Try one more frame at 50% to ensure we didn't miss the document
-                    try:
-                        cap = cv2.VideoCapture(tmp_path)
-                        cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_count * 0.5))
-                        ret, frame = cap.read()
-                        if ret and frame is not None:
-                            h, w = frame.shape[:2]
-                            if w > _MAX_OCR_WIDTH:
-                                scale = _MAX_OCR_WIDTH / w
-                                frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
-                            text = _run_tesseract_on_image(frame, psm=11)
-                            all_ocr_text += " " + text
-                            _, addr_ok, found_keywords, _ = _perform_text_matching(all_ocr_text, None, None, None, None, keywords=keywords, is_indigency=False)
-                        cap.release()
-                    except:
-                        pass
-                    
-                    if not found_keywords:
-                        return False, "Required document content not detected in video."
+        if not is_success:
+            fail_msg = "Required document content not detected in video."
+            _cache_set(vid_hash, (False, fail_msg))
+            return False, fail_msg
         
-        # Success message
+        # Absolute Success
         msg = f"Validated: Found {', '.join(found_keywords)}"
         if expected_address: msg += f" and address matched."
+        
+        _cache_set(vid_hash, (True, msg))
         return True, msg
         
     except Exception as e:
