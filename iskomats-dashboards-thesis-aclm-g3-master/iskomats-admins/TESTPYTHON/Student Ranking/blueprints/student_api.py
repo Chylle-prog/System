@@ -1252,7 +1252,7 @@ def update_profile():
             'mayorIndigency_video': 'indigency_vid_url',
             'mayorGrades_video': 'grades_vid_url',
             'mayorCOE_video': 'enrollment_certificate_vid_url',
-            'schoolId_video': 'id_vid_url',
+            'schoolId_video': 'schoolId_vid_url',
         }
 
         for frontend_key, db_col in field_mapping.items():
@@ -1517,7 +1517,7 @@ def submit_application():
             'mayorIndigency_video': 'indigency_vid_url',
             'mayorGrades_video': 'grades_vid_url',
             'mayorCOE_video': 'enrollment_certificate_vid_url',
-            'schoolId_video': 'id_vid_url',
+            'schoolId_video': 'schoolId_vid_url',
         }
 
         for form_key, db_col in field_mapping.items():
@@ -1593,7 +1593,7 @@ def ocr_check():
         # 1. Get applicant record from DB
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT applicant_no, first_name, middle_name, last_name, town_city_municipality, id_img_front, id_img_back, indigency_doc, id_vid_url, indigency_vid_url, enrollment_certificate_vid_url, grades_vid_url FROM applicants WHERE applicant_no = %s", (request.user_no,))
+        cur.execute("SELECT applicant_no, first_name, middle_name, last_name, town_city_municipality, id_img_front, id_img_back, indigency_doc, id_vid_url, schoolId_vid_url, indigency_vid_url, enrollment_certificate_vid_url, grades_vid_url FROM applicants WHERE applicant_no = %s", (request.user_no,))
         applicant = cur.fetchone()
 
         if not applicant:
@@ -1651,7 +1651,8 @@ def ocr_check():
                 frontend_video_url = data.get('video_url')
                 vid_url_map = {
                     'Indigency': frontend_video_url or applicant.get('indigency_vid_url'),
-                    'SchoolID': applicant.get('id_vid_url'),
+                    'SchoolID': frontend_video_url or applicant.get('schoolId_vid_url'),
+                    'SchoolIDBack': frontend_video_url or applicant.get('schoolId_vid_url'),
                     'Enrollment': frontend_video_url or applicant.get('enrollment_certificate_vid_url'),
                     'Grades': frontend_video_url or applicant.get('grades_vid_url')
                 }
@@ -1673,7 +1674,8 @@ def ocr_check():
                         # Filipino-context terms
                         'Semestral', 'Semester', 'Academic',
                     ],
-                    'SchoolID': ['School', 'ID', 'Identification', 'Card']
+                    'SchoolID': ['School', 'ID', 'Identification', 'Card'],
+                    'SchoolIDBack': ['School Year', 'A.Y.', 'S.Y.', 'Semester', 'Valid']
                 }
 
                 # 1.a Video Content Verification (if URL present)
@@ -1691,7 +1693,7 @@ def ocr_check():
                         v_video = False
                 else:
                     # Video is now mandatory for these specific documents
-                    if doc_type in ['Indigency', 'Enrollment', 'Grades']:
+                    if doc_type in ['Indigency', 'Enrollment', 'Grades', 'SchoolID', 'SchoolIDBack']:
                         v_video = False
                         msg_video = "Mandatory supporting video is missing"
                 
@@ -1713,7 +1715,7 @@ def ocr_check():
                     return {'doc': doc_type, 'verified': False, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
                 
                 # Double-check keywords
-                if doc_type in doc_keywords and doc_type != 'SchoolID': # SchoolID keywords are verified in video/header logic
+                if doc_type in doc_keywords and doc_type not in ['SchoolID', 'SchoolIDBack']: # SchoolID images have separate front/back checks
                     _, _, found_kw, _ = _perform_text_matching(raw, None, None, None, None, keywords=doc_keywords[doc_type], is_indigency=True)
                     if not found_kw:
                         return {'doc': doc_type, 'verified': False, 'message': f"Document type mismatch: Required '{doc_keywords[doc_type][0]}' not detected.", 'raw_text': raw}
@@ -2306,7 +2308,7 @@ def upload_video():
                 'mayorIndigency_video': 'indigency_vid_url',
                 'mayorCOE_video': 'enrollment_certificate_vid_url',
                 'mayorGrades_video': 'grades_vid_url',
-                'schoolId_video': 'id_vid_url',
+                'schoolId_video': 'schoolId_vid_url',
                 'face_video': 'id_vid_url'
             }
             db_col = db_column_map.get(field_name)
