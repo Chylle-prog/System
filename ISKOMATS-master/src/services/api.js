@@ -68,9 +68,17 @@ const makeRequest = async (endpoint, options = {}) => {
           }
           throw new Error(errBody.message || 'Account has been suspended.');
         }
+        throw new Error(errBody.message || errBody.error || `Request failed with status ${response.status}`);
       }
 
-    // Try to parse JSON, but allow for responses with no body (e.g., 204 No Content)
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        throw new Error(`Server Error (${response.status}): ${response.statusText}`);
+      }
+      throw new Error(errorData.message || errorData.error || `Request failed with status ${response.status}`);
+    }
     try {
       return await response.json();
     } catch (e) {
