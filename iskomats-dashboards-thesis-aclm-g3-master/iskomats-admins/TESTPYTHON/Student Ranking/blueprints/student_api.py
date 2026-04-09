@@ -1770,14 +1770,19 @@ def ocr_check():
         results = []
         overall_verified = True
         if jobs:
-            # Multi-threading prevents network bottlenecking during multiple video validations
-            with ThreadPoolExecutor(max_workers=3) as executor:
-                future_results = [executor.submit(process_doc, *job) for job in jobs]
-                for future in future_results:
-                    res = future.result()
-                    if res:
-                        results.append(res)
-                        if not res.get('verified', False): overall_verified = False
+            # Use eventlet.tpool to offload blocking OCR/CPU tasks (like Tesseract) to real OS threads.
+            # This prevents the single eventlet worker from freezing while processing multiple documents.
+            import eventlet.tpool
+            
+            # We run them sequentially here to avoid memory spikes, but since it's in tpool.execute, 
+            # the main worker can still handle other users and SocketIO events in the meantime.
+            for job in jobs:
+                res = eventlet.tpool.execute(process_doc, *job)
+                if res:
+                    results.append(res)
+                    if not res.get('verified', False): 
+                        overall_verified = False
+
 
         if not results:
             return jsonify({'verified': False, 'message': 'No documents provided for verification'}), 400

@@ -12,7 +12,14 @@ import multiprocessing as mp
 import re
 import difflib
 import hashlib
+import eventlet.tpool
+import eventlet.semaphore
 from collections import OrderedDict
+
+# Global OCR Concurrency Control: Render free tier only has ~512MB RAM and 1-2 CPUs.
+# Running too many Tesserect/OCR tasks in parallel will cause OOM or freeze the whole process.
+OCR_SEMAPHORE = eventlet.semaphore.Semaphore(2)
+
 
 # ─── Environment hints for threading & memory ──────────────────────────────────
 os.environ.setdefault('OMP_NUM_THREADS', '1')
@@ -402,14 +409,16 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     best_ratio = 0.0
     print(f"[OCR] Running PSM3 verification...", flush=True)
     
-    # PSM3 is typically best for mixed text layouts (IDs, documents)
-    # Removed parallel PSM11 - saves 15+ seconds, PSM3 alone is sufficient
-    try:
-        best_text = _run_tesseract_on_image(img, 3)
-        print(f"[OCR] PSM3 completed", flush=True)
-    except Exception as e:
-        print(f"[OCR] PSM3 error: {e}", flush=True)
-        best_text = ""
+    with OCR_SEMAPHORE:
+        # PSM3 is typically best for mixed text layouts (IDs, documents)
+        # Removed parallel PSM11 - saves 15+ seconds, PSM3 alone is sufficient
+        try:
+            best_text = _run_tesseract_on_image(img, 3)
+            print(f"[OCR] PSM3 completed", flush=True)
+        except Exception as e:
+            print(f"[OCR] PSM3 error: {e}", flush=True)
+            best_text = ""
+    
     
     name_v, addr_v, found_kw, best_ratio = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, None, is_indigency)
     if name_v and addr_v:
@@ -471,99 +480,89 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
         tmp.write(video_bytes)
         tmp_path = tmp.name
         
-    try:
-        cap = cv2.VideoCapture(tmp_path)
-        if not cap.isOpened():
-            return False, "Could not open video file"
+    with OCR_SEMAPHORE:
+        try:
+            cap = cv2.VideoCapture(tmp_path)
+            if not cap.isOpened():
+                return False, "Could not open video file"
             
-        # Ensure frame count is perfectly accessible
-        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        if frame_count <= 0:
-            _cache_set(vid_hash, (False, "Invalid video frame count"))
-            return False, "Invalid video frame count"
+            # Ensure frame count is perfectly accessible
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            if frame_count <= 0:
+                _cache_set(vid_hash, (False, "Invalid video frame count"))
+                return False, "Invalid video frame count"
             
-        # Frame positions to sample: frame 0 (best for static image-to-video), then 25%, 50%, 75%
-        # Frame 0 is tried first because converting an image to video always produces a clear first frame.
-        sample_positions = [0, 0.25, 0.5, 0.75]
-        sample_indices = []
-        for pos in sample_positions:
-            idx = int(frame_count * pos)
-            if idx not in sample_indices:
-                sample_indices.append(idx)
+            # Frame positions to sample: frame 0 (best for static image-to-video), then 25%, 50%, 75%
+            # Frame 0 is tried first because converting an image to video always produces a clear first frame.
+            sample_positions = [0, 0.25, 0.5, 0.75]
+            sample_indices = []
+            for pos in sample_positions:
+                idx = int(frame_count * pos)
+                if idx not in sample_indices:
+                    sample_indices.append(idx)
 
-        all_ocr_text = ""
-        found_keywords = []
-        addr_ok = False
+            all_ocr_text = ""
+            found_keywords = []
+            addr_ok = False
 
-        def process_frame(idx, text_accumulator, keywords_found, address_ok):
-            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-            ret, frame = cap.read()
-            if not ret or frame is None: return text_accumulator, keywords_found, address_ok
+            def process_frame(idx, text_accumulator, keywords_found, address_ok_val):
+                cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+                ret, frame = cap.read()
+                if not ret or frame is None: return text_accumulator, keywords_found, address_ok_val
 
-            # Resize if too wide
-            h, w = frame.shape[:2]
-            if w > _MAX_VIDEO_OCR_WIDTH:
-                scale = _MAX_VIDEO_OCR_WIDTH / w
-                frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+                h, w = frame.shape[:2]
+                if w > _MAX_VIDEO_OCR_WIDTH:
+                    scale = _MAX_VIDEO_OCR_WIDTH / w
+                    frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
 
-            # Preprocess for OCR (converts to enhanced grayscale)
-            enhanced = _preprocess_frame_for_ocr(frame)
+                enhanced = _preprocess_frame_for_ocr(frame)
+                text = _run_tesseract_on_image(enhanced, psm=3, skip_pass2=True)
+                if len(text.strip()) < 30:
+                    text += " " + _run_tesseract_on_image(enhanced, psm=11, skip_pass2=True)
+                if len(text.strip()) < 30:
+                    text += " " + _run_tesseract_on_image(enhanced, psm=3, skip_pass2=False)
 
-            # skip_pass2=True removes 50% of cost per frame (grayscale is fast).
-            # If grayscale barely returns anything (<30 chars), fall back to full pipeline for this frame.
-            text = _run_tesseract_on_image(enhanced, psm=3, skip_pass2=True)
-            if len(text.strip()) < 30:
-                # Sparse PSM11 pass -- fast, good for scattered text
-                text += " " + _run_tesseract_on_image(enhanced, psm=11, skip_pass2=True)
-            if len(text.strip()) < 30:
-                # Last resort: full pipeline with adaptive thresholding
-                text += " " + _run_tesseract_on_image(enhanced, psm=3, skip_pass2=False)
+                text_accumulator += " " + text
+                print(f"[VIDEO OCR] Frame {idx} scanned ({len(text.strip())} chars)...", flush=True)
 
-            text_accumulator += " " + text
-            print(f"[VIDEO OCR] Frame {idx} scanned ({len(text.strip())} chars)...", flush=True)
+                _, new_addr, new_kws, _ = _perform_text_matching(text_accumulator, None, None, None, None, keywords=keywords, is_indigency=is_address_verification)
+                return text_accumulator, new_kws, new_addr
 
-            _, new_addr, new_kws, _ = _perform_text_matching(text_accumulator, None, None, None, None, keywords=keywords, is_indigency=is_address_verification)
-            return text_accumulator, new_kws, new_addr
+            is_success = False
+            for sample_idx in sample_indices:
+                all_ocr_text, found_keywords, addr_ok = process_frame(sample_idx, all_ocr_text, found_keywords, addr_ok)
+                missing_kw = [kw for kw in (keywords or []) if kw not in found_keywords]
+                if not missing_kw and (not expected_address or addr_ok):
+                    is_success = True
+                    break
+                elif not is_address_verification and found_keywords:
+                    is_success = True
+                    break
+                    
+            if expected_address and not addr_ok:
+                fail_msg = f"Address mismatch: Region '{expected_address}' not clearly visible in video."
+                _cache_set(vid_hash, (False, fail_msg))
+                return False, fail_msg
 
-        # Scan frames in order; stop early as soon as we have a successful result
-        is_success = False
-        for sample_idx in sample_indices:
-            all_ocr_text, found_keywords, addr_ok = process_frame(sample_idx, all_ocr_text, found_keywords, addr_ok)
-
-            missing_kw = [kw for kw in (keywords or []) if kw not in found_keywords]
-            if not missing_kw and (not expected_address or addr_ok):
-                is_success = True
-                break
-            elif not is_address_verification and found_keywords:
-                is_success = True
-                break
-                
-        cap.release()
-        
-        if expected_address and not addr_ok:
-            print(f"[VIDEO OCR] Address verification failed", flush=True)
-            fail_msg = f"Address mismatch: Region '{expected_address}' not clearly visible in video."
-            _cache_set(vid_hash, (False, fail_msg))
-            return False, fail_msg
-
-        if not is_success:
-            fail_msg = "Required document content not detected in video."
-            _cache_set(vid_hash, (False, fail_msg))
-            return False, fail_msg
-        
-        # Absolute Success
-        msg = f"Validated: Found {', '.join(found_keywords)}"
-        if expected_address: msg += f" and address matched."
-        
-        _cache_set(vid_hash, (True, msg))
-        return True, msg
-        
-    except Exception as e:
-        print(f"[VIDEO OCR] Error: {e}", flush=True)
-        return False, f"Processing error: {str(e)}"
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+            if not is_success:
+                fail_msg = "Required document content not detected in video."
+                _cache_set(vid_hash, (False, fail_msg))
+                return False, fail_msg
+            
+            msg = f"Validated: Found {', '.join(found_keywords)}"
+            if expected_address: msg += f" and address matched."
+            _cache_set(vid_hash, (True, msg))
+            return True, msg
+        except Exception as e:
+            print(f"[VIDEO OCR ERROR] {e}")
+            return False, f"Processing error: {str(e)}"
+        finally:
+            if 'cap' in locals() and cap is not None:
+                try: cap.release()
+                except: pass
+            if os.path.exists(tmp_path):
+                try: os.remove(tmp_path)
+                except: pass
 
 def extract_school_year_from_text(text):
     if not text: return None
