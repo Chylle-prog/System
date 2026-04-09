@@ -392,12 +392,33 @@ const Portal = () => {
 
   // Sample events data
   const getEventsForDate = (day) => {
-    const events = {
+    // 1. Check dynamic scholarship deadlines from 'resources' state
+    const deadlineEvents = resources.filter(scholarship => {
+      if (!scholarship.deadline) return false;
+      const deadlineDate = new Date(scholarship.deadline);
+      return (
+        deadlineDate.getDate() === day &&
+        deadlineDate.getMonth() === currentDate.getMonth() &&
+        deadlineDate.getFullYear() === currentDate.getFullYear()
+      );
+    });
+
+    if (deadlineEvents.length > 0) {
+      const names = deadlineEvents.map(s => s.scholarship_name || 'Scholarship').join(', ');
+      return {
+        type: 'primary',
+        title: `Deadline: ${names}`,
+        scholarships: deadlineEvents
+      };
+    }
+
+    // 2. Manual/Placeholder events (Keep for design consistency)
+    const manualEvents = {
       11: { type: 'warning', title: 'Gov Vilma Mock Interview' },
-      18: { type: 'success', title: 'CHED Seminars' },
-      20: { type: 'primary', title: 'Deadline: Mayor Eric B. Africa Scholarship' }
+      18: { type: 'success', title: 'CHED Seminars' }
     };
-    return events[day] || null;
+    
+    return manualEvents[day] || null;
   };
 
   const markAllNotificationsRead = async () => {
@@ -2430,20 +2451,45 @@ const Portal = () => {
                   })}
                 </div>
 
-                {/* Events Legend */}
+                </div>
+
+                {/* Dynamic Events Legend */}
                 <div style={{marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '0.8rem', fontSize: '0.9rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-light)'}}>
-                  <div style={{display: 'flex', alignItems: 'center', gap: '0.8rem', fontWeight: '500', color: 'var(--text-dark)'}}>
-                    <span style={{width: '14px', height: '14px', borderRadius: '4px', background: 'var(--warning-bg)', border: '2px solid var(--warning)'}}></span>
-                    Governor Vilma's Initial Screenings &mdash; Mar 11
-                  </div>
-                  <div style={{display: 'flex', alignItems: 'center', gap: '0.8rem', fontWeight: '500', color: 'var(--text-dark)'}}>
-                    <span style={{width: '14px', height: '14px', borderRadius: '4px', background: 'var(--success-bg)', border: '2px solid var(--success)'}}></span>
-                    CHED Tulong Dunong Orientation &mdash; Mar 18
-                  </div>
-                  <div style={{display: 'flex', alignItems: 'center', gap: '0.8rem', fontWeight: '500', color: 'var(--text-dark)'}}>
-                    <span style={{width: '14px', height: '14px', borderRadius: '4px', background: 'var(--accent-soft)', border: '2px solid var(--primary)'}}></span>
-                    Deadline: Mayor Eric B. Africa Scholarship &mdash; Mar 20
-                  </div>
+                  <p style={{fontSize: '0.8rem', color: 'var(--text-soft)', fontWeight: '600', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px'}}>Upcoming Deadlines & Events</p>
+                  
+                  {/* Dynamic Scholarship Deadlines */}
+                  {resources.filter(s => {
+                    if (!s.deadline) return false;
+                    const d = new Date(s.deadline);
+                    return d.getMonth() === currentDate.getMonth() && d.getFullYear() === currentDate.getFullYear();
+                  }).sort((a, b) => new Date(a.deadline) - new Date(b.deadline)).map((s, idx) => (
+                    <div key={`deadline-${idx}`} style={{display: 'flex', alignItems: 'center', gap: '0.8rem', fontWeight: '600', color: 'var(--text-dark)'}}>
+                      <span style={{width: '14px', height: '14px', borderRadius: '4px', background: 'var(--accent-soft)', border: '2px solid var(--primary)'}}></span>
+                      Deadline: {s.scholarship_name || s.name} &mdash; {new Date(s.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </div>
+                  ))}
+
+                  {/* Manual sample events (Show only if month/year matches or as general placeholders if month is March as per original) */}
+                  {currentDate.getMonth() === 2 && currentDate.getFullYear() === 2024 && (
+                    <>
+                      <div style={{display: 'flex', alignItems: 'center', gap: '0.8rem', fontWeight: '500', color: 'var(--text-soft)'}}>
+                        <span style={{width: '14px', height: '14px', borderRadius: '4px', background: 'var(--warning-bg)', border: '2px solid var(--warning)'}}></span>
+                        Governor Vilma's Initial Screenings &mdash; Mar 11
+                      </div>
+                      <div style={{display: 'flex', alignItems: 'center', gap: '0.8rem', fontWeight: '500', color: 'var(--text-soft)'}}>
+                        <span style={{width: '14px', height: '14px', borderRadius: '4px', background: 'var(--success-bg)', border: '2px solid var(--success)'}}></span>
+                        CHED Tulong Dunong Orientation &mdash; Mar 18
+                      </div>
+                    </>
+                  )}
+
+                  {resources.filter(s => {
+                    if (!s.deadline) return false;
+                    const d = new Date(s.deadline);
+                    return d.getMonth() === currentDate.getMonth() && d.getFullYear() === currentDate.getFullYear();
+                  }).length === 0 && (currentDate.getMonth() !== 2 || currentDate.getFullYear() !== 2024) && (
+                    <p style={{fontSize: '0.85rem', color: '#999', fontStyle: 'italic', marginTop: '0.5rem'}}>No scheduled deadlines for this month.</p>
+                  )}
                 </div>
               </div>
             </div>
