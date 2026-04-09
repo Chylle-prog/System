@@ -16,6 +16,8 @@ def is_ffmpeg_available():
                       timeout=5,
                       check=True)
         return True
+    except (FileNotFoundError, subprocess.TimeoutExpired, subprocess.CalledProcessError):
+        return False
 def faststart_video_stream(video_bytes, ext='.mp4'):
     """
     Applies the +faststart flag to mp4/mov video bytes without re-encoding.

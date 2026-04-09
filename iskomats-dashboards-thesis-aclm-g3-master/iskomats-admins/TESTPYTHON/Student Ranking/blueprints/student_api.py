@@ -19,7 +19,7 @@ import cv2
 import numpy as np
 from services.auth_service import get_secret_key
 from services.db_service import get_db
-from services.video_converter import convert_video_to_mp4
+
 from services.ocr_utils import (
     verify_id_with_ocr, verify_face_with_id, extract_school_year, 
     extract_school_year_from_text, is_current_school_year, 
