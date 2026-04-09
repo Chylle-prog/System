@@ -2199,6 +2199,9 @@ def upload_video():
         if ext in ['.mp4', '.mov']:
             video_bytes = faststart_video_stream(video_bytes, ext=ext)
             file_size = len(video_bytes)
+            # Override extension and content_type because faststart_video_stream forces .mp4 output
+            ext = '.mp4'
+            content_type = 'video/mp4'
 
         try:
             from supabase import create_client
