@@ -474,58 +474,64 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
             _cache_set(vid_hash, (False, "Invalid video frame count"))
             return False, "Invalid video frame count"
             
-        # --- OPTIMIZATION #1: Single Frame Priority ---
-        # Sample just exactly 1 centralized frame first (50% timestamp). 
-        # This doubles verification speed. We only fallback if this single frame fails.
-        primary_idx = int(frame_count * 0.5)
-        fallback_idx = int(frame_count * 0.7)
-        
+        # Frame positions to sample: frame 0 (best for static image-to-video), then 25%, 50%, 75%
+        # Frame 0 is tried first because converting an image to video always produces a clear first frame.
+        sample_positions = [0, 0.25, 0.5, 0.75]
+        sample_indices = []
+        for pos in sample_positions:
+            idx = int(frame_count * pos)
+            if idx not in sample_indices:
+                sample_indices.append(idx)
+
         all_ocr_text = ""
         found_keywords = []
         addr_ok = False
-        
+
+        def preprocess_frame_for_ocr(frame):
+            """Enhance a video frame for better OCR accuracy (handles compression artifacts)."""
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            # CLAHE improves contrast for text under uneven lighting / compression artifacts
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            enhanced = clahe.apply(gray)
+            return enhanced
+
         def process_frame(idx, text_accumulator, keywords_found, address_ok):
             cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
             ret, frame = cap.read()
             if not ret or frame is None: return text_accumulator, keywords_found, address_ok
-            
-            # Sub-frame extraction bounds logic
+
+            # Resize if too wide
             h, w = frame.shape[:2]
             if w > _MAX_VIDEO_OCR_WIDTH:
                 scale = _MAX_VIDEO_OCR_WIDTH / w
                 frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
-                
-            text = _run_tesseract_on_image(frame, psm=11)
+
+            # Preprocess for OCR (converts to enhanced grayscale)
+            enhanced = preprocess_frame_for_ocr(frame)
+
+            # Try PSM 3 (document layout) first, then PSM 11 (sparse) as fallback
+            text = _run_tesseract_on_image(enhanced, psm=3)
+            if len(text.strip()) < 20:
+                text += " " + _run_tesseract_on_image(enhanced, psm=11)
+
             text_accumulator += " " + text
-            print(f"[VIDEO OCR] Frame {idx} scanned...", flush=True)
-            
+            print(f"[VIDEO OCR] Frame {idx} scanned ({len(text.strip())} chars)...", flush=True)
+
             _, new_addr, new_kws, _ = _perform_text_matching(text_accumulator, None, None, None, None, keywords=keywords, is_indigency=is_address_verification)
             return text_accumulator, new_kws, new_addr
 
-        # Execute Initial Primary Scan
-        all_ocr_text, found_keywords, addr_ok = process_frame(primary_idx, all_ocr_text, found_keywords, addr_ok)
-        
-        missing_kw = [kw for kw in (keywords or []) if kw not in found_keywords]
-        
-        # Determine if we successfully gathered requirements from 1st scan
+        # Scan frames in order; stop early as soon as we have a successful result
         is_success = False
-        if not missing_kw and (not expected_address or addr_ok):
-            is_success = True
-        elif not is_address_verification and found_keywords:
-            # Lenient mode for non-indigency allowed partial keywords
-            is_success = True
+        for sample_idx in sample_indices:
+            all_ocr_text, found_keywords, addr_ok = process_frame(sample_idx, all_ocr_text, found_keywords, addr_ok)
 
-        # If primary scan failed, run the 1-time fallback scan
-        if not is_success:
-            print(f"[VIDEO OCR] Requirements missing, launching fallback trace at 70%", flush=True)
-            all_ocr_text, found_keywords, addr_ok = process_frame(fallback_idx, all_ocr_text, found_keywords, addr_ok)
-            
-            # Recheck
             missing_kw = [kw for kw in (keywords or []) if kw not in found_keywords]
             if not missing_kw and (not expected_address or addr_ok):
                 is_success = True
+                break
             elif not is_address_verification and found_keywords:
                 is_success = True
+                break
                 
         cap.release()
         
