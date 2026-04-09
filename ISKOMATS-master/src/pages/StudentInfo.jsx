@@ -26,7 +26,7 @@ const BARANGAYS = [
 const STEP_FIELDS = {
   1: [
     'lastName', 'firstName', 'middleName', 'maidenName', 'dateOfBirth', 'placeOfBirth',
-    'streetName', 'barangay', 'townCityMunicipality', 'province', 'zipCode', 'sex', 'citizenship',
+    'barangay', 'townCityMunicipality', 'province', 'zipCode', 'sex', 'citizenship',
     'mobileNumber', 'mayorIndigency_photo'
   ],
   2: [
@@ -222,7 +222,6 @@ const StudentInfo = () => {
     firstName: '',
     middleName: '',
     maidenName: '',
-    streetName: '',
     barangay: '',
     townCityMunicipality: 'Lipa City',
     province: 'Batangas',
@@ -300,8 +299,8 @@ const StudentInfo = () => {
         continue;
       }
 
-      if (fieldName === 'barangay' || fieldName === 'streetName') {
-        const fullAddress = `${formData.streetName || ''}${formData.streetName && formData.barangay ? ', ' : ''}${formData.barangay || ''}`;
+      if (fieldName === 'barangay') {
+        const fullAddress = formData.barangay || formData.streetBarangay || '';
         if (!jsonData['street_brgy']) {
           jsonData['street_brgy'] = fullAddress;
           payload.append('street_brgy', fullAddress);
@@ -1327,13 +1326,13 @@ const StudentInfo = () => {
 
       const submissionData = new FormData();
       
-      const fullAddress = `${formData.streetName || ''}${formData.streetName && formData.barangay ? ', ' : ''}${formData.barangay || ''}`;
+      const fullAddress = formData.barangay || formData.streetBarangay || '';
       submissionData.append('streetBarangay', fullAddress);
 
       const imageKeys = [
         'profile_picture', 'id_front', 'id_back', 'face_photo', 
         'mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo',
-        'applicantSignatureName', 'signature_data', 'streetName', 'barangay', 'streetBarangay'
+        'applicantSignatureName', 'signature_data', 'barangay', 'streetBarangay'
       ];
 
       Object.keys(formData).forEach(key => {
@@ -2020,17 +2019,6 @@ const StudentInfo = () => {
               </div>
 
               <div className="form-row">
-                <div className="form-group">
-                  <label>Street Name <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input 
-                    type="text" 
-                    name="streetName" 
-                    value={formData.streetName} 
-                    onChange={handleInputChange} 
-                    placeholder="Narra Street" 
-                    required={currentStep === 1}
-                  />
-                </div>
                 <div className="form-group">
                   <label>Barangay <span style={{color: '#e74c3c'}}>*</span></label>
                   <select 
