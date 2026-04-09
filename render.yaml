@@ -4,5 +4,12 @@ services:
     env: docker
     plan: free
     rootDir: "iskomats-dashboards-thesis-aclm-g3-master/iskomats-admins/TESTPYTHON/Student Ranking"
+    envVars:
+      - key: FRONTEND_URL
+        value: https://iskomats-admin.surge.sh
+      - key: STUDENT_FRONTEND_URL
+        value: https://foregoing-giants.surge.sh
+      - key: ADMIN_FRONTEND_URL
+        value: https://iskomats-admin.surge.sh
     # Docker automatically runs the Dockerfile in the rootDir
     # so we don't need a buildCommand or startCommand here.
