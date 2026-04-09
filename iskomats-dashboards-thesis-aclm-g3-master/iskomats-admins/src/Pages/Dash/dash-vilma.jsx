@@ -6,6 +6,7 @@ import {
   FaChevronDown,
   FaClock,
   FaChartBar,
+  FaTachometerAlt,
   FaEnvelope,
   FaEnvelopeOpen,
   FaFilter,
