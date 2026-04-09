@@ -2079,10 +2079,35 @@ const StudentInfo = () => {
               </div>
 
               <div className="form-row">
+                <div className="form-group" style={{flex: '1'}}>
+                  <label>Street & Barangay <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="text" name="streetBarangay" value={formData.streetBarangay} onChange={handleInputChange} placeholder="Lot/Block/Street/Barangay" required />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Town / City <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="text" name="townCity" value={formData.townCity} onChange={handleInputChange} placeholder="City/Municipality" required />
+                </div>
+                <div className="form-group">
+                  <label>Province <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="text" name="province" value={formData.province} onChange={handleInputChange} placeholder="Batangas" required />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Zip Code <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="text" name="zipCode" value={formData.zipCode} onChange={handleInputChange} placeholder="4217" required />
+                </div>
                 <div className="form-group">
                   <label>Mobile Number <span style={{color: '#e74c3c'}}>*</span></label>
                   <input type="tel" name="mobileNumber" value={formData.mobileNumber} onChange={handleInputChange} placeholder="09XXXXXXXXX" required />
                 </div>
+              </div>
+
+              <div className="form-row">
                 <div className="form-group">
                   <label>Email Address <span style={{color: '#e74c3c'}}>*</span></label>
                   <input type="email" name="emailAddress" value={formData.emailAddress} onChange={handleInputChange} style={{background: '#f8f9fa'}} readOnly />
