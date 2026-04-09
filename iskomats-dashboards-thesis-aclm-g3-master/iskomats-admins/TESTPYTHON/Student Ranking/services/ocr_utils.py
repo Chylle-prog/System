@@ -36,7 +36,7 @@ _CACHE_METRICS = {'hits': 0, 'misses': 0}
 
 def _hash_image(image_bytes):
     """Generate MD5 hash of image bytes for caching."""
-    return hashlib.md5(image_bytes).hexdigest()
+    return hashlib.md5(image_bytes + b"_v2").hexdigest()
 
 def _cache_get(image_hash):
     """Retrieve cached OCR result if available."""
@@ -173,15 +173,22 @@ def _run_tesseract_on_image(img, psm=3, strategies=None):
     if img is None: return ""
     results = []
     
-    # Always try the primary (Strategy A) first with the specified PSM
+    # Pass 1: Raw Grayscale (Best for modern LSTM Tesseract, handles white-on-black perfectly)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    gray_clahe = clahe.apply(gray)
-    binary = cv2.adaptiveThreshold(gray_clahe, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 10)
-    
-    text = pytesseract.image_to_string(binary, config=f'--psm {psm}')
-    if text.strip():
-        results.append(text.strip())
+    text1 = pytesseract.image_to_string(gray, config=f'--psm {psm}')
+    if text1.strip():
+        results.append(text1.strip())
+        
+    # Pass 2: Adaptive Thresholding (Fails on white-on-dark, but great for shadows on white paper)
+    try:
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        gray_clahe = clahe.apply(gray)
+        binary = cv2.adaptiveThreshold(gray_clahe, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 10)
+        text2 = pytesseract.image_to_string(binary, config=f'--psm {psm}')
+        if text2.strip() and text2.strip() not in results:
+            results.append(text2.strip())
+    except:
+        pass
     
     # If primary failed or multiple strategies requested, try fallbacks
     if strategies:
