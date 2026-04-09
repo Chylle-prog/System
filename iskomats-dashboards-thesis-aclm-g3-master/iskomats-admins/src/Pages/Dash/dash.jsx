@@ -936,16 +936,17 @@ export default function Dash() {
       </main>
 
       {accountModal.open && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl border border-gray-200">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur z-50 overflow-y-auto p-4 sm:p-6">
+          <div className="min-h-full flex items-start justify-center py-4 sm:py-8">
+            <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-4rem)] overflow-hidden shadow-2xl border border-gray-200 flex flex-col">
             {/* Header */}
-            <div className="bg-[#800020] px-12 py-8 text-white">
-              <h3 className="text-2xl font-black uppercase tracking-wide">Create Account</h3>
+            <div className="bg-[#800020] px-6 py-6 sm:px-10 sm:py-8 text-white shrink-0">
+              <h3 className="text-2xl font-black uppercase tracking-wide">{accountModal.mode === 'edit' ? 'Edit Account' : 'Create Account'}</h3>
               <p className="text-xs font-bold opacity-80 uppercase tracking-widest mt-1">ISKOMATS Identity Access</p>
             </div>
 
             {/* Form */}
-            <form onSubmit={handleAccountSubmit} className="p-12 space-y-8">
+            <form onSubmit={handleAccountSubmit} className="flex-1 overflow-y-auto px-6 py-6 sm:px-10 sm:py-8 space-y-8">
               {/* Full Name */}
               <div>
                 <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-3">Legal Full Name</label>
@@ -959,7 +960,7 @@ export default function Dash() {
               </div>
 
               {/* Email & Username */}
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
                   <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-3">Email Address</label>
                   <input 
@@ -982,7 +983,7 @@ export default function Dash() {
               </div>
 
               {/* System Role & Scholarship */}
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
                   <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-3">System Role</label>
                   <select 
@@ -1037,7 +1038,7 @@ export default function Dash() {
               )}
 
               {/* Buttons */}
-              <div className="flex gap-6 pt-8">
+              <div className="sticky bottom-0 bg-white pt-6 pb-1 flex flex-col-reverse sm:flex-row gap-4 sm:gap-6">
                 <button 
                   type="button" 
                   onClick={() => setAccountModal({ open: false, mode: 'add', data: null })} 
@@ -1054,6 +1055,7 @@ export default function Dash() {
                 </button>
               </div>
             </form>
+          </div>
           </div>
         </div>
       )}
