@@ -39,6 +39,11 @@ function App() {
             <Route path="/forgot-password" element={
               <ApplicantForgotPassword />
             } />
+            <Route path="/reset-password" element={
+              <Suspense fallback={<LoadingFallback />}>
+                <ResetPassword />
+              </Suspense>
+            } />
             <Route path="/reset-password/:token" element={
               <Suspense fallback={<LoadingFallback />}>
                 <ResetPassword />

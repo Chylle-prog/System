@@ -2221,7 +2221,7 @@ const StudentInfo = () => {
                 </div>
               </div>
 
-              {/* Mother Information */
+              {/* Mother Information */}
               <div style={{marginBottom: '2rem'}}>
                 <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '600', marginBottom: '1rem', borderLeft: '3px solid var(--primary)', paddingLeft: '10px'}}>
                   Mother's Information
