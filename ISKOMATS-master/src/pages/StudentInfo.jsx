@@ -26,7 +26,7 @@ const BARANGAYS = [
 const STEP_FIELDS = {
   1: [
     'lastName', 'firstName', 'middleName', 'maidenName', 'dateOfBirth', 'placeOfBirth',
-    'streetBarangay', 'townCityMunicipality', 'province', 'zipCode', 'sex', 'citizenship',
+    'streetName', 'barangay', 'townCityMunicipality', 'province', 'zipCode', 'sex', 'citizenship',
     'mobileNumber', 'mayorIndigency_photo'
   ],
   2: [
@@ -222,7 +222,8 @@ const StudentInfo = () => {
     firstName: '',
     middleName: '',
     maidenName: '',
-    streetBarangay: '',
+    streetName: '',
+    barangay: '',
     townCityMunicipality: 'Lipa City',
     province: 'Batangas',
     zipCode: '4217',
@@ -296,6 +297,15 @@ const StudentInfo = () => {
       let value = formData[fieldName];
 
       if (value === undefined || value === null || value === '') {
+        continue;
+      }
+
+      if (fieldName === 'barangay' || fieldName === 'streetName') {
+        const fullAddress = `${formData.streetName || ''}${formData.streetName && formData.barangay ? ', ' : ''}${formData.barangay || ''}`;
+        if (!jsonData['street_brgy']) {
+          jsonData['street_brgy'] = fullAddress;
+          payload.append('street_brgy', fullAddress);
+        }
         continue;
       }
 
@@ -376,11 +386,12 @@ const StudentInfo = () => {
         hasPayload = true;
       }
 
-      if (signatureData) {
-        if (isFileLike(signatureData)) {
-          payload.append('signature_data', signatureData);
-        } else if (typeof signatureData === 'string' && signatureData.startsWith('data:')) {
-          jsonData['signature_data'] = signatureData;
+      const signatureToSave = drawnSignature || signaturePreview;
+      if (signatureToSave) {
+        if (isFileLike(signatureToSave)) {
+          payload.append('signature_data', signatureToSave);
+        } else if (typeof signatureToSave === 'string' && signatureToSave.startsWith('data:')) {
+          jsonData['signature_data'] = signatureToSave;
         }
         hasPayload = true;
       }
@@ -1316,10 +1327,13 @@ const StudentInfo = () => {
 
       const submissionData = new FormData();
       
+      const fullAddress = `${formData.streetName || ''}${formData.streetName && formData.barangay ? ', ' : ''}${formData.barangay || ''}`;
+      submissionData.append('streetBarangay', fullAddress);
+
       const imageKeys = [
         'profile_picture', 'id_front', 'id_back', 'face_photo', 
         'mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo',
-        'applicantSignatureName', 'signature_data'
+        'applicantSignatureName', 'signature_data', 'streetName', 'barangay', 'streetBarangay'
       ];
 
       Object.keys(formData).forEach(key => {
@@ -2007,12 +2021,23 @@ const StudentInfo = () => {
 
               <div className="form-row">
                 <div className="form-group">
+                  <label>Street Name <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input 
+                    type="text" 
+                    name="streetName" 
+                    value={formData.streetName} 
+                    onChange={handleInputChange} 
+                    placeholder="Narra Street" 
+                    required={currentStep === 1}
+                  />
+                </div>
+                <div className="form-group">
                   <label>Barangay <span style={{color: '#e74c3c'}}>*</span></label>
                   <select 
-                    name="streetBarangay" 
-                    value={formData.streetBarangay} 
+                    name="barangay" 
+                    value={formData.barangay} 
                     onChange={handleInputChange} 
-                    required
+                    required={currentStep === 1}
                   >
                     <option value="">Select Barangay</option>
                     {BARANGAYS.map(brgy => (

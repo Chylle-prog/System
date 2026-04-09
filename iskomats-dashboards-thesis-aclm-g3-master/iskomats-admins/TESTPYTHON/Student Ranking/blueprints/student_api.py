@@ -147,6 +147,27 @@ def ensure_verification_columns():
                 created_at TIMESTAMP DEFAULT NOW()
             )
         """)
+        
+        # Ensure applicants table has video URL columns
+        video_cols = {
+            'id_vid_url': 'id_vid_url',
+            'indigency_vid_url': 'indigency_vid_url',
+            'grades_vid_url': 'grades_vid_url',
+            'enrollment_certificate_vid_url': 'enrollment_certificate_vid_url',
+            'schoolId_vid_url': 'schoolId_vid_url'
+        }
+        
+        cur.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'applicants' AND column_name IN %s
+        """, (tuple(video_cols.keys()),))
+        existing_cols = [row['column_name'] for row in cur.fetchall()]
+        
+        for col in video_cols.keys():
+            if col not in existing_cols:
+                print(f"[MIGRATION] Adding column {col} to applicants table")
+                cur.execute(f"ALTER TABLE applicants ADD COLUMN {col} TEXT")
             
         conn.commit()
         conn.close()
