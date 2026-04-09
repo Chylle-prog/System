@@ -412,13 +412,8 @@ const Portal = () => {
       };
     }
 
-    // 2. Manual/Placeholder events (Keep for design consistency)
-    const manualEvents = {
-      11: { type: 'warning', title: 'Gov Vilma Mock Interview' },
-      18: { type: 'success', title: 'CHED Seminars' }
-    };
-    
-    return manualEvents[day] || null;
+    // 2. No more manual/placeholder events to avoid confusion
+    return null;
   };
 
   const markAllNotificationsRead = async () => {
@@ -2434,14 +2429,31 @@ const Portal = () => {
                         key={index} 
                         style={dayStyle}
                         title={event ? event.title : ''}
+                        onClick={() => {
+                          if (event) {
+                            // Show event title or perform action
+                            setStatusInfo({
+                              title: 'Calendar Event',
+                              message: event.title,
+                              isError: false
+                            });
+                            setShowStatusModal(true);
+                          }
+                        }}
                         onMouseEnter={(e) => {
                           if (!event) {
                             e.target.style.background = 'var(--gray-1)';
+                          } else {
+                            e.target.style.transform = 'scale(1.1)';
+                            e.target.style.zIndex = '10';
                           }
                         }}
                         onMouseLeave={(e) => {
                           if (!event && !isToday) {
                             e.target.style.background = 'transparent';
+                          }
+                          if (event) {
+                            e.target.style.transform = 'scale(1)';
                           }
                         }}
                       >
@@ -2450,7 +2462,6 @@ const Portal = () => {
                     );
                   })}
                 </div>
-
                 {/* Dynamic Events Legend */}
                 <div style={{marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '0.8rem', fontSize: '0.9rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-light)'}}>
                   <p style={{fontSize: '0.8rem', color: 'var(--text-soft)', fontWeight: '600', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px'}}>Upcoming Deadlines & Events</p>
@@ -2467,25 +2478,11 @@ const Portal = () => {
                     </div>
                   ))}
 
-                  {/* Manual sample events (Show only if month/year matches or as general placeholders if month is March as per original) */}
-                  {currentDate.getMonth() === 2 && currentDate.getFullYear() === 2024 && (
-                    <>
-                      <div style={{display: 'flex', alignItems: 'center', gap: '0.8rem', fontWeight: '500', color: 'var(--text-soft)'}}>
-                        <span style={{width: '14px', height: '14px', borderRadius: '4px', background: 'var(--warning-bg)', border: '2px solid var(--warning)'}}></span>
-                        Governor Vilma's Initial Screenings &mdash; Mar 11
-                      </div>
-                      <div style={{display: 'flex', alignItems: 'center', gap: '0.8rem', fontWeight: '500', color: 'var(--text-soft)'}}>
-                        <span style={{width: '14px', height: '14px', borderRadius: '4px', background: 'var(--success-bg)', border: '2px solid var(--success)'}}></span>
-                        CHED Tulong Dunong Orientation &mdash; Mar 18
-                      </div>
-                    </>
-                  )}
-
                   {resources.filter(s => {
                     if (!s.deadline) return false;
                     const d = new Date(s.deadline);
                     return d.getMonth() === currentDate.getMonth() && d.getFullYear() === currentDate.getFullYear();
-                  }).length === 0 && (currentDate.getMonth() !== 2 || currentDate.getFullYear() !== 2024) && (
+                  }).length === 0 && (
                     <p style={{fontSize: '0.85rem', color: '#999', fontStyle: 'italic', marginTop: '0.5rem'}}>No scheduled deadlines for this month.</p>
                   )}
                 </div>
