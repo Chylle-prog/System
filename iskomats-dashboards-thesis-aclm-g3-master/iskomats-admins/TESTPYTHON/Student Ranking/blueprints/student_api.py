@@ -1369,9 +1369,8 @@ def submit_application():
             try:
                 from concurrent.futures import ThreadPoolExecutor
                 verification_tasks = {}
-                # Limit to 1 worker to keep peak RAM usage safe on 512MB Render instances
-                # (Prevents running 2+ Tesseract binaries at the exact same time, which freezes the server)
-                with ThreadPoolExecutor(max_workers=1) as executor:
+                # Expand worker pool to allow true simultaneous background downloading and validation
+                with ThreadPoolExecutor(max_workers=3) as executor:
                     # 1. OCR Identity Check
                     if id_front_bytes:
                         town_city = form_data.get('townCity') or applicant.get('town_city_municipality', '')
@@ -1397,29 +1396,25 @@ def submit_application():
                         'mayorGrades_video': ['Grades', 'Evaluation', 'Academic'],
                         'mayorCOE_video': ['Enrollment', 'Certificate', 'Enrolled']
                     }
+                    def _threaded_verify(v_url, kws, addr, upl_bytes):
+                        data_bytes = upl_bytes
+                        if not data_bytes and v_url:
+                            data_bytes, _ = fetch_video_bytes_from_url(v_url)
+                        if not data_bytes: return False, "Video inaccessible."
+                        return verify_video_content(data_bytes, kws, addr)
+
                     for field, keywords in video_requirements.items():
                         v_bytes = None
                         video_file = request.files.get(field)
                         if video_file:
-                            print(f"[SUBMIT] Processing uploaded Video for {field}...")
                             v_bytes = video_file.read()
                             video_file.seek(0)
-                        else:
-                            # Try getting URL from form data
-                            video_url = form_data.get(field)
-                            if isinstance(video_url, str) and video_url.startswith('http'):
-                                print(f"[SUBMIT] Processing video URL for {field}...")
-                                v_bytes, _ = fetch_video_bytes_from_url(video_url)
                         
-                        if v_bytes:
-                            print(f"[SUBMIT] Scheduling Video scanning for {field}...")
-                            # For Indigency, pass the town/city for address verification
-                            expected_addr = None
-                            if field == 'mayorIndigency_video':
-                                expected_addr = form_data.get('townCity') or applicant.get('town_city_municipality', '')
-                            
+                        video_url = form_data.get(field)
+                        if v_bytes or (isinstance(video_url, str) and video_url.startswith('http')):
+                            expected_addr = form_data.get('townCity') or applicant.get('town_city_municipality', '') if field == 'mayorIndigency_video' else None
                             verification_tasks[f'video_{field}'] = executor.submit(
-                                verify_video_content, v_bytes, keywords, expected_addr
+                                _threaded_verify, video_url, keywords, expected_addr, v_bytes
                             )
 
                     # --- GATHER RESULTS ---
@@ -1746,9 +1741,8 @@ def ocr_check():
         results = []
         overall_verified = True
         if jobs:
-            # max_workers=1: individual scan buttons send only one doc at a time.
-            # Enforcing this prevents OOM crashes on Render's 512MB free-tier RAM.
-            with ThreadPoolExecutor(max_workers=1) as executor:
+            # Multi-threading prevents network bottlenecking during multiple video validations
+            with ThreadPoolExecutor(max_workers=3) as executor:
                 future_results = [executor.submit(process_doc, *job) for job in jobs]
                 for future in future_results:
                     res = future.result()

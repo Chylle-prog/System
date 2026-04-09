@@ -110,7 +110,7 @@ def decode_base64(data):
 
 # ─── Image preprocessing & quality assessment (Optimization #3) ──────────────
 _MAX_OCR_WIDTH = 800       # Higher resolution for A4 document legibility (Indigency/COE)
-_MAX_VIDEO_OCR_WIDTH = 480 # Lower resolution strictly for videos to maintain scan speed
+_MAX_VIDEO_OCR_WIDTH = 800 # Match resolution to ensure A4 document videos (Grades) can be read
 _MAX_FACE_WIDTH = 224
 
 def assess_image_quality(img):

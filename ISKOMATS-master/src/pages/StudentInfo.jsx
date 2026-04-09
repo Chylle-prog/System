@@ -11,8 +11,8 @@ const STEP_FIELDS = {
     'mobileNumber', 'mayorIndigency_photo'
   ],
   2: [
-    'fatherStatus', 'fatherName', 'fatherOccupation', 'fatherAddress', 'fatherPhoneNumber',
-    'motherStatus', 'motherName', 'motherOccupation', 'motherAddress', 'motherPhoneNumber',
+    'fatherStatus', 'fatherName', 'fatherOccupation', 'fatherPhoneNumber',
+    'motherStatus', 'motherName', 'motherOccupation', 'motherPhoneNumber',
     'parentsGrossIncome', 'numberOfSiblings'
   ],
   3: [
@@ -2219,13 +2219,9 @@ const StudentInfo = () => {
                     <input type="tel" name="fatherPhoneNumber" value={formData.fatherPhoneNumber} onChange={handleInputChange} placeholder="09XXXXXXXXX" required={currentStep === 2} />
                   </div>
                 </div>
-                <div className="form-group">
-                  <label>Address <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="fatherAddress" value={formData.fatherAddress} onChange={handleInputChange} placeholder="Permanent Address" required={currentStep === 2} />
-                </div>
               </div>
 
-              {/* Mother Information */}
+              {/* Mother Information */
               <div style={{marginBottom: '2rem'}}>
                 <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '600', marginBottom: '1rem', borderLeft: '3px solid var(--primary)', paddingLeft: '10px'}}>
                   Mother's Information
@@ -2253,10 +2249,6 @@ const StudentInfo = () => {
                     <label>Phone Number <span style={{color: '#e74c3c'}}>*</span></label>
                     <input type="tel" name="motherPhoneNumber" value={formData.motherPhoneNumber} onChange={handleInputChange} placeholder="09XXXXXXXXX" required={currentStep === 2} />
                   </div>
-                </div>
-                <div className="form-group">
-                  <label>Address <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="motherAddress" value={formData.motherAddress} onChange={handleInputChange} placeholder="Permanent Address" required={currentStep === 2} />
                 </div>
               </div>
 
