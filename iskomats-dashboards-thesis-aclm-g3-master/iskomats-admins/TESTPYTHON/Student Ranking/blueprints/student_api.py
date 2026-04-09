@@ -1639,7 +1639,10 @@ def ocr_check():
                     return {'doc': doc_type, 'verified': False, 'message': f"Video verification failed: {msg_video}", 'video_verified': False, 'video_message': msg_video}
                 
                 # 1.b OCR Extraction from document image
-                v, msg, raw, _ = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, town_city)
+                if doc_type == 'SchoolIDBack':
+                    v, msg, raw, _ = verify_id_with_ocr(doc_bytes, None, None, None, None)
+                else:
+                    v, msg, raw, _ = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, town_city)
                 raw_lower = raw.lower() if raw else ""
                 
                 # If primary OCR extraction failed, return error
@@ -2229,6 +2232,35 @@ def upload_video():
             folder = folder_map.get(field_name, 'others')
             file_name = f"{current_user_id}_{int(time.time())}{ext}"
             file_path = f"videos/{folder}/{file_name}"
+            
+            # --- OVERWRITE PREVIOUS VIDEO CLEANUP ---
+            db_column_map = {
+                'mayorIndigency_video': 'indigency_vid_url',
+                'mayorCOE_video': 'enrollment_certificate_vid_url',
+                'mayorGrades_video': 'grades_vid_url',
+                'schoolId_video': 'id_vid_url',
+                'face_video': 'id_vid_url'
+            }
+            db_col = db_column_map.get(field_name)
+            if db_col:
+                from services.db_service import get_db
+                try:
+                    conn = get_db()
+                    cur = conn.cursor()
+                    cur.execute(f"SELECT {db_col} FROM applicants WHERE applicant_no = %s", (current_user_id,))
+                    row = cur.fetchone()
+                    if row and row[db_col]:
+                        old_url = row[db_col]
+                        if '/public/document_videos/' in old_url:
+                            old_path = old_url.split('/public/document_videos/')[1].strip()
+                            supabase.storage.from_('document_videos').remove([old_path])
+                            print(f"[VIDEO-UPLOAD] Deleted previous video from storage: {old_path}", flush=True)
+                except Exception as e:
+                    print(f"[VIDEO-UPLOAD] Error searching/deleting old video: {e}", flush=True)
+                finally:
+                    if 'conn' in locals() and conn:
+                        conn.close()
+            # ----------------------------------------
             
             # Direct stream upload bypasses heavy memory buffers
             response = supabase.storage.from_('document_videos').upload(
