@@ -885,6 +885,8 @@ const StudentInfo = () => {
       
       const { townCity, schoolName, idNumber, yearLevel, gpa } = extraParams;
       
+      const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
+
       const result = await applicantAPI.ocrCheck(
         docType === 'SchoolID' ? docParam.front : null,
         docType === 'SchoolID' ? docParam.back : null,
@@ -894,7 +896,8 @@ const StudentInfo = () => {
         docType === 'Grades' ? docParam : null,
         null, null, 
         schoolName, idNumber, yearLevel, gpa,
-        videoUrl
+        videoUrl,
+        reqNo
       );
       
       if (result.verified) {

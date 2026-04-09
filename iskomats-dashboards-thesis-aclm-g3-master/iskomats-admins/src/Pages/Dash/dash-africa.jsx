@@ -776,6 +776,23 @@ export default function DashAfrica() {
     };
   }, [analyticsScholarshipFilter, data]);
 
+  const filteredReportApplicants = useMemo(() => {
+    const pending = data.applicants.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
+    const accepted = data.accepted.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
+    const declined = data.declined.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
+    return {
+      pending,
+      accepted,
+      declined,
+      all: [...pending, ...accepted, ...declined],
+    };
+  }, [analyticsScholarshipFilter, data]);
+
+  const filteredHistoricalData = useMemo(
+    () => calculateHistoricalData(filteredReportApplicants.all),
+    [filteredReportApplicants]
+  );
+
   useEffect(() => {
     if (section !== 'reports') return;
 
@@ -816,25 +833,25 @@ export default function DashAfrica() {
       lineChartInstance.current = new Chart(ctx, {
         type: 'line',
         data: {
-          labels: data.historicalData.monthlyApplications.map(m => m.month),
+          labels: filteredHistoricalData.monthlyApplications.map(m => m.month),
           datasets: [
             {
               label: 'Applications',
-              data: data.historicalData.monthlyApplications.map(m => m.applications),
+              data: filteredHistoricalData.monthlyApplications.map(m => m.applications),
               borderColor: '#800020',
               backgroundColor: 'rgba(128, 0, 32, 0.1)',
               tension: 0.4
             },
             {
               label: 'Accepted',
-              data: data.historicalData.monthlyApplications.map(m => m.accepted),
+              data: filteredHistoricalData.monthlyApplications.map(m => m.accepted),
               borderColor: '#198754',
               backgroundColor: 'rgba(25, 135, 84, 0.1)',
               tension: 0.4
             },
             {
               label: 'Declined',
-              data: data.historicalData.monthlyApplications.map(m => m.declined),
+              data: filteredHistoricalData.monthlyApplications.map(m => m.declined),
               borderColor: '#dc3545',
               backgroundColor: 'rgba(220, 53, 69, 0.1)',
               tension: 0.4
@@ -852,10 +869,10 @@ export default function DashAfrica() {
       barChartInstance.current = new Chart(ctx, {
         type: 'bar',
         data: {
-          labels: data.historicalData.gradeRanges.map(g => g.range),
+          labels: filteredHistoricalData.gradeRanges.map(g => g.range),
           datasets: [{
             label: 'Number of Students',
-            data: data.historicalData.gradeRanges.map(g => g.count),
+            data: filteredHistoricalData.gradeRanges.map(g => g.count),
             backgroundColor: '#800020',
           }]
         },
@@ -870,9 +887,9 @@ export default function DashAfrica() {
       courseChartInstance.current = new Chart(ctx, {
         type: 'doughnut',
         data: {
-          labels: data.historicalData.courseDistribution.map(c => c.course),
+          labels: filteredHistoricalData.courseDistribution.map(c => c.course),
           datasets: [{
-            data: data.historicalData.courseDistribution.map(c => c.count),
+            data: filteredHistoricalData.courseDistribution.map(c => c.count),
             backgroundColor: ['#800020', '#650018', '#a00028', '#c44569'],
           }]
         },
@@ -887,9 +904,9 @@ export default function DashAfrica() {
       financialChartInstance.current = new Chart(ctx, {
         type: 'doughnut',
         data: {
-          labels: data.historicalData.financialBreakdown.map(f => f.level),
+          labels: filteredHistoricalData.financialBreakdown.map(f => f.level),
           datasets: [{
-            data: data.historicalData.financialBreakdown.map(f => f.count),
+            data: filteredHistoricalData.financialBreakdown.map(f => f.count),
             backgroundColor: ['#198754', '#ffc107', '#fd7e14', '#dc3545'],
           }]
         },
@@ -904,9 +921,9 @@ export default function DashAfrica() {
       schoolChartInstance.current = new Chart(ctx, {
         type: 'doughnut',
         data: {
-          labels: data.historicalData.schoolStats.map(s => s.school),
+          labels: filteredHistoricalData.schoolStats.map(s => s.school),
           datasets: [{
-            data: data.historicalData.schoolStats.map(s => s.count),
+            data: filteredHistoricalData.schoolStats.map(s => s.count),
             backgroundColor: ['#800020', '#198754', '#0d6efd', '#ffc107', '#6c757d'],
           }]
         },
@@ -921,9 +938,9 @@ export default function DashAfrica() {
       locationChartInstance.current = new Chart(ctx, {
         type: 'doughnut',
         data: {
-          labels: data.historicalData.locationStats.map(loc => loc.location),
+          labels: filteredHistoricalData.locationStats.map(loc => loc.location),
           datasets: [{
-            data: data.historicalData.locationStats.map(loc => loc.count),
+            data: filteredHistoricalData.locationStats.map(loc => loc.count),
             backgroundColor: ['#800020', '#198754', '#0d6efd', '#ffc107', '#6c757d'],
           }]
         },
@@ -932,7 +949,7 @@ export default function DashAfrica() {
     }
 
     return cleanupCharts;
-  }, [section, reportsView, stats, data.historicalData]);
+  }, [section, reportsView, stats, filteredHistoricalData]);
 
   const formatDate = (timestamp) => {
     if (!timestamp) return 'No timestamp';
@@ -1959,7 +1976,7 @@ export default function DashAfrica() {
   };
 
   const exportToExcel = (type = 'report') => {
-    const { historicalData, applicants, accepted, declined } = data;
+    const { applicants, accepted, declined } = data;
 
     if (type === 'track') {
       const filterListToExport = (list) => list.filter((a) => {
@@ -2006,12 +2023,12 @@ export default function DashAfrica() {
     }));
 
     // Create worksheets for Applicant Statuses
-    const acceptedWS = XLSX.utils.json_to_sheet(formatApplicants(accepted));
-    const declinedWS = XLSX.utils.json_to_sheet(formatApplicants(declined));
-    const pendingWS = XLSX.utils.json_to_sheet(formatApplicants(applicants));
+    const acceptedWS = XLSX.utils.json_to_sheet(formatApplicants(filteredReportApplicants.accepted));
+    const declinedWS = XLSX.utils.json_to_sheet(formatApplicants(filteredReportApplicants.declined));
+    const pendingWS = XLSX.utils.json_to_sheet(formatApplicants(filteredReportApplicants.pending));
 
     // Create worksheet for Location Stats
-    const locationData = historicalData.locationStats.map(item => ({
+    const locationData = filteredHistoricalData.locationStats.map(item => ({
       Barangay: item.location,
       Count: item.count,
       Percentage: `${item.percentage}%`
@@ -2019,7 +2036,7 @@ export default function DashAfrica() {
     const locationWS = XLSX.utils.json_to_sheet(locationData);
 
     // Create worksheet for Course Distribution
-    const courseWS = XLSX.utils.json_to_sheet(historicalData.courseDistribution.map(item => ({
+    const courseWS = XLSX.utils.json_to_sheet(filteredHistoricalData.courseDistribution.map(item => ({
       Course: item.course,
       Count: item.count,
       Percentage: `${item.percentage}%`
@@ -2027,18 +2044,18 @@ export default function DashAfrica() {
 
     // Create worksheet for Performance Metrics
     const metricsData = [
-      { Metric: 'Acceptance Rate', Value: `${historicalData.performanceMetrics.acceptanceRate}%` },
-      { Metric: 'Avg. Processing Time', Value: `${historicalData.performanceMetrics.averageProcessingTime} days` },
-      { Metric: 'Application Completion Rate', Value: `${historicalData.performanceMetrics.applicationCompletionRate}%` },
-      { Metric: 'Satisfaction Score', Value: `${historicalData.performanceMetrics.satisfactionScore}/5` }
+      { Metric: 'Acceptance Rate', Value: `${filteredHistoricalData.performanceMetrics.acceptanceRate}%` },
+      { Metric: 'Avg. Processing Time', Value: `${filteredHistoricalData.performanceMetrics.averageProcessingTime} days` },
+      { Metric: 'Application Completion Rate', Value: `${filteredHistoricalData.performanceMetrics.applicationCompletionRate}%` },
+      { Metric: 'Satisfaction Score', Value: `${filteredHistoricalData.performanceMetrics.satisfactionScore}/5` }
     ];
     const metricsWS = XLSX.utils.json_to_sheet(metricsData);
 
     // Create worksheet for Monthly Trends
-    const trendsWS = XLSX.utils.json_to_sheet(historicalData.monthlyApplications);
+    const trendsWS = XLSX.utils.json_to_sheet(filteredHistoricalData.monthlyApplications);
 
     // Create worksheet for School Stats
-    const schoolWS = XLSX.utils.json_to_sheet(historicalData.schoolStats.map(item => ({
+    const schoolWS = XLSX.utils.json_to_sheet(filteredHistoricalData.schoolStats.map(item => ({
       School: item.school,
       Count: item.count,
       Percentage: `${item.percentage}%`
@@ -2060,12 +2077,8 @@ export default function DashAfrica() {
   };
 
   const renderReports = () => {
-    const { historicalData } = data;
-
-    const filteredPending = data.applicants.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
-    const filteredAccepted = data.accepted.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
-    const filteredDeclined = data.declined.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
-    const filteredApplicants = [...filteredPending, ...filteredAccepted, ...filteredDeclined];
+    const historicalData = filteredHistoricalData;
+    const { pending: filteredPending, accepted: filteredAccepted, declined: filteredDeclined, all: filteredApplicants } = filteredReportApplicants;
     const monthlyStats = generateMonthlyStats(filteredApplicants);
 
     const kpiCards = [

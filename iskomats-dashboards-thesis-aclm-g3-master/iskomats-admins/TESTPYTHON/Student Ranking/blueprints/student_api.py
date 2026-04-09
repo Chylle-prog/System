@@ -1622,6 +1622,18 @@ def ocr_check():
         expected_year = str(data.get('expected_year') or data.get('expectedYear') or data.get('yearLevel') or '').strip()
         expected_id_no = str(data.get('id_number') or data.get('idNumber') or '').strip()
 
+        # 1.5 Fetch scholarship year if scholarship_no is provided
+        scholarship_no = data.get('scholarship_no')
+        if scholarship_no:
+            try:
+                cur.execute("SELECT year FROM scholarships WHERE req_no = %s", (scholarship_no,))
+                sch = cur.fetchone()
+                if sch and sch['year']:
+                    expected_year = sch['year']
+                    print(f"[OCR] Using scholarship-defined academic year: {expected_year}", flush=True)
+            except Exception as sch_err:
+                print(f"[OCR ERROR] Failed to fetch scholarship year: {sch_err}", flush=True)
+
         def get_bytes(param, db_val):
             return decode_base64(param) or db_bytes(db_val)
         
@@ -1723,15 +1735,14 @@ def ocr_check():
                 # 2. Document-Specific Logic (REUSING 'raw' text)
                 if doc_type == 'Enrollment':
                     year_label = extract_school_year_from_text(raw)
-                    v_year = int(expected_year) if expected_year and str(expected_year).isdigit() else 2026
-                    year_ok = is_current_school_year(year_label, current_year=v_year)
+                    year_ok = is_current_school_year(year_label, expected_year=expected_year)
                     school_ok = True if not school_name else (school_name.lower() in raw_lower)
                     if school_name and not school_ok:
                         school_parts = [p.strip() for p in school_name.lower().split() if len(p.strip()) > 3]
                         school_ok = any(p in raw_lower for p in school_parts) if school_parts else True
 
                     if v:
-                        if not year_ok: v, msg = False, f"Outdated A.Y. ({year_label or 'None'})"
+                        if not year_ok: v, msg = False, f"Outdated A.Y. ({year_label or 'None'}). Expected: {expected_year}"
                         elif not school_ok: v, msg = False, f"School mismatch ({school_name})"
                         else: msg = f"Verified: A.Y. {year_label}" + (f" | {school_name}" if school_name else "")
                     
@@ -1739,15 +1750,14 @@ def ocr_check():
 
                 elif doc_type == 'Grades':
                     year_label = extract_school_year_from_text(raw)
-                    v_year = int(expected_year) if expected_year and str(expected_year).isdigit() else 2026
-                    year_ok = is_current_school_year(year_label, current_year=v_year)
+                    year_ok = is_current_school_year(year_label, expected_year=expected_year)
                     school_ok = True if not school_name else (school_name.lower() in raw_lower)
                     if school_name and not school_ok:
                         school_parts = [p.strip() for p in school_name.lower().split() if len(p.strip()) > 3]
                         school_ok = any(p in raw_lower for p in school_parts) if school_parts else True
 
                     if v:
-                        if not year_ok: v, msg = False, f"Outdated A.Y. ({year_label or 'None'})"
+                        if not year_ok: v, msg = False, f"Outdated A.Y. ({year_label or 'None'}). Expected: {expected_year}"
                         elif not school_ok: v, msg = False, f"School mismatch ({school_name})"
                         else: msg = f"Verified: A.Y. {year_label}" + (f" | {school_name}" if school_name else "")
                     
@@ -1780,11 +1790,11 @@ def ocr_check():
                 elif doc_type == 'SchoolIDBack':
                     # Verify academic year validity from the sticker or text on ID back
                     year_label = extract_school_year_from_text(raw)
-                    # Use 2026 as the target year as specifically requested for current verification
-                    year_ok = is_current_school_year(year_label, current_year=2026)
+                    # Check against scholarship year
+                    year_ok = is_current_school_year(year_label, expected_year=expected_year)
                     
                     if v and not year_ok:
-                        v, msg = False, f"ID validity expired or Year Mismatch. Found: '{year_label or 'None'}'. Expected current SY (2026)."
+                        v, msg = False, f"ID validity expired or Year Mismatch. Found: '{year_label or 'None'}'. Expected: {expected_year}."
                     elif v:
                         msg = f"ID validity verified for Academic Year: {year_label}"
                         

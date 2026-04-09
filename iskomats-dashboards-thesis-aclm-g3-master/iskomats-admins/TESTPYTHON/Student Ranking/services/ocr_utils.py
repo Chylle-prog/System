@@ -593,11 +593,21 @@ def extract_school_year(image_bytes):
     text = _run_tesseract(image_bytes, fast_mode=True)
     return extract_school_year_from_text(text)
 
-def is_current_school_year(year_str, current_year=2026):
-    if not year_str: return False
-    years = re.findall(r'20\d{2}', year_str)
-    if not years: return False
-    return any(int(y) == current_year for y in years)
+def is_current_school_year(year_str, expected_year="2026"):
+    if not year_str or not expected_year: return False
+    
+    # Extract all years from the document's year string
+    extracted_years = [int(y) for y in re.findall(r'20\d{2}', str(year_str))]
+    if not extracted_years: return False
+    
+    # Extract all years from the expected year string (e.g., "2025 - 2026" -> [2025, 2026])
+    expected_years = [int(y) for y in re.findall(r'20\d{2}', str(expected_year))]
+    if not expected_years:
+        # Fallback to current year if expected_year doesn't contain a valid year string
+        expected_years = [2026]
+    
+    # Check if any extracted year matches any of the expected years
+    return any(y in expected_years for y in extracted_years)
 
 # ─── Face & Neural Signature Verification Wrappers ───────────────────────────
 
