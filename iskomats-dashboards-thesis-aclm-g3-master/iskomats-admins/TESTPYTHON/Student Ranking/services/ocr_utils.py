@@ -495,8 +495,8 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
                 _cache_set(vid_hash, (False, "Invalid video frame count"))
                 return False, "Invalid video frame count"
             
-            # Frame positions to sample: Reduced to 2 for improved speed on Render Free Tier
-            sample_positions = [0, 0.5]
+            # Frame positions to sample: Increased for more comprehensive coverage (0.1 to 0.9)
+            sample_positions = [0.1, 0.3, 0.5, 0.7, 0.9]
             sample_indices = []
             for pos in sample_positions:
                 idx = int(frame_count * pos)
@@ -593,9 +593,20 @@ def extract_school_year(image_bytes):
     text = _run_tesseract(image_bytes, fast_mode=True)
     return extract_school_year_from_text(text)
 
-def is_current_school_year(year_str, expected_year="2026"):
+def extract_semester_from_text(text):
+    if not text: return None
+    # Look for Semester indicators: 1st, 2nd, First, Second, 1, 2
+    match = re.search(r'(1st|2nd|first|second|1|2)\s*(?:sem|semester)', text, re.IGNORECASE)
+    if match:
+        val = match.group(1).lower()
+        if '1' in val or 'first' in val: return "1st"
+        if '2' in val or 'second' in val: return "2nd"
+    return None
+
+def is_current_school_year(year_str, semester_str=None, expected_year="2026", expected_semester=None):
     if not year_str or not expected_year: return False
     
+    # --- YEAR VALIDATION ---
     # Extract all years from the document's year string
     extracted_years = [int(y) for y in re.findall(r'20\d{2}', str(year_str))]
     if not extracted_years: return False
@@ -607,7 +618,19 @@ def is_current_school_year(year_str, expected_year="2026"):
         expected_years = [2026]
     
     # Check if any extracted year matches any of the expected years
-    return any(y in expected_years for y in extracted_years)
+    year_ok = any(y in expected_years for y in extracted_years)
+    if not year_ok: return False
+
+    # --- SEMESTER VALIDATION (Optional) ---
+    if expected_semester:
+        # Normalize expected_semester (e.g., "1st Semester" -> "1st", "2nd" -> "2nd")
+        norm_expected = "1st" if "1" in str(expected_semester) else ("2nd" if "2" in str(expected_semester) else None)
+        if norm_expected and semester_str:
+            norm_extracted = "1st" if "1" in str(semester_str) else ("2nd" if "2" in str(semester_str) else None)
+            if norm_extracted and norm_extracted != norm_expected:
+                return False # Year ok but semester mismatch
+    
+    return True
 
 # ─── Face & Neural Signature Verification Wrappers ───────────────────────────
 

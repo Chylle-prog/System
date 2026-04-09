@@ -445,6 +445,15 @@ const Portal = () => {
       setActiveSection('community');
     } else if (notif.type === 'announcement') {
       setActiveSection('community');
+      // Find the specific announcement to open it
+      // Use fuzzy matching for title or message if ID isn't linked
+      const ann = dbAnnouncements.find(a => 
+        (a.ann_title && notif.message.includes(a.ann_title)) || 
+        (a.ann_message && notif.message.includes(a.ann_message.substring(0, 20)))
+      );
+      if (ann) {
+        openAnnouncement(ann);
+      }
     } else if (notif.type === 'scholarship') {
       setActiveSection('menu');
     } else if (notif.type === 'result') {
@@ -2435,6 +2444,14 @@ const Portal = () => {
                             setStatusInfo({
                               title: 'Calendar Event',
                               message: event.title,
+                              isError: false
+                            });
+                            setShowStatusModal(true);
+                          } else {
+                            // Feedback for non-event days
+                            setStatusInfo({
+                              title: 'No Events',
+                              message: `No scholarship deadlines or events scheduled for ${getMonthName(currentDate)} ${day}.`,
                               isError: false
                             });
                             setShowStatusModal(true);

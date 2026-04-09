@@ -2113,12 +2113,43 @@ const StudentInfo = () => {
 
                             {ocrStatus && (
                               <div style={{
-                                fontSize: '0.85rem', 
-                                color: ocrVerified === 'success' ? '#27ae60' : (ocrVerified === 'failed' ? '#e74c3c' : '#666'),
-                                fontWeight: '500'
+                                marginTop: '1rem',
+                                padding: '1rem',
+                                borderRadius: '12px',
+                                background: ocrVerified === 'success' ? '#f0fff4' : (ocrVerified === 'failed' ? '#fff5f5' : '#f7fafc'),
+                                border: `1px solid ${ocrVerified === 'success' ? '#c6f6d5' : (ocrVerified === 'failed' ? '#fed7d7' : '#e2e8f0')}`,
+                                display: 'flex',
+                                alignItems: 'start',
+                                gap: '12px'
                               }}>
-                                {ocrVerified === 'success' && <i className="fas fa-check-circle" style={{marginRight: '5px'}}></i>}
-                                {ocrStatus}
+                                <div style={{
+                                  width: '24px',
+                                  height: '24px',
+                                  borderRadius: '50%',
+                                  background: ocrVerified === 'success' ? '#27ae60' : (ocrVerified === 'failed' ? '#e74c3c' : 'var(--primary)'),
+                                  color: 'white',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '0.7rem',
+                                  flexShrink: 0,
+                                  marginTop: '2px'
+                                }}>
+                                  <i className={`fas ${ocrVerified === 'success' ? 'fa-check' : (ocrVerified === 'failed' ? 'fa-times' : 'fa-info')}`}></i>
+                                </div>
+                                <div>
+                                  <h5 style={{margin: '0 0 2px 0', fontSize: '0.85rem', color: '#333', fontWeight: '700'}}>
+                                    {ocrVerified === 'success' ? 'Verification Passed' : (ocrVerified === 'failed' ? 'Verification Failed' : 'Verification Update')}
+                                  </h5>
+                                  <p style={{
+                                    fontSize: '0.8rem', 
+                                    color: ocrVerified === 'success' ? '#2f855a' : (ocrVerified === 'failed' ? '#c53030' : '#4a5568'),
+                                    margin: 0,
+                                    lineHeight: '1.4'
+                                  }}>
+                                    {ocrStatus}
+                                  </p>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -2371,13 +2402,43 @@ const StudentInfo = () => {
                     </button>
                     {idStatus && (
                       <div style={{
-                        fontSize: '0.85rem', 
-                        color: idVerified === 'success' ? '#27ae60' : (idVerified === 'failed' ? '#e74c3c' : '#666'),
-                        fontWeight: '500',
-                        marginTop: '0.5rem'
+                        marginTop: '1rem',
+                        padding: '1rem',
+                        borderRadius: '12px',
+                        background: idVerified === 'success' ? '#f0fff4' : (idVerified === 'failed' ? '#fff5f5' : '#f7fafc'),
+                        border: `1px solid ${idVerified === 'success' ? '#c6f6d5' : (idVerified === 'failed' ? '#fed7d7' : '#e2e8f0')}`,
+                        display: 'flex',
+                        alignItems: 'start',
+                        gap: '12px'
                       }}>
-                        {idVerified === 'success' && <i className="fas fa-check-circle" style={{marginRight: '5px'}}></i>}
-                        {idStatus}
+                        <div style={{
+                          width: '24px',
+                          height: '24px',
+                          borderRadius: '50%',
+                          background: idVerified === 'success' ? '#27ae60' : (idVerified === 'failed' ? '#e74c3c' : 'var(--primary)'),
+                          color: 'white',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '0.7rem',
+                          flexShrink: 0,
+                          marginTop: '2px'
+                        }}>
+                          <i className={`fas ${idVerified === 'success' ? 'fa-check' : (idVerified === 'failed' ? 'fa-times' : 'fa-info')}`}></i>
+                        </div>
+                        <div>
+                          <h5 style={{margin: '0 0 2px 0', fontSize: '0.85rem', color: '#333', fontWeight: '700'}}>
+                            {idVerified === 'success' ? 'ID Verified' : (idVerified === 'failed' ? 'ID Check Failed' : 'ID Status')}
+                          </h5>
+                          <p style={{
+                            fontSize: '0.8rem', 
+                            color: idVerified === 'success' ? '#2f855a' : (idVerified === 'failed' ? '#c53030' : '#4a5568'),
+                            margin: 0,
+                            lineHeight: '1.4'
+                          }}>
+                            {idStatus}
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2386,9 +2447,13 @@ const StudentInfo = () => {
                 <div style={{marginTop: '1rem'}}>
                   <div style={{flex: '1', minWidth: '220px'}}>
                     <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.8rem'}}>
-                      <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', margin: 0}}>
-                        <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
-                      </p>
+                          <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', margin: 0}}>
+                            <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
+                          </p>
+                          <div className="video-hint" style={{fontSize: '0.7rem', color: '#666', background: '#fff9db', padding: '4px 8px', borderRadius: '4px', marginTop: '4px', border: '1px solid #ffec99'}}>
+                            <i className="fas fa-lightbulb" style={{marginRight: '5px', color: '#f59f00'}}></i>
+                            Show both sides of your ID clearly in the camera.
+                          </div>
                       {(documentVideos.schoolId_video || userProfile?.schoolId_vid_url) && (
                         <span style={{fontSize: '0.75rem', color: '#27ae60', fontWeight: '600', padding: '2px 8px', background: '#e8f5e9', borderRadius: '10px', border: '1px solid #c8e6c9'}}>
                           <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> Video Active
@@ -2452,12 +2517,43 @@ const StudentInfo = () => {
                             </button>
                             {coeStatus && (
                               <div style={{
-                                fontSize: '0.85rem', 
-                                color: coeVerified === 'success' ? '#27ae60' : (coeVerified === 'failed' ? '#e74c3c' : '#666'),
-                                fontWeight: '500'
+                                marginTop: '1rem',
+                                padding: '1rem',
+                                borderRadius: '12px',
+                                background: coeVerified === 'success' ? '#f0fff4' : (coeVerified === 'failed' ? '#fff5f5' : '#f7fafc'),
+                                border: `1px solid ${coeVerified === 'success' ? '#c6f6d5' : (coeVerified === 'failed' ? '#fed7d7' : '#e2e8f0')}`,
+                                display: 'flex',
+                                alignItems: 'start',
+                                gap: '12px'
                               }}>
-                                {coeVerified === 'success' && <i className="fas fa-check-circle" style={{marginRight: '5px'}}></i>}
-                                {coeStatus}
+                                <div style={{
+                                  width: '24px',
+                                  height: '24px',
+                                  borderRadius: '50%',
+                                  background: coeVerified === 'success' ? '#27ae60' : (coeVerified === 'failed' ? '#e74c3c' : 'var(--primary)'),
+                                  color: 'white',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '0.7rem',
+                                  flexShrink: 0,
+                                  marginTop: '2px'
+                                }}>
+                                  <i className={`fas ${coeVerified === 'success' ? 'fa-check' : (coeVerified === 'failed' ? 'fa-times' : 'fa-info')}`}></i>
+                                </div>
+                                <div>
+                                  <h5 style={{margin: '0 0 2px 0', fontSize: '0.85rem', color: '#333', fontWeight: '700'}}>
+                                    {coeVerified === 'success' ? 'COE Verified' : (coeVerified === 'failed' ? 'COE Check Failed' : 'COE Status')}
+                                  </h5>
+                                  <p style={{
+                                    fontSize: '0.8rem', 
+                                    color: coeVerified === 'success' ? '#2f855a' : (coeVerified === 'failed' ? '#c53030' : '#4a5568'),
+                                    margin: 0,
+                                    lineHeight: '1.4'
+                                  }}>
+                                    {coeStatus}
+                                  </p>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -2468,6 +2564,10 @@ const StudentInfo = () => {
                           <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', margin: 0}}>
                             <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
                           </p>
+                          <div className="video-hint" style={{fontSize: '0.7rem', color: '#666', background: '#fff9db', padding: '4px 8px', borderRadius: '4px', marginTop: '4px', border: '1px solid #ffec99'}}>
+                            <i className="fas fa-lightbulb" style={{marginRight: '5px', color: '#f59f00'}}></i>
+                            Show document clearly and point at your name.
+                          </div>
                           {(documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url) && (
                             <span style={{fontSize: '0.75rem', color: '#27ae60', fontWeight: '600', padding: '2px 8px', background: '#e8f5e9', borderRadius: '10px', border: '1px solid #c8e6c9'}}>
                               <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> Video Active
@@ -2530,12 +2630,43 @@ const StudentInfo = () => {
                             </button>
                             {gradesStatus && (
                               <div style={{
-                                fontSize: '0.85rem', 
-                                color: gradesVerified === 'success' ? '#27ae60' : (gradesVerified === 'failed' ? '#e74c3c' : '#666'),
-                                fontWeight: '500'
+                                marginTop: '1rem',
+                                padding: '1rem',
+                                borderRadius: '12px',
+                                background: gradesVerified === 'success' ? '#f0fff4' : (gradesVerified === 'failed' ? '#fff5f5' : '#f7fafc'),
+                                border: `1px solid ${gradesVerified === 'success' ? '#c6f6d5' : (gradesVerified === 'failed' ? '#fed7d7' : '#e2e8f0')}`,
+                                display: 'flex',
+                                alignItems: 'start',
+                                gap: '12px'
                               }}>
-                                {gradesVerified === 'success' && <i className="fas fa-check-circle" style={{marginRight: '5px'}}></i>}
-                                {gradesStatus}
+                                <div style={{
+                                  width: '24px',
+                                  height: '24px',
+                                  borderRadius: '50%',
+                                  background: gradesVerified === 'success' ? '#27ae60' : (gradesVerified === 'failed' ? '#e74c3c' : 'var(--primary)'),
+                                  color: 'white',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '0.7rem',
+                                  flexShrink: 0,
+                                  marginTop: '2px'
+                                }}>
+                                  <i className={`fas ${gradesVerified === 'success' ? 'fa-check' : (gradesVerified === 'failed' ? 'fa-times' : 'fa-info')}`}></i>
+                                </div>
+                                <div>
+                                  <h5 style={{margin: '0 0 2px 0', fontSize: '0.85rem', color: '#333', fontWeight: '700'}}>
+                                    {gradesVerified === 'success' ? 'Grades Verified' : (gradesVerified === 'failed' ? 'Grades Check Failed' : 'Grades Status')}
+                                  </h5>
+                                  <p style={{
+                                    fontSize: '0.8rem', 
+                                    color: gradesVerified === 'success' ? '#2f855a' : (gradesVerified === 'failed' ? '#c53030' : '#4a5568'),
+                                    margin: 0,
+                                    lineHeight: '1.4'
+                                  }}>
+                                    {gradesStatus}
+                                  </p>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -2546,6 +2677,10 @@ const StudentInfo = () => {
                           <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', margin: 0}}>
                             <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
                           </p>
+                          <div className="video-hint" style={{fontSize: '0.7rem', color: '#666', background: '#fff9db', padding: '4px 8px', borderRadius: '4px', marginTop: '4px', border: '1px solid #ffec99'}}>
+                            <i className="fas fa-lightbulb" style={{marginRight: '5px', color: '#f59f00'}}></i>
+                            Show the "Certified True Copy" stamp clearly.
+                          </div>
                           {(documentVideos.mayorGrades_video || userProfile?.grades_vid_url) && (
                             <span style={{fontSize: '0.75rem', color: '#27ae60', fontWeight: '600', padding: '2px 8px', background: '#e8f5e9', borderRadius: '10px', border: '1px solid #c8e6c9'}}>
                               <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> Video Active
@@ -2716,12 +2851,47 @@ const StudentInfo = () => {
                           {isFaceMatching ? <><i className="fas fa-spinner fa-spin"></i> Matching...</> : <><i className="fas fa-user-check"></i> Verify Match with ID</>}
                         </button>
                       ) : (
-                        <div style={{padding: '10px', borderRadius: '12px', background: faceMatchResult.verified ? '#d4edda' : '#f8d7da', color: faceMatchResult.verified ? '#155724' : '#721c24', border: faceMatchResult.verified ? '1px solid #c3e6cb' : '1px solid #f5c6cb'}}>
-                          <i className={`fas ${faceMatchResult.verified ? 'fa-check-circle' : 'fa-exclamation-circle'}`} style={{marginRight: '8px'}}></i>
-                          {faceMatchResult.verified ? (faceMatchResult.technical_unavailable ? 'Service issue (Manual Check needed)' : 'Facial identity verified!') : faceMatchResult.message || 'Face identity mismatch.'}
-                          {!faceMatchResult.verified && (
-                            <button type="button" onClick={() => setFaceMatchResult(null)} style={{background: 'none', border: 'none', color: '#721c24', cursor: 'pointer', textDecoration: 'underline', fontSize: '0.8rem', marginLeft: '10px'}}>Retry</button>
-                          )}
+                        <div style={{
+                          padding: '1rem',
+                          borderRadius: '12px',
+                          background: faceMatchResult.verified ? '#f0fff4' : '#fff5f5',
+                          border: `1px solid ${faceMatchResult.verified ? '#c6f6d5' : '#fed7d7'}`,
+                          display: 'flex',
+                          alignItems: 'start',
+                          gap: '12px',
+                          textAlign: 'left'
+                        }}>
+                          <div style={{
+                            width: '24px',
+                            height: '24px',
+                            borderRadius: '50%',
+                            background: faceMatchResult.verified ? '#27ae60' : '#e74c3c',
+                            color: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.7rem',
+                            flexShrink: 0,
+                            marginTop: '2px'
+                          }}>
+                            <i className={`fas ${faceMatchResult.verified ? 'fa-user-check' : 'fa-user-times'}`}></i>
+                          </div>
+                          <div>
+                            <h5 style={{margin: '0 0 2px 0', fontSize: '0.85rem', color: '#333', fontWeight: '700'}}>
+                              {faceMatchResult.verified ? 'Identity Verified' : 'Identity Mismatch'}
+                            </h5>
+                            <p style={{
+                              fontSize: '0.8rem', 
+                              color: faceMatchResult.verified ? '#2f855a' : '#c53030',
+                              margin: 0,
+                              lineHeight: '1.4'
+                            }}>
+                              {faceMatchResult.verified ? (faceMatchResult.technical_unavailable ? 'Service issue (Manual Check needed)' : 'Facial identity verified!') : faceMatchResult.message || 'Face identity mismatch.'}
+                            </p>
+                            {!faceMatchResult.verified && (
+                              <button type="button" onClick={() => setFaceMatchResult(null)} style={{background: 'none', border: 'none', color: '#c53030', cursor: 'pointer', textDecoration: 'underline', fontSize: '0.75rem', padding: 0, marginTop: '5px', fontWeight: '700'}}>Retry Capture</button>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>

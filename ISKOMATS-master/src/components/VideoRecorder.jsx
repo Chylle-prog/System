@@ -104,7 +104,7 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
           </label>
         </div>
       ) : (
-        <div style={{ position: 'relative', width: '100%', maxWidth: '250px', margin: '0 auto' }}>
+        <div style={{ position: 'relative', width: '100%', maxWidth: '210px', margin: '0 auto' }}>
           {console.log(`Rendering video for ${label}:`, previewUrl)}
           {videoError ? (
             // Error state: show helpful message and download link

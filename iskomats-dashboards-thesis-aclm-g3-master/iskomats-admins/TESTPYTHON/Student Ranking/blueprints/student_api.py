@@ -92,7 +92,7 @@ fernet = Fernet(ENCRYPTION_KEY) if ENCRYPTION_KEY else None
 # Password Reset Config
 PASSWORD_RESET_EXPIRY_MINUTES = int(os.environ.get('PASSWORD_RESET_EXPIRY_MINUTES', '30'))
 # Use the specific deployed domain for student portal links
-STUDENT_FRONTEND_URL = os.environ.get('STUDENT_FRONTEND_URL', 'https://forgoing-giants.surge.sh').rstrip('/')
+STUDENT_FRONTEND_URL = os.environ.get('STUDENT_FRONTEND_URL', 'https://foregoing-giants.surge.sh').rstrip('/')
 GMAIL_SENDER_EMAIL = os.environ.get('GMAIL_SENDER_EMAIL')
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
@@ -1643,15 +1643,19 @@ def ocr_check():
         expected_year = str(data.get('expected_year') or data.get('expectedYear') or data.get('yearLevel') or '').strip()
         expected_id_no = str(data.get('id_number') or data.get('idNumber') or '').strip()
 
-        # 1.5 Fetch scholarship year if scholarship_no is provided
+        expected_semester = None
         scholarship_no = data.get('scholarship_no')
         if scholarship_no:
             try:
-                cur.execute("SELECT year FROM scholarships WHERE req_no = %s", (scholarship_no,))
+                cur.execute("SELECT year, semester FROM scholarships WHERE req_no = %s", (scholarship_no,))
                 sch = cur.fetchone()
-                if sch and sch['year']:
-                    expected_year = sch['year']
-                    print(f"[OCR] Using scholarship-defined academic year: {expected_year}", flush=True)
+                if sch:
+                    if sch['year']:
+                        expected_year = sch['year']
+                        print(f"[OCR] Using scholarship-defined academic year: {expected_year}", flush=True)
+                    if sch['semester']:
+                        expected_semester = sch['semester']
+                        print(f"[OCR] Using scholarship-defined semester: {expected_semester}", flush=True)
             except Exception as sch_err:
                 print(f"[OCR ERROR] Failed to fetch scholarship year: {sch_err}", flush=True)
 
@@ -1756,31 +1760,39 @@ def ocr_check():
                 # 2. Document-Specific Logic (REUSING 'raw' text)
                 if doc_type == 'Enrollment':
                     year_label = extract_school_year_from_text(raw)
-                    year_ok = is_current_school_year(year_label, expected_year=expected_year)
+                    semester_label = extract_semester_from_text(raw)
+                    year_ok = is_current_school_year(year_label, semester_str=semester_label, expected_year=expected_year, expected_semester=expected_semester)
                     school_ok = True if not school_name else (school_name.lower() in raw_lower)
                     if school_name and not school_ok:
                         school_parts = [p.strip() for p in school_name.lower().split() if len(p.strip()) > 3]
                         school_ok = any(p in raw_lower for p in school_parts) if school_parts else True
 
                     if v:
-                        if not year_ok: v, msg = False, f"Outdated A.Y. ({year_label or 'None'}). Expected: {expected_year}"
-                        elif not school_ok: v, msg = False, f"School mismatch ({school_name})"
-                        else: msg = f"Verified: A.Y. {year_label}" + (f" | {school_name}" if school_name else "")
+                        if not year_ok: 
+                            v, msg = False, f"Outdated A.Y./Sem ({year_label or 'None'}, {semester_label or 'None'}). Expected: {expected_year} {expected_semester or ''}"
+                        elif not school_ok: 
+                            v, msg = False, f"School mismatch ({school_name})"
+                        else: 
+                            msg = f"Verified: A.Y. {year_label}" + (f" {semester_label}" if semester_label else "") + (f" | {school_name}" if school_name else "")
                     
                     return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'Grades':
                     year_label = extract_school_year_from_text(raw)
-                    year_ok = is_current_school_year(year_label, expected_year=expected_year)
+                    semester_label = extract_semester_from_text(raw)
+                    year_ok = is_current_school_year(year_label, semester_str=semester_label, expected_year=expected_year, expected_semester=expected_semester)
                     school_ok = True if not school_name else (school_name.lower() in raw_lower)
                     if school_name and not school_ok:
                         school_parts = [p.strip() for p in school_name.lower().split() if len(p.strip()) > 3]
                         school_ok = any(p in raw_lower for p in school_parts) if school_parts else True
 
                     if v:
-                        if not year_ok: v, msg = False, f"Outdated A.Y. ({year_label or 'None'}). Expected: {expected_year}"
-                        elif not school_ok: v, msg = False, f"School mismatch ({school_name})"
-                        else: msg = f"Verified: A.Y. {year_label}" + (f" | {school_name}" if school_name else "")
+                        if not year_ok: 
+                            v, msg = False, f"Outdated A.Y./Sem ({year_label or 'None'}, {semester_label or 'None'}). Expected: {expected_year} {expected_semester or ''}"
+                        elif not school_ok: 
+                            v, msg = False, f"School mismatch ({school_name})"
+                        else: 
+                            msg = f"Verified: A.Y. {year_label}" + (f" {semester_label}" if semester_label else "") + (f" | {school_name}" if school_name else "")
                     
                     return {'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
 
