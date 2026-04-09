@@ -12,9 +12,6 @@ import multiprocessing as mp
 import re
 import difflib
 import hashlib
-from skimage.metrics import structural_similarity as ssim
-from scipy.spatial.distance import cosine
-from concurrent.futures import ThreadPoolExecutor
 from collections import OrderedDict
 
 # ─── Environment hints for threading & memory ──────────────────────────────────
@@ -113,6 +110,9 @@ _MAX_OCR_WIDTH = 800       # Higher resolution for A4 document legibility (Indig
 _MAX_VIDEO_OCR_WIDTH = 800 # Match resolution to ensure A4 document videos (Grades) can be read
 _MAX_FACE_WIDTH = 224
 
+# Module-level CLAHE instance (reused across all OCR calls instead of recreating each time)
+_CLAHE = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+
 def assess_image_quality(img):
     """
     Quick image quality assessment before full OCR processing.
@@ -150,8 +150,7 @@ def assess_image_quality(img):
 
 def _preprocess_strategy_a(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    gray = clahe.apply(gray)
+    gray = _CLAHE.apply(gray)
     return cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 10)
 
 def _preprocess_strategy_b(img):
@@ -182,8 +181,7 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     # Pass 2: Adaptive Thresholding (Fails on white-on-dark, but great for shadows on paper)
     if not skip_pass2:
         try:
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-            gray_clahe = clahe.apply(gray)
+            gray_clahe = _CLAHE.apply(gray)
             binary = cv2.adaptiveThreshold(gray_clahe, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 10)
             text2 = pytesseract.image_to_string(binary, config=f'--psm {psm}')
             if text2.strip() and text2.strip() not in results:
@@ -437,6 +435,12 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     return False, "Identity verification mismatch", best_text, 0.0
 
 
+def _preprocess_frame_for_ocr(frame):
+    """Enhance a video frame for better OCR accuracy (handles compression artifacts)."""
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    return _CLAHE.apply(gray)
+
+
 def verify_video_content(video_bytes, keywords, expected_address=None):
     """
     Captures frames from video bytes and scans for keywords and address using OCR.
@@ -488,14 +492,6 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
         found_keywords = []
         addr_ok = False
 
-        def preprocess_frame_for_ocr(frame):
-            """Enhance a video frame for better OCR accuracy (handles compression artifacts)."""
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            # CLAHE improves contrast for text under uneven lighting / compression artifacts
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-            enhanced = clahe.apply(gray)
-            return enhanced
-
         def process_frame(idx, text_accumulator, keywords_found, address_ok):
             cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
             ret, frame = cap.read()
@@ -508,7 +504,7 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
                 frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
 
             # Preprocess for OCR (converts to enhanced grayscale)
-            enhanced = preprocess_frame_for_ocr(frame)
+            enhanced = _preprocess_frame_for_ocr(frame)
 
             # Try PSM 3 (document layout) first, then PSM 11 (sparse) as fallback
             # skip_pass2 securely removes 50% of raw computational overhead per frame.

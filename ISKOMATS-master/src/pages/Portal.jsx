@@ -426,13 +426,15 @@ const Portal = () => {
     setShowNotificationDropdown(false);
     
     if (notif.type === 'message') {
-      setActiveSection('messages');
+      setActiveSection('community');
     } else if (notif.type === 'announcement') {
-      setActiveSection('announcements');
+      setActiveSection('community');
     } else if (notif.type === 'scholarship') {
-      setActiveSection('menu'); // View all scholarships
+      setActiveSection('menu');
     } else if (notif.type === 'result') {
-      setActiveSection('menu'); // View application status
+      setActiveSection('applications');
+    } else {
+      setActiveSection('menu');
     }
   };
 
