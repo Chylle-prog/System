@@ -19,6 +19,13 @@ def is_ffmpeg_available():
     except (FileNotFoundError, subprocess.TimeoutExpired, subprocess.CalledProcessError):
         return False
 
+def is_mp4(video_bytes):
+    """Check if bytes are already an MP4/MOV container by detecting the ftyp box."""
+    if len(video_bytes) < 12:
+        return False
+    # MP4/MOV files have 'ftyp' at bytes 4-7
+    return video_bytes[4:8] == b'ftyp'
+
 def convert_video_to_mp4(video_bytes, output_format='mp4'):
     """
     Convert video bytes to H.264 MP4 format for maximum browser compatibility.
@@ -31,6 +38,12 @@ def convert_video_to_mp4(video_bytes, output_format='mp4'):
         bytes: Converted video data, or original bytes if conversion fails
     """
     if not video_bytes:
+        return video_bytes
+
+    # If already MP4/MOV, skip conversion entirely — avoids ffmpeg re-encoding
+    # an already-valid file which can crash the server or produce corrupt output
+    if is_mp4(video_bytes):
+        print("[VIDEO CONVERT] Input is already MP4/MOV format, skipping conversion", flush=True)
         return video_bytes
 
     # Check if ffmpeg is available
