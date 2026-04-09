@@ -69,8 +69,8 @@ def fetch_google_access_token():
         print(f"[NOTIF ERROR] Token exchange failed: {e}")
         raise RuntimeError(f"Token exchange failed: {str(e)}")
 
-def create_notification(user_no, title, message, notif_type='message'):
-    """Create a database notification and send an email alert to the user."""
+def create_notification(user_no, title, message, notif_type='message', send_email=True):
+    """Create a database notification and optionally send an email alert to the user."""
     GMAIL_SENDER_EMAIL = os.environ.get('GMAIL_SENDER_EMAIL')
     
     conn = None
@@ -108,6 +108,11 @@ def create_notification(user_no, title, message, notif_type='message'):
                 conn.rollback()
             raise
         
+        if not send_email:
+            conn.commit()
+            conn.close()
+            return
+
         # 2. Get user's email
         cur.execute("SELECT email_address FROM email WHERE applicant_no = %s OR user_no = %s LIMIT 1", (user_no, user_no))
         user_row = cur.fetchone()

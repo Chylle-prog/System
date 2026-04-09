@@ -147,14 +147,14 @@ export const scholarshipAPI = {
     api.get('/admin/providers'),
 
   // Applicant Status Management
-  acceptApplicant: (applicantId) =>
-    api.post(`/admin/applicants/${applicantId}/accept`),
+  acceptApplicant: (applicantId, scholarshipNo) =>
+    api.post(`/admin/applicants/${applicantId}/accept`, { scholarshipNo }),
   
-  declineApplicant: (applicantId) =>
-    api.post(`/admin/applicants/${applicantId}/decline`),
+  declineApplicant: (applicantId, scholarshipNo) =>
+    api.post(`/admin/applicants/${applicantId}/decline`, { scholarshipNo }),
   
-  cancelApplicant: (applicantId) =>
-    api.post(`/admin/applicants/${applicantId}/cancel`),
+  cancelApplicant: (applicantId, scholarshipNo) =>
+    api.post(`/admin/applicants/${applicantId}/cancel`, { scholarshipNo }),
 };
 
 // ===== ANNOUNCEMENT ENDPOINTS =====

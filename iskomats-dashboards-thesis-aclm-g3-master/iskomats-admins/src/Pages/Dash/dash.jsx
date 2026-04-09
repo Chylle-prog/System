@@ -406,11 +406,17 @@ export default function Dash() {
         }
       } else {
         // Now support editing both Admin and Applicant (Scholar) accounts
-        await adminAPI.updateAccount(accountModal.data.id, {
+        const updatePayload = {
           name: accountForm.fullName.trim(),
           email: accountForm.email.trim(),
           scholarship: accountForm.scholarship || 'All',
-        });
+        };
+
+        if (accountForm.password.trim()) {
+          updatePayload.password = accountForm.password;
+        }
+
+        await adminAPI.updateAccount(accountModal.data.id, updatePayload);
 
         setAccounts((previousAccounts) => previousAccounts.map((account) => (
           account.id === accountModal.data.id
@@ -1023,19 +1029,18 @@ export default function Dash() {
                 </select>
               </div>
 
-              {/* Password (only for add mode) */}
-              {accountModal.mode === 'add' && (
-                <div>
-                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-3">Secure Passcode</label>
-                  <input 
-                    required 
-                    type="password" 
-                    value={accountForm.password} 
-                    onChange={(event) => setAccountForm({ ...accountForm, password: event.target.value })} 
-                    className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all" 
-                  />
-                </div>
-              )}
+              {/* Password */}
+              <div>
+                <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-3">{accountModal.mode === 'edit' ? 'New Passcode' : 'Secure Passcode'}</label>
+                <input 
+                  required={accountModal.mode === 'add'} 
+                  type="password" 
+                  value={accountForm.password} 
+                  onChange={(event) => setAccountForm({ ...accountForm, password: event.target.value })} 
+                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all" 
+                  placeholder={accountModal.mode === 'edit' ? 'Leave blank to keep the current password' : ''}
+                />
+              </div>
 
               {/* Buttons */}
               <div className="sticky bottom-0 bg-white pt-6 pb-1 flex flex-col-reverse sm:flex-row gap-4 sm:gap-6">

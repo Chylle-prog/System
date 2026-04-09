@@ -671,6 +671,38 @@ ISKOMATS Team
         return False
 
 
+def notify_all_applicants(title, message, notif_type='scholarship'):
+    """Send an in-app notification to all applicants with a registered email."""
+    conn = None
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT DISTINCT a.applicant_no
+            FROM applicants a
+            LEFT JOIN email e ON a.applicant_no = e.applicant_no
+            WHERE e.email_address IS NOT NULL
+            """
+        )
+        applicants = cur.fetchall()
+        conn.close()
+        conn = None
+
+        for applicant in applicants:
+            create_notification(
+                user_no=applicant['applicant_no'],
+                title=title,
+                message=message,
+                notif_type=notif_type,
+            )
+    except Exception as exc:
+        print(f"[NOTIF ERROR] Failed to notify applicants: {exc}")
+    finally:
+        if conn:
+            conn.close()
+
+
 def ensure_admin_activity_log_table(cursor):
     """Ensure the admin audit table exists before writing or reading logs."""
     cursor.execute(
@@ -1840,7 +1872,7 @@ def get_accounts(current_user_id, pro_no, role):
                 FROM applicant_status
             ) ast ON a.applicant_no = ast.applicant_no AND ast.rn = 1
             LEFT JOIN scholarships s ON ast.scholarship_no = s.req_no
-            WHERE 1=1
+            WHERE COALESCE(s.is_removed, FALSE) = FALSE
         '''
         params = []
         
@@ -2031,10 +2063,21 @@ def update_account(current_user_id, pro_no, role, account_id):
                 name = data.get('name') or f"{data.get('firstName', '')} {data.get('lastName', '')}".strip()
                 if name:
                     cursor.execute("UPDATE users SET user_name = %s WHERE user_no = %s", (name, email_record['user_no']))
+        elif email_record['applicant_no'] and ('name' in data or 'firstName' in data or 'lastName' in data):
+            full_name = data.get('name') or f"{data.get('firstName', '')} {data.get('lastName', '')}".strip()
+            name_parts = full_name.split()
+            if len(name_parts) >= 2:
+                cursor.execute(
+                    "UPDATE applicants SET first_name = %s, last_name = %s WHERE applicant_no = %s",
+                    (' '.join(name_parts[:-1]), name_parts[-1], email_record['applicant_no'])
+                )
                     
         # Update email table
         if 'email' in data:
             cursor.execute("UPDATE email SET email_address = %s WHERE em_no = %s", (data['email'], account_id))
+        if 'password' in data and data['password']:
+            password_hash = bcrypt.generate_password_hash(data['password']).decode('utf-8')
+            cursor.execute("UPDATE email SET password_hash = %s WHERE em_no = %s", (password_hash, account_id))
             
         conn.commit()
         cursor.close()
@@ -2421,7 +2464,7 @@ def get_applicants(current_user_id, pro_no, role, program):
                    a.mother_phone_no as "motherPhone",
                    a.father_phone_no as "fatherPhone",
                    CONCAT_WS(', ', NULLIF(a.street_brgy, ''), NULLIF(a.town_city_municipality, ''), NULLIF(a.province, ''), NULLIF(a.zip_code, '')) as "schoolAddress",
-                   s.is_accepted, p.provider_name as program,
+                   s.is_accepted, s.scholarship_no as "scholarshipNo", p.provider_name as program,
                    e.email_address as email,
                    CASE 
                        WHEN s.is_accepted = True THEN 'Accepted'
@@ -2536,15 +2579,51 @@ def get_applicants(current_user_id, pro_no, role, program):
 def accept_applicant(current_user_id, pro_no, role, applicant_no):
     """Accept an applicant (move from pending to accepted)"""
     try:
+        data = request.get_json(silent=True) or {}
+        scholarship_no = data.get('scholarshipNo')
+        if scholarship_no is None:
+            return jsonify({'success': False, 'message': 'scholarshipNo is required'}), 400
+
         conn = get_db()
         cursor = conn.cursor()
+
+        cursor.execute(
+            '''SELECT ast.is_accepted, s.slots, s.pro_no
+               FROM applicant_status ast
+               INNER JOIN scholarships s ON ast.scholarship_no = s.req_no
+               WHERE ast.applicant_no = %s AND ast.scholarship_no = %s''',
+            (applicant_no, scholarship_no)
+        )
+        status_row = cursor.fetchone()
+        if not status_row:
+            cursor.close()
+            conn.close()
+            return jsonify({'success': False, 'message': 'Application not found'}), 404
+
+        if role != 'Admin' and status_row['pro_no'] != pro_no:
+            cursor.close()
+            conn.close()
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+
+        if status_row['slots'] is not None and status_row['is_accepted'] is not True:
+            cursor.execute(
+                '''SELECT COUNT(*) AS accepted_count
+                   FROM applicant_status
+                   WHERE scholarship_no = %s AND is_accepted = TRUE''',
+                (scholarship_no,)
+            )
+            accepted_count = cursor.fetchone()['accepted_count']
+            if accepted_count >= status_row['slots']:
+                cursor.close()
+                conn.close()
+                return jsonify({'success': False, 'message': 'Scholarship slots are already full'}), 409
         
         # Update applicant status
         cursor.execute(
             '''UPDATE applicant_status 
                SET is_accepted = True, status_updated = CURRENT_DATE
-               WHERE applicant_no = %s''',
-            (applicant_no,)
+               WHERE applicant_no = %s AND scholarship_no = %s''',
+            (applicant_no, scholarship_no)
         )
         conn.commit()
         cursor.close()
@@ -2560,15 +2639,38 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
 def decline_applicant(current_user_id, pro_no, role, applicant_no):
     """Decline an applicant (move from pending to declined)"""
     try:
+        data = request.get_json(silent=True) or {}
+        scholarship_no = data.get('scholarshipNo')
+        if scholarship_no is None:
+            return jsonify({'success': False, 'message': 'scholarshipNo is required'}), 400
+
         conn = get_db()
         cursor = conn.cursor()
+
+        cursor.execute(
+            '''SELECT s.pro_no
+               FROM applicant_status ast
+               INNER JOIN scholarships s ON ast.scholarship_no = s.req_no
+               WHERE ast.applicant_no = %s AND ast.scholarship_no = %s''',
+            (applicant_no, scholarship_no)
+        )
+        status_row = cursor.fetchone()
+        if not status_row:
+            cursor.close()
+            conn.close()
+            return jsonify({'success': False, 'message': 'Application not found'}), 404
+
+        if role != 'Admin' and status_row['pro_no'] != pro_no:
+            cursor.close()
+            conn.close()
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 403
         
         # Update applicant status
         cursor.execute(
             '''UPDATE applicant_status 
                SET is_accepted = False, status_updated = CURRENT_DATE
-               WHERE applicant_no = %s''',
-            (applicant_no,)
+               WHERE applicant_no = %s AND scholarship_no = %s''',
+            (applicant_no, scholarship_no)
         )
         conn.commit()
         cursor.close()
@@ -2584,15 +2686,38 @@ def decline_applicant(current_user_id, pro_no, role, applicant_no):
 def cancel_applicant(current_user_id, pro_no, role, applicant_no):
     """Cancel applicant status (revert to pending/NULL)"""
     try:
+        data = request.get_json(silent=True) or {}
+        scholarship_no = data.get('scholarshipNo')
+        if scholarship_no is None:
+            return jsonify({'success': False, 'message': 'scholarshipNo is required'}), 400
+
         conn = get_db()
         cursor = conn.cursor()
+
+        cursor.execute(
+            '''SELECT s.pro_no
+               FROM applicant_status ast
+               INNER JOIN scholarships s ON ast.scholarship_no = s.req_no
+               WHERE ast.applicant_no = %s AND ast.scholarship_no = %s''',
+            (applicant_no, scholarship_no)
+        )
+        status_row = cursor.fetchone()
+        if not status_row:
+            cursor.close()
+            conn.close()
+            return jsonify({'success': False, 'message': 'Application not found'}), 404
+
+        if role != 'Admin' and status_row['pro_no'] != pro_no:
+            cursor.close()
+            conn.close()
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 403
         
         # Update applicant status back to NULL (pending review)
         cursor.execute(
             '''UPDATE applicant_status 
                SET is_accepted = NULL, status_updated = CURRENT_DATE
-               WHERE applicant_no = %s''',
-            (applicant_no,)
+               WHERE applicant_no = %s AND scholarship_no = %s''',
+            (applicant_no, scholarship_no)
         )
         conn.commit()
         cursor.close()
@@ -2704,6 +2829,10 @@ def create_scholarship(current_user_id, pro_no, role):
         
         new_scholarship = cursor.fetchone()
         req_no = new_scholarship['req_no']
+
+        cursor.execute("SELECT provider_name FROM scholarship_providers WHERE pro_no = %s", (target_pro_no,))
+        provider_row = cursor.fetchone()
+        provider_name = provider_row['provider_name'] if provider_row else 'ISKOMATS'
         
         # 3. Handle scholarship images
         if 'scholarshipImages' in data and isinstance(data['scholarshipImages'], list):
@@ -2724,6 +2853,12 @@ def create_scholarship(current_user_id, pro_no, role):
         conn.commit()
         cursor.close()
         conn.close()
+
+        notify_all_applicants(
+            title=f"New Scholarship Posted: {data['scholarshipName']}",
+            message=f"{provider_name} posted a new scholarship opportunity. Deadline: {data['deadline']}.",
+            notif_type='scholarship',
+        )
         
         return jsonify({
             'success': True, 
@@ -2750,7 +2885,15 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
         is_admin = (role == 'Admin')
         
         # 2. Check scholarship ownership
-        cursor.execute("SELECT pro_no FROM scholarships WHERE req_no = %s", (req_no,))
+        cursor.execute(
+            """
+            SELECT s.pro_no, s.scholarship_name, p.provider_name
+            FROM scholarships s
+            LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
+            WHERE s.req_no = %s
+            """,
+            (req_no,)
+        )
         sch_row = cursor.fetchone()
         if not sch_row:
             return jsonify({'message': 'Scholarship not found'}), 404
@@ -2840,6 +2983,12 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
         conn.commit()
         cursor.close()
         conn.close()
+
+        notify_all_applicants(
+            title=f"Scholarship Updated: {data.get('scholarshipName', sch_row['scholarship_name'])}",
+            message=f"{sch_row['provider_name'] or 'ISKOMATS'} updated scholarship details. Check the latest post for changes.",
+            notif_type='scholarship',
+        )
         
         return jsonify({'success': True, 'message': 'Scholarship updated'}), 200
     
@@ -2852,7 +3001,7 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
 @api_bp.route('/scholarships/<int:req_no>', methods=['DELETE'])
 @token_required
 def delete_scholarship(current_user_id, pro_no, role, req_no):
-    """Delete scholarship post"""
+    """Soft-delete scholarship post."""
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -2869,29 +3018,13 @@ def delete_scholarship(current_user_id, pro_no, role, req_no):
         if not is_superadmin and sch_row['pro_no'] is not None and pro_no is not None and sch_row['pro_no'] != pro_no:
             return jsonify({'message': 'Unauthorized'}), 401
             
-        # 3. Delete messages associated with this scholarship first
-        # This deletes all messages between applicants and the provider for this scholarship
-        cursor.execute("""
-            DELETE FROM message 
-            WHERE (applicant_no, pro_no) IN (
-                SELECT DISTINCT ast.applicant_no, s.pro_no 
-                FROM applicant_status ast
-                JOIN scholarships s ON ast.scholarship_no = s.req_no
-                WHERE s.req_no = %s
-            )
-        """, (req_no,))
-        
-        # Delete entries in applicant_status (foreign key)
-        cursor.execute("DELETE FROM applicant_status WHERE scholarship_no = %s", (req_no,))
-        
-        # Delete scholarship
-        cursor.execute("DELETE FROM scholarships WHERE req_no = %s", (req_no,))
+        cursor.execute("UPDATE scholarships SET is_removed = TRUE WHERE req_no = %s", (req_no,))
         
         conn.commit()
         cursor.close()
         conn.close()
         
-        return jsonify({'success': True, 'message': 'Scholarship deleted'}), 200
+        return jsonify({'success': True, 'message': 'Scholarship removed'}), 200
         
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
@@ -3141,7 +3274,8 @@ def create_announcement(current_user_id, pro_no, role):
                     user_no=student['applicant_no'],
                     title=f"New Announcement: {title}",
                     message=message[:100] + ('...' if len(message) > 100 else ''),
-                    notif_type='announcement'
+                    notif_type='announcement',
+                    send_email=False,
                 )
         except Exception as e:
             print(f"[NOTIF ERROR] Failed to trigger announcement notifications: {e}")

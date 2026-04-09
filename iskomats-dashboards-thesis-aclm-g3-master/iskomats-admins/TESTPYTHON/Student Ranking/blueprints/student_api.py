@@ -1017,7 +1017,7 @@ def get_all_scholarships():
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute('SELECT * FROM scholarships ORDER BY scholarship_name')
+        cur.execute('SELECT * FROM scholarships WHERE COALESCE(is_removed, FALSE) = FALSE ORDER BY scholarship_name')
         rows = cur.fetchall()
         return jsonify(rows)
     except Exception as exc:
@@ -1032,7 +1032,7 @@ def get_scholarship_by_id(req_no):
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute('SELECT * FROM scholarships WHERE req_no = %s', (req_no,))
+        cur.execute('SELECT * FROM scholarships WHERE req_no = %s AND COALESCE(is_removed, FALSE) = FALSE', (req_no,))
         row = cur.fetchone()
         if not row:
             return jsonify({'message': 'Scholarship not found'}), 404

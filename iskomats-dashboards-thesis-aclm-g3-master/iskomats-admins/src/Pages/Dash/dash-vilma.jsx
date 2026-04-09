@@ -966,7 +966,7 @@ export default function DashVilma() {
       try {
         // Call API to persist the change
         const applicantToAccept = data.applicants[idx];
-        await scholarshipAPI.acceptApplicant(applicantToAccept.id);
+        await scholarshipAPI.acceptApplicant(applicantToAccept.id, applicantToAccept.scholarshipNo);
         
         // Update local state
         setData((d) => ({
@@ -998,7 +998,7 @@ export default function DashVilma() {
       try {
         // Call API to persist the change
         const applicantToDecline = data.applicants[idx];
-        await scholarshipAPI.declineApplicant(applicantToDecline.id);
+        await scholarshipAPI.declineApplicant(applicantToDecline.id, applicantToDecline.scholarshipNo);
         
         // Update local state
         setData((d) => ({
@@ -1033,7 +1033,7 @@ export default function DashVilma() {
       if (!applicant) return;
       
       // Call backend API to persist the change
-      await scholarshipAPI.acceptApplicant(applicant.id);
+      await scholarshipAPI.acceptApplicant(applicant.id, applicant.scholarshipNo);
       
       // Update frontend state
       setData((d) => {
@@ -1077,7 +1077,7 @@ export default function DashVilma() {
       if (!applicant) return;
       
       // Call backend API to persist the change
-      await scholarshipAPI.declineApplicant(applicant.id);
+      await scholarshipAPI.declineApplicant(applicant.id, applicant.scholarshipNo);
       
       // Update frontend state
       setData((d) => {
@@ -1120,7 +1120,7 @@ export default function DashVilma() {
       const applicantKey = applicant.id || applicant.applicant_no || applicant.studentContact?.email || applicant.name;
       
       // Call backend API to persist the change
-      await scholarshipAPI.cancelApplicant(applicant.id);
+      await scholarshipAPI.cancelApplicant(applicant.id, applicant.scholarshipNo);
       
       // Update frontend state
       setData((d) => {
