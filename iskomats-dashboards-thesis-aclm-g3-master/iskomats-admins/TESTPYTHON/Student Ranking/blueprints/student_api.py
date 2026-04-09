@@ -91,8 +91,8 @@ fernet = Fernet(ENCRYPTION_KEY) if ENCRYPTION_KEY else None
     
 # Password Reset Config
 PASSWORD_RESET_EXPIRY_MINUTES = int(os.environ.get('PASSWORD_RESET_EXPIRY_MINUTES', '30'))
-# Use a different FRONTEND_URL for students if configured, otherwise fallback to applicant portal
-STUDENT_FRONTEND_URL = os.environ.get('STUDENT_FRONTEND_URL', 'https://foregoing-giants.surge.sh').rstrip('/')
+# Use the specific deployed domain for student portal links
+STUDENT_FRONTEND_URL = 'https://foregoing-giants.surge.sh'
 GMAIL_SENDER_EMAIL = os.environ.get('GMAIL_SENDER_EMAIL')
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
