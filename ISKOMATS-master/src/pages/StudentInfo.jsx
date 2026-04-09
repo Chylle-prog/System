@@ -2766,27 +2766,7 @@ const StudentInfo = () => {
                     </div>
                   </div>
 
-                  {/* Video Column */}
-                  <div style={{flex: '1', minWidth: '250px'}}>
-                    <div style={{background: '#fff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0', textAlign: 'center'}}>
-                      <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '1rem'}}>
-                        <p style={{fontSize: '0.9rem', color: '#333', fontWeight: '700', margin: 0}}>
-                          <i className="fas fa-video" style={{marginRight: '8px', color: 'var(--primary)'}}></i> Live Face Verification Video
-                        </p>
-                        {(documentVideos.face_video || userProfile?.id_vid_url) && (
-                          <span style={{fontSize: '0.7rem', color: '#27ae60', fontWeight: '600', padding: '0.25rem 0.6rem', backgroundColor: '#d5f4e6', borderRadius: '12px', whiteSpace: 'nowrap'}}>
-                            <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> Video Active
-                          </span>
-                        )}
-                      </div>
-                      <VideoRecorder 
-                        label="Record Face Video" 
-                        onRecordComplete={(blob) => handleVideoUpload('face_video', blob)} 
-                        initialVideoUrl={documentVideos.face_video || userProfile?.id_vid_url}
-                        maxDuration={30}
-                      />
-                    </div>
-                  </div>
+
                 </div>
 
                 <div style={{width: '100%', textAlign: 'center', marginTop: '1.5rem'}}>
