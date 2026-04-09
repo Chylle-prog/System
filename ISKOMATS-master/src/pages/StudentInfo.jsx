@@ -609,8 +609,8 @@ const StudentInfo = () => {
         
         // Load final verification ID photo
         if (profile.id_pic) {
-          setPhotos(prev => ({ ...prev, mayorValidID_photo: profile.id_pic }));
-          setFormData(prev => ({ ...prev, mayorValidID_photo: profile.id_pic }));
+          setPhotos(prev => ({ ...prev, face_photo: profile.id_pic, mayorValidID_photo: profile.id_pic }));
+          setFormData(prev => ({ ...prev, face_photo: profile.id_pic, mayorValidID_photo: profile.id_pic }));
         }
         
         console.log('DEBUG: Photos loaded to state:', {
@@ -1365,6 +1365,7 @@ const StudentInfo = () => {
     }
 
     const numericReqNo = parseInt(reqNo, 10);
+    setIsSubmitting(true);
 
     try {
       // ── Automatic Face Verification ────────────────────────────────────────
@@ -2823,7 +2824,7 @@ const StudentInfo = () => {
                 <button 
                   type="submit" 
                   className="submit-btn" 
-                  disabled={isSubmitting || isSavingStep || !faceMatchResult?.verified} 
+                  disabled={isSubmitting || isSavingStep || (!faceMatchResult?.verified && !userProfile?.id_pic)} 
                   style={{width: 'auto', padding: '0.8rem 3.5rem', borderRadius: '40px', background: 'var(--success)', border: 'none'}}
                 >
                   {isSubmitting ? (
