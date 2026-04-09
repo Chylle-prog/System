@@ -16,6 +16,17 @@ from io import BytesIO
 import traceback
 import threading
 
+def safe_emit(event, data, **kwargs):
+    """Emit a SocketIO event safely from HTTP route context.
+    Uses the app-level socketio instance instead of the request-scoped emit(),
+    which crashes with 'Request has no attribute namespace' outside SocketIO handlers.
+    """
+    try:
+        import app as _app
+        _app.socketio.emit(event, data, **kwargs)
+    except Exception as _e:
+        print(f"[SOCKETIO EMIT] Could not broadcast '{event}': {_e}", flush=True)
+
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_DIR not in sys.path:
     sys.path.append(PROJECT_DIR)
@@ -1960,7 +1971,7 @@ def create_account(current_user_id, pro_no, role):
         )
         
         # Real-time synchronization: Notify connected admins
-        emit('account_change', {'action': 'created', 'account_id': account_id}, broadcast=True)
+        safe_emit('account_change', {'action': 'created', 'account_id': account_id}, broadcast=True)
         
         return jsonify({'success': True, 'account': {
             'id': account_id,
@@ -2035,7 +2046,7 @@ def update_account(current_user_id, pro_no, role, account_id):
         )
         
         # Real-time synchronization: Notify connected admins
-        emit('account_change', {'action': 'updated', 'account_id': account_id}, broadcast=True)
+        safe_emit('account_change', {'action': 'updated', 'account_id': account_id}, broadcast=True)
         
         return jsonify({'success': True, 'message': 'Account updated'}), 200
     
@@ -2086,7 +2097,7 @@ def delete_account(current_user_id, pro_no, role, account_id):
         )
         
         # Real-time synchronization: Notify connected admins
-        emit('account_change', {'action': 'deleted', 'account_id': account_id}, broadcast=True)
+        safe_emit('account_change', {'action': 'deleted', 'account_id': account_id}, broadcast=True)
         
         return jsonify({'success': True, 'message': 'Account deleted'}), 200
     
@@ -2139,7 +2150,7 @@ def toggle_account_lock(current_user_id, pro_no, role, account_id):
         )
         
         # Real-time synchronization: Notify connected admins
-        emit('account_change', {'action': status, 'account_id': account_id}, broadcast=True)
+        safe_emit('account_change', {'action': status, 'account_id': account_id}, broadcast=True)
         
         return jsonify({'success': True, 'message': f'Account {status}'}), 200
     

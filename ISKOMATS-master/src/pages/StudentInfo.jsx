@@ -135,6 +135,7 @@ const StudentInfo = () => {
   const [ocrError, setOcrError] = useState('');
   const [ocrVerified, setOcrVerified] = useState(null); // null, 'verifying', 'success', 'failed'
   const [ocrStatus, setOcrStatus] = useState('');
+  const [lightboxSrc, setLightboxSrc] = useState(null);
   const [photos, setPhotos] = useState({
     id_front: null,
     id_back: null,
@@ -2109,7 +2110,9 @@ const StudentInfo = () => {
                     <div style={{flex: '1', minWidth: '220px'}}>
                       {(photos.mayorIndigency_photo || userProfile?.indigency_doc) && (
                         <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
-                            <img src={photos.mayorIndigency_photo || userProfile?.indigency_doc} style={{maxWidth: '280px', height: 'auto', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="Indigency Preview" />
+                            <div onClick={() => setLightboxSrc(photos.mayorIndigency_photo || userProfile?.indigency_doc)} title="Click to view full size" style={{width: '200px', height: '160px', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', cursor: 'zoom-in', flexShrink: 0, background: '#f8f9fa'}}>
+                              <img src={photos.mayorIndigency_photo || userProfile?.indigency_doc} style={{width: '100%', height: '100%', objectFit: 'contain'}} alt="Indigency Preview" />
+                            </div>
                             <button 
                               type="button" 
                               onClick={handleIndigencyScan}
@@ -2350,12 +2353,20 @@ const StudentInfo = () => {
                   <div className="form-group">
                     <label style={{fontSize: '0.8rem', color: '#555'}}>Front Side</label>
                     <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} required={currentStep === 3} />
-                    {(schoolIdPhotos.front || userProfile?.id_img_front) && <img src={schoolIdPhotos.front || userProfile?.id_img_front} style={{marginTop: '10px', width: '100%', maxWidth: '130px', borderRadius: '8px'}} alt="Front Preview" />}
+                    {(schoolIdPhotos.front || userProfile?.id_img_front) && (
+                      <div onClick={() => setLightboxSrc(schoolIdPhotos.front || userProfile?.id_img_front)} title="Click to view full size" style={{marginTop: '10px', width: '200px', height: '160px', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', cursor: 'zoom-in', background: '#f8f9fa'}}>
+                        <img src={schoolIdPhotos.front || userProfile?.id_img_front} style={{width: '100%', height: '100%', objectFit: 'contain'}} alt="Front Preview" />
+                      </div>
+                    )}
                   </div>
                   <div className="form-group">
                     <label style={{fontSize: '0.8rem', color: '#555'}}>Back Side</label>
                     <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} required={currentStep === 3} />
-                    {(schoolIdPhotos.back || userProfile?.id_img_back) && <img src={schoolIdPhotos.back || userProfile?.id_img_back} style={{marginTop: '10px', width: '100%', maxWidth: '130px', borderRadius: '8px'}} alt="Back Preview" />}
+                    {(schoolIdPhotos.back || userProfile?.id_img_back) && (
+                      <div onClick={() => setLightboxSrc(schoolIdPhotos.back || userProfile?.id_img_back)} title="Click to view full size" style={{marginTop: '10px', width: '200px', height: '160px', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', cursor: 'zoom-in', background: '#f8f9fa'}}>
+                        <img src={schoolIdPhotos.back || userProfile?.id_img_back} style={{width: '100%', height: '100%', objectFit: 'contain'}} alt="Back Preview" />
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -2439,7 +2450,9 @@ const StudentInfo = () => {
                       <div style={{flex: '1', minWidth: '220px'}}>
                         {(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && (
                           <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
-                            <img src={photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc} style={{maxWidth: '280px', height: 'auto', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="COE Preview" />
+                            <div onClick={() => setLightboxSrc(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc)} title="Click to view full size" style={{width: '200px', height: '160px', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', cursor: 'zoom-in', flexShrink: 0, background: '#f8f9fa'}}>
+                              <img src={photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc} style={{width: '100%', height: '100%', objectFit: 'contain'}} alt="COE Preview" />
+                            </div>
                             <button 
                               type="button" 
                               onClick={handleCOEScan}
@@ -2515,7 +2528,9 @@ const StudentInfo = () => {
                       <div style={{flex: '1', minWidth: '220px'}}>
                         {(photos.mayorGrades_photo || userProfile?.grades_doc) && (
                           <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
-                            <img src={photos.mayorGrades_photo || userProfile?.grades_doc} style={{maxWidth: '280px', height: 'auto', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'}} alt="Grades Preview" />
+                            <div onClick={() => setLightboxSrc(photos.mayorGrades_photo || userProfile?.grades_doc)} title="Click to view full size" style={{width: '200px', height: '160px', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', cursor: 'zoom-in', flexShrink: 0, background: '#f8f9fa'}}>
+                              <img src={photos.mayorGrades_photo || userProfile?.grades_doc} style={{width: '100%', height: '100%', objectFit: 'contain'}} alt="Grades Preview" />
+                            </div>
                             <button 
                               type="button" 
                               onClick={handleGradesScan}
@@ -2847,6 +2862,43 @@ const StudentInfo = () => {
         </div>
       </div>
       
+      {/* Image Lightbox */}
+      {lightboxSrc && (
+        <div
+          onClick={() => setLightboxSrc(null)}
+          style={{
+            position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+            background: 'rgba(0,0,0,0.92)', zIndex: 9500,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'zoom-out'
+          }}
+        >
+          <img
+            src={lightboxSrc}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '90vw', maxHeight: '90vh',
+              objectFit: 'contain', borderRadius: '12px',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.6)'
+            }}
+            alt="Full preview"
+          />
+          <button
+            type="button"
+            onClick={() => setLightboxSrc(null)}
+            style={{
+              position: 'absolute', top: '20px', right: '20px',
+              background: 'rgba(255,255,255,0.15)', border: 'none',
+              color: 'white', width: '42px', height: '42px',
+              borderRadius: '50%', fontSize: '1.2rem', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}
+          >
+            <i className="fas fa-times"></i>
+          </button>
+        </div>
+      )}
+
       {/* Floating Prompt Alert */}
       <div className={`prompt-alert ${showPrompt ? 'active' : ''}`} style={{
         position: 'fixed',
