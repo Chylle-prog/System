@@ -46,11 +46,18 @@ def get_db_connection_kwargs():
     return connection_kwargs
 
 
-def get_db(cursor_factory=RealDictCursor):
+def get_db(cursor_factory=RealDictCursor, fast_startup=False):
     connection_kwargs = get_db_connection_kwargs()
-    # Increase defaults to handle slow DNS initialization common in Render free tier
-    max_attempts = int(os.environ.get('DB_CONNECT_RETRIES', '10'))
-    retry_delay_base = float(os.environ.get('DB_CONNECT_RETRY_DELAY', '2.0'))
+    # fast_startup=True: fewer retries + shorter delay for startup/migration checks.
+    # fast_startup=False (default): longer retries for live request resilience.
+    if fast_startup:
+        max_attempts = int(os.environ.get('DB_STARTUP_RETRIES', '3'))
+        retry_delay_base = float(os.environ.get('DB_STARTUP_RETRY_DELAY', '0.5'))
+        # Drastically reduce connect_timeout to avoid 10s DNS hangs during startup
+        connection_kwargs['connect_timeout'] = 2
+    else:
+        max_attempts = int(os.environ.get('DB_CONNECT_RETRIES', '10'))
+        retry_delay_base = float(os.environ.get('DB_CONNECT_RETRY_DELAY', '2.0'))
     last_error = None
 
     for attempt in range(1, max_attempts + 1):
@@ -66,6 +73,11 @@ def get_db(cursor_factory=RealDictCursor):
             time.sleep(retry_delay_base)
 
     raise last_error
+
+
+def get_db_startup(cursor_factory=RealDictCursor):
+    """Lightweight startup/migration DB connection — fails fast to avoid bloating deploy time."""
+    return get_db(cursor_factory=cursor_factory, fast_startup=True)
 
 
 def get_db_display_config():

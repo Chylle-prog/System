@@ -417,19 +417,22 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
         return True, "Verified", best_text, 1.0
     
     # Early exit: if we have a good partial match, check address and return
-    threshold = 0.4 if is_indigency else 0.6
+    threshold = 0.3 if is_indigency else 0.6
     if best_ratio >= threshold:
         _, addr_ok, _, _ = _perform_text_matching(best_text, None, None, None, None, None, is_indigency)
         if addr_ok:
             _cache_set(image_hash, (best_text, best_ratio, "verified_threshold"))
             return True, "Verified", best_text, 1.0
-        return False, "Address mismatch", best_text, 0.7
+        # If it's not Indigency, we require address to match if it's provided.
+        # But if it IS Indigency, we already checked name above.
+        if expected_address:
+            return False, "Address mismatch", best_text, 0.7
 
     # Return result - no additional fallback passes
-    # (Improved address matching + reduced to first+last word check provides better accuracy with PSM3 alone)
     if best_ratio >= 0.3:
         _cache_set(image_hash, (best_text, best_ratio, "partial_match"))
-        return False, f"Identity mismatch ({best_ratio:.0%})", best_text, best_ratio
+        prefix = "Indigency: " if is_indigency else ""
+        return False, f"{prefix}Identity mismatch ({best_ratio:.0%})", best_text, best_ratio
 
     _cache_set(image_hash, (best_text, best_ratio, "failed"))
     return False, "Identity verification mismatch", best_text, 0.0

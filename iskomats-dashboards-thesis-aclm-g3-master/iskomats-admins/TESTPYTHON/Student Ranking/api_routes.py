@@ -16,14 +16,19 @@ from io import BytesIO
 import traceback
 import threading
 
+# Global SocketIO instance to avoid circular imports with app.py
+_socketio_instance = None
+
 def safe_emit(event, data, **kwargs):
     """Emit a SocketIO event safely from HTTP route context.
-    Uses the app-level socketio instance instead of the request-scoped emit(),
+    Uses the captured socketio instance instead of the request-scoped emit(),
     which crashes with 'Request has no attribute namespace' outside SocketIO handlers.
     """
     try:
-        import app as _app
-        _app.socketio.emit(event, data, **kwargs)
+        if _socketio_instance:
+            _socketio_instance.emit(event, data, **kwargs)
+        else:
+            print(f"[SOCKETIO EMIT] Skipped '{event}': SocketIO not initialized yet", flush=True)
     except Exception as _e:
         print(f"[SOCKETIO EMIT] Could not broadcast '{event}': {_e}", flush=True)
 
@@ -31,7 +36,7 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_DIR not in sys.path:
     sys.path.append(PROJECT_DIR)
 
-from project_config import get_db
+from project_config import get_db, get_db_startup
 from services.notification_service import create_notification
 
 def convert_bytea_array_to_urls(bytea_array):
@@ -245,7 +250,7 @@ def get_mime_type(data):
 def ensure_verification_columns():
     """Ensure email table has verification columns for admin registration"""
     try:
-        conn = get_db()
+        conn = get_db_startup()
         cur = conn.cursor()
         
         # Check if verification columns exist
@@ -829,7 +834,7 @@ def initialize_auto_chat_rooms():
     conn = None
     cursor = None
     try:
-        conn = get_db()
+        conn = get_db_startup()
         cursor = conn.cursor()
         
         # Ensure table exists with new schema
@@ -888,6 +893,8 @@ def initialize_auto_chat_rooms():
 
 def init_socketio(socketio):
     """Initialize SocketIO events for chatting"""
+    global _socketio_instance
+    _socketio_instance = socketio
     
     # Run once on initialization
     import eventlet

@@ -18,7 +18,7 @@ from flask_bcrypt import Bcrypt
 import cv2
 import numpy as np
 from services.auth_service import get_secret_key
-from services.db_service import get_db
+from services.db_service import get_db, get_db_startup
 
 from services.ocr_utils import (
     verify_id_with_ocr, verify_face_with_id, extract_school_year, 
@@ -101,7 +101,7 @@ GOOGLE_REFRESH_TOKEN = os.environ.get('GOOGLE_REFRESH_TOKEN')
 # Database Migration: Ensure email table has verification columns
 def ensure_verification_columns():
     try:
-        conn = get_db()
+        conn = get_db_startup()  # Fast-fail: 3 retries × 0.5s to avoid 300s deploy stall
         cur = conn.cursor()
         
         # Check if columns exist
