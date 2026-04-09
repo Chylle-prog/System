@@ -556,7 +556,20 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
 
 def extract_school_year_from_text(text):
     if not text: return None
-    match = re.search(r'20\d{2}(?:\s*-\s*20\d{2})?', text)
+    # Priority 1: Year range or single year preceded by a school-year keyword
+    # e.g. "School Year Sem : 2025 - 2026", "S.Y. 2025-2026", "A.Y. 2025-2026"
+    keyword_match = re.search(
+        r'(?:school\s*year|s\.?y\.?|a\.?y\.?)\s*[:\-]?\s*(20\d{2}(?:\s*[-–]\s*20\d{2})?)',
+        text, re.IGNORECASE
+    )
+    if keyword_match:
+        return keyword_match.group(1).strip()
+    # Priority 2: Any year RANGE (e.g. "2025 - 2026") anywhere in the text
+    range_match = re.search(r'20\d{2}\s*[-–]\s*20\d{2}', text)
+    if range_match:
+        return range_match.group(0)
+    # Priority 3: First standalone 20XX year (original fallback)
+    match = re.search(r'20\d{2}', text)
     return match.group(0) if match else None
 
 def extract_school_year(image_bytes):

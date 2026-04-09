@@ -2234,8 +2234,9 @@ def upload_video():
             folder = folder_map.get(field_name, 'others')
             file_name = f"{current_user_id}_{int(time.time())}{ext}"
             file_path = f"videos/{folder}/{file_name}"
-            
-            # --- OVERWRITE PREVIOUS VIDEO CLEANUP ---
+
+            # --- OVERWRITE PREVIOUS VIDEO CLEANUP (non-blocking) ---
+            # Run in background thread so it doesn't delay the upload response.
             db_column_map = {
                 'mayorIndigency_video': 'indigency_vid_url',
                 'mayorCOE_video': 'enrollment_certificate_vid_url',
@@ -2245,25 +2246,28 @@ def upload_video():
             }
             db_col = db_column_map.get(field_name)
             if db_col:
-                from services.db_service import get_db
-                try:
-                    conn = get_db()
-                    cur = conn.cursor()
-                    cur.execute(f"SELECT {db_col} FROM applicants WHERE applicant_no = %s", (current_user_id,))
-                    row = cur.fetchone()
-                    if row and row[db_col]:
-                        old_url = row[db_col]
-                        if '/public/document_videos/' in old_url:
-                            old_path = old_url.split('/public/document_videos/')[1].strip()
-                            supabase.storage.from_('document_videos').remove([old_path])
-                            print(f"[VIDEO-UPLOAD] Deleted previous video from storage: {old_path}", flush=True)
-                except Exception as e:
-                    print(f"[VIDEO-UPLOAD] Error searching/deleting old video: {e}", flush=True)
-                finally:
-                    if 'conn' in locals() and conn:
-                        conn.close()
+                import threading
+                def _cleanup_old_video(user_id, col, supa):
+                    from services.db_service import get_db
+                    try:
+                        conn = get_db()
+                        cur = conn.cursor()
+                        cur.execute(f"SELECT {col} FROM applicants WHERE applicant_no = %s", (user_id,))
+                        row = cur.fetchone()
+                        if row and row[col]:
+                            old_url = row[col]
+                            if '/public/document_videos/' in old_url:
+                                old_path = old_url.split('/public/document_videos/')[1].strip()
+                                supa.storage.from_('document_videos').remove([old_path])
+                                print(f"[VIDEO-UPLOAD] Deleted previous video from storage: {old_path}", flush=True)
+                    except Exception as e:
+                        print(f"[VIDEO-UPLOAD] Error cleaning up old video: {e}", flush=True)
+                    finally:
+                        try: conn.close()
+                        except: pass
+                threading.Thread(target=_cleanup_old_video, args=(current_user_id, db_col, supabase), daemon=True).start()
             # ----------------------------------------
-            
+
             # Direct stream upload bypasses heavy memory buffers
             response = supabase.storage.from_('document_videos').upload(
                 file_path,

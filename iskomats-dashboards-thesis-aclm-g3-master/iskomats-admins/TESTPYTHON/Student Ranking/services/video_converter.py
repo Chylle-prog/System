@@ -20,10 +20,14 @@ def is_ffmpeg_available():
         return False
 def faststart_video_stream(video_bytes, ext='.mp4'):
     """
-    Forcefully transcodes the video to web-safe H.264 (yuv420p) to fix browser 
-    MEDIA_ELEMENT_ERROR format bugs (e.g. from HEVC iPhone uploads).
+    Makes video web-safe for browser streaming.
+    
+    Strategy (fast path first):
+    1. Try stream copy with +faststart (near-instant, works for H.264 MP4/MOV)
+    2. Fall back to full H.264 re-encode only if stream copy fails (needed for HEVC iPhone videos)
+    
     To prevent 502 Bad Gateway / OOM crashes on Render's 512MB RAM server,
-    we heavily constrain the FFmpeg process with limited threads and ultrafast encoding.
+    the re-encode fallback is heavily constrained with limited threads and ultrafast encoding.
     """
     if not video_bytes or ext not in ['.mp4', '.mov']:
         return video_bytes
@@ -32,58 +36,79 @@ def faststart_video_stream(video_bytes, ext='.mp4'):
         print("[VIDEO CONVERT] ffmpeg not available, returning original bytes", flush=True)
         return video_bytes
 
+    input_path = None
+    output_path = None
     try:
         # Use exact extension so ffmpeg correctly reads the container format.
         with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as input_file:
             input_file.write(video_bytes)
             input_path = input_file.name
 
-        # Enforce exactly .mp4 out
         output_path = input_path + '_fs.mp4'
 
-        cmd = [
+        # --- FAST PATH: Stream copy (no re-encode) ---
+        # Works for H.264 MP4/MOV (most Android phones, older iPhones).
+        # Takes < 2 seconds regardless of video length.
+        cmd_copy = [
             'ffmpeg',
             '-i', input_path,
-            '-vf', 'scale=-2:480',    # Downscale to 480p height max (drastic speedup, massive pixel cut)
-            '-r', '24',               # Cap framerate to 24fps
-            '-c:v', 'libx264',
-            '-pix_fmt', 'yuv420p',
-            '-preset', 'ultrafast',   # Drastically lowers memory and CPU spikes
-            '-crf', '30',             # Slightly higher compression to save process time
-            '-threads', '1',          # Restrict to 1 CPU thread (Critical to prevent OOM)
-            '-c:a', 'aac',
-            '-b:a', '64k',            # Reduced audio bitrate for faster packaging
-            '-movflags', '+faststart', # Crucial: Fixes Chrome HTTP streaming
+            '-c', 'copy',
+            '-movflags', '+faststart',
             '-y',
             output_path
         ]
+        result_copy = subprocess.run(cmd_copy, capture_output=True, timeout=30, text=True)
 
-        # Give a slightly longer timeout since single-threaded transcoding is slower
-        result = subprocess.run(cmd, capture_output=True, timeout=180, text=True)
+        if result_copy.returncode == 0:
+            with open(output_path, 'rb') as f:
+                copied_bytes = f.read()
+            if len(copied_bytes) > 10000:
+                print(f"[VIDEO CONVERT] Fast stream copy succeeded. {len(video_bytes)} -> {len(copied_bytes)} bytes", flush=True)
+                return copied_bytes
 
-        if result.returncode != 0:
-            print(f"[VIDEO CONVERT] ffmpeg transcode failed: {result.stderr}", flush=True)
+        # --- SLOW PATH: Full H.264 re-encode (HEVC/H.265 iPhone videos, etc.) ---
+        print(f"[VIDEO CONVERT] Stream copy failed (likely HEVC), falling back to H.264 transcode...", flush=True)
+        cmd_encode = [
+            'ffmpeg',
+            '-i', input_path,
+            '-vf', 'scale=-2:480',    # Downscale to 480p (drastic speedup)
+            '-r', '24',               # Cap framerate to 24fps
+            '-c:v', 'libx264',
+            '-pix_fmt', 'yuv420p',
+            '-preset', 'ultrafast',   # Lowest memory/CPU usage
+            '-crf', '30',
+            '-threads', '1',          # Restrict to 1 CPU thread (prevents OOM on Render)
+            '-c:a', 'aac',
+            '-b:a', '64k',
+            '-movflags', '+faststart',
+            '-y',
+            output_path
+        ]
+        result_encode = subprocess.run(cmd_encode, capture_output=True, timeout=180, text=True)
+
+        if result_encode.returncode != 0:
+            print(f"[VIDEO CONVERT] ffmpeg transcode failed: {result_encode.stderr}", flush=True)
             return video_bytes
 
         with open(output_path, 'rb') as f:
-            faststarted_bytes = f.read()
+            transcoded_bytes = f.read()
 
-        # Safety Check: If it severely truncated the file, transcode probably failed secretly
-        if len(faststarted_bytes) < 100000 and len(video_bytes) > len(faststarted_bytes) * 10:
-            print(f"[VIDEO CONVERT] Warning: Output suspiciously small ({len(faststarted_bytes)}B). Reverting.", flush=True)
+        # Safety check: if severely truncated, transcode probably failed silently
+        if len(transcoded_bytes) < 100000 and len(video_bytes) > len(transcoded_bytes) * 10:
+            print(f"[VIDEO CONVERT] Warning: Output suspiciously small ({len(transcoded_bytes)}B). Reverting.", flush=True)
             return video_bytes
 
-        print(f"[VIDEO CONVERT] Successfully transcoded to H.264. {len(video_bytes)} -> {len(faststarted_bytes)} bytes", flush=True)
-        return faststarted_bytes
+        print(f"[VIDEO CONVERT] Successfully transcoded to H.264. {len(video_bytes)} -> {len(transcoded_bytes)} bytes", flush=True)
+        return transcoded_bytes
 
     finally:
-        if 'input_path' in locals() and os.path.exists(input_path):
+        if input_path and os.path.exists(input_path):
             try: os.remove(input_path)
             except: pass
-        if 'output_path' in locals() and os.path.exists(output_path):
+        if output_path and os.path.exists(output_path):
             try: os.remove(output_path)
             except: pass
-    
+
     return video_bytes
 
 def transcode_video_for_streaming(video_bytes):
