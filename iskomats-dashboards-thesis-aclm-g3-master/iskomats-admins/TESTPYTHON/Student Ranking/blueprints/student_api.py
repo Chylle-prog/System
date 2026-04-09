@@ -1604,9 +1604,20 @@ def ocr_check():
                 # Define keywords for each document type
                 # Indigency can be detected as 'Certificate' + other indicators
                 doc_keywords = {
-                    'Indigency': ['Indigency', 'Certificate', 'Indigent', 'Pauper'],
-                    'Enrollment': ['Enrollment', 'Certificate', 'Registration', 'Course', 'Semester', 'College'],  # More flexible for different cert formats
-                    'Grades': ['Grades', 'Transcript', 'Evaluation', 'GPA', 'Rating', 'Final', 'Subject', 'Grade'],  # Include "Final", "Subject", "Grade" for student transcripts
+                    'Indigency': ['Indigency', 'Certificate', 'Indigent', 'Pauper', 'Barangay'],
+                    'Enrollment': ['Enrollment', 'Enrolment', 'Certificate', 'Registration', 'Registered', 'Course', 'Semester', 'College', 'Enrolled', 'COE'],
+                    'Grades': [
+                        # Common headers on Philippine TORs
+                        'Grades', 'Grade', 'Transcript', 'Records', 'Report',
+                        # Unit/credit fields always present on any TOR
+                        'Units', 'Unit', 'Credit',
+                        # Grading period terms
+                        'Prelim', 'Midterm', 'Finals', 'Final',
+                        # Other common column headers
+                        'Subject', 'Course', 'Rating', 'Evaluation', 'GPA',
+                        # Filipino-context terms
+                        'Semestral', 'Semester', 'Academic',
+                    ],
                     'SchoolID': ['School', 'ID', 'Identification', 'Card']
                 }
 

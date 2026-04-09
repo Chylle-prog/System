@@ -506,11 +506,15 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
             # Preprocess for OCR (converts to enhanced grayscale)
             enhanced = _preprocess_frame_for_ocr(frame)
 
-            # Try PSM 3 (document layout) first, then PSM 11 (sparse) as fallback
-            # skip_pass2 securely removes 50% of raw computational overhead per frame.
+            # skip_pass2=True removes 50% of cost per frame (grayscale is fast).
+            # If grayscale barely returns anything (<30 chars), fall back to full pipeline for this frame.
             text = _run_tesseract_on_image(enhanced, psm=3, skip_pass2=True)
-            if len(text.strip()) < 20:
+            if len(text.strip()) < 30:
+                # Sparse PSM11 pass -- fast, good for scattered text
                 text += " " + _run_tesseract_on_image(enhanced, psm=11, skip_pass2=True)
+            if len(text.strip()) < 30:
+                # Last resort: full pipeline with adaptive thresholding
+                text += " " + _run_tesseract_on_image(enhanced, psm=3, skip_pass2=False)
 
             text_accumulator += " " + text
             print(f"[VIDEO OCR] Frame {idx} scanned ({len(text.strip())} chars)...", flush=True)
