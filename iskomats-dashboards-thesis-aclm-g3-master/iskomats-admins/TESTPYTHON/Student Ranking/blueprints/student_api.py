@@ -466,7 +466,7 @@ def student_login():
 
         if not user.get('is_verified'):
             return jsonify({'message': 'Email not verified. Please verify your email first.'}), 401
-
+ 
         payload = {
             'exp': datetime.utcnow() + timedelta(days=7),
             'iat': datetime.utcnow(),
