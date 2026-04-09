@@ -2267,7 +2267,6 @@ def upload_video():
                         except: pass
                 threading.Thread(target=_cleanup_old_video, args=(current_user_id, db_col, supabase), daemon=True).start()
             # ----------------------------------------
-
             # Direct stream upload bypasses heavy memory buffers
             response = supabase.storage.from_('document_videos').upload(
                 file_path,
