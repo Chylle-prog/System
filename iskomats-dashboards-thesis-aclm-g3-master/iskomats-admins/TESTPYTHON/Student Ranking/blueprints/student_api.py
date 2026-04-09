@@ -2235,7 +2235,11 @@ def convert_and_upload_video():
             response = supabase.storage.from_('document_videos').upload(
                 file_path,
                 converted_bytes,
-                file_options={'upsert': 'true'}
+                file_options={
+                    'content-type': 'video/mp4',
+                    'cache-control': '3600',
+                    'upsert': 'true'
+                }
             )
             
             # Get public URL
