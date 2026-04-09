@@ -2451,8 +2451,6 @@ const Portal = () => {
                   })}
                 </div>
 
-                </div>
-
                 {/* Dynamic Events Legend */}
                 <div style={{marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '0.8rem', fontSize: '0.9rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-light)'}}>
                   <p style={{fontSize: '0.8rem', color: 'var(--text-soft)', fontWeight: '600', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px'}}>Upcoming Deadlines & Events</p>

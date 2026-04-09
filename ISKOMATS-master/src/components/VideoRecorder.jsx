@@ -222,7 +222,7 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
             </button>
           </div>
         </div>
-      )}}
+      )}
     </div>
   );
 };
