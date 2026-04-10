@@ -2398,18 +2398,18 @@ const StudentInfo = () => {
               <div className="form-row">
                 <div className="form-group">
                   <label>Last Name <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="lastName" value={formData.lastName} onChange={handleInputChange} placeholder="Dela Cruz" required readOnly={lockedNameFields.lastName} style={lockedNameFields.lastName ? { backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' } : undefined} />
+                  <input type="text" name="lastName" value={formData.lastName} onChange={handleInputChange} placeholder="Dela Cruz" required />
                 </div>
                 <div className="form-group">
                   <label>First Name <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="firstName" value={formData.firstName} onChange={handleInputChange} placeholder="Juan" required readOnly={lockedNameFields.firstName} style={lockedNameFields.firstName ? { backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' } : undefined} />
+                  <input type="text" name="firstName" value={formData.firstName} onChange={handleInputChange} placeholder="Juan" required />
                 </div>
               </div>
 
               <div className="form-row">
                 <div className="form-group">
                   <label>Middle Name <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="middleName" value={formData.middleName} onChange={handleInputChange} placeholder="Santos" required readOnly={lockedNameFields.middleName} style={lockedNameFields.middleName ? { backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' } : undefined} />
+                  <input type="text" name="middleName" value={formData.middleName} onChange={handleInputChange} placeholder="Santos" required />
                 </div>
                 <div className="form-group">
                   <label>Maiden Name (for married women)</label>
