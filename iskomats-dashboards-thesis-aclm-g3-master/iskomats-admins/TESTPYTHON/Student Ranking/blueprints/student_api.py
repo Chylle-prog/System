@@ -1935,10 +1935,7 @@ def ocr_check():
                     year_label = extract_school_year_from_text(raw)
                     semester_label = extract_semester_from_text(raw)
                     year_ok = is_current_school_year(year_label, semester_str=semester_label, expected_year=expected_year, expected_semester=expected_semester)
-                    school_ok = True if not school_name else (school_name.lower() in raw_lower)
-                    if school_name and not school_ok:
-                        school_parts = [p.strip() for p in school_name.lower().split() if len(p.strip()) > 3]
-                        school_ok = any(p in raw_lower for p in school_parts) if school_parts else True
+                    school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
 
                     if v:
                         if not year_ok: 
@@ -1954,10 +1951,7 @@ def ocr_check():
                     year_label = extract_school_year_from_text(raw)
                     semester_label = extract_semester_from_text(raw)
                     year_ok = is_current_school_year(year_label, semester_str=semester_label, expected_year=expected_year, expected_semester=expected_semester)
-                    school_ok = True if not school_name else (school_name.lower() in raw_lower)
-                    if school_name and not school_ok:
-                        school_parts = [p.strip() for p in school_name.lower().split() if len(p.strip()) > 3]
-                        school_ok = any(p in raw_lower for p in school_parts) if school_parts else True
+                    school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
 
                     if v:
                         if not year_ok: 

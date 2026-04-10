@@ -702,7 +702,10 @@ const StudentInfo = () => {
       const success = await performOcrVerification(
         'SchoolID',
         { front: idFront, back: idBack },
-        {},
+        { 
+          schoolName: formData.schoolName, 
+          idNumber: formData.schoolIdNumber 
+        },
         { front: frontVideoUrl, back: backVideoUrl }
       );
       if (success) {
