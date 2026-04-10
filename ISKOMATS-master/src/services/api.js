@@ -5,6 +5,23 @@
 
 // API Base URL - change this if backend is on different server
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
+let backendWarmupPromise = null;
+
+const warmBackendConnection = async ({ force = false } = {}) => {
+  if (force) {
+    backendWarmupPromise = null;
+  }
+
+  if (!backendWarmupPromise) {
+    backendWarmupPromise = fetch(`${API_ORIGIN}/_health`, {
+      method: 'GET',
+      cache: 'no-store',
+    }).catch(() => undefined);
+  }
+
+  return backendWarmupPromise;
+};
 
 // Helper function to get stored auth token
 const getAuthToken = () => {
@@ -32,8 +49,8 @@ const makeRequest = async (endpoint, options = {}) => {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  try {
-    const response = await fetch(url, {
+  const executeRequest = async () => {
+    return fetch(url, {
       ...options,
       headers,
     }).catch(err => {
@@ -43,6 +60,23 @@ const makeRequest = async (endpoint, options = {}) => {
       }
       throw err;
     });
+  };
+
+  try {
+    await warmBackendConnection();
+    let response;
+
+    try {
+      response = await executeRequest();
+    } catch (error) {
+      const isNetworkError = error instanceof Error && error.message.startsWith('Network Error:');
+      if (!isNetworkError) {
+        throw error;
+      }
+
+      await warmBackendConnection({ force: true });
+      response = await executeRequest();
+    }
 
     if (!response.ok) {
       // Handle 401 Unauthorized specifically
