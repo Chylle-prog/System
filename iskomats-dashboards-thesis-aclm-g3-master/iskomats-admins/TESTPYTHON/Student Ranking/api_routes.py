@@ -324,6 +324,13 @@ def get_entity_image_columns(cursor, entity='announcement'):
 
 def ensure_schema_integrity(cursor):
     """Ensure all required columns exist in scholarships and announcements tables."""
+    def read_count(row):
+        if isinstance(row, dict):
+            return next(iter(row.values()), 0)
+        if isinstance(row, (list, tuple)):
+            return row[0] if row else 0
+        return 0
+
     # 1. Soft-delete columns
     for table in ['scholarships', 'announcements']:
         cursor.execute(
@@ -334,7 +341,7 @@ def ensure_schema_integrity(cursor):
             """,
             (table,)
         )
-        if cursor.fetchone()[0] == 0:
+        if read_count(cursor.fetchone()) == 0:
             print(f"[MIGRATION] Adding is_removed to {table} table")
             cursor.execute(f"ALTER TABLE {table} ADD COLUMN is_removed BOOLEAN DEFAULT FALSE")
 
@@ -352,7 +359,7 @@ def ensure_schema_integrity(cursor):
             """,
             (col,)
         )
-        if cursor.fetchone()[0] == 0:
+        if read_count(cursor.fetchone()) == 0:
             print(f"[MIGRATION] Adding {col} to scholarships table")
             cursor.execute(f"ALTER TABLE scholarships ADD COLUMN {col} {col_type}")
 
