@@ -37,6 +37,12 @@ except Exception:
 _OCR_CACHE = OrderedDict()
 _OCR_CACHE_SIZE_LIMIT = 100
 _CACHE_METRICS = {'hits': 0, 'misses': 0}
+_FACE_MODEL_LOCK = eventlet.semaphore.Semaphore(1)
+_FACE_DETECTOR = None
+_FACE_RECOGNIZER = None
+_FACE_MODEL_INIT_ERROR = None
+_FACE_MATCH_THRESHOLD = 0.60
+_FACE_DETECTION_THRESHOLD = 0.50
 
 def _hash_image(image_bytes):
     """Generate MD5 hash of image bytes for caching."""
@@ -634,12 +640,113 @@ def is_current_school_year(year_str, semester_str=None, expected_year="2026", ex
 
 # ─── Face & Neural Signature Verification Wrappers ───────────────────────────
 
+def _init_face_models():
+    """Lazily initialize UniFace models once per process."""
+    global _FACE_DETECTOR, _FACE_RECOGNIZER, _FACE_MODEL_INIT_ERROR
+
+    if _FACE_DETECTOR is not None and _FACE_RECOGNIZER is not None:
+        return _FACE_DETECTOR, _FACE_RECOGNIZER
+
+    if _FACE_MODEL_INIT_ERROR:
+        raise RuntimeError(_FACE_MODEL_INIT_ERROR)
+
+    with _FACE_MODEL_LOCK:
+        if _FACE_DETECTOR is not None and _FACE_RECOGNIZER is not None:
+            return _FACE_DETECTOR, _FACE_RECOGNIZER
+
+        try:
+            from uniface.detection import RetinaFace
+            from uniface.recognition import ArcFace
+
+            providers = ['CPUExecutionProvider']
+            _FACE_DETECTOR = RetinaFace(providers=providers)
+            _FACE_RECOGNIZER = ArcFace(providers=providers)
+            print("[FACE] UniFace RetinaFace and ArcFace initialized on CPU.", flush=True)
+        except Exception as exc:
+            _FACE_MODEL_INIT_ERROR = f"Failed to initialize UniFace models: {str(exc)}"
+            print(f"[FACE] {_FACE_MODEL_INIT_ERROR}", flush=True)
+            raise RuntimeError(_FACE_MODEL_INIT_ERROR) from exc
+
+    return _FACE_DETECTOR, _FACE_RECOGNIZER
+
+def _decode_face_image(image_bytes):
+    """Decode raw image bytes into an OpenCV BGR image."""
+    if not image_bytes:
+        raise ValueError("Missing image data.")
+
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if image is None:
+        raise ValueError("Failed to decode image.")
+
+    height, width = image.shape[:2]
+    max_dim = max(height, width)
+    if max_dim > _MAX_FACE_WIDTH:
+        scale = _MAX_FACE_WIDTH / float(max_dim)
+        image = cv2.resize(
+            image,
+            (max(1, int(width * scale)), max(1, int(height * scale))),
+            interpolation=cv2.INTER_AREA,
+        )
+
+    return image
+
+def _pick_primary_face(faces, image_label):
+    """Select the highest-confidence face above threshold."""
+    if not faces:
+        raise ValueError(f"No face detected in {image_label}.")
+
+    valid_faces = [face for face in faces if getattr(face, 'confidence', 0.0) >= _FACE_DETECTION_THRESHOLD]
+    if not valid_faces:
+        raise ValueError(f"No reliable face detected in {image_label}.")
+
+    return max(valid_faces, key=lambda face: getattr(face, 'confidence', 0.0))
+
 def verify_face_with_id(user_photo_bytes, id_photo_bytes):
     """
-    Stub for face verification to prevent startup crashes.
-    Currently in Diagnostics/Bypass Mode.
+    Verify a live/selfie photo against the face in the uploaded ID image.
+
+    Uses UniFace RetinaFace for detection and ArcFace for embedding extraction,
+    then compares normalized embeddings with cosine similarity.
     """
-    return True, "Face verified (Diagnostics Mode)", 1.0
+    try:
+        detector, recognizer = _init_face_models()
+
+        user_image = _decode_face_image(user_photo_bytes)
+        id_image = _decode_face_image(id_photo_bytes)
+
+        user_faces = detector.detect(user_image)
+        id_faces = detector.detect(id_image)
+
+        user_face = _pick_primary_face(user_faces, 'the live photo')
+        id_face = _pick_primary_face(id_faces, 'the ID image')
+
+        user_embedding = recognizer.get_normalized_embedding(user_image, user_face.landmarks)
+        id_embedding = recognizer.get_normalized_embedding(id_image, id_face.landmarks)
+
+        if user_embedding is None or id_embedding is None:
+            return False, "Face embeddings could not be generated.", 0.0
+
+        try:
+            from uniface import compute_similarity
+            similarity = float(compute_similarity(user_embedding, id_embedding, normalized=True))
+        except Exception:
+            similarity = float(np.dot(user_embedding, id_embedding.T)[0][0])
+
+        similarity = max(0.0, min(1.0, similarity))
+
+        if similarity >= _FACE_MATCH_THRESHOLD:
+            return True, f"Face verified (similarity: {similarity:.3f})", similarity
+
+        if similarity >= 0.40:
+            return False, f"Face match uncertain (similarity: {similarity:.3f}).", similarity
+
+        return False, f"Face does not match the ID (similarity: {similarity:.3f}).", similarity
+    except ValueError as exc:
+        return False, str(exc), 0.0
+    except Exception as exc:
+        print(f"[FACE] Verification error: {exc}", flush=True)
+        return False, f"Face verification error: {str(exc)}", 0.0
 
 def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None):
     """
