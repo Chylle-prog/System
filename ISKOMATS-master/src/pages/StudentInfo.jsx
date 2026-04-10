@@ -852,7 +852,6 @@ const StudentInfo = () => {
       townCityMunicipality: scholarshipSearchProfile?.town_city_municipality,
       province: scholarshipSearchProfile?.province,
       zipCode: scholarshipSearchProfile?.zip_code,
-      schoolName: normalizeSelectValue(scholarshipSearchProfile?.university, SCHOOLS),
     }));
 
     const draftKey = buildDraftStorageKey(user, searchParams, scholarship || scholarshipName);
@@ -1193,8 +1192,8 @@ const StudentInfo = () => {
   const handleInputChange = (e) => {
     const { name, value, type, checked, files } = e.target;
     
-    // Prevent modification of locked name fields
-    if (lockedNameFields[name]) {
+    // Prevent modification of locked name fields (except in Step 1 where editing is allowed)
+    if (lockedNameFields[name] && currentStep !== 1) {
       return;
     }
 
