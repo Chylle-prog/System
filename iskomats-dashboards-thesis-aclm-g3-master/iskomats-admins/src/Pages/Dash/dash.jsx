@@ -164,6 +164,7 @@ export default function Dash() {
   const [statistics, setStatistics] = useState(emptyStatistics);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [processingId, setProcessingId] = useState(null); // Track which account is being processed
   const [pageError, setPageError] = useState('');
   const [pageSuccess, setPageSuccess] = useState('');
 
@@ -448,15 +449,24 @@ export default function Dash() {
       targetId: account.id,
       message: `Are you sure you want to ${isLocking ? 'suspend' : 'reactivate'} ${account.name}? ${isLocking ? 'Suspending this account will immediately revoke all access and prevent future logins across the entire system.' : 'Reactivating this account will restore full access immediately.'}`,
       action: async () => {
+        setProcessingId(account.id);
+        const originalAccounts = [...accounts];
         try {
-          await adminAPI.lockAccount(account.id, isLocking);
+          // Optimistic update
           setAccounts(accounts.map(a => a.id === account.id ? { ...a, locked: isLocking } : a));
           setConfirmModal({ open: false, type: '', targetId: null, message: '', action: null });
+
+          await adminAPI.lockAccount(account.id, isLocking);
+          
           setPageSuccess(`Account has been ${isLocking ? 'suspended' : 'reactivated'} successfully.`);
           setTimeout(() => setPageSuccess(''), 3000);
         } catch (error) {
+          // Revert on error
+          setAccounts(originalAccounts);
           setPageError(error.response?.data?.message || error.message || `Failed to ${isLocking ? 'lock' : 'unlock'} account.`);
           setConfirmModal({ open: false, type: '', targetId: null, message: '', action: null });
+        } finally {
+          setProcessingId(null);
         }
       },
     });
@@ -471,15 +481,27 @@ export default function Dash() {
       targetId: account.id,
       message: `Are you sure you want to PERMANENTLY delete ${account.name}? This action is irreversible and will remove all associated database records immediately.`,
       action: async () => {
+        setProcessingId(account.id);
+        const originalAccounts = [...accounts];
         try {
-          await adminAPI.deleteAccount(account.id);
+          // Optimistic update
+          setAccounts(accounts.filter(a => a.id !== account.id));
           setConfirmModal({ open: false, type: '', targetId: null, message: '', action: null });
+
+          await adminAPI.deleteAccount(account.id);
+          
           setPageSuccess(`Account for ${account.name} has been permanently deleted.`);
           setTimeout(() => setPageSuccess(''), 4000);
-          await loadDashboardData(false);
+          
+          // Silently refresh stats in background
+          loadDashboardData(false);
         } catch (error) {
+          // Revert on error
+          setAccounts(originalAccounts);
           setPageError(error.response?.data?.message || error.message || 'Failed to delete account.');
           setConfirmModal({ open: false, type: '', targetId: null, message: '', action: null });
+        } finally {
+          setProcessingId(null);
         }
       },
     });
@@ -608,7 +630,7 @@ export default function Dash() {
         </div>
       </aside>
 
-      <main className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-20' : 'ml-64'} flex-1 flex flex-col overflow-y-auto`} style={{ maxHeight: 'calc(100vh - 5rem)' }}>
+      <main className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-20' : 'ml-64'} flex-1 flex flex-col overflow-y-auto scroll-smooth custom-scrollbar`} style={{ height: 'calc(100vh - 5rem)', position: 'relative' }}>
         <div className="flex-shrink-0 p-6 pb-4">
           <header className="bg-white rounded-2xl shadow-sm px-8 py-5 flex items-center justify-between border border-gray-100">
             <div>
@@ -741,9 +763,18 @@ export default function Dash() {
                       ))}
                     </select>
                   </div>
-                  <button onClick={() => openAccountModal('add')} className="px-6 py-2 bg-[#800020] text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-[#800020]/20 flex items-center gap-2 hover:bg-[#650018] transition-all">
-                    <FaPlus /> New {accountType === 'Applicant' ? 'Student' : accountType}
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => loadDashboardData(false)} 
+                      className="p-2.5 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 transition-all flex items-center justify-center"
+                      title="Refresh Accounts"
+                    >
+                      <span className={`transition-transform duration-500 ${isLoading ? 'animate-spin' : ''}`}>⟳</span>
+                    </button>
+                    <button onClick={() => openAccountModal('add')} className="px-6 py-2 bg-[#800020] text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-[#800020]/20 flex items-center gap-2 hover:bg-[#650018] transition-all">
+                      <FaPlus /> New {accountType === 'Applicant' ? 'Student' : accountType}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col flex-1">
@@ -784,9 +815,17 @@ export default function Dash() {
                             </td>
                             <td className="px-8 py-5 text-xs text-gray-400 font-mono">{formatDate(account.joined)}</td>
                             <td className="px-8 py-5 text-right space-x-2">
-                               <button onClick={() => openAccountModal('edit', account)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all"><FaUserEdit /></button>
-                               <button onClick={() => requestLockAccount(account)} className={`p-2 rounded-lg transition-all ${account.locked ? 'text-orange-600 hover:bg-orange-50' : 'text-slate-600 hover:bg-slate-50'}`}>{account.locked ? <FaLock /> : <FaUnlock />}</button>
-                               <button onClick={() => requestDeleteAccount(account)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all"><FaTrash /></button>
+                               {processingId === account.id ? (
+                                 <div className="inline-flex items-center px-4 py-2 text-xs font-bold text-gray-400 bg-gray-50 rounded-lg animate-pulse">
+                                   Processing...
+                                 </div>
+                               ) : (
+                                 <>
+                                   <button onClick={() => openAccountModal('edit', account)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="EditAccount"><FaUserEdit /></button>
+                                   <button onClick={() => requestLockAccount(account)} className={`p-2 rounded-lg transition-all ${account.locked ? 'text-orange-600 hover:bg-orange-50' : 'text-slate-600 hover:bg-slate-50'}`} title={account.locked ? "Unlock Account" : "Lock Account"}>{account.locked ? <FaLock /> : <FaUnlock />}</button>
+                                   <button onClick={() => requestDeleteAccount(account)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all" title="Delete Account"><FaTrash /></button>
+                                 </>
+                               )}
                             </td>
                           </tr>
                         );
