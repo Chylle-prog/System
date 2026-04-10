@@ -924,6 +924,7 @@ const StudentInfo = () => {
 
         if (profile.profile_picture) {
           setIdPicturePreview(profile.profile_picture);
+          setFormData(prev => ({ ...prev, profile_picture: profile.profile_picture }));
         }
         
         if (profile.id_img_front) {
@@ -1391,14 +1392,29 @@ const StudentInfo = () => {
       }
     });
 
-    if (currentStep === 1 && !idPicturePreview) {
-      showPromptMessage('⚠️ Please upload your 2x2 ID Picture.');
-      return;
+    // --- Manual File Requirement Checks ---
+    if (currentStep === 1) {
+      if (!idPicturePreview) {
+        showPromptMessage('⚠️ Please upload your 2x2 ID Picture.');
+        return;
+      }
+      if (!photos.mayorIndigency_photo && !formData.mayorIndigency_photo) {
+        showPromptMessage('⚠️ Please upload your Certificate of Indigency.');
+        return;
+      }
     }
 
     if (currentStep === 3) {
       if (!schoolIdPhotos.front || !schoolIdPhotos.back) {
         showPromptMessage('⚠️ Please upload both front and back of your School ID.');
+        return;
+      }
+      if (!photos.mayorCOE_photo && !formData.mayorCOE_photo) {
+        showPromptMessage('⚠️ Please upload your Certificate of Enrollment.');
+        return;
+      }
+      if (!photos.mayorGrades_photo && !formData.mayorGrades_photo) {
+        showPromptMessage('⚠️ Please upload your Grades document.');
         return;
       }
     }
@@ -2359,7 +2375,13 @@ const StudentInfo = () => {
                   2x2 ID Picture <span style={{color: '#e74c3c'}}>*</span>
                 </label>
                 <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '130px', width: '130px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                  <input type="file" name="profile_picture" accept="image/*" required onChange={handleIdPictureUpload} style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} />
+                  <input 
+                    type="file" 
+                    name="profile_picture" 
+                    accept="image/*" 
+                    onChange={handleIdPictureUpload} 
+                    style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} 
+                  />
                   <div style={{textAlign: 'center', color: '#999', fontSize: '0.85rem', pointerEvents: 'none'}}>
                     {idPicturePreview ? (
                       <img src={idPicturePreview} style={{width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px'}} alt="ID Preview" />
@@ -2491,7 +2513,7 @@ const StudentInfo = () => {
                   <div className="preview-box">
                     <div style={{marginBottom: '1rem'}}>
                       <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155', marginBottom: '8px'}}>Document Photo</label>
-                      <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 1 && !photos.mayorIndigency_photo && !formData.mayorIndigency_photo} style={{fontSize: '0.8rem', width: '100%'}} />
+                      <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} style={{fontSize: '0.8rem', width: '100%'}} />
                     </div>
 
                     {(photos.mayorIndigency_photo || userProfile?.indigency_doc) && (
@@ -2584,7 +2606,7 @@ const StudentInfo = () => {
                   type="button" 
                   className="submit-btn" 
                   onClick={handleNextStep} 
-                  disabled={isSavingStep || ocrVerified !== 'success'} 
+                  disabled={isSavingStep || (ocrVerified === 'verifying')} 
                   style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}
                 >
                   Next: Family Background <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
@@ -2774,11 +2796,11 @@ const StudentInfo = () => {
                     <div style={{display: 'flex', gap: '1rem', marginBottom: '1rem'}}>
                       <div style={{flex: 1}}>
                         <label style={{display: 'block', fontSize: '0.75rem', fontWeight: '700', color: '#334155', marginBottom: '6px'}}>Front Photo</label>
-                        <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} required={currentStep === 3 && !schoolIdPhotos.front} style={{fontSize: '0.7rem', width: '100%'}} />
+                        <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} style={{fontSize: '0.7rem', width: '100%'}} />
                       </div>
                       <div style={{flex: 1}}>
                         <label style={{display: 'block', fontSize: '0.75rem', fontWeight: '700', color: '#334155', marginBottom: '6px'}}>Back Photo</label>
-                        <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} required={currentStep === 3 && !schoolIdPhotos.back} style={{fontSize: '0.7rem', width: '100%'}} />
+                        <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} style={{fontSize: '0.7rem', width: '100%'}} />
                       </div>
                     </div>
 
@@ -2909,7 +2931,7 @@ const StudentInfo = () => {
                     <div className="preview-box">
                       <div style={{marginBottom: '1rem'}}>
                         <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155', marginBottom: '8px'}}>Upload COE Photo</label>
-                        <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3 && !photos.mayorCOE_photo && !formData.mayorCOE_photo} style={{fontSize: '0.8rem', width: '100%'}} />
+                        <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} style={{fontSize: '0.8rem', width: '100%'}} />
                       </div>
 
                       {(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && (
@@ -3007,7 +3029,7 @@ const StudentInfo = () => {
                     <div className="preview-box">
                       <div style={{marginBottom: '1rem'}}>
                         <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155', marginBottom: '8px'}}>Upload Grades Photo</label>
-                        <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3 && !photos.mayorGrades_photo && !formData.mayorGrades_photo} style={{fontSize: '0.8rem', width: '100%'}} />
+                        <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} style={{fontSize: '0.8rem', width: '100%'}} />
                       </div>
 
                       {(photos.mayorGrades_photo || userProfile?.grades_doc) && (
@@ -3092,7 +3114,7 @@ const StudentInfo = () => {
                   type="button" 
                   className="submit-btn" 
                   onClick={handleNextStep} 
-                  disabled={isSavingStep || !(coeVerified === 'success' || coeVerified === 'technical_unavailable') || !(gradesVerified === 'success' || gradesVerified === 'technical_unavailable')} 
+                  disabled={isSavingStep || coeVerified === 'verifying' || gradesVerified === 'verifying' || idVerified === 'verifying'}
                   style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}
                 >
                   Next: Certification & Verification <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
