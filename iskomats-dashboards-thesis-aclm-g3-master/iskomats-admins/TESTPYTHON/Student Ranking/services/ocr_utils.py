@@ -24,6 +24,7 @@ os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
+cv2.setNumThreads(1) # Crucial: prevents OpenCV from spawning ghost threads that kill RAM
 
 # Global OCR Concurrency Control: Set to 1 for strict memory safety on Render (prevent OOM)
 OCR_SEMAPHORE = eventlet.semaphore.Semaphore(1)
@@ -438,7 +439,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             print(f"[OCR] PSM3 error: {e}", flush=True)
             best_text = ""
         finally:
-            gc.collect() # Force cleanup
+            clear_heavy_memory()
     
     
     name_v, addr_v, found_kw, best_ratio = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, None, is_indigency)
@@ -509,7 +510,7 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH):
                     if normalized_header and normalized_header not in normalized_text:
                         text = f"{header_text.strip()}\n{text}".strip()
         finally:
-            gc.collect() # Force cleanup after Tesseract release
+            clear_heavy_memory()
 
     result = (text, None)
     _cache_set(cache_key, result)
@@ -655,6 +656,7 @@ def verify_video_content(video_bytes, keywords, expected_address=None, sample_po
             if os.path.exists(tmp_path):
                 try: os.remove(tmp_path)
                 except: pass
+            clear_heavy_memory()
 
 def extract_school_year_from_text(text):
     if not text: return None
@@ -966,3 +968,13 @@ def save_signature_profile(student_id, drawing_data):
     except Exception as e:
         print(f"[SIGNATURE] Save error: {e}", flush=True)
         return False
+
+def clear_heavy_memory():
+    """Aggressive memory release to keep Render happy."""
+    gc.collect()
+    try:
+        import ctypes
+        libc = ctypes.CDLL("libc.so.6")
+        libc.malloc_trim(0)
+    except:
+        pass

@@ -41,9 +41,9 @@ def get_allowed_origins():
             host = base_origin.removeprefix('https://').removeprefix('http://').split('/')[0]
             # Match current host and any subdomains
             preview_patterns.append(re.compile(rf"^https?://([a-z0-9\-]+\.)*{re.escape(host)}/?$"))
-            # Also add common pattern for surge.sh generally
+            # Bulletproof: Also add general surge.sh subdomain pattern
             if 'surge.sh' in host:
-                preview_patterns.append(re.compile(rf"^https?://[a-z0-9\-]+\.surge\.sh/?$"))
+                preview_patterns.append(re.compile(r"^https?://[a-z0-9\-]+\.surge\.sh/?$"))
 
     # Return unique list
     final_origins = list(dict.fromkeys(origins))
