@@ -3506,7 +3506,18 @@ const StudentInfo = () => {
       </div>
 
       {/* Loading overlay */}
-      <div className={`loading-overlay ${isSubmitting || isSavingStep || isInitialLoading ? 'active' : ''}`}>
+      <div className={`loading-overlay ${
+        isSubmitting || 
+        isSavingStep || 
+        isInitialLoading || 
+        idVerified === 'verifying' || 
+        coeVerified === 'verifying' || 
+        gradesVerified === 'verifying' || 
+        ocrVerified === 'verifying' || 
+        faceVerified === 'verifying' || 
+        isFaceMatching
+          ? 'active' : ''
+      }`}>
         <div className="loading-modal">
           <div className="loading-spinner"></div>
           <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
