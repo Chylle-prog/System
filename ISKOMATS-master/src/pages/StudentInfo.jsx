@@ -969,8 +969,8 @@ const StudentInfo = () => {
           indigency_vid_url: 'mayorIndigency_video',
           grades_vid_url: 'mayorGrades_video',
           enrollment_certificate_vid_url: 'mayorCOE_video',
-          schoolId_front_vid_url: 'schoolIdFront_video',
-          schoolId_back_vid_url: 'schoolIdBack_video'
+          schoolid_front_vid_url: 'schoolIdFront_video',
+          schoolid_back_vid_url: 'schoolIdBack_video'
         };
 
         const loadedVideos = {};
@@ -981,14 +981,14 @@ const StudentInfo = () => {
           }
         });
 
-        if (profile.schoolId_vid_url) {
+        if (profile.schoolid_vid_url) {
           if (!loadedVideos.schoolIdFront_video) {
-            loadedVideos.schoolIdFront_video = profile.schoolId_vid_url;
-            setFormData(prev => ({ ...prev, schoolIdFront_video: profile.schoolId_vid_url }));
+            loadedVideos.schoolIdFront_video = profile.schoolid_vid_url;
+            setFormData(prev => ({ ...prev, schoolIdFront_video: profile.schoolid_vid_url }));
           }
           if (!loadedVideos.schoolIdBack_video) {
-            loadedVideos.schoolIdBack_video = profile.schoolId_vid_url;
-            setFormData(prev => ({ ...prev, schoolIdBack_video: profile.schoolId_vid_url }));
+            loadedVideos.schoolIdBack_video = profile.schoolid_vid_url;
+            setFormData(prev => ({ ...prev, schoolIdBack_video: profile.schoolid_vid_url }));
           }
         }
         
