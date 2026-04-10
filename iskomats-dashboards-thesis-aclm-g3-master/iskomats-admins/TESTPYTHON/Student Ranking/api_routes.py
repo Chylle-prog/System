@@ -398,6 +398,16 @@ try:
 except Exception as e:
     print(f"[STARTUP ERROR] Verification migration failed: {e}")
 
+try:
+    conn = get_db_startup()
+    cur = conn.cursor()
+    ensure_schema_integrity(cur)
+    conn.commit()
+    cur.close()
+    conn.close()
+except Exception as e:
+    print(f"[STARTUP ERROR] Schema integrity migration failed: {e}")
+
 # ===== DECORATORS =====
 
 def _extract_token_from_request():
@@ -3357,6 +3367,7 @@ def delete_scholarship(current_user_id, pro_no, role, req_no):
     try:
         conn = get_db()
         cursor = conn.cursor()
+        ensure_schema_integrity(cursor)
         
         is_superadmin = ((role or '').strip().lower() == 'admin')
         resolved_provider_no, _ = resolve_provider_context(cursor, current_user_id, role, pro_no)
@@ -3944,6 +3955,7 @@ def delete_announcement(current_user_id, pro_no, role, ann_no):
     try:
         conn = get_db()
         cur = conn.cursor()
+        ensure_schema_integrity(cur)
         resolved_provider_no, _ = resolve_provider_context(cur, current_user_id, role, pro_no)
         
         # Check ownership unless super admin
