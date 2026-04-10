@@ -333,6 +333,96 @@ const StudentInfo = () => {
     lastName: false,
   });
 
+  const getImagePickerStatus = (value) => {
+    if (!value) {
+      return {
+        label: 'No image selected yet',
+        color: '#64748b',
+        background: '#f8fafc',
+        border: '#e2e8f0',
+      };
+    }
+
+    if (isFileLike(value)) {
+      return {
+        label: `Selected: ${value.name}`,
+        color: '#166534',
+        background: '#ecfdf5',
+        border: '#bbf7d0',
+      };
+    }
+
+    if (typeof value === 'string') {
+      if (value.startsWith('data:') || value.startsWith('blob:')) {
+        return {
+          label: 'New image selected',
+          color: '#166534',
+          background: '#ecfdf5',
+          border: '#bbf7d0',
+        };
+      }
+
+      return {
+        label: 'Saved image loaded',
+        color: '#1d4ed8',
+        background: '#eff6ff',
+        border: '#bfdbfe',
+      };
+    }
+
+    return {
+      label: 'Image ready',
+      color: '#166534',
+      background: '#ecfdf5',
+      border: '#bbf7d0',
+    };
+  };
+
+  const renderImagePicker = ({ id, name, label, onChange, currentValue }) => {
+    const status = getImagePickerStatus(currentValue);
+
+    return (
+      <div style={{marginBottom: '1rem'}}>
+        <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155', marginBottom: '8px'}}>{label}</label>
+        <input id={id} type="file" name={name} accept="image/*" onChange={onChange} style={{display: 'none'}} />
+        <label
+          htmlFor={id}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '10px',
+            padding: '0.8rem 1rem',
+            borderRadius: '14px',
+            border: '1px solid #cbd5e1',
+            background: '#fff',
+            color: '#0f172a',
+            cursor: 'pointer',
+            fontSize: '0.85rem',
+            fontWeight: '700',
+            boxShadow: '0 4px 12px rgba(15, 23, 42, 0.05)'
+          }}
+        >
+          <i className="fas fa-image" style={{color: 'var(--primary)'}}></i>
+          {currentValue ? 'Replace image' : 'Choose image'}
+        </label>
+        <div
+          style={{
+            marginTop: '0.65rem',
+            padding: '0.7rem 0.85rem',
+            borderRadius: '12px',
+            border: `1px solid ${status.border}`,
+            background: status.background,
+            color: status.color,
+            fontSize: '0.78rem',
+            fontWeight: '700'
+          }}
+        >
+          {status.label}
+        </div>
+      </div>
+    );
+  };
+
   const [formData, setFormData] = useState({
     lastName: '',
     firstName: '',
@@ -1287,6 +1377,8 @@ const StudentInfo = () => {
     setIdVerified(null);
     setIdStatus('');
     setFormData(prev => ({ ...prev, [`schoolId${side.charAt(0).toUpperCase() + side.slice(1)}`]: null }));
+    const fileInput = document.getElementById(`school_id_${side}_photo`);
+    if (fileInput) fileInput.value = '';
   };
 
   const handleSignatureUpload = (e) => {
@@ -2490,10 +2582,13 @@ const StudentInfo = () => {
                 <div className="media-grid">
                   {/* Photo Section */}
                   <div className="preview-box">
-                    <div style={{marginBottom: '1rem'}}>
-                      <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155', marginBottom: '8px'}}>Document Photo</label>
-                      <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} style={{fontSize: '0.8rem', width: '100%'}} />
-                    </div>
+                    {renderImagePicker({
+                      id: 'photo_mayorIndigency_photo',
+                      name: 'mayorIndigency_photo',
+                      label: 'Document Photo',
+                      onChange: handleInputChange,
+                      currentValue: photos.mayorIndigency_photo || userProfile?.indigency_doc,
+                    })}
 
                     {(photos.mayorIndigency_photo || userProfile?.indigency_doc) && (
                       <>
@@ -2779,10 +2874,12 @@ const StudentInfo = () => {
                       <div style={{fontSize: '0.65rem', color: '#3b82f6', fontWeight: '800', background: '#eff6ff', padding: '3px 8px', borderRadius: '6px', border: '1px solid #bfdbfe'}}>REQUIRED</div>
                     </div>
 
-                    <div style={{marginBottom: '1rem'}}>
-                      <label style={{display: 'block', fontSize: '0.7rem', fontWeight: '700', color: '#64748b', marginBottom: '6px', textTransform: 'uppercase'}}>Front Photo</label>
-                      <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} style={{fontSize: '0.8rem', width: '100%'}} />
-                    </div>
+                    {renderImagePicker({
+                      id: 'school_id_front_photo',
+                      label: 'Front Photo',
+                      onChange: (e) => handleSchoolIdPhotoUpload('front', e),
+                      currentValue: schoolIdPhotos.front || userProfile?.id_img_front,
+                    })}
 
                     <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
                       {/* Front Photo Preview */}
@@ -2827,10 +2924,12 @@ const StudentInfo = () => {
                       <div style={{fontSize: '0.65rem', color: '#d97706', fontWeight: '800', background: '#fffbeb', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fef3c7'}}>REQUIRED</div>
                     </div>
 
-                    <div style={{marginBottom: '1rem'}}>
-                      <label style={{display: 'block', fontSize: '0.7rem', fontWeight: '700', color: '#64748b', marginBottom: '6px', textTransform: 'uppercase'}}>Back Photo</label>
-                      <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} style={{fontSize: '0.8rem', width: '100%'}} />
-                    </div>
+                    {renderImagePicker({
+                      id: 'school_id_back_photo',
+                      label: 'Back Photo',
+                      onChange: (e) => handleSchoolIdPhotoUpload('back', e),
+                      currentValue: schoolIdPhotos.back || userProfile?.id_img_back,
+                    })}
 
                     <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
                       {/* Back Photo Preview */}
@@ -2939,10 +3038,13 @@ const StudentInfo = () => {
 
                   <div className="media-grid">
                     <div className="preview-box">
-                      <div style={{marginBottom: '1rem'}}>
-                        <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155', marginBottom: '8px'}}>Upload COE Photo</label>
-                        <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} style={{fontSize: '0.8rem', width: '100%'}} />
-                      </div>
+                      {renderImagePicker({
+                        id: 'photo_mayorCOE_photo',
+                        name: 'mayorCOE_photo',
+                        label: 'Upload COE Photo',
+                        onChange: handleInputChange,
+                        currentValue: photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc,
+                      })}
 
                       {(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && (
                         <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
@@ -3037,10 +3139,13 @@ const StudentInfo = () => {
 
                   <div className="media-grid">
                     <div className="preview-box">
-                      <div style={{marginBottom: '1rem'}}>
-                        <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155', marginBottom: '8px'}}>Upload Grades Photo</label>
-                        <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} style={{fontSize: '0.8rem', width: '100%'}} />
-                      </div>
+                      {renderImagePicker({
+                        id: 'photo_mayorGrades_photo',
+                        name: 'mayorGrades_photo',
+                        label: 'Upload Grades Photo',
+                        onChange: handleInputChange,
+                        currentValue: photos.mayorGrades_photo || userProfile?.grades_doc,
+                      })}
 
                       {(photos.mayorGrades_photo || userProfile?.grades_doc) && (
                         <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
@@ -3189,14 +3294,19 @@ const StudentInfo = () => {
                   <div style={{background: '#f0f7ff', border: '1px solid #e1e8f0', borderRadius: '16px', padding: '1.5rem', textAlign: 'center'}}>
                     <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#666', marginBottom: '0.5rem'}}>Additional Identification (Optional)</label>
                     <p style={{fontSize: '0.7rem', color: '#888', marginBottom: '1rem'}}>Internal Record Only (Not stored in DB)</p>
-                    <input type="file" accept="image/*" onChange={(e) => {
-                      const file = e.target.files[0];
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onloadend = () => setExtraSignaturePhoto(reader.result);
-                        reader.readAsDataURL(file);
-                      }
-                    }} style={{fontSize: '0.75rem', width: '100%'}} />
+                    {renderImagePicker({
+                      id: 'extra_identification_photo',
+                      label: 'Additional Identification',
+                      onChange: (e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => setExtraSignaturePhoto(reader.result);
+                          reader.readAsDataURL(file);
+                        }
+                      },
+                      currentValue: extraSignaturePhoto,
+                    })}
                     {extraSignaturePhoto && (
                       <div style={{marginTop: '10px', position: 'relative'}}>
                         <img src={extraSignaturePhoto} alt="Extra Identification" style={{maxHeight: '70px', borderRadius: '8px', border: '1px solid #fff'}} />
