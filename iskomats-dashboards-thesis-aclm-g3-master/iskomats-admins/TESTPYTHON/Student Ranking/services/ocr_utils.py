@@ -40,7 +40,7 @@ _FACE_MODEL_LOCK = eventlet.semaphore.Semaphore(1)
 _FACE_DETECTOR = None
 _FACE_RECOGNIZER = None
 _FACE_MODEL_INIT_ERROR = None
-_FACE_MATCH_THRESHOLD = 0.45
+_FACE_MATCH_THRESHOLD = 0.50 # Unified threshold
 _FACE_DETECTION_THRESHOLD = 0.35
 
 def _hash_image(image_bytes, suffix=b"_v2"):
@@ -770,23 +770,41 @@ def _decode_face_image(image_bytes):
 
     return image
 
-def _pick_primary_face(faces, image_label):
-    """Select the highest-confidence face above threshold."""
+def _pick_primary_face(faces, image_label, min_area_pct=0.0):
+    """
+    Select the highest-confidence face above threshold.
+    Optional: Ensure it covers a minimum percentage of image area (for selfies).
+    """
     if not faces:
-        raise ValueError(f"No face detected in {image_label}.")
+        raise ValueError(f"No face detected in {image_label}. Please look directly at the camera.")
 
+    # Select faces above detection confidence
     valid_faces = [face for face in faces if getattr(face, 'confidence', 0.0) >= _FACE_DETECTION_THRESHOLD]
+    
     if not valid_faces:
-        raise ValueError(f"No reliable face detected in {image_label}.")
+        raise ValueError(f"No reliable face detected in {image_label}. Ensure your face is clearly visible.")
 
-    return max(valid_faces, key=lambda face: getattr(face, 'confidence', 0.0))
+    # Pick the best one
+    best_face = max(valid_faces, key=lambda face: getattr(face, 'confidence', 0.0))
+    
+    # Enforce minimum area for 'live photo' (selfies)
+    if min_area_pct > 0 and hasattr(best_face, 'bbox'):
+        # bbox is typically [x1, y1, x2, y2]
+        x1, y1, x2, y2 = best_face.bbox
+        area = (x2 - x1) * (y2 - y1)
+        # Using 512x512 as max internal canvas area
+        total_area = 512 * 512 
+        pct = (area / total_area) * 100
+        
+        if pct < min_area_pct:
+            raise ValueError(f"Face is too far or too small in {image_label}. Please move closer to the camera.")
+
+    return best_face
 
 def verify_face_with_id(user_photo_bytes, id_photo_bytes):
     """
     Verify a live/selfie photo against the face in the uploaded ID image.
-
-    Uses UniFace RetinaFace for detection and ArcFace for embedding extraction,
-    then compares normalized embeddings with cosine similarity.
+    Enforces that the live photo has a prominent face.
     """
     try:
         detector, recognizer = _init_face_models()
@@ -794,10 +812,12 @@ def verify_face_with_id(user_photo_bytes, id_photo_bytes):
         user_image = _decode_face_image(user_photo_bytes)
         id_image = _decode_face_image(id_photo_bytes)
 
+        # For selfies, we want the face to occupy at least 8% of the processing frame
         user_faces = detector.detect(user_image)
+        user_face = _pick_primary_face(user_faces, 'the live photo', min_area_pct=8.0)
+        
+        # For ID cards, the face can be quite small (no min_area)
         id_faces = detector.detect(id_image)
-
-        user_face = _pick_primary_face(user_faces, 'the live photo')
         id_face = _pick_primary_face(id_faces, 'the ID image')
 
         user_embedding = recognizer.get_normalized_embedding(user_image, user_face.landmarks)
