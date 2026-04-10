@@ -70,7 +70,7 @@ def fetch_google_access_token():
         raise RuntimeError(f"Token exchange failed: {str(e)}")
 
 def create_notification(user_no, title, message, notif_type='message', send_email=True):
-    """Create a database notification and optionally send an email alert to the user."""
+    """Create an applicant notification and optionally send an email alert."""
     GMAIL_SENDER_EMAIL = (
         os.environ.get('GMAIL_SENDER_EMAIL')
         or os.environ.get('SMTP_SENDER_EMAIL')
@@ -117,8 +117,11 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
             conn.close()
             return {'created': True, 'email_sent': False, 'reason': 'email-disabled'}
 
-        # 2. Get user's email
-        cur.execute("SELECT email_address FROM email WHERE applicant_no = %s OR user_no = %s LIMIT 1", (user_no, user_no))
+        # 2. Get the applicant's email address.
+        # This service stores notifications against applicants(applicant_no), so
+        # do not fall back to user_no here. Applicant ids and admin user ids can
+        # collide numerically and send mail to the wrong person.
+        cur.execute("SELECT email_address FROM email WHERE applicant_no = %s LIMIT 1", (user_no,))
         user_row = cur.fetchone()
         conn.commit()
         
@@ -154,7 +157,7 @@ The ISKOMATS Team
                 if not access_token:
                     print(f"[NOTIF EMAIL ERROR] No access token, skipping email.")
                     conn.close()
-                    return
+                    return {'created': True, 'email_sent': False, 'email': receiver_email, 'reason': 'missing-access-token'}
 
                 encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
                 

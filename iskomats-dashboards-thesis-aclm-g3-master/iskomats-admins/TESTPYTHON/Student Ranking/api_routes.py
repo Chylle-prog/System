@@ -794,7 +794,7 @@ ISKOMATS Team
 
 
 def notify_all_applicants(title, message, notif_type='scholarship'):
-    """Send an in-app notification to all applicants with a registered email."""
+    """Send an in-app notification to all applicants."""
     conn = None
     try:
         conn = get_db()
@@ -803,8 +803,6 @@ def notify_all_applicants(title, message, notif_type='scholarship'):
             """
             SELECT DISTINCT a.applicant_no
             FROM applicants a
-            LEFT JOIN email e ON a.applicant_no = e.applicant_no
-            WHERE e.email_address IS NOT NULL
             """
         )
         applicants = cur.fetchall()
@@ -848,8 +846,6 @@ def notify_announcement_applicants(
                 """
                 SELECT DISTINCT a.applicant_no
                 FROM applicants a
-                LEFT JOIN email e ON a.applicant_no = e.applicant_no
-                WHERE e.email_address IS NOT NULL
                 """
             )
         else:
