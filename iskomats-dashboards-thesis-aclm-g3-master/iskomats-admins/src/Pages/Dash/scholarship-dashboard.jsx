@@ -891,6 +891,45 @@ export default function ScholarshipDashboard({
     );
   }, [data.announcements, manageSearch]);
 
+  const scholarshipFilterOptions = useMemo(() => {
+    return (data.scholarshipPosts || []).map((post) => {
+      const value = String(post.reqNo || post.id || post.scholarshipName || post.title || '').trim();
+      const label = post.scholarshipName || post.title || 'Untitled Scholarship';
+      return value ? { value, label } : null;
+    }).filter(Boolean);
+  }, [data.scholarshipPosts]);
+
+  const matchesScholarshipSelection = (applicant, selectedValue) => {
+    if (selectedValue === 'all') {
+      return true;
+    }
+
+    const selectedOption = scholarshipFilterOptions.find((option) => option.value === selectedValue);
+    const selectedValues = [selectedValue, selectedOption?.label]
+      .filter(Boolean)
+      .map((value) => String(value).toLowerCase());
+
+    const applicantValues = [
+      applicant.appliedScholarshipId,
+      applicant.reqNo,
+      applicant.req_no,
+      applicant.request_no,
+      applicant.scholarshipId,
+      applicant.scholarship_id,
+      applicant.scholarshipNo,
+      applicant.scholarship_no,
+      applicant.scholarshipName,
+      applicant.scholarship_name,
+      applicant.appliedScholarship,
+      applicant.scholarship,
+      applicant.scholarshipTitle,
+    ]
+      .filter(Boolean)
+      .map((value) => String(value).toLowerCase());
+
+    return selectedValues.some((value) => applicantValues.includes(value));
+  };
+
   const scholarshipFinderResults = useMemo(() => {
     const search = normalizeFinderText(finderSearch);
     const allTrackedApplicants = [...data.applicants, ...data.accepted, ...data.declined];
@@ -956,45 +995,6 @@ export default function ScholarshipDashboard({
         return String(left.scholarshipName || '').localeCompare(String(right.scholarshipName || ''));
       });
   }, [data.accepted, data.applicants, data.declined, data.scholarshipPosts, finderAvailabilityFilter, finderSearch, matchesScholarshipSelection]);
-
-  const scholarshipFilterOptions = useMemo(() => {
-    return (data.scholarshipPosts || []).map((post) => {
-      const value = String(post.reqNo || post.id || post.scholarshipName || post.title || '').trim();
-      const label = post.scholarshipName || post.title || 'Untitled Scholarship';
-      return value ? { value, label } : null;
-    }).filter(Boolean);
-  }, [data.scholarshipPosts]);
-
-  const matchesScholarshipSelection = (applicant, selectedValue) => {
-    if (selectedValue === 'all') {
-      return true;
-    }
-
-    const selectedOption = scholarshipFilterOptions.find((option) => option.value === selectedValue);
-    const selectedValues = [selectedValue, selectedOption?.label]
-      .filter(Boolean)
-      .map((value) => String(value).toLowerCase());
-
-    const applicantValues = [
-      applicant.appliedScholarshipId,
-      applicant.reqNo,
-      applicant.req_no,
-      applicant.request_no,
-      applicant.scholarshipId,
-      applicant.scholarship_id,
-      applicant.scholarshipNo,
-      applicant.scholarship_no,
-      applicant.scholarshipName,
-      applicant.scholarship_name,
-      applicant.appliedScholarship,
-      applicant.scholarship,
-      applicant.scholarshipTitle,
-    ]
-      .filter(Boolean)
-      .map((value) => String(value).toLowerCase());
-
-    return selectedValues.some((value) => applicantValues.includes(value));
-  };
 
   const stats = useMemo(() => {
     const filteredPending = data.applicants.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
