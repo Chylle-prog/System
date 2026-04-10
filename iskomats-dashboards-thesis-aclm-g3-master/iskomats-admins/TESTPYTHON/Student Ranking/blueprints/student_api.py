@@ -1116,7 +1116,13 @@ def get_rankings():
             cur.execute("SELECT scholarship_no FROM applicant_status WHERE applicant_no = %s", (user_no,))
             applied_sch_ids = {row['scholarship_no'] for row in cur.fetchall()}
         
-        cur.execute("SELECT * FROM scholarships")
+        cur.execute("""
+            SELECT s.*, p.provider_name
+            FROM scholarships s
+            LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
+            WHERE COALESCE(s.is_removed, FALSE) = FALSE
+            ORDER BY s.scholarship_name ASC
+        """)
         scholarships = cur.fetchall()
 
         today = datetime.now().date()
@@ -1163,9 +1169,14 @@ def get_rankings():
             item = {
                 'req_no': sch['req_no'],
                 'name': sch['scholarship_name'],
+                'provider_name': sch.get('provider_name'),
+                'description': sch.get('desc'),
                 'minGpa': min_gpa,
                 'maxIncome': max_inc,
                 'location': loc,
+                'slots': sch.get('slots'),
+                'semester': sch.get('semester'),
+                'year': sch.get('year'),
                 'deadline': str(deadline) if deadline else None,
                 'score': round(score),
                 'reasons': reasons,

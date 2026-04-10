@@ -1053,14 +1053,26 @@ const FindScholarship = () => {
                 <div key={match.req_no ?? index} className="scholarship-card">
                   <h4>{match.name}</h4>
                   <div className="scholarship-provider">
-                    {match.location ? `📍 ${match.location}` : '🌐 Open to all locations'}
+                    {match.provider_name ? `🏛️ ${match.provider_name}` : '🏛️ ISKOMATS Scholarship'}
                   </div>
+                  <p>
+                    {match.description || 'No description provided for this scholarship yet.'}
+                  </p>
                   <div className="scholarship-requirements">
+                    {match.location && (
+                      <div className="requirement-badge">Location: {match.location}</div>
+                    )}
                     {match.minGpa != null && (
                       <div className="requirement-badge">Min GPA: {match.minGpa}</div>
                     )}
                     {match.maxIncome != null && (
                       <div className="requirement-badge">Max Income: ₱{Number(match.maxIncome).toLocaleString()}/yr</div>
+                    )}
+                    {match.slots != null && (
+                      <div className="requirement-badge">Slots: {match.slots}</div>
+                    )}
+                    {(match.semester || match.year) && (
+                      <div className="requirement-badge">Term: {[match.semester, match.year].filter(Boolean).join(' ')}</div>
                     )}
                     {match.deadline && (
                       <div className="requirement-badge">
@@ -1092,8 +1104,11 @@ const FindScholarship = () => {
                   </div>
                   <h4>{match.name}</h4>
                   <div className="scholarship-provider">
-                    {match.location ? `📍 ${match.location}` : '🌐 Open to all locations'}
+                    {match.provider_name ? `🏛️ ${match.provider_name}` : '🏛️ ISKOMATS Scholarship'}
                   </div>
+                  <p>
+                    {match.description || 'No description provided for this scholarship yet.'}
+                  </p>
 
                   <div style={{ marginBottom: '1rem' }}>
                     <span style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-soft)', textTransform: 'uppercase' }}>Reason for ineligibility:</span>
@@ -1105,11 +1120,20 @@ const FindScholarship = () => {
                   </div>
 
                   <div className="scholarship-requirements" style={{ opacity: 0.6 }}>
+                    {match.location && (
+                      <div className="requirement-badge">Location: {match.location}</div>
+                    )}
                     {match.minGpa != null && (
                       <div className="requirement-badge">Min GPA: {match.minGpa}</div>
                     )}
                     {match.maxIncome != null && (
                       <div className="requirement-badge">Max Income: ₱{Number(match.maxIncome).toLocaleString()}/yr</div>
+                    )}
+                    {match.slots != null && (
+                      <div className="requirement-badge">Slots: {match.slots}</div>
+                    )}
+                    {(match.semester || match.year) && (
+                      <div className="requirement-badge">Term: {[match.semester, match.year].filter(Boolean).join(' ')}</div>
                     )}
                   </div>
 
