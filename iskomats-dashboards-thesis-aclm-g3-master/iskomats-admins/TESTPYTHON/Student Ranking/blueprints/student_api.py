@@ -135,27 +135,52 @@ def year_level_matches_text(raw_text, expected_year_level):
         return True, None
 
     level_word_map = {
-        '1': 'first',
-        '2': 'second',
-        '3': 'third',
-        '4': 'fourth',
-        '5': 'fifth',
-        '6': 'sixth',
+        '1': ['first', 'freshman', 'freshmen', 'freshie'],
+        '2': ['second', 'sophomore'],
+        '3': ['third', 'junior'],
+        '4': ['fourth', 'senior'],
+        '5': ['fifth'],
+        '6': ['sixth'],
     }
-    suffix_map = {'1': 'st', '2': 'nd', '3': 'rd'}
-    expected_suffix = suffix_map.get(expected_level, 'th')
+    
+    # Common OCR misreads for suffixes like 'st', 'nd', 'rd', 'th'
+    # Handling L/I misreads specifically for '1st' -> 'ist', 'lst'
+    suffix_map = {
+        '1': [r'st', r'ist', r'lst', r'Is\b'], 
+        '2': [r'nd', r'md'], 
+        '3': [r'rd', r'kd'],
+        '4': [r'th']
+    }
+    
+    suffixes = suffix_map.get(expected_level, [r'st|nd|rd|th'])
+    suffix_pattern = f"(?:{'|'.join(suffixes)})"
+    
+    level_words = level_word_map.get(expected_level, [expected_level])
+    level_words_pattern = f"(?:{'|'.join(level_words)})"
+
     patterns = [
-        rf'\b{expected_level}{expected_suffix}\s*year\b',
-        rf'\byear\s*level\s*[:\-]?\s*{expected_level}\b',
-        rf'\byear\s*[:\-]?\s*{expected_level}\b',
-        rf'\byr\.?\s*{expected_level}\b',
-        rf'\b{level_word_map.get(expected_level, expected_level)}\s*year\b',
+        # Standard: 1st Year, 1st Yr, 1stYear
+        rf'\b{expected_level}{suffix_pattern}(?:\s*(?:year|yr\.?)?)?\b',
+        # Labels: Year Level: 1, Level: 1, Year: 1
+        rf'\b(?:year\s*)?level\s*[:\-]?\s*(?:{expected_level}{suffix_pattern}|{expected_level})\b',
+        rf'\byear\s*[:\-]?\s*(?:{expected_level}{suffix_pattern}|{expected_level})\b',
+        rf'\byr\.?\s*(?:{expected_level}{suffix_pattern}|{expected_level})\b',
+        # Word-based: First Year, Freshman
+        rf'\b{level_words_pattern}(?:\s*(?:year|yr\.?)?)?\b',
+        # Numerical standalone with context (e.g. "Year 1")
+        rf'\byear\s+{expected_level}\b',
     ]
+    
     lowered_text = str(raw_text or '').lower()
 
     for pattern in patterns:
         if re.search(pattern, lowered_text, re.IGNORECASE):
             return True, expected_level
+
+    # Ultra-lenient fallback for 1st Year specifically (highest error rate)
+    if expected_level == '1':
+        if re.search(r'\b[Il][s\d]t\b', lowered_text): # Matches 'Ist', 'lst', '1st'
+            return True, '1'
 
     return False, None
 
@@ -2211,11 +2236,11 @@ def ocr_check():
                             video_bytes=vid_bytes,
                             keywords=video_keywords_map.get(doc_type),
                             expected_address=None,
-                            # Ultra-fast sampling: 2 key frames (35%, 75%)
-                            sample_positions=[0.35, 0.75], 
-                            max_width=520, # Compact resolution for ultra-fast OCR
-                            allow_alt_pass=not fast_video_verification,
-                            fallback_text_length=30 if fast_video_verification else 0
+                            # Restored to 5 key frames for better coverage
+                            sample_positions=[0.1, 0.3, 0.5, 0.7, 0.9], 
+                            max_width=800, # Restored higher resolution for legibility
+                            allow_alt_pass=True,
+                            fallback_text_length=15 # Lowered threshold to 15 chars
                         )
                     else:
                         msg_video = f"Video file unreachable ({fetch_err})"
@@ -2345,15 +2370,14 @@ def ocr_check():
                     return {'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'SchoolID':
+                    # For physical ID cards, we completely skip year level checks
+                    # as they are rarely printed on the card face.
                     id_ok, _ = id_number_matches_text(raw, expected_id_no)
-                    year_level_ok, _ = year_level_matches_text(raw, expected_year_level)
 
                     if v and not id_ok:
                         v, msg = False, f"School ID number mismatch ({expected_id_no or 'None'})"
-                    elif v and not year_level_ok:
-                        v, msg = False, f"School ID year level mismatch ({expected_year_level or 'None'})"
                     elif v:
-                        msg = "School ID front verified against student name, ID number, and year level"
+                        msg = "School ID front verified against name and ID number"
 
                     return {'doc': 'Identity Front', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 

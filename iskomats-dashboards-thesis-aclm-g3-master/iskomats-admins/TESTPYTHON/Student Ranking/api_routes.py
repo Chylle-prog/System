@@ -880,7 +880,9 @@ def notify_announcement_applicants(
     title,
     message,
     provider_no,
+    provider_name=None,
     send_to_all_applicants=True,
+    send_email_alerts=False,
     notification_title_prefix='New Announcement',
 ):
     conn = None
@@ -910,13 +912,36 @@ def notify_announcement_applicants(
         conn.close()
         conn = None
 
+        provider_label = (provider_name or 'ISKOMATS').strip()
+        notification_title = f"{notification_title_prefix}: {title}"
+        notification_message = message[:100] + ('...' if len(message) > 100 else '')
+
+        if provider_label and provider_label.lower() != 'iskomats':
+            notification_message = f"{provider_label}: {notification_message}"
+
+        email_success_count = 0
+        email_failure_count = 0
+
         for recipient in recipients:
-            create_notification(
+            result = create_notification(
                 user_no=recipient['applicant_no'],
-                title=f"{notification_title_prefix}: {title}",
-                message=message[:100] + ('...' if len(message) > 100 else ''),
+                title=notification_title,
+                message=notification_message,
                 notif_type='announcement',
-                send_email=False,
+                send_email=send_email_alerts,
+            )
+
+            if send_email_alerts:
+                if result and result.get('email_sent'):
+                    email_success_count += 1
+                else:
+                    email_failure_count += 1
+
+        if send_email_alerts:
+            print(
+                f"[ANNOUNCEMENT EMAIL] Notification email dispatch finished for provider {provider_no}: "
+                f"sent={email_success_count}, failed={email_failure_count}",
+                flush=True,
             )
     except Exception as exc:
         print(f"[NOTIF ERROR] Failed to notify announcement recipients: {exc}", flush=True)
@@ -3333,21 +3358,30 @@ def delete_scholarship(current_user_id, pro_no, role, req_no):
         conn = get_db()
         cursor = conn.cursor()
         
-        is_superadmin = (role == 'Admin')
+        is_superadmin = ((role or '').strip().lower() == 'admin')
+        resolved_provider_no, _ = resolve_provider_context(cursor, current_user_id, role, pro_no)
         
         # 2. Check scholarship ownership
-        cursor.execute("SELECT pro_no FROM scholarships WHERE req_no = %s", (req_no,))
+        cursor.execute("SELECT pro_no, scholarship_name FROM scholarships WHERE req_no = %s", (req_no,))
         sch_row = cursor.fetchone()
         if not sch_row:
             return jsonify({'message': 'Scholarship not found'}), 404
             
         # Allow delete if user is Admin OR pro_no matches OR if existing scholarship has NO pro_no
-        if not is_superadmin and sch_row['pro_no'] is not None and pro_no is not None and sch_row['pro_no'] != pro_no:
+        if not is_superadmin and sch_row['pro_no'] is not None and resolved_provider_no is not None and sch_row['pro_no'] != resolved_provider_no:
             return jsonify({'message': 'Unauthorized'}), 401
             
         cursor.execute("UPDATE scholarships SET is_removed = TRUE WHERE req_no = %s", (req_no,))
         
         conn.commit()
+        record_admin_activity(
+            actor_user_no=current_user_id,
+            action='delete_scholarship',
+            target_type='scholarship',
+            target_id=req_no,
+            target_label=sch_row.get('scholarship_name'),
+            provider_no=resolved_provider_no,
+        )
         cursor.close()
         conn.close()
         
@@ -3747,18 +3781,11 @@ def create_announcement(current_user_id, pro_no, role):
             title,
             message,
             target_pro_no,
-            send_to_all_applicants,
-        )
-
-        run_background_task(
-            send_announcement_emails,
-            title,
-            message,
-            target_pro_no,
             provider_name,
-            send_to_all=send_to_all_applicants,
+            send_to_all_applicants,
+            True,
         )
-        print(f"[ANNOUNCEMENT] Email sending started in background for announcement {ann_no}")
+        print(f"[ANNOUNCEMENT] Notification + email delivery started in background for announcement {ann_no}")
 
         return jsonify({'message': 'Announcement created', 'ann_no': ann_no}), 201
     except Exception as e:
@@ -3898,18 +3925,10 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
             title,
             message,
             target_provider_no,
-            send_to_all_applicants,
-            notification_title_prefix='Announcement Updated',
-        )
-        run_background_task(
-            send_announcement_emails,
-            title,
-            message,
-            target_provider_no,
             target_provider_name,
-            send_to_all=send_to_all_applicants,
-            subject_prefix='Updated Announcement from',
-            intro_prefix='An announcement from',
+            send_to_all_applicants,
+            True,
+            notification_title_prefix='Announcement Updated',
         )
         
         return jsonify({'message': 'Announcement updated', 'ann_no': ann_no}), 200
@@ -3925,6 +3944,7 @@ def delete_announcement(current_user_id, pro_no, role, ann_no):
     try:
         conn = get_db()
         cur = conn.cursor()
+        resolved_provider_no, _ = resolve_provider_context(cur, current_user_id, role, pro_no)
         
         # Check ownership unless super admin
         if role.lower() != 'admin':
@@ -3932,7 +3952,7 @@ def delete_announcement(current_user_id, pro_no, role, ann_no):
             row = cur.fetchone()
             if not row:
                 return jsonify({'message': 'Announcement not found'}), 404
-            if row['pro_no'] != pro_no:
+            if row['pro_no'] != resolved_provider_no:
                 return jsonify({'message': 'Unauthorized to delete this announcement'}), 403
             title = row['ann_title']
         else:
@@ -3959,7 +3979,7 @@ def delete_announcement(current_user_id, pro_no, role, ann_no):
             target_type='announcement',
             target_id=ann_no,
             target_label=title,
-            provider_no=pro_no
+            provider_no=resolved_provider_no
         )
         
         return jsonify({'message': 'Announcement deleted'}), 200

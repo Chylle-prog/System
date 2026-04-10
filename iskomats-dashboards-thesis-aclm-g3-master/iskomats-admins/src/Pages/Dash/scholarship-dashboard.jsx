@@ -68,6 +68,8 @@ const normalizeAcademicYear = (value) => {
 
 const isValidAcademicYear = (value) => ACADEMIC_YEAR_PATTERN.test(normalizeAcademicYear(value));
 
+const normalizeProviderIdentity = (value) => String(value || '').toLowerCase().trim();
+
 const decodeTokenPayload = (token) => {
   if (!token) {
     return null;
@@ -199,6 +201,10 @@ export default function ScholarshipDashboard({
     return Number.isFinite(parsedProviderNo) ? parsedProviderNo : null;
   }, []);
   const activeProviderNo = authenticatedProviderNo ?? proNo ?? null;
+  const activeProviderNames = useMemo(
+    () => [providerName, providerKey, programName].map(normalizeProviderIdentity).filter(Boolean),
+    [programName, providerKey, providerName]
+  );
   const sidebarTitle = providerName;
   const sidebarSubtitle = 'Scholarship Program';
   const trackTitle = `${scholarshipLabel} - Track Applicants`;
@@ -297,9 +303,26 @@ export default function ScholarshipDashboard({
         console.log('Scholarships from API:', response.data.scholarships);
         console.log('Number of scholarships:', response.data.scholarships ? response.data.scholarships.length : 0);
 
+        const scopedScholarships = (response.data.scholarships || []).filter((post) => {
+          const postProviderNo = Number(post?.proNo ?? post?.pro_no);
+          if (activeProviderNo !== null && Number.isFinite(postProviderNo)) {
+            return postProviderNo === activeProviderNo;
+          }
+
+          const postProviderName = normalizeProviderIdentity(
+            post?.providerName ?? post?.provider_name ?? post?.program ?? post?.provider
+          );
+
+          if (!postProviderName) {
+            return true;
+          }
+
+          return activeProviderNames.some((name) => postProviderName.includes(name) || name.includes(postProviderName));
+        });
+
         setData(prev => ({
           ...prev,
-          scholarshipPosts: response.data.scholarships || []
+          scholarshipPosts: scopedScholarships
         }));
       } else {
         console.error('API response not successful:', response.data);
@@ -676,7 +699,22 @@ export default function ScholarshipDashboard({
         announcementImages: ann.announcementImages || [],
         status: ann.status || 'active',
         ...ann // Include all original fields too
-      }));
+      })).filter((ann) => {
+        const announcementProviderNo = Number(ann?.proNo ?? ann?.pro_no);
+        if (activeProviderNo !== null && Number.isFinite(announcementProviderNo)) {
+          return announcementProviderNo === activeProviderNo;
+        }
+
+        const announcementProviderName = normalizeProviderIdentity(
+          ann?.providerName ?? ann?.provider_name ?? ann?.program ?? ann?.provider
+        );
+
+        if (!announcementProviderName) {
+          return true;
+        }
+
+        return activeProviderNames.some((name) => announcementProviderName.includes(name) || name.includes(announcementProviderName));
+      });
       setData(prev => ({ ...prev, announcements: normalizedAnnouncements }));
     } catch (error) {
       console.error('Failed to load announcements:', error);
@@ -790,6 +828,7 @@ export default function ScholarshipDashboard({
             resetForm();
             setManageMode('list');
           }
+          alert('Scholarship post deleted successfully.');
         }
       } catch (error) {
         console.error('Failed to delete scholarship:', error);
@@ -888,6 +927,7 @@ export default function ScholarshipDashboard({
           setManageMode('list');
         }
         await loadAnnouncements();
+        alert('Announcement deleted successfully.');
       } catch (error) {
         console.error('Failed to delete announcement:', error);
         alert(getRequestErrorMessage(error, 'Error deleting announcement'));
@@ -1902,15 +1942,20 @@ export default function ScholarshipDashboard({
                         </div>
                         <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">{ann.content}</p>
                         {ann.announcementImages && ann.announcementImages.length > 0 && (
-                          <div className="flex gap-2 mt-3">
+                          <div className="flex gap-2 mt-3 flex-wrap">
                             {ann.announcementImages.slice(0, 3).map((img, idx) => (
-                              <img
+                              <button
                                 key={idx}
-                                src={img.url || img}
-                                alt="Announcement"
-                                className="w-16 h-16 object-cover rounded-lg border border-gray-200 cursor-pointer"
+                                type="button"
+                                className="w-16 h-16 overflow-hidden rounded-lg border border-gray-200 bg-slate-50 cursor-pointer"
                                 onClick={() => setImageModalSrc(img.url || img)}
-                              />
+                              >
+                                <img
+                                  src={img.url || img}
+                                  alt="Announcement"
+                                  className="w-full h-full object-contain"
+                                />
+                              </button>
                             ))}
                             {ann.announcementImages.length > 3 && (
                               <div className="w-16 h-16 bg-gray-100 rounded-lg border border-gray-200 flex items-center justify-center text-xs text-gray-600">
@@ -2131,12 +2176,17 @@ export default function ScholarshipDashboard({
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       {announcementImages.map((image, i) => (
                         <div key={image.id || i} className="relative group">
-                          <img
-                            src={image.preview || image.url}
-                            alt={image.name || `Image ${i + 1}`}
-                            className="w-full h-32 object-cover rounded-lg border border-gray-200 cursor-pointer"
+                          <button
+                            type="button"
+                            className="w-full h-32 overflow-hidden rounded-lg border border-gray-200 bg-slate-50 cursor-pointer"
                             onClick={() => setImageModalSrc(image.preview || image.url)}
-                          />
+                          >
+                            <img
+                              src={image.preview || image.url}
+                              alt={image.name || `Image ${i + 1}`}
+                              className="w-full h-full object-contain"
+                            />
+                          </button>
                           <button
                             type="button"
                             onClick={() => removeAnnouncementImage(image.id || i)}

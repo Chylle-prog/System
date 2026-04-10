@@ -41,13 +41,6 @@ const SCHOOLS = [
   "ICT-ED"
 ];
 
-const GUIDE_VIDEO_STORAGE_KEY = 'studentInfoGuideVideos';
-const DEFAULT_GUIDE_VIDEO_URLS = {
-  indigency: '',
-  schoolId: '',
-  enrollment: '',
-  grades: ''
-};
 
 const normalizeSelectValue = (value, options) => {
   if (!value) return '';
@@ -370,14 +363,6 @@ const StudentInfo = () => {
     schoolIdBack_video: null,
     face_video: null
   });
-  const [guideVideos, setGuideVideos] = useState(() => {
-    try {
-      const stored = localStorage.getItem(GUIDE_VIDEO_STORAGE_KEY);
-      return stored ? { ...DEFAULT_GUIDE_VIDEO_URLS, ...JSON.parse(stored) } : DEFAULT_GUIDE_VIDEO_URLS;
-    } catch {
-      return DEFAULT_GUIDE_VIDEO_URLS;
-    }
-  });
 
   const [uploadingFields, setUploadingFields] = useState({}); // { fieldName: Promise }
 
@@ -448,102 +433,122 @@ const StudentInfo = () => {
     };
   };
 
-  useEffect(() => {
-    localStorage.setItem(GUIDE_VIDEO_STORAGE_KEY, JSON.stringify(guideVideos));
-  }, [guideVideos]);
 
-  const renderImagePicker = ({ id, name, label, onChange, currentValue }) => {
-    const status = getImagePickerStatus(currentValue);
+  const renderDocumentMediaPicker = ({ 
+    photoId, photoName, photoLabel, photoValue, onPhotoChange,
+    videoId, videoName, videoValue, onVideoChange,
+    isUploadingVideo = false 
+  }) => {
+    const photoStatus = getImagePickerStatus(photoValue);
+    const hasVideo = videoValue && (typeof videoValue === 'string' ? videoValue.length > 0 : true);
 
     return (
       <div style={{marginBottom: '1rem'}}>
-        <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155', marginBottom: '8px'}}>{label}</label>
-        <input id={id} type="file" name={name} accept="image/*" onChange={onChange} style={{display: 'none'}} />
-        <label
-          htmlFor={id}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '10px',
-            padding: '0.8rem 1rem',
-            borderRadius: '14px',
-            border: '1px solid #cbd5e1',
-            background: '#fff',
-            color: '#0f172a',
-            cursor: 'pointer',
-            fontSize: '0.85rem',
+        <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155', marginBottom: '10px'}}>Upload Media Check</label>
+        
+        <div style={{display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '0.8rem'}}>
+          {/* PHOTO PICKER */}
+          <div style={{flex: '1', minWidth: '160px'}}>
+            <input id={photoId} type="file" name={photoName} accept="image/*" onChange={onPhotoChange} style={{display: 'none'}} />
+            <label
+              htmlFor={photoId}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                padding: '0.8rem 1rem',
+                borderRadius: '14px',
+                border: '1px solid #cbd5e1',
+                background: '#fff',
+                color: '#0f172a',
+                cursor: 'pointer',
+                fontSize: '0.82rem',
+                fontWeight: '700',
+                boxShadow: '0 4px 12px rgba(15, 23, 42, 0.05)',
+                width: '100%',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <i className="fas fa-image" style={{color: 'var(--primary)'}}></i>
+              {photoValue ? 'Replace Image' : 'Add Image'}
+            </label>
+          </div>
+
+          {/* VIDEO PICKER */}
+          <div style={{flex: '1', minWidth: '160px'}}>
+            <input 
+              id={videoId} 
+              type="file" 
+              accept="video/*" 
+              onChange={(e) => {
+                const file = e.target.files[0];
+                if (file) onVideoChange(videoName, file);
+              }} 
+              style={{display: 'none'}} 
+            />
+            <label
+              htmlFor={isUploadingVideo ? undefined : videoId}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                padding: '0.8rem 1rem',
+                borderRadius: '14px',
+                border: '1px solid #cbd5e1',
+                background: isUploadingVideo ? '#f1f5f9' : '#fff',
+                color: '#0f172a',
+                cursor: isUploadingVideo ? 'not-allowed' : 'pointer',
+                fontSize: '0.82rem',
+                fontWeight: '700',
+                boxShadow: '0 4px 12px rgba(15, 23, 42, 0.05)',
+                width: '100%',
+                transition: 'all 0.2s ease',
+                opacity: isUploadingVideo ? 0.7 : 1
+              }}
+            >
+              <i className={isUploadingVideo ? "fas fa-spinner fa-spin" : "fas fa-video"} style={{color: 'var(--primary)'}}></i>
+              {isUploadingVideo ? 'Uploading...' : (hasVideo ? 'Replace Video' : 'Add Video')}
+            </label>
+          </div>
+        </div>
+
+        {/* COMBINED STATUS */}
+        <div style={{display: 'flex', gap: '8px'}}>
+          <div style={{
+            flex: 1,
+            padding: '0.6rem 0.8rem',
+            borderRadius: '11px',
+            border: `1px solid ${photoStatus.border}`,
+            background: photoStatus.background,
+            color: photoStatus.color,
+            fontSize: '0.72rem',
             fontWeight: '700',
-            boxShadow: '0 4px 12px rgba(15, 23, 42, 0.05)'
-          }}
-        >
-          <i className="fas fa-image" style={{color: 'var(--primary)'}}></i>
-          {currentValue ? 'Replace image' : 'Choose image'}
-        </label>
-        <div
-          style={{
-            marginTop: '0.65rem',
-            padding: '0.7rem 0.85rem',
-            borderRadius: '12px',
-            border: `1px solid ${status.border}`,
-            background: status.background,
-            color: status.color,
-            fontSize: '0.78rem',
-            fontWeight: '700'
-          }}
-        >
-          {status.label}
+            textAlign: 'center'
+          }}>
+            {photoStatus.label}
+          </div>
+          {videoId && (
+            <div style={{
+              flex: 1,
+              padding: '0.6rem 0.8rem',
+              borderRadius: '11px',
+              border: hasVideo ? '1px solid #bbf7d0' : '1px solid #e2e8f0',
+              background: hasVideo ? '#ecfdf5' : '#f8fafc',
+              color: hasVideo ? '#166534' : '#64748b',
+              fontSize: '0.72rem',
+              fontWeight: '700',
+              textAlign: 'center'
+            }}>
+              {isUploadingVideo ? 'Uploading video...' : (hasVideo ? 'Video uploaded' : 'No video selected')}
+            </div>
+          )}
         </div>
       </div>
     );
   };
 
-  const renderGuideVideoPanel = (guideKey, label) => {
-    const currentUrl = guideVideos[guideKey] || '';
-    const normalizedUrl = normalizeGuideVideoUrl(currentUrl);
-    const isYouTubeEmbed = normalizedUrl.includes('youtube.com/embed/');
-    const isDirectVideo = /\.(mp4|webm|ogg|mov)(\?|#|$)/i.test(normalizedUrl);
-
-    return (
-      <details style={{ marginBottom: '1rem', border: '1px solid #e2e8f0', borderRadius: '14px', background: '#f8fafc' }}>
-        <summary style={{ cursor: 'pointer', listStyle: 'none', padding: '0.85rem 1rem', fontSize: '0.82rem', fontWeight: '800', color: '#334155', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <i className="fas fa-circle-play" style={{ color: 'var(--primary)' }}></i>
-          {label}
-        </summary>
-        <div style={{ padding: '0 1rem 1rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <input
-            type="url"
-            value={currentUrl}
-            onChange={(event) => setGuideVideos((prev) => ({ ...prev, [guideKey]: event.target.value }))}
-            placeholder="Paste a YouTube or direct MP4/WebM guide link"
-            style={{ width: '100%', padding: '0.75rem 0.9rem', borderRadius: '12px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
-          />
-          {normalizedUrl ? (
-            isYouTubeEmbed ? (
-              <div style={{ position: 'relative', paddingTop: '56.25%', borderRadius: '12px', overflow: 'hidden', background: '#000' }}>
-                <iframe
-                  src={normalizedUrl}
-                  title={`${guideKey}-guide-video`}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}
-                />
-              </div>
-            ) : isDirectVideo ? (
-              <video src={normalizedUrl} controls style={{ width: '100%', borderRadius: '12px', background: '#000' }} />
-            ) : (
-              <a href={normalizedUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', fontSize: '0.8rem', fontWeight: '700' }}>
-                Open instructional video link
-              </a>
-            )
-          ) : (
-            <p style={{ margin: 0, fontSize: '0.76rem', color: '#64748b', lineHeight: '1.5' }}>
-              No guide video set yet. Add a link above if you want this upload section to show an instructional video.
-            </p>
-          )}
-        </div>
-      </details>
-    );
-  };
 
   const [formData, setFormData] = useState({
     lastName: '',
@@ -2777,15 +2782,17 @@ const StudentInfo = () => {
                     <div style={{fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca'}}>PHOTO + VIDEO</div>
                   </div>
 
-                  {renderImagePicker({
-                    id: 'photo_mayorIndigency_photo',
-                    name: 'mayorIndigency_photo',
-                    label: 'Document Photo',
-                    onChange: handleInputChange,
-                    currentValue: photos.mayorIndigency_photo || userProfile?.indigency_doc,
+                  {renderDocumentMediaPicker({
+                    photoId: 'photo_mayorIndigency_photo',
+                    photoName: 'mayorIndigency_photo',
+                    photoValue: photos.mayorIndigency_photo || userProfile?.indigency_doc,
+                    onPhotoChange: handleInputChange,
+                    videoId: 'video_mayorIndigency_video',
+                    videoName: 'mayorIndigency_video',
+                    videoValue: documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url,
+                    onVideoChange: handleVideoUpload,
+                    isUploadingVideo: Boolean(uploadingFields['mayorIndigency_video'])
                   })}
-
-                  {renderGuideVideoPanel('indigency', 'Instructional Video for Indigency Upload')}
 
                   <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
                     <div className="scanning-container">
@@ -2808,11 +2815,12 @@ const StudentInfo = () => {
                     </div>
 
                     <VideoRecorder 
-                      label="Record Verification" 
+                      label="Verification Video" 
                       onRecordComplete={(blob) => handleVideoUpload('mayorIndigency_video', blob)} 
                       initialVideoUrl={documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url}
                       isUploading={Boolean(uploadingFields['mayorIndigency_video'])}
                       disabled={isAnyScanning || isSavingStep}
+                      hideButton={true}
                       containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
                     />
                   </div>
@@ -3078,14 +3086,16 @@ const StudentInfo = () => {
                       <div style={{fontSize: '0.65rem', color: '#3b82f6', fontWeight: '800', background: '#eff6ff', padding: '3px 8px', borderRadius: '6px', border: '1px solid #bfdbfe'}}>REQUIRED</div>
                     </div>
 
-                    {renderImagePicker({
-                      id: 'school_id_front_photo',
-                      label: 'Front Photo',
-                      onChange: (e) => handleSchoolIdPhotoUpload('front', e),
-                      currentValue: schoolIdPhotos.front || userProfile?.id_img_front,
+                    {renderDocumentMediaPicker({
+                      photoId: 'school_id_front_photo',
+                      photoValue: schoolIdPhotos.front || userProfile?.id_img_front,
+                      onPhotoChange: (e) => handleSchoolIdPhotoUpload('front', e),
+                      videoId: 'video_schoolIdFront_video',
+                      videoName: 'schoolIdFront_video',
+                      videoValue: documentVideos.schoolIdFront_video || userProfile?.schoolid_front_vid_url,
+                      onVideoChange: handleVideoUpload,
+                      isUploadingVideo: Boolean(uploadingFields['schoolIdFront_video'])
                     })}
-
-                    {renderGuideVideoPanel('schoolId', 'Instructional Video for School ID Upload')}
 
                     <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
                       {/* Front Photo Preview */}
@@ -3105,11 +3115,12 @@ const StudentInfo = () => {
 
                       {/* Front Video Preview */}
                       <VideoRecorder 
-                        label="Front Check" 
+                        label="Front Check Video" 
                         onRecordComplete={(blob) => handleVideoUpload('schoolIdFront_video', blob)} 
                         initialVideoUrl={documentVideos.schoolIdFront_video || userProfile?.schoolid_front_vid_url}
                         isUploading={Boolean(uploadingFields['schoolIdFront_video'])}
                         disabled={isAnyScanning || isSavingStep}
+                        hideButton={true}
                         containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
                       />
                     </div>
@@ -3131,11 +3142,15 @@ const StudentInfo = () => {
                       <div style={{fontSize: '0.65rem', color: '#d97706', fontWeight: '800', background: '#fffbeb', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fef3c7'}}>REQUIRED</div>
                     </div>
 
-                    {renderImagePicker({
-                      id: 'school_id_back_photo',
-                      label: 'Back Photo',
-                      onChange: (e) => handleSchoolIdPhotoUpload('back', e),
-                      currentValue: schoolIdPhotos.back || userProfile?.id_img_back,
+                    {renderDocumentMediaPicker({
+                      photoId: 'school_id_back_photo',
+                      photoValue: schoolIdPhotos.back || userProfile?.id_img_back,
+                      onPhotoChange: (e) => handleSchoolIdPhotoUpload('back', e),
+                      videoId: 'video_schoolIdBack_video',
+                      videoName: 'schoolIdBack_video',
+                      videoValue: documentVideos.schoolIdBack_video || userProfile?.schoolid_back_vid_url,
+                      onVideoChange: handleVideoUpload,
+                      isUploadingVideo: Boolean(uploadingFields['schoolIdBack_video'])
                     })}
 
                     <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
@@ -3156,11 +3171,12 @@ const StudentInfo = () => {
 
                       {/* Back Video Preview */}
                       <VideoRecorder 
-                        label="Back Check" 
+                        label="Back Check Video" 
                         onRecordComplete={(blob) => handleVideoUpload('schoolIdBack_video', blob)} 
                         initialVideoUrl={documentVideos.schoolIdBack_video || userProfile?.schoolid_back_vid_url}
                         isUploading={Boolean(uploadingFields['schoolIdBack_video'])}
                         disabled={isAnyScanning || isSavingStep}
+                        hideButton={true}
                         containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
                       />
                     </div>
@@ -3250,15 +3266,17 @@ const StudentInfo = () => {
                       <div style={{fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca'}}>PHOTO + VIDEO</div>
                     </div>
 
-                    {renderImagePicker({
-                      id: 'photo_mayorCOE_photo',
-                      name: 'mayorCOE_photo',
-                      label: 'Upload COE Photo',
-                      onChange: handleInputChange,
-                      currentValue: photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc,
+                    {renderDocumentMediaPicker({
+                      photoId: 'photo_mayorCOE_photo',
+                      photoName: 'mayorCOE_photo',
+                      photoValue: photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc,
+                      onPhotoChange: handleInputChange,
+                      videoId: 'video_mayorCOE_video',
+                      videoName: 'mayorCOE_video',
+                      videoValue: documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url,
+                      onVideoChange: handleVideoUpload,
+                      isUploadingVideo: Boolean(uploadingFields['mayorCOE_video'])
                     })}
-
-                    {renderGuideVideoPanel('enrollment', 'Instructional Video for COR/COE Upload')}
 
                     <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
                       <div className="scanning-container">
@@ -3276,11 +3294,12 @@ const StudentInfo = () => {
                       </div>
 
                       <VideoRecorder 
-                        label="Record COE Video" 
+                        label="COE Verification Video" 
                         onRecordComplete={(blob) => handleVideoUpload('mayorCOE_video', blob)} 
                         initialVideoUrl={documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url}
                         isUploading={Boolean(uploadingFields['mayorCOE_video'])}
                         disabled={isAnyScanning || isSavingStep}
+                        hideButton={true}
                         containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
                       />
                     </div>
@@ -3359,15 +3378,17 @@ const StudentInfo = () => {
                       <div style={{fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca'}}>PHOTO + VIDEO</div>
                     </div>
 
-                    {renderImagePicker({
-                      id: 'photo_mayorGrades_photo',
-                      name: 'mayorGrades_photo',
-                      label: 'Upload Grades Photo',
-                      onChange: handleInputChange,
-                      currentValue: photos.mayorGrades_photo || userProfile?.grades_doc,
+                    {renderDocumentMediaPicker({
+                      photoId: 'photo_mayorGrades_photo',
+                      photoName: 'mayorGrades_photo',
+                      photoValue: photos.mayorGrades_photo || userProfile?.grades_doc,
+                      onPhotoChange: handleInputChange,
+                      videoId: 'video_mayorGrades_video',
+                      videoName: 'mayorGrades_video',
+                      videoValue: documentVideos.mayorGrades_video || userProfile?.grades_vid_url,
+                      onVideoChange: handleVideoUpload,
+                      isUploadingVideo: Boolean(uploadingFields['mayorGrades_video'])
                     })}
-
-                    {renderGuideVideoPanel('grades', 'Instructional Video for Grades Upload')}
 
                     <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
                       <div className="scanning-container">
@@ -3385,11 +3406,12 @@ const StudentInfo = () => {
                       </div>
 
                       <VideoRecorder 
-                        label="Record Grades Video" 
+                        label="Grades Verification Video" 
                         onRecordComplete={(blob) => handleVideoUpload('mayorGrades_video', blob)} 
                         initialVideoUrl={documentVideos.mayorGrades_video || userProfile?.grades_vid_url}
                         isUploading={Boolean(uploadingFields['mayorGrades_video'])}
                         disabled={isAnyScanning || isSavingStep}
+                        hideButton={true}
                         containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
                       />
                     </div>
@@ -3549,24 +3571,46 @@ const StudentInfo = () => {
                 <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1.2rem', paddingLeft: '16px'}}>Match captured photo with your School ID</p>
                 
                 <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'flex-start'}}>
-                  {/* Photo Column */}
-                  <div style={{flex: '1', minWidth: '250px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem'}}>
-                    <div style={{border: '2px solid #fff', borderRadius: '20px', height: '220px', width: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e1e8f0', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)'}}>
-                    {photos.face_photo ? (
-                      <>
-                        <img src={photos.face_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Face Verification" />
-                        <button type="button" onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); }} style={{position: 'absolute', top: '10px', right: '10px', background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'}}><i className="fas fa-times"></i></button>
-                      </>
-                    ) : (
-                      <button type="button" onClick={openCamera} style={{border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px'}}>
-                        <i className="fas fa-camera" style={{fontSize: '2.5rem'}}></i>
-                        <span style={{fontSize: '0.9rem', fontWeight: '600'}}>Capture Face Photo</span>
-                      </button>
-                    )}
+                  {/* Media Picker and Preview */}
+                  <div style={{flex: '1', minWidth: '300px'}}>
+                    {renderDocumentMediaPicker({
+                      photoId: 'photo_face_photo',
+                      photoName: 'face_photo',
+                      photoValue: photos.face_photo || userProfile?.profile_picture,
+                      onPhotoChange: handleInputChange,
+                      videoId: 'video_face_video',
+                      videoName: 'face_video',
+                      videoValue: documentVideos.face_video || userProfile?.face_vid_url,
+                      onVideoChange: handleVideoUpload,
+                      isUploadingVideo: Boolean(uploadingFields['face_video'])
+                    })}
+
+                    <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginTop: '1.5rem'}}>
+                      <div style={{border: '2px solid #fff', borderRadius: '20px', height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e1e8f0', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)'}}>
+                      {photos.face_photo ? (
+                        <>
+                          <img src={photos.face_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Face Verification" />
+                          <button type="button" onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); }} style={{position: 'absolute', top: '10px', right: '10px', background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'}}><i className="fas fa-times"></i></button>
+                        </>
+                      ) : (
+                        <button type="button" onClick={openCamera} style={{border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px'}}>
+                          <i className="fas fa-camera" style={{fontSize: '2.5rem'}}></i>
+                          <span style={{fontSize: '0.9rem', fontWeight: '600'}}>Capture Photo</span>
+                        </button>
+                      )}
+                      </div>
+
+                      <VideoRecorder 
+                        label="Face Profile Video" 
+                        onRecordComplete={(blob) => handleVideoUpload('face_video', blob)} 
+                        initialVideoUrl={documentVideos.face_video || userProfile?.face_vid_url}
+                        isUploading={Boolean(uploadingFields['face_video'])}
+                        disabled={isAnyScanning || isSavingStep}
+                        hideButton={true}
+                        containerStyle={{ height: '220px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                      />
                     </div>
                   </div>
-
-
                 </div>
 
                 <div style={{width: '100%', textAlign: 'center', marginTop: '1.5rem'}}>

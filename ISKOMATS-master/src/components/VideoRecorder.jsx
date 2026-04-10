@@ -118,63 +118,65 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
       )}
 
       {/* Persistent Button regardless of state */}
-      <div style={{ marginBottom: '1rem', textAlign: 'left' }}>
-        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155', marginBottom: '8px' }}>{label}</label>
-        <input 
-          ref={fileInputRef}
-          id={`v-upload-${label.replace(/\s+/g, '-')}`}
-          type="file" 
-          accept="video/*" 
-          onChange={handleFileChange} 
-          style={{ display: 'none' }} 
-          disabled={disabled}
-        />
-        <label
-          htmlFor={disabled ? undefined : `v-upload-${label.replace(/\s+/g, '-')}`}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '10px',
-            padding: '0.8rem 1rem',
-            borderRadius: '14px',
-            border: '1px solid #cbd5e1',
-            background: '#fff',
-            color: '#0f172a',
-            cursor: disabled ? 'not-allowed' : 'pointer',
-            fontSize: '0.85rem',
-            fontWeight: '700',
-            boxShadow: '0 4px 12px rgba(15, 23, 42, 0.05)',
-            opacity: disabled ? 0.6 : 1
-          }}
-        >
-          <i className="fas fa-video" style={{ color: 'var(--primary)' }}></i>
-          {previewUrl ? 'Replace Video' : 'Choose Video'}
-        </label>
-
-        {fileName && (
-          <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#64748b', fontWeight: '600', wordBreak: 'break-word' }}>
-            {fileName}
-          </div>
-        )}
-        
-        {status && (
-          <div
+      {!hideButton && (
+        <div style={{ marginBottom: '1rem', textAlign: 'left' }}>
+          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155', marginBottom: '8px' }}>{label}</label>
+          <input 
+            ref={fileInputRef}
+            id={`v-upload-${label.replace(/\s+/g, '-')}`}
+            type="file" 
+            accept="video/*" 
+            onChange={handleFileChange} 
+            style={{ display: 'none' }} 
+            disabled={disabled}
+          />
+          <label
+            htmlFor={disabled ? undefined : `v-upload-${label.replace(/\s+/g, '-')}`}
             style={{
-              marginTop: '0.65rem',
-              padding: '0.7rem 0.85rem',
-              borderRadius: '12px',
-              border: `1px solid ${status.border}`,
-              background: status.background,
-              color: status.color,
-              fontSize: '0.78rem',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '10px',
+              padding: '0.8rem 1rem',
+              borderRadius: '14px',
+              border: '1px solid #cbd5e1',
+              background: '#fff',
+              color: '#0f172a',
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              fontSize: '0.85rem',
               fontWeight: '700',
-              textAlign: 'center'
+              boxShadow: '0 4px 12px rgba(15, 23, 42, 0.05)',
+              opacity: disabled ? 0.6 : 1
             }}
           >
-            {status.label}
-          </div>
-        )}
-      </div>
+            <i className="fas fa-video" style={{ color: 'var(--primary)' }}></i>
+            {previewUrl ? 'Replace Video' : 'Choose Video'}
+          </label>
+
+          {fileName && (
+            <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#64748b', fontWeight: '600', wordBreak: 'break-word' }}>
+              {fileName}
+            </div>
+          )}
+          
+          {status && (
+            <div
+              style={{
+                marginTop: '0.65rem',
+                padding: '0.7rem 0.85rem',
+                borderRadius: '12px',
+                border: `1px solid ${status.border}`,
+                background: status.background,
+                color: status.color,
+                fontSize: '0.78rem',
+                fontWeight: '700',
+                textAlign: 'center'
+              }}
+            >
+              {status.label}
+            </div>
+          )}
+        </div>
+      )}
 
       {!previewUrl ? (
         <div style={{ padding: '0.5rem' }}>
