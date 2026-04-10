@@ -97,14 +97,15 @@ def batch_convert_videos():
     # Fetch all user records with video URLs
     try:
         cursor.execute("""
-            SELECT applicant_no, id_vid_url, indigency_vid_url, grades_vid_url, 
-                   enrollment_certificate_vid_url, schoolId_vid_url
+                 SELECT applicant_no, id_vid_url, indigency_vid_url, grades_vid_url, 
+                     enrollment_certificate_vid_url, schoolid_front_vid_url, schoolid_back_vid_url
             FROM users 
             WHERE (id_vid_url IS NOT NULL 
                    OR indigency_vid_url IS NOT NULL 
                    OR grades_vid_url IS NOT NULL 
                    OR enrollment_certificate_vid_url IS NOT NULL
-                   OR schoolId_vid_url IS NOT NULL)
+                     OR schoolid_front_vid_url IS NOT NULL
+                     OR schoolid_back_vid_url IS NOT NULL)
         """)
         
         records = cursor.fetchall()
@@ -117,7 +118,8 @@ def batch_convert_videos():
             2: ('indigency_vid_url', 'mayorIndigency_video', 'indigency'),
             3: ('grades_vid_url', 'mayorGrades_video', 'grades'),
             4: ('enrollment_certificate_vid_url', 'mayorCOE_video', 'coe'),
-            5: ('schoolId_vid_url', 'schoolId_video', 'school_id')
+            5: ('schoolid_front_vid_url', 'schoolIdFront_video', 'school_id'),
+            6: ('schoolid_back_vid_url', 'schoolIdBack_video', 'school_id')
         }
         
         print(f"[BATCH-CONVERT] Found {len(records)} records with videos", flush=True)

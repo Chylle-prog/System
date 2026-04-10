@@ -980,17 +980,6 @@ const StudentInfo = () => {
             setFormData(prev => ({ ...prev, [stateField]: profile[dbField] }));
           }
         });
-
-        if (profile.schoolid_vid_url) {
-          if (!loadedVideos.schoolIdFront_video) {
-            loadedVideos.schoolIdFront_video = profile.schoolid_vid_url;
-            setFormData(prev => ({ ...prev, schoolIdFront_video: profile.schoolid_vid_url }));
-          }
-          if (!loadedVideos.schoolIdBack_video) {
-            loadedVideos.schoolIdBack_video = profile.schoolid_vid_url;
-            setFormData(prev => ({ ...prev, schoolIdBack_video: profile.schoolid_vid_url }));
-          }
-        }
         
         if (Object.keys(loadedVideos).length > 0) {
           setDocumentVideos(prev => ({ ...prev, ...loadedVideos }));
@@ -1724,15 +1713,6 @@ const StudentInfo = () => {
           display: flex;
         }
 
-        .loading-overlay.minimal {
-          background: rgba(255, 255, 255, 0.05);
-          backdrop-filter: blur(1px);
-          cursor: wait;
-        }
-
-        .loading-overlay.minimal .loading-modal {
-          display: none;
-        }
 
         .loading-modal {
           background: white;
@@ -2790,119 +2770,150 @@ const StudentInfo = () => {
                 </div>
 
                 <div className="media-grid">
-                  {/* Documentation Selection */}
-                  <div className="preview-box">
-                    <div style={{display: 'flex', gap: '1rem', marginBottom: '1rem'}}>
-                      <div style={{flex: 1}}>
-                        <label style={{display: 'block', fontSize: '0.75rem', fontWeight: '700', color: '#334155', marginBottom: '6px'}}>Front Photo</label>
-                        <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} style={{fontSize: '0.7rem', width: '100%'}} />
-                      </div>
-                      <div style={{flex: 1}}>
-                        <label style={{display: 'block', fontSize: '0.75rem', fontWeight: '700', color: '#334155', marginBottom: '6px'}}>Back Photo</label>
-                        <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} style={{fontSize: '0.7rem', width: '100%'}} />
-                      </div>
-                    </div>
-
-                    {(schoolIdPhotos.front || userProfile?.id_img_front) && (
-                      <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
-                        <div className="scanning-container">
-                          <div style={{display: 'flex', gap: '10px'}}>
-                             <div className="image-container" style={{height: '140px', flex: 1}} onClick={() => setLightboxSrc(schoolIdPhotos.front || userProfile?.id_img_front)}>
-                               <img src={schoolIdPhotos.front || userProfile?.id_img_front} alt="Front ID" />
-                               {idVerified === 'verifying' && <div className="scanning-laser"></div>}
-                             </div>
-                             <div className="image-container" style={{height: '140px', flex: 1}} onClick={() => setLightboxSrc(schoolIdPhotos.back || userProfile?.id_img_back)}>
-                               <img src={schoolIdPhotos.back || userProfile?.id_img_back} alt="Back ID" />
-                               {idVerified === 'verifying' && <div className="scanning-laser"></div>}
-                             </div>
-                          </div>
-                        </div>
-
-                        <button 
-                          type="button" 
-                          onClick={handleIdScan}
-                          disabled={isSavingStep || idVerified === 'verifying'}
-                          style={{
-                            width: '100%',
-                            padding: '0.9rem',
-                            borderRadius: '16px',
-                            background: idVerified === 'success' ? '#10b981' : (idVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
-                            color: 'white',
-                            border: 'none',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '10px',
-                            fontSize: '0.95rem',
-                            fontWeight: '800',
-                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                            boxShadow: idVerified === 'success' ? '0 10px 20px -5px rgba(16, 185, 129, 0.3)' : '0 10px 20px -5px rgba(79, 13, 0, 0.3)',
-                            textTransform: 'uppercase'
-                          }}
-                        >
-                          <i className={`fas ${idVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-id-card-clip'}`}></i>
-                          {idVerified === 'verifying' ? 'AI Analyzing ID...' : (idVerified === 'success' ? 'Identity Verified' : 'Instant ID Scanner')}
-                        </button>
-
-                        {idVerified === 'verifying' && (
-                          <div style={{width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0'}}>
-                            <div style={{position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px'}}></div>
-                          </div>
-                        )}
-
-                        {idStatus && (
-                          <div className={`validation-status-card ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`}>
-                            <div className={`status-icon ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`}>
-                              <i className={`fas ${idVerified === 'success' ? 'fa-check' : (idVerified === 'failed' ? 'fa-circle-xmark' : 'fa-magnifying-glass')}`}></i>
-                            </div>
-                            <div>
-                              <p style={{fontSize: '0.85rem', fontWeight: '700', margin: '0 0 4px 0'}}>System Verification</p>
-                              <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.5'}}>{idStatus}</p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ID Video Section */}
+                  {/* FRONT SIDE SECTION */}
                   <div className="preview-box" style={{background: '#fff', borderStyle: 'solid'}}>
-                     <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
-                      <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155'}}>ID Video Verification</label>
-                      <div style={{fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca'}}>BOTH REQUIRED</div>
+                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', paddingBottom: '0.8rem', borderBottom: '1px solid #f1f5f9'}}>
+                      <h5 style={{margin: 0, fontSize: '0.95rem', fontWeight: '800', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                        <i className="fas fa-id-card"></i> Front Side Details
+                      </h5>
+                      <div style={{fontSize: '0.65rem', color: '#3b82f6', fontWeight: '800', background: '#eff6ff', padding: '3px 8px', borderRadius: '6px', border: '1px solid #bfdbfe'}}>REQUIRED</div>
                     </div>
-                    <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
-                      <div style={{flex: 1, minHeight: '180px'}}>
-                        <VideoRecorder 
-                          label="Record ID Front Check" 
-                          onRecordComplete={(blob) => handleVideoUpload('schoolIdFront_video', blob)} 
-                          initialVideoUrl={documentVideos.schoolIdFront_video || userProfile?.schoolId_front_vid_url || userProfile?.schoolId_vid_url}
-                          isUploading={Boolean(uploadingFields['schoolIdFront_video'])}
-                        />
+
+                    <div style={{marginBottom: '1rem'}}>
+                      <label style={{display: 'block', fontSize: '0.7rem', fontWeight: '700', color: '#64748b', marginBottom: '6px', textTransform: 'uppercase'}}>Front Photo</label>
+                      <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} style={{fontSize: '0.8rem', width: '100%'}} />
+                    </div>
+
+                    <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
+                      {/* Front Photo Preview */}
+                      <div className="scanning-container">
+                        <div className="image-container" style={{height: '240px'}} onClick={() => setLightboxSrc(schoolIdPhotos.front || userProfile?.id_img_front)}>
+                          { (schoolIdPhotos.front || userProfile?.id_img_front) ? (
+                            <img src={schoolIdPhotos.front || userProfile?.id_img_front} alt="Front ID" />
+                          ) : (
+                            <div style={{height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc'}}>
+                              <i className="fas fa-image" style={{fontSize: '2rem', marginBottom: '8px'}}></i>
+                              <span style={{fontSize: '0.7rem'}}>No Photo</span>
+                            </div>
+                          )}
+                          {idVerified === 'verifying' && <div className="scanning-laser"></div>}
+                        </div>
                       </div>
-                      <div style={{marginTop: '-0.25rem', padding: '12px', background: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px'}}>
-                        <i className="fas fa-user-check" style={{color: '#2563eb', fontSize: '1rem', marginTop: '2px'}}></i>
-                        <p style={{fontSize: '0.75rem', color: '#1e3a8a', margin: 0, lineHeight: '1.4'}}>
-                          <b>Front check:</b> Keep your name area visible. This video is used to confirm the student name on the ID front.
-                        </p>
-                      </div>
-                      <div style={{flex: 1, minHeight: '180px'}}>
-                        <VideoRecorder 
-                          label="Record ID Back Check" 
-                          onRecordComplete={(blob) => handleVideoUpload('schoolIdBack_video', blob)} 
-                          initialVideoUrl={documentVideos.schoolIdBack_video || userProfile?.schoolId_back_vid_url || userProfile?.schoolId_vid_url}
-                          isUploading={Boolean(uploadingFields['schoolIdBack_video'])}
-                        />
-                      </div>
-                      <div style={{marginTop: '-0.25rem', padding: '12px', background: '#fffbeb', borderRadius: '14px', border: '1px solid #fef3c7', display: 'flex', gap: '10px'}}>
-                        <i className="fas fa-school" style={{color: '#d97706', fontSize: '1rem', marginTop: '2px'}}></i>
-                        <p style={{fontSize: '0.75rem', color: '#92400e', margin: 0, lineHeight: '1.4'}}>
-                          <b>Back check:</b> Focus on the school name and validity details so the scanner can match your campus name and current academic year.
-                        </p>
-                      </div>
+
+                      {/* Front Video Preview */}
+                      <VideoRecorder 
+                        label="Front Check" 
+                        onRecordComplete={(blob) => handleVideoUpload('schoolIdFront_video', blob)} 
+                        initialVideoUrl={documentVideos.schoolIdFront_video || userProfile?.schoolid_front_vid_url}
+                        isUploading={Boolean(uploadingFields['schoolIdFront_video'])}
+                        containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                      />
+                    </div>
+
+                    <div style={{padding: '12px', background: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px'}}>
+                      <i className="fas fa-user-check" style={{color: '#2563eb', fontSize: '1rem', marginTop: '2px'}}></i>
+                      <p style={{fontSize: '0.72rem', color: '#1e3a8a', margin: 0, lineHeight: '1.4'}}>
+                        <b>Front side:</b> Keep your name area visible. This helps us confirm the student identity matches your profile.
+                      </p>
                     </div>
                   </div>
+
+                  {/* BACK SIDE SECTION */}
+                  <div className="preview-box" style={{background: '#fff', borderStyle: 'solid'}}>
+                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', paddingBottom: '0.8rem', borderBottom: '1px solid #f1f5f9'}}>
+                      <h5 style={{margin: 0, fontSize: '0.95rem', fontWeight: '800', color: '#9a3412', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                        <i className="fas fa-id-card"></i> Back Side Details
+                      </h5>
+                      <div style={{fontSize: '0.65rem', color: '#d97706', fontWeight: '800', background: '#fffbeb', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fef3c7'}}>REQUIRED</div>
+                    </div>
+
+                    <div style={{marginBottom: '1rem'}}>
+                      <label style={{display: 'block', fontSize: '0.7rem', fontWeight: '700', color: '#64748b', marginBottom: '6px', textTransform: 'uppercase'}}>Back Photo</label>
+                      <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} style={{fontSize: '0.8rem', width: '100%'}} />
+                    </div>
+
+                    <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
+                      {/* Back Photo Preview */}
+                      <div className="scanning-container">
+                        <div className="image-container" style={{height: '240px'}} onClick={() => setLightboxSrc(schoolIdPhotos.back || userProfile?.id_img_back)}>
+                          { (schoolIdPhotos.back || userProfile?.id_img_back) ? (
+                            <img src={schoolIdPhotos.back || userProfile?.id_img_back} alt="Back ID" />
+                          ) : (
+                            <div style={{height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc'}}>
+                              <i className="fas fa-image" style={{fontSize: '2rem', marginBottom: '8px'}}></i>
+                              <span style={{fontSize: '0.7rem'}}>No Photo</span>
+                            </div>
+                          )}
+                          {idVerified === 'verifying' && <div className="scanning-laser"></div>}
+                        </div>
+                      </div>
+
+                      {/* Back Video Preview */}
+                      <VideoRecorder 
+                        label="Back Check" 
+                        onRecordComplete={(blob) => handleVideoUpload('schoolIdBack_video', blob)} 
+                        initialVideoUrl={documentVideos.schoolIdBack_video || userProfile?.schoolid_back_vid_url}
+                        isUploading={Boolean(uploadingFields['schoolIdBack_video'])}
+                        containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                      />
+                    </div>
+
+                    <div style={{padding: '12px', background: '#fffbeb', borderRadius: '14px', border: '1px solid #fef3c7', display: 'flex', gap: '10px'}}>
+                      <i className="fas fa-school" style={{color: '#d97706', fontSize: '1rem', marginTop: '2px'}}></i>
+                      <p style={{fontSize: '0.72rem', color: '#92400e', margin: 0, lineHeight: '1.4'}}>
+                        <b>Back side:</b> Focus on campus details and validity dates so we can verify your current enrollment status.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ID Action Footer (Button & Status) */}
+                <div style={{marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px dashed #e2e8f0'}}>
+                  <button 
+                    type="button" 
+                    onClick={handleIdScan}
+                    disabled={isSavingStep || idVerified === 'verifying' || (!schoolIdPhotos.front && !userProfile?.id_img_front)}
+                    style={{
+                      width: '100%',
+                      padding: '1rem',
+                      borderRadius: '18px',
+                      background: idVerified === 'success' ? '#10b981' : (idVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
+                      color: 'white',
+                      border: 'none',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '12px',
+                      fontSize: '1rem',
+                      fontWeight: '800',
+                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                      boxShadow: idVerified === 'success' ? '0 10px 25px -5px rgba(16, 185, 129, 0.3)' : '0 10px 25px -5px rgba(79, 13, 0, 0.3)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px'
+                    }}
+                  >
+                    <i className={`fas ${idVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-bolt-lightning'}`}></i>
+                    {idVerified === 'verifying' ? 'AI Analyzing Both ID Sides...' : (idVerified === 'success' ? 'Identity Verified Successfully' : 'Start Instant Multi-Side Scan')}
+                  </button>
+
+                  {idVerified === 'verifying' && (
+                    <div style={{width: '100%', height: '8px', background: '#f1f5f9', borderRadius: '10px', marginTop: '1rem', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0'}}>
+                      <div style={{position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px'}}></div>
+                    </div>
+                  )}
+
+                  {idStatus && (
+                    <div className={`validation-status-card ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`} style={{marginTop: '1.2rem'}}>
+                      <div className={`status-icon ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`}>
+                        <i className={`fas ${idVerified === 'success' ? 'fa-check' : (idVerified === 'failed' ? 'fa-circle-xmark' : 'fa-magnifying-glass')}`}></i>
+                      </div>
+                      <div>
+                        <p style={{fontSize: '0.85rem', fontWeight: '800', margin: '0 0 4px 0'}}>Verification Engine Result</p>
+                        <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.5'}}>{idStatus}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -3382,7 +3393,7 @@ const StudentInfo = () => {
       </div>
 
       {/* Loading overlay */}
-      <div className={`loading-overlay ${isSubmitting || isSavingStep || isInitialLoading ? 'active' : ''} ${isSavingStep && !isSubmitting && !isInitialLoading ? 'minimal' : ''}`}>
+      <div className={`loading-overlay ${isSubmitting || isSavingStep || isInitialLoading ? 'active' : ''}`}>
         <div className="loading-modal">
           <div className="loading-spinner"></div>
           <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>

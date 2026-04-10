@@ -10,7 +10,7 @@ import React, { useState, useEffect } from 'react';
  * @param {string} initialVideoUrl - Existing video URL to show as preview
  * @param {boolean} isUploading - Whether the video is currently uploading
  */
-const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoUrl, isUploading = false }) => {
+const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoUrl, isUploading = false, containerStyle = {} }) => {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [fileName, setFileName] = useState('');
   const [videoError, setVideoError] = useState(null);
@@ -66,7 +66,8 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
       boxShadow: '0 4px 15px rgba(0,0,0,0.03)',
       transition: 'all 0.3s ease',
       position: 'relative',
-      overflow: 'hidden'
+      overflow: 'hidden',
+      ...containerStyle
     }}>
       {isUploading && (
         <div style={{
@@ -126,7 +127,7 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
           </label>
         </div>
       ) : (
-        <div style={{ position: 'relative', width: '100%', maxWidth: '210px', margin: '0 auto' }}>
+        <div style={{ position: 'relative', width: '100%', margin: '0 auto' }}>
           {console.log(`Rendering video for ${label}:`, previewUrl)}
           {videoError ? (
             // Error state: show helpful message and download link

@@ -126,7 +126,8 @@ id_vid_url                  /videos/id_verification/
 indigency_vid_url           /videos/indigency/
 grades_vid_url              /videos/grades/
 enrollment_certificate_vid  /videos/coe/
-schoolId_vid_url            /videos/school_id/
+schoolid_front_vid_url      /videos/school_id/
+schoolid_back_vid_url       /videos/school_id/
 ```
 
 ## Testing After Fix

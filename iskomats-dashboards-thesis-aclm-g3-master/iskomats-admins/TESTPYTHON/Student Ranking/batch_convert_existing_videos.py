@@ -103,14 +103,16 @@ def main():
                 indigency_vid_url,
                 grades_vid_url,
                 enrollment_certificate_vid_url,
-                schoolId_vid_url
+                schoolid_front_vid_url,
+                schoolid_back_vid_url
             FROM applicants
             WHERE (
                 id_vid_url IS NOT NULL OR 
                 indigency_vid_url IS NOT NULL OR 
                 grades_vid_url IS NOT NULL OR 
                 enrollment_certificate_vid_url IS NOT NULL OR
-                schoolId_vid_url IS NOT NULL
+                schoolid_front_vid_url IS NOT NULL OR
+                schoolid_back_vid_url IS NOT NULL
             )
         """)
         
@@ -125,7 +127,7 @@ def main():
             1 for a in applicants 
             for url in [a.get('id_vid_url'), a.get('indigency_vid_url'), 
                        a.get('grades_vid_url'), a.get('enrollment_certificate_vid_url'),
-                       a.get('schoolId_vid_url')]
+                       a.get('schoolid_front_vid_url'), a.get('schoolid_back_vid_url')]
             if url
         )
         
@@ -145,7 +147,8 @@ def main():
                 'indigency_vid_url': 'Indigency Video',
                 'grades_vid_url': 'Grades Video',
                 'enrollment_certificate_vid_url': 'COE Video',
-                'schoolId_vid_url': 'School ID Video'
+                'schoolid_front_vid_url': 'School ID Front Video',
+                'schoolid_back_vid_url': 'School ID Back Video'
             }
             
             for field, label in video_fields.items():

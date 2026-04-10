@@ -279,7 +279,6 @@ def ensure_verification_columns():
             'indigency_vid_url': 'indigency_vid_url',
             'grades_vid_url': 'grades_vid_url',
             'enrollment_certificate_vid_url': 'enrollment_certificate_vid_url',
-            'schoolid_vid_url': 'schoolid_vid_url',
             'schoolid_front_vid_url': 'schoolid_front_vid_url',
             'schoolid_back_vid_url': 'schoolid_back_vid_url'
         }
@@ -295,14 +294,6 @@ def ensure_verification_columns():
             if col not in existing_cols:
                 print(f"[MIGRATION] Adding column {col} to applicants table")
                 cur.execute(f"ALTER TABLE applicants ADD COLUMN {col} TEXT")
-
-        cur.execute("""
-            UPDATE applicants
-            SET
-                schoolid_front_vid_url = COALESCE(schoolid_front_vid_url, schoolid_vid_url),
-                schoolid_back_vid_url = COALESCE(schoolid_back_vid_url, schoolid_vid_url)
-            WHERE schoolid_vid_url IS NOT NULL
-        """)
             
         conn.commit()
         conn.close()
@@ -1443,7 +1434,6 @@ def update_profile():
             'mayorIndigency_video': 'indigency_vid_url',
             'mayorGrades_video': 'grades_vid_url',
             'mayorCOE_video': 'enrollment_certificate_vid_url',
-            'schoolId_video': 'schoolid_vid_url',
             'schoolIdFront_video': 'schoolid_front_vid_url',
             'schoolIdBack_video': 'schoolid_back_vid_url',
         }
@@ -1710,9 +1700,8 @@ def submit_application():
             'mayorIndigency_video': 'indigency_vid_url',
             'mayorGrades_video': 'grades_vid_url',
             'mayorCOE_video': 'enrollment_certificate_vid_url',
-            'schoolId_video': 'schoolId_vid_url',
-            'schoolIdFront_video': 'schoolId_front_vid_url',
-            'schoolIdBack_video': 'schoolId_back_vid_url',
+            'schoolIdFront_video': 'schoolid_front_vid_url',
+            'schoolIdBack_video': 'schoolid_back_vid_url',
         }
 
         for form_key, db_col in field_mapping.items():
@@ -1792,7 +1781,7 @@ def ocr_check():
         # 1. Get applicant record from DB
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT applicant_no, first_name, middle_name, last_name, town_city_municipality, id_img_front, id_img_back, indigency_doc, id_vid_url, schoolId_vid_url, schoolId_front_vid_url, schoolId_back_vid_url, indigency_vid_url, enrollment_certificate_vid_url, grades_vid_url FROM applicants WHERE applicant_no = %s", (request.user_no,))
+        cur.execute("SELECT applicant_no, first_name, middle_name, last_name, town_city_municipality, id_img_front, id_img_back, indigency_doc, id_vid_url, schoolid_front_vid_url, schoolid_back_vid_url, indigency_vid_url, enrollment_certificate_vid_url, grades_vid_url FROM applicants WHERE applicant_no = %s", (request.user_no,))
         applicant = cur.fetchone()
 
         if not applicant:
@@ -1866,8 +1855,8 @@ def ocr_check():
                 # Determine video URL for this document type (Prioritize request payload)
                 frontend_video_front_url = data.get('video_url')
                 frontend_video_back_url = data.get('video_url_back') or frontend_video_front_url
-                school_id_front_video = applicant.get('schoolid_front_vid_url') or applicant.get('schoolid_vid_url')
-                school_id_back_video = applicant.get('schoolid_back_vid_url') or applicant.get('schoolid_vid_url')
+                school_id_front_video = applicant.get('schoolid_front_vid_url')
+                school_id_back_video = applicant.get('schoolid_back_vid_url')
                 vid_url_map = {
                     'Indigency': frontend_video_front_url or applicant.get('indigency_vid_url'),
                     'SchoolID': frontend_video_front_url or school_id_front_video,
@@ -2562,7 +2551,6 @@ def upload_video():
                 'mayorIndigency_video': 'indigency',
                 'mayorCOE_video': 'coe',
                 'mayorGrades_video': 'grades',
-                'schoolId_video': 'school_id',
                 'schoolIdFront_video': 'school_id',
                 'schoolIdBack_video': 'school_id',
                 'id_vid_url': 'id_verification',
@@ -2579,7 +2567,6 @@ def upload_video():
                 'mayorIndigency_video': 'indigency_vid_url',
                 'mayorCOE_video': 'enrollment_certificate_vid_url',
                 'mayorGrades_video': 'grades_vid_url',
-                'schoolId_video': 'schoolid_vid_url',
                 'schoolIdFront_video': 'schoolid_front_vid_url',
                 'schoolIdBack_video': 'schoolid_back_vid_url',
                 'face_video': 'id_vid_url'
