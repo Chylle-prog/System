@@ -25,8 +25,8 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
-# Global OCR Concurrency Control: Increased to 2 for better parallel throughput on Render
-OCR_SEMAPHORE = eventlet.semaphore.Semaphore(2)
+# Global OCR Concurrency Control: Set to 1 for strict memory safety on Render (prevent OOM)
+OCR_SEMAPHORE = eventlet.semaphore.Semaphore(1)
 
 
 # ─── Environment hints for threading & memory ──────────────────────────────────
