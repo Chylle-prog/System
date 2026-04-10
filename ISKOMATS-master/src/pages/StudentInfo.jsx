@@ -2170,7 +2170,12 @@ const StudentInfo = () => {
 
               <div className="form-row">
                 <div className="form-group">
-                  <label>Email Address <span style={{color: '#e74c3c'}}>*</span></label              {/* Documentary Requirement: Indigency */}
+                  <label>Email Address <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="email" name="emailAddress" value={formData.emailAddress} onChange={handleInputChange} placeholder="example@email.com" required />
+                </div>
+              </div>
+
+              {/* Documentary Requirement: Indigency */}
               <div className="requirement-card">
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
                   <div>
@@ -2271,15 +2276,6 @@ const StudentInfo = () => {
                       <p style={{fontSize: '0.75rem', color: '#92400e', margin: 0, lineHeight: '1.4'}}>
                         <b>Face Check:</b> Look directly at the camera while holding the original document clearly in view for 5 seconds.
                       </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-   </p>
-                    </div>
-                  </div>
-                </div>
-              </div> </div>
                     </div>
                   </div>
                 </div>

@@ -403,25 +403,30 @@ export const applicantAPI = {
    * @returns {Promise}
    */
   ocrCheck: async (idFront = null, idBack = null, indigencyDoc = null, townCity = null, enrollmentDoc = null, grades_doc = null, firstName = null, lastName = null, middleName = null, schoolName = null, idNumber = null, yearLevel = null, gpa = null, videoUrl = null, scholarshipNo = null) => {
+    const fData = new FormData();
+    
+    // Add document data (handling both base64 strings and potential Blob/Files)
+    if (idFront) fData.append('id_front', idFront);
+    if (idBack) fData.append('id_back', idBack);
+    if (indigencyDoc) fData.append('indigency_doc', indigencyDoc);
+    if (enrollmentDoc) fData.append('enrollment_doc', enrollmentDoc);
+    if (grades_doc) fData.append('grades_doc', grades_doc);
+    
+    // Add metadata
+    fData.append('town_city', townCity || '');
+    fData.append('firstName', firstName || '');
+    fData.append('lastName', lastName || '');
+    fData.append('middleName', middleName || '');
+    fData.append('schoolName', schoolName || '');
+    fData.append('idNumber', idNumber || '');
+    fData.append('yearLevel', yearLevel || '');
+    fData.append('gpa', gpa || '');
+    fData.append('video_url', videoUrl || '');
+    if (scholarshipNo) fData.append('scholarship_no', scholarshipNo);
+
     return makeRequest('/student/verification/ocr-check', {
       method: 'POST',
-      body: JSON.stringify({
-        id_front: idFront,
-        id_back: idBack,
-        indigency_doc: indigencyDoc,
-        enrollment_doc: enrollmentDoc,
-        grades_doc: grades_doc,
-        town_city: townCity,
-        firstName: firstName,
-        lastName: lastName,
-        middleName: middleName,
-        schoolName: schoolName,
-        idNumber: idNumber,
-        yearLevel: yearLevel,
-        gpa: gpa,
-        video_url: videoUrl,
-        scholarship_no: scholarshipNo
-      }),
+      body: fData,
     });
   },
 

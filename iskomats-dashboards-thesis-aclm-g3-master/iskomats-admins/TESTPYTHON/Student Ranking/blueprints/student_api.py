@@ -1640,7 +1640,11 @@ def submit_application():
 def ocr_check():
     """OCR verification endpoint — supports multi-document authentication in parallel."""
     try:
-        data = request.get_json(silent=True) or {}
+        # Support both JSON and multipart/form-data
+        if request.is_json:
+            data = request.json
+        else:
+            data = request.form.to_dict()
 
         # 1. Get applicant record from DB
         conn = get_db()
@@ -1651,12 +1655,18 @@ def ocr_check():
         if not applicant:
             return jsonify({'verified': False, 'message': 'Applicant profile not found'}), 404
 
-        # 2. Resolve parameters
-        id_front_param = data.get('id_front') or data.get('idFront')
-        id_back_param = data.get('id_back') or data.get('idBack')
-        indigency_doc_param = data.get('indigency_doc') or data.get('indigencyDoc')
-        enrollment_doc_param = data.get('enrollment_doc') or data.get('enrollmentDoc')
-        grades_doc_param = data.get('grades_doc') or data.get('gradesDoc')
+        # 2. Resolve parameters (multipart files prioritize over payload/JSON)
+        id_front_file = request.files.get('id_front') or request.files.get('idFront')
+        id_back_file = request.files.get('id_back') or request.files.get('idBack')
+        indigency_doc_file = request.files.get('indigency_doc') or request.files.get('indigencyDoc')
+        enrollment_doc_file = request.files.get('enrollment_doc') or request.files.get('enrollmentDoc')
+        grades_doc_file = request.files.get('grades_doc') or request.files.get('gradesDoc')
+
+        id_front_param = id_front_file.read() if id_front_file else data.get('id_front') or data.get('idFront')
+        id_back_param = id_back_file.read() if id_back_file else data.get('id_back') or data.get('idBack')
+        indigency_doc_param = indigency_doc_file.read() if indigency_doc_file else data.get('indigency_doc') or data.get('indigencyDoc')
+        enrollment_doc_param = enrollment_doc_file.read() if enrollment_doc_file else data.get('enrollment_doc') or data.get('enrollmentDoc')
+        grades_doc_param = grades_doc_file.read() if grades_doc_file else data.get('grades_doc') or data.get('gradesDoc')
 
         first_name = str(data.get('first_name') or data.get('firstName') or '').strip()
         middle_name = str(data.get('middle_name') or data.get('middleName') or '').strip()
@@ -1691,6 +1701,8 @@ def ocr_check():
                 print(f"[OCR ERROR] Failed to fetch scholarship year: {sch_err}", flush=True)
 
         def get_bytes(param, db_val):
+            if isinstance(param, bytes):
+                return param
             return decode_base64(param) or db_bytes(db_val)
         
         # Now uses global fetch_video_bytes_from_url
@@ -1699,19 +1711,12 @@ def ocr_check():
         def process_doc(doc_type, doc_param, db_val):
             try:
                 # Use standard doc bytes for provided parameters, fallback to DB only for Indigency/ID
-                doc_bytes = decode_base64(doc_param) if doc_param else (db_bytes(db_val) if db_val else None)
-                
-                if doc_type == 'Indigency':
-                    print(f"[INDIGENCY DECODE] doc_param present: {bool(doc_param)}, param is string: {isinstance(doc_param, str)}, param length: {len(doc_param) if isinstance(doc_param, str) else 'N/A'}", flush=True)
-                    print(f"[INDIGENCY DECODE] has comma: {',' in doc_param if isinstance(doc_param, str) else 'N/A'}, doc_bytes obtained: {doc_bytes is not None}", flush=True)
-                    if doc_bytes is None:
-                        print(f"[INDIGENCY DECODE] WARNING: doc_bytes is None! db_val present: {bool(db_val)}", flush=True)
-                        if not doc_param and not db_val:
-                            print(f"[INDIGENCY DECODE] CRITICAL: No data source available", flush=True)
+                if isinstance(doc_param, bytes):
+                    doc_bytes = doc_param
+                else:
+                    doc_bytes = decode_base64(doc_param) if doc_param else (db_bytes(db_val) if db_val else None)
                 
                 if not doc_bytes: 
-                    if doc_type == 'Indigency':
-                        print(f"[INDIGENCY] Early return due to missing doc_bytes", flush=True)
                     return None
 
                 # 1. Main OCR Verification (Identity)
