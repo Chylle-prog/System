@@ -3364,7 +3364,7 @@ def get_announcement_image_by_index(ann_no, idx):
         try:
             decrypted_img = _fernet.decrypt(encrypted_img)
         except Exception as decrypt_error:
-            print(f"[IMAGE ENDPOINT] Failed to decrypt image for scholarship {req_no}: {decrypt_error}")
+            print(f"[IMAGE ENDPOINT] Failed to decrypt image for announcement {ann_no} at index {idx}: {decrypt_error}")
             return jsonify({'message': 'Failed to decrypt image'}), 500
         
         # Detect image type from magic bytes
@@ -3469,12 +3469,39 @@ def get_admin_announcements(current_user_id, pro_no, role):
         except Exception:
             primary_key_column, foreign_key_column = None, None
 
+        cur.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'announcements'
+              AND column_name IN ('time_added', 'status_updated', 'ann_date')
+            """
+        )
+        announcement_columns = {
+            row['column_name'] if isinstance(row, dict) else row[0]
+            for row in cur.fetchall()
+        }
+
+        if 'time_added' in announcement_columns:
+            date_col = 'a.time_added'
+            order_col = 'a.time_added DESC'
+        elif 'status_updated' in announcement_columns:
+            date_col = 'a.status_updated'
+            order_col = 'a.status_updated DESC'
+        elif 'ann_date' in announcement_columns:
+            date_col = 'a.ann_date'
+            order_col = 'a.ann_date DESC'
+        else:
+            date_col = 'NULL'
+            order_col = 'a.ann_no DESC'
+
         query = """
             SELECT
                 a.ann_no,
                 a.ann_title,
                 a.ann_message,
-                a.time_added,
+                {date_col} AS ann_date,
+                {date_col} AS time_added,
                 COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,
                 {image_select}
             FROM announcements a
@@ -3482,6 +3509,7 @@ def get_admin_announcements(current_user_id, pro_no, role):
             {image_join}
             WHERE COALESCE(a.is_removed, FALSE) = FALSE
         """.format(
+            date_col=date_col,
             image_select=f"ai.{primary_key_column} AS image_id" if primary_key_column and foreign_key_column else "NULL AS image_id",
             image_join=f"LEFT JOIN announcement_images ai ON a.ann_no = ai.{foreign_key_column}" if primary_key_column and foreign_key_column else "",
         )
@@ -3496,9 +3524,9 @@ def get_admin_announcements(current_user_id, pro_no, role):
             params.append(resolved_provider_no)
 
         if primary_key_column and foreign_key_column:
-            query += f' ORDER BY a.time_added DESC, ai.{primary_key_column}'
+            query += f' ORDER BY {order_col}, ai.{primary_key_column}'
         else:
-            query += ' ORDER BY a.time_added DESC, a.ann_no DESC'
+            query += f' ORDER BY {order_col}, a.ann_no DESC'
         cur.execute(query, params)
         rows = cur.fetchall()
 
@@ -3507,6 +3535,14 @@ def get_admin_announcements(current_user_id, pro_no, role):
             row_dict = dict(row)
             ann_no = row_dict['ann_no']
             image_id = row_dict.pop('image_id', None)
+            ann_date = row_dict.get('ann_date')
+
+            if ann_date and hasattr(ann_date, 'isoformat'):
+                row_dict['created_at'] = ann_date.isoformat()
+            elif ann_date:
+                row_dict['created_at'] = str(ann_date)
+            else:
+                row_dict['created_at'] = None
 
             if ann_no not in announcements:
                 announcements[ann_no] = {
