@@ -1460,53 +1460,42 @@ const StudentInfo = () => {
       }));
     } else if (type === 'file') {
       const file = files[0] || null;
-      if (DOCUMENT_IMAGE_FIELDS.has(name) && file && file.type.startsWith('image/') && window.compressImage) {
-        window.compressImage(file).then(compressedBase64 => {
-          setFormData(prev => ({ ...prev, [name]: compressedBase64 }));
-          setPhotos(prev => ({ ...prev, [name]: compressedBase64 }));
-          
-          // Reset verification on photo change
-          if (name === 'mayorIndigency_photo') { setOcrVerified(null); setOcrStatus(''); }
-          else if (name === 'mayorCOE_photo') { setCoeVerified(null); setCoeStatus(''); }
-          else if (name === 'mayorGrades_photo') { setGradesVerified(null); setGradesStatus(''); }
-          else if (name === 'mayorValidID_photo') { setIdVerified(null); setIdStatus(''); }
-          
-          applicantAPI.updateProfile({ [name]: compressedBase64 }).catch(console.error);
-        });
+      if (DOCUMENT_IMAGE_FIELDS.has(name) && file) {
+        // Create local preview immediately
+        const localUrl = URL.createObjectURL(file);
+        setPhotos(prev => ({ ...prev, [name]: localUrl }));
         
+        if (file.type.startsWith('image/') && window.compressImage) {
+          window.compressImage(file).then(compressedBase64 => {
+            setFormData(prev => ({ ...prev, [name]: compressedBase64 }));
+            setPhotos(prev => ({ ...prev, [name]: compressedBase64 })); // Update with compressed version
+            
+            // Reset verification on photo change
+            if (name === 'mayorIndigency_photo') { setOcrVerified(null); setOcrStatus(''); }
+            else if (name === 'mayorCOE_photo') { setCoeVerified(null); setCoeStatus(''); }
+            else if (name === 'mayorGrades_photo') { setGradesVerified(null); setGradesStatus(''); }
+            
+            applicantAPI.updateProfile({ [name]: compressedBase64 }).catch(console.error);
+          });
+        } else {
+          // Non-image or compression skipped
+          setFormData(prev => ({ ...prev, [name]: file }));
+        }
+
         if (name === 'mayorValidID_photo') {
-          setValidIdPreview(file ? URL.createObjectURL(file) : null);
+          setValidIdPreview(localUrl);
         }
         return;
       }
 
-      if (DOCUMENT_IMAGE_FIELDS.has(name)) {
-        setFormData(prev => ({
-          ...prev,
-          [name]: file
-        }));
-
-        if (name === 'mayorValidID_photo') {
-          setValidIdPreview(file ? URL.createObjectURL(file) : null);
-        }
-      } else if (file && file.type.startsWith('image/') && window.compressImage) {
+      if (file && file.type.startsWith('image/') && window.compressImage) {
         window.compressImage(file).then(compressedBase64 => {
-          setFormData(prev => ({
-            ...prev,
-            [name]: compressedBase64
-          }));
-          
-          if (name === 'mayorValidID_photo') {
-            setValidIdPreview(compressedBase64);
-          }
-          
+          setFormData(prev => ({ ...prev, [name]: compressedBase64 }));
+          if (name === 'mayorValidID_photo') setValidIdPreview(compressedBase64);
           applicantAPI.updateProfile({ [name]: compressedBase64 }).catch(console.error);
         });
       } else {
-        setFormData(prev => ({
-          ...prev,
-          [name]: file
-        }));
+        setFormData(prev => ({ ...prev, [name]: file }));
       }
     } else {
       setFormData(prev => ({
