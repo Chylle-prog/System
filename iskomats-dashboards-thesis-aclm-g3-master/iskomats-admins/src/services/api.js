@@ -6,10 +6,29 @@ import { clearAdminSession } from '../utils/admin-session';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  timeout: 30000,
 });
+
+const RETRYABLE_METHODS = new Set(['get', 'head', 'options']);
+
+const wait = (ms) => new Promise((resolve) => {
+  window.setTimeout(resolve, ms);
+});
+
+const shouldRetryRequest = (error) => {
+  const method = (error.config?.method || 'get').toLowerCase();
+  const status = error.response?.status;
+
+  if (!RETRYABLE_METHODS.has(method)) {
+    return false;
+  }
+
+  if (!error.response) {
+    return true;
+  }
+
+  return status === 502 || status === 503 || status === 504;
+};
 
 // Add token to requests
 api.interceptors.request.use((config) => {
@@ -20,6 +39,8 @@ api.interceptors.request.use((config) => {
 
   if (config.data instanceof FormData) {
     delete config.headers['Content-Type'];
+  } else if (config.data && ['post', 'put', 'patch'].includes((config.method || '').toLowerCase())) {
+    config.headers['Content-Type'] = 'application/json';
   }
 
   return config;
@@ -28,7 +49,13 @@ api.interceptors.request.use((config) => {
 // Handle 401 responses
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    if (shouldRetryRequest(error) && !error.config?._retry) {
+      error.config._retry = true;
+      await wait(750);
+      return api.request(error.config);
+    }
+
     const isLoginRequest = error.config?.url?.includes('/auth/login');
     const isLoginPage = window.location.pathname === '/login' || window.location.pathname === '/';
     const errBody = error.response?.data || {};
@@ -79,6 +106,9 @@ export const authAPI = {
 
   me: () =>
     api.get('/admin/auth/me'),
+
+  health: () =>
+    api.get('/health'),
   
   /**
    * Check if email is available for registration
