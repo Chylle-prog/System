@@ -1,9 +1,8 @@
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import Dash from './Pages/Dash/dash.jsx'
-import DashAfrica from './Pages/Dash/dash-africa'
-import DashVilma from './Pages/Dash/dash-vilma'
-import DashTulong from './Pages/Dash/dash-tulong'
+import ProviderDashboard from './Pages/Dash/provider-dashboard'
+import { PROVIDER_DASHBOARD_ROUTE, isProviderDashboardRole } from './Pages/Dash/provider-dashboard-config'
 import Navbar from './Components/Navbar/navbar'
 import AccessDenied from './Pages/Auth/AccessDenied/access-denied'
 import ForgetPass from './Pages/Auth/Forget Pass/forget-pass'
@@ -23,23 +22,17 @@ const ProtectedRoute = ({ children, requiredRole }) => {
   }
 
   // If requiredRole is specified, check if user has that role
-  if (requiredRole && userRole !== requiredRole) {
+  if (requiredRole === 'provider' && !isProviderDashboardRole(userRole)) {
+    return <AccessDenied message="You don't have access to the scholarship provider dashboard." />;
+  }
+
+  if (requiredRole && requiredRole !== 'provider' && userRole !== requiredRole) {
     return <AccessDenied message={`You don't have access to the ${requiredRole} scholarship dashboard.`} />;
   }
 
   // For main dashboard, if user has any specific role, redirect them to their specific dashboard
-  if (!requiredRole && userRole && userRole !== '' && userRole !== 'main') {
-    switch (userRole) {
-      case 'africa':
-        return <Navigate to="/dash-africa" replace />;
-      case 'vilma':
-        return <Navigate to="/dash-vilma" replace />;
-      case 'tulong':
-        return <Navigate to="/dash-tulong" replace />;
-      default:
-        // If user has 'main' role or no specific role, allow access to main dashboard
-        return children;
-    }
+  if (!requiredRole && isProviderDashboardRole(userRole)) {
+    return <Navigate to={PROVIDER_DASHBOARD_ROUTE} replace />;
   }
 
   return children;
@@ -56,7 +49,7 @@ function AppContent() {
   }
 
   // Routes that should show navbar
-  const dashboardRoutes = ['/dash', '/dash-africa', '/dash-vilma', '/dash-tulong'];
+  const dashboardRoutes = ['/dash', PROVIDER_DASHBOARD_ROUTE, '/dash-africa', '/dash-vilma', '/dash-tulong'];
   const showNavbar = dashboardRoutes.includes(location.pathname);
 
   // Check authentication status on mount and route change
@@ -85,19 +78,24 @@ function AppContent() {
             <Dash />
           </ProtectedRoute>
         } />
+        <Route path={PROVIDER_DASHBOARD_ROUTE} element={
+          <ProtectedRoute requiredRole="provider">
+            <ProviderDashboard />
+          </ProtectedRoute>
+        } />
         <Route path='/dash-africa' element={
-          <ProtectedRoute requiredRole="africa">
-            <DashAfrica />
+          <ProtectedRoute requiredRole="provider">
+            <Navigate to={PROVIDER_DASHBOARD_ROUTE} replace />
           </ProtectedRoute>
         } />
         <Route path='/dash-vilma' element={
-          <ProtectedRoute requiredRole="vilma">
-            <DashVilma />
+          <ProtectedRoute requiredRole="provider">
+            <Navigate to={PROVIDER_DASHBOARD_ROUTE} replace />
           </ProtectedRoute>
         } />
         <Route path='/dash-tulong' element={
-          <ProtectedRoute requiredRole="tulong">
-            <DashTulong />
+          <ProtectedRoute requiredRole="provider">
+            <Navigate to={PROVIDER_DASHBOARD_ROUTE} replace />
           </ProtectedRoute>
         } />
         <Route path="*" element={<Navigate to="/login" replace />} />

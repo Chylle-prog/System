@@ -8,6 +8,7 @@ import {
   FaSignInAlt,
 } from "react-icons/fa";
 import { authAPI } from "../../../services/api";
+import { PROVIDER_DASHBOARD_ROUTE, isProviderDashboardRole } from "../../Dash/provider-dashboard-config";
 import authBg from "../../../assets/ad1.jpg";
 import logo from "../../../assets/logo.png";
 
@@ -69,17 +70,13 @@ const Login = () => {
         case 'main':
           navigate('/dash');
           break;
-        case 'africa':
-          navigate('/dash-africa');
-          break;
-        case 'vilma':
-          navigate('/dash-vilma');
-          break;
-        case 'tulong':
-          navigate('/dash-tulong');
-          break;
         default:
+          if (isProviderDashboardRole(role)) {
+            navigate(PROVIDER_DASHBOARD_ROUTE);
+            break;
+          }
           navigate('/dash');
+          break;
       }
     } catch (error) {
       let errorMessage = "Login failed. Please check if your email exists, the role is correct, and the password is correct.";

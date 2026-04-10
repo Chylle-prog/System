@@ -1,24 +1,18 @@
 import { useNavigate } from 'react-router-dom';
 import { FaLock, FaArrowLeft } from 'react-icons/fa';
+import { PROVIDER_DASHBOARD_ROUTE, isProviderDashboardRole } from '../../Dash/provider-dashboard-config';
 
 const AccessDenied = ({ message }) => {
   const navigate = useNavigate();
 
   const handleGoBack = () => {
     const userRole = localStorage.getItem('userRole');
-    switch (userRole) {
-      case 'africa':
-        navigate('/dash-africa');
-        break;
-      case 'vilma':
-        navigate('/dash-vilma');
-        break;
-      case 'tulong':
-        navigate('/dash-tulong');
-        break;
-      default:
-        navigate('/dash');
+    if (isProviderDashboardRole(userRole)) {
+      navigate(PROVIDER_DASHBOARD_ROUTE);
+      return;
     }
+
+    navigate('/dash');
   };
 
   return (

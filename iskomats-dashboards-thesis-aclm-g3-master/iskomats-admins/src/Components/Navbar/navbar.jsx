@@ -1,14 +1,17 @@
 import { Link, useLocation } from 'react-router-dom';
 import { FaSignInAlt, FaUserPlus, FaBars, FaTimes, FaSignOutAlt, FaTachometerAlt } from 'react-icons/fa';
 import { useState } from 'react';
+import { PROVIDER_DASHBOARD_ROUTE, isProviderDashboardRole } from '../../Pages/Dash/provider-dashboard-config';
 import logo from '../../assets/logo.png';
 
 const Navbar = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
+  const userRole = localStorage.getItem('userRole') || '';
+  const dashboardPath = isProviderDashboardRole(userRole) ? PROVIDER_DASHBOARD_ROUTE : '/dash';
 
   // Check if current route is a dashboard route
-  const isDashboardRoute = ['/dash', '/dash-africa', '/dash-vilma', '/dash-tulong'].includes(location.pathname);
+  const isDashboardRoute = ['/dash', PROVIDER_DASHBOARD_ROUTE, '/dash-africa', '/dash-vilma', '/dash-tulong'].includes(location.pathname);
 
   const handleLogout = () => {
     // Clear authentication data
@@ -43,7 +46,7 @@ const Navbar = () => {
           {isDashboardRoute ? (
             <>
               <Link
-                to="/dash"
+                to={dashboardPath}
                 className="px-6 py-3 rounded-xl border-2 border-gray-600 text-gray-300 font-semibold text-sm transition-all duration-300 hover:border-transparent hover:bg-gradient-to-r hover:from-red-800 hover:to-red-700 hover:text-white hover:shadow-xl hover:-translate-y-1"
               >
                 <FaTachometerAlt className="inline mr-2" />
@@ -95,7 +98,7 @@ const Navbar = () => {
           {isDashboardRoute ? (
             <>
               <Link
-                to="/dash"
+                to={dashboardPath}
                 className="block w-full px-4 py-2 rounded-lg bg-gradient-to-r from-red-800 to-red-700 text-white font-medium text-sm shadow-md hover:shadow-lg transition-all duration-300 text-center"
                 onClick={() => setIsMobileMenuOpen(false)}
               >

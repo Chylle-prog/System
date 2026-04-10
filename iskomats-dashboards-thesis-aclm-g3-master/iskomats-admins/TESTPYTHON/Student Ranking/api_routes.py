@@ -1,12 +1,13 @@
 import sys
 import os
 import json
+from decimal import Decimal
 from flask import Blueprint, request, jsonify, send_file, url_for, session
 from flask_bcrypt import Bcrypt
 from functools import wraps
 from flask_socketio import emit, join_room
 import jwt
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import psycopg2
 import base64
 from urllib import parse, request as urllib_request, error as urllib_error
@@ -118,6 +119,44 @@ def get_applicant_media_metadata(applicant_no, column_name, has_data, data_value
         }]
     
     return []
+
+def normalize_json_value(value):
+    """Convert DB values into JSON-safe primitives."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+
+    if isinstance(value, Decimal):
+        return float(value)
+
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+
+    if hasattr(value, 'tobytes'):
+        try:
+            return value.tobytes().decode('utf-8', errors='ignore')
+        except Exception:
+            return None
+
+    if isinstance(value, (bytes, bytearray)):
+        try:
+            return bytes(value).decode('utf-8', errors='ignore')
+        except Exception:
+            return None
+
+    if isinstance(value, dict):
+        return {key: normalize_json_value(item) for key, item in value.items()}
+
+    if isinstance(value, (list, tuple)):
+        return [normalize_json_value(item) for item in value]
+
+    return str(value)
+
+
+def normalize_json_object(record):
+    """Normalize a mapping or sequence into a JSON-safe object."""
+    if isinstance(record, dict):
+        return {key: normalize_json_value(value) for key, value in record.items()}
+    return normalize_json_value(record)
 
 def decrypt_image_to_data_url(encrypted_data):
     """Decrypt binary data and return as base64 data URL for signatures."""
@@ -2431,6 +2470,7 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
 def get_applicants(current_user_id, pro_no, role, program):
     """Get applicants for a program"""
     try:
+        print(f"[APPLICANTS API] Loading applicants for program='{program}', role='{role}', pro_no='{pro_no}'", flush=True)
         filters = request.args
         conn = get_db()
         cursor = conn.cursor()
@@ -2518,60 +2558,72 @@ def get_applicants(current_user_id, pro_no, role, program):
         applicants = cursor.fetchall()
         cursor.close()
         conn.close()
+        print(f"[APPLICANTS API] Query returned {len(applicants)} rows for program='{program}'", flush=True)
         
         # Convert rows to plain dicts and provide URLs for binary data
         result = []
         for row in applicants:
-            a = dict(row)
-            app_no = a['id'] # 'id' is aliased from 'applicant_no'
+            try:
+                a = normalize_json_object(dict(row))
+                app_no = a['id'] # 'id' is aliased from 'applicant_no'
 
-            # Manage signature as a lazy-loaded URL too
-            if a.get('has_signature'):
-                a['signature'] = url_for('admin_api.get_applicant_image', applicant_no=app_no, column_name='signature_image_data', _external=True)
-            else:
-                a['signature'] = None
-            
-            # Ensure income is float (might be Decimal from DB)
-            if a.get('income') is not None:
+                # Manage signature as a lazy-loaded URL too
+                if a.get('has_signature'):
+                    a['signature'] = url_for('admin_api.get_applicant_image', applicant_no=app_no, column_name='signature_image_data', _external=True)
+                else:
+                    a['signature'] = None
+                
+                # Ensure income is float (might be Decimal from DB)
+                if a.get('income') is not None:
+                    try:
+                        a['income'] = float(a['income'])
+                    except (ValueError, TypeError):
+                        pass
+                
+                # Convert document blobs to media arrays (Optimized: use URLs)
+                # Include both image files and video files for each document type
+                a['indigencyFiles'] = get_applicant_media_metadata(app_no, 'indigency_doc', a.get('has_indigency_doc'), None, "Indigency Proof")
+                if a.get('indigency_vid_url'):
+                    a['indigencyFiles'].extend(get_applicant_media_metadata(app_no, 'indigency_vid_url', True, a.get('indigency_vid_url'), "Indigency Video"))
+                
+                a['certificateFiles'] = get_applicant_media_metadata(app_no, 'enrollment_certificate_doc', a.get('has_enrollment_certificate_doc'), None, "Enrollment Certificate")
+                if a.get('enrollment_certificate_vid_url'):
+                    a['certificateFiles'].extend(get_applicant_media_metadata(app_no, 'enrollment_certificate_vid_url', True, a.get('enrollment_certificate_vid_url'), "Enrollment Certificate Video"))
+                
+                a['gradesFiles'] = get_applicant_media_metadata(app_no, 'grades_doc', a.get('has_grades_doc'), None, "Grades / Transcript")
+                if a.get('grades_vid_url'):
+                    a['gradesFiles'].extend(get_applicant_media_metadata(app_no, 'grades_vid_url', True, a.get('grades_vid_url'), "Grades Video"))
+                
+                # Combine all ID images into idFiles (Optimized: use URLs)
+                id_files = []
+                if a.get('has_schoolID_photo'):
+                    id_files.extend(get_applicant_media_metadata(app_no, 'schoolID_photo', True, None, "School ID"))
+                if a.get('has_id_img_front'):
+                    id_files.extend(get_applicant_media_metadata(app_no, 'id_img_front', True, None, "ID Front"))
+                if a.get('has_id_img_back'):
+                    id_files.extend(get_applicant_media_metadata(app_no, 'id_img_back', True, None, "ID Back"))
+                if a.get('has_id_pic'):
+                    id_files.extend(get_applicant_media_metadata(app_no, 'id_pic', True, None, "ID Photo"))
+                if a.get('has_profile_picture'):
+                    id_files.extend(get_applicant_media_metadata(app_no, 'profile_picture', True, None, "Profile Picture"))
+                
+                a['idFiles'] = id_files
+                result.append(a)
+            except Exception as row_error:
+                app_identifier = None
                 try:
-                    a['income'] = float(a['income'])
-                except (ValueError, TypeError):
+                    app_identifier = dict(row).get('id')
+                except Exception:
                     pass
-            
-            # Convert document blobs to media arrays (Optimized: use URLs)
-            # Include both image files and video files for each document type
-            a['indigencyFiles'] = get_applicant_media_metadata(app_no, 'indigency_doc', a.get('has_indigency_doc'), None, "Indigency Proof")
-            if a.get('indigency_vid_url'):
-                a['indigencyFiles'].extend(get_applicant_media_metadata(app_no, 'indigency_vid_url', True, a.get('indigency_vid_url'), "Indigency Video"))
-            
-            a['certificateFiles'] = get_applicant_media_metadata(app_no, 'enrollment_certificate_doc', a.get('has_enrollment_certificate_doc'), None, "Enrollment Certificate")
-            if a.get('enrollment_certificate_vid_url'):
-                a['certificateFiles'].extend(get_applicant_media_metadata(app_no, 'enrollment_certificate_vid_url', True, a.get('enrollment_certificate_vid_url'), "Enrollment Certificate Video"))
-            
-            a['gradesFiles'] = get_applicant_media_metadata(app_no, 'grades_doc', a.get('has_grades_doc'), None, "Grades / Transcript")
-            if a.get('grades_vid_url'):
-                a['gradesFiles'].extend(get_applicant_media_metadata(app_no, 'grades_vid_url', True, a.get('grades_vid_url'), "Grades Video"))
-            
-            # Combine all ID images into idFiles (Optimized: use URLs)
-            id_files = []
-            if a.get('has_schoolID_photo'): 
-                id_files.extend(get_applicant_media_metadata(app_no, 'schoolID_photo', True, None, "School ID"))
-            if a.get('has_id_img_front'): 
-                id_files.extend(get_applicant_media_metadata(app_no, 'id_img_front', True, None, "ID Front"))
-            if a.get('has_id_img_back'): 
-                id_files.extend(get_applicant_media_metadata(app_no, 'id_img_back', True, None, "ID Back"))
-            if a.get('has_id_pic'): 
-                id_files.extend(get_applicant_media_metadata(app_no, 'id_pic', True, None, "ID Photo"))
-            if a.get('has_profile_picture'): 
-                id_files.extend(get_applicant_media_metadata(app_no, 'profile_picture', True, None, "Profile Picture"))
-            
-            a['idFiles'] = id_files
-            
-            result.append(a)
+                print(f"[APPLICANTS API] Skipping malformed applicant row {app_identifier or 'unknown'} for program='{program}': {row_error}", flush=True)
+                traceback.print_exc()
         
+        print(f"[APPLICANTS API] Returning {len(result)} normalized applicant rows for program='{program}'", flush=True)
         return jsonify({'success': True, 'applicants': result}), 200
     
     except Exception as e:
+        print(f"[APPLICANTS API] Error while loading applicants for program='{program}': {e}", flush=True)
+        traceback.print_exc()
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
 @api_bp.route('/applicants/<int:applicant_no>/accept', methods=['POST'])
