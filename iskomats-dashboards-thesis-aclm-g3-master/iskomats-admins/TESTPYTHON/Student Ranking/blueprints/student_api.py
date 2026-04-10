@@ -1590,9 +1590,10 @@ def get_profile():
         for col in all_columns:
             if col in blob_fields:
                 flag_name = flag_map.get(col, f"has_{col}")
-                select_parts.append(f"({col} IS NOT NULL) as {flag_name}")
+                # Important: Double-quote column names for case-sensitivity in PostgreSQL
+                select_parts.append(f'("{col}" IS NOT NULL) as {flag_name}')
             else:
-                select_parts.append(col)
+                select_parts.append(f'"{col}"')
                 
         query = f"SELECT {', '.join(select_parts)} FROM applicants WHERE applicant_no = %s"
         cur.execute(query, (request.user_no,))
