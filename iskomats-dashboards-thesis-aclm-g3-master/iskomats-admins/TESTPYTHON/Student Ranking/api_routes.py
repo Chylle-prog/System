@@ -1344,22 +1344,34 @@ def init_socketio(socketio):
             
             conn = get_db()
             cursor = conn.cursor()
+            sender_role = (session.get('role') or '').lower()
+            is_student_sender = sender_role == 'student'
             
             # Determine the sender's actual name from the database
             actual_username = username
             
-            # Check if sender is the applicant (student)
-            cursor.execute("SELECT first_name FROM applicants WHERE applicant_no = %s", (sender_id,))
-            app_row = cursor.fetchone()
-            if app_row:
-                # Sender is a student - use their first name
-                actual_username = app_row['first_name']
+            if is_student_sender:
+                cursor.execute("SELECT first_name FROM applicants WHERE applicant_no = %s", (sender_id,))
+                applicant_sender = cursor.fetchone()
+                if applicant_sender and applicant_sender.get('first_name'):
+                    actual_username = applicant_sender['first_name']
+                else:
+                    actual_username = username or f"Applicant {sender_id}"
             else:
-                # Sender is an admin/provider
-                # The username field from frontend should already contain the provider name
-                # (e.g., 'Africa Scholarship Program', 'Vilma Scholarship Program', etc.)
-                # Trust what the frontend sent rather than overwriting it
-                actual_username = username
+                cursor.execute("""
+                    SELECT COALESCE(sp.provider_name, u.user_name) AS sender_name
+                    FROM users u
+                    LEFT JOIN scholarship_providers sp ON u.pro_no = sp.pro_no
+                    WHERE u.user_no = %s
+                    LIMIT 1
+                """, (sender_id,))
+                admin_sender = cursor.fetchone()
+                if admin_sender and admin_sender.get('sender_name'):
+                    actual_username = admin_sender['sender_name']
+                elif username:
+                    actual_username = username
+                else:
+                    actual_username = f"Provider {pro_no}"
             
             # Insert message with explicit IDs and correct username
             cursor.execute("""
@@ -1397,16 +1409,20 @@ def init_socketio(socketio):
                 'student_status': student_status
             }, to=room)
             
-            # 6. Trigger Notification for the applicant if the sender is an admin/provider
-            # and the recipient is not the one who sent the message (though in 1-on-1 it's simple)
-            is_admin_sender = not app_row # If not in applicants table, assume admin/provider
-            if is_admin_sender:
+            # Trigger applicant notification and email only for admin/provider-originated messages.
+            if not is_student_sender:
                 try:
-                    create_notification(
+                    notification_result = create_notification(
                         user_no=app_no,
                         title=f"New Message from {actual_username}",
                         message=message_text[:100] + ('...' if len(message_text) > 100 else ''),
-                        notif_type='message'
+                        notif_type='message',
+                        send_email=True,
+                    )
+                    print(
+                        f"[MESSAGE NOTIF] applicant_no={app_no}, room={room}, created={notification_result.get('created')}, "
+                        f"email_sent={notification_result.get('email_sent')}, reason={notification_result.get('reason', 'ok')}",
+                        flush=True,
                     )
                 except Exception as e:
                     print(f"[NOTIF ERROR] Failed to trigger message notification: {e}")

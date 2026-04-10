@@ -71,7 +71,11 @@ def fetch_google_access_token():
 
 def create_notification(user_no, title, message, notif_type='message', send_email=True):
     """Create a database notification and optionally send an email alert to the user."""
-    GMAIL_SENDER_EMAIL = os.environ.get('GMAIL_SENDER_EMAIL')
+    GMAIL_SENDER_EMAIL = (
+        os.environ.get('GMAIL_SENDER_EMAIL')
+        or os.environ.get('SMTP_SENDER_EMAIL')
+        or os.environ.get('SMTP_EMAIL')
+    )
     
     conn = None
     try:
@@ -84,7 +88,7 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
         if not applicant_check:
             print(f"[NOTIF ERROR] Applicant {user_no} not found in applicants table - cannot create notification (FK constraint)")
             conn.close()
-            return
+            return {'created': False, 'email_sent': False, 'reason': 'applicant-not-found'}
         
         # 1. Insert into database
         try:
@@ -101,7 +105,7 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
                 print(f"[NOTIF ERROR] INSERT returned no result for user {user_no}")
                 conn.rollback()
                 conn.close()
-                return
+                return {'created': False, 'email_sent': False, 'reason': 'notification-insert-empty'}
         except Exception as db_err:
             print(f"[NOTIF ERROR] Database INSERT failed for user {user_no}: {db_err}")
             if 'conn' in locals():
@@ -111,7 +115,7 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
         if not send_email:
             conn.commit()
             conn.close()
-            return
+            return {'created': True, 'email_sent': False, 'reason': 'email-disabled'}
 
         # 2. Get user's email
         cur.execute("SELECT email_address FROM email WHERE applicant_no = %s OR user_no = %s LIMIT 1", (user_no, user_no))
@@ -121,7 +125,7 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
         if not user_row or not user_row['email_address']:
             print(f"[NOTIF WARN] No email found for user {user_no} - database notification created but no email sent")
             conn.close()
-            return
+            return {'created': True, 'email_sent': False, 'reason': 'email-not-found'}
             
         receiver_email = user_row['email_address']
         
@@ -166,12 +170,19 @@ The ISKOMATS Team
                 
                 with urllib_request.urlopen(email_request, timeout=30) as response:
                     print(f"[NOTIF] Email sent to {receiver_email}")
+                conn.close()
+                return {'created': True, 'email_sent': True, 'email': receiver_email}
             except Exception as email_err:
                 print(f"[NOTIF EMAIL ERROR] Failed to send email to {receiver_email}: {email_err}")
+                conn.close()
+                return {'created': True, 'email_sent': False, 'email': receiver_email, 'reason': str(email_err)}
         else:
             print(f"[NOTIF] GMAIL_SENDER_EMAIL not configured - notification saved but email not sent to {receiver_email if receiver_email else 'unknown'}")
+            conn.close()
+            return {'created': True, 'email_sent': False, 'email': receiver_email, 'reason': 'sender-email-not-configured'}
         
         conn.close()
+        return {'created': True, 'email_sent': False, 'email': receiver_email, 'reason': 'email-path-not-executed'}
         
     except Exception as e:
         print(f"[NOTIF ERROR] Notification creation failed: {e}", flush=True)
@@ -180,3 +191,4 @@ The ISKOMATS Team
                 conn.close()
             except:
                 pass
+        return {'created': False, 'email_sent': False, 'reason': str(e)}
