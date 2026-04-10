@@ -1733,7 +1733,7 @@ const StudentInfo = () => {
       { name: 'middleName', label: 'Middle Name' },
       { name: 'dateOfBirth', label: 'Date of Birth' },
       { name: 'placeOfBirth', label: 'Place of Birth' },
-      { name: 'streetBarangay', label: 'Barangay' },
+      { name: 'barangay', label: 'Barangay' },
       { name: 'townCityMunicipality', label: 'Town/City' },
       { name: 'province', label: 'Province' },
       { name: 'zipCode', label: 'Zip Code' },
@@ -3585,23 +3585,18 @@ const StudentInfo = () => {
                   <div style={{background: '#fff', padding: '1.2rem', borderRadius: '20px', border: '1px solid #e1e8f0', boxShadow: '0 4px 15px rgba(0,0,0,0.03)'}}>
                     <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
                       <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#1a202c'}}>LIVE CAPTURE</label>
-                      <div style={{fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px'}}>PHOTO + VIDEO</div>
+                      <div style={{fontSize: '0.65rem', color: '#3b82f6', fontWeight: '800', background: '#eff6ff', padding: '3px 8px', borderRadius: '6px'}}>PHOTO</div>
                     </div>
 
                     {renderDocumentMediaPicker({
                       photoId: 'photo_face_photo',
                       photoName: 'face_photo',
                       photoValue: photos.face_photo || userProfile?.profile_picture,
-                      onPhotoChange: handleInputChange,
-                      videoId: 'video_face_video',
-                      videoName: 'face_video',
-                      videoValue: documentVideos.face_video || userProfile?.face_vid_url,
-                      onVideoChange: handleVideoUpload,
-                      isUploadingVideo: Boolean(uploadingFields['face_video'])
+                      onPhotoChange: handleInputChange
                     })}
 
-                    <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginTop: '1rem'}}>
-                      <div style={{border: '2px solid #fff', borderRadius: '15px', height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e1e8f0', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)'}}>
+                    <div style={{marginTop: '1rem', display: 'flex', justifyContent: 'center'}}>
+                      <div style={{border: '2px solid #fff', borderRadius: '15px', width: '220px', height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e1e8f0', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)'}}>
                       {photos.face_photo ? (
                         <>
                           <img src={photos.face_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Face Verification" />
@@ -3614,16 +3609,6 @@ const StudentInfo = () => {
                         </button>
                       )}
                       </div>
-
-                      <VideoRecorder 
-                        label="Face Profile Video" 
-                        onRecordComplete={(blob) => handleVideoUpload('face_video', blob)} 
-                        initialVideoUrl={documentVideos.face_video || userProfile?.face_vid_url}
-                        isUploading={Boolean(uploadingFields['face_video'])}
-                        disabled={isAnyScanning || isSavingStep}
-                        hideButton={true}
-                        containerStyle={{ height: '180px', padding: '0.3rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
-                      />
                     </div>
                   </div>
                 </div>

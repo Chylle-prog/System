@@ -209,47 +209,49 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
                   background: '#000' 
                 }} 
               />
-              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.85rem' }}>
-                <button
-                  type="button"
-                  onClick={openFilePicker}
-                  disabled={disabled}
-                  style={{
-                    flex: 1,
-                    border: '1px solid #cbd5e1',
-                    background: '#fff',
-                    color: '#0f172a',
-                    borderRadius: '12px',
-                    padding: '0.75rem 0.9rem',
-                    fontSize: '0.8rem',
-                    fontWeight: '700',
-                    cursor: disabled ? 'not-allowed' : 'pointer',
-                    opacity: disabled ? 0.6 : 1
-                  }}
-                >
-                  <i className="fas fa-arrows-rotate" style={{ marginRight: '8px', color: 'var(--primary)' }}></i>
-                  Replace Video
-                </button>
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  disabled={disabled}
-                  style={{
-                    border: '1px solid #fecaca',
-                    background: '#fff5f5',
-                    color: '#b91c1c',
-                    borderRadius: '12px',
-                    padding: '0.75rem 0.9rem',
-                    fontSize: '0.8rem',
-                    fontWeight: '700',
-                    cursor: disabled ? 'not-allowed' : 'pointer',
-                    opacity: disabled ? 0.6 : 1
-                  }}
-                >
-                  <i className="fas fa-trash" style={{ marginRight: '8px' }}></i>
-                  Remove
-                </button>
-              </div>
+              {!hideButton && (
+                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.85rem' }}>
+                  <button
+                    type="button"
+                    onClick={openFilePicker}
+                    disabled={disabled}
+                    style={{
+                      flex: 1,
+                      border: '1px solid #cbd5e1',
+                      background: '#fff',
+                      color: '#0f172a',
+                      borderRadius: '12px',
+                      padding: '0.75rem 0.9rem',
+                      fontSize: '0.8rem',
+                      fontWeight: '700',
+                      cursor: disabled ? 'not-allowed' : 'pointer',
+                      opacity: disabled ? 0.6 : 1
+                    }}
+                  >
+                    <i className="fas fa-arrows-rotate" style={{ marginRight: '8px', color: 'var(--primary)' }}></i>
+                    Replace Video
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleReset}
+                    disabled={disabled}
+                    style={{
+                      border: '1px solid #fecaca',
+                      background: '#fff5f5',
+                      color: '#b91c1c',
+                      borderRadius: '12px',
+                      padding: '0.75rem 0.9rem',
+                      fontSize: '0.8rem',
+                      fontWeight: '700',
+                      cursor: disabled ? 'not-allowed' : 'pointer',
+                      opacity: disabled ? 0.6 : 1
+                    }}
+                  >
+                    <i className="fas fa-trash" style={{ marginRight: '8px' }}></i>
+                    Remove
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>
