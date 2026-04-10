@@ -308,6 +308,214 @@ const StudentInfo = () => {
     sessionStorage.removeItem(buildDraftStorageKey(user, searchParams, scholarshipName));
   };
 
+  const performOcrVerification = async (docType, docParam, extraParams = {}, videoUrl = null) => {
+    try {
+      const setStatus = (status) => {
+        if (docType === 'Indigency') { setOcrStatus(status); }
+        else if (docType === 'Enrollment') { setCoeStatus(status); }
+        else if (docType === 'Grades') { setGradesStatus(status); }
+        else if (docType === 'SchoolID') { setIdStatus(status); }
+      };
+      
+      const setVerified = (v) => {
+        if (docType === 'Indigency') { setOcrVerified(v); }
+        else if (docType === 'Enrollment') { setCoeVerified(v); }
+        else if (docType === 'Grades') { setGradesVerified(v); }
+        else if (docType === 'SchoolID') { setIdVerified(v); }
+      };
+
+      setVerified('verifying');
+      setStatus(`Verifying your ${docType} document and video...`);
+      setScanProgress(15);
+      
+      const pInterval = setInterval(() => {
+        setScanProgress(p => p < 95 ? p + (Math.random() * 15) : p);
+      }, 200);
+
+      const { townCity, schoolName, idNumber, yearLevel, gpa } = extraParams;
+      const { firstName, lastName, middleName } = formData;
+      const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
+
+      const result = await applicantAPI.ocrCheck(
+        docType === 'SchoolID' ? docParam.front : null,
+        docType === 'SchoolID' ? docParam.back : null,
+        docType === 'Indigency' ? docParam : null, 
+        townCity, 
+        docType === 'Enrollment' ? docParam : null, 
+        docType === 'Grades' ? docParam : null,
+        firstName, 
+        lastName, 
+        middleName,
+        schoolName, idNumber, yearLevel, gpa,
+        videoUrl,
+        reqNo
+      );
+
+      clearInterval(pInterval);
+      setScanProgress(100);
+      
+      if (result.verified) {
+        setVerified('success');
+        setStatus(result.message || 'Verification successful!');
+        return true;
+      } else {
+        const isTechnical = result.message?.includes('temporarily unavailable') || 
+                           result.message?.includes('Low memory mode') ||
+                           result.message?.includes('OCR service');
+        
+        if (isTechnical) {
+          setVerified('technical_unavailable');
+          setStatus(result.message || 'OCR service temporarily unavailable');
+          return true;
+        }
+
+        setVerified('failed');
+        setStatus(result.message || 'Verification failed.');
+        return false;
+      }
+    } catch (err) {
+      console.error('OCR Error:', err);
+      const errMsg = `Technical Issue: ${err.message}`;
+      if (docType === 'Indigency') {
+        setOcrVerified('failed');
+        setOcrStatus(errMsg);
+      } else if (docType === 'Enrollment') {
+        setCoeVerified('failed');
+        setCoeStatus(errMsg);
+      } else if (docType === 'Grades') {
+        setGradesVerified('failed');
+        setGradesStatus(errMsg);
+      } else if (docType === 'SchoolID') {
+        setIdVerified('failed');
+        setIdStatus(errMsg);
+      }
+      return false;
+    }
+  };
+
+  const handleIndigencyScan = async () => {
+    const indigencyDoc = photos.mayorIndigency_photo || formData.mayorIndigency_photo;
+    const townCity = formData.townCityMunicipality || '';
+    const videoUrl = formData.mayorIndigency_video || documentVideos.mayorIndigency_video;
+
+    if (!indigencyDoc) {
+      showPromptMessage('⚠️ Please upload or capture your Certificate of Indigency first.');
+      return;
+    }
+    if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
+      showPromptMessage('⚠️ Please record and upload the Indigency video first.');
+      return;
+    }
+    if (!townCity) {
+      showPromptMessage('⚠️ Please fill in your Town/City first.');
+      return;
+    }
+
+    setLoadingMessage({ title: 'Scanning Document', message: 'Verifying your Certificate of Indigency and Video Content...' });
+    setIsSavingStep(true);
+    
+    try {
+      const success = await performOcrVerification('Indigency', indigencyDoc, { townCity }, videoUrl);
+      if (success) {
+        showPromptMessage('✅ Indigency verified successfully!');
+      } else {
+        showPromptMessage('❌ Verification failed. Please ensure document and video are clear.');
+      }
+    } finally {
+      setIsSavingStep(false);
+    }
+  };
+
+  const handleCOEScan = async () => {
+    const coeDoc = photos.mayorCOE_photo || formData.mayorCOE_photo;
+    const schoolName = formData.schoolName || '';
+    const yearLevel = formData.yearLevel || '';
+    const videoUrl = formData.mayorCOE_video || documentVideos.mayorCOE_video;
+
+    if (!coeDoc) {
+      showPromptMessage('⚠️ Please upload your Certificate of Enrollment first.');
+      return;
+    }
+    if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
+      showPromptMessage('⚠️ Please record and upload the COE video first.');
+      return;
+    }
+
+    setLoadingMessage({ title: 'Scanning COE', message: 'Verifying your Certificate of Enrollment and Video Content...' });
+    setIsSavingStep(true);
+    
+    try {
+      const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, yearLevel }, videoUrl);
+      if (success) {
+        showPromptMessage('✅ COE verified successfully!');
+      } else {
+        showPromptMessage('❌ COE verification failed.');
+      }
+    } finally {
+      setIsSavingStep(false);
+    }
+  };
+
+  const handleGradesScan = async () => {
+    const gradesDoc = photos.mayorGrades_photo || formData.mayorGrades_photo;
+    const schoolName = formData.schoolName || '';
+    const yearLevel = formData.yearLevel || '';
+    const gpa = formData.gpa || '';
+    const videoUrl = formData.mayorGrades_video || documentVideos.mayorGrades_video;
+
+    if (!gradesDoc) {
+      showPromptMessage('⚠️ Please upload your Grades document first.');
+      return;
+    }
+    if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
+      showPromptMessage('⚠️ Please record and upload the Grades video first.');
+      return;
+    }
+
+    setLoadingMessage({ title: 'Scanning Grades', message: 'Verifying your Grades document and Video Content...' });
+    setIsSavingStep(true);
+    
+    try {
+      const success = await performOcrVerification('Grades', gradesDoc, { schoolName, yearLevel, gpa }, videoUrl);
+      if (success) {
+        showPromptMessage('✅ Grades verified successfully!');
+      } else {
+        showPromptMessage('❌ Grades verification failed.');
+      }
+    } finally {
+      setIsSavingStep(false);
+    }
+  };
+
+  const handleIdScan = async () => {
+    const idFront = schoolIdPhotos.front;
+    const idBack = schoolIdPhotos.back;
+    const videoUrl = formData.schoolId_video || documentVideos.schoolId_video;
+
+    if (!idFront || !idBack) {
+      showPromptMessage('⚠️ Please upload both front and back of your School ID first.');
+      return;
+    }
+    if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
+      showPromptMessage('⚠️ Please record and upload the School ID video first.');
+      return;
+    }
+
+    setLoadingMessage({ title: 'Scanning School ID', message: 'Verifying your School ID images and Video Content...' });
+    setIsSavingStep(true);
+    
+    try {
+      const success = await performOcrVerification('SchoolID', { front: idFront, back: idBack }, {}, videoUrl);
+      if (success) {
+        showPromptMessage('✅ School ID verified successfully!');
+      } else {
+        showPromptMessage('❌ School ID verification failed.');
+      }
+    } finally {
+      setIsSavingStep(false);
+    }
+  };
+
   const saveCurrentStepProgress = async (stepNumber = currentStep) => {
     const payload = new FormData();
     const jsonData = {};
@@ -895,214 +1103,6 @@ const StudentInfo = () => {
     }
   };
 
-  const performOcrVerification = async (docType, docParam, extraParams = {}, videoUrl = null) => {
-    try {
-      const setStatus = (status) => {
-        if (docType === 'Indigency') { setOcrStatus(status); }
-        else if (docType === 'Enrollment') { setCoeStatus(status); }
-        else if (docType === 'Grades') { setGradesStatus(status); }
-        else if (docType === 'SchoolID') { setIdStatus(status); }
-      };
-      
-      const setVerified = (v) => {
-        if (docType === 'Indigency') { setOcrVerified(v); }
-        else if (docType === 'Enrollment') { setCoeVerified(v); }
-        else if (docType === 'Grades') { setGradesVerified(v); }
-        else if (docType === 'SchoolID') { setIdVerified(v); }
-      };
-
-      setVerified('verifying');
-      setStatus(`Verifying your ${docType} document and video...`);
-      setScanProgress(15);
-      
-      const pInterval = setInterval(() => {
-        setScanProgress(p => p < 95 ? p + (Math.random() * 15) : p);
-      }, 200);
-
-      const { townCity, schoolName, idNumber, yearLevel, gpa } = extraParams;
-      const { firstName, lastName, middleName } = formData;
-      const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
-
-      const result = await applicantAPI.ocrCheck(
-        docType === 'SchoolID' ? docParam.front : null,
-        docType === 'SchoolID' ? docParam.back : null,
-        docType === 'Indigency' ? docParam : null, 
-        townCity, 
-        docType === 'Enrollment' ? docParam : null, 
-        docType === 'Grades' ? docParam : null,
-        firstName, 
-        lastName, 
-        middleName,
-        schoolName, idNumber, yearLevel, gpa,
-        videoUrl,
-        reqNo
-      );
-
-      clearInterval(pInterval);
-      setScanProgress(100);
-      
-      if (result.verified) {
-        setVerified('success');
-        setStatus(result.message || 'Verification successful!');
-        return true;
-      } else {
-        const isTechnical = result.message?.includes('temporarily unavailable') || 
-                           result.message?.includes('Low memory mode') ||
-                           result.message?.includes('OCR service');
-        
-        if (isTechnical) {
-          setVerified('technical_unavailable');
-          setStatus(result.message || 'OCR service temporarily unavailable');
-          return true;
-        }
-
-        setVerified('failed');
-        setStatus(result.message || 'Verification failed.');
-        return false;
-      }
-    } catch (err) {
-      console.error('OCR Error:', err);
-      const errMsg = `Technical Issue: ${err.message}`;
-      if (docType === 'Indigency') {
-        setOcrVerified('failed');
-        setOcrStatus(errMsg);
-      } else if (docType === 'Enrollment') {
-        setCoeVerified('failed');
-        setCoeStatus(errMsg);
-      } else if (docType === 'Grades') {
-        setGradesVerified('failed');
-        setGradesStatus(errMsg);
-      } else if (docType === 'SchoolID') {
-        setIdVerified('failed');
-        setIdStatus(errMsg);
-      }
-      return false;
-    }
-  };
-
-  const handleIndigencyScan = async () => {
-    const indigencyDoc = photos.mayorIndigency_photo || formData.mayorIndigency_photo;
-    const townCity = formData.townCityMunicipality || '';
-    const videoUrl = formData.mayorIndigency_video || documentVideos.mayorIndigency_video;
-
-    if (!indigencyDoc) {
-      showPromptMessage('⚠️ Please upload or capture your Certificate of Indigency first.');
-      return;
-    }
-    if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
-      showPromptMessage('⚠️ Please record and upload the Indigency video first.');
-      return;
-    }
-    if (!townCity) {
-      showPromptMessage('⚠️ Please fill in your Town/City first.');
-      return;
-    }
-
-    setLoadingMessage({ title: 'Scanning Document', message: 'Verifying your Certificate of Indigency and Video Content...' });
-    setIsSavingStep(true);
-    
-    try {
-      const success = await performOcrVerification('Indigency', indigencyDoc, { townCity }, videoUrl);
-      if (success) {
-        showPromptMessage('✅ Indigency verified successfully!');
-      } else {
-        showPromptMessage('❌ Verification failed. Please ensure document and video are clear.');
-      }
-    } finally {
-      setIsSavingStep(false);
-    }
-  };
-
-  const handleCOEScan = async () => {
-    const coeDoc = photos.mayorCOE_photo || formData.mayorCOE_photo;
-    const schoolName = formData.schoolName || '';
-    const yearLevel = formData.yearLevel || '';
-    const videoUrl = formData.mayorCOE_video || documentVideos.mayorCOE_video;
-
-    if (!coeDoc) {
-      showPromptMessage('⚠️ Please upload your Certificate of Enrollment first.');
-      return;
-    }
-    if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
-      showPromptMessage('⚠️ Please record and upload the COE video first.');
-      return;
-    }
-
-    setLoadingMessage({ title: 'Scanning COE', message: 'Verifying your Certificate of Enrollment and Video Content...' });
-    setIsSavingStep(true);
-    
-    try {
-      const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, yearLevel }, videoUrl);
-      if (success) {
-        showPromptMessage('✅ COE verified successfully!');
-      } else {
-        showPromptMessage('❌ COE verification failed.');
-      }
-    } finally {
-      setIsSavingStep(false);
-    }
-  };
-
-  const handleGradesScan = async () => {
-    const gradesDoc = photos.mayorGrades_photo || formData.mayorGrades_photo;
-    const schoolName = formData.schoolName || '';
-    const yearLevel = formData.yearLevel || '';
-    const gpa = formData.gpa || '';
-    const videoUrl = formData.mayorGrades_video || documentVideos.mayorGrades_video;
-
-    if (!gradesDoc) {
-      showPromptMessage('⚠️ Please upload your Grades document first.');
-      return;
-    }
-    if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
-      showPromptMessage('⚠️ Please record and upload the Grades video first.');
-      return;
-    }
-
-    setLoadingMessage({ title: 'Scanning Grades', message: 'Verifying your Grades document and Video Content...' });
-    setIsSavingStep(true);
-    
-    try {
-      const success = await performOcrVerification('Grades', gradesDoc, { schoolName, yearLevel, gpa }, videoUrl);
-      if (success) {
-        showPromptMessage('✅ Grades verified successfully!');
-      } else {
-        showPromptMessage('❌ Grades verification failed.');
-      }
-    } finally {
-      setIsSavingStep(false);
-    }
-  };
-
-  const handleIdScan = async () => {
-    const idFront = schoolIdPhotos.front;
-    const idBack = schoolIdPhotos.back;
-    const videoUrl = formData.schoolId_video || documentVideos.schoolId_video;
-
-    if (!idFront || !idBack) {
-      showPromptMessage('⚠️ Please upload both front and back of your School ID first.');
-      return;
-    }
-    if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
-      showPromptMessage('⚠️ Please record and upload the School ID video first.');
-      return;
-    }
-
-    setLoadingMessage({ title: 'Scanning School ID', message: 'Verifying your School ID images and Video Content...' });
-    setIsSavingStep(true);
-    
-    try {
-      const success = await performOcrVerification('SchoolID', { front: idFront, back: idBack }, {}, videoUrl);
-      if (success) {
-        showPromptMessage('✅ School ID verified successfully!');
-      } else {
-        showPromptMessage('❌ School ID verification failed.');
-      }
-    } finally {
-      setIsSavingStep(false);
-    }
-  };
-
   const removeSchoolIdPhoto = (side) => {
     setSchoolIdPhotos(prev => ({ ...prev, [side]: null }));
     setFormData(prev => ({ ...prev, [`schoolId${side.charAt(0).toUpperCase() + side.slice(1)}`]: null }));
@@ -1451,14 +1451,6 @@ const StudentInfo = () => {
           line-height: 1.5;
         }
 
-        :root {
-          --primary: #4F0D00;
-          --primary-light: #8b3a1f;
-          --accent: #4F0D00;
-          --accent-soft: #ffe8e3;
-          --gray-1: #f4f6fa;
-          --gray-2: #e2e8f0;
-          --gray-3: #b0c0d0;
           --text-dark: #121826;
         }
 
@@ -2457,6 +2449,18 @@ const StudentInfo = () => {
               <h3 style={{marginBottom: '1.5rem', fontSize: '1.2rem', color: 'var(--primary)', fontWeight: '700', borderBottom: '2px solid var(--accent-soft)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center'}}>
                 <i className="fas fa-graduation-cap" style={{marginRight: '12px', fontSize: '1.1rem'}}></i>3. Educational Information
               </h3>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Full Name</label>
+                  <input
+                    type="text"
+                    value={[formData.firstName, formData.middleName, formData.lastName].filter(Boolean).join(' ')}
+                    readOnly
+                    style={{ backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }}
+                  />
+                </div>
+              </div>
 
               <div className="form-row">
                 <div className="form-group">
