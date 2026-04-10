@@ -67,15 +67,22 @@ def is_origin_allowed(origin, exact_origins, regex_origins):
     if not origin:
         return False
 
-    # Check exact matches (including those we added with/without slashes)
-    if origin in exact_origins:
-        # Only log sparingly to avoid flooding logs
-        return True
+    # Normalize origin for comparison
+    normalized_origin = origin.strip().lower()
+
+    # Check exact matches (case-insensitive)
+    for allowed in exact_origins:
+        if normalized_origin == allowed.strip().lower():
+            return True
 
     # Check regex patterns
     for pattern in regex_origins:
-        if pattern.match(origin):
-            return True
+        try:
+            if pattern.match(origin):
+                return True
+        except Exception as e:
+            print(f"[CORS] Error matching pattern {pattern}: {e}")
 
-    print(f"[CORS REJECT] '{origin}' not in allowed list ({len(exact_origins)} exact, {len(regex_origins)} patterns)", flush=True)
+    # Log only unique rejections to avoid flooding
+    print(f"[CORS REJECT] '{origin}' (normalized: '{normalized_origin}') not in allowed list ({len(exact_origins)} exact, {len(regex_origins)} patterns)", flush=True)
     return False

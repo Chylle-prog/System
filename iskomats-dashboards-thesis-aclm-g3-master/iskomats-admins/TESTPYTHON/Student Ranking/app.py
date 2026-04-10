@@ -18,7 +18,7 @@ STARTUP_TIME = time.time()
 print("[STARTUP] 1. eventlet monkey_patch complete. Loading modules...", flush=True)
 
 # Deployment trigger: 2026-04-08 - CORS TIMEOUT FIX - Better error handling
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, make_response
 from flask_socketio import SocketIO
 
 print("[STARTUP] 2. Flask/SocketIO imported. Loading blueprints...", flush=True)
@@ -107,10 +107,17 @@ def handle_preflight():
     if request.method == 'OPTIONS':
         origin = request.headers.get('Origin')
         
-        # We return a 200 OK for all preflight requests.
-        # The apply_cors_headers function will determine if Access-Control-Allow-Origin is added.
-        response = jsonify({'status': 'ok'})
-        return apply_cors_headers(response, origin), 200
+        # Determine if we should allow this origin
+        is_allowed = is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns)
+        
+        if is_allowed:
+            # Return a 204 No Content for successful preflight
+            response = make_response('', 204)
+            return apply_cors_headers(response, origin)
+        else:
+            # If not allowed, we still want to return a response but without CORS headers
+            # to let the browser block it. 403 Forbidden is appropriate.
+            return jsonify({'message': 'Origin not allowed'}), 403
     return None
 
 
@@ -140,9 +147,11 @@ def handle_403(e):
 
 @app.errorhandler(404)
 def handle_404(e):
-    response = jsonify({'error': 'Not found', 'path': request.path, 'status': 404})
+    origin = request.headers.get('Origin')
+    print(f"[ERROR 404] {request.path} (Origin: {origin})", flush=True)
+    response = jsonify({'error': 'Not found', 'status': 404})
     response.status_code = 404
-    return apply_cors_headers(response, request.headers.get('Origin'))
+    return apply_cors_headers(response, origin)
 
 
 @app.errorhandler(500)

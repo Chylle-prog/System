@@ -176,7 +176,8 @@ api_bp = Blueprint('admin_api', __name__, url_prefix='/api/admin')
 bcrypt = Bcrypt()
 
 # ===== JWT CONFIG =====
-SECRET_KEY = os.environ.get('SECRET_KEY')
+# Use common secret key logic
+SECRET_KEY = os.environ.get('SECRET_KEY', 'development-key-replace-in-production')
 TOKEN_EXPIRY = 24  # hours
 PASSWORD_RESET_EXPIRY_MINUTES = int(os.environ.get('PASSWORD_RESET_EXPIRY_MINUTES', '30'))
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://iskomats-admin.surge.sh').rstrip('/')
@@ -453,7 +454,7 @@ def token_required(f):
             cursor = None
             conn = None
             
-        except ValueError as e:
+        except (ValueError, KeyError) as e:
             return jsonify({'message': str(e)}), 401
         except jwt.ExpiredSignatureError:
             return jsonify({'message': 'Token has expired'}), 401
@@ -487,12 +488,15 @@ def token_required_lightweight(f):
     def decorated(*args, **kwargs):
         try:
             current_user_id, pro_no, role = _decode_request_token()
-        except ValueError as e:
+        except (ValueError, KeyError) as e:
             return jsonify({'message': str(e)}), 401
         except jwt.ExpiredSignatureError:
             return jsonify({'message': 'Token has expired'}), 401
         except jwt.InvalidTokenError:
             return jsonify({'message': 'Invalid token'}), 401
+        except Exception as e:
+            print(f"[AUTH ERROR LIGHT] Token decode failed: {str(e)}", flush=True)
+            return jsonify({'message': 'Internal auth error'}), 401
 
         return f(current_user_id, pro_no, role, *args, **kwargs)
 
