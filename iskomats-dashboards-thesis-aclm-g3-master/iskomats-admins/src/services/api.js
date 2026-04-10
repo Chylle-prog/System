@@ -176,7 +176,7 @@ export const scholarshipAPI = {
 
 export const announcementAPI = {
   getAll: () =>
-    api.get('/student/announcements'), // Reuse student endpoint for data fetching
+    api.get('/admin/announcements'),
   
   create: (announcementData) =>
     api.post('/admin/announcements', announcementData),

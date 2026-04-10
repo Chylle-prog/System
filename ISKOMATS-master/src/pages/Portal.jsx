@@ -1850,6 +1850,36 @@ const Portal = () => {
             white-space: pre-wrap;
           }
 
+          .ann-modal-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-top: 2rem;
+          }
+
+          .ann-modal-image-card {
+            background: var(--gray-1);
+            border-radius: 18px;
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid rgba(79, 13, 0, 0.08);
+          }
+
+          .ann-modal-image {
+            display: block;
+            width: 100%;
+            height: 220px;
+            object-fit: cover;
+            background: white;
+          }
+
+          .ann-modal-image-caption {
+            padding: 0.85rem 1rem;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-soft);
+          }
+
           .message-dropdown,
           .notification-dropdown {
             width: 300px;
@@ -2152,6 +2182,28 @@ const Portal = () => {
               <div className="ann-modal-message">
                 {selectedAnnouncement.ann_message}
               </div>
+              {selectedAnnouncement.announcementImages?.length > 0 && (
+                <div className="ann-modal-gallery">
+                  {selectedAnnouncement.announcementImages.map((image, index) => {
+                    const imageSrc = typeof image === 'string' ? image : image?.url;
+
+                    if (!imageSrc) {
+                      return null;
+                    }
+
+                    return (
+                      <div key={`${selectedAnnouncement.ann_no || selectedAnnouncement.ann_title || 'announcement'}-${index}`} className="ann-modal-image-card">
+                        <img
+                          src={imageSrc}
+                          alt={`${selectedAnnouncement.ann_title || 'Announcement'} image ${index + 1}`}
+                          className="ann-modal-image"
+                        />
+                        <div className="ann-modal-image-caption">Announcement image {index + 1}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               <div style={{marginTop: '3rem', padding: '1.5rem', background: 'var(--gray-1)', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '1rem'}}>
                 <div style={{width: '45px', height: '45px', background: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', boxShadow: 'var(--shadow-sm)'}}>
                   <i className="fas fa-info-circle"></i>

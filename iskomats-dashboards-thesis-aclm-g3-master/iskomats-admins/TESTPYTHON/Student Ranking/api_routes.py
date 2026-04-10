@@ -284,6 +284,38 @@ def get_mime_type(data):
         
     return 'application/octet-stream'
 
+
+_announcement_image_columns = None
+
+
+def get_announcement_image_columns(cursor):
+    """Resolve announcement image table column names across schema variants."""
+    global _announcement_image_columns
+
+    if _announcement_image_columns is not None:
+        return _announcement_image_columns
+
+    cursor.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'announcement_images'
+        """
+    )
+    columns = {
+        row['column_name'] if isinstance(row, dict) else row[0]
+        for row in cursor.fetchall()
+    }
+
+    primary_key_column = 'ann_img_no' if 'ann_img_no' in columns else 'sch_img_no' if 'sch_img_no' in columns else None
+    foreign_key_column = 'ann_no' if 'ann_no' in columns else 'req_no' if 'req_no' in columns else None
+
+    if not primary_key_column or not foreign_key_column or 'img' not in columns:
+        raise RuntimeError('announcement_images table does not contain the expected image columns')
+
+    _announcement_image_columns = (primary_key_column, foreign_key_column)
+    return _announcement_image_columns
+
 # ===== DATABASE MIGRATIONS =====
 
 def ensure_verification_columns():
@@ -2402,15 +2434,13 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
         conn = get_db()
         cursor = conn.cursor()
         
-        # Query scholarships with image data
         query = '''
             SELECT s.req_no as id, s.req_no as "reqNo", s.scholarship_name as "scholarshipName", 
                    s.gpa as "minGpa", s.location, s.parent_finance as "parentFinance",
                    s.slots, s.deadline, s.pro_no as "proNo", p.provider_name as "providerName",
-                   s."desc" as description, s.date_created as "dateCreated", si.sch_img_no as image_id
+                   s."desc" as description, s.date_created as "dateCreated"
             FROM scholarships s
             LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
-            LEFT JOIN scholarship_images si ON s.req_no = si.req_no
             WHERE 1=1
         '''
         params = []
@@ -2423,7 +2453,7 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
             query += ' AND (p.provider_name ILIKE %s OR (s.pro_no IS NULL AND %s != "all"))'
             params.extend([f"%{program}%", program])
             
-        query += ' ORDER BY s.req_no, si.sch_img_no'
+        query += ' ORDER BY s.req_no DESC'
         
         cursor.execute(query, params)
         rows = cursor.fetchall()
@@ -2432,30 +2462,8 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
         
         if not rows:
             return jsonify({'success': True, 'scholarships': []}), 200
-        
-        # Group images by scholarship - return absolute URLs
-        scholarships_dict = {}
-        for row in rows:
-            row_dict = dict(row)
-            req_no = row_dict['reqNo']
-            image_id = row_dict.pop('image_id', None)
-            
-            # Initialize scholarship if not seen before
-            if req_no not in scholarships_dict:
-                scholarships_dict[req_no] = row_dict
-                scholarships_dict[req_no]['scholarshipImages'] = []
-            
-            # Add image URL if present
-            if image_id:
-                image_url = url_for(
-                    'admin_api.get_scholarship_image_by_index',
-                    req_no=req_no,
-                    idx=len(scholarships_dict[req_no]['scholarshipImages']),
-                    _external=True,
-                )
-                scholarships_dict[req_no]['scholarshipImages'].append(image_url)
-        
-        result = list(scholarships_dict.values())
+
+        result = [dict(row) for row in rows]
         return jsonify({'success': True, 'scholarships': result}), 200
     
     except Exception as e:
@@ -2886,22 +2894,6 @@ def create_scholarship(current_user_id, pro_no, role):
         provider_row = cursor.fetchone()
         provider_name = provider_row['provider_name'] if provider_row else 'ISKOMATS'
         
-        # 3. Handle scholarship images
-        if 'scholarshipImages' in data and isinstance(data['scholarshipImages'], list):
-            for i, img_data in enumerate(data['scholarshipImages']):
-                url = img_data.get('url') if isinstance(img_data, dict) else img_data
-                img_bytes = base64_to_bytes(url)
-                if img_bytes:
-                    print(f"[SCHOLARSHIP CREATE] Image {i}: Decoded {len(img_bytes)} bytes")
-                    # Encrypt image before storing
-                    encrypted = _fernet.encrypt(img_bytes) if _fernet else img_bytes
-                    cursor.execute(
-                        "INSERT INTO scholarship_images (req_no, img) VALUES (%s, %s)",
-                        (req_no, encrypted)
-                    )
-                else:
-                    print(f"[SCHOLARSHIP CREATE] Skipping image {i}: invalid base64 or URL")
-        
         conn.commit()
         cursor.close()
         conn.close()
@@ -2984,54 +2976,6 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
             query = f"UPDATE scholarships SET {', '.join(update_fields)} WHERE req_no = %s"
             cursor.execute(query, params)
         
-        # 5. Handle scholarship images - Smart Update
-        if 'scholarshipImages' in data and isinstance(data['scholarshipImages'], list):
-            # Fetch current images to potentially keep them
-            cursor.execute("SELECT img FROM scholarship_images WHERE req_no = %s ORDER BY sch_img_no", (req_no,))
-            existing_rows = cursor.fetchall()
-            existing_images = [row['img'] for row in existing_rows]
-            
-            new_image_data_list = []
-            
-            for i, img_data in enumerate(data['scholarshipImages']):
-                url = img_data.get('url') if isinstance(img_data, dict) else img_data
-                
-                if not isinstance(url, str):
-                    continue
-                    
-                if url.startswith('data:'):
-                    # This is a NEW image being uploaded as base64
-                    img_bytes = base64_to_bytes(url)
-                    if img_bytes:
-                        encrypted = _fernet.encrypt(img_bytes) if _fernet else img_bytes
-                        new_image_data_list.append(encrypted)
-                        print(f"[SCHOLARSHIP UPDATE] Image {i}: Using new base64 data")
-                elif '/scholarship-image/' in url:
-                    # This is an EXISTING image URL
-                    # Extract index from URL: /api/scholarship-image/{req_no}/{idx}
-                    try:
-                        idx_str = url.split('/')[-1]
-                        idx = int(idx_str)
-                        if 0 <= idx < len(existing_images):
-                            # Keep the existing encrypted bytes as is
-                            new_image_data_list.append(existing_images[idx])
-                            print(f"[SCHOLARSHIP UPDATE] Image {i}: Keeping existing image at index {idx}")
-                        else:
-                            print(f"[SCHOLARSHIP UPDATE] Image {i}: Existing index {idx} out of range")
-                    except Exception as e:
-                        print(f"[SCHOLARSHIP UPDATE] Image {i}: Failed to parse existing URL: {e}")
-                else:
-                    print(f"[SCHOLARSHIP UPDATE] Image {i}: Skipping unrecognized URL: {url[:50]}...")
-            
-            # Now replace everything in the table
-            cursor.execute("DELETE FROM scholarship_images WHERE req_no = %s", (req_no,))
-            for encrypted_img in new_image_data_list:
-                cursor.execute(
-                    "INSERT INTO scholarship_images (req_no, img) VALUES (%s, %s)",
-                    (req_no, encrypted_img)
-                )
-            print(f"[SCHOLARSHIP UPDATE] Processed {len(new_image_data_list)} images for scholarship {req_no}")
-        
         conn.commit()
         cursor.close()
         conn.close()
@@ -3082,15 +3026,16 @@ def delete_scholarship(current_user_id, pro_no, role, req_no):
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
 
-@api_bp.route('/scholarship-image/<int:sch_img_no>', methods=['GET'])
-def get_scholarship_image(sch_img_no):
-    """Get scholarship image as binary file (not data URL)"""
+@api_bp.route('/announcement-image/<int:image_id>', methods=['GET'])
+def get_announcement_image(image_id):
+    """Get announcement image as binary file."""
     try:
         conn = get_db()
         cursor = conn.cursor()
+        primary_key_column, _ = get_announcement_image_columns(cursor)
         
         # Get image from database
-        cursor.execute("SELECT img FROM scholarship_images WHERE sch_img_no = %s", (sch_img_no,))
+        cursor.execute(f"SELECT img FROM announcement_images WHERE {primary_key_column} = %s", (image_id,))
         row = cursor.fetchone()
         cursor.close()
         conn.close()
@@ -3113,7 +3058,7 @@ def get_scholarship_image(sch_img_no):
         try:
             decrypted_img = _fernet.decrypt(encrypted_img)
         except Exception as decrypt_error:
-            print(f"[IMAGE ENDPOINT] Failed to decrypt image {sch_img_no}: {decrypt_error}")
+            print(f"[IMAGE ENDPOINT] Failed to decrypt image {image_id}: {decrypt_error}")
             return jsonify({'message': 'Failed to decrypt image'}), 500
         
         # Detect image type from magic bytes
@@ -3124,7 +3069,7 @@ def get_scholarship_image(sch_img_no):
             BytesIO(decrypted_img),
             mimetype=mime_type,
             as_attachment=False,
-            download_name=f'scholarship_image_{sch_img_no}.png'
+            download_name=f'announcement_image_{image_id}.png'
         )
         
     except Exception as e:
@@ -3134,28 +3079,30 @@ def get_scholarship_image(sch_img_no):
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
 
-@api_bp.route('/scholarship-image/<int:req_no>/<int:idx>', methods=['GET'])
-def get_scholarship_image_by_index(req_no, idx):
-    """Get scholarship image by scholarship req_no and index"""
+@api_bp.route('/announcement-image/<int:ann_no>/<int:idx>', methods=['GET'])
+def get_announcement_image_by_index(ann_no, idx):
+    """Get announcement image by announcement id and index."""
     try:
         conn = get_db()
         cursor = conn.cursor()
+        primary_key_column, foreign_key_column = get_announcement_image_columns(cursor)
         
-        # Get image at the specified index for this scholarship
-        cursor.execute("""
-            SELECT sch_img_no, img 
-            FROM scholarship_images 
-            WHERE req_no = %s 
-            ORDER BY sch_img_no 
+        cursor.execute(
+            f"""
+            SELECT {primary_key_column}, img
+            FROM announcement_images
+            WHERE {foreign_key_column} = %s
+            ORDER BY {primary_key_column}
             OFFSET %s LIMIT 1
-        """, (req_no, idx))
+            """,
+            (ann_no, idx),
+        )
         row = cursor.fetchone()
         cursor.close()
         conn.close()
         
         if not row or not row['img']:
-            # Return 404 if image doesn't exist
-            return jsonify({'message': f'Image not found for scholarship {req_no} at index {idx}'}), 404
+            return jsonify({'message': f'Image not found for announcement {ann_no} at index {idx}'}), 404
         
         encrypted_img = row['img']
         
@@ -3183,7 +3130,7 @@ def get_scholarship_image_by_index(req_no, idx):
             BytesIO(decrypted_img),
             mimetype=mime_type,
             as_attachment=False,
-            download_name=f'scholarship_{req_no}_image_{idx}.png'
+            download_name=f'announcement_{ann_no}_image_{idx}.png'
         )
         
     except Exception as e:
@@ -3263,6 +3210,64 @@ def get_current_user_info(current_user_id, pro_no, role):
 
 # ===== ANNOUNCEMENT ENDPOINTS =====
 
+@api_bp.route('/announcements', methods=['GET'])
+@token_required
+def get_admin_announcements(current_user_id, pro_no, role):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        primary_key_column, foreign_key_column = get_announcement_image_columns(cur)
+
+        query = f"""
+            SELECT
+                a.ann_no,
+                a.ann_title,
+                a.ann_message,
+                a.time_added,
+                COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,
+                ai.{primary_key_column} AS image_id
+            FROM announcements a
+            LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
+            LEFT JOIN announcement_images ai ON a.ann_no = ai.{foreign_key_column}
+            WHERE 1=1
+        """
+        params = []
+
+        if role != 'Admin':
+            query += ' AND a.pro_no = %s'
+            params.append(pro_no)
+
+        query += f' ORDER BY a.time_added DESC, ai.{primary_key_column}'
+        cur.execute(query, params)
+        rows = cur.fetchall()
+
+        announcements = {}
+        for row in rows:
+            row_dict = dict(row)
+            ann_no = row_dict['ann_no']
+            image_id = row_dict.pop('image_id', None)
+
+            if ann_no not in announcements:
+                announcements[ann_no] = {
+                    **row_dict,
+                    'announcementImages': [],
+                }
+
+            if image_id is not None:
+                image_url = url_for(
+                    'admin_api.get_announcement_image_by_index',
+                    ann_no=ann_no,
+                    idx=len(announcements[ann_no]['announcementImages']),
+                    _external=True,
+                )
+                announcements[ann_no]['announcementImages'].append(image_url)
+
+        cur.close()
+        conn.close()
+        return jsonify(list(announcements.values())), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
 @api_bp.route('/announcements', methods=['POST'])
 @token_required
 def create_announcement(current_user_id, pro_no, role):
@@ -3290,6 +3295,19 @@ def create_announcement(current_user_id, pro_no, role):
             RETURNING ann_no
         """, (title, message, pro_no, time_added))
         ann_no = cur.fetchone()['ann_no']
+
+        if 'announcementImages' in data and isinstance(data['announcementImages'], list):
+            _, foreign_key_column = get_announcement_image_columns(cur)
+            for image_data in data['announcementImages']:
+                url = image_data.get('url') if isinstance(image_data, dict) else image_data
+                img_bytes = base64_to_bytes(url)
+                if img_bytes:
+                    encrypted = _fernet.encrypt(img_bytes) if _fernet else img_bytes
+                    cur.execute(
+                        f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
+                        (ann_no, encrypted)
+                    )
+
         conn.commit()
         
         record_admin_activity(
@@ -3364,6 +3382,7 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
     try:
         conn = get_db()
         cur = conn.cursor()
+        primary_key_column, foreign_key_column = get_announcement_image_columns(cur)
         
         # Check ownership unless super admin
         if role != 'admin':
@@ -3379,6 +3398,42 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
             SET ann_title = %s, ann_message = %s
             WHERE ann_no = %s
         """, (title, message, ann_no))
+
+        if 'announcementImages' in data and isinstance(data['announcementImages'], list):
+            cur.execute(
+                f"SELECT img FROM announcement_images WHERE {foreign_key_column} = %s ORDER BY {primary_key_column}",
+                (ann_no,)
+            )
+            existing_rows = cur.fetchall()
+            existing_images = [row['img'] for row in existing_rows]
+            new_image_data_list = []
+
+            for i, image_data in enumerate(data['announcementImages']):
+                url = image_data.get('url') if isinstance(image_data, dict) else image_data
+
+                if not isinstance(url, str):
+                    continue
+
+                if url.startswith('data:'):
+                    img_bytes = base64_to_bytes(url)
+                    if img_bytes:
+                        encrypted = _fernet.encrypt(img_bytes) if _fernet else img_bytes
+                        new_image_data_list.append(encrypted)
+                elif '/announcement-image/' in url:
+                    try:
+                        idx = int(url.split('/')[-1])
+                        if 0 <= idx < len(existing_images):
+                            new_image_data_list.append(existing_images[idx])
+                    except Exception:
+                        pass
+
+            cur.execute(f"DELETE FROM announcement_images WHERE {foreign_key_column} = %s", (ann_no,))
+            for encrypted_img in new_image_data_list:
+                cur.execute(
+                    f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
+                    (ann_no, encrypted_img)
+                )
+
         conn.commit()
         
         record_admin_activity(
@@ -3417,6 +3472,9 @@ def delete_announcement(current_user_id, pro_no, role, ann_no):
             cur.execute("SELECT ann_title FROM announcements WHERE ann_no = %s", (ann_no,))
             row = cur.fetchone()
             title = row['ann_title'] if row else 'Unknown'
+
+        _, foreign_key_column = get_announcement_image_columns(cur)
+        cur.execute(f"DELETE FROM announcement_images WHERE {foreign_key_column} = %s", (ann_no,))
                 
         cur.execute("DELETE FROM announcements WHERE ann_no = %s", (ann_no,))
         conn.commit()

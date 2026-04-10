@@ -12,7 +12,7 @@ from functools import wraps
 
 import jwt
 from cryptography.fernet import Fernet
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, url_for
 from flask_bcrypt import Bcrypt
 
 import cv2
@@ -24,6 +24,7 @@ from services.ocr_utils import (
     verify_id_with_ocr, verify_face_with_id, extract_school_year, 
     extract_school_year_from_text, is_current_school_year, 
     verify_signature_against_id, save_signature_profile, verify_video_content,
+    extract_semester_from_text,
     _perform_text_matching
 )
 from services.notification_service import create_notification, fetch_google_access_token
@@ -34,6 +35,36 @@ from concurrent.futures import ThreadPoolExecutor
 student_api_bp = Blueprint('student_api', __name__, url_prefix='/api/student')
 bcrypt = Bcrypt()
 SECRET_KEY = get_secret_key()
+
+_announcement_image_columns = None
+
+
+def get_announcement_image_columns(cursor):
+    global _announcement_image_columns
+
+    if _announcement_image_columns is not None:
+        return _announcement_image_columns
+
+    cursor.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'announcement_images'
+        """
+    )
+    columns = {
+        row['column_name'] if isinstance(row, dict) else row[0]
+        for row in cursor.fetchall()
+    }
+
+    primary_key_column = 'ann_img_no' if 'ann_img_no' in columns else 'sch_img_no' if 'sch_img_no' in columns else None
+    foreign_key_column = 'ann_no' if 'ann_no' in columns else 'req_no' if 'req_no' in columns else None
+
+    if not primary_key_column or not foreign_key_column or 'img' not in columns:
+        raise RuntimeError('announcement_images table does not contain the expected image columns')
+
+    _announcement_image_columns = (primary_key_column, foreign_key_column)
+    return _announcement_image_columns
 
 def fetch_video_bytes_from_url(url):
     if not url: return None, "No URL provided"
@@ -2046,6 +2077,10 @@ def get_announcements():
     try:
         conn = get_db()
         cur = conn.cursor()
+        try:
+            primary_key_column, foreign_key_column = get_announcement_image_columns(cur)
+        except Exception:
+            primary_key_column, foreign_key_column = None, None
 
         # Check if 'status_updated' column exists in the announcements table
         cur.execute("""
@@ -2063,6 +2098,13 @@ def get_announcements():
         """)
         has_time_added = cur.fetchone() is not None
 
+        cur.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'announcements' AND column_name = 'ann_date'
+        """)
+        has_ann_date = cur.fetchone() is not None
+
         # Build the date expression based on what columns actually exist
         if has_time_added:
             date_col = 'a.time_added'
@@ -2078,17 +2120,29 @@ def get_announcements():
             order_col = 'a.ann_no DESC'
 
         # Join announcements with scholarship_providers to get the name of the provider
-        cur.execute(f"""
-            SELECT a.ann_no, a.ann_title, a.ann_message, {date_col} AS ann_date, {date_col} AS time_added, COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name
-            FROM announcements a
-            LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
-            ORDER BY {order_col}
-        """)
+        if primary_key_column and foreign_key_column:
+            cur.execute(f"""
+                SELECT a.ann_no, a.ann_title, a.ann_message, {date_col} AS ann_date, {date_col} AS time_added, COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,
+                       ai.{primary_key_column} AS image_id
+                FROM announcements a
+                LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
+                LEFT JOIN announcement_images ai ON a.ann_no = ai.{foreign_key_column}
+                ORDER BY {order_col}, ai.{primary_key_column}
+            """)
+        else:
+            cur.execute(f"""
+                SELECT a.ann_no, a.ann_title, a.ann_message, {date_col} AS ann_date, {date_col} AS time_added, COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,
+                       NULL AS image_id
+                FROM announcements a
+                LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
+                ORDER BY {order_col}
+            """)
 
         rows = cur.fetchall()
 
-        announcements = []
+        announcements = {}
         for row in rows:
+            ann_no = row['ann_no']
             ann_date = row.get('ann_date')
             if ann_date and hasattr(ann_date, 'date'):
                 date_str = str(ann_date.date())
@@ -2096,15 +2150,28 @@ def get_announcements():
                 date_str = str(ann_date)
             else:
                 date_str = 'Recent'
-            announcements.append({
-                'ann_no': row['ann_no'],
-                'ann_title': row['ann_title'],
-                'ann_message': row['ann_message'],
-                'created_at': date_str,
-                'provider_name': row['provider_name']
-            })
+            if ann_no not in announcements:
+                announcements[ann_no] = {
+                    'ann_no': ann_no,
+                    'ann_title': row['ann_title'],
+                    'ann_message': row['ann_message'],
+                    'created_at': date_str,
+                    'time_added': row.get('time_added'),
+                    'provider_name': row['provider_name'],
+                    'announcementImages': []
+                }
 
-        return jsonify(announcements)
+            if row.get('image_id') is not None:
+                announcements[ann_no]['announcementImages'].append(
+                    url_for(
+                        'admin_api.get_announcement_image_by_index',
+                        ann_no=ann_no,
+                        idx=len(announcements[ann_no]['announcementImages']),
+                        _external=True,
+                    )
+                )
+
+        return jsonify(list(announcements.values()))
     except Exception as e:
         return jsonify({'message': f"Error fetching announcements: {str(e)}"}), 500
     finally:

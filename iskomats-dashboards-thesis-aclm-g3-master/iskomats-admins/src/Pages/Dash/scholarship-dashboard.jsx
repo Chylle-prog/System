@@ -102,7 +102,7 @@ export default function ScholarshipDashboard({
   const [recommended, setRecommended] = useState([]);
   const [recommendCount, setRecommendCount] = useState(10);
   const [imageModalSrc, setImageModalSrc] = useState(null);
-  const [scholarshipImages, setScholarshipImages] = useState([]);
+  const [announcementImages, setAnnouncementImages] = useState([]);
   const [manageMode, setManageMode] = useState('list'); // create | edit | list
   const [editingPost, setEditingPost] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -404,24 +404,24 @@ export default function ScholarshipDashboard({
     });
   };
 
-  const handleImageUpload = (e) => {
-    const files = Array.from(e.target.files);
-    const newImages = files.map(file => ({
+  const handleAnnouncementImageUpload = (e) => {
+    const files = Array.from(e.target.files || []);
+    const newImages = files.map((file) => ({
       id: Date.now() + Math.random(),
       name: file.name,
       url: URL.createObjectURL(file),
-      file: file
+      file,
     }));
-    setScholarshipImages(prev => [...prev, ...newImages]);
+    setAnnouncementImages((prev) => [...prev, ...newImages]);
   };
 
-  const removeImage = (imageId) => {
-    setScholarshipImages(prev => {
-      const image = prev.find(img => img.id === imageId);
-      if (image && image.url.startsWith('blob:')) {
+  const removeAnnouncementImage = (imageId) => {
+    setAnnouncementImages((prev) => {
+      const image = prev.find((item) => item.id === imageId);
+      if (image?.url?.startsWith('blob:')) {
         URL.revokeObjectURL(image.url);
       }
-      return prev.filter(img => img.id !== imageId);
+      return prev.filter((item) => item.id !== imageId);
     });
   };
 
@@ -445,7 +445,7 @@ export default function ScholarshipDashboard({
       content: '',
       sendToAllApplicants: true
     });
-    setScholarshipImages([]);
+    setAnnouncementImages([]);
     setEditingPost(null);
     setIsSaving(false);
   };
@@ -496,6 +496,7 @@ export default function ScholarshipDashboard({
         title: ann.ann_title || ann.title,
         content: ann.ann_message || ann.message || ann.content,
         date: ann.created_at || ann.time_added || ann.ann_date || new Date().toISOString(),
+        announcementImages: ann.announcementImages || [],
         status: ann.status || 'active',
         ...ann // Include all original fields too
       }));
@@ -508,39 +509,12 @@ export default function ScholarshipDashboard({
   const saveScholarshipPost = async () => {
     setIsSaving(true);
     try {
-      console.log('Original scholarship images:', scholarshipImages);
-
-      // Convert all NEW image files to base64
-      const processedImages = await Promise.all(scholarshipImages.map(async (img) => {
-        if (img.file) {
-          // This is a new file upload
-          try {
-            const base64 = await fileToBase64(img.file);
-            return { url: base64, name: img.name };
-          } catch (err) {
-            console.error('Error converting file to base64:', err);
-            return null;
-          }
-        } else if (typeof img === 'string') {
-          // This is an existing image URL from the API
-          return { url: img };
-        } else if (img.url) {
-          // This is already an object with a URL
-          return { url: img.url, name: img.name };
-        }
-        return null;
-      }));
-
-      const filteredImages = processedImages.filter(img => img !== null);
-      console.log('Processed images for saving:', filteredImages);
-
       const postData = {
         ...formData,
         slots: parseInt(formData.slots),
         minGpa: parseFloat(formData.minGpa),
         parentFinance: parseFloat(formData.parentFinance),
-        description: formData.description,
-        scholarshipImages: filteredImages
+        description: formData.description
       };
 
       console.log('Sending postData to API:', postData);
@@ -607,16 +581,6 @@ export default function ScholarshipDashboard({
       };
       console.log('Form data being set:', formData);
       setFormData(formData);
-
-      // Normalize images into objects with IDs
-      const normalizedImages = (post.scholarshipImages || []).map((img, idx) => {
-        if (typeof img === 'string') {
-          return { id: `existing-${idx}`, url: img, name: `Existing ${idx + 1}` };
-        }
-        return img;
-      });
-
-      setScholarshipImages(normalizedImages);
       setManageMode('edit');
     } catch (error) {
       console.error('Error in editPost:', error);
@@ -649,11 +613,31 @@ export default function ScholarshipDashboard({
 
     setIsSaving(true);
     try {
+      const processedImages = await Promise.all(announcementImages.map(async (img) => {
+        if (img.file) {
+          try {
+            const base64 = await fileToBase64(img.file);
+            return { url: base64, name: img.name };
+          } catch (err) {
+            console.error('Error converting announcement image to base64:', err);
+            return null;
+          }
+        }
+        if (typeof img === 'string') {
+          return { url: img };
+        }
+        if (img.url) {
+          return { url: img.url, name: img.name };
+        }
+        return null;
+      }));
+
       const announcementData = {
         title: formData.title,
         content: formData.content,
         time_added: new Date().toISOString(),
-        send_to_all_applicants: formData.sendToAllApplicants
+        send_to_all_applicants: formData.sendToAllApplicants,
+        announcementImages: processedImages.filter(Boolean)
       };
 
       let response;
@@ -696,6 +680,12 @@ export default function ScholarshipDashboard({
       content: ann.message || ann.content,
       sendToAllApplicants: ann.send_to_all_applicants !== false
     });
+    const normalizedImages = (ann.announcementImages || []).map((img, idx) => (
+      typeof img === 'string'
+        ? { id: `existing-announcement-${idx}`, url: img, name: `Existing ${idx + 1}` }
+        : { id: img.id || `existing-announcement-${idx}`, ...img }
+    ));
+    setAnnouncementImages(normalizedImages);
     setManageMode('edit');
   };
 
@@ -1428,18 +1418,6 @@ export default function ScholarshipDashboard({
                           <div><strong>Term:</strong> {post.semester} {post.year}</div>
                         </div>
                         <p className="text-sm text-gray-700 mt-3 line-clamp-2">{post.description}</p>
-                        {post.scholarshipImages && post.scholarshipImages.length > 0 && (
-                          <div className="flex gap-2 mt-3">
-                            {post.scholarshipImages.slice(0, 3).map((img, idx) => (
-                              <img key={idx} src={img.url || img} alt="Scholarship" className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
-                            ))}
-                            {post.scholarshipImages.length > 3 && (
-                              <div className="w-16 h-16 bg-gray-100 rounded-lg border border-gray-200 flex items-center justify-center text-xs text-gray-600">
-                                +{post.scholarshipImages.length - 3}
-                              </div>
-                            )}
-                          </div>
-                        )}
                         <div className="text-xs text-gray-500 mt-3">
                           Date Created: {formatDate(post.dateCreated)}
                         </div>
@@ -1470,7 +1448,7 @@ export default function ScholarshipDashboard({
                 ))
               ) : (
                 <div className="text-center py-12">
-                  <FaImage className="text-4xl text-gray-300 mx-auto mb-4" />
+                  <FaUniversity className="text-4xl text-gray-300 mx-auto mb-4" />
                   <p className="text-gray-500">No scholarship posts yet. Create your first post!</p>
                 </div>
               )
@@ -1487,6 +1465,24 @@ export default function ScholarshipDashboard({
                           <h4 className="text-lg font-semibold text-[#800020]">{ann.title}</h4>
                         </div>
                         <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">{ann.content}</p>
+                        {ann.announcementImages && ann.announcementImages.length > 0 && (
+                          <div className="flex gap-2 mt-3">
+                            {ann.announcementImages.slice(0, 3).map((img, idx) => (
+                              <img
+                                key={idx}
+                                src={img.url || img}
+                                alt="Announcement"
+                                className="w-16 h-16 object-cover rounded-lg border border-gray-200 cursor-pointer"
+                                onClick={() => setImageModalSrc(img.url || img)}
+                              />
+                            ))}
+                            {ann.announcementImages.length > 3 && (
+                              <div className="w-16 h-16 bg-gray-100 rounded-lg border border-gray-200 flex items-center justify-center text-xs text-gray-600">
+                                +{ann.announcementImages.length - 3}
+                              </div>
+                            )}
+                          </div>
+                        )}
                         <div className="text-xs text-gray-500 mt-3 flex items-center gap-1">
                           <FaClock className="text-[10px]" /> {formatDate(ann.date)}
                         </div>
@@ -1651,61 +1647,6 @@ export default function ScholarshipDashboard({
                   required
                 />
               </div>
-
-              {/* Picture Upload Section */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-[#800020] mb-3">
-                  <FaImage className="inline mr-2" />
-                  Scholarship Images
-                </label>
-
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[#800020] transition-colors">
-                  <input
-                    type="file"
-                    id="image-upload"
-                    multiple
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                  />
-                  <label
-                    htmlFor="image-upload"
-                    className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-[#800020] text-white rounded-lg hover:bg-[#650018] transition-colors"
-                  >
-                    <FaUpload />
-                    Choose Images
-                  </label>
-                  <p className="text-sm text-gray-500 mt-2">Upload scholarship photos, banners, or promotional images</p>
-                </div>
-
-                {/* Image Preview Grid */}
-                {scholarshipImages.length > 0 && (
-                  <div className="mt-4">
-                    <h4 className="text-sm font-semibold text-[#800020] mb-2">Uploaded Images ({scholarshipImages.length})</h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      {scholarshipImages.map((image, i) => (
-                        <div key={image.id || i} className="relative group">
-                          <img
-                            src={image.preview || image.url}
-                            alt={image.name || `Image ${i + 1}`}
-                            className="w-full h-32 object-cover rounded-lg border border-gray-200"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removeImage(image.id || i)}
-                            className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <FaTimesCircle className="text-xs" />
-                          </button>
-                          <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 rounded-b-lg truncate">
-                            {image.name || `Image ${i + 1}`}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
             </>
           ) : (
             <>
@@ -1719,6 +1660,60 @@ export default function ScholarshipDashboard({
                   placeholder="Write your announcement here..."
                   required
                 />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold text-[#800020] mb-3">
+                  <FaImage className="inline mr-2" />
+                  Announcement Images
+                </label>
+
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[#800020] transition-colors">
+                  <input
+                    type="file"
+                    id="announcement-image-upload"
+                    multiple
+                    accept="image/*"
+                    onChange={handleAnnouncementImageUpload}
+                    className="hidden"
+                  />
+                  <label
+                    htmlFor="announcement-image-upload"
+                    className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-[#800020] text-white rounded-lg hover:bg-[#650018] transition-colors"
+                  >
+                    <FaUpload />
+                    Choose Images
+                  </label>
+                  <p className="text-sm text-gray-500 mt-2">Upload announcement photos, banners, or related images</p>
+                </div>
+
+                {announcementImages.length > 0 && (
+                  <div className="mt-4">
+                    <h4 className="text-sm font-semibold text-[#800020] mb-2">Uploaded Images ({announcementImages.length})</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {announcementImages.map((image, i) => (
+                        <div key={image.id || i} className="relative group">
+                          <img
+                            src={image.preview || image.url}
+                            alt={image.name || `Image ${i + 1}`}
+                            className="w-full h-32 object-cover rounded-lg border border-gray-200 cursor-pointer"
+                            onClick={() => setImageModalSrc(image.preview || image.url)}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeAnnouncementImage(image.id || i)}
+                            className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <FaTimesCircle className="text-xs" />
+                          </button>
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 rounded-b-lg truncate">
+                            {image.name || `Image ${i + 1}`}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="md:col-span-2">
