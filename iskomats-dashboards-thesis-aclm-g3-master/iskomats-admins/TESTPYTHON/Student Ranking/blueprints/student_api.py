@@ -1872,7 +1872,7 @@ def ocr_check():
                 video_keywords_map = {
                     'Indigency': ['Indigency', 'Certificate', 'Barangay'],
                     'Enrollment': ['Enrollment', 'Certificate', 'COE', 'Registered'],
-                    'Grades': ['Grades', 'Grade', 'Transcript', 'Record', 'Evaluation'],
+                    'Grades': ['Grades', 'Grade', 'Transcript', 'Record', 'Evaluation', 'Rating', 'Units', 'Credit', 'Sem', 'GPA'],
                     'SchoolID': name_keywords or ['Student', 'Name'],
                     'SchoolIDBack': school_variants or ['School', 'Campus']
                 }
@@ -1905,10 +1905,10 @@ def ocr_check():
                         v_video, msg_video = verify_video_content(
                             video_bytes=vid_bytes,
                             keywords=video_keywords_map.get(doc_type),
-                            expected_address=None,  # Address matching in videos is unreliable and slow; keywords alone are sufficient
-                            # Reduced sampling for School ID to speed up verification (2 key frames)
-                            sample_positions=[0.25, 0.75] if not fast_video_verification and 'SchoolID' in doc_type else ([0.18, 0.55, 0.85] if fast_video_verification else None),
-                            max_width=480, # Always downscale video frames for OCR speed
+                            expected_address=None,
+                            # Increased to 3 frames to avoid missing document but kept optimized for speed
+                            sample_positions=[0.15, 0.50, 0.85], 
+                            max_width=500, # Balanced resolution for readability vs speed
                             allow_alt_pass=not fast_video_verification
                         )
                     else:

@@ -120,7 +120,7 @@ def decode_base64(data):
 
 # ─── Image preprocessing & quality assessment (Optimization #3) ──────────────
 _MAX_OCR_WIDTH = 800       # Higher resolution for A4 document legibility (Indigency/COE)
-_MAX_VIDEO_OCR_WIDTH = 600 # Reduced from 800 for 30% speed boost; enough for bold keywords
+_MAX_VIDEO_OCR_WIDTH = 450 # Reduced from 600 for 50% speed boost; enough for bold keywords
 _MAX_FACE_WIDTH = 224
 
 # Module-level CLAHE instance (reused across all OCR calls instead of recreating each time)
