@@ -490,17 +490,18 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH):
             if len(text.strip()) < 20:
                 text = _run_tesseract_on_image(img, psm=3, skip_pass2=False)
 
-            # OCR the top header band separately because school names/logos are often
-            # above the grade table and can be missed by the fast full-page pass.
-            header_height = max(int(img.shape[0] * 0.28), 1)
-            header_img = img[:header_height, :]
-            header_text = _run_tesseract_on_image(header_img, psm=6, skip_pass2=False)
+            # Only perform additional header band scan if the main scan was very sparse
+            # This saves ~10 seconds on clear documents.
+            if len(text.strip()) < 150:
+                header_height = max(int(img.shape[0] * 0.28), 1)
+                header_img = img[:header_height, :]
+                header_text = _run_tesseract_on_image(header_img, psm=6, skip_pass2=True)
 
-            if header_text.strip():
-                normalized_text = normalize_for_ocr(text)
-                normalized_header = normalize_for_ocr(header_text)
-                if normalized_header and normalized_header not in normalized_text:
-                    text = f"{header_text.strip()}\n{text}".strip()
+                if header_text.strip():
+                    normalized_text = normalize_for_ocr(text)
+                    normalized_header = normalize_for_ocr(header_text)
+                    if normalized_header and normalized_header not in normalized_text:
+                        text = f"{header_text.strip()}\n{text}".strip()
         except Exception as e:
             return "", f"OCR extraction error: {str(e)}"
 

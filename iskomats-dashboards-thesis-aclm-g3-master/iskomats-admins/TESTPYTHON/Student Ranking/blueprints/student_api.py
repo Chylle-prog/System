@@ -2236,11 +2236,11 @@ def ocr_check():
                             video_bytes=vid_bytes,
                             keywords=video_keywords_map.get(doc_type),
                             expected_address=None,
-                            # Restored to 5 key frames for better coverage
-                            sample_positions=[0.1, 0.3, 0.5, 0.7, 0.9], 
-                            max_width=800, # Restored higher resolution for legibility
+                            # Optimized: 3 frames @ 640px for faster video scan on Enrollment/Grades
+                            sample_positions=[0.2, 0.5, 0.8], 
+                            max_width=640, 
                             allow_alt_pass=True,
-                            fallback_text_length=15 # Lowered threshold to 15 chars
+                            fallback_text_length=15 
                         )
                     else:
                         msg_video = f"Video file unreachable ({fetch_err})"
@@ -2292,35 +2292,28 @@ def ocr_check():
                     school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
                     name_ok, _ = student_name_matches_text(raw, first_name, middle_name, last_name)
                     id_ok, _ = id_number_matches_text(raw, expected_id_no)
-                    course_ok, _ = course_matches_text(raw, course)
                     year_level_ok, _ = year_level_matches_text(raw, expected_year_level)
 
                     if v:
                         if not name_ok:
-                            v, msg = False, "Name mismatch"
-                        elif not id_ok:
-                            v, msg = False, f"ID number mismatch ({expected_id_no or 'None'})"
-                        elif not course_ok:
-                            v, msg = False, f"Degree/program mismatch ({course or 'None'})"
-                        elif not year_level_ok:
-                            v, msg = False, f"Year level mismatch ({expected_year_level or 'None'})"
-                        elif not year_only_ok:
-                            v, msg = False, f"Outdated academic year ({year_label or 'None'}). Expected: {expected_academic_year or 'None'}"
-                        elif not semester_ok:
-                            v, msg = False, f"Semester mismatch ({normalized_semester_label or semester_label or 'None'}). Expected: {format_academic_period(expected_academic_year, expected_semester)}"
-                        elif not year_ok:
-                            v, msg = False, f"Academic period mismatch ({year_label or 'None'}, {normalized_semester_label or semester_label or 'None'}). Expected: {format_academic_period(expected_academic_year, expected_semester)}"
-                        elif not school_ok: 
-                            v, msg = False, f"School mismatch ({school_name})"
-                        else: 
-                            detail_parts = []
-                            if school_name:
-                                detail_parts.append(school_name)
-                            if expected_year_level:
-                                detail_parts.append(expected_year_level)
-                            if course:
-                                detail_parts.append(course)
-                            msg = f"Verified: A.Y. {year_label}" + (f" {normalized_semester_label}" if normalized_semester_label else "") + (f" | {' | '.join(detail_parts)}" if detail_parts else "")
+                            v, msg = False, "Name mismatch: Student name not detected on document"
+                        else:
+                            # Secondary details are now non-blocking warnings to avoid false-positive rejections
+                            detail_issues = []
+                            if not id_ok: detail_issues.append(f"ID No mismatch ({expected_id_no})")
+                            if not year_level_ok: detail_issues.append(f"Year level mismatch ({expected_year_level})")
+                            if not year_only_ok: detail_issues.append(f"A.Y. mismatch ({year_label})")
+                            elif not semester_ok: detail_issues.append(f"Semester mismatch")
+                            elif not year_ok: detail_issues.append(f"Period mismatch")
+                            if not school_ok: detail_issues.append(f"School mismatch ({school_name})")
+
+                            if detail_issues:
+                                msg = f"Verified with warnings: {', '.join(detail_issues)}"
+                            else:
+                                detail_parts = []
+                                if school_name: detail_parts.append(school_name)
+                                if expected_year_level: detail_parts.append(expected_year_level)
+                                msg = f"Verified: A.Y. {year_label}" + (f" {normalized_semester_label}" if normalized_semester_label else "") + (f" | {' | '.join(detail_parts)}" if detail_parts else "")
                     
                     return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
 
@@ -2341,28 +2334,25 @@ def ocr_check():
 
                     if v:
                         if not name_ok:
-                            v, msg = False, "Full name mismatch"
-                        elif not year_level_ok:
-                            v, msg = False, f"Year level mismatch ({expected_year_level or 'None'})"
-                        elif not gpa_ok:
-                            v, msg = False, f"GPA mismatch ({expected_gpa or 'None'})"
-                        elif not year_only_ok:
-                            v, msg = False, f"Outdated academic year ({year_label or 'None'}). Expected: {expected_academic_year or 'None'}"
-                        elif not semester_ok:
-                            v, msg = False, f"Semester mismatch ({normalized_semester_label or semester_label or 'None'}). Expected: {format_academic_period(expected_academic_year, expected_semester)}"
-                        elif not year_ok:
-                            v, msg = False, f"Academic period mismatch ({year_label or 'None'}, {normalized_semester_label or semester_label or 'None'}). Expected: {format_academic_period(expected_academic_year, expected_semester)}"
-                        elif not school_ok: 
-                            v, msg = False, f"School mismatch ({school_name})"
-                        else: 
-                            detail_parts = []
-                            if school_name:
-                                detail_parts.append(school_name)
-                            if expected_year_level:
-                                detail_parts.append(expected_year_level)
-                            if matched_gpa is not None:
-                                detail_parts.append(f"GPA {matched_gpa}")
-                            msg = f"Verified: A.Y. {year_label}" + (f" {normalized_semester_label}" if normalized_semester_label else "") + (f" | {' | '.join(detail_parts)}" if detail_parts else "")
+                            v, msg = False, "Full name mismatch: Name not found on grade report"
+                        else:
+                            # Secondary details are non-blocking warnings
+                            detail_issues = []
+                            if not year_level_ok: detail_issues.append(f"Year level mismatch ({expected_year_level})")
+                            if not gpa_ok: detail_issues.append(f"GPA mismatch ({expected_gpa})")
+                            if not year_only_ok: detail_issues.append(f"A.Y. mismatch ({year_label})")
+                            elif not semester_ok: detail_issues.append(f"Semester mismatch")
+                            elif not year_ok: detail_issues.append(f"Period mismatch")
+                            if not school_ok: detail_issues.append(f"School mismatch ({school_name})")
+
+                            if detail_issues:
+                                msg = f"Verified with warnings: {', '.join(detail_issues)}"
+                            else:
+                                detail_parts = []
+                                if school_name: detail_parts.append(school_name)
+                                if expected_year_level: detail_parts.append(expected_year_level)
+                                if matched_gpa is not None: detail_parts.append(f"GPA {matched_gpa}")
+                                msg = f"Verified: A.Y. {year_label}" + (f" {normalized_semester_label}" if normalized_semester_label else "") + (f" | {' | '.join(detail_parts)}" if detail_parts else "")
                     
                     return {'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
 
