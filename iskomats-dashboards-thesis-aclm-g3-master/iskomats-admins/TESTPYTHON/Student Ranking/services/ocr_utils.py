@@ -728,6 +728,15 @@ def is_current_school_year(year_str, semester_str=None, expected_year="2026", ex
 
 # ─── Face & Neural Signature Verification Wrappers ───────────────────────────
 
+def _create_uniface_model(model_cls, providers, session_options):
+    """Instantiate UniFace models across package versions with different kwargs."""
+    try:
+        return model_cls(providers=providers, session_options=session_options)
+    except TypeError as exc:
+        if 'session_options' not in str(exc):
+            raise
+        return model_cls(providers=providers)
+
 def _init_face_models():
     """Lazily initialize UniFace models once per process."""
     global _FACE_DETECTOR, _FACE_RECOGNIZER, _FACE_MODEL_INIT_ERROR
@@ -756,8 +765,8 @@ def _init_face_models():
             # Explicitly define CPU provider for ONNX Runtime to avoid NameError
             providers = ['CPUExecutionProvider']
 
-            _FACE_DETECTOR = RetinaFace(providers=providers, session_options=sess_options)
-            _FACE_RECOGNIZER = ArcFace(providers=providers, session_options=sess_options)
+            _FACE_DETECTOR = _create_uniface_model(RetinaFace, providers, sess_options)
+            _FACE_RECOGNIZER = _create_uniface_model(ArcFace, providers, sess_options)
             print("[FACE] UniFace RetinaFace and ArcFace initialized on CPU (Single-Threaded).", flush=True)
         except Exception as exc:
             _FACE_MODEL_INIT_ERROR = f"Failed to initialize UniFace models: {str(exc)}"
