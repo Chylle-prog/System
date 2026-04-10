@@ -1872,7 +1872,7 @@ def ocr_check():
                 video_keywords_map = {
                     'Indigency': ['Indigency', 'Certificate', 'Barangay'],
                     'Enrollment': ['Enrollment', 'Certificate', 'COE', 'Registered'],
-                    'Grades': ['Grades', 'Grade', 'Transcript', 'Record', 'Evaluation', 'Rating', 'Units', 'Credit', 'Sem', 'GPA'],
+                    'Grades': ['Grades', 'Grade', 'Transcript', 'Record', 'Evaluation', 'Rating', 'Units', 'Credit', 'Sem', 'GPA', 'Report', 'Card', 'Evaluation'],
                     'SchoolID': name_keywords or ['Student', 'Name'],
                     'SchoolIDBack': school_variants or ['School', 'Campus']
                 }
@@ -1906,11 +1906,11 @@ def ocr_check():
                             video_bytes=vid_bytes,
                             keywords=video_keywords_map.get(doc_type),
                             expected_address=None,
-                            # Increased to 3 frames to avoid missing document but kept optimized for speed
-                            sample_positions=[0.15, 0.50, 0.85], 
-                            max_width=500, # Balanced resolution for readability vs speed
+                            # Increased coverage to 4 frames for shaky videos 
+                            sample_positions=[0.12, 0.38, 0.62, 0.88], 
+                            max_width=800, # Higher resolution for better OCR on small table text
                             allow_alt_pass=not fast_video_verification,
-                            fallback_text_length=28 if fast_video_verification else 0
+                            fallback_text_length=30 if fast_video_verification else 0
                         )
                     else:
                         msg_video = f"Video file unreachable ({fetch_err})"

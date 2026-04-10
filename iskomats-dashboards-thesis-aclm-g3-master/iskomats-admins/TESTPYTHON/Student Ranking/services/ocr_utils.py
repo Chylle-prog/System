@@ -16,9 +16,8 @@ import eventlet.tpool
 import eventlet.semaphore
 from collections import OrderedDict
 
-# Global OCR Concurrency Control: Render free tier only has ~512MB RAM and 1-2 CPUs.
-# Running too many Tesserect/OCR tasks in parallel will cause OOM or freeze the whole process.
-OCR_SEMAPHORE = eventlet.semaphore.Semaphore(1)
+# Global OCR Concurrency Control: Increased to 2 for better parallel throughput on Render
+OCR_SEMAPHORE = eventlet.semaphore.Semaphore(2)
 
 
 # ─── Environment hints for threading & memory ──────────────────────────────────
@@ -120,7 +119,7 @@ def decode_base64(data):
 
 # ─── Image preprocessing & quality assessment (Optimization #3) ──────────────
 _MAX_OCR_WIDTH = 800       # Higher resolution for A4 document legibility (Indigency/COE)
-_MAX_VIDEO_OCR_WIDTH = 450 # Reduced from 600 for 50% speed boost; enough for bold keywords
+_MAX_VIDEO_OCR_WIDTH = 800 # Restored to 800 for better OCR on small text
 _MAX_FACE_WIDTH = 224
 
 # Module-level CLAHE instance (reused across all OCR calls instead of recreating each time)
@@ -151,9 +150,9 @@ def assess_image_quality(img):
         if laplacian_var < 10:
             return False, f"Image too blurry (sharpness: {laplacian_var:.1f})"
         
-        # Check brightness (mean pixel value should be between 20-235)
+        # Check brightness: even more lenient (10-245)
         brightness_mean = cv2.mean(gray)[0]
-        if brightness_mean < 20 or brightness_mean > 235:
+        if brightness_mean < 10 or brightness_mean > 245:
             return False, f"Image too dark or bright (brightness: {brightness_mean:.0f}/255)"
         
         return True, "Good quality"
