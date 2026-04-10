@@ -12,6 +12,40 @@ import ResetPass from './Pages/Auth/Reset Pass/reset-pass'
 import Suspended from './Pages/Auth/Suspended/suspended'
 import VerifyEmail from './Pages/Auth/VerifyE/verify-email'
 import { authAPI } from './services/api'
+import { clearAdminSession } from './utils/admin-session'
+
+const REMOTE_SESSION_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+const FORCED_SESSION_CHECK_COOLDOWN_MS = 30 * 1000;
+
+function decodeJwtPayload(token) {
+  if (!token) {
+    return null;
+  }
+
+  try {
+    const [, payloadPart] = token.split('.');
+    if (!payloadPart) {
+      return null;
+    }
+
+    const normalized = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    return JSON.parse(window.atob(padded));
+  } catch {
+    return null;
+  }
+}
+
+function hasValidAdminToken() {
+  const token = localStorage.getItem('authToken');
+  const payload = decodeJwtPayload(token);
+
+  if (!token || !payload?.exp) {
+    return false;
+  }
+
+  return payload.exp * 1000 > Date.now();
+}
 
 // Protected Route Component
 const ProtectedRoute = ({ children, requiredRole }) => {
@@ -68,7 +102,23 @@ function AppContent() {
       return undefined;
     }
 
+    if (!hasValidAdminToken()) {
+      clearAdminSession({ markSessionExpired: true });
+      window.location.href = '/login';
+      return undefined;
+    }
+
+    if (!lastSessionCheckRef.current) {
+      lastSessionCheckRef.current = Date.now();
+    }
+
     const verifySession = async ({ force = false } = {}) => {
+      if (!hasValidAdminToken()) {
+        clearAdminSession({ markSessionExpired: true });
+        window.location.href = '/login';
+        return;
+      }
+
       if (document.visibilityState === 'hidden') {
         return;
       }
@@ -78,7 +128,11 @@ function AppContent() {
       }
 
       const now = Date.now();
-      if (!force && now - lastSessionCheckRef.current < 10000) {
+      const minInterval = force
+        ? FORCED_SESSION_CHECK_COOLDOWN_MS
+        : REMOTE_SESSION_CHECK_INTERVAL_MS;
+
+      if (now - lastSessionCheckRef.current < minInterval) {
         return;
       }
 
@@ -92,8 +146,6 @@ function AppContent() {
         isVerifyingSessionRef.current = false;
       }
     };
-
-    verifySession({ force: true });
 
     const intervalId = window.setInterval(verifySession, 60000);
     const handleFocus = () => verifySession({ force: true });
