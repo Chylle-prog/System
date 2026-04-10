@@ -1897,9 +1897,11 @@ const Portal = () => {
           .ann-modal-image {
             display: block;
             width: 100%;
-            height: 220px;
-            object-fit: cover;
+            height: auto;
+            max-height: min(70vh, 560px);
+            object-fit: contain;
             background: white;
+            padding: 0.75rem;
           }
 
           .ann-modal-image-caption {
