@@ -892,92 +892,70 @@ const StudentInfo = () => {
       hasPayload = true;
     }
 
-    if (stepNumber === 1 && idPicturePreview) {
-      if (isFileLike(idPicturePreview)) {
-        payload.append('profile_picture', idPicturePreview);
-      } else if (typeof idPicturePreview === 'string' && idPicturePreview.startsWith('data:')) {
-        jsonData['profile_picture'] = idPicturePreview;
+    // 2. Special handling for files and previews based on the current step
+    
+    // STEP 1: Profile and Residency
+    if (stepNumber === 1) {
+      if (idPicturePreview) {
+        if (isFileLike(idPicturePreview)) payload.append('profile_picture', idPicturePreview);
+        else if (typeof idPicturePreview === 'string' && idPicturePreview.startsWith('data:')) jsonData['profile_picture'] = idPicturePreview;
+        hasPayload = true;
       }
-      hasPayload = true;
-    }
-
-    if (stepNumber === 2) {
       if (photos.mayorIndigency_photo) {
-        if (isFileLike(photos.mayorIndigency_photo)) {
-          payload.append('indigency_doc', photos.mayorIndigency_photo);
-        } else if (typeof photos.mayorIndigency_photo === 'string' && photos.mayorIndigency_photo.startsWith('data:')) {
-          jsonData['indigency_doc'] = photos.mayorIndigency_photo;
-        }
+        if (isFileLike(photos.mayorIndigency_photo)) payload.append('indigency_doc', photos.mayorIndigency_photo);
+        else if (typeof photos.mayorIndigency_photo === 'string' && photos.mayorIndigency_photo.startsWith('data:')) jsonData['indigency_doc'] = photos.mayorIndigency_photo;
         hasPayload = true;
       }
     }
 
+    // STEP 3: School and Document Verification
     if (stepNumber === 3) {
       if (schoolIdPhotos.front) {
-        if (isFileLike(schoolIdPhotos.front)) {
-          payload.append('id_front', schoolIdPhotos.front);
-        } else if (typeof schoolIdPhotos.front === 'string' && schoolIdPhotos.front.startsWith('data:')) {
-          jsonData['id_front'] = schoolIdPhotos.front;
-        }
+        if (isFileLike(schoolIdPhotos.front)) payload.append('id_front', schoolIdPhotos.front);
+        else if (typeof schoolIdPhotos.front === 'string' && schoolIdPhotos.front.startsWith('data:')) jsonData['id_front'] = schoolIdPhotos.front;
         hasPayload = true;
       }
-
       if (schoolIdPhotos.back) {
-        if (isFileLike(schoolIdPhotos.back)) {
-          payload.append('id_back', schoolIdPhotos.back);
-        } else if (typeof schoolIdPhotos.back === 'string' && schoolIdPhotos.back.startsWith('data:')) {
-          jsonData['id_back'] = schoolIdPhotos.back;
-        }
+        if (isFileLike(schoolIdPhotos.back)) payload.append('id_back', schoolIdPhotos.back);
+        else if (typeof schoolIdPhotos.back === 'string' && schoolIdPhotos.back.startsWith('data:')) jsonData['id_back'] = schoolIdPhotos.back;
         hasPayload = true;
       }
-
       if (photos.mayorCOE_photo) {
-        if (isFileLike(photos.mayorCOE_photo)) {
-          payload.append('enrollment_certificate_doc', photos.mayorCOE_photo);
-        } else if (typeof photos.mayorCOE_photo === 'string' && photos.mayorCOE_photo.startsWith('data:')) {
-          jsonData['enrollment_certificate_doc'] = photos.mayorCOE_photo;
-        }
+        if (isFileLike(photos.mayorCOE_photo)) payload.append('enrollment_certificate_doc', photos.mayorCOE_photo);
+        else if (typeof photos.mayorCOE_photo === 'string' && photos.mayorCOE_photo.startsWith('data:')) jsonData['enrollment_certificate_doc'] = photos.mayorCOE_photo;
         hasPayload = true;
       }
-
       if (photos.mayorGrades_photo) {
-        if (isFileLike(photos.mayorGrades_photo)) {
-          payload.append('grades_doc', photos.mayorGrades_photo);
-        } else if (typeof photos.mayorGrades_photo === 'string' && photos.mayorGrades_photo.startsWith('data:')) {
-          jsonData['grades_doc'] = photos.mayorGrades_photo;
-        }
+        if (isFileLike(photos.mayorGrades_photo)) payload.append('grades_doc', photos.mayorGrades_photo);
+        else if (typeof photos.mayorGrades_photo === 'string' && photos.mayorGrades_photo.startsWith('data:')) jsonData['grades_doc'] = photos.mayorGrades_photo;
         hasPayload = true;
       }
     }
 
+    // STEP 4: Face Verification & Submission
     if (stepNumber === 4) {
       if (photos.face_photo) {
-        if (isFileLike(photos.face_photo)) {
-          payload.append('face_photo', photos.face_photo);
-        } else if (typeof photos.face_photo === 'string' && photos.face_photo.startsWith('data:')) {
-          jsonData['face_photo'] = photos.face_photo;
-        }
+        if (isFileLike(photos.face_photo)) payload.append('face_photo', photos.face_photo);
+        else if (typeof photos.face_photo === 'string' && photos.face_photo.startsWith('data:')) jsonData['face_photo'] = photos.face_photo;
         hasPayload = true;
       }
 
       const signatureToSave = drawnSignature || signaturePreview;
       if (signatureToSave) {
-        if (isFileLike(signatureToSave)) {
-          payload.append('signature_data', signatureToSave);
-        } else if (typeof signatureToSave === 'string' && signatureToSave.startsWith('data:')) {
-          jsonData['signature_data'] = signatureToSave;
-        }
+        if (isFileLike(signatureToSave)) payload.append('signature_data', signatureToSave);
+        else if (typeof signatureToSave === 'string' && signatureToSave.startsWith('data:')) jsonData['signature_data'] = signatureToSave;
         hasPayload = true;
       }
-
-      const videoFields = ['mayorIndigency_video', 'mayorGrades_video', 'mayorCOE_video', 'schoolIdFront_video', 'schoolIdBack_video', 'face_video'];
-      videoFields.forEach(field => {
-        if (formData[field] && typeof formData[field] === 'string' && formData[field].startsWith('http')) {
-          jsonData[field] = formData[field];
-          hasPayload = true;
-        }
-      });
     }
+
+    // Common: Handle video URLs if they exist in formData (e.g. from previous loads)
+    const videoFields = ['mayorIndigency_video', 'mayorGrades_video', 'mayorCOE_video', 'schoolIdFront_video', 'schoolIdBack_video', 'face_video'];
+    videoFields.forEach(field => {
+      if (formData[field] && typeof formData[field] === 'string' && formData[field].startsWith('http')) {
+        jsonData[field] = formData[field];
+        hasPayload = true;
+      }
+    });
 
     persistDraft(currentUser);
 
