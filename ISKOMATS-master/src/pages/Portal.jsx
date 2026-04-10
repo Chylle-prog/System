@@ -4,6 +4,27 @@ import { useAuth } from '../contexts/AuthContext';
 import { applicantAPI, applicationAPI, scholarshipAPI, announcementAPI, notificationAPI } from '../services/api';
 import socketService from '../services/socket';
 
+const toChatTimestamp = (value) => {
+  const parsed = new Date(value || 0).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const toChatOrderId = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const compareChatMessages = (left, right) => {
+  const timestampDiff = toChatTimestamp(left?.time) - toChatTimestamp(right?.time);
+  if (timestampDiff !== 0) {
+    return timestampDiff;
+  }
+
+  return toChatOrderId(left?.m_id ?? left?.id) - toChatOrderId(right?.m_id ?? right?.id);
+};
+
+const sortChatMessages = (messages) => [...messages].sort(compareChatMessages);
+
 const Portal = () => {
   const navigate = useNavigate();
   const { logout: authLogout, userProfile: globalProfile } = useAuth();
@@ -34,6 +55,8 @@ const Portal = () => {
   
   const messageDropdownRef = useRef(null);
   const notificationDropdownRef = useRef(null);
+  const currentChatRoomRef = useRef(null);
+  const chatMessagesEndRef = useRef(null);
 
   // Scholarship chat data
   const [scholarships, setScholarships] = useState([]);
@@ -187,25 +210,42 @@ const Portal = () => {
       });
 
       unsubMsg = socketService.subscribe('message', (msg) => {
+        const isActiveRoom = currentChatRoomRef.current === msg.room;
+
         setChatMessages(prev => {
           const roomMsgs = prev[msg.room] || [];
-          const isDuplicate = roomMsgs.some(m => m.message === msg.message && m.time === msg.timestamp);
+          const isDuplicate = roomMsgs.some((m) => {
+            if (msg.m_id && m.m_id) {
+              return m.m_id === msg.m_id;
+            }
+
+            return m.message === msg.message && m.sender === msg.username && m.time === msg.timestamp;
+          });
           if (isDuplicate) return prev;
+
+          const nextMessage = {
+            id: msg.m_id || `${msg.room}-${msg.timestamp}-${msg.username}`,
+            m_id: msg.m_id,
+            sender: msg.username,
+            message: msg.message,
+            time: msg.timestamp,
+            type: msg.username === applicantNo ? 'sent' : 'received'
+          };
           
           return {
             ...prev,
-            [msg.room]: [...roomMsgs, {
-              sender: msg.username,
-              message: msg.message,
-              time: msg.timestamp,
-              type: msg.username === applicantNo ? 'sent' : 'received'
-            }]
+            [msg.room]: sortChatMessages([...roomMsgs, nextMessage])
           };
         });
 
-        setScholarships(prev => prev.map(s => 
-          s.id === msg.room ? { ...s, lastMessage: msg.message, time: 'Just now' } : s
-        ));
+        setScholarships(prev => prev.map((s) => {
+          if (s.id !== msg.room) {
+            return s;
+          }
+
+          const nextUnread = isActiveRoom ? 0 : ((s.unread || 0) + (msg.username === applicantNo ? 0 : 1));
+          return { ...s, lastMessage: msg.message, time: 'Just now', unread: nextUnread };
+        }));
       });
 
       unsubRoom = socketService.subscribe('add_room', (data) => {
@@ -314,6 +354,20 @@ const Portal = () => {
     socketService.sendMessage(currentChatId, applicantNo, message, currentChatProviderName);
     setChatInput('');
   };
+
+  const currentRoomMessages = sortChatMessages(chatMessages[currentChatId] || []);
+
+  useEffect(() => {
+    currentChatRoomRef.current = showChatModal ? currentChatId : null;
+  }, [currentChatId, showChatModal]);
+
+  useEffect(() => {
+    if (!showChatModal || !currentChatId) {
+      return;
+    }
+
+    chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [currentChatId, currentRoomMessages.length, showChatModal]);
 
   const hasFetchedApps = useRef(false);
 
@@ -2148,9 +2202,9 @@ const Portal = () => {
             </button>
           </div>
           <div className="chat-messages">
-            {(chatMessages[currentChatId] || []).length > 0 ? (
-              (chatMessages[currentChatId] || []).map((msg, index) => (
-                <div key={index} className={`message-bubble ${msg.type}`}>
+            {currentRoomMessages.length > 0 ? (
+              currentRoomMessages.map((msg, index) => (
+                <div key={msg.m_id || msg.id || index} className={`message-bubble ${msg.type}`}>
                   {msg.type === 'received' && (
                     <div className="sender">{msg.sender}</div>
                   )}
@@ -2161,6 +2215,7 @@ const Portal = () => {
             ) : (
               <div className="no-messages">No messages yet</div>
             )}
+            <div ref={chatMessagesEndRef} />
           </div>
           <div className="chat-input-area">
             <input 

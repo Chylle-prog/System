@@ -41,6 +41,27 @@ Chart.register(...registerables);
 
 const ACADEMIC_YEAR_PATTERN = /^\d{4}[\-–—]\d{4}$/;
 
+const toMessageTimestamp = (value) => {
+  const parsed = new Date(value || 0).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const toMessageOrderId = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const compareMessageOrder = (left, right) => {
+  const timestampDiff = toMessageTimestamp(left?.timestamp) - toMessageTimestamp(right?.timestamp);
+  if (timestampDiff !== 0) {
+    return timestampDiff;
+  }
+
+  return toMessageOrderId(left?.m_id ?? left?.id) - toMessageOrderId(right?.m_id ?? right?.id);
+};
+
+const sortMessages = (messages) => [...messages].sort(compareMessageOrder);
+
 const getDefaultAcademicYear = () => {
   const currentYear = new Date().getFullYear();
   return `${currentYear}–${currentYear + 1}`;
@@ -205,6 +226,16 @@ export default function ScholarshipDashboard({
     () => [providerName, providerKey, programName].map(normalizeProviderIdentity).filter(Boolean),
     [programName, providerKey, providerName]
   );
+  const adminSenderAliases = useMemo(
+    () => new Set([
+      userName,
+      userFirstName,
+      providerName,
+      programName,
+      scholarshipLabel,
+    ].map(normalizeProviderIdentity).filter(Boolean)),
+    [programName, providerName, scholarshipLabel, userFirstName, userName]
+  );
   const sidebarTitle = providerName;
   const sidebarSubtitle = 'Scholarship Program';
   const trackTitle = `${scholarshipLabel} - Track Applicants`;
@@ -272,6 +303,8 @@ export default function ScholarshipDashboard({
   const schoolChartInstance = useRef(null);
   const locationChartRef = useRef(null);
   const locationChartInstance = useRef(null);
+  const currentInboxRoomRef = useRef(null);
+  const inboxMessagesEndRef = useRef(null);
 
   const loadApplicants = async () => {
     try {
@@ -380,21 +413,24 @@ export default function ScholarshipDashboard({
           if (isDuplicate) return prev;
 
           const [appNo, proNo] = msg.room.split('+');
+          const isActiveRoom = currentInboxRoomRef.current === msg.room;
+          const isAdminMessage = adminSenderAliases.has(normalizeProviderIdentity(msg.username));
+          const nextMessage = {
+            id: msg.m_id || (Date.now() + Math.random()),
+            m_id: msg.m_id,
+            studentName: msg.username,
+            studentEmail: appNo,
+            applicant_no: appNo,
+            studentStatus: msg.student_status,
+            message: msg.message,
+            timestamp: msg.timestamp,
+            read: isActiveRoom || isAdminMessage,
+            room: msg.room
+          };
 
           return {
             ...prev,
-            inbox: [...prev.inbox, {
-              id: msg.m_id || (Date.now() + Math.random()),
-              m_id: msg.m_id,
-              studentName: msg.username,
-              studentEmail: appNo, 
-              applicant_no: appNo,
-              studentStatus: msg.student_status,
-              message: msg.message,
-              timestamp: msg.timestamp,
-              read: msg.username === userName,
-              room: msg.room
-            }]
+            inbox: sortMessages([...prev.inbox, nextMessage])
           };
         });
       });
@@ -1511,7 +1547,7 @@ export default function ScholarshipDashboard({
 
   const groupMessagesByStudent = (messages) => {
     const grouped = {};
-    messages.forEach((m) => {
+    sortMessages(messages).forEach((m) => {
       const key = m.applicant_no || m.studentEmail || m.studentName;
       if (!grouped[key]) {
         // Find actual applicant name for this ID from local data state
@@ -1540,11 +1576,16 @@ export default function ScholarshipDashboard({
       }
       grouped[key].messages.push(m);
       if (!m.read) grouped[key].unreadCount += 1;
-      if (!grouped[key].lastMessage || new Date(m.timestamp) > new Date(grouped[key].lastMessage.timestamp)) {
-        grouped[key].lastMessage = m;
-      }
+      grouped[key].lastMessage = m;
     });
-    return Object.values(grouped).sort((a, b) => new Date(b.lastMessage.timestamp) - new Date(a.lastMessage.timestamp));
+
+    return Object.values(grouped)
+      .map((conversation) => ({
+        ...conversation,
+        messages: sortMessages(conversation.messages),
+        lastMessage: sortMessages(conversation.messages).at(-1) || conversation.lastMessage,
+      }))
+      .sort((a, b) => compareMessageOrder(b.lastMessage, a.lastMessage));
   };
 
   const markAsRead = (messageId) => {
@@ -1581,10 +1622,28 @@ export default function ScholarshipDashboard({
   const allMessages = data.inbox || [];
   const unreadCount = allMessages.filter((m) => !m.read).length;
   const conversations = useMemo(() => groupMessagesByStudent(allMessages), [allMessages]);
-  const currentMessage = viewMessage ? allMessages.find((m) => m.id === viewMessage.messageId) : null;
   const currentConversation = viewMessage?.applicant_no
     ? conversations.find((c) => c.applicant_no?.toString() === viewMessage.applicant_no?.toString())
     : null;
+  const currentConversationMessages = useMemo(
+    () => sortMessages(currentConversation?.messages || []),
+    [currentConversation]
+  );
+  const currentMessage = currentConversationMessages.at(-1)
+    || (viewMessage ? allMessages.find((m) => m.id === viewMessage.messageId) : null);
+
+  useEffect(() => {
+    currentInboxRoomRef.current = currentMessage?.room || null;
+  }, [currentMessage]);
+
+  useEffect(() => {
+    if (section !== 'inbox' || !currentConversation) {
+      return;
+    }
+
+    inboxMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [currentConversation, currentConversationMessages.length, section]);
+
   const filteredConversations = useMemo(() => {
     let filtered = conversations;
 
@@ -1608,7 +1667,7 @@ export default function ScholarshipDashboard({
         return (
           c.studentName.toLowerCase().includes(q) ||
           (c.studentEmail || '').toLowerCase().includes(q) ||
-          c.messages.some((m) => m.subject.toLowerCase().includes(q) || m.message.toLowerCase().includes(q))
+          c.messages.some((m) => (m.message || '').toLowerCase().includes(q))
         );
       });
     }
@@ -3858,10 +3917,7 @@ export default function ScholarshipDashboard({
               </div>
 
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                {currentConversation.messages
-                  .slice()
-                  .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-                  .map((msg) => (
+                {currentConversationMessages.map((msg) => (
                     <div key={msg.id} className="space-y-2">
                       <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200">
                         <div className="flex items-center justify-between mb-2">
@@ -3893,6 +3949,7 @@ export default function ScholarshipDashboard({
                       )}
                     </div>
                   ))}
+                <div ref={inboxMessagesEndRef} />
               </div>
 
               <div className="p-4 border-t border-gray-200 bg-gray-50">
