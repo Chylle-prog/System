@@ -2600,42 +2600,36 @@ def get_announcements():
         except Exception:
             primary_key_column, foreign_key_column = None, None
 
-        # Check if 'status_updated' column exists in the announcements table
-        cur.execute("""
+        cur.execute(
+            """
             SELECT column_name
             FROM information_schema.columns
-            WHERE table_name = 'announcements' AND column_name = 'status_updated'
-        """)
-        has_status_updated = cur.fetchone() is not None
-
-        # Check if 'time_added' column exists 
-        cur.execute("""
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name = 'announcements' AND column_name = 'time_added'
-        """)
-        has_time_added = cur.fetchone() is not None
-
-        cur.execute("""
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name = 'announcements' AND column_name = 'ann_date'
-        """)
-        has_ann_date = cur.fetchone() is not None
+            WHERE table_name = 'announcements'
+              AND column_name IN ('time_added', 'status_updated', 'ann_date', 'is_removed')
+            """
+        )
+        announcement_columns = {
+            row['column_name'] if isinstance(row, dict) else row[0]
+            for row in cur.fetchall()
+        }
 
         # Build the date expression based on what columns actually exist
-        if has_time_added:
+        if 'time_added' in announcement_columns:
             date_col = 'a.time_added'
             order_col = 'a.time_added DESC'
-        elif has_status_updated:
+        elif 'status_updated' in announcement_columns:
             date_col = 'a.status_updated'
             order_col = 'a.status_updated DESC'
-        elif has_ann_date:
+        elif 'ann_date' in announcement_columns:
             date_col = 'a.ann_date'
             order_col = 'a.ann_date DESC'
         else:
             date_col = 'NULL'
             order_col = 'a.ann_no DESC'
+
+        where_clause = ''
+        if 'is_removed' in announcement_columns:
+            where_clause = 'WHERE COALESCE(a.is_removed, FALSE) = FALSE'
 
         # Join announcements with scholarship_providers to get the name of the provider
         if primary_key_column and foreign_key_column:
@@ -2645,7 +2639,7 @@ def get_announcements():
                 FROM announcements a
                 LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
                 LEFT JOIN announcement_images ai ON a.ann_no = ai.{foreign_key_column}
-                WHERE COALESCE(a.is_removed, FALSE) = FALSE
+                {where_clause}
                 ORDER BY {order_col}, ai.{primary_key_column}
             """)
         else:
@@ -2654,7 +2648,7 @@ def get_announcements():
                        NULL AS image_id
                 FROM announcements a
                 LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
-                WHERE COALESCE(a.is_removed, FALSE) = FALSE
+                {where_clause}
                 ORDER BY {order_col}
             """)
 

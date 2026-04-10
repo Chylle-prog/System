@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 /**
  * VideoUploader Component (Repurposed from VideoRecorder)
@@ -14,6 +14,7 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
   const [previewUrl, setPreviewUrl] = useState(null);
   const [fileName, setFileName] = useState('');
   const [videoError, setVideoError] = useState(null);
+  const fileInputRef = useRef(null);
 
   // Sync with initialVideoUrl if provided (for loading from DB)
   useEffect(() => {
@@ -26,9 +27,21 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
     if (initialVideoUrl) {
       console.log(`Setting preview URL for ${label}:`, initialVideoUrl);
       setPreviewUrl(initialVideoUrl);
-      setFileName('Existing Video Transcript');
+      setFileName('Existing saved video');
+      setVideoError(null);
+    } else if (!previewUrl || !previewUrl.startsWith('blob:')) {
+      setPreviewUrl(null);
+      setFileName('');
+      setVideoError(null);
     }
   }, [initialVideoUrl]);
+
+  const openFilePicker = () => {
+    if (disabled) return;
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
 
   const handleFileChange = (e) => {
     if (disabled) return;
@@ -43,6 +56,7 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
       setFileName(file.name);
       const url = URL.createObjectURL(file);
       setPreviewUrl(url);
+      setVideoError(null);
       
       if (onRecordComplete) {
         onRecordComplete(file, url);
@@ -54,6 +68,10 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
     if (disabled) return;
     setPreviewUrl(null);
     setFileName('');
+    setVideoError(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
     if (onRecordComplete) onRecordComplete(null, null);
   };
 
@@ -103,6 +121,7 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
       <div style={{ marginBottom: '1rem', textAlign: 'left' }}>
         <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155', marginBottom: '8px' }}>{label}</label>
         <input 
+          ref={fileInputRef}
           id={`v-upload-${label.replace(/\s+/g, '-')}`}
           type="file" 
           accept="video/*" 
@@ -131,6 +150,12 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
           <i className="fas fa-video" style={{ color: 'var(--primary)' }}></i>
           {previewUrl ? 'Replace Video' : 'Choose Video'}
         </label>
+
+        {fileName && (
+          <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#64748b', fontWeight: '600', wordBreak: 'break-word' }}>
+            {fileName}
+          </div>
+        )}
         
         {status && (
           <div
@@ -170,16 +195,60 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
               <a href={previewUrl} download style={{ display: 'block', fontSize: '0.75rem', color: '#c53030', marginBottom: '0.5rem' }}>Download to View</a>
             </div>
           ) : (
-            <video 
-              src={previewUrl} 
-              controls 
-              style={{ 
-                width: '100%', 
-                borderRadius: '12px', 
-                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                background: '#000' 
-              }} 
-            />
+            <>
+              <video 
+                src={previewUrl} 
+                controls 
+                onError={() => setVideoError('Video preview failed')}
+                style={{ 
+                  width: '100%', 
+                  borderRadius: '12px', 
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                  background: '#000' 
+                }} 
+              />
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.85rem' }}>
+                <button
+                  type="button"
+                  onClick={openFilePicker}
+                  disabled={disabled}
+                  style={{
+                    flex: 1,
+                    border: '1px solid #cbd5e1',
+                    background: '#fff',
+                    color: '#0f172a',
+                    borderRadius: '12px',
+                    padding: '0.75rem 0.9rem',
+                    fontSize: '0.8rem',
+                    fontWeight: '700',
+                    cursor: disabled ? 'not-allowed' : 'pointer',
+                    opacity: disabled ? 0.6 : 1
+                  }}
+                >
+                  <i className="fas fa-arrows-rotate" style={{ marginRight: '8px', color: 'var(--primary)' }}></i>
+                  Replace Video
+                </button>
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  disabled={disabled}
+                  style={{
+                    border: '1px solid #fecaca',
+                    background: '#fff5f5',
+                    color: '#b91c1c',
+                    borderRadius: '12px',
+                    padding: '0.75rem 0.9rem',
+                    fontSize: '0.8rem',
+                    fontWeight: '700',
+                    cursor: disabled ? 'not-allowed' : 'pointer',
+                    opacity: disabled ? 0.6 : 1
+                  }}
+                >
+                  <i className="fas fa-trash" style={{ marginRight: '8px' }}></i>
+                  Remove
+                </button>
+              </div>
+            </>
           )}
         </div>
       )}
