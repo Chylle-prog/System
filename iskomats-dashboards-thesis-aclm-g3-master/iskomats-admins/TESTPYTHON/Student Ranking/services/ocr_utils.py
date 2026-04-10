@@ -405,7 +405,9 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     # --- OPTIMIZATION #3: Image quality assessment ---
     try:
         nparr = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE) # Grayscale immediately
+        del nparr
+        
         if img is None: 
             return False, "Invalid image format", "", 0.0
         
@@ -414,10 +416,10 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             print(f"[QUALITY REJECT] {quality_reason}", flush=True)
             return False, f"Image quality issue: {quality_reason}", "", 0.0
         
-        # Resize image once
+        # Resize image once - Lowered to 850px for memory safety on Render
         h, w = img.shape[:2]
-        if w > _MAX_OCR_WIDTH:
-            scale = _MAX_OCR_WIDTH / w
+        if w > 850:
+            scale = 850 / w
             img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
     except Exception as e:
         return False, f"Preprocessing error: {str(e)}", "", 0.0
@@ -435,6 +437,8 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
         except Exception as e:
             print(f"[OCR] PSM3 error: {e}", flush=True)
             best_text = ""
+        finally:
+            gc.collect() # Force cleanup
     
     
     name_v, addr_v, found_kw, best_ratio = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, None, is_indigency)
@@ -469,7 +473,9 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH):
 
     try:
         nparr = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE) # Convert to Grayscale immediately (saves 66% memory)
+        del nparr # Free buffer immediately
+        
         if img is None:
             return "", "Invalid image format"
 
@@ -502,8 +508,8 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH):
                     normalized_header = normalize_for_ocr(header_text)
                     if normalized_header and normalized_header not in normalized_text:
                         text = f"{header_text.strip()}\n{text}".strip()
-        except Exception as e:
-            return "", f"OCR extraction error: {str(e)}"
+        finally:
+            gc.collect() # Force cleanup after Tesseract release
 
     result = (text, None)
     _cache_set(cache_key, result)

@@ -3572,9 +3572,33 @@ const StudentInfo = () => {
                 </h4>
                 <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1.2rem', paddingLeft: '16px'}}>Match captured photo with your School ID</p>
                 
-                <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'flex-start'}}>
-                  {/* Media Picker and Preview */}
-                  <div style={{flex: '1', minWidth: '300px'}}>
+                <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem', alignItems: 'flex-start'}}>
+                  {/* Reference ID Column */}
+                  <div style={{background: '#fff', padding: '1.2rem', borderRadius: '20px', border: '1px solid #e1e8f0', boxShadow: '0 4px 15px rgba(0,0,0,0.03)'}}>
+                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
+                      <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#1a202c'}}>REFERENCE SOURCE</label>
+                      <div style={{fontSize: '0.65rem', color: '#6366f1', fontWeight: '800', background: '#eef2ff', padding: '3px 8px', borderRadius: '6px'}}>SCHOOL ID FRONT</div>
+                    </div>
+                    <div style={{height: '240px', border: '2px dashed #cbd5e1', borderRadius: '15px', overflow: 'hidden', background: '#f8fafc', position: 'relative'}}>
+                      {(schoolIdPhotos.front || userProfile?.id_img_front) ? (
+                        <img src={schoolIdPhotos.front || userProfile?.id_img_front} style={{width: '100%', height: '100%', objectFit: 'contain'}} alt="Reference ID" />
+                      ) : (
+                        <div style={{height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', textAlign: 'center', padding: '1rem'}}>
+                          <i className="fas fa-id-card" style={{fontSize: '2rem', marginBottom: '10px'}}></i>
+                          <p style={{fontSize: '0.75rem', fontWeight: '600', margin: 0}}>ID Not Available<br/><span style={{fontSize: '0.65rem', fontWeight: 'normal'}}>Please upload in Step 3</span></p>
+                        </div>
+                      )}
+                    </div>
+                    <p style={{fontSize: '0.7rem', color: '#64748b', marginTop: '1rem', fontStyle: 'italic', textAlign: 'center'}}>We will match your live photo against this ID face.</p>
+                  </div>
+
+                  {/* Media Picker and Preview Column */}
+                  <div style={{background: '#fff', padding: '1.2rem', borderRadius: '20px', border: '1px solid #e1e8f0', boxShadow: '0 4px 15px rgba(0,0,0,0.03)'}}>
+                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
+                      <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#1a202c'}}>LIVE CAPTURE</label>
+                      <div style={{fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px'}}>PHOTO + VIDEO</div>
+                    </div>
+
                     {renderDocumentMediaPicker({
                       photoId: 'photo_face_photo',
                       photoName: 'face_photo',
@@ -3587,17 +3611,17 @@ const StudentInfo = () => {
                       isUploadingVideo: Boolean(uploadingFields['face_video'])
                     })}
 
-                    <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginTop: '1.5rem'}}>
-                      <div style={{border: '2px solid #fff', borderRadius: '20px', height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e1e8f0', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)'}}>
+                    <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginTop: '1rem'}}>
+                      <div style={{border: '2px solid #fff', borderRadius: '15px', height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e1e8f0', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)'}}>
                       {photos.face_photo ? (
                         <>
                           <img src={photos.face_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Face Verification" />
                           <button type="button" onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); }} style={{position: 'absolute', top: '10px', right: '10px', background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'}}><i className="fas fa-times"></i></button>
                         </>
                       ) : (
-                        <button type="button" onClick={openCamera} style={{border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px'}}>
-                          <i className="fas fa-camera" style={{fontSize: '2.5rem'}}></i>
-                          <span style={{fontSize: '0.9rem', fontWeight: '600'}}>Capture Photo</span>
+                        <button type="button" onClick={openCamera} style={{border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px'}}>
+                          <i className="fas fa-camera" style={{fontSize: '2rem'}}></i>
+                          <span style={{fontSize: '0.8rem', fontWeight: '700'}}>Capture</span>
                         </button>
                       )}
                       </div>
@@ -3609,7 +3633,7 @@ const StudentInfo = () => {
                         isUploading={Boolean(uploadingFields['face_video'])}
                         disabled={isAnyScanning || isSavingStep}
                         hideButton={true}
-                        containerStyle={{ height: '220px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                        containerStyle={{ height: '180px', padding: '0.3rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
                       />
                     </div>
                   </div>
