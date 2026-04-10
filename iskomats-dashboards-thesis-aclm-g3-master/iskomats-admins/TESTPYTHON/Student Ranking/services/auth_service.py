@@ -84,5 +84,5 @@ def is_origin_allowed(origin, exact_origins, regex_origins):
             print(f"[CORS] Error matching pattern {pattern}: {e}")
 
     # Log only unique rejections to avoid flooding
-    print(f"[CORS REJECT] '{origin}' (normalized: '{normalized_origin}') not in allowed list ({len(exact_origins)} exact, {len(regex_origins)} patterns)", flush=True)
+    print(f"[CORS REJECT] '{origin}' (normalized: '{normalized_origin}') not found in allowed list. Exact: {len(exact_origins)}, Regex: {len(regex_origins)}", flush=True)
     return False

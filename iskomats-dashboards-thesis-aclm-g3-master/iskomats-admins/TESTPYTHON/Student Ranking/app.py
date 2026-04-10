@@ -110,6 +110,9 @@ def handle_preflight():
         # Determine if we should allow this origin
         is_allowed = is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns)
         
+        # Log preflight check detail for troubleshooting
+        print(f"[CORS PREFLIGHT] Path: {request.path}, Origin: {origin}, Allowed: {is_allowed}", flush=True)
+        
         if is_allowed:
             # Return a 204 No Content for successful preflight
             response = make_response('', 204)
@@ -117,7 +120,8 @@ def handle_preflight():
         else:
             # If not allowed, we still want to return a response but without CORS headers
             # to let the browser block it. 403 Forbidden is appropriate.
-            return jsonify({'message': 'Origin not allowed'}), 403
+            print(f"[CORS PREFLIGHT DENIED] {origin} not in allowed origins", flush=True)
+            return jsonify({'message': 'Origin not allowed', 'origin': origin}), 403
     return None
 
 
