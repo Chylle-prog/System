@@ -1570,6 +1570,16 @@ const StudentInfo = () => {
           display: flex;
         }
 
+        .loading-overlay.minimal {
+          background: rgba(255, 255, 255, 0.05);
+          backdrop-filter: blur(1px);
+          cursor: wait;
+        }
+
+        .loading-overlay.minimal .loading-modal {
+          display: none;
+        }
+
         .loading-modal {
           background: white;
           padding: 3.5rem;
@@ -3202,7 +3212,7 @@ const StudentInfo = () => {
       </div>
 
       {/* Loading overlay */}
-      <div className={`loading-overlay ${isSubmitting || isSavingStep || isInitialLoading ? 'active' : ''}`}>
+      <div className={`loading-overlay ${isSubmitting || isSavingStep || isInitialLoading ? 'active' : ''} ${isSavingStep && !isSubmitting && !isInitialLoading ? 'minimal' : ''}`}>
         <div className="loading-modal">
           <div className="loading-spinner"></div>
           <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
