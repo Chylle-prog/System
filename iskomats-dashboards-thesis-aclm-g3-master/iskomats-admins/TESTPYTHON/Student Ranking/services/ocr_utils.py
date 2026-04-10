@@ -504,7 +504,7 @@ def _preprocess_frame_for_ocr(frame):
     return _CLAHE.apply(gray)
 
 
-def verify_video_content(video_bytes, keywords, expected_address=None, sample_positions=None, max_width=None, allow_alt_pass=True):
+def verify_video_content(video_bytes, keywords, expected_address=None, sample_positions=None, max_width=None, allow_alt_pass=True, fallback_text_length=0):
     """
     Captures frames from video bytes and scans for keywords and address using OCR.
     Optimized to sample 2 key frames for balanced speed/accuracy.
@@ -517,7 +517,7 @@ def verify_video_content(video_bytes, keywords, expected_address=None, sample_po
     
     # --- SPEED OPTIMIZATION: Check Video Cache ---
     # Instantly returns result if this specific video byte signature was already scanned
-    hash_suffix = f"_video_{sample_positions}_{max_width}_{allow_alt_pass}".encode()
+    hash_suffix = f"_video_{sample_positions}_{max_width}_{allow_alt_pass}_{fallback_text_length}".encode()
     vid_hash = _hash_image(video_bytes, suffix=hash_suffix)
     cached_res = _cache_get(vid_hash)
     if cached_res is not None:
@@ -608,6 +608,13 @@ def verify_video_content(video_bytes, keywords, expected_address=None, sample_po
                 fail_msg = f"Address mismatch: Region '{expected_address}' not clearly visible in video."
                 _cache_set(vid_hash, (False, fail_msg))
                 return False, fail_msg
+
+            normalized_text = re.sub(r'\s+', ' ', all_ocr_text).strip()
+
+            if not is_success and fallback_text_length and not is_address_verification and len(normalized_text) >= fallback_text_length:
+                msg = f"Validated: readable document text detected ({len(normalized_text)} chars)"
+                _cache_set(vid_hash, (True, msg))
+                return True, msg
 
             if not is_success:
                 fail_msg = "Required document content not detected in video."

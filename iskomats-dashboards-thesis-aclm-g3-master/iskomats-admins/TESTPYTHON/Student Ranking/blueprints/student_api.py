@@ -1909,7 +1909,8 @@ def ocr_check():
                             # Increased to 3 frames to avoid missing document but kept optimized for speed
                             sample_positions=[0.15, 0.50, 0.85], 
                             max_width=500, # Balanced resolution for readability vs speed
-                            allow_alt_pass=not fast_video_verification
+                            allow_alt_pass=not fast_video_verification,
+                            fallback_text_length=28 if fast_video_verification else 0
                         )
                     else:
                         msg_video = f"Video file unreachable ({fetch_err})"
