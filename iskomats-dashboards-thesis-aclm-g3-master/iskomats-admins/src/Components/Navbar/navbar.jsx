@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { FaSignInAlt, FaUserPlus, FaBars, FaTimes, FaSignOutAlt, FaTachometerAlt } from 'react-icons/fa';
 import { useState } from 'react';
 import { PROVIDER_DASHBOARD_ROUTE, isProviderDashboardRole } from '../../Pages/Dash/provider-dashboard-config';
+import { clearAdminSession } from '../../utils/admin-session';
 import logo from '../../assets/logo.png';
 
 const Navbar = () => {
@@ -14,12 +15,7 @@ const Navbar = () => {
   const isDashboardRoute = ['/dash', PROVIDER_DASHBOARD_ROUTE, '/dash-africa', '/dash-vilma', '/dash-tulong'].includes(location.pathname);
 
   const handleLogout = () => {
-    // Clear authentication data
-    localStorage.removeItem('isLoggedIn');
-    localStorage.removeItem('userRole');
-    localStorage.removeItem('userEmail');
-
-    // Redirect to login page
+    clearAdminSession();
     window.location.href = '/login';
   };
 

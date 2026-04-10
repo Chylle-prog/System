@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { FaBan, FaArrowLeft } from 'react-icons/fa';
+import { clearAdminSession } from '../../../utils/admin-session';
 import authBg from '../../../assets/ad1.jpg';
 import logo from '../../../assets/logo.png';
 
@@ -7,13 +8,7 @@ export default function Suspended() {
   const navigate = useNavigate();
 
   const handleReturnToLogin = () => {
-    localStorage.removeItem('accountSuspended');
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('isLoggedIn');
-    localStorage.removeItem('userRole');
-    localStorage.removeItem('userEmail');
-    localStorage.removeItem('userName');
-    localStorage.removeItem('userFirstName');
+    clearAdminSession();
     navigate('/login', { replace: true });
   };
 

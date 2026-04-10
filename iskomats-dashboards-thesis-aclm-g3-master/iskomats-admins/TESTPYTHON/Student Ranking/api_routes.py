@@ -288,13 +288,8 @@ def get_mime_type(data):
 _announcement_image_columns = None
 
 
-def get_announcement_image_columns(cursor):
-    """Resolve announcement image table column names across schema variants."""
-    global _announcement_image_columns
-
-    if _announcement_image_columns is not None:
-        return _announcement_image_columns
-
+def get_entity_image_columns(cursor, entity='announcement'):
+    """Resolve entity image table column names specifically for the entity type."""
     cursor.execute(
         """
         SELECT column_name
@@ -307,14 +302,62 @@ def get_announcement_image_columns(cursor):
         for row in cursor.fetchall()
     }
 
-    primary_key_column = 'ann_img_no' if 'ann_img_no' in columns else 'sch_img_no' if 'sch_img_no' in columns else None
-    foreign_key_column = 'ann_no' if 'ann_no' in columns else 'req_no' if 'req_no' in columns else None
+    # Specifically prioritize based on entity type to avoid cross-contamination
+    if entity == 'scholarship':
+        primary_key_column = 'sch_img_no' if 'sch_img_no' in columns else 'ann_img_no' if 'ann_img_no' in columns else None
+        foreign_key_column = 'req_no' if 'req_no' in columns else None
+    else:
+        primary_key_column = 'ann_img_no' if 'ann_img_no' in columns else 'sch_img_no' if 'sch_img_no' in columns else None
+        foreign_key_column = 'ann_no' if 'ann_no' in columns else None
+
+    # Fallback to general names if specific ones not found
+    if not primary_key_column:
+        primary_key_column = 'ann_img_no' if 'ann_img_no' in columns else 'sch_img_no' if 'sch_img_no' in columns else None
+    if not foreign_key_column:
+        foreign_key_column = 'ann_no' if 'ann_no' in columns else 'req_no' if 'req_no' in columns else None
 
     if not primary_key_column or not foreign_key_column or 'img' not in columns:
-        raise RuntimeError('announcement_images table does not contain the expected image columns')
+        raise RuntimeError(f'announcement_images table does not contain the expected columns for {entity}')
 
-    _announcement_image_columns = (primary_key_column, foreign_key_column)
-    return _announcement_image_columns
+    return primary_key_column, foreign_key_column
+
+def ensure_schema_integrity(cursor):
+    """Ensure all required columns exist in scholarships and announcements tables."""
+    # 1. Soft-delete columns
+    for table in ['scholarships', 'announcements']:
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_name = %s AND column_name = 'is_removed'
+            """,
+            (table,)
+        )
+        if cursor.fetchone()[0] == 0:
+            print(f"[MIGRATION] Adding is_removed to {table} table")
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN is_removed BOOLEAN DEFAULT FALSE")
+
+    # 2. Scholarship specific fields
+    scholarship_cols = {
+        'semester': 'VARCHAR(50)',
+        'year': 'VARCHAR(50)'
+    }
+    for col, col_type in scholarship_cols.items():
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_name = 'scholarships' AND column_name = %s
+            """,
+            (col,)
+        )
+        if cursor.fetchone()[0] == 0:
+            print(f"[MIGRATION] Adding {col} to scholarships table")
+            cursor.execute(f"ALTER TABLE scholarships ADD COLUMN {col} {col_type}")
+
+def ensure_is_removed_columns(cursor):
+    # Keep wrapper for bit-backwards compatibility if needed elsewhere
+    ensure_schema_integrity(cursor)
 
 # ===== DATABASE MIGRATIONS =====
 
@@ -769,6 +812,57 @@ def notify_all_applicants(title, message, notif_type='scholarship'):
             )
     except Exception as exc:
         print(f"[NOTIF ERROR] Failed to notify applicants: {exc}")
+    finally:
+        if conn:
+            conn.close()
+
+
+def run_background_task(target, *args, **kwargs):
+    worker = threading.Thread(target=target, args=args, kwargs=kwargs, daemon=True)
+    worker.start()
+    return worker
+
+
+def notify_announcement_applicants(title, message, provider_no, send_to_all_applicants=True):
+    conn = None
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+
+        if send_to_all_applicants:
+            cur.execute(
+                """
+                SELECT DISTINCT a.applicant_no
+                FROM applicants a
+                LEFT JOIN email e ON a.applicant_no = e.applicant_no
+                WHERE e.email_address IS NOT NULL
+                """
+            )
+        else:
+            cur.execute(
+                """
+                SELECT DISTINCT ast.applicant_no
+                FROM applicant_status ast
+                JOIN scholarships s ON ast.scholarship_no = s.req_no
+                WHERE s.pro_no = %s
+                """,
+                (provider_no,),
+            )
+
+        recipients = cur.fetchall()
+        conn.close()
+        conn = None
+
+        for recipient in recipients:
+            create_notification(
+                user_no=recipient['applicant_no'],
+                title=f"New Announcement: {title}",
+                message=message[:100] + ('...' if len(message) > 100 else ''),
+                notif_type='announcement',
+                send_email=False,
+            )
+    except Exception as exc:
+        print(f"[NOTIF ERROR] Failed to notify announcement recipients: {exc}", flush=True)
     finally:
         if conn:
             conn.close()
@@ -2438,10 +2532,11 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
             SELECT s.req_no as id, s.req_no as "reqNo", s.scholarship_name as "scholarshipName", 
                    s.gpa as "minGpa", s.location, s.parent_finance as "parentFinance",
                    s.slots, s.deadline, s.pro_no as "proNo", p.provider_name as "providerName",
-                   s."desc" as description, s.date_created as "dateCreated"
+                     s."desc" as description, s.date_created as "dateCreated",
+                     s.semester, s.year
             FROM scholarships s
             LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
-            WHERE 1=1
+                 WHERE COALESCE(s.is_removed, FALSE) = FALSE
         '''
         params = []
         
@@ -2685,11 +2780,38 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
                WHERE applicant_no = %s AND scholarship_no = %s''',
             (applicant_no, scholarship_no)
         )
+
+        # Auto-decline other applications for the same applicant
+        cursor.execute(
+            "SELECT s.scholarship_name, s.req_no FROM applicant_status ast JOIN scholarships s ON ast.scholarship_no = s.req_no WHERE ast.applicant_no = %s AND ast.scholarship_no != %s AND (ast.is_accepted IS NULL OR ast.is_accepted = TRUE)",
+            (applicant_no, scholarship_no)
+        )
+        declined_scholarships = cursor.fetchall()
+        
+        cursor.execute(
+            """
+            UPDATE applicant_status
+            SET is_accepted = FALSE
+            WHERE applicant_no = %s AND scholarship_no != %s
+            """,
+            (applicant_no, scholarship_no),
+        )
+        
+        for ds in declined_scholarships:
+            try:
+                create_notification(
+                    user_no=applicant_no,
+                    title="Application Closed",
+                    message=f"Your application for {ds['scholarship_name']} has been closed because you were accepted into another scholarship. Students may only hold one active scholarship.",
+                    notif_type='result'
+                )
+            except: pass
+
         conn.commit()
         cursor.close()
         conn.close()
         
-        return jsonify({'success': True, 'message': 'Applicant accepted'}), 200
+        return jsonify({'success': True, 'message': 'Applicant accepted and other applications declined'}), 200
     
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
@@ -2898,7 +3020,8 @@ def create_scholarship(current_user_id, pro_no, role):
         cursor.close()
         conn.close()
 
-        notify_all_applicants(
+        run_background_task(
+            notify_all_applicants,
             title=f"New Scholarship Posted: {data['scholarshipName']}",
             message=f"{provider_name} posted a new scholarship opportunity. Deadline: {data['deadline']}.",
             notif_type='scholarship',
@@ -2980,7 +3103,8 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
         cursor.close()
         conn.close()
 
-        notify_all_applicants(
+        run_background_task(
+            notify_all_applicants,
             title=f"Scholarship Updated: {data.get('scholarshipName', sch_row['scholarship_name'])}",
             message=f"{sch_row['provider_name'] or 'ISKOMATS'} updated scholarship details. Check the latest post for changes.",
             notif_type='scholarship',
@@ -3082,10 +3206,11 @@ def get_announcement_image(image_id):
 @api_bp.route('/announcement-image/<int:ann_no>/<int:idx>', methods=['GET'])
 def get_announcement_image_by_index(ann_no, idx):
     """Get announcement image by announcement id and index."""
+    entity = request.args.get('entity', 'announcement')
     try:
         conn = get_db()
         cursor = conn.cursor()
-        primary_key_column, foreign_key_column = get_announcement_image_columns(cursor)
+        primary_key_column, foreign_key_column = get_entity_image_columns(cursor, entity)
         
         cursor.execute(
             f"""
@@ -3216,28 +3341,38 @@ def get_admin_announcements(current_user_id, pro_no, role):
     try:
         conn = get_db()
         cur = conn.cursor()
-        primary_key_column, foreign_key_column = get_announcement_image_columns(cur)
+        ensure_schema_integrity(cur)
+        try:
+            primary_key_column, foreign_key_column = get_entity_image_columns(cur, 'announcement')
+        except Exception:
+            primary_key_column, foreign_key_column = None, None
 
-        query = f"""
+        query = """
             SELECT
                 a.ann_no,
                 a.ann_title,
                 a.ann_message,
                 a.time_added,
                 COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,
-                ai.{primary_key_column} AS image_id
+                {image_select}
             FROM announcements a
             LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
-            LEFT JOIN announcement_images ai ON a.ann_no = ai.{foreign_key_column}
-            WHERE 1=1
-        """
+            {image_join}
+            WHERE COALESCE(a.is_removed, FALSE) = FALSE
+        """.format(
+            image_select=f"ai.{primary_key_column} AS image_id" if primary_key_column and foreign_key_column else "NULL AS image_id",
+            image_join=f"LEFT JOIN announcement_images ai ON a.ann_no = ai.{foreign_key_column}" if primary_key_column and foreign_key_column else "",
+        )
         params = []
 
         if role != 'Admin':
             query += ' AND a.pro_no = %s'
             params.append(pro_no)
 
-        query += f' ORDER BY a.time_added DESC, ai.{primary_key_column}'
+        if primary_key_column and foreign_key_column:
+            query += f' ORDER BY a.time_added DESC, ai.{primary_key_column}'
+        else:
+            query += ' ORDER BY a.time_added DESC, a.ann_no DESC'
         cur.execute(query, params)
         rows = cur.fetchall()
 
@@ -3258,6 +3393,7 @@ def get_admin_announcements(current_user_id, pro_no, role):
                     'admin_api.get_announcement_image_by_index',
                     ann_no=ann_no,
                     idx=len(announcements[ann_no]['announcementImages']),
+                    entity='announcement',
                     _external=True,
                 )
                 announcements[ann_no]['announcementImages'].append(image_url)
@@ -3271,11 +3407,26 @@ def get_admin_announcements(current_user_id, pro_no, role):
 @api_bp.route('/announcements', methods=['POST'])
 @token_required
 def create_announcement(current_user_id, pro_no, role):
-    data = request.json
+    # Support both JSON and multipart/form-data
+    if request.is_json:
+        data = request.json
+    else:
+        # For multipart/form-data, we need to extract from request.form
+        data = request.form.to_dict()
+        # Parse boolean/integer fields from strings
+        if 'send_to_all_applicants' in data:
+            data['send_to_all_applicants'] = data['send_to_all_applicants'].lower() == 'true'
+        # Check for JSON strings in form fields (like announcementImages)
+        if 'announcementImages' in data and isinstance(data['announcementImages'], str):
+            try:
+                data['announcementImages'] = json.loads(data['announcementImages'])
+            except:
+                data['announcementImages'] = []
+
     title = data.get('title')
     message = data.get('content')
-    time_added = data.get('time_added')
-    send_to_all_applicants = data.get('send_to_all_applicants', True)  # Default to True for backward compatibility
+    time_added = data.get('time_added', datetime.now().isoformat())
+    send_to_all_applicants = data.get('send_to_all_applicants', True)
     
     if not title or not message:
         return jsonify({'message': 'Title and content are required'}), 400
@@ -3296,17 +3447,35 @@ def create_announcement(current_user_id, pro_no, role):
         """, (title, message, pro_no, time_added))
         ann_no = cur.fetchone()['ann_no']
 
+        # Handle images (support both JSON base64 and Multipart files)
+        image_attachments = []
+        
+        # 1. New Multipart File Uploads
+        if request.files:
+            # Sort keys to maintain order if needed
+            for file_key in sorted(request.files.keys()):
+                if file_key.startswith('image_'):
+                    file = request.files[file_key]
+                    if file:
+                        image_attachments.append(file.read())
+        
+        # 2. Base64 images from JSON
         if 'announcementImages' in data and isinstance(data['announcementImages'], list):
-            _, foreign_key_column = get_announcement_image_columns(cur)
             for image_data in data['announcementImages']:
                 url = image_data.get('url') if isinstance(image_data, dict) else image_data
-                img_bytes = base64_to_bytes(url)
-                if img_bytes:
-                    encrypted = _fernet.encrypt(img_bytes) if _fernet else img_bytes
-                    cur.execute(
-                        f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
-                        (ann_no, encrypted)
-                    )
+                if url and isinstance(url, str) and url.startswith('data:'):
+                    img_bytes = base64_to_bytes(url)
+                    if img_bytes:
+                        image_attachments.append(img_bytes)
+
+        if image_attachments:
+            _, foreign_key_column = get_entity_image_columns(cur, 'announcement')
+            for img_bytes in image_attachments:
+                encrypted = _fernet.encrypt(img_bytes) if _fernet else img_bytes
+                cur.execute(
+                    f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
+                    (ann_no, encrypted)
+                )
 
         conn.commit()
         
@@ -3320,35 +3489,13 @@ def create_announcement(current_user_id, pro_no, role):
         )
         
         # Notify students based on send_to_all_applicants flag
-        try:
-            if send_to_all_applicants:
-                # Send to all applicants in the system
-                cur.execute("""
-                    SELECT DISTINCT a.applicant_no 
-                    FROM applicants a
-                    LEFT JOIN email e ON a.applicant_no = e.applicant_no
-                    WHERE e.email_address IS NOT NULL
-                """)
-            else:
-                # Send only to applicants who applied to this provider's scholarships
-                cur.execute("""
-                    SELECT DISTINCT ast.applicant_no 
-                    FROM applicant_status ast
-                    JOIN scholarships s ON ast.scholarship_no = s.req_no
-                    WHERE s.pro_no = %s
-                """, (pro_no,))
-            
-            students = cur.fetchall()
-            for student in students:
-                create_notification(
-                    user_no=student['applicant_no'],
-                    title=f"New Announcement: {title}",
-                    message=message[:100] + ('...' if len(message) > 100 else ''),
-                    notif_type='announcement',
-                    send_email=False,
-                )
-        except Exception as e:
-            print(f"[NOTIF ERROR] Failed to trigger announcement notifications: {e}")
+        run_background_task(
+            notify_announcement_applicants,
+            title,
+            message,
+            pro_no,
+            send_to_all_applicants,
+        )
         
         # Send emails to all applicants asynchronously when send_to_all_applicants is True
         if send_to_all_applicants:
@@ -3372,7 +3519,19 @@ def create_announcement(current_user_id, pro_no, role):
 @api_bp.route('/announcements/<int:ann_no>', methods=['PUT'])
 @token_required
 def update_announcement(current_user_id, pro_no, role, ann_no):
-    data = request.json
+    # Support both JSON and multipart/form-data
+    if request.is_json:
+        data = request.json
+    else:
+        data = request.form.to_dict()
+        if 'send_to_all_applicants' in data:
+            data['send_to_all_applicants'] = data['send_to_all_applicants'].lower() == 'true'
+        if 'announcementImages' in data and isinstance(data['announcementImages'], str):
+            try:
+                data['announcementImages'] = json.loads(data['announcementImages'])
+            except:
+                data['announcementImages'] = []
+
     title = data.get('title')
     message = data.get('content')
     
@@ -3382,10 +3541,10 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
     try:
         conn = get_db()
         cur = conn.cursor()
-        primary_key_column, foreign_key_column = get_announcement_image_columns(cur)
+        primary_key_column, foreign_key_column = get_entity_image_columns(cur, 'announcement')
         
         # Check ownership unless super admin
-        if role != 'admin':
+        if role.lower() != 'admin':
             cur.execute("SELECT pro_no FROM announcements WHERE ann_no = %s", (ann_no,))
             row = cur.fetchone()
             if not row:
@@ -3399,40 +3558,69 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
             WHERE ann_no = %s
         """, (title, message, ann_no))
 
+        # Handle images (support both JSON base64 and Multipart files)
+        image_attachments = []
+        
+        # 1. Retain existing images that weren't deleted
         if 'announcementImages' in data and isinstance(data['announcementImages'], list):
             cur.execute(
-                f"SELECT img FROM announcement_images WHERE {foreign_key_column} = %s ORDER BY {primary_key_column}",
+                f"SELECT {primary_key_column}, img FROM announcement_images WHERE {foreign_key_column} = %s ORDER BY {primary_key_column}",
                 (ann_no,)
             )
             existing_rows = cur.fetchall()
-            existing_images = [row['img'] for row in existing_rows]
-            new_image_data_list = []
-
-            for i, image_data in enumerate(data['announcementImages']):
-                url = image_data.get('url') if isinstance(image_data, dict) else image_data
-
+            
+            for image_val in data['announcementImages']:
+                url = image_val.get('url') if isinstance(image_val, dict) else image_val
+                
                 if not isinstance(url, str):
                     continue
-
+                
                 if url.startswith('data:'):
+                    # New base64 image
                     img_bytes = base64_to_bytes(url)
                     if img_bytes:
-                        encrypted = _fernet.encrypt(img_bytes) if _fernet else img_bytes
-                        new_image_data_list.append(encrypted)
+                        image_attachments.append(img_bytes)
                 elif '/announcement-image/' in url:
+                    # Existing image URL - we keep it
                     try:
-                        idx = int(url.split('/')[-1])
-                        if 0 <= idx < len(existing_images):
-                            new_image_data_list.append(existing_images[idx])
-                    except Exception:
+                        # Extract the image identifier if needed, or just find it in existing rows
+                        # For simplicity, we assume if it's an existing URL, we don't want to change that specific row
+                        # but the current logic REPLACES all images. So we must re-collect the bytes.
+                        idx_str = url.split('/')[-1]
+                        idx = int(idx_str)
+                        if 0 <= idx < len(existing_rows):
+                            image_attachments.append(existing_rows[idx]['img'])
+                    except:
                         pass
+        
+        # 2. New Multipart File Uploads
+        if request.files:
+            for file_key in sorted(request.files.keys()):
+                if file_key.startswith('image_'):
+                    file = request.files[file_key]
+                    if file:
+                        image_attachments.append(file.read())
 
-            cur.execute(f"DELETE FROM announcement_images WHERE {foreign_key_column} = %s", (ann_no,))
-            for encrypted_img in new_image_data_list:
-                cur.execute(
-                    f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
-                    (ann_no, encrypted_img)
-                )
+        # Sync image table
+        cur.execute(f"DELETE FROM announcement_images WHERE {foreign_key_column} = %s", (ann_no,))
+        for img_data in image_attachments:
+            # Check if already encrypted (from DB) or new (raw bytes)
+            # This is a bit tricky, but Fernet usually has a specific header
+            # For simplicity, we assume if it's from the DB it's already bytes/encrypted
+            # and if it's new (raw bytes), we encrypt it.
+            # But let's just always re-encrypt raw bytes and keep DB data as is.
+            is_encrypted = False
+            if isinstance(img_data, bytes) and len(img_data) > 30 and img_data.startswith(b'gAAAA'):
+                is_encrypted = True
+            
+            final_data = img_data
+            if not is_encrypted and _fernet:
+                final_data = _fernet.encrypt(img_data)
+                
+            cur.execute(
+                f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
+                (ann_no, final_data)
+            )
 
         conn.commit()
         
@@ -3460,7 +3648,7 @@ def delete_announcement(current_user_id, pro_no, role, ann_no):
         cur = conn.cursor()
         
         # Check ownership unless super admin
-        if role != 'admin':
+        if role.lower() != 'admin':
             cur.execute("SELECT pro_no, ann_title FROM announcements WHERE ann_no = %s", (ann_no,))
             row = cur.fetchone()
             if not row:
@@ -3473,10 +3661,17 @@ def delete_announcement(current_user_id, pro_no, role, ann_no):
             row = cur.fetchone()
             title = row['ann_title'] if row else 'Unknown'
 
-        _, foreign_key_column = get_announcement_image_columns(cur)
-        cur.execute(f"DELETE FROM announcement_images WHERE {foreign_key_column} = %s", (ann_no,))
+        try:
+            _, foreign_key_column = get_entity_image_columns(cur, 'announcement')
+        except Exception:
+            foreign_key_column = None
+
+        if foreign_key_column:
+            # We don't delete images for soft-deleted announcements to retain history
+            pass
                 
-        cur.execute("DELETE FROM announcements WHERE ann_no = %s", (ann_no,))
+        # Soft-delete the announcement
+        cur.execute("UPDATE announcements SET is_removed = TRUE WHERE ann_no = %s", (ann_no,))
         conn.commit()
         
         record_admin_activity(

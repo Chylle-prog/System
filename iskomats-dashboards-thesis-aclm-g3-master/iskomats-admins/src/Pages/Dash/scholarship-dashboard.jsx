@@ -39,6 +39,105 @@ import socketService from '../../services/socket';
 
 Chart.register(...registerables);
 
+const ACADEMIC_YEAR_PATTERN = /^\d{4}[\-–—]\d{4}$/;
+
+const getDefaultAcademicYear = () => {
+  const currentYear = new Date().getFullYear();
+  return `${currentYear}–${currentYear + 1}`;
+};
+
+const normalizeAcademicYear = (value) => {
+  const rawValue = String(value || '').trim();
+  if (!rawValue) {
+    return '';
+  }
+
+  const extractedYears = rawValue.match(/\d{4}/g);
+  if (extractedYears && extractedYears.length >= 2) {
+    return `${extractedYears[0]}–${extractedYears[1]}`;
+  }
+
+  const digitsOnly = rawValue.replace(/\D/g, '');
+  if (digitsOnly.length >= 8) {
+    return `${digitsOnly.slice(0, 4)}–${digitsOnly.slice(4, 8)}`;
+  }
+
+  // Replace any dash-like character with a proper en-dash
+  return rawValue.replace(/[^\d\-–—]/g, '').replace(/[\-–—]{1,}/g, '–');
+};
+
+const isValidAcademicYear = (value) => ACADEMIC_YEAR_PATTERN.test(normalizeAcademicYear(value));
+
+const getRequestErrorMessage = (error, fallbackMessage) => {
+  if (error.response?.data?.message) {
+    return `${fallbackMessage}: ${error.response.data.message}`;
+  }
+
+  if (error.code === 'ECONNABORTED') {
+    return `${fallbackMessage}: the server took too long to respond.`;
+  }
+
+  if (!error.response && typeof navigator !== 'undefined' && navigator.onLine) {
+    return `${fallbackMessage}: the server is temporarily unavailable or the request was interrupted.`;
+  }
+
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return `${fallbackMessage}: you appear to be offline.`;
+  }
+
+  return `${fallbackMessage}: ${error.message}`;
+};
+
+const optimizeImageFile = (file) => new Promise((resolve) => {
+  if (!(file instanceof File) || !file.type.startsWith('image/') || file.size <= 500 * 1024) {
+    resolve(file);
+    return;
+  }
+
+  const image = new Image();
+  const objectUrl = URL.createObjectURL(file);
+
+  image.onload = () => {
+    const maxDimension = 1600;
+    const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+    const width = Math.max(1, Math.round(image.width * scale));
+    const height = Math.max(1, Math.round(image.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      URL.revokeObjectURL(objectUrl);
+      resolve(file);
+      return;
+    }
+
+    context.drawImage(image, 0, 0, width, height);
+    canvas.toBlob((blob) => {
+      URL.revokeObjectURL(objectUrl);
+
+      if (!blob || blob.size >= file.size) {
+        resolve(file);
+        return;
+      }
+
+      const optimizedName = file.name.replace(/\.[^.]+$/, '') || 'announcement-image';
+      resolve(new File([blob], `${optimizedName}.jpg`, {
+        type: 'image/jpeg',
+        lastModified: file.lastModified,
+      }));
+    }, 'image/jpeg', 0.82);
+  };
+
+  image.onerror = () => {
+    URL.revokeObjectURL(objectUrl);
+    resolve(file);
+  };
+
+  image.src = objectUrl;
+});
+
 const initialDashboardData = {
   applicants: [],
   accepted: [],
@@ -121,7 +220,7 @@ export default function ScholarshipDashboard({
     parentFinance: '',
     description: '', // New field
     semester: '',
-    year: new Date().getFullYear().toString(),
+    year: getDefaultAcademicYear(),
     title: '', // For announcements
     content: '', // For announcements
     sendToAllApplicants: true
@@ -141,7 +240,26 @@ export default function ScholarshipDashboard({
   const locationChartRef = useRef(null);
   const locationChartInstance = useRef(null);
 
-  const loadScholarships = async () => {
+  const loadApplicants = async () => {
+    try {
+      const response = await scholarshipAPI.getApplicants(providerKey);
+      if (response.data.success) {
+        const allApplicants = response.data.applicants || [];
+        const historicalData = calculateHistoricalData(allApplicants);
+        setData(prev => ({
+          ...prev,
+          applicants: allApplicants.filter(a => a.status === 'Pending'),
+          accepted: allApplicants.filter(a => a.status === 'Accepted'),
+          declined: allApplicants.filter(a => a.status === 'Declined'),
+          historicalData
+        }));
+      }
+    } catch (error) {
+      console.error(`Failed to load ${providerName} applicants:`, error);
+    }
+  };
+
+  const loadScholarships = async (showAlert = true) => {
     try {
       console.log(`Loading scholarships for program: ${providerKey}`);
       const response = await scholarshipAPI.getByProgram(providerKey);
@@ -158,7 +276,9 @@ export default function ScholarshipDashboard({
         }));
       } else {
         console.error('API response not successful:', response.data);
-        alert('Failed to load scholarships: ' + (response.data?.message || 'Unknown error'));
+        if (showAlert) {
+          alert(`Failed to load scholarships: ${response.data?.message || 'Unknown error'}`);
+        }
       }
     } catch (error) {
       console.error('Failed to load scholarships:', error);
@@ -167,33 +287,16 @@ export default function ScholarshipDashboard({
       if (error.response?.data?.error) {
         console.error('Backend traceback:', error.response.data.error);
       }
-      alert('Error loading scholarships: ' + (error.response?.data?.message || error.message));
+      if (showAlert) {
+        alert(getRequestErrorMessage(error, 'Error loading scholarships'));
+      }
     }
   };
 
   // Load applicants and scholarships from backend API on component mount
   useEffect(() => {
-    const loadApplicants = async () => {
-      try {
-        const response = await scholarshipAPI.getApplicants(providerKey);
-        if (response.data.success) {
-          const allApplicants = response.data.applicants || [];
-          const historicalData = calculateHistoricalData(allApplicants);
-          setData(prev => ({
-            ...prev,
-            applicants: allApplicants.filter(a => a.status === 'Pending'),
-            accepted: allApplicants.filter(a => a.status === 'Accepted'),
-            declined: allApplicants.filter(a => a.status === 'Declined'),
-            historicalData
-          }));
-        }
-      } catch (error) {
-          console.error(`Failed to load ${providerName} applicants:`, error);
-      }
-    };
-
     loadApplicants();
-    loadScholarships();
+    loadScholarships(false);
 
     // Socket.IO Integration
     const token = localStorage.getItem('authToken');
@@ -404,15 +507,17 @@ export default function ScholarshipDashboard({
     });
   };
 
-  const handleAnnouncementImageUpload = (e) => {
+  const handleAnnouncementImageUpload = async (e) => {
     const files = Array.from(e.target.files || []);
-    const newImages = files.map((file) => ({
+    const optimizedFiles = await Promise.all(files.map((file) => optimizeImageFile(file)));
+    const newImages = optimizedFiles.map((file) => ({
       id: Date.now() + Math.random(),
       name: file.name,
       url: URL.createObjectURL(file),
       file,
     }));
     setAnnouncementImages((prev) => [...prev, ...newImages]);
+    e.target.value = '';
   };
 
   const removeAnnouncementImage = (imageId) => {
@@ -427,7 +532,17 @@ export default function ScholarshipDashboard({
 
   const handleFormChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData(prev => ({
+      ...prev,
+      [name]: name === 'year' ? value.replace(/[^\d\s\-–—]/g, '') : value,
+    }));
+  };
+
+  const handleAcademicYearBlur = () => {
+    setFormData((prev) => ({
+      ...prev,
+      year: normalizeAcademicYear(prev.year),
+    }));
   };
 
   const resetForm = () => {
@@ -440,7 +555,7 @@ export default function ScholarshipDashboard({
       parentFinance: '',
       description: '',
       semester: '',
-      year: new Date().getFullYear().toString(),
+      year: getDefaultAcademicYear(),
       title: '',
       content: '',
       sendToAllApplicants: true
@@ -460,7 +575,7 @@ export default function ScholarshipDashboard({
   // Reload scholarships when entering manage section
   useEffect(() => {
     if (section === 'manage') {
-      loadScholarships();
+      loadScholarships(false);
       loadAnnouncements();
     }
     
@@ -509,12 +624,20 @@ export default function ScholarshipDashboard({
   const saveScholarshipPost = async () => {
     setIsSaving(true);
     try {
+      const normalizedYear = normalizeAcademicYear(formData.year);
+      if (!isValidAcademicYear(normalizedYear)) {
+        alert('Academic year must use the YYYY-YYYY format, for example 2025-2026.');
+        setIsSaving(false);
+        return;
+      }
+
       const postData = {
         ...formData,
         slots: parseInt(formData.slots),
         minGpa: parseFloat(formData.minGpa),
         parentFinance: parseFloat(formData.parentFinance),
-        description: formData.description
+        description: formData.description,
+        year: normalizedYear,
       };
 
       console.log('Sending postData to API:', postData);
@@ -546,7 +669,7 @@ export default function ScholarshipDashboard({
       }
     } catch (error) {
       console.error('Failed to save scholarship:', error);
-      alert('Error saving scholarship: ' + (error.response?.data?.message || error.message));
+      alert(getRequestErrorMessage(error, 'Error saving scholarship'));
     } finally {
       setIsSaving(false);
     }
@@ -576,11 +699,15 @@ export default function ScholarshipDashboard({
         location: post.location || '',
         parentFinance: post.parentFinance ? post.parentFinance.toString() : '',
         description: post.description || '',
-        semester: post.semester || '',
-        year: post.year ? post.year.toString() : new Date().getFullYear().toString()
+        semester: post.semester || post.term || '',
+        year: post.year ? normalizeAcademicYear(post.year) : getDefaultAcademicYear(),
+        title: '',
+        content: '',
+        sendToAllApplicants: true,
       };
       console.log('Form data being set:', formData);
       setFormData(formData);
+      setAnnouncementImages([]);
       setManageMode('edit');
     } catch (error) {
       console.error('Error in editPost:', error);
@@ -595,12 +722,16 @@ export default function ScholarshipDashboard({
         if (response.data.success) {
           // Refresh both scholarships and applicants to ensure data consistency
           // Applicants who applied to this scholarship remain in the system
-          await loadScholarships();
+          await loadScholarships(false);
           await loadApplicants();
+          if (editingPost && (editingPost.reqNo || editingPost.id) === postId) {
+            resetForm();
+            setManageMode('list');
+          }
         }
       } catch (error) {
         console.error('Failed to delete scholarship:', error);
-        alert('Error deleting scholarship: ' + (error.response?.data?.message || error.message));
+        alert(getRequestErrorMessage(error, 'Error deleting scholarship'));
       }
     }
   };
@@ -613,43 +744,40 @@ export default function ScholarshipDashboard({
 
     setIsSaving(true);
     try {
-      const processedImages = await Promise.all(announcementImages.map(async (img) => {
-        if (img.file) {
-          try {
-            const base64 = await fileToBase64(img.file);
-            return { url: base64, name: img.name };
-          } catch (err) {
-            console.error('Error converting announcement image to base64:', err);
-            return null;
-          }
-        }
-        if (typeof img === 'string') {
-          return { url: img };
-        }
-        if (img.url) {
-          return { url: img.url, name: img.name };
-        }
-        return null;
-      }));
+      // Use FormData for better performance and to avoid base64 overhead
+      const fData = new FormData();
+      fData.append('title', formData.title);
+      fData.append('content', formData.content);
+      fData.append('time_added', new Date().toISOString());
+      fData.append('send_to_all_applicants', formData.sendToAllApplicants);
 
-      const announcementData = {
-        title: formData.title,
-        content: formData.content,
-        time_added: new Date().toISOString(),
-        send_to_all_applicants: formData.sendToAllApplicants,
-        announcementImages: processedImages.filter(Boolean)
-      };
+      // Distinguish between existing images and new file uploads
+      const existingImages = [];
+      announcementImages.forEach((img, idx) => {
+        if (img.file) {
+          // New file upload
+          fData.append(`image_${idx}`, img.file);
+        } else if (img.url && !img.url.startsWith('blob:')) {
+          // Existing image URL
+          existingImages.push(img.url);
+        }
+      });
+
+      if (existingImages.length > 0) {
+        fData.append('announcementImages', JSON.stringify(existingImages));
+      }
 
       let response;
       if (manageMode === 'edit' && editingPost) {
         // Update existing announcement
-        response = await announcementAPI.update(editingPost.id || editingPost.ann_no, announcementData);
+        // Note: Backend might need update to handle FormData in PUT
+        response = await announcementAPI.update(editingPost.id || editingPost.ann_no, fData);
       } else {
         // Create new announcement
-        response = await announcementAPI.create(announcementData);
+        response = await announcementAPI.create(fData);
       }
 
-      if (response.data.message) {
+      if (response.data.message || response.data.success) {
         alert(`Announcement ${manageMode === 'edit' ? 'updated' : 'created'} successfully!`);
         resetForm();
         loadAnnouncements();
@@ -667,7 +795,7 @@ export default function ScholarshipDashboard({
       }
     } catch (error) {
       console.error('Failed to save announcement:', error);
-      alert('Error saving announcement: ' + (error.response?.data?.message || error.message));
+      alert(getRequestErrorMessage(error, 'Error saving announcement'));
     } finally {
       setIsSaving(false);
     }
@@ -693,10 +821,14 @@ export default function ScholarshipDashboard({
     if (window.confirm('Are you sure you want to delete this announcement?')) {
       try {
         await announcementAPI.delete(id);
-        loadAnnouncements();
+        if (editingPost && (editingPost.id || editingPost.ann_no) === id) {
+          resetForm();
+          setManageMode('list');
+        }
+        await loadAnnouncements();
       } catch (error) {
         console.error('Failed to delete announcement:', error);
-        alert('Error deleting announcement: ' + (error.response?.data?.message || error.message));
+        alert(getRequestErrorMessage(error, 'Error deleting announcement'));
       }
     }
   };
@@ -1631,10 +1763,12 @@ export default function ScholarshipDashboard({
                   name="year"
                   value={formData.year}
                   onChange={handleFormChange}
+                  onBlur={handleAcademicYearBlur}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                  placeholder="e.g. 2026 - 2027"
+                  placeholder="e.g. 2025-2026"
                   required
                 />
+                <p className="text-xs text-gray-500 mt-1">Use the YYYY–YYYY format (e.g., 2025–2026).</p>
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-[#800020] mb-1">Description *</label>

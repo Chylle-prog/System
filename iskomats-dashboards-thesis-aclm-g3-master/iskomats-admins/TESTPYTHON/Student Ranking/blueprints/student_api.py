@@ -1658,16 +1658,16 @@ def ocr_check():
         enrollment_doc_param = data.get('enrollment_doc') or data.get('enrollmentDoc')
         grades_doc_param = data.get('grades_doc') or data.get('gradesDoc')
 
-        first_name = str(data.get('first_name') or data.get('firstName') or applicant.get('first_name', '')).strip()
-        middle_name = str(data.get('middle_name') or data.get('middleName') or applicant.get('middle_name', '')).strip()
-        last_name = str(data.get('last_name') or data.get('lastName') or applicant.get('last_name', '')).strip()
+        first_name = str(data.get('first_name') or data.get('firstName') or '').strip()
+        middle_name = str(data.get('middle_name') or data.get('middleName') or '').strip()
+        last_name = str(data.get('last_name') or data.get('lastName') or '').strip()
         
         # Construct full expected name for OCR matching
         # Include middle name only if it's more than a single character or placeholder
         full_expected_name = f"{first_name} {last_name}"
         if middle_name and len(middle_name) > 1:
             full_expected_name = f"{first_name} {middle_name} {last_name}"
-        town_city = str(data.get('town_city') or data.get('townCity') or applicant.get('town_city_municipality', '')).strip()
+        town_city = str(data.get('town_city') or data.get('townCity') or '').strip()
         school_name = str(data.get('school_name') or data.get('schoolName') or '').strip()
         course = str(data.get('course') or '').strip()
         expected_gpa = str(data.get('gpa') or data.get('expectedGPA') or '').strip()
@@ -2037,6 +2037,13 @@ def update_application_status(req_no):
         # If this application is being APPROVED, we automatically REJECT all other 
         # applications for the same applicant as they can only hold one scholarship.
         if status in [True, 1, 'true', 'True']:
+            # Find which scholarships are being auto-declined to notify the student
+            cur.execute(
+                "SELECT s.scholarship_name, s.req_no FROM applicant_status ast JOIN scholarships s ON ast.scholarship_no = s.req_no WHERE ast.applicant_no = %s AND ast.scholarship_no != %s AND (ast.is_accepted IS NULL OR ast.is_accepted = TRUE)",
+                (applicant_no, req_no)
+            )
+            declined_scholarships = cur.fetchall()
+            
             cur.execute(
                 """
                 UPDATE applicant_status
@@ -2045,6 +2052,16 @@ def update_application_status(req_no):
                 """,
                 (applicant_no, req_no),
             )
+            
+            for ds in declined_scholarships:
+                try:
+                    create_notification(
+                        user_no=applicant_no,
+                        title="Application Closed",
+                        message=f"Your application for {ds['scholarship_name']} has been closed because you were accepted into another scholarship. Students may only hold one active scholarship.",
+                        notif_type='result'
+                    )
+                except: pass
 
         conn.commit()
         

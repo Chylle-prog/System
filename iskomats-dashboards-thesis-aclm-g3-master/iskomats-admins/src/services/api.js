@@ -2,6 +2,7 @@
 
 import axios from 'axios';
 import { API_BASE_URL } from './config';
+import { clearAdminSession } from '../utils/admin-session';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -29,12 +30,7 @@ api.interceptors.response.use(
 
     if (error.response?.status === 403 && errBody.suspended) {
       localStorage.setItem('accountSuspended', 'true');
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('isLoggedIn');
-      localStorage.removeItem('userRole');
-      localStorage.removeItem('userName');
-      localStorage.removeItem('userFirstName');
-      localStorage.removeItem('userEmail');
+      clearAdminSession({ preserveSuspended: true });
 
       if (window.location.pathname !== '/suspended') {
         window.location.href = '/suspended';
@@ -43,12 +39,7 @@ api.interceptors.response.use(
 
     if (error.response?.status === 401 && !isLoginRequest && !isLoginPage) {
       // Token expired or invalid
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('isLoggedIn');
-      localStorage.removeItem('userRole');
-      localStorage.removeItem('userName');
-      localStorage.removeItem('userFirstName');
-      localStorage.setItem('session_expired', 'true');
+      clearAdminSession({ markSessionExpired: true });
       window.location.href = '/login';
     }
     return Promise.reject(error);
@@ -80,6 +71,9 @@ export const authAPI = {
     }
     return api.post('/admin/auth/verify-email', data);
   },
+
+  me: () =>
+    api.get('/admin/auth/me'),
   
   /**
    * Check if email is available for registration

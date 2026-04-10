@@ -207,6 +207,7 @@ const StudentInfo = () => {
   const [gradesStatus, setGradesStatus] = useState('');
   const [idVerified, setIdVerified] = useState(null); 
   const [idStatus, setIdStatus] = useState('');
+  const [scanProgress, setScanProgress] = useState(0); // 0-100 progress for scanning animations
 
   const idPictureInputRef = useRef(null);
   const signatureInputRef = useRef(null);
@@ -892,9 +893,14 @@ const StudentInfo = () => {
 
       setVerified('verifying');
       setStatus(`Verifying your ${docType} document and video...`);
+      setScanProgress(15);
       
+      const pInterval = setInterval(() => {
+        setScanProgress(p => p < 90 ? p + 5 : p);
+      }, 600);
+
       const { townCity, schoolName, idNumber, yearLevel, gpa } = extraParams;
-      
+      const { firstName, lastName, middleName } = formData;
       const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
 
       const result = await applicantAPI.ocrCheck(
@@ -904,11 +910,16 @@ const StudentInfo = () => {
         townCity, 
         docType === 'Enrollment' ? docParam : null, 
         docType === 'Grades' ? docParam : null,
-        null, null, 
+        firstName, 
+        lastName, 
+        middleName,
         schoolName, idNumber, yearLevel, gpa,
         videoUrl,
         reqNo
       );
+
+      clearInterval(pInterval);
+      setScanProgress(100);
       
       if (result.verified) {
         setVerified('success');
@@ -950,9 +961,9 @@ const StudentInfo = () => {
   };
 
   const handleIndigencyScan = async () => {
-    const indigencyDoc = photos.mayorIndigency_photo || formData.mayorIndigency_photo || userProfile?.indigency_doc;
-    const townCity = formData.townCityMunicipality || userProfile?.town_city_municipality || '';
-    const videoUrl = formData.mayorIndigency_video || documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url;
+    const indigencyDoc = photos.mayorIndigency_photo || formData.mayorIndigency_photo;
+    const townCity = formData.townCityMunicipality || '';
+    const videoUrl = formData.mayorIndigency_video || documentVideos.mayorIndigency_video;
 
     if (!indigencyDoc) {
       showPromptMessage('⚠️ Please upload or capture your Certificate of Indigency first.');
@@ -983,10 +994,10 @@ const StudentInfo = () => {
   };
 
   const handleCOEScan = async () => {
-    const coeDoc = photos.mayorCOE_photo || formData.mayorCOE_photo || userProfile?.enrollment_certificate_doc;
-    const schoolName = formData.schoolName || userProfile?.school || '';
-    const yearLevel = formData.yearLevel || userProfile?.year_lvl || '';
-    const videoUrl = formData.mayorCOE_video || documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url;
+    const coeDoc = photos.mayorCOE_photo || formData.mayorCOE_photo;
+    const schoolName = formData.schoolName || '';
+    const yearLevel = formData.yearLevel || '';
+    const videoUrl = formData.mayorCOE_video || documentVideos.mayorCOE_video;
 
     if (!coeDoc) {
       showPromptMessage('⚠️ Please upload your Certificate of Enrollment first.');
@@ -1013,11 +1024,11 @@ const StudentInfo = () => {
   };
 
   const handleGradesScan = async () => {
-    const gradesDoc = photos.mayorGrades_photo || formData.mayorGrades_photo || userProfile?.grades_doc;
-    const schoolName = formData.schoolName || userProfile?.school || '';
-    const yearLevel = formData.yearLevel || userProfile?.year_lvl || '';
-    const gpa = formData.gpa || userProfile?.overall_gpa || '';
-    const videoUrl = formData.mayorGrades_video || documentVideos.mayorGrades_video || userProfile?.grades_vid_url;
+    const gradesDoc = photos.mayorGrades_photo || formData.mayorGrades_photo;
+    const schoolName = formData.schoolName || '';
+    const yearLevel = formData.yearLevel || '';
+    const gpa = formData.gpa || '';
+    const videoUrl = formData.mayorGrades_video || documentVideos.mayorGrades_video;
 
     if (!gradesDoc) {
       showPromptMessage('⚠️ Please upload your Grades document first.');
@@ -1044,9 +1055,9 @@ const StudentInfo = () => {
   };
 
   const handleIdScan = async () => {
-    const idFront = schoolIdPhotos.front || userProfile?.id_img_front;
-    const idBack = schoolIdPhotos.back || userProfile?.id_img_back;
-    const videoUrl = formData.schoolId_video || documentVideos.schoolId_video || userProfile?.schoolId_vid_url;
+    const idFront = schoolIdPhotos.front;
+    const idBack = schoolIdPhotos.back;
+    const videoUrl = formData.schoolId_video || documentVideos.schoolId_video;
 
     if (!idFront || !idBack) {
       showPromptMessage('⚠️ Please upload both front and back of your School ID first.');
@@ -1148,7 +1159,7 @@ const StudentInfo = () => {
         field.parentElement.style.color = '#e74c3c';
       } else if (field.type === 'file') {
         if (field.name) {
-          const hasSavedFile = Boolean(formData[field.name] || userProfile?.[`has_${field.name}`]);
+          const hasSavedFile = Boolean(formData[field.name]);
           if (!hasSavedFile) {
             isMissing = true;
           }
@@ -1165,7 +1176,7 @@ const StudentInfo = () => {
     }
 
     if (currentStep === 3) {
-      if ((!schoolIdPhotos.front && !userProfile?.id_img_front) || (!schoolIdPhotos.back && !userProfile?.id_img_back)) {
+      if (!schoolIdPhotos.front || !schoolIdPhotos.back) {
         showPromptMessage('⚠️ Please upload both front and back of your School ID.');
         return;
       }
@@ -1251,7 +1262,7 @@ const StudentInfo = () => {
 
     let missingDocLabel = '';
     for (const doc of requiredDocs) {
-      if (!formData[doc.name] && !userProfile?.[`has_${doc.name}`]) {
+      if (!formData[doc.name] && !photos[doc.name]) {
         missingDocLabel = doc.label;
         break;
       }
@@ -1263,9 +1274,9 @@ const StudentInfo = () => {
     }
 
     if (
-      (!schoolIdPhotos.front && !userProfile?.id_img_front) ||
-      (!schoolIdPhotos.back && !userProfile?.id_img_back) ||
-      (!photos.face_photo && !userProfile?.id_pic)
+      !schoolIdPhotos.front ||
+      !schoolIdPhotos.back ||
+      !photos.face_photo
     ) {
       showPromptMessage('⚠️ Please complete Identity Verification: Upload Front/Back School ID and a Face Photo.');
       return;
@@ -1280,7 +1291,7 @@ const StudentInfo = () => {
       return;
     }
 
-    if (!signaturePreview && !drawnSignature && !userProfile?.has_signature) {
+    if (!signaturePreview && !drawnSignature) {
       showPromptMessage('⚠️ Please either upload a signature photo or draw your signature.');
       return;
     }
@@ -1300,7 +1311,7 @@ const StudentInfo = () => {
 
     try {
       const facePhoto = photos.face_photo;
-      const idFrontForFace = schoolIdPhotos.front || userProfile?.id_img_front;
+      const idFrontForFace = schoolIdPhotos.front;
 
       if (facePhoto && idFrontForFace && faceVerified !== 'success') {
         setLoadingMessage({
@@ -1890,10 +1901,110 @@ const StudentInfo = () => {
           40% { transform: scale(1); opacity: 1; }
         }
 
+        /* Requirement Card & Media Styling */
+        .requirement-card {
+          margin-bottom: 2rem;
+          background: #ffffff;
+          padding: 1.8rem;
+          border-radius: 28px;
+          border: 1px solid #f1f5f9;
+          box-shadow: 0 10px 30px -10px rgba(0,0,0,0.04);
+          transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .requirement-card:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 20px 40px -12px rgba(0,0,0,0.07);
+        }
+        .media-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+          gap: 1.5rem;
+          margin-top: 1.2rem;
+        }
+        .preview-box {
+          background: #f8fafc;
+          border-radius: 20px;
+          border: 1.5px dashed #e2e8f0;
+          padding: 1rem;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          transition: all 0.2s;
+        }
+        .preview-box:hover {
+          border-color: var(--primary);
+          background: #fff;
+        }
+        .image-container {
+          width: 100%;
+          height: 220px;
+          border-radius: 16px;
+          overflow: hidden;
+          background: #000;
+          position: relative;
+          cursor: zoom-in;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        .image-container img {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+          transition: transform 0.5s;
+        }
+        .image-container:hover img {
+          transform: scale(1.05);
+        }
+        
+        /* Validation UI - Premium Status Card */
+        .validation-status-card {
+          margin-top: 1.2rem;
+          padding: 1.2rem;
+          border-radius: 20px;
+          display: flex;
+          align-items: flex-start;
+          gap: 14px;
+          animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+          border: 1px solid transparent;
+        }
+        .validation-status-card.success {
+          background: #f0fdf4;
+          border-color: #bbf7d0;
+          color: #166534;
+        }
+        .validation-status-card.failed {
+          background: #fef2f2;
+          border-color: #fecaca;
+          color: #991b1b;
+        }
+        .validation-status-card.processing {
+          background: #eff6ff;
+          border-color: #bfdbfe;
+          color: #1e40af;
+        }
+        .status-icon {
+          width: 32px;
+          height: 32px;
+          border-radius: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 1rem;
+          flex-shrink: 0;
+        }
+        .status-icon.success { background: #22c55e; color: white; }
+        .status-icon.failed { background: #ef4444; color: white; }
+        .status-icon.processing { background: #3b82f6; color: white; }
+
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
         @media (max-width: 768px) {
           .step-label { display: none; }
           .form-card { padding: 1.5rem; }
           .navbar { padding: 1rem 5%; }
+          .media-grid { grid-template-columns: 1fr; }
         }
       `}</style>
 
@@ -2059,122 +2170,116 @@ const StudentInfo = () => {
 
               <div className="form-row">
                 <div className="form-group">
-                  <label>Email Address <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="email" name="emailAddress" value={formData.emailAddress} onChange={handleInputChange} style={{background: '#f8f9fa'}} readOnly />
-                </div>
-              </div>
-
-              {/* Documentary Requirement: Indigency */}
-              <div style={{marginBottom: '1.5rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
-                <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
-                  Certificate of Indigency <span style={{color: '#e74c3c'}}>*</span>
-                </h4>
-                <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
-                <div style={{paddingLeft: '16px'}}>
-                  <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem'}}>
-                    <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 1 && !photos.mayorIndigency_photo && !userProfile?.indigency_doc} style={{fontSize: '0.8rem'}} />
-                    {(photos.mayorIndigency_photo || userProfile?.indigency_doc) && (
-                      <span style={{fontSize: '0.75rem', color: '#27ae60', fontWeight: '600', padding: '2px 8px', background: '#e8f5e9', borderRadius: '10px', border: '1px solid #c8e6c9'}}>
-                        <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> File Active
-                      </span>
-                    )}
+                  <label>Email Address <span style={{color: '#e74c3c'}}>*</span></label              {/* Documentary Requirement: Indigency */}
+              <div className="requirement-card">
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
+                  <div>
+                    <h4 style={{fontSize: '1.15rem', color: '#1a202c', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px'}}>
+                      <div style={{width: '36px', height: '36px', background: 'var(--accent-soft)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                        <i className="fas fa-home" style={{color: 'var(--primary)', fontSize: '1.1rem'}}></i>
+                      </div>
+                      Certificate of Indigency <span style={{color: '#e74c3c'}}>*</span>
+                    </h4>
+                    <p style={{fontSize: '0.85rem', color: '#64748b', marginTop: '6px', marginLeft: '46px'}}>Verify residency eligibility via Barangay Indigency document</p>
                   </div>
-                  
-                  <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1rem'}}>
-                    {/* Photo Column */}
-                    <div style={{flex: '1', minWidth: '220px'}}>
-                      {(photos.mayorIndigency_photo || userProfile?.indigency_doc) && (
-                        <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
-                            <div onClick={() => setLightboxSrc(photos.mayorIndigency_photo || userProfile?.indigency_doc)} title="Click to view full size" style={{width: '200px', height: '160px', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', cursor: 'zoom-in', flexShrink: 0, background: '#f8f9fa'}}>
-                              <img src={photos.mayorIndigency_photo || userProfile?.indigency_doc} style={{width: '100%', height: '100%', objectFit: 'contain'}} alt="Indigency Preview" />
-                            </div>
-                            <button 
-                              type="button" 
-                              onClick={handleIndigencyScan}
-                              disabled={isSavingStep}
-                              style={{
-                                padding: '0.6rem 1.2rem',
-                                borderRadius: '30px',
-                                background: ocrVerified === 'success' ? '#2ecc71' : 'var(--primary)',
-                                color: 'white',
-                                border: 'none',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                fontSize: '0.9rem',
-                                fontWeight: '600',
-                                transition: 'all 0.3s ease'
-                              }}
-                            >
-                              <i className={`fas ${ocrVerified === 'verifying' ? 'fa-spinner fa-spin' : 'fa-search'}`}></i>
-                              {ocrVerified === 'success' ? 'Verified!' : 'Scan Document'}
-                            </button>
+                  {(photos.mayorIndigency_photo || formData.mayorIndigency_photo) && (
+                    <div style={{display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0'}}>
+                      <i className="fas fa-check-circle"></i> Upload Ready
+                    </div>
+                  )}
+                </div>
 
-                            {ocrStatus && (
-                              <div style={{
-                                marginTop: '1rem',
-                                padding: '1rem',
-                                borderRadius: '12px',
-                                background: ocrVerified === 'success' ? '#f0fff4' : (ocrVerified === 'failed' ? '#fff5f5' : '#f7fafc'),
-                                border: `1px solid ${ocrVerified === 'success' ? '#c6f6d5' : (ocrVerified === 'failed' ? '#fed7d7' : '#e2e8f0')}`,
-                                display: 'flex',
-                                alignItems: 'start',
-                                gap: '12px'
-                              }}>
-                                <div style={{
-                                  width: '24px',
-                                  height: '24px',
-                                  borderRadius: '50%',
-                                  background: ocrVerified === 'success' ? '#27ae60' : (ocrVerified === 'failed' ? '#e74c3c' : 'var(--primary)'),
-                                  color: 'white',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  fontSize: '0.7rem',
-                                  flexShrink: 0,
-                                  marginTop: '2px'
-                                }}>
-                                  <i className={`fas ${ocrVerified === 'success' ? 'fa-check' : (ocrVerified === 'failed' ? 'fa-times' : 'fa-info')}`}></i>
-                                </div>
-                                <div>
-                                  <h5 style={{margin: '0 0 2px 0', fontSize: '0.85rem', color: '#333', fontWeight: '700'}}>
-                                    {ocrVerified === 'success' ? 'Verification Passed' : (ocrVerified === 'failed' ? 'Verification Failed' : 'Verification Update')}
-                                  </h5>
-                                  <p style={{
-                                    fontSize: '0.8rem', 
-                                    color: ocrVerified === 'success' ? '#2f855a' : (ocrVerified === 'failed' ? '#c53030' : '#4a5568'),
-                                    margin: 0,
-                                    lineHeight: '1.4'
-                                  }}>
-                                    {ocrStatus}
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                      )}
+                <div className="media-grid">
+                  {/* Photo Section */}
+                  <div className="preview-box">
+                    <div style={{marginBottom: '1rem'}}>
+                      <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155', marginBottom: '8px'}}>Document Photo</label>
+                      <input type="file" name="mayorIndigency_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 1 && !photos.mayorIndigency_photo && !formData.mayorIndigency_photo} style={{fontSize: '0.8rem', width: '100%'}} />
                     </div>
 
-                    {/* Video Column */}
-                    <div style={{flex: '1', minWidth: '220px'}}>
-                      <div style={{background: '#fff', padding: '1rem', borderRadius: '16px', border: '1px solid #e1e8f0', height: '100%'}}>
-                        <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.8rem'}}>
-                          <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', margin: 0}}>
-                            <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
-                          </p>
-                          {(documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url) && (
-                            <span style={{fontSize: '0.7rem', color: '#27ae60', fontWeight: '600', padding: '0.25rem 0.6rem', backgroundColor: '#d5f4e6', borderRadius: '12px', whiteSpace: 'nowrap'}}>
-                              <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> Video Active
-                            </span>
-                          )}
+                    {(photos.mayorIndigency_photo || userProfile?.indigency_doc) && (
+                      <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                        <div className="image-container" onClick={() => setLightboxSrc(photos.mayorIndigency_photo || userProfile?.indigency_doc)}>
+                          <img src={photos.mayorIndigency_photo || userProfile?.indigency_doc} alt="Indigency Preview" />
+                          <div style={{position: 'absolute', bottom: '12px', right: '12px', background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '6px 10px', borderRadius: '10px', fontSize: '0.7rem', backdropFilter: 'blur(4px)'}}>
+                            <i className="fas fa-expand-alt" style={{marginRight: '6px'}}></i> Tap to view
+                          </div>
                         </div>
-                        <VideoRecorder 
-                          label="Record Indigency Video" 
-                          onRecordComplete={(blob) => handleVideoUpload('mayorIndigency_video', blob)} 
-                          initialVideoUrl={documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url}
-                        />
+
+                        <button 
+                          type="button" 
+                          onClick={handleIndigencyScan}
+                          disabled={isSavingStep || ocrVerified === 'verifying'}
+                          style={{
+                            width: '100%',
+                            padding: '0.9rem',
+                            borderRadius: '16px',
+                            background: ocrVerified === 'success' ? '#10b981' : 'var(--primary)',
+                            color: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '10px',
+                            fontSize: '0.95rem',
+                            fontWeight: '700',
+                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                            boxShadow: ocrVerified === 'success' ? '0 10px 20px -5px rgba(16, 185, 129, 0.3)' : '0 10px 20px -5px rgba(79, 13, 0, 0.3)'
+                          }}
+                        >
+                          <i className={`fas ${ocrVerified === 'verifying' ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}`}></i>
+                          {ocrVerified === 'verifying' ? 'AI Scanning...' : (ocrVerified === 'success' ? 'Validation Successful' : 'Scan & Validate Document')}
+                        </button>
+
+                        {ocrVerified === 'verifying' && (
+                          <div style={{width: '100%', height: '8px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden'}}>
+                            <div style={{position: 'absolute', height: '100%', background: 'var(--primary)', width: `${scanProgress}%`, transition: 'width 0.4s ease', borderRadius: '10px'}}></div>
+                          </div>
+                        )}
+
+                        {ocrStatus && (
+                          <div className={`validation-status-card ${ocrVerified === 'success' ? 'success' : (ocrVerified === 'failed' ? 'failed' : 'processing')}`}>
+                            <div className={`status-icon ${ocrVerified === 'success' ? 'success' : (ocrVerified === 'failed' ? 'failed' : 'processing')}`}>
+                              <i className={`fas ${ocrVerified === 'success' ? 'fa-check' : (ocrVerified === 'failed' ? 'fa-circle-xmark' : 'fa-magnifying-glass')}`}></i>
+                            </div>
+                            <div>
+                              <p style={{fontSize: '0.85rem', fontWeight: '700', margin: '0 0 4px 0'}}>Verification Feedback</p>
+                              <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.5'}}>{ocrStatus}</p>
+                            </div>
+                          </div>
+                        )}
                       </div>
+                    )}
+                  </div>
+
+                  {/* Video Section */}
+                  <div className="preview-box" style={{background: '#fff', borderStyle: 'solid'}}>
+                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
+                      <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155'}}>Video Identity Check</label>
+                      <div style={{fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca'}}>REQUIRED</div>
+                    </div>
+                    <div style={{flex: 1, minHeight: '180px'}}>
+                      <VideoRecorder 
+                        label="Record Verification" 
+                        onRecordComplete={(blob) => handleVideoUpload('mayorIndigency_video', blob)} 
+                        initialVideoUrl={documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url}
+                      />
+                    </div>
+                    <div style={{marginTop: '1rem', padding: '12px', background: '#fffbeb', borderRadius: '14px', border: '1px solid #fef3c7', display: 'flex', gap: '10px'}}>
+                      <i className="fas fa-shield-halved" style={{color: '#d97706', fontSize: '1rem', marginTop: '2px'}}></i>
+                      <p style={{fontSize: '0.75rem', color: '#92400e', margin: 0, lineHeight: '1.4'}}>
+                        <b>Face Check:</b> Look directly at the camera while holding the original document clearly in view for 5 seconds.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+   </p>
+                    </div>
+                  </div>
+                </div>
+              </div> </div>
                     </div>
                   </div>
                 </div>
@@ -2341,239 +2446,198 @@ const StudentInfo = () => {
                 </div>
               </div>
 
-              <div style={{marginBottom: '2rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
-                <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
-                  Updated School ID (Photo & Video) <span style={{color: '#e74c3c'}}>*</span>
-                </h4>
-                <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1.2rem', paddingLeft: '16px'}}>Photo (.png/jpg) and Video recording</p>
-                
-                <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem', paddingLeft: '16px'}}>
-                  <span style={{fontSize: '0.8rem', color: '#555', fontWeight: '600'}}>ID Photos</span>
-                  {(schoolIdPhotos.front || schoolIdPhotos.back || userProfile?.id_img_front || userProfile?.id_img_back) && (
-                    <span style={{fontSize: '0.75rem', color: '#27ae60', fontWeight: '600', padding: '2px 8px', background: '#e8f5e9', borderRadius: '10px', border: '1px solid #c8e6c9'}}>
-                      <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> Files Active
-                    </span>
+              <div className="requirement-card">
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
+                  <div>
+                    <h4 style={{fontSize: '1.15rem', color: '#1a202c', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px'}}>
+                      <div style={{width: '36px', height: '36px', background: 'var(--accent-soft)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                        <i className="fas fa-id-card" style={{color: 'var(--primary)', fontSize: '1.1rem'}}></i>
+                      </div>
+                      Updated School ID <span style={{color: '#e74c3c'}}>*</span>
+                    </h4>
+                    <p style={{fontSize: '0.85rem', color: '#64748b', marginTop: '6px', marginLeft: '46px'}}>Current academic year ID for identity verification</p>
+                  </div>
+                  {(schoolIdPhotos.front || schoolIdPhotos.back) && (
+                    <div style={{display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0'}}>
+                      <i className="fas fa-check-circle"></i> Upload Ready
+                    </div>
                   )}
                 </div>
-                <div className="form-row" style={{paddingLeft: '16px', marginBottom: '1.5rem'}}>
-                  <div className="form-group">
-                    <label style={{fontSize: '0.8rem', color: '#555'}}>Front Side</label>
-                    <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} required={currentStep === 3} />
-                    {(schoolIdPhotos.front || userProfile?.id_img_front) && (
-                      <div onClick={() => setLightboxSrc(schoolIdPhotos.front || userProfile?.id_img_front)} title="Click to view full size" style={{marginTop: '10px', width: '200px', height: '160px', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', cursor: 'zoom-in', background: '#f8f9fa'}}>
-                        <img src={schoolIdPhotos.front || userProfile?.id_img_front} style={{width: '100%', height: '100%', objectFit: 'contain'}} alt="Front Preview" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="form-group">
-                    <label style={{fontSize: '0.8rem', color: '#555'}}>Back Side</label>
-                    <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} required={currentStep === 3} />
-                    {(schoolIdPhotos.back || userProfile?.id_img_back) && (
-                      <div onClick={() => setLightboxSrc(schoolIdPhotos.back || userProfile?.id_img_back)} title="Click to view full size" style={{marginTop: '10px', width: '200px', height: '160px', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', cursor: 'zoom-in', background: '#f8f9fa'}}>
-                        <img src={schoolIdPhotos.back || userProfile?.id_img_back} style={{width: '100%', height: '100%', objectFit: 'contain'}} alt="Back Preview" />
-                      </div>
-                    )}
-                  </div>
-                </div>
 
-                {(schoolIdPhotos.front || userProfile?.id_img_front) && (schoolIdPhotos.back || userProfile?.id_img_back) && (
-                  <div style={{paddingLeft: '16px', marginBottom: '1rem'}}>
-                    <button 
-                      type="button" 
-                      onClick={handleIdScan}
-                      disabled={isSavingStep}
-                      style={{
-                        padding: '0.6rem 1.2rem',
-                        borderRadius: '30px',
-                        background: idVerified === 'success' ? '#2ecc71' : 'var(--primary)',
-                        color: 'white',
-                        border: 'none',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        fontSize: '0.9rem',
-                        fontWeight: '600',
-                        transition: 'all 0.3s ease'
-                      }}
-                    >
-                      <i className={`fas ${idVerified === 'verifying' ? 'fa-spinner fa-spin' : 'fa-search'}`}></i>
-                      {idVerified === 'success' ? 'Verified!' : 'Scan School ID'}
-                    </button>
-                    {idStatus && (
-                      <div style={{
-                        marginTop: '1rem',
-                        padding: '1rem',
-                        borderRadius: '12px',
-                        background: idVerified === 'success' ? '#f0fff4' : (idVerified === 'failed' ? '#fff5f5' : '#f7fafc'),
-                        border: `1px solid ${idVerified === 'success' ? '#c6f6d5' : (idVerified === 'failed' ? '#fed7d7' : '#e2e8f0')}`,
-                        display: 'flex',
-                        alignItems: 'start',
-                        gap: '12px'
-                      }}>
-                        <div style={{
-                          width: '24px',
-                          height: '24px',
-                          borderRadius: '50%',
-                          background: idVerified === 'success' ? '#27ae60' : (idVerified === 'failed' ? '#e74c3c' : 'var(--primary)'),
-                          color: 'white',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '0.7rem',
-                          flexShrink: 0,
-                          marginTop: '2px'
-                        }}>
-                          <i className={`fas ${idVerified === 'success' ? 'fa-check' : (idVerified === 'failed' ? 'fa-times' : 'fa-info')}`}></i>
-                        </div>
-                        <div>
-                          <h5 style={{margin: '0 0 2px 0', fontSize: '0.85rem', color: '#333', fontWeight: '700'}}>
-                            {idVerified === 'success' ? 'ID Verified' : (idVerified === 'failed' ? 'ID Check Failed' : 'ID Status')}
-                          </h5>
-                          <p style={{
-                            fontSize: '0.8rem', 
-                            color: idVerified === 'success' ? '#2f855a' : (idVerified === 'failed' ? '#c53030' : '#4a5568'),
-                            margin: 0,
-                            lineHeight: '1.4'
-                          }}>
-                            {idStatus}
-                          </p>
-                        </div>
+                <div className="media-grid">
+                  {/* Documentation Selection */}
+                  <div className="preview-box">
+                    <div style={{display: 'flex', gap: '1rem', marginBottom: '1rem'}}>
+                      <div style={{flex: 1}}>
+                        <label style={{display: 'block', fontSize: '0.75rem', fontWeight: '700', color: '#334155', marginBottom: '6px'}}>Front Photo</label>
+                        <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('front', e)} required={currentStep === 3 && !schoolIdPhotos.front} style={{fontSize: '0.7rem', width: '100%'}} />
                       </div>
-                    )}
-                  </div>
-                )}
-
-                <div style={{marginTop: '1rem'}}>
-                  <div style={{flex: '1', minWidth: '220px'}}>
-                    <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.8rem'}}>
-                          <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', margin: 0}}>
-                            <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
-                          </p>
-                          <div className="video-hint" style={{fontSize: '0.7rem', color: '#666', background: '#fff9db', padding: '4px 8px', borderRadius: '4px', marginTop: '4px', border: '1px solid #ffec99'}}>
-                            <i className="fas fa-lightbulb" style={{marginRight: '5px', color: '#f59f00'}}></i>
-                            Show both sides of your ID clearly in the camera.
-                          </div>
-                      {(documentVideos.schoolId_video || userProfile?.schoolId_vid_url) && (
-                        <span style={{fontSize: '0.75rem', color: '#27ae60', fontWeight: '600', padding: '2px 8px', background: '#e8f5e9', borderRadius: '10px', border: '1px solid #c8e6c9'}}>
-                          <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> Video Active
-                        </span>
-                      )}
+                      <div style={{flex: 1}}>
+                        <label style={{display: 'block', fontSize: '0.75rem', fontWeight: '700', color: '#334155', marginBottom: '6px'}}>Back Photo</label>
+                        <input type="file" accept="image/*" onChange={(e) => handleSchoolIdPhotoUpload('back', e)} required={currentStep === 3 && !schoolIdPhotos.back} style={{fontSize: '0.7rem', width: '100%'}} />
+                      </div>
                     </div>
-                    <VideoRecorder 
-                      label="Record School ID Video" 
-                      onRecordComplete={(blob) => handleVideoUpload('schoolId_video', blob)} 
-                      initialVideoUrl={documentVideos.schoolId_video || userProfile?.schoolId_vid_url}
-                    />
+
+                    {(schoolIdPhotos.front || userProfile?.id_img_front) && (
+                      <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                        <div style={{display: 'flex', gap: '10px'}}>
+                           <div className="image-container" style={{height: '140px', flex: 1}} onClick={() => setLightboxSrc(schoolIdPhotos.front || userProfile?.id_img_front)}>
+                             <img src={schoolIdPhotos.front || userProfile?.id_img_front} alt="Front ID" />
+                           </div>
+                           <div className="image-container" style={{height: '140px', flex: 1}} onClick={() => setLightboxSrc(schoolIdPhotos.back || userProfile?.id_img_back)}>
+                             <img src={schoolIdPhotos.back || userProfile?.id_img_back} alt="Back ID" />
+                           </div>
+                        </div>
+
+                        <button 
+                          type="button" 
+                          onClick={handleIdScan}
+                          disabled={isSavingStep || idVerified === 'verifying'}
+                          style={{
+                            width: '100%',
+                            padding: '0.9rem',
+                            borderRadius: '16px',
+                            background: idVerified === 'success' ? '#10b981' : 'var(--primary)',
+                            color: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '10px',
+                            fontSize: '0.95rem',
+                            fontWeight: '700',
+                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                            boxShadow: idVerified === 'success' ? '0 10px 20px -5px rgba(16, 185, 129, 0.3)' : '0 10px 20px -5px rgba(79, 13, 0, 0.3)'
+                          }}
+                        >
+                          <i className={`fas ${idVerified === 'verifying' ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}`}></i>
+                          {idVerified === 'verifying' ? 'AI Analyzing ID...' : (idVerified === 'success' ? 'Identity Verified' : 'Scan & Validate School ID')}
+                        </button>
+
+                        {idVerified === 'verifying' && (
+                          <div style={{width: '100%', height: '8px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden'}}>
+                            <div style={{position: 'absolute', height: '100%', background: 'var(--primary)', width: `${scanProgress}%`, transition: 'width 0.4s ease', borderRadius: '10px'}}></div>
+                          </div>
+                        )}
+
+                        {idStatus && (
+                          <div className={`validation-status-card ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`}>
+                            <div className={`status-icon ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`}>
+                              <i className={`fas ${idVerified === 'success' ? 'fa-check' : (idVerified === 'failed' ? 'fa-circle-xmark' : 'fa-magnifying-glass')}`}></i>
+                            </div>
+                            <div>
+                              <p style={{fontSize: '0.85rem', fontWeight: '700', margin: '0 0 4px 0'}}>System Verification</p>
+                              <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.5'}}>{idStatus}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ID Video Section */}
+                  <div className="preview-box" style={{background: '#fff', borderStyle: 'solid'}}>
+                     <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
+                      <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155'}}>ID Video Verification</label>
+                      <div style={{fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca'}}>REQUIRED</div>
+                    </div>
+                    <div style={{flex: 1, minHeight: '180px'}}>
+                      <VideoRecorder 
+                        label="Record ID Check" 
+                        onRecordComplete={(blob) => handleVideoUpload('schoolId_video', blob)} 
+                        initialVideoUrl={documentVideos.schoolId_video || userProfile?.schoolId_vid_url}
+                      />
+                    </div>
+                    <div style={{marginTop: '1rem', padding: '12px', background: '#fffbeb', borderRadius: '14px', border: '1px solid #fef3c7', display: 'flex', gap: '10px'}}>
+                      <i className="fas fa-video-slash" style={{color: '#d97706', fontSize: '1rem', marginTop: '2px'}}></i>
+                      <p style={{fontSize: '0.75rem', color: '#92400e', margin: 0, lineHeight: '1.4'}}>
+                        <b>Scan Tip:</b> Slowly tilt your ID front to back. Keep it steady so our AI can read the hologram and SY sticker.
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
 
               {/* Documentary Requirements: COE and Grades */}
               <div style={{marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.2rem'}}>
-                <div style={{background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
-                  <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
-                    Certificate of Enrollment (Current A.Y) <span style={{color: '#e74c3c'}}>*</span>
-                  </h4>
-                  <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
-                  <div style={{paddingLeft: '16px'}}>
-                    <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem'}}>
-                      <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3 && !photos.mayorCOE_photo && !userProfile?.enrollment_certificate_doc} style={{fontSize: '0.8rem'}} />
+                <div className="requirement-card">
+                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
+                    <div>
+                      <h4 style={{fontSize: '1.15rem', color: '#1a202c', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px'}}>
+                        <div style={{width: '36px', height: '36px', background: 'var(--accent-soft)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                          <i className="fas fa-file-signature" style={{color: 'var(--primary)', fontSize: '1.1rem'}}></i>
+                        </div>
+                        Certificate of Enrollment <span style={{color: '#e74c3c'}}>*</span>
+                      </h4>
+                      <p style={{fontSize: '0.85rem', color: '#64748b', marginTop: '6px', marginLeft: '46px'}}>Current semester registration form or COE</p>
+                    </div>
+                    {(photos.mayorCOE_photo || formData.mayorCOE_photo) && (
+                      <div style={{display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0'}}>
+                        <i className="fas fa-check-circle"></i> Upload Ready
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="media-grid">
+                    <div className="preview-box">
+                      <div style={{marginBottom: '1rem'}}>
+                        <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155', marginBottom: '8px'}}>Upload COE Photo</label>
+                        <input type="file" name="mayorCOE_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3 && !photos.mayorCOE_photo && !formData.mayorCOE_photo} style={{fontSize: '0.8rem', width: '100%'}} />
+                      </div>
+
                       {(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && (
-                        <span style={{fontSize: '0.75rem', color: '#27ae60', fontWeight: '600', padding: '2px 8px', background: '#e8f5e9', borderRadius: '10px', border: '1px solid #c8e6c9'}}>
-                          <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> File Active
-                        </span>
+                        <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                          <div className="image-container" style={{height: '180px'}} onClick={() => setLightboxSrc(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc)}>
+                            <img src={photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc} alt="COE Preview" />
+                          </div>
+                          
+                          <button 
+                            type="button" 
+                            onClick={handleCOEScan}
+                            disabled={isSavingStep || coeVerified === 'verifying'}
+                            style={{
+                              width: '100%',
+                              padding: '0.85rem',
+                              borderRadius: '14px',
+                              background: coeVerified === 'success' ? '#10b981' : 'var(--primary)',
+                              color: 'white',
+                              border: 'none',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '10px',
+                              fontSize: '0.9rem',
+                              fontWeight: '700',
+                              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                              boxShadow: coeVerified === 'success' ? '0 10px 15px -5px rgba(16, 185, 129, 0.2)' : '0 10px 15px -5px rgba(79, 13, 0, 0.2)'
+                            }}
+                          >
+                            <i className={`fas ${coeVerified === 'verifying' ? 'fa-spinner fa-spin' : 'fa-magnifying-glass'}`}></i>
+                            {coeVerified === 'verifying' ? 'Reviewing...' : (coeVerified === 'success' ? 'COE Verified' : 'Scan & Validate COE')}
+                          </button>
+                          
+                          {coeStatus && (
+                            <div className={`validation-status-card ${coeVerified === 'success' ? 'success' : (coeVerified === 'failed' ? 'failed' : 'processing')}`}>
+                              <div className={`status-icon ${coeVerified === 'success' ? 'success' : (coeVerified === 'failed' ? 'failed' : 'processing')}`}>
+                                <i className={`fas ${coeVerified === 'success' ? 'fa-check' : (coeVerified === 'failed' ? 'fa-circle-xmark' : 'fa-info-circle')}`}></i>
+                              </div>
+                              <div>
+                                <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.4'}}>{coeStatus}</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                     
-                    <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1rem'}}>
-                      <div style={{flex: '1', minWidth: '220px'}}>
-                        {(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && (
-                          <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
-                            <div onClick={() => setLightboxSrc(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc)} title="Click to view full size" style={{width: '200px', height: '160px', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', cursor: 'zoom-in', flexShrink: 0, background: '#f8f9fa'}}>
-                              <img src={photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc} style={{width: '100%', height: '100%', objectFit: 'contain'}} alt="COE Preview" />
-                            </div>
-                            <button 
-                              type="button" 
-                              onClick={handleCOEScan}
-                              disabled={isSavingStep}
-                              style={{
-                                padding: '0.6rem 1.2rem',
-                                borderRadius: '30px',
-                                background: coeVerified === 'success' ? '#2ecc71' : 'var(--primary)',
-                                color: 'white',
-                                border: 'none',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                fontSize: '0.9rem',
-                                fontWeight: '600',
-                                transition: 'all 0.3s ease'
-                              }}
-                            >
-                              <i className={`fas ${coeVerified === 'verifying' ? 'fa-spinner fa-spin' : 'fa-search'}`}></i>
-                              {coeVerified === 'success' ? 'Verified!' : 'Scan Document'}
-                            </button>
-                            {coeStatus && (
-                              <div style={{
-                                marginTop: '1rem',
-                                padding: '1rem',
-                                borderRadius: '12px',
-                                background: coeVerified === 'success' ? '#f0fff4' : (coeVerified === 'failed' ? '#fff5f5' : '#f7fafc'),
-                                border: `1px solid ${coeVerified === 'success' ? '#c6f6d5' : (coeVerified === 'failed' ? '#fed7d7' : '#e2e8f0')}`,
-                                display: 'flex',
-                                alignItems: 'start',
-                                gap: '12px'
-                              }}>
-                                <div style={{
-                                  width: '24px',
-                                  height: '24px',
-                                  borderRadius: '50%',
-                                  background: coeVerified === 'success' ? '#27ae60' : (coeVerified === 'failed' ? '#e74c3c' : 'var(--primary)'),
-                                  color: 'white',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  fontSize: '0.7rem',
-                                  flexShrink: 0,
-                                  marginTop: '2px'
-                                }}>
-                                  <i className={`fas ${coeVerified === 'success' ? 'fa-check' : (coeVerified === 'failed' ? 'fa-times' : 'fa-info')}`}></i>
-                                </div>
-                                <div>
-                                  <h5 style={{margin: '0 0 2px 0', fontSize: '0.85rem', color: '#333', fontWeight: '700'}}>
-                                    {coeVerified === 'success' ? 'COE Verified' : (coeVerified === 'failed' ? 'COE Check Failed' : 'COE Status')}
-                                  </h5>
-                                  <p style={{
-                                    fontSize: '0.8rem', 
-                                    color: coeVerified === 'success' ? '#2f855a' : (coeVerified === 'failed' ? '#c53030' : '#4a5568'),
-                                    margin: 0,
-                                    lineHeight: '1.4'
-                                  }}>
-                                    {coeStatus}
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
+                    <div className="preview-box" style={{background: '#fff', borderStyle: 'solid'}}>
+                      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
+                        <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155'}}>COE Video Check</label>
+                        <div style={{fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca'}}>REQUIRED</div>
                       </div>
-                      <div style={{flex: '1', minWidth: '220px'}}>
-                        <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.8rem'}}>
-                          <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', margin: 0}}>
-                            <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
-                          </p>
-                          <div className="video-hint" style={{fontSize: '0.7rem', color: '#666', background: '#fff9db', padding: '4px 8px', borderRadius: '4px', marginTop: '4px', border: '1px solid #ffec99'}}>
-                            <i className="fas fa-lightbulb" style={{marginRight: '5px', color: '#f59f00'}}></i>
-                            Show document clearly and point at your name.
-                          </div>
-                          {(documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url) && (
-                            <span style={{fontSize: '0.75rem', color: '#27ae60', fontWeight: '600', padding: '2px 8px', background: '#e8f5e9', borderRadius: '10px', border: '1px solid #c8e6c9'}}>
-                              <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> Video Active
-                            </span>
-                          )}
-                        </div>
+                      <div style={{flex: 1, minHeight: '160px'}}>
                         <VideoRecorder 
                           label="Record COE Video" 
                           onRecordComplete={(blob) => handleVideoUpload('mayorCOE_video', blob)} 
@@ -2584,109 +2648,83 @@ const StudentInfo = () => {
                   </div>
                 </div>
 
-                <div style={{background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
-                  <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
-                    Certified True Copy of Grades <span style={{color: '#e74c3c'}}>*</span>
-                  </h4>
-                  <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1rem', paddingLeft: '16px'}}>Photo (.png/jpg)</p>
-                  <div style={{paddingLeft: '16px'}}>
-                    <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem'}}>
-                      <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3 && !photos.mayorGrades_photo && !userProfile?.grades_doc} style={{fontSize: '0.8rem'}} />
-                      {(photos.mayorGrades_photo || userProfile?.grades_doc) && (
-                        <span style={{fontSize: '0.75rem', color: '#27ae60', fontWeight: '600', padding: '2px 8px', background: '#e8f5e9', borderRadius: '10px', border: '1px solid #c8e6c9'}}>
-                          <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> File Active
-                        </span>
-                      )}
+                <div className="requirement-card">
+                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
+                    <div>
+                      <h4 style={{fontSize: '1.15rem', color: '#1a202c', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px'}}>
+                        <div style={{width: '36px', height: '36px', background: 'var(--accent-soft)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                          <i className="fas fa-star" style={{color: 'var(--primary)', fontSize: '1.1rem'}}></i>
+                        </div>
+                        Academic Grades <span style={{color: '#e74c3c'}}>*</span>
+                      </h4>
+                      <p style={{fontSize: '0.85rem', color: '#64748b', marginTop: '6px', marginLeft: '46px'}}>Previous semester report card or transcript</p>
                     </div>
-                    
-                    <div style={{display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1rem'}}>
-                      <div style={{flex: '1', minWidth: '220px'}}>
-                        {(photos.mayorGrades_photo || userProfile?.grades_doc) && (
-                          <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
-                            <div onClick={() => setLightboxSrc(photos.mayorGrades_photo || userProfile?.grades_doc)} title="Click to view full size" style={{width: '200px', height: '160px', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', cursor: 'zoom-in', flexShrink: 0, background: '#f8f9fa'}}>
-                              <img src={photos.mayorGrades_photo || userProfile?.grades_doc} style={{width: '100%', height: '100%', objectFit: 'contain'}} alt="Grades Preview" />
-                            </div>
-                            <button 
-                              type="button" 
-                              onClick={handleGradesScan}
-                              disabled={isSavingStep}
-                              style={{
-                                padding: '0.6rem 1.2rem',
-                                borderRadius: '30px',
-                                background: gradesVerified === 'success' ? '#2ecc71' : 'var(--primary)',
-                                color: 'white',
-                                border: 'none',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                fontSize: '0.9rem',
-                                fontWeight: '600',
-                                transition: 'all 0.3s ease'
-                              }}
-                            >
-                              <i className={`fas ${gradesVerified === 'verifying' ? 'fa-spinner fa-spin' : 'fa-search'}`}></i>
-                              {gradesVerified === 'success' ? 'Verified!' : 'Scan Document'}
-                            </button>
-                            {gradesStatus && (
-                              <div style={{
-                                marginTop: '1rem',
-                                padding: '1rem',
-                                borderRadius: '12px',
-                                background: gradesVerified === 'success' ? '#f0fff4' : (gradesVerified === 'failed' ? '#fff5f5' : '#f7fafc'),
-                                border: `1px solid ${gradesVerified === 'success' ? '#c6f6d5' : (gradesVerified === 'failed' ? '#fed7d7' : '#e2e8f0')}`,
-                                display: 'flex',
-                                alignItems: 'start',
-                                gap: '12px'
-                              }}>
-                                <div style={{
-                                  width: '24px',
-                                  height: '24px',
-                                  borderRadius: '50%',
-                                  background: gradesVerified === 'success' ? '#27ae60' : (gradesVerified === 'failed' ? '#e74c3c' : 'var(--primary)'),
-                                  color: 'white',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  fontSize: '0.7rem',
-                                  flexShrink: 0,
-                                  marginTop: '2px'
-                                }}>
-                                  <i className={`fas ${gradesVerified === 'success' ? 'fa-check' : (gradesVerified === 'failed' ? 'fa-times' : 'fa-info')}`}></i>
-                                </div>
-                                <div>
-                                  <h5 style={{margin: '0 0 2px 0', fontSize: '0.85rem', color: '#333', fontWeight: '700'}}>
-                                    {gradesVerified === 'success' ? 'Grades Verified' : (gradesVerified === 'failed' ? 'Grades Check Failed' : 'Grades Status')}
-                                  </h5>
-                                  <p style={{
-                                    fontSize: '0.8rem', 
-                                    color: gradesVerified === 'success' ? '#2f855a' : (gradesVerified === 'failed' ? '#c53030' : '#4a5568'),
-                                    margin: 0,
-                                    lineHeight: '1.4'
-                                  }}>
-                                    {gradesStatus}
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
+                    {(photos.mayorGrades_photo || formData.mayorGrades_photo) && (
+                      <div style={{display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0'}}>
+                        <i className="fas fa-check-circle"></i> Upload Ready
                       </div>
-                      <div style={{flex: '1', minWidth: '220px'}}>
-                        <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.8rem'}}>
-                          <p style={{fontSize: '0.8rem', color: '#555', fontWeight: '600', margin: 0}}>
-                            <i className="fas fa-video" style={{marginRight: '8px'}}></i> Supporting Video <span style={{color: '#e74c3c'}}>(Required *)</span>
-                          </p>
-                          <div className="video-hint" style={{fontSize: '0.7rem', color: '#666', background: '#fff9db', padding: '4px 8px', borderRadius: '4px', marginTop: '4px', border: '1px solid #ffec99'}}>
-                            <i className="fas fa-lightbulb" style={{marginRight: '5px', color: '#f59f00'}}></i>
-                            Show the "Certified True Copy" stamp clearly.
+                    )}
+                  </div>
+
+                  <div className="media-grid">
+                    <div className="preview-box">
+                      <div style={{marginBottom: '1rem'}}>
+                        <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155', marginBottom: '8px'}}>Upload Grades Photo</label>
+                        <input type="file" name="mayorGrades_photo" accept="image/*" onChange={handleInputChange} required={currentStep === 3 && !photos.mayorGrades_photo && !formData.mayorGrades_photo} style={{fontSize: '0.8rem', width: '100%'}} />
+                      </div>
+
+                      {(photos.mayorGrades_photo || userProfile?.grades_doc) && (
+                        <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                          <div className="image-container" style={{height: '180px'}} onClick={() => setLightboxSrc(photos.mayorGrades_photo || userProfile?.grades_doc)}>
+                            <img src={photos.mayorGrades_photo || userProfile?.grades_doc} alt="Grades Preview" />
                           </div>
-                          {(documentVideos.mayorGrades_video || userProfile?.grades_vid_url) && (
-                            <span style={{fontSize: '0.75rem', color: '#27ae60', fontWeight: '600', padding: '2px 8px', background: '#e8f5e9', borderRadius: '10px', border: '1px solid #c8e6c9'}}>
-                              <i className="fas fa-check-circle" style={{marginRight: '4px'}}></i> Video Active
-                            </span>
+                          
+                          <button 
+                            type="button" 
+                            onClick={handleGradesScan}
+                            disabled={isSavingStep || gradesVerified === 'verifying'}
+                            style={{
+                              width: '100%',
+                              padding: '0.85rem',
+                              borderRadius: '14px',
+                              background: gradesVerified === 'success' ? '#10b981' : 'var(--primary)',
+                              color: 'white',
+                              border: 'none',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '10px',
+                              fontSize: '0.9rem',
+                              fontWeight: '700',
+                              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                              boxShadow: gradesVerified === 'success' ? '0 10px 15px -5px rgba(16, 185, 129, 0.2)' : '0 10px 15px -5px rgba(79, 13, 0, 0.2)'
+                            }}
+                          >
+                            <i className={`fas ${gradesVerified === 'verifying' ? 'fa-spinner fa-spin' : 'fa-clipboard-check'}`}></i>
+                            {gradesVerified === 'verifying' ? 'Analyzing...' : (gradesVerified === 'success' ? 'Grades Verified' : 'Scan & Validate Grades')}
+                          </button>
+                          
+                          {gradesStatus && (
+                            <div className={`validation-status-card ${gradesVerified === 'success' ? 'success' : (gradesVerified === 'failed' ? 'failed' : 'processing')}`}>
+                              <div className={`status-icon ${gradesVerified === 'success' ? 'success' : (gradesVerified === 'failed' ? 'failed' : 'processing')}`}>
+                                <i className={`fas ${gradesVerified === 'success' ? 'fa-check' : (gradesVerified === 'failed' ? 'fa-circle-xmark' : 'fa-info-circle')}`}></i>
+                              </div>
+                              <div>
+                                <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.4'}}>{gradesStatus}</p>
+                              </div>
+                            </div>
                           )}
                         </div>
+                      )}
+                    </div>
+
+                    <div className="preview-box" style={{background: '#fff', borderStyle: 'solid'}}>
+                      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
+                        <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155'}}>Academic Video Check</label>
+                        <div style={{fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca'}}>REQUIRED</div>
+                      </div>
+                      <div style={{flex: 1, minHeight: '160px'}}>
                         <VideoRecorder 
                           label="Record Grades Video" 
                           onRecordComplete={(blob) => handleVideoUpload('mayorGrades_video', blob)} 
@@ -2822,7 +2860,7 @@ const StudentInfo = () => {
                     <div style={{width: '100%', maxWidth: '300px', margin: '0 auto'}}>
                       {!faceMatchResult ? (
                         <button type="button" onClick={async () => {
-                          const idImg = schoolIdPhotos.front || userProfile?.id_img_front;
+                          const idImg = schoolIdPhotos.front;
                           if (!idImg) {
                             showPromptMessage('⚠️ Please upload your School ID in Step 3 first.');
                             return;
@@ -2906,7 +2944,7 @@ const StudentInfo = () => {
                 <button 
                   type="submit" 
                   className="submit-btn" 
-                  disabled={isSubmitting || isSavingStep || (!faceMatchResult?.verified && !userProfile?.id_pic)} 
+                  disabled={isSubmitting || isSavingStep || !faceMatchResult?.verified} 
                   style={{width: 'auto', padding: '0.8rem 3.5rem', borderRadius: '40px', background: 'var(--success)', border: 'none'}}
                 >
                   {isSubmitting ? (

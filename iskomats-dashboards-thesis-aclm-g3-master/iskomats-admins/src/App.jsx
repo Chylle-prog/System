@@ -11,6 +11,7 @@ import Register from './Pages/Auth/Register/register'
 import ResetPass from './Pages/Auth/Reset Pass/reset-pass'
 import Suspended from './Pages/Auth/Suspended/suspended'
 import VerifyEmail from './Pages/Auth/VerifyE/verify-email'
+import { authAPI } from './services/api'
 
 // Protected Route Component
 const ProtectedRoute = ({ children, requiredRole }) => {
@@ -59,6 +60,37 @@ function AppContent() {
     setIsLoggedIn(loggedIn);
     setUserRole(role);
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (!isLoggedIn || location.pathname === '/login' || location.pathname === '/suspended') {
+      return undefined;
+    }
+
+    const verifySession = () => {
+      authAPI.me().catch(() => {
+        // Interceptors handle suspension and expired session redirects.
+      });
+    };
+
+    verifySession();
+
+    const intervalId = window.setInterval(verifySession, 30000);
+    const handleFocus = () => verifySession();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        verifySession();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isLoggedIn, location.pathname]);
 
   return (
     <>
