@@ -57,6 +57,14 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
     if (onRecordComplete) onRecordComplete(null, null);
   };
 
+  const getStatus = () => {
+    if (!previewUrl) return null;
+    if (previewUrl.startsWith('blob:')) return { label: 'New video selected', color: '#166534', background: '#ecfdf5', border: '#bbf7d0' };
+    return { label: 'Saved video loaded', color: '#1d4ed8', background: '#eff6ff', border: '#bfdbfe' };
+  };
+
+  const status = getStatus();
+
   return (
     <div className="video-uploader-container" style={{
       width: '100%',
@@ -90,125 +98,76 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
           <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--primary)' }}>Uploading...</span>
         </div>
       )}
-      {!previewUrl ? (
-        <div style={{ padding: '1rem' }}>
-          <label 
-            htmlFor={disabled ? undefined : `v-upload-${label.replace(/\s+/g, '-')}`}
-            style={{ 
-              cursor: disabled ? 'not-allowed' : 'pointer', 
-              display: 'flex', 
-              flexDirection: 'column', 
-              alignItems: 'center', 
-              gap: '12px',
-              opacity: disabled ? 0.6 : 1
+
+      {/* Persistent Button regardless of state */}
+      <div style={{ marginBottom: '1rem', textAlign: 'left' }}>
+        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155', marginBottom: '8px' }}>{label}</label>
+        <input 
+          id={`v-upload-${label.replace(/\s+/g, '-')}`}
+          type="file" 
+          accept="video/*" 
+          onChange={handleFileChange} 
+          style={{ display: 'none' }} 
+          disabled={disabled}
+        />
+        <label
+          htmlFor={disabled ? undefined : `v-upload-${label.replace(/\s+/g, '-')}`}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '10px',
+            padding: '0.8rem 1rem',
+            borderRadius: '14px',
+            border: '1px solid #cbd5e1',
+            background: '#fff',
+            color: '#0f172a',
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            fontSize: '0.85rem',
+            fontWeight: '700',
+            boxShadow: '0 4px 12px rgba(15, 23, 42, 0.05)',
+            opacity: disabled ? 0.6 : 1
+          }}
+        >
+          <i className="fas fa-video" style={{ color: 'var(--primary)' }}></i>
+          {previewUrl ? 'Replace Video' : 'Choose Video'}
+        </label>
+        
+        {status && (
+          <div
+            style={{
+              marginTop: '0.65rem',
+              padding: '0.7rem 0.85rem',
+              borderRadius: '12px',
+              border: `1px solid ${status.border}`,
+              background: status.background,
+              color: status.color,
+              fontSize: '0.78rem',
+              fontWeight: '700',
+              textAlign: 'center'
             }}
           >
-            <div style={{ 
-              width: '60px', 
-              height: '60px', 
-              borderRadius: '50%', 
-              background: '#f0f7ff', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              color: 'var(--primary)',
-              fontSize: '1.5rem',
-              border: '2px dashed #b3d7ff'
-            }}>
-              <i className="fas fa-cloud-upload-alt"></i>
-            </div>
-            <span style={{ fontSize: '0.9rem', fontWeight: '600', color: '#444' }}>{label}</span>
-            <span style={{ fontSize: '0.75rem', color: '#888' }}>MP4, WebM or MOV (Max 50MB)</span>
-            
-            <input 
-              id={`v-upload-${label.replace(/\s+/g, '-')}`}
-              type="file" 
-              accept="video/*" 
-              onChange={handleFileChange} 
-              style={{ display: 'none' }} 
-            />
-          </label>
+            {status.label}
+          </div>
+        )}
+      </div>
+
+      {!previewUrl ? (
+        <div style={{ padding: '0.5rem' }}>
+          <div style={{ fontSize: '0.75rem', color: '#888' }}>Capture or select a required video for verification.</div>
         </div>
       ) : (
         <div style={{ position: 'relative', width: '100%', margin: '0 auto' }}>
-          {console.log(`Rendering video for ${label}:`, previewUrl)}
           {videoError ? (
-            // Error state: show helpful message and download link
             <div style={{
-              padding: '1.5rem',
+              padding: '1rem',
               textAlign: 'center',
               background: '#fff5f5',
               borderRadius: '12px',
               border: '2px solid #feb2b2',
               color: '#c53030'
             }}>
-              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⚠️</div>
-              <p style={{ fontSize: '0.85rem', fontWeight: '600', marginBottom: '0.25rem' }}>
-                Video Format Not Supported
-              </p>
-              <p style={{ fontSize: '0.7rem', color: '#a0aec0', marginBottom: '1rem', lineHeight: '1.5' }}>
-                This video is stored in a format that your browser cannot play directly. 
-                <br />
-                The system is being updated to convert these videos automatically.
-                <br />
-                You can download the video to view it locally, or upload a new MP4 file.
-              </p>
-              
-              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-                <a
-                  href={previewUrl}
-                  download
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    padding: '0.5rem 0.75rem',
-                    background: '#c53030',
-                    color: 'white',
-                    textDecoration: 'none',
-                    borderRadius: '6px',
-                    fontSize: '0.8rem',
-                    fontWeight: '600',
-                    cursor: 'pointer',
-                    border: 'none'
-                  }}
-                >
-                  <i className="fas fa-download" style={{ marginRight: '4px' }}></i>
-                  Download
-                </a>
-                
-                <button
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => {
-                    if (disabled) return;
-                    setPreviewUrl(null);
-                    setFileName('');
-                    setVideoError(null);
-                    if (onRecordComplete) onRecordComplete(null, null);
-                  }}
-                  style={{
-                    padding: '0.5rem 0.75rem',
-                    background: '#e2e8f0',
-                    color: '#2d3748',
-                    border: 'none',
-                    borderRadius: '6px',
-                    fontSize: '0.8rem',
-                    fontWeight: '600',
-                    cursor: disabled ? 'not-allowed' : 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    opacity: disabled ? 0.6 : 1
-                  }}
-                >
-                  <i className="fas fa-redo" style={{ marginRight: '4px' }}></i>
-                  Upload New
-                </button>
-              </div>
-              
-              <p style={{ fontSize: '0.65rem', color: '#718096', marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid #fed7d7' }}>
-                <i className="fas fa-info-circle" style={{ marginRight: '4px' }}></i>
-                Video ID: {previewUrl ? previewUrl.split('/').pop()?.slice(0, 20) : 'Unknown'}
-              </p>
+              <p style={{ fontSize: '0.8rem', fontWeight: '600', marginBottom: '0.5rem' }}>Format Not Playable</p>
+              <a href={previewUrl} download style={{ display: 'block', fontSize: '0.75rem', color: '#c53030', marginBottom: '0.5rem' }}>Download to View</a>
             </div>
           ) : (
             <video 
@@ -220,38 +179,8 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
                 boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                 background: '#000' 
               }} 
-              onLoadedMetadata={() => {
-                console.log(`Video loaded for ${label}:`, previewUrl);
-                setVideoError(null);
-              }}
-              onError={(e) => {
-                console.error(`Video error for ${label}:`, e.target.error, previewUrl);
-                setVideoError(e.target.error);
-              }}
             />
           )}
-          <div style={{ marginTop: '0.8rem', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-            <span style={{ fontSize: '0.8rem', color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {fileName}
-            </span>
-            <button 
-              type="button" 
-              disabled={disabled}
-              onClick={handleReset} 
-              style={{ 
-                background: 'transparent', 
-                border: 'none', 
-                color: '#e74c3c', 
-                fontSize: '0.8rem', 
-                cursor: disabled ? 'not-allowed' : 'pointer',
-                fontWeight: '600',
-                textDecoration: 'underline',
-                opacity: disabled ? 0.5 : 1
-              }}
-            >
-              Change Video
-            </button>
-          </div>
         </div>
       )}
     </div>
