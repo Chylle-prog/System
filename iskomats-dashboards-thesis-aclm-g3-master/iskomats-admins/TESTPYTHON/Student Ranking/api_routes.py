@@ -363,6 +363,17 @@ def ensure_schema_integrity(cursor):
             print(f"[MIGRATION] Adding {col} to scholarships table")
             cursor.execute(f"ALTER TABLE scholarships ADD COLUMN {col} {col_type}")
 
+
+def get_row_value(row, key, default=None):
+    if row is None:
+        return default
+    if isinstance(row, dict):
+        return row.get(key, default)
+    try:
+        return row[key]
+    except Exception:
+        return default
+
 def ensure_is_removed_columns(cursor):
     # Keep wrapper for bit-backwards compatibility if needed elsewhere
     ensure_schema_integrity(cursor)
@@ -3371,6 +3382,8 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
 @token_required
 def delete_scholarship(current_user_id, pro_no, role, req_no):
     """Soft-delete scholarship post."""
+    conn = None
+    cursor = None
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -3386,7 +3399,10 @@ def delete_scholarship(current_user_id, pro_no, role, req_no):
             return jsonify({'message': 'Scholarship not found'}), 404
             
         # Allow delete if user is Admin OR pro_no matches OR if existing scholarship has NO pro_no
-        if not is_superadmin and sch_row['pro_no'] is not None and resolved_provider_no is not None and sch_row['pro_no'] != resolved_provider_no:
+        scholarship_provider_no = get_row_value(sch_row, 'pro_no')
+        scholarship_name = get_row_value(sch_row, 'scholarship_name')
+
+        if not is_superadmin and scholarship_provider_no is not None and resolved_provider_no is not None and scholarship_provider_no != resolved_provider_no:
             return jsonify({'message': 'Unauthorized'}), 401
             
         cursor.execute("UPDATE scholarships SET is_removed = TRUE WHERE req_no = %s", (req_no,))
@@ -3397,16 +3413,27 @@ def delete_scholarship(current_user_id, pro_no, role, req_no):
             action='delete_scholarship',
             target_type='scholarship',
             target_id=req_no,
-            target_label=sch_row.get('scholarship_name'),
+            target_label=scholarship_name,
             provider_no=resolved_provider_no,
         )
-        cursor.close()
-        conn.close()
         
         return jsonify({'success': True, 'message': 'Scholarship removed'}), 200
         
     except Exception as e:
+        print(f"[SCHOLARSHIP DELETE] Error deleting scholarship {req_no}: {e}", flush=True)
+        traceback.print_exc()
         return jsonify({'message': f'Error: {str(e)}'}), 500
+    finally:
+        if cursor:
+            try:
+                cursor.close()
+            except Exception:
+                pass
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 @api_bp.route('/announcement-image/<int:image_id>', methods=['GET'])
@@ -3959,6 +3986,8 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
 @api_bp.route('/announcements/<int:ann_no>', methods=['DELETE'])
 @token_required
 def delete_announcement(current_user_id, pro_no, role, ann_no):
+    conn = None
+    cur = None
     try:
         conn = get_db()
         cur = conn.cursor()
@@ -3971,13 +4000,13 @@ def delete_announcement(current_user_id, pro_no, role, ann_no):
             row = cur.fetchone()
             if not row:
                 return jsonify({'message': 'Announcement not found'}), 404
-            if row['pro_no'] != resolved_provider_no:
+            if get_row_value(row, 'pro_no') != resolved_provider_no:
                 return jsonify({'message': 'Unauthorized to delete this announcement'}), 403
-            title = row['ann_title']
+            title = get_row_value(row, 'ann_title', 'Unknown')
         else:
             cur.execute("SELECT ann_title FROM announcements WHERE ann_no = %s", (ann_no,))
             row = cur.fetchone()
-            title = row['ann_title'] if row else 'Unknown'
+            title = get_row_value(row, 'ann_title', 'Unknown')
 
         try:
             _, foreign_key_column = get_entity_image_columns(cur, 'announcement')
@@ -4003,9 +4032,11 @@ def delete_announcement(current_user_id, pro_no, role, ann_no):
         
         return jsonify({'message': 'Announcement deleted'}), 200
     except Exception as e:
+        print(f"[ANNOUNCEMENT DELETE] Error deleting announcement {ann_no}: {e}", flush=True)
+        traceback.print_exc()
         return jsonify({'message': str(e)}), 500
     finally:
-        if 'conn' in locals() and conn:
+        if conn:
             conn.close()
 
 # ===== ERROR HANDLERS =====
