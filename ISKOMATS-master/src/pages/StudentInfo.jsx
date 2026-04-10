@@ -4,6 +4,8 @@ import SignaturePad from '../components/SignaturePad';
 import VideoRecorder from '../components/VideoRecorder';
 import { applicantAPI, applicationAPI } from '../services/api';
 
+const FIND_SCHOLARSHIP_PROFILE_KEY = 'findScholarshipProfile';
+
 const BARANGAYS = [
   "Adya", "Anilao", "Anilao-Labac", "Antipolo del Norte", "Antipolo del Sur",
   "Bagong Pook", "Balintawak", "Banaybanay", "Bolbok", "Bugtong na Pulo",
@@ -131,6 +133,42 @@ const formatCurrencyPreview = (value) => {
   }).format(numericValue);
 };
 
+const splitFullName = (fullName) => {
+  const parts = String(fullName || '').trim().split(/\s+/).filter(Boolean);
+
+  if (!parts.length) {
+    return { firstName: '', middleName: '', lastName: '' };
+  }
+
+  if (parts.length === 1) {
+    return { firstName: parts[0], middleName: '', lastName: '' };
+  }
+
+  if (parts.length === 2) {
+    return { firstName: parts[0], middleName: '', lastName: parts[1] };
+  }
+
+  // Handle common Filipino last name prefixes like "Dela", "De", "Del", "Santo"
+  const lastNamePrefixes = ['dela', 'del', 'de', 'santo', 'santa', 'san', 'dos'];
+  const lastIndex = parts.length - 1;
+  const secondLastIndex = parts.length - 2;
+
+  if (secondLastIndex >= 1 && lastNamePrefixes.includes(parts[secondLastIndex].toLowerCase())) {
+    return {
+      firstName: parts.slice(0, secondLastIndex).join(' '),
+      middleName: '', // Fallback, middle name detection is hard with prefixes
+      lastName: parts.slice(secondLastIndex).join(' '),
+    };
+  }
+
+  // Default split
+  return {
+    firstName: parts[0],
+    middleName: parts.slice(1, -1).join(' '),
+    lastName: parts[parts.length - 1],
+  };
+};
+
 const StudentInfo = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -231,6 +269,11 @@ const StudentInfo = () => {
   const cameraTimeoutRef = useRef(null);
 
   const [showSignaturePad, setShowSignaturePad] = useState(false);
+  const [lockedNameFields, setLockedNameFields] = useState({
+    firstName: false,
+    middleName: false,
+    lastName: false,
+  });
 
   const [formData, setFormData] = useState({
     lastName: '',
@@ -717,6 +760,34 @@ const StudentInfo = () => {
     const scholarship = searchParams.get('scholarship');
     const urlGpa = searchParams.get('gpa');
     const urlIncome = searchParams.get('income');
+    let scholarshipSearchProfile = null;
+
+    try {
+      const rawSearchProfile = sessionStorage.getItem(FIND_SCHOLARSHIP_PROFILE_KEY);
+      scholarshipSearchProfile = rawSearchProfile ? JSON.parse(rawSearchProfile) : null;
+    } catch {
+      scholarshipSearchProfile = null;
+    }
+
+    const searchNameParts = splitFullName(scholarshipSearchProfile?.fullName);
+    setLockedNameFields({
+      firstName: Boolean(searchNameParts.firstName),
+      middleName: Boolean(searchNameParts.middleName),
+      lastName: Boolean(searchNameParts.lastName),
+    });
+    setFormData((prev) => mergeMeaningfulValues(prev, {
+      firstName: searchNameParts.firstName,
+      middleName: searchNameParts.middleName,
+      lastName: searchNameParts.lastName,
+      schoolName: scholarshipSearchProfile?.university,
+      gpa: urlGpa || scholarshipSearchProfile?.gpa || '',
+      parentsGrossIncome: urlIncome || scholarshipSearchProfile?.income || '',
+      barangay: scholarshipSearchProfile?.street_brgy,
+      townCityMunicipality: scholarshipSearchProfile?.town_city_municipality,
+      province: scholarshipSearchProfile?.province,
+      zipCode: scholarshipSearchProfile?.zip_code,
+    }));
+
     const draftKey = buildDraftStorageKey(user, searchParams, scholarship || scholarshipName);
     let savedDraft = null;
 
@@ -740,16 +811,16 @@ const StudentInfo = () => {
         setUserProfile(profile);
 
         const updates = {
-          firstName: profile.first_name || '',
-          lastName: profile.last_name || '',
-          middleName: profile.middle_name || '',
+          firstName: searchNameParts.firstName || profile.first_name || '',
+          lastName: searchNameParts.lastName || profile.last_name || '',
+          middleName: searchNameParts.middleName || profile.middle_name || '',
           maidenName: profile.maiden_name || '',
           dateOfBirth: profile.birthdate || '',
           placeOfBirth: profile.birth_place || '',
           sex: profile.sex === 'M' ? 'Male' : profile.sex === 'F' ? 'Female' : (profile.sex || ''),
           citizenship: profile.citizenship || '',
           schoolIdNumber: profile.school_id_no || '',
-          schoolName: profile.school || '',
+          schoolName: scholarshipSearchProfile?.university || profile.school || '',
           schoolAddress: profile.school_address || '',
           schoolSector: profile.school_sector || '',
           mobileNumber: profile.mobile_no || '',
@@ -763,23 +834,23 @@ const StudentInfo = () => {
           motherName: [profile.mother_fname, profile.mother_lname].filter(Boolean).join(' '),
           motherOccupation: profile.mother_occupation || '',
           motherPhoneNumber: profile.mother_phone_no || '',
-          parentsGrossIncome: urlIncome || profile.financial_income_of_parents || '',
-          gpa: urlGpa || profile.overall_gpa || '',
+          parentsGrossIncome: urlIncome || scholarshipSearchProfile?.income || profile.financial_income_of_parents || '',
+          gpa: urlGpa || scholarshipSearchProfile?.gpa || profile.overall_gpa || '',
           numberOfSiblings: profile.sibling_no || '',
           course: profile.course || ''
         };
 
-        if (profile.street_brgy || profile.streetBarangay) {
-          updates.barangay = profile.street_brgy || profile.streetBarangay;
+        if (scholarshipSearchProfile?.street_brgy || profile.street_brgy || profile.streetBarangay) {
+          updates.barangay = scholarshipSearchProfile?.street_brgy || profile.street_brgy || profile.streetBarangay;
         }
-        if (profile.town_city_municipality || profile.townCity) {
-          updates.townCityMunicipality = profile.town_city_municipality || profile.townCity;
+        if (scholarshipSearchProfile?.town_city_municipality || profile.town_city_municipality || profile.townCity) {
+          updates.townCityMunicipality = scholarshipSearchProfile?.town_city_municipality || profile.town_city_municipality || profile.townCity;
         }
-        if (profile.province) {
-          updates.province = profile.province;
+        if (scholarshipSearchProfile?.province || profile.province) {
+          updates.province = scholarshipSearchProfile?.province || profile.province;
         }
-        if (profile.zip_code || profile.zipCode) {
-          updates.zipCode = profile.zip_code || profile.zipCode;
+        if (scholarshipSearchProfile?.zip_code || profile.zip_code || profile.zipCode) {
+          updates.zipCode = scholarshipSearchProfile?.zip_code || profile.zip_code || profile.zipCode;
         }
 
         setFormData(prev => mergeMeaningfulValues(prev, updates));
@@ -1015,6 +1086,11 @@ const StudentInfo = () => {
   const handleInputChange = (e) => {
     const { name, value, type, checked, files } = e.target;
     
+    // Prevent modification of locked name fields
+    if (lockedNameFields[name]) {
+      return;
+    }
+
     if (type === 'checkbox') {
       setFormData(prev => ({
         ...prev,
@@ -1451,7 +1527,28 @@ const StudentInfo = () => {
           line-height: 1.5;
         }
 
+        :root {
+          --primary: #4F0D00;
+          --primary-light: #8b3a1f;
+          --accent: #4F0D00;
+          --accent-soft: #ffe8e3;
+          --gray-1: #f4f6fa;
+          --gray-2: #e2e8f0;
+          --gray-3: #b0c0d0;
           --text-dark: #121826;
+          --text-soft: #3f4a5c;
+          --white: #ffffff;
+          --success: #0f7b5a;
+          --success-bg: #e1f7f0;
+          --warning: #b65f22;
+          --warning-bg: #ffefe3;
+          --danger: #b13e3e;
+          --danger-bg: #fee9e9;
+          --shadow-sm: 0 4px 10px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.05);
+          --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.04), 0 4px 10px rgba(0, 20, 40, 0.03);
+          --shadow-lg: 0 20px 40px -12px rgba(0, 40, 80, 0.2);
+          --border-light: 1px solid rgba(0, 0, 0, 0.05);
+          --border: #e2e8f0;
         }
 
         .loading-overlay {
@@ -1502,20 +1599,6 @@ const StudentInfo = () => {
         @keyframes fadeIn {
           from { opacity: 0; }
           to { opacity: 1; }
-        }
-          --text-soft: #3f4a5c;
-          --white: #ffffff;
-          --success: #0f7b5a;
-          --success-bg: #e1f7f0;
-          --warning: #b65f22;
-          --warning-bg: #ffefe3;
-          --danger: #b13e3e;
-          --danger-bg: #fee9e9;
-          --shadow-sm: 0 4px 10px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.05);
-          --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.04), 0 4px 10px rgba(0, 20, 40, 0.03);
-          --shadow-lg: 0 20px 40px -12px rgba(0, 40, 80, 0.2);
-          --border-light: 1px solid rgba(0, 0, 0, 0.05);
-          --border: #e2e8f0;
         }
 
         .navbar {
@@ -1857,24 +1940,32 @@ const StudentInfo = () => {
           object-fit: contain;
         }
 
-        .small-prompt {
+        /* Floating Prompt Alert */
+        .prompt-alert {
           position: fixed;
-          bottom: 20px;
-          right: 20px;
-          background: #333;
+          bottom: 30px;
+          left: 50%;
+          transform: translateX(-50%) translateY(20px);
+          background: rgba(0, 0, 0, 0.85);
+          backdrop-filter: blur(10px);
           color: white;
-          padding: 10px 20px;
-          border-radius: 30px;
-          font-size: 0.9rem;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-          z-index: 3000;
+          padding: 14px 28px;
+          border-radius: 50px;
+          z-index: 10000;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+          transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
           opacity: 0;
-          transition: opacity 0.3s;
           pointer-events: none;
+          border: 1px solid rgba(255,255,255,0.1);
         }
 
-        .small-prompt.show {
+        .prompt-alert.active {
           opacity: 1;
+          transform: translateX(-50%) translateY(0);
+          pointer-events: auto;
         }
 
         @keyframes fadeIn {
@@ -2058,9 +2149,6 @@ const StudentInfo = () => {
         </div>
       </nav>
 
-      <div className={`small-prompt ${showPrompt ? 'show' : ''}`}>
-        {promptMessage}
-      </div>
 
       <div className="form-container">
         <div className="form-card">
@@ -2139,18 +2227,18 @@ const StudentInfo = () => {
               <div className="form-row">
                 <div className="form-group">
                   <label>Last Name <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="lastName" value={formData.lastName} onChange={handleInputChange} placeholder="Dela Cruz" required />
+                  <input type="text" name="lastName" value={formData.lastName} onChange={handleInputChange} placeholder="Dela Cruz" required readOnly={lockedNameFields.lastName} style={lockedNameFields.lastName ? { backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' } : undefined} />
                 </div>
                 <div className="form-group">
                   <label>First Name <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="firstName" value={formData.firstName} onChange={handleInputChange} placeholder="Juan" required />
+                  <input type="text" name="firstName" value={formData.firstName} onChange={handleInputChange} placeholder="Juan" required readOnly={lockedNameFields.firstName} style={lockedNameFields.firstName ? { backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' } : undefined} />
                 </div>
               </div>
 
               <div className="form-row">
                 <div className="form-group">
                   <label>Middle Name <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="middleName" value={formData.middleName} onChange={handleInputChange} placeholder="Santos" required />
+                  <input type="text" name="middleName" value={formData.middleName} onChange={handleInputChange} placeholder="Santos" required readOnly={lockedNameFields.middleName} style={lockedNameFields.middleName ? { backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' } : undefined} />
                 </div>
                 <div className="form-group">
                   <label>Maiden Name (for married women)</label>

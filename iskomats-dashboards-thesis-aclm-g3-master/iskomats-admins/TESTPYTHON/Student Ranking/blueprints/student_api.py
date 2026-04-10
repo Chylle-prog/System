@@ -1,5 +1,6 @@
 import base64
 import os
+import re
 import time
 import traceback
 import json
@@ -1117,10 +1118,13 @@ def get_rankings():
             applied_sch_ids = {row['scholarship_no'] for row in cur.fetchall()}
         
         cur.execute("""
-            SELECT s.*, p.provider_name
+            SELECT s.*, p.provider_name,
+                   COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS TRUE) AS accepted_count
             FROM scholarships s
             LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
+            LEFT JOIN applicant_status ast ON ast.scholarship_no = s.req_no
             WHERE COALESCE(s.is_removed, FALSE) = FALSE
+            GROUP BY s.req_no, p.provider_name
             ORDER BY s.scholarship_name ASC
         """)
         scholarships = cur.fetchall()
@@ -1138,6 +1142,11 @@ def get_rankings():
             
             if is_expired:
                 reasons.append(f"Application deadline has passed ({deadline})")
+
+            slots = sch.get('slots')
+            accepted_count = int(sch.get('accepted_count') or 0)
+            if slots is not None and int(slots) > 0 and accepted_count >= int(slots):
+                reasons.append('No remaining scholarship slots are available')
 
             # GPA
             min_gpa = sch['gpa']
@@ -1157,11 +1166,26 @@ def get_rankings():
             loc = sch['location']
             if loc and loc.strip():
                 loc_clean = loc.lower().strip()
-                if loc_clean in address:
-                    score += 100
-                elif any(word in address for word in loc_clean.split()):
-                    score += 40
-                else:
+                address_clean = address.lower().strip()
+                
+                # Normalize text for better matching
+                def normalize_addr(text):
+                    if not text: return ""
+                    t = text.lower()
+                    t = t.replace('brgy.', 'barangay').replace('st.', 'street').replace('city of ', '')
+                    return re.sub(r'[^a-z0-9\s]', '', t).strip()
+
+                loc_norm = normalize_addr(loc_clean)
+                addr_norm = normalize_addr(address_clean)
+
+                if loc_norm and addr_norm:
+                    if loc_norm in addr_norm or addr_norm in loc_norm:
+                        score += 100
+                    elif any(word in addr_norm.split() for word in loc_norm.split() if len(word) > 2):
+                        score += 40
+                    else:
+                        reasons.append(f"Location does not match requirement '{loc}'")
+                elif loc_norm:
                     reasons.append(f"Location does not match requirement '{loc}'")
             else:
                 score += 10
@@ -1174,7 +1198,8 @@ def get_rankings():
                 'minGpa': min_gpa,
                 'maxIncome': max_inc,
                 'location': loc,
-                'slots': sch.get('slots'),
+                'slots': slots,
+                'acceptedCount': accepted_count,
                 'semester': sch.get('semester'),
                 'year': sch.get('year'),
                 'deadline': str(deadline) if deadline else None,

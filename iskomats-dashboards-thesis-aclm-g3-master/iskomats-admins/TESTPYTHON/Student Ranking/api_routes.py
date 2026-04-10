@@ -674,7 +674,15 @@ The ISKOMATS Team
     print("[SEND_PASSWORD_RESET_EMAIL] Email sent successfully!", flush=True)
 
 
-def send_announcement_emails(title, message, provider_no, provider_name=None, send_to_all=True):
+def send_announcement_emails(
+    title,
+    message,
+    provider_no,
+    provider_name=None,
+    send_to_all=True,
+    subject_prefix='New Announcement from',
+    intro_prefix='You have received a new announcement from',
+):
     """Send announcement emails to applicants via Gmail API (runs asynchronously).
     
     Args:
@@ -733,7 +741,7 @@ def send_announcement_emails(title, message, provider_no, provider_name=None, se
                 
                 body = f"""Hello {first_name},
 
-You have received a new announcement from {provider_label}:
+{intro_prefix} {provider_label}:
 
 Title: {title}
 
@@ -748,7 +756,7 @@ ISKOMATS Team
                 
                 # Create proper MIME email using MIMEText
                 msg = MIMEText(body)
-                msg['Subject'] = f'New Announcement from {provider_label}'
+                msg['Subject'] = f'{subject_prefix} {provider_label}'
                 msg['From'] = GMAIL_SENDER_EMAIL
                 msg['To'] = email_address
                 
@@ -823,7 +831,13 @@ def run_background_task(target, *args, **kwargs):
     return worker
 
 
-def notify_announcement_applicants(title, message, provider_no, send_to_all_applicants=True):
+def notify_announcement_applicants(
+    title,
+    message,
+    provider_no,
+    send_to_all_applicants=True,
+    notification_title_prefix='New Announcement',
+):
     conn = None
     try:
         conn = get_db()
@@ -856,7 +870,7 @@ def notify_announcement_applicants(title, message, provider_no, send_to_all_appl
         for recipient in recipients:
             create_notification(
                 user_no=recipient['applicant_no'],
-                title=f"New Announcement: {title}",
+                title=f"{notification_title_prefix}: {title}",
                 message=message[:100] + ('...' if len(message) > 100 else ''),
                 notif_type='announcement',
                 send_email=False,
@@ -918,6 +932,40 @@ def fetch_actor_context(cursor, user_no):
         (user_no,),
     )
     return cursor.fetchone()
+
+
+def resolve_provider_context(cursor, user_no, role, token_pro_no=None):
+    actor_context = fetch_actor_context(cursor, user_no) if user_no else None
+    normalized_role = (role or '').strip().lower()
+    resolved_provider_no = token_pro_no
+    resolved_provider_name = None
+
+    if actor_context:
+        actor_provider_no = actor_context.get('provider_no')
+        actor_provider_name = (actor_context.get('provider_name') or '').strip()
+        
+        print(f"[AUTH DEBUG] Actor {user_no} context: Role={role}, ActorPro={actor_provider_no}, ActorName={actor_provider_name}, TokenPro={token_pro_no}")
+
+        if normalized_role != 'admin' and actor_provider_no is not None:
+            resolved_provider_no = actor_provider_no
+
+        if actor_provider_name and actor_provider_name.lower() != 'all':
+            resolved_provider_name = actor_provider_name
+
+    if resolved_provider_no is not None and not resolved_provider_name:
+        cursor.execute(
+            "SELECT provider_name FROM scholarship_providers WHERE pro_no = %s LIMIT 1",
+            (resolved_provider_no,),
+        )
+        provider_row = cursor.fetchone()
+        if provider_row and provider_row.get('provider_name'):
+            resolved_provider_name = provider_row['provider_name']
+
+    if not resolved_provider_name:
+        resolved_provider_name = 'ISKOMATS' if normalized_role != 'admin' else 'All'
+
+    print(f"[AUTH DEBUG] Final Resolved Context: ProNo={resolved_provider_no}, ProName={resolved_provider_name}")
+    return resolved_provider_no, resolved_provider_name
 
 
 def fetch_account_activity_context(cursor, account_id):
@@ -3030,12 +3078,12 @@ def create_scholarship(current_user_id, pro_no, role):
     try:
         conn = get_db()
         cursor = conn.cursor()
+        target_pro_no, provider_name = resolve_provider_context(cursor, current_user_id, role, pro_no)
+        provider_label = provider_name if str(provider_name or '').strip().lower() != 'all' else 'ISKOMATS'
         
         # Isolation: Use pro_no from token if not superadmin
-        if role != 'Admin' and pro_no is None:
+        if role != 'Admin' and target_pro_no is None:
              return jsonify({'message': 'User not associated with a scholarship provider'}), 403
-            
-        target_pro_no = pro_no # Use the pro_no from the token
         
         # 2. Insert into scholarships table (without images)
         cursor.execute('''
@@ -3058,10 +3106,6 @@ def create_scholarship(current_user_id, pro_no, role):
         new_scholarship = cursor.fetchone()
         req_no = new_scholarship['req_no']
 
-        cursor.execute("SELECT provider_name FROM scholarship_providers WHERE pro_no = %s", (target_pro_no,))
-        provider_row = cursor.fetchone()
-        provider_name = provider_row['provider_name'] if provider_row else 'ISKOMATS'
-        
         conn.commit()
         cursor.close()
         conn.close()
@@ -3069,8 +3113,19 @@ def create_scholarship(current_user_id, pro_no, role):
         run_background_task(
             notify_all_applicants,
             title=f"New Scholarship Posted: {data['scholarshipName']}",
-            message=f"{provider_name} posted a new scholarship opportunity. Deadline: {data['deadline']}.",
+            message=f"{provider_label} posted a new scholarship opportunity. Deadline: {data['deadline']}.",
             notif_type='scholarship',
+        )
+
+        run_background_task(
+            send_announcement_emails,
+            title=f"New Scholarship: {data['scholarshipName']}",
+            message=f"{provider_label} has posted a new scholarship opportunity with a deadline on {data['deadline']}.",
+            provider_no=target_pro_no,
+            provider_name=provider_label,
+            send_to_all=True,
+            subject_prefix='New Scholarship opportunity from',
+            intro_prefix='A new scholarship opportunity has been posted by',
         )
         
         return jsonify({
@@ -3094,6 +3149,7 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
     try:
         conn = get_db()
         cursor = conn.cursor()
+        resolved_provider_no, resolved_provider_name = resolve_provider_context(cursor, current_user_id, role, pro_no)
         
         is_admin = (role == 'Admin')
         
@@ -3110,14 +3166,15 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
         sch_row = cursor.fetchone()
         if not sch_row:
             return jsonify({'message': 'Scholarship not found'}), 404
+        display_provider_name = sch_row['provider_name'] or (resolved_provider_name if str(resolved_provider_name or '').strip().lower() != 'all' else None) or 'ISKOMATS'
             
         # Allow update if user is Admin OR pro_no matches OR if existing scholarship has NO pro_no
-        if not is_admin and sch_row['pro_no'] is not None and pro_no is not None and sch_row['pro_no'] != pro_no:
+        if not is_admin and sch_row['pro_no'] is not None and resolved_provider_no is not None and sch_row['pro_no'] != resolved_provider_no:
             return jsonify({'message': 'Unauthorized'}), 401
 
         # 3. Handle orphaned scholarships
-        if not is_admin and sch_row['pro_no'] is None and pro_no is not None:
-            cursor.execute("UPDATE scholarships SET pro_no = %s WHERE req_no = %s", (pro_no, req_no))
+        if not is_admin and sch_row['pro_no'] is None and resolved_provider_no is not None:
+            cursor.execute("UPDATE scholarships SET pro_no = %s WHERE req_no = %s", (resolved_provider_no, req_no))
              
         # 4. Process field updates (excluding images)
         update_fields = []
@@ -3152,8 +3209,19 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
         run_background_task(
             notify_all_applicants,
             title=f"Scholarship Updated: {data.get('scholarshipName', sch_row['scholarship_name'])}",
-            message=f"{sch_row['provider_name'] or 'ISKOMATS'} updated scholarship details. Check the latest post for changes.",
+            message=f"{display_provider_name} updated scholarship details. Check the latest post for changes.",
             notif_type='scholarship',
+        )
+
+        run_background_task(
+            send_announcement_emails,
+            title=f"Updated Scholarship: {data.get('scholarshipName', sch_row['scholarship_name'])}",
+            message=f"{display_provider_name} has updated the details for a scholarship. Please check the portal for latest requirements and deadlines.",
+            provider_no=resolved_provider_no,
+            provider_name=display_provider_name,
+            send_to_all=True,
+            subject_prefix='Updated Scholarship from',
+            intro_prefix='A scholarship has been updated by',
         )
         
         return jsonify({'success': True, 'message': 'Scholarship updated'}), 200
@@ -3480,17 +3548,16 @@ def create_announcement(current_user_id, pro_no, role):
     try:
         conn = get_db()
         cur = conn.cursor()
-        
-        # Get provider name for email
-        cur.execute("SELECT provider_name FROM scholarship_providers WHERE pro_no = %s", (pro_no,))
-        provider_row = cur.fetchone()
-        provider_name = provider_row['provider_name'] if provider_row else 'ISKOMATS'
+        target_pro_no, provider_name = resolve_provider_context(cur, current_user_id, role, pro_no)
+
+        if role != 'Admin' and target_pro_no is None:
+            return jsonify({'message': 'User not associated with a scholarship provider'}), 403
         
         cur.execute("""
             INSERT INTO announcements (ann_title, ann_message, pro_no, time_added)
             VALUES (%s, %s, %s, %s)
             RETURNING ann_no
-        """, (title, message, pro_no, time_added))
+        """, (title, message, target_pro_no, time_added))
         ann_no = cur.fetchone()['ann_no']
 
         # Handle images (support both JSON base64 and Multipart files)
@@ -3531,7 +3598,7 @@ def create_announcement(current_user_id, pro_no, role):
             target_type='announcement',
             target_id=ann_no,
             target_label=title,
-            provider_no=pro_no
+            provider_no=target_pro_no
         )
         
         # Notify students based on send_to_all_applicants flag
@@ -3539,21 +3606,19 @@ def create_announcement(current_user_id, pro_no, role):
             notify_announcement_applicants,
             title,
             message,
-            pro_no,
+            target_pro_no,
             send_to_all_applicants,
         )
-        
-        # Send emails to all applicants asynchronously when send_to_all_applicants is True
-        if send_to_all_applicants:
-            # Start email sending in a background thread to avoid blocking the API response
-            email_thread = threading.Thread(
-                target=send_announcement_emails,
-                args=(title, message, pro_no, provider_name),
-                kwargs={'send_to_all': send_to_all_applicants},
-                daemon=True
-            )
-            email_thread.start()
-            print(f"[ANNOUNCEMENT] Email sending started in background for announcement {ann_no}")
+
+        run_background_task(
+            send_announcement_emails,
+            title,
+            message,
+            target_pro_no,
+            provider_name,
+            send_to_all=send_to_all_applicants,
+        )
+        print(f"[ANNOUNCEMENT] Email sending started in background for announcement {ann_no}")
 
         return jsonify({'message': 'Announcement created', 'ann_no': ann_no}), 201
     except Exception as e:
@@ -3580,6 +3645,7 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
 
     title = data.get('title')
     message = data.get('content')
+    send_to_all_applicants = data.get('send_to_all_applicants', True)
     
     if not title or not message:
         return jsonify({'message': 'Title and content are required'}), 400
@@ -3587,15 +3653,23 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
     try:
         conn = get_db()
         cur = conn.cursor()
+        resolved_provider_no, resolved_provider_name = resolve_provider_context(cur, current_user_id, role, pro_no)
         primary_key_column, foreign_key_column = get_entity_image_columns(cur, 'announcement')
+        cur.execute("SELECT pro_no FROM announcements WHERE ann_no = %s", (ann_no,))
+        announcement_row = cur.fetchone()
+        if not announcement_row:
+            return jsonify({'message': 'Announcement not found'}), 404
+        target_provider_no = resolved_provider_no if resolved_provider_no is not None else announcement_row['pro_no']
+        target_provider_name = resolved_provider_name
+        if (not target_provider_name or str(target_provider_name).strip().lower() == 'all') and target_provider_no is not None:
+            cur.execute("SELECT provider_name FROM scholarship_providers WHERE pro_no = %s", (target_provider_no,))
+            provider_row = cur.fetchone()
+            if provider_row and provider_row.get('provider_name'):
+                target_provider_name = provider_row['provider_name']
         
         # Check ownership unless super admin
         if role.lower() != 'admin':
-            cur.execute("SELECT pro_no FROM announcements WHERE ann_no = %s", (ann_no,))
-            row = cur.fetchone()
-            if not row:
-                return jsonify({'message': 'Announcement not found'}), 404
-            if row['pro_no'] != pro_no:
+            if announcement_row['pro_no'] != resolved_provider_no:
                 return jsonify({'message': 'Unauthorized to update this announcement'}), 403
         
         cur.execute("""
@@ -3676,7 +3750,26 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
             target_type='announcement',
             target_id=ann_no,
             target_label=title,
-            provider_no=pro_no
+            provider_no=resolved_provider_no
+        )
+
+        run_background_task(
+            notify_announcement_applicants,
+            title,
+            message,
+            target_provider_no,
+            send_to_all_applicants,
+            notification_title_prefix='Announcement Updated',
+        )
+        run_background_task(
+            send_announcement_emails,
+            title,
+            message,
+            target_provider_no,
+            target_provider_name,
+            send_to_all=send_to_all_applicants,
+            subject_prefix='Updated Announcement from',
+            intro_prefix='An announcement from',
         )
         
         return jsonify({'message': 'Announcement updated', 'ann_no': ann_no}), 200

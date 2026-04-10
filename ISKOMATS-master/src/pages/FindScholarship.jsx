@@ -3,6 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { applicantAPI, scholarshipAPI, applicationAPI, verificationAPI } from '../services/api';
 
+const FIND_SCHOLARSHIP_FORM_KEY = 'findScholarshipForm';
+const FIND_SCHOLARSHIP_PROFILE_KEY = 'findScholarshipProfile';
+
 const FindScholarship = () => {
   const navigate = useNavigate();
   const { userProfile: globalProfile } = useAuth();
@@ -70,6 +73,16 @@ const FindScholarship = () => {
 
     setCurrentUser(user);
 
+    try {
+      const savedForm = sessionStorage.getItem(`${FIND_SCHOLARSHIP_FORM_KEY}:${user}`);
+      if (savedForm) {
+        const parsedForm = JSON.parse(savedForm);
+        setFormData((prev) => ({ ...prev, ...parsedForm }));
+      }
+    } catch (error) {
+      console.warn('Could not restore Find Scholarships form:', error);
+    }
+
     // Pre-fill form fields from the backend profile API
     const loadProfile = async () => {
       try {
@@ -87,12 +100,12 @@ const FindScholarship = () => {
 
           setFormData(prev => ({
             ...prev,
-            fullName,
-            university: profile.school || '',
-            street_brgy: profile.street_brgy || '',
-            town_city_municipality: profile.town_city_municipality || '',
-            province: profile.province || '',
-            zip_code: profile.zip_code || '',
+            fullName: prev.fullName?.trim() || fullName,
+            university: prev.university || profile.school || '',
+            street_brgy: prev.street_brgy || profile.street_brgy || '',
+            town_city_municipality: prev.town_city_municipality || profile.town_city_municipality || '',
+            province: prev.province || profile.province || '',
+            zip_code: prev.zip_code || profile.zip_code || '',
             // gpa and income intentionally left as '' (empty)
           }));
         }
@@ -134,7 +147,13 @@ const FindScholarship = () => {
   // Form handling
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData(prev => {
+      const nextFormData = { ...prev, [name]: value };
+      if (currentUser) {
+        sessionStorage.setItem(`${FIND_SCHOLARSHIP_FORM_KEY}:${currentUser}`, JSON.stringify(nextFormData));
+      }
+      return nextFormData;
+    });
 
     // Handle income level indicator
     if (name === 'income') {
@@ -269,6 +288,20 @@ const FindScholarship = () => {
 
       const { eligible = [], ineligible = [] } = response;
 
+      if (currentUser) {
+        sessionStorage.setItem(`${FIND_SCHOLARSHIP_FORM_KEY}:${currentUser}`, JSON.stringify(formData));
+      }
+      sessionStorage.setItem(FIND_SCHOLARSHIP_PROFILE_KEY, JSON.stringify({
+        fullName: formData.fullName,
+        university: formData.university,
+        gpa: formData.gpa,
+        income: formData.income,
+        street_brgy: formData.street_brgy,
+        town_city_municipality: formData.town_city_municipality,
+        province: formData.province,
+        zip_code: formData.zip_code,
+      }));
+
       setShowLoadingOverlay(false);
 
       if (eligible.length > 0) {
@@ -299,6 +332,16 @@ const FindScholarship = () => {
 
   const applyForScholarship = (scholarshipName, reqNo) => {
     // Navigate to student info page with scholarship details and search criteria
+    sessionStorage.setItem(FIND_SCHOLARSHIP_PROFILE_KEY, JSON.stringify({
+      fullName: formData.fullName,
+      university: formData.university,
+      gpa: formData.gpa,
+      income: formData.income,
+      street_brgy: formData.street_brgy,
+      town_city_municipality: formData.town_city_municipality,
+      province: formData.province,
+      zip_code: formData.zip_code,
+    }));
     navigate(`/studentinfo?scholarship=${encodeURIComponent(scholarshipName)}&reqNo=${reqNo}&gpa=${formData.gpa}&income=${formData.income}`);
   };
 
@@ -327,6 +370,18 @@ const FindScholarship = () => {
           --gray-2: #e2e8f0;
           --gray-3: #b0c0d0;
           --text-dark: #121826;
+          --text-soft: #3f4a5c;
+          --white: #ffffff;
+          --success: #0f7b5a;
+          --success-bg: #e1f7f0;
+          --warning: #b65f22;
+          --warning-bg: #ffefe3;
+          --danger: #b13e3e;
+          --danger-bg: #fee9e9;
+          --shadow-sm: 0 4px 10px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.05);
+          --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.04), 0 4px 10px rgba(0, 20, 40, 0.03);
+          --shadow-lg: 0 20px 40px -12px rgba(0, 40, 80, 0.2);
+          --border-light: 1px solid rgba(0, 0, 0, 0.05);
         }
 
         .loading-overlay {
@@ -377,19 +432,6 @@ const FindScholarship = () => {
         @keyframes fadeIn {
           from { opacity: 0; }
           to { opacity: 1; }
-        }
-          --text-soft: #3f4a5c;
-          --white: #ffffff;
-          --success: #0f7b5a;
-          --success-bg: #e1f7f0;
-          --warning: #b65f22;
-          --warning-bg: #ffefe3;
-          --danger: #b13e3e;
-          --danger-bg: #fee9e9;
-          --shadow-sm: 0 4px 10px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.05);
-          --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.04), 0 4px 10px rgba(0, 20, 40, 0.03);
-          --shadow-lg: 0 20px 40px -12px rgba(0, 40, 80, 0.2);
-          --border-light: 1px solid rgba(0, 0, 0, 0.05);
         }
 
         .navbar {
@@ -751,43 +793,6 @@ const FindScholarship = () => {
           font-size: 1.2rem;
           font-weight: bold;
           color: var(--primary);
-        }
-
-        .loading-overlay {
-          display: none;
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.3);
-          backdrop-filter: blur(4px);
-          z-index: 1001;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .loading-overlay.active {
-          display: flex;
-        }
-
-        .loading-modal {
-          background: white;
-          padding: 3rem 2rem;
-          border-radius: 24px;
-          text-align: center;
-          box-shadow: var(--shadow-lg);
-          max-width: 300px;
-        }
-
-        .loading-spinner {
-          width: 50px;
-          height: 50px;
-          margin: 0 auto 1.5rem;
-          border: 4px solid var(--gray-2);
-          border-top-color: var(--primary);
-          border-radius: 50%;
-          animation: spin 0.8s linear infinite;
         }
 
         @keyframes spin {

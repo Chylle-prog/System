@@ -68,6 +68,25 @@ const normalizeAcademicYear = (value) => {
 
 const isValidAcademicYear = (value) => ACADEMIC_YEAR_PATTERN.test(normalizeAcademicYear(value));
 
+const decodeTokenPayload = (token) => {
+  if (!token) {
+    return null;
+  }
+
+  try {
+    const [, payload] = token.split('.');
+    if (!payload) {
+      return null;
+    }
+
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const decoded = window.atob(normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), '='));
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+};
+
 const getRequestErrorMessage = (error, fallbackMessage) => {
   if (error.response?.data?.message) {
     return `${fallbackMessage}: ${error.response.data.message}`;
@@ -174,6 +193,12 @@ export default function ScholarshipDashboard({
   // Get user name from localStorage
   const userName = localStorage.getItem('userName') || 'Admin';
   const userFirstName = localStorage.getItem('userFirstName') || 'Admin';
+  const authenticatedProviderNo = useMemo(() => {
+    const payload = decodeTokenPayload(localStorage.getItem('authToken'));
+    const parsedProviderNo = Number(payload?.pro_no);
+    return Number.isFinite(parsedProviderNo) ? parsedProviderNo : null;
+  }, []);
+  const activeProviderNo = authenticatedProviderNo ?? proNo ?? null;
   const sidebarTitle = providerName;
   const sidebarSubtitle = 'Scholarship Program';
   const trackTitle = `${scholarshipLabel} - Track Applicants`;
@@ -1210,7 +1235,12 @@ export default function ScholarshipDashboard({
   };
 
   const handleStartChat = (applicant) => {
-    socketService.startChat(applicant.applicant_no || applicant.id, proNo);
+    if (!activeProviderNo) {
+      alert('Unable to determine the active provider for this session. Please sign in again.');
+      return;
+    }
+
+    socketService.startChat(applicant.applicant_no || applicant.id, activeProviderNo);
     setSection('inbox');
   };
 
