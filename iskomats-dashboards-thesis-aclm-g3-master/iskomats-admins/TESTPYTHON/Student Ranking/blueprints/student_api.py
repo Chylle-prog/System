@@ -1561,61 +1561,71 @@ def get_profile():
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute('SELECT * FROM applicants WHERE applicant_no = %s', (request.user_no,))
-        applicant = cur.fetchone()
-        if not applicant:
-            return jsonify({'message': 'Not found'}), 404
-
-        # Specialized handling for large binary fields to prevent OOM
+        
+        # Binary fields to optimize away from main SELECT
         blob_fields = [
             'profile_picture', 'signature_image_data', 'id_img_front', 'id_img_back', 
             'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic'
         ]
         
-        for key, value in list(applicant.items()):
-            # Detect binary fields
-            if key in blob_fields:
-                if value is not None:
-                    # Map the field to a descriptive "has_" flag for the frontend
-                    flag_map = {
-                        'profile_picture': 'has_profile_picture',
-                        'signature_image_data': 'has_signature',
-                        'id_img_front': 'has_id',
-                        'id_img_back': 'has_id_back',
-                        'enrollment_certificate_doc': 'has_mayorCOE_photo',
-                        'grades_doc': 'has_mayorGrades_photo',
-                        'indigency_doc': 'has_mayorIndigency_photo',
-                        'id_pic': 'has_mayorValidID_photo'
-                    }
-                    if key in flag_map:
-                        applicant[flag_map[key]] = True
-                    else:
-                        applicant[f'has_{key}'] = True
-                        
-                    # Instead of the actual blob data, provide a URL for lazy-loading
-                    # This prevents the 502 Bad Gateway (OOM) on 512MB RAM instances
-                    applicant[key] = f"/api/student/applicant/document/{key}"
-                else:
-                    applicant[key] = None
-                continue
+        # Map fields to has_ flags
+        flag_map = {
+            'profile_picture': 'has_profile_picture',
+            'signature_image_data': 'has_signature',
+            'id_img_front': 'has_id',
+            'id_img_back': 'has_id_back',
+            'enrollment_certificate_doc': 'has_mayorCOE_photo',
+            'grades_doc': 'has_mayorGrades_photo',
+            'indigency_doc': 'has_mayorIndigency_photo',
+            'id_pic': 'has_mayorValidID_photo'
+        }
 
-            if isinstance(value, (bytes, memoryview)):
-                # Generic fallback for unhandled blobs
-                applicant[f'has_{key}'] = True
-                del applicant[key]
-            elif isinstance(value, datetime):
+        # 1. First, get all column names to build a safe SELECT query
+        # This prevents 502/OOM errors by NOT pulling massive binary data into Python memory
+        cur.execute("SELECT * FROM applicants LIMIT 0")
+        all_columns = [desc[0] for desc in cur.description]
+        
+        # Build SELECT list: normal columns + IS NOT NULL checks for blobs
+        select_parts = []
+        for col in all_columns:
+            if col in blob_fields:
+                flag_name = flag_map.get(col, f"has_{col}")
+                select_parts.append(f"({col} IS NOT NULL) as {flag_name}")
+            else:
+                select_parts.append(col)
+                
+        query = f"SELECT {', '.join(select_parts)} FROM applicants WHERE applicant_no = %s"
+        cur.execute(query, (request.user_no,))
+        applicant = cur.fetchone()
+        
+        if not applicant:
+            return jsonify({'message': 'Not found'}), 404
+
+        # 2. Add lazy-load URLs for the frontend to fetch binary data on-demand
+        # This ensures the browser can still access the data without bloating the initial profile load
+        for key in blob_fields:
+            flag_name = flag_map.get(key, f"has_{key}")
+            if applicant.get(flag_name):
+                # We provide the URL instead of the actual data
+                applicant[key] = f"/api/student/applicant/document/{key}"
+            else:
+                applicant[key] = None
+
+        # 3. Clean up other types
+        for key, value in list(applicant.items()):
+            if isinstance(value, (datetime)):
                 applicant[key] = value.isoformat()
             elif key == 'birthdate' and value:
                 applicant[key] = str(value)
 
-        # Ensure account flags are present for frontend synchronization
+        # 4. Email verification status
         applicant['email_verified'] = applicant.get('is_verified', False)
-        # Google users are verified upon fast-registration
         if applicant.get('google_id'):
             applicant['email_verified'] = True
 
         return jsonify(applicant)
     except Exception as exc:
+        print(f"[PROFILE ERROR] {exc}", flush=True)
         return jsonify({'message': str(exc)}), 500
     finally:
         if 'conn' in locals():

@@ -18,7 +18,7 @@ STARTUP_TIME = time.time()
 print("[STARTUP] 1. eventlet monkey_patch complete. Loading modules...", flush=True)
 
 # Deployment trigger: 2026-04-08 - CORS TIMEOUT FIX - Better error handling
-from flask import Flask, jsonify, request, make_response
+from flask import Flask, jsonify, request
 from flask_socketio import SocketIO
 
 print("[STARTUP] 2. Flask/SocketIO imported. Loading blueprints...", flush=True)
@@ -106,22 +106,14 @@ def handle_preflight():
     """Handle CORS preflight OPTIONS requests early."""
     if request.method == 'OPTIONS':
         origin = request.headers.get('Origin')
-        
-        # Determine if we should allow this origin
+
         is_allowed = is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns)
-        
-        # Log preflight check detail for troubleshooting
         print(f"[CORS PREFLIGHT] Path: {request.path}, Origin: {origin}, Allowed: {is_allowed}", flush=True)
-        
-        if is_allowed:
-            # Return a 204 No Content for successful preflight
-            response = make_response('', 204)
-            return apply_cors_headers(response, origin)
-        else:
-            # If not allowed, we still want to return a response but without CORS headers
-            # to let the browser block it. 403 Forbidden is appropriate.
-            print(f"[CORS PREFLIGHT DENIED] {origin} not in allowed origins", flush=True)
-            return jsonify({'message': 'Origin not allowed', 'origin': origin}), 403
+
+        # Always return a normal preflight response.
+        # apply_cors_headers will attach Access-Control-Allow-Origin only for allowed origins.
+        response = jsonify({'status': 'ok'})
+        return apply_cors_headers(response, origin), 200
     return None
 
 
