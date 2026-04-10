@@ -659,48 +659,55 @@ def extract_school_year(image_bytes):
 
 def extract_semester_from_text(text):
     if not text: return None
-    # Look for Semester indicators: 1st, 2nd, First, Second, 1, 2
-    match = re.search(r'(1st|2nd|first|second|1|2)\s*(?:sem|semester)', text, re.IGNORECASE)
-    if match:
-        val = match.group(1).lower()
-        if '1' in val or 'first' in val: return "1st"
-        if '2' in val or 'second' in val: return "2nd"
+    semester_patterns = [
+        r'(1st|2nd|first|second|1|2)\s*(?:sem|semester)\b',
+        r'\b(?:sem|semester)\s*[:\-]?\s*(1st|2nd|first|second|1|2)\b',
+    ]
+    for pattern in semester_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return normalize_semester_label(match.group(1))
     return None
 
+def normalize_semester_label(value):
+    if value is None:
+        return None
+
+    semester_value = str(value).strip().lower()
+    if not semester_value:
+        return None
+
+    if '1' in semester_value or 'first' in semester_value:
+        return "1st"
+    if '2' in semester_value or 'second' in semester_value:
+        return "2nd"
+    return None
+
+def _extract_year_values(value):
+    if not value:
+        return []
+    return [int(year) for year in re.findall(r'20\d{2}', str(value))]
+
 def is_current_school_year(year_str, semester_str=None, expected_year="2026", expected_semester=None):
-    if not year_str or not expected_year: return False
-    
-    # --- YEAR VALIDATION ---
-    # Extract all years from the document's year string
-    extracted_years = [int(y) for y in re.findall(r'20\d{2}', str(year_str))]
-    if not extracted_years: return False
-    
-    # Extract all years from the expected year string (e.g., "2025 - 2026" -> [2025, 2026])
-    expected_years = [int(y) for y in re.findall(r'20\d{2}', str(expected_year))]
+    if not year_str or not expected_year:
+        return False
+
+    extracted_years = _extract_year_values(year_str)
+    if not extracted_years:
+        return False
+
+    expected_years = _extract_year_values(expected_year)
     if not expected_years:
-        # Fallback to current year if expected_year doesn't contain a valid year string
         expected_years = [2025, 2026]
-    
-    # --- YEAR RANGE CHECK ---
-    # Check if any extracted year falls within the range [min_expected, max_expected]
+
     min_exp, max_exp = min(expected_years), max(expected_years)
     year_ok = any(min_exp <= y <= max_exp for y in extracted_years)
-    
-    if not year_ok: return False
 
-    # --- SEMESTER VALIDATION ---
-    norm_expected = None
-    if expected_semester:
-        # Map 1/2 or 1st/2nd to normalized strings
-        s = str(expected_semester).lower()
-        if '1' in s or 'first' in s: norm_expected = "1st"
-        elif '2' in s or 'second' in s: norm_expected = "2nd"
+    if not year_ok:
+        return False
 
-    norm_extracted = None
-    if semester_str:
-        s = str(semester_str).lower()
-        if '1' in s or 'first' in s: norm_extracted = "1st"
-        elif '2' in s or 'second' in s: norm_extracted = "2nd"
+    norm_expected = normalize_semester_label(expected_semester)
+    norm_extracted = normalize_semester_label(semester_str)
 
     if norm_expected and norm_extracted and norm_expected != norm_extracted:
         return False

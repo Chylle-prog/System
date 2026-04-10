@@ -26,6 +26,7 @@ from services.ocr_utils import (
     extract_school_year_from_text, is_current_school_year, 
     verify_signature_against_id, save_signature_profile, verify_video_content,
     extract_semester_from_text,
+    normalize_semester_label,
     _perform_text_matching,
     extract_document_text
 )
@@ -54,6 +55,33 @@ HARD_CODED_SCHOOL_NAMES = [
     'AMA Computer College',
     'ICT-ED'
 ]
+
+
+def academic_year_matches_expected(found_year, expected_year):
+    if not found_year or not expected_year:
+        return False
+
+    found_years = [int(year) for year in re.findall(r'20\d{2}', str(found_year))]
+    expected_years = [int(year) for year in re.findall(r'20\d{2}', str(expected_year))]
+
+    if not found_years or not expected_years:
+        return False
+
+    min_expected = min(expected_years)
+    max_expected = max(expected_years)
+    return any(min_expected <= year <= max_expected for year in found_years)
+
+
+def format_academic_period(expected_year, expected_semester=None):
+    parts = []
+    if expected_year:
+        parts.append(str(expected_year).strip())
+
+    normalized_semester = normalize_semester_label(expected_semester)
+    if normalized_semester:
+        parts.append(normalized_semester)
+
+    return ' '.join(parts) if parts else 'current academic period'
 
 
 def get_announcement_image_columns(cursor):
@@ -1952,32 +1980,52 @@ def ocr_check():
                 if doc_type == 'Enrollment':
                     year_label = extract_school_year_from_text(raw)
                     semester_label = extract_semester_from_text(raw)
+                    normalized_expected_semester = normalize_semester_label(expected_semester)
+                    normalized_semester_label = normalize_semester_label(semester_label)
+                    year_only_ok = academic_year_matches_expected(year_label, expected_year)
+                    semester_ok = True
+                    if normalized_expected_semester and normalized_semester_label:
+                        semester_ok = normalized_expected_semester == normalized_semester_label
                     year_ok = is_current_school_year(year_label, semester_str=semester_label, expected_year=expected_year, expected_semester=expected_semester)
                     school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
 
                     if v:
-                        if not year_ok: 
-                            v, msg = False, f"Outdated A.Y./Sem ({year_label or 'None'}, {semester_label or 'None'}). Expected: {expected_year} {expected_semester or ''}"
+                        if not year_only_ok:
+                            v, msg = False, f"Outdated academic year ({year_label or 'None'}). Expected: {expected_year or 'None'}"
+                        elif not semester_ok:
+                            v, msg = False, f"Semester mismatch ({normalized_semester_label or semester_label or 'None'}). Expected: {format_academic_period(expected_year, expected_semester)}"
+                        elif not year_ok:
+                            v, msg = False, f"Academic period mismatch ({year_label or 'None'}, {normalized_semester_label or semester_label or 'None'}). Expected: {format_academic_period(expected_year, expected_semester)}"
                         elif not school_ok: 
                             v, msg = False, f"School mismatch ({school_name})"
                         else: 
-                            msg = f"Verified: A.Y. {year_label}" + (f" {semester_label}" if semester_label else "") + (f" | {school_name}" if school_name else "")
+                            msg = f"Verified: A.Y. {year_label}" + (f" {normalized_semester_label}" if normalized_semester_label else "") + (f" | {school_name}" if school_name else "")
                     
                     return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'Grades':
                     year_label = extract_school_year_from_text(raw)
                     semester_label = extract_semester_from_text(raw)
+                    normalized_expected_semester = normalize_semester_label(expected_semester)
+                    normalized_semester_label = normalize_semester_label(semester_label)
+                    year_only_ok = academic_year_matches_expected(year_label, expected_year)
+                    semester_ok = True
+                    if normalized_expected_semester and normalized_semester_label:
+                        semester_ok = normalized_expected_semester == normalized_semester_label
                     year_ok = is_current_school_year(year_label, semester_str=semester_label, expected_year=expected_year, expected_semester=expected_semester)
                     school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
 
                     if v:
-                        if not year_ok: 
-                            v, msg = False, f"Outdated A.Y./Sem ({year_label or 'None'}, {semester_label or 'None'}). Expected: {expected_year} {expected_semester or ''}"
+                        if not year_only_ok:
+                            v, msg = False, f"Outdated academic year ({year_label or 'None'}). Expected: {expected_year or 'None'}"
+                        elif not semester_ok:
+                            v, msg = False, f"Semester mismatch ({normalized_semester_label or semester_label or 'None'}). Expected: {format_academic_period(expected_year, expected_semester)}"
+                        elif not year_ok:
+                            v, msg = False, f"Academic period mismatch ({year_label or 'None'}, {normalized_semester_label or semester_label or 'None'}). Expected: {format_academic_period(expected_year, expected_semester)}"
                         elif not school_ok: 
                             v, msg = False, f"School mismatch ({school_name})"
                         else: 
-                            msg = f"Verified: A.Y. {year_label}" + (f" {semester_label}" if semester_label else "") + (f" | {school_name}" if school_name else "")
+                            msg = f"Verified: A.Y. {year_label}" + (f" {normalized_semester_label}" if normalized_semester_label else "") + (f" | {school_name}" if school_name else "")
                     
                     return {'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
 
