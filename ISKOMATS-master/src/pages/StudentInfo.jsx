@@ -117,6 +117,20 @@ const fillEmptyValuesOnly = (baseData, incomingData = {}) => {
   return nextData;
 };
 
+const formatCurrencyPreview = (value) => {
+  const numericValue = Number(String(value || '').replace(/,/g, ''));
+
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    return 'Not provided';
+  }
+
+  return new Intl.NumberFormat('en-PH', {
+    style: 'currency',
+    currency: 'PHP',
+    maximumFractionDigits: 0,
+  }).format(numericValue);
+};
+
 const StudentInfo = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -217,6 +231,12 @@ const StudentInfo = () => {
   const cameraTimeoutRef = useRef(null);
 
   const [showSignaturePad, setShowSignaturePad] = useState(false);
+
+  const scholarshipSearchSnapshot = {
+    scholarship: scholarshipName,
+    gpa: formData.gpa || searchParams.get('gpa') || '',
+    income: formData.parentsGrossIncome || searchParams.get('income') || '',
+  };
 
   const [formData, setFormData] = useState({
     lastName: '',
@@ -542,7 +562,7 @@ const StudentInfo = () => {
         };
 
         if (profile.street_brgy || profile.streetBarangay) {
-          updates.streetBarangay = profile.street_brgy || profile.streetBarangay;
+          updates.barangay = profile.street_brgy || profile.streetBarangay;
         }
         if (profile.town_city_municipality || profile.townCity) {
           updates.townCityMunicipality = profile.town_city_municipality || profile.townCity;
@@ -2063,6 +2083,24 @@ const StudentInfo = () => {
             }</p>
           </div>
 
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: '1rem',
+            marginBottom: '1.75rem'
+          }}>
+            <div style={{background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '18px', padding: '1rem 1.1rem'}}>
+              <div style={{fontSize: '0.72rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#9a3412', marginBottom: '0.4rem'}}>Profile Snapshot</div>
+              <div style={{fontSize: '1rem', fontWeight: '700', color: '#431407'}}>{[formData.firstName, formData.middleName, formData.lastName].filter(Boolean).join(' ') || currentUser}</div>
+              <div style={{fontSize: '0.82rem', color: '#7c2d12', marginTop: '0.35rem'}}>{formData.schoolName || 'School not set yet'}</div>
+            </div>
+            <div style={{background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '18px', padding: '1rem 1.1rem'}}>
+              <div style={{fontSize: '0.72rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#1d4ed8', marginBottom: '0.4rem'}}>Find Scholarship Data</div>
+              <div style={{fontSize: '0.92rem', color: '#1e3a8a'}}>GPA: <strong>{scholarshipSearchSnapshot.gpa || 'Not provided'}</strong></div>
+              <div style={{fontSize: '0.82rem', color: '#1e40af', marginTop: '0.35rem'}}>Income: <strong>{formatCurrencyPreview(scholarshipSearchSnapshot.income)}</strong></div>
+            </div>
+          </div>
+
           <div className="step-indicator">
             <div className="progress-bar" style={{width: `${((currentStep - 1) / 3) * 100}%`}}></div>
             {[1, 2, 3, 4].map(step => (
@@ -2397,6 +2435,10 @@ const StudentInfo = () => {
                   <label>Number of Siblings <span style={{color: '#e74c3c'}}>*</span></label>
                   <input type="number" name="numberOfSiblings" value={formData.numberOfSiblings} onChange={handleInputChange} placeholder="0" required={currentStep === 2} />
                 </div>
+                <div className="form-group">
+                  <label>Parents' Gross Income <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="number" name="parentsGrossIncome" value={formData.parentsGrossIncome} onChange={handleInputChange} placeholder="30000" min="0" required={currentStep === 2} />
+                </div>
               </div>
 
 
@@ -2469,6 +2511,10 @@ const StudentInfo = () => {
                 <div className="form-group">
                   <label>Course/Program <span style={{color: '#e74c3c'}}>*</span></label>
                   <input type="text" name="course" value={formData.course} onChange={handleInputChange} placeholder="B.S. Information Technology" required={currentStep === 3} />
+                </div>
+                <div className="form-group">
+                  <label>General Weighted Average / GPA <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input type="number" name="gpa" value={formData.gpa} onChange={handleInputChange} placeholder="85 or 1.75" step="0.01" required={currentStep === 3} />
                 </div>
               </div>
 
