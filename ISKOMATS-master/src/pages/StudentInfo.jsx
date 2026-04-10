@@ -476,42 +476,44 @@ const StudentInfo = () => {
           </div>
 
           {/* VIDEO PICKER */}
-          <div style={{flex: '1', minWidth: '160px'}}>
-            <input 
-              id={videoId} 
-              type="file" 
-              accept="video/*" 
-              onChange={(e) => {
-                const file = e.target.files[0];
-                if (file) onVideoChange(videoName, file);
-              }} 
-              style={{display: 'none'}} 
-            />
-            <label
-              htmlFor={isUploadingVideo ? undefined : videoId}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                padding: '0.8rem 1rem',
-                borderRadius: '14px',
-                border: '1px solid #cbd5e1',
-                background: isUploadingVideo ? '#f1f5f9' : '#fff',
-                color: '#0f172a',
-                cursor: isUploadingVideo ? 'not-allowed' : 'pointer',
-                fontSize: '0.82rem',
-                fontWeight: '700',
-                boxShadow: '0 4px 12px rgba(15, 23, 42, 0.05)',
-                width: '100%',
-                transition: 'all 0.2s ease',
-                opacity: isUploadingVideo ? 0.7 : 1
-              }}
-            >
-              <i className={isUploadingVideo ? "fas fa-spinner fa-spin" : "fas fa-video"} style={{color: 'var(--primary)'}}></i>
-              {isUploadingVideo ? 'Uploading...' : (hasVideo ? 'Replace Video' : 'Add Video')}
-            </label>
-          </div>
+          {(videoId && onVideoChange) && (
+            <div style={{flex: '1', minWidth: '160px'}}>
+              <input 
+                id={videoId} 
+                type="file" 
+                accept="video/*" 
+                onChange={(e) => {
+                  const file = e.target.files[0];
+                  if (file) onVideoChange(videoName, file);
+                }} 
+                style={{display: 'none'}} 
+              />
+              <label
+                htmlFor={isUploadingVideo ? undefined : videoId}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  padding: '0.8rem 1rem',
+                  borderRadius: '14px',
+                  border: '1px solid #cbd5e1',
+                  background: isUploadingVideo ? '#f1f5f9' : '#fff',
+                  color: '#0f172a',
+                  cursor: isUploadingVideo ? 'not-allowed' : 'pointer',
+                  fontSize: '0.82rem',
+                  fontWeight: '700',
+                  boxShadow: '0 4px 12px rgba(15, 23, 42, 0.05)',
+                  width: '100%',
+                  transition: 'all 0.2s ease',
+                  opacity: isUploadingVideo ? 0.7 : 1
+                }}
+              >
+                <i className={isUploadingVideo ? "fas fa-spinner fa-spin" : "fas fa-video"} style={{color: 'var(--primary)'}}></i>
+                {isUploadingVideo ? 'Uploading...' : (hasVideo ? 'Replace Video' : 'Add Video')}
+              </label>
+            </div>
+          )}
         </div>
 
         {/* COMBINED STATUS */}
@@ -3540,18 +3542,18 @@ const StudentInfo = () => {
                   <div style={{background: '#f0f7ff', border: '1px solid #e1e8f0', borderRadius: '16px', padding: '1.5rem', textAlign: 'center'}}>
                     <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#666', marginBottom: '0.5rem'}}>Additional Identification (Optional)</label>
                     <p style={{fontSize: '0.7rem', color: '#888', marginBottom: '1rem'}}>Internal Record Only (Not stored in DB)</p>
-                    {renderImagePicker({
-                      id: 'extra_identification_photo',
-                      label: 'Additional Identification',
-                      onChange: (e) => {
+                    {renderDocumentMediaPicker({
+                      photoId: 'extra_identification_photo',
+                      photoName: 'extra_identification_photo',
+                      photoValue: extraSignaturePhoto,
+                      onPhotoChange: (e) => {
                         const file = e.target.files[0];
                         if (file) {
                           const reader = new FileReader();
                           reader.onloadend = () => setExtraSignaturePhoto(reader.result);
                           reader.readAsDataURL(file);
                         }
-                      },
-                      currentValue: extraSignaturePhoto,
+                      }
                     })}
                     {extraSignaturePhoto && (
                       <div style={{marginTop: '10px', position: 'relative'}}>
