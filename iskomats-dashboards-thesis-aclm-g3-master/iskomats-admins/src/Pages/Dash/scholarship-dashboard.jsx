@@ -34,7 +34,7 @@ import {
   FaRobot
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
-import { scholarshipAPI, announcementAPI } from '../../services/api';
+import { scholarshipAPI, announcementAPI, warmBackendConnection } from '../../services/api';
 import socketService from '../../services/socket';
 
 Chart.register(...registerables);
@@ -345,8 +345,13 @@ export default function ScholarshipDashboard({
 
   // Load applicants and scholarships from backend API on component mount
   useEffect(() => {
-    loadApplicants();
-    loadScholarships(false);
+    const initializeDashboard = async () => {
+      await warmBackendConnection();
+      loadApplicants();
+      loadScholarships(false);
+    };
+
+    initializeDashboard();
 
     // Socket.IO Integration
     const token = localStorage.getItem('authToken');

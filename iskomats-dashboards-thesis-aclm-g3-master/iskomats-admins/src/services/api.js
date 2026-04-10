@@ -10,10 +10,24 @@ const api = axios.create({
 });
 
 const RETRYABLE_METHODS = new Set(['get', 'head', 'options']);
+const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
+let backendWarmupPromise = null;
 
 const wait = (ms) => new Promise((resolve) => {
   window.setTimeout(resolve, ms);
 });
+
+export const warmBackendConnection = async () => {
+  if (!backendWarmupPromise) {
+    backendWarmupPromise = window.fetch(`${API_ORIGIN}/_health`, {
+      method: 'GET',
+      mode: 'cors',
+      cache: 'no-store',
+    }).catch(() => undefined);
+  }
+
+  return backendWarmupPromise;
+};
 
 const shouldRetryRequest = (error) => {
   const method = (error.config?.method || 'get').toLowerCase();

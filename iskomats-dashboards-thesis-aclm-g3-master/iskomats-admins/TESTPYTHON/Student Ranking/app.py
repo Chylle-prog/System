@@ -20,6 +20,7 @@ print("[STARTUP] 1. eventlet monkey_patch complete. Loading modules...", flush=T
 # Deployment trigger: 2026-04-08 - CORS TIMEOUT FIX - Better error handling
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 print("[STARTUP] 2. Flask/SocketIO imported. Loading blueprints...", flush=True)
 from blueprints import admin_bp, init_admin_socketio, register_admin_routes, student_api_bp
@@ -31,6 +32,8 @@ from services.db_service import get_db, get_db_display_config
 print("[STARTUP] 4. Services imported. Initializing Flask app...", flush=True)
 app = Flask(__name__)
 app.secret_key = get_secret_key()
+app.config['PREFERRED_URL_SCHEME'] = 'https'
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
 # Get origins and split into exact strings and regex patterns
 all_allowed_origins = get_allowed_origins()
