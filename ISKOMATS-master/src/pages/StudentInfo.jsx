@@ -1434,6 +1434,8 @@ const StudentInfo = () => {
   };
 
   const isAnyScanning = [idVerified, coeVerified, gradesVerified, ocrVerified, faceVerified].some(v => v === 'verifying') || isFaceMatching;
+  const isStep1DocumentsVerified = ocrVerified === 'success';
+  const isStep3DocumentsVerified = idVerified === 'success' && coeVerified === 'success' && gradesVerified === 'success';
 
   const handleInputChange = (e) => {
     if (isAnyScanning || isSavingStep) return;
@@ -1652,6 +1654,10 @@ const StudentInfo = () => {
         showPromptMessage('⚠️ Please upload your Certificate of Indigency.');
         return;
       }
+      if (!isStep1DocumentsVerified) {
+        showPromptMessage('⚠️ Please verify your Certificate of Indigency before proceeding to the next step.');
+        return;
+      }
     }
 
     if (currentStep === 3) {
@@ -1665,6 +1671,18 @@ const StudentInfo = () => {
       }
       if (!photos.mayorGrades_photo && !formData.mayorGrades_photo) {
         showPromptMessage('⚠️ Please upload your Grades document.');
+        return;
+      }
+      if (idVerified !== 'success') {
+        showPromptMessage('⚠️ Please verify your School ID before proceeding to the next step.');
+        return;
+      }
+      if (coeVerified !== 'success') {
+        showPromptMessage('⚠️ Please verify your Certificate of Enrollment before proceeding to the next step.');
+        return;
+      }
+      if (gradesVerified !== 'success') {
+        showPromptMessage('⚠️ Please verify your Grades document before proceeding to the next step.');
         return;
       }
     }
@@ -2864,7 +2882,7 @@ const StudentInfo = () => {
                   type="button" 
                   className="submit-btn" 
                   onClick={handleNextStep} 
-                  disabled={isSavingStep || (ocrVerified === 'verifying')} 
+                  disabled={isSavingStep || ocrVerified === 'verifying' || !isStep1DocumentsVerified} 
                   style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}
                 >
                   Next: Family Background <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
@@ -3435,7 +3453,7 @@ const StudentInfo = () => {
                   type="button" 
                   className="submit-btn" 
                   onClick={handleNextStep} 
-                  disabled={isSavingStep || coeVerified === 'verifying' || gradesVerified === 'verifying' || idVerified === 'verifying'}
+                  disabled={isSavingStep || coeVerified === 'verifying' || gradesVerified === 'verifying' || idVerified === 'verifying' || !isStep3DocumentsVerified}
                   style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}
                 >
                   Next: Certification & Verification <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
