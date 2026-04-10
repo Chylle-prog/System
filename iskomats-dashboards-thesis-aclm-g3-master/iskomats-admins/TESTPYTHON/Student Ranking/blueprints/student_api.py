@@ -2299,6 +2299,7 @@ def get_announcements():
                 FROM announcements a
                 LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
                 LEFT JOIN announcement_images ai ON a.ann_no = ai.{foreign_key_column}
+                WHERE COALESCE(a.is_removed, FALSE) = FALSE
                 ORDER BY {order_col}, ai.{primary_key_column}
             """)
         else:
@@ -2307,6 +2308,7 @@ def get_announcements():
                        NULL AS image_id
                 FROM announcements a
                 LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
+                WHERE COALESCE(a.is_removed, FALSE) = FALSE
                 ORDER BY {order_col}
             """)
 

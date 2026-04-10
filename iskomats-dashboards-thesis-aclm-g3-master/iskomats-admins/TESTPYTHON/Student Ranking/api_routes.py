@@ -704,20 +704,20 @@ def send_announcement_emails(
         if send_to_all:
             # Send to ALL applicants in the system
             cur.execute("""
-                SELECT DISTINCT a.applicant_no, a.first_name, a.last_name, e.email_address
+                SELECT DISTINCT a.applicant_no, a.first_name, a.last_name, COALESCE(e.email_address, a.email) AS email_address
                 FROM applicants a
                 LEFT JOIN email e ON a.applicant_no = e.applicant_no
-                WHERE e.email_address IS NOT NULL
+                WHERE COALESCE(e.email_address, a.email) IS NOT NULL
             """)
         else:
             # Send only to applicants who applied to this provider's scholarships
             cur.execute("""
-                SELECT DISTINCT a.applicant_no, a.first_name, a.last_name, e.email_address
+                SELECT DISTINCT a.applicant_no, a.first_name, a.last_name, COALESCE(e.email_address, a.email) AS email_address
                 FROM applicants a
                 INNER JOIN applicant_status ast ON a.applicant_no = ast.applicant_no
                 INNER JOIN scholarships s ON ast.scholarship_no = s.req_no
                 LEFT JOIN email e ON a.applicant_no = e.applicant_no
-                WHERE s.pro_no = %s AND e.email_address IS NOT NULL
+                WHERE s.pro_no = %s AND COALESCE(e.email_address, a.email) IS NOT NULL
             """, (provider_no,))
         
         applicants = cur.fetchall()
@@ -2591,6 +2591,8 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
     try:
         conn = get_db()
         cursor = conn.cursor()
+        resolved_provider_no, _ = resolve_provider_context(cursor, current_user_id, role, pro_no)
+        is_super_admin = (role or '').strip().lower() == 'admin'
         
         query = '''
             SELECT s.req_no as id, s.req_no as "reqNo", s.scholarship_name as "scholarshipName", 
@@ -2609,9 +2611,13 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
         params = []
         
         # Isolation: If not superadmin, only show scholarships for this provider
-        if role != 'Admin':
+        if not is_super_admin:
+            if resolved_provider_no is None:
+                cursor.close()
+                conn.close()
+                return jsonify({'message': 'User not associated with a scholarship provider'}), 403
             query += ' AND s.pro_no = %s'
-            params.append(pro_no)
+            params.append(resolved_provider_no)
         elif program.lower() != 'all':
             query += ' AND (p.provider_name ILIKE %s OR (s.pro_no IS NULL AND %s != "all"))'
             params.extend([f"%{program}%", program])
@@ -3456,6 +3462,8 @@ def get_admin_announcements(current_user_id, pro_no, role):
         conn = get_db()
         cur = conn.cursor()
         ensure_schema_integrity(cur)
+        resolved_provider_no, _ = resolve_provider_context(cur, current_user_id, role, pro_no)
+        is_super_admin = (role or '').strip().lower() == 'admin'
         try:
             primary_key_column, foreign_key_column = get_entity_image_columns(cur, 'announcement')
         except Exception:
@@ -3479,9 +3487,13 @@ def get_admin_announcements(current_user_id, pro_no, role):
         )
         params = []
 
-        if role != 'Admin':
+        if not is_super_admin:
+            if resolved_provider_no is None:
+                cur.close()
+                conn.close()
+                return jsonify({'message': 'User not associated with a scholarship provider'}), 403
             query += ' AND a.pro_no = %s'
-            params.append(pro_no)
+            params.append(resolved_provider_no)
 
         if primary_key_column and foreign_key_column:
             query += f' ORDER BY a.time_added DESC, ai.{primary_key_column}'

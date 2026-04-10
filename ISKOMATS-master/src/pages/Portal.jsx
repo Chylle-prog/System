@@ -151,6 +151,7 @@ const Portal = () => {
 
     // Set up polling for notifications every 30 seconds
     const notifInterval = setInterval(fetchNotifications, 30000);
+    const announcementInterval = setInterval(fetchAnnouncements, 30000);
 
     // Socket.IO Integration
     let unsubLogged, unsubMsg, unsubRoom;
@@ -243,6 +244,9 @@ const Portal = () => {
         socketService.disconnect();
       }
 
+      clearInterval(notifInterval);
+      clearInterval(announcementInterval);
+
       // Cleanup DOM
       if (document.head.contains(fontAwesomeLink)) document.head.removeChild(fontAwesomeLink);
       if (document.head.contains(googleFontsLink)) document.head.removeChild(googleFontsLink);
@@ -250,6 +254,31 @@ const Portal = () => {
       if (document.head.contains(googleFontsSheet)) document.head.removeChild(googleFontsSheet);
     };
   }, [navigate]);
+
+  useEffect(() => {
+    const hasAnnouncementNotification = notifications.some((notification) => notification.type === 'announcement');
+    if (!hasAnnouncementNotification) {
+      return;
+    }
+
+    let cancelled = false;
+
+    announcementAPI.getAll()
+      .then((data) => {
+        if (!cancelled) {
+          setDbAnnouncements(data || []);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('Failed to refresh announcements:', err);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [notifications]);
 
   const logout = () => {
     authLogout();  // This clears currentUser, authToken, and applicantNo
