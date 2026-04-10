@@ -1632,8 +1632,8 @@ def get_profile():
         for key in blob_fields:
             flag_name = flag_map.get(key, f"has_{key}")
             if applicant.get(flag_name):
-                # We provide the URL instead of the actual data
-                applicant[key] = f"/api/student/applicant/document/{key}"
+                # USE RAW ENDPOINT: Ensures <img> tags can render these immediately
+                applicant[key] = f"/api/student/applicant/document/raw/{key}"
             else:
                 applicant[key] = None
 
@@ -1703,9 +1703,46 @@ def get_applicant_document(field_name):
             'fieldName': field_name,
             'data': f"data:{mime_type};base64,{encoded}"
         })
-    except Exception as exc:
-        print(f"[DOCUMENT] Error fetching {field_name}: {exc}", flush=True)
-        return jsonify({'message': str(exc)}), 500
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+@student_api_bp.route('/applicant/document/raw/<string:field_name>', methods=['GET'])
+@token_required
+def get_applicant_document_raw(field_name):
+    """Returns raw bytes with correct Content-Type for direct <img> usage."""
+    allowed_fields = [
+        'profile_picture', 'signature_image_data', 'id_img_front', 'id_img_back',
+        'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic'
+    ]
+    if field_name not in allowed_fields:
+        return "Invalid field", 400
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(f'SELECT {field_name} FROM applicants WHERE applicant_no = %s', (request.user_no,))
+        row = cur.fetchone()
+        if not row or not row[field_name]:
+            return "Not found", 404
+        
+        value = row[field_name]
+        if field_name == 'signature_image_data':
+            value = decode_signature(value)
+        else:
+            value = bytes(value)
+
+        mime_type = 'image/jpeg'
+        if field_name == 'signature_image_data' or value.startswith(b'\x89PNG'):
+            mime_type = 'image/png'
+            
+        from flask import make_response
+        response = make_response(value)
+        response.headers.set('Content-Type', mime_type)
+        response.headers.set('Cache-Control', 'public, max-age=3600')
+        return response
+    except Exception as e:
+        print(f"[DOCUMENT RAW] Error: {e}", flush=True)
+        return str(e), 500
     finally:
         if 'conn' in locals():
             conn.close()

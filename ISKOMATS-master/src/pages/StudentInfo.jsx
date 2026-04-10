@@ -298,7 +298,11 @@ const StudentInfo = () => {
   const [photos, setPhotos] = useState({
     id_front: null,
     id_back: null,
-    face_photo: null
+    face_photo: null,
+    mayorCOE_photo: null,
+    mayorGrades_photo: null,
+    mayorIndigency_photo: null,
+    mayorValidID_photo: null
   });
   
   const handleVideoUpload = (fieldName, blob) => {
