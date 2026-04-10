@@ -462,7 +462,7 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH):
     if not image_bytes:
         return "", "No image data provided."
 
-    cache_key = _hash_image(image_bytes, suffix=b"_doc_text_v1")
+    cache_key = _hash_image(image_bytes, suffix=b"_doc_text_v2")
     cached_result = _cache_get(cache_key)
     if cached_result is not None:
         return cached_result
@@ -489,6 +489,18 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH):
             text = _run_tesseract_on_image(img, psm=6, skip_pass2=True)
             if len(text.strip()) < 20:
                 text = _run_tesseract_on_image(img, psm=3, skip_pass2=False)
+
+            # OCR the top header band separately because school names/logos are often
+            # above the grade table and can be missed by the fast full-page pass.
+            header_height = max(int(img.shape[0] * 0.28), 1)
+            header_img = img[:header_height, :]
+            header_text = _run_tesseract_on_image(header_img, psm=6, skip_pass2=False)
+
+            if header_text.strip():
+                normalized_text = normalize_for_ocr(text)
+                normalized_header = normalize_for_ocr(header_text)
+                if normalized_header and normalized_header not in normalized_text:
+                    text = f"{header_text.strip()}\n{text}".strip()
         except Exception as e:
             return "", f"OCR extraction error: {str(e)}"
 

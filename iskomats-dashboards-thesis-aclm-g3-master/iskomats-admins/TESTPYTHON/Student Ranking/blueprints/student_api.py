@@ -208,6 +208,8 @@ def build_school_name_variants(school_name):
 def school_name_matches_text(raw_text, school_name):
     variants = build_school_name_variants(school_name)
     normalized_raw = normalize_matching_text(raw_text)
+    raw_words = set(normalized_raw.split())
+    ignore_words = {'de', 'la', 'ng', 'of', 'the', 'and', 'campus', 'office'}
 
     for variant in variants:
         normalized_variant = normalize_matching_text(variant)
@@ -225,6 +227,30 @@ def school_name_matches_text(raw_text, school_name):
     )
     if found_keywords:
         return True, found_keywords[0], variants
+
+    for variant in variants:
+        normalized_variant = normalize_matching_text(variant)
+        if not normalized_variant:
+            continue
+
+        variant_words = [
+            word for word in normalized_variant.split()
+            if len(word) >= 4 and word not in ignore_words
+        ]
+        if len(variant_words) < 2:
+            continue
+
+        matched_words = 0
+        for word in variant_words:
+            if word in raw_words:
+                matched_words += 1
+                continue
+
+            if any(word in raw_word or raw_word in word for raw_word in raw_words if len(raw_word) >= 3):
+                matched_words += 1
+
+        if matched_words >= 2:
+            return True, variant, variants
 
     return False, None, variants
 
