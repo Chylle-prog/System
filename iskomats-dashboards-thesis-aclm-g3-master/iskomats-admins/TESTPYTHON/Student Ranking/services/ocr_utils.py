@@ -186,7 +186,7 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     
     # Pass 1: Raw Grayscale (Best for modern LSTM Tesseract, handles white-on-black perfectly)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
-    text1 = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 1')
+    text1 = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 3')
     if text1.strip():
         results.append(text1.strip())
         # If Pass 1 is very successful, skip Pass 2 to save significant time
@@ -433,22 +433,13 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
         _cache_set(image_hash, (best_text, best_ratio, "verified_psm3"))
         return True, "Verified", best_text, 1.0
     
-    # Early exit: if we have a good partial match, check address and return
-    threshold = 0.3 if is_indigency else 0.6
-    if best_ratio >= threshold:
-        _, addr_ok, _, _ = _perform_text_matching(best_text, None, None, None, None, None, is_indigency)
-        if addr_ok:
-            _cache_set(image_hash, (best_text, best_ratio, "verified_threshold"))
-            return True, "Verified", best_text, 1.0
-        # If it's not Indigency, we require address to match if it's provided.
-        # But if it IS Indigency, we already checked name above.
-        if expected_address:
-            return False, "Address mismatch", best_text, 0.7
-
-    # Return result - no additional fallback passes
+    # Return result - no additional fallback passes.
+    # Do not auto-verify on partial ratios alone because the OCR payload is
+    # compared against the student's current inputs and false positives are worse
+    # than surfacing a mismatch for retry.
     if best_ratio >= 0.3:
-        _cache_set(image_hash, (best_text, best_ratio, "partial_match"))
         prefix = "Indigency: " if is_indigency else ""
+        _cache_set(image_hash, (best_text, best_ratio, "partial_match"))
         return False, f"{prefix}Identity mismatch ({best_ratio:.0%})", best_text, best_ratio
 
     _cache_set(image_hash, (best_text, best_ratio, "failed"))

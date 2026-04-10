@@ -41,6 +41,14 @@ const SCHOOLS = [
   "ICT-ED"
 ];
 
+const GUIDE_VIDEO_STORAGE_KEY = 'studentInfoGuideVideos';
+const DEFAULT_GUIDE_VIDEO_URLS = {
+  indigency: '',
+  schoolId: '',
+  enrollment: '',
+  grades: ''
+};
+
 const normalizeSelectValue = (value, options) => {
   if (!value) return '';
   const normalized = String(value).trim().toLowerCase();
@@ -58,6 +66,26 @@ const normalizeSelectValue = (value, options) => {
   if (valueContainsOption) return valueContainsOption;
   
   return '';
+};
+
+const normalizeGuideVideoUrl = (value) => {
+  const rawValue = String(value || '').trim();
+  if (!rawValue) return '';
+
+  try {
+    const parsedUrl = new URL(rawValue);
+    if (parsedUrl.hostname.includes('youtu.be')) {
+      const videoId = parsedUrl.pathname.replace('/', '');
+      return videoId ? `https://www.youtube.com/embed/${videoId}` : rawValue;
+    }
+    if (parsedUrl.hostname.includes('youtube.com')) {
+      const videoId = parsedUrl.searchParams.get('v');
+      return videoId ? `https://www.youtube.com/embed/${videoId}` : rawValue;
+    }
+    return rawValue;
+  } catch {
+    return rawValue;
+  }
 };
 
 const STEP_FIELDS = {
@@ -308,6 +336,14 @@ const StudentInfo = () => {
     schoolIdBack_video: null,
     face_video: null
   });
+  const [guideVideos, setGuideVideos] = useState(() => {
+    try {
+      const stored = localStorage.getItem(GUIDE_VIDEO_STORAGE_KEY);
+      return stored ? { ...DEFAULT_GUIDE_VIDEO_URLS, ...JSON.parse(stored) } : DEFAULT_GUIDE_VIDEO_URLS;
+    } catch {
+      return DEFAULT_GUIDE_VIDEO_URLS;
+    }
+  });
 
   const [uploadingFields, setUploadingFields] = useState({}); // { fieldName: Promise }
 
@@ -378,6 +414,10 @@ const StudentInfo = () => {
     };
   };
 
+  useEffect(() => {
+    localStorage.setItem(GUIDE_VIDEO_STORAGE_KEY, JSON.stringify(guideVideos));
+  }, [guideVideos]);
+
   const renderImagePicker = ({ id, name, label, onChange, currentValue }) => {
     const status = getImagePickerStatus(currentValue);
 
@@ -420,6 +460,54 @@ const StudentInfo = () => {
           {status.label}
         </div>
       </div>
+    );
+  };
+
+  const renderGuideVideoPanel = (guideKey, label) => {
+    const currentUrl = guideVideos[guideKey] || '';
+    const normalizedUrl = normalizeGuideVideoUrl(currentUrl);
+    const isYouTubeEmbed = normalizedUrl.includes('youtube.com/embed/');
+    const isDirectVideo = /\.(mp4|webm|ogg|mov)(\?|#|$)/i.test(normalizedUrl);
+
+    return (
+      <details style={{ marginBottom: '1rem', border: '1px solid #e2e8f0', borderRadius: '14px', background: '#f8fafc' }}>
+        <summary style={{ cursor: 'pointer', listStyle: 'none', padding: '0.85rem 1rem', fontSize: '0.82rem', fontWeight: '800', color: '#334155', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <i className="fas fa-circle-play" style={{ color: 'var(--primary)' }}></i>
+          {label}
+        </summary>
+        <div style={{ padding: '0 1rem 1rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <input
+            type="url"
+            value={currentUrl}
+            onChange={(event) => setGuideVideos((prev) => ({ ...prev, [guideKey]: event.target.value }))}
+            placeholder="Paste a YouTube or direct MP4/WebM guide link"
+            style={{ width: '100%', padding: '0.75rem 0.9rem', borderRadius: '12px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
+          />
+          {normalizedUrl ? (
+            isYouTubeEmbed ? (
+              <div style={{ position: 'relative', paddingTop: '56.25%', borderRadius: '12px', overflow: 'hidden', background: '#000' }}>
+                <iframe
+                  src={normalizedUrl}
+                  title={`${guideKey}-guide-video`}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}
+                />
+              </div>
+            ) : isDirectVideo ? (
+              <video src={normalizedUrl} controls style={{ width: '100%', borderRadius: '12px', background: '#000' }} />
+            ) : (
+              <a href={normalizedUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', fontSize: '0.8rem', fontWeight: '700' }}>
+                Open instructional video link
+              </a>
+            )
+          ) : (
+            <p style={{ margin: 0, fontSize: '0.76rem', color: '#64748b', lineHeight: '1.5' }}>
+              No guide video set yet. Add a link above if you want this upload section to show an instructional video.
+            </p>
+          )}
+        </div>
+      </details>
     );
   };
 
@@ -525,7 +613,7 @@ const StudentInfo = () => {
         setScanProgress(p => p < 95 ? p + (Math.random() * 15) : p);
       }, 200);
 
-      const { townCity, schoolName, idNumber, yearLevel, gpa } = extraParams;
+      const { townCity, schoolName, idNumber, yearLevel, gpa, course } = extraParams;
       const { firstName, lastName, middleName } = formData;
       const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
 
@@ -539,7 +627,7 @@ const StudentInfo = () => {
         firstName, 
         lastName, 
         middleName,
-        schoolName, idNumber, yearLevel, gpa,
+        schoolName, idNumber, yearLevel, gpa, course,
         videoUrl,
         reqNo
       );
@@ -621,7 +709,9 @@ const StudentInfo = () => {
   const handleCOEScan = async () => {
     const coeDoc = photos.mayorCOE_photo || formData.mayorCOE_photo;
     const schoolName = formData.schoolName || '';
+    const idNumber = formData.schoolIdNumber || '';
     const yearLevel = formData.yearLevel || '';
+    const course = formData.course || '';
     const videoUrl = formData.mayorCOE_video || documentVideos.mayorCOE_video;
 
     if (!coeDoc) {
@@ -632,11 +722,15 @@ const StudentInfo = () => {
       showPromptMessage('⚠️ Please record and upload the COE video first.');
       return;
     }
+    if (!schoolName || !idNumber || !yearLevel || !course) {
+      showPromptMessage('⚠️ Please complete School Name, School ID Number, Year Level, and Course first.');
+      return;
+    }
 
     setLoadingMessage({ title: 'Scanning COE', message: 'Verifying your Certificate of Enrollment and Video Content...' });
     
     try {
-      const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, yearLevel }, videoUrl);
+      const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, idNumber, yearLevel, course }, videoUrl);
       if (success) {
         showPromptMessage('✅ COE verified successfully!');
       } else {
@@ -660,6 +754,10 @@ const StudentInfo = () => {
     }
     if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
       showPromptMessage('⚠️ Please record and upload the Grades video first.');
+      return;
+    }
+    if (!schoolName || !yearLevel || !gpa) {
+      showPromptMessage('⚠️ Please complete School Name, Year Level, and GPA first.');
       return;
     }
 
@@ -695,6 +793,10 @@ const StudentInfo = () => {
       showPromptMessage('⚠️ Please record and upload the back School ID video first.');
       return;
     }
+    if (!formData.schoolName || !formData.schoolIdNumber || !formData.yearLevel) {
+      showPromptMessage('⚠️ Please complete School Name, School ID Number, and Year Level first.');
+      return;
+    }
 
     setLoadingMessage({ title: 'Scanning School ID', message: 'Verifying your School ID images and Video Content...' });
     
@@ -704,7 +806,8 @@ const StudentInfo = () => {
         { front: idFront, back: idBack },
         { 
           schoolName: formData.schoolName, 
-          idNumber: formData.schoolIdNumber 
+          idNumber: formData.schoolIdNumber,
+          yearLevel: formData.yearLevel
         },
         { front: frontVideoUrl, back: backVideoUrl }
       );
@@ -2605,6 +2708,8 @@ const StudentInfo = () => {
                     currentValue: photos.mayorIndigency_photo || userProfile?.indigency_doc,
                   })}
 
+                  {renderGuideVideoPanel('indigency', 'Instructional Video for Indigency Upload')}
+
                   <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
                     <div className="scanning-container">
                       <div className="image-container" style={{height: '240px'}} onClick={() => (photos.mayorIndigency_photo || userProfile?.indigency_doc) && setLightboxSrc(photos.mayorIndigency_photo || userProfile?.indigency_doc)}>
@@ -2823,12 +2928,14 @@ const StudentInfo = () => {
                 </div>
                 <div className="form-group">
                   <label>Name of School <span style={{color: '#e74c3c'}}>*</span></label>
-                  <select name="schoolName" value={formData.schoolName} onChange={handleInputChange} required={currentStep === 3}>
-                    <option value="">Select School</option>
-                    {SCHOOLS.map(school => (
-                      <option key={school} value={school}>{school}</option>
-                    ))}
-                  </select>
+                    <>
+                      <input type="text" name="schoolName" value={formData.schoolName} onChange={handleInputChange} placeholder="Type your school name" list="studentinfo-school-options" required={currentStep === 3} />
+                      <datalist id="studentinfo-school-options">
+                        {SCHOOLS.map((school) => (
+                          <option key={school} value={school}>{school}</option>
+                        ))}
+                      </datalist>
+                    </>
                 </div>
               </div>
 
@@ -2900,6 +3007,8 @@ const StudentInfo = () => {
                       onChange: (e) => handleSchoolIdPhotoUpload('front', e),
                       currentValue: schoolIdPhotos.front || userProfile?.id_img_front,
                     })}
+
+                    {renderGuideVideoPanel('schoolId', 'Instructional Video for School ID Upload')}
 
                     <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
                       {/* Front Photo Preview */}
@@ -3072,6 +3181,8 @@ const StudentInfo = () => {
                       currentValue: photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc,
                     })}
 
+                    {renderGuideVideoPanel('enrollment', 'Instructional Video for COR/COE Upload')}
+
                     <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
                       <div className="scanning-container">
                         <div className="image-container" style={{height: '240px'}} onClick={() => (photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && setLightboxSrc(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc)}>
@@ -3178,6 +3289,8 @@ const StudentInfo = () => {
                       onChange: handleInputChange,
                       currentValue: photos.mayorGrades_photo || userProfile?.grades_doc,
                     })}
+
+                    {renderGuideVideoPanel('grades', 'Instructional Video for Grades Upload')}
 
                     <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
                       <div className="scanning-container">

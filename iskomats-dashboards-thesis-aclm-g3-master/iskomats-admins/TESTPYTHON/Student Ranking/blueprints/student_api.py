@@ -84,6 +84,131 @@ def format_academic_period(expected_year, expected_semester=None):
     return ' '.join(parts) if parts else 'current academic period'
 
 
+def student_name_matches_text(raw_text, first_name, middle_name, last_name):
+    name_ok, _, _, match_ratio = _perform_text_matching(
+        raw_text,
+        first_name,
+        middle_name,
+        last_name,
+        None,
+        None,
+        False,
+    )
+    return name_ok, match_ratio
+
+
+def normalize_alphanumeric(value):
+    return re.sub(r'[^a-z0-9]+', '', str(value or '').lower())
+
+
+def id_number_matches_text(raw_text, expected_id_number):
+    normalized_expected = normalize_alphanumeric(expected_id_number)
+    if not normalized_expected:
+        return True, None
+
+    normalized_raw = normalize_alphanumeric(raw_text)
+    if normalized_expected in normalized_raw:
+        return True, expected_id_number
+
+    raw_tokens = [normalize_alphanumeric(token) for token in re.findall(r'[A-Za-z0-9-]+', str(raw_text or ''))]
+    raw_tokens = [token for token in raw_tokens if len(token) >= max(4, len(normalized_expected) - 2)]
+    for token in raw_tokens:
+        if not token:
+            continue
+        if token == normalized_expected:
+            return True, token
+
+    return False, None
+
+
+def parse_expected_year_level(value):
+    match = re.search(r'\b([1-9])(?:st|nd|rd|th)?\b', str(value or '').lower())
+    return match.group(1) if match else None
+
+
+def year_level_matches_text(raw_text, expected_year_level):
+    expected_level = parse_expected_year_level(expected_year_level)
+    if not expected_level:
+        return True, None
+
+    level_word_map = {
+        '1': 'first',
+        '2': 'second',
+        '3': 'third',
+        '4': 'fourth',
+        '5': 'fifth',
+        '6': 'sixth',
+    }
+    suffix_map = {'1': 'st', '2': 'nd', '3': 'rd'}
+    expected_suffix = suffix_map.get(expected_level, 'th')
+    patterns = [
+        rf'\b{expected_level}{expected_suffix}\s*year\b',
+        rf'\byear\s*level\s*[:\-]?\s*{expected_level}\b',
+        rf'\byear\s*[:\-]?\s*{expected_level}\b',
+        rf'\byr\.?\s*{expected_level}\b',
+        rf'\b{level_word_map.get(expected_level, expected_level)}\s*year\b',
+    ]
+    lowered_text = str(raw_text or '').lower()
+
+    for pattern in patterns:
+        if re.search(pattern, lowered_text, re.IGNORECASE):
+            return True, expected_level
+
+    return False, None
+
+
+def course_matches_text(raw_text, expected_course):
+    if not expected_course:
+        return True, None
+
+    normalized_raw = normalize_matching_text(raw_text)
+    normalized_course = normalize_matching_text(expected_course)
+    if normalized_course and normalized_course in normalized_raw:
+        return True, expected_course
+
+    stop_words = {'bachelor', 'science', 'arts', 'in', 'of', 'the', 'program', 'course'}
+    course_words = [
+        word for word in normalized_course.split()
+        if len(word) >= 3 and word not in stop_words
+    ]
+    raw_words = set(normalized_raw.split())
+    if course_words:
+        matched_words = 0
+        for word in course_words:
+            if word in raw_words or any(word in raw_word or raw_word in word for raw_word in raw_words if len(raw_word) >= 3):
+                matched_words += 1
+
+        required_matches = 1 if len(course_words) == 1 else min(2, len(course_words))
+        if matched_words >= required_matches:
+            return True, expected_course
+
+    acronym_words = [word for word in normalized_course.split() if word and word not in stop_words]
+    acronym = ''.join(word[0] for word in acronym_words if word[0].isalnum()).lower()
+    normalized_raw_compact = normalize_alphanumeric(raw_text)
+    if len(acronym) >= 3 and acronym in normalized_raw_compact:
+        return True, acronym.upper()
+
+    return False, None
+
+
+def gpa_matches_text(raw_text, expected_gpa):
+    match = re.search(r'\d+(?:\.\d+)?', str(expected_gpa or ''))
+    if not match:
+        return True, None
+
+    expected_value = float(match.group(0))
+    raw_numbers = [float(number) for number in re.findall(r'\d+(?:\.\d+)?', str(raw_text or ''))]
+    if not raw_numbers:
+        return False, None
+
+    tolerance = 0.10 if expected_value <= 5 else 1.0
+    for number in raw_numbers:
+        if abs(number - expected_value) <= tolerance:
+            return True, number
+
+    return False, None
+
+
 def get_announcement_image_columns(cursor):
     global _announcement_image_columns
 
@@ -1868,7 +1993,8 @@ def ocr_check():
         school_name = str(data.get('school_name') or data.get('schoolName') or '').strip()
         course = str(data.get('course') or '').strip()
         expected_gpa = str(data.get('gpa') or data.get('expectedGPA') or '').strip()
-        expected_year = str(data.get('expected_year') or data.get('expectedYear') or data.get('yearLevel') or '').strip()
+        expected_year_level = str(data.get('year_level') or data.get('yearLevel') or '').strip()
+        expected_academic_year = str(data.get('expected_year') or data.get('expectedYear') or '').strip()
         expected_id_no = str(data.get('id_number') or data.get('idNumber') or '').strip()
 
         expected_semester = None
@@ -1879,8 +2005,8 @@ def ocr_check():
                 sch = cur.fetchone()
                 if sch:
                     if sch['year']:
-                        expected_year = sch['year']
-                        print(f"[OCR] Using scholarship-defined academic year: {expected_year}", flush=True)
+                        expected_academic_year = sch['year']
+                        print(f"[OCR] Using scholarship-defined academic year: {expected_academic_year}", flush=True)
                     if sch['semester']:
                         expected_semester = sch['semester']
                         print(f"[OCR] Using scholarship-defined semester: {expected_semester}", flush=True)
@@ -1960,9 +2086,9 @@ def ocr_check():
                             video_bytes=vid_bytes,
                             keywords=video_keywords_map.get(doc_type),
                             expected_address=None,
-                            # Increased coverage to 4 frames for shaky videos 
-                            sample_positions=[0.12, 0.38, 0.62, 0.88], 
-                            max_width=800, # Higher resolution for better OCR on small table text
+                            # Ultra-fast sampling: 2 key frames (35%, 75%)
+                            sample_positions=[0.35, 0.75], 
+                            max_width=520, # Compact resolution for ultra-fast OCR
                             allow_alt_pass=not fast_video_verification,
                             fallback_text_length=30 if fast_video_verification else 0
                         )
@@ -2008,24 +2134,43 @@ def ocr_check():
                     semester_label = extract_semester_from_text(raw)
                     normalized_expected_semester = normalize_semester_label(expected_semester)
                     normalized_semester_label = normalize_semester_label(semester_label)
-                    year_only_ok = academic_year_matches_expected(year_label, expected_year)
+                    year_only_ok = academic_year_matches_expected(year_label, expected_academic_year)
                     semester_ok = True
                     if normalized_expected_semester and normalized_semester_label:
                         semester_ok = normalized_expected_semester == normalized_semester_label
-                    year_ok = is_current_school_year(year_label, semester_str=semester_label, expected_year=expected_year, expected_semester=expected_semester)
+                    year_ok = is_current_school_year(year_label, semester_str=semester_label, expected_year=expected_academic_year, expected_semester=expected_semester)
                     school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
+                    name_ok, _ = student_name_matches_text(raw, first_name, middle_name, last_name)
+                    id_ok, _ = id_number_matches_text(raw, expected_id_no)
+                    course_ok, _ = course_matches_text(raw, course)
+                    year_level_ok, _ = year_level_matches_text(raw, expected_year_level)
 
                     if v:
-                        if not year_only_ok:
-                            v, msg = False, f"Outdated academic year ({year_label or 'None'}). Expected: {expected_year or 'None'}"
+                        if not name_ok:
+                            v, msg = False, "Name mismatch"
+                        elif not id_ok:
+                            v, msg = False, f"ID number mismatch ({expected_id_no or 'None'})"
+                        elif not course_ok:
+                            v, msg = False, f"Degree/program mismatch ({course or 'None'})"
+                        elif not year_level_ok:
+                            v, msg = False, f"Year level mismatch ({expected_year_level or 'None'})"
+                        elif not year_only_ok:
+                            v, msg = False, f"Outdated academic year ({year_label or 'None'}). Expected: {expected_academic_year or 'None'}"
                         elif not semester_ok:
-                            v, msg = False, f"Semester mismatch ({normalized_semester_label or semester_label or 'None'}). Expected: {format_academic_period(expected_year, expected_semester)}"
+                            v, msg = False, f"Semester mismatch ({normalized_semester_label or semester_label or 'None'}). Expected: {format_academic_period(expected_academic_year, expected_semester)}"
                         elif not year_ok:
-                            v, msg = False, f"Academic period mismatch ({year_label or 'None'}, {normalized_semester_label or semester_label or 'None'}). Expected: {format_academic_period(expected_year, expected_semester)}"
+                            v, msg = False, f"Academic period mismatch ({year_label or 'None'}, {normalized_semester_label or semester_label or 'None'}). Expected: {format_academic_period(expected_academic_year, expected_semester)}"
                         elif not school_ok: 
                             v, msg = False, f"School mismatch ({school_name})"
                         else: 
-                            msg = f"Verified: A.Y. {year_label}" + (f" {normalized_semester_label}" if normalized_semester_label else "") + (f" | {school_name}" if school_name else "")
+                            detail_parts = []
+                            if school_name:
+                                detail_parts.append(school_name)
+                            if expected_year_level:
+                                detail_parts.append(expected_year_level)
+                            if course:
+                                detail_parts.append(course)
+                            msg = f"Verified: A.Y. {year_label}" + (f" {normalized_semester_label}" if normalized_semester_label else "") + (f" | {' | '.join(detail_parts)}" if detail_parts else "")
                     
                     return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
 
@@ -2034,24 +2179,40 @@ def ocr_check():
                     semester_label = extract_semester_from_text(raw)
                     normalized_expected_semester = normalize_semester_label(expected_semester)
                     normalized_semester_label = normalize_semester_label(semester_label)
-                    year_only_ok = academic_year_matches_expected(year_label, expected_year)
+                    year_only_ok = academic_year_matches_expected(year_label, expected_academic_year)
                     semester_ok = True
                     if normalized_expected_semester and normalized_semester_label:
                         semester_ok = normalized_expected_semester == normalized_semester_label
-                    year_ok = is_current_school_year(year_label, semester_str=semester_label, expected_year=expected_year, expected_semester=expected_semester)
+                    year_ok = is_current_school_year(year_label, semester_str=semester_label, expected_year=expected_academic_year, expected_semester=expected_semester)
                     school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
+                    name_ok, _ = student_name_matches_text(raw, first_name, middle_name, last_name)
+                    year_level_ok, _ = year_level_matches_text(raw, expected_year_level)
+                    gpa_ok, matched_gpa = gpa_matches_text(raw, expected_gpa)
 
                     if v:
-                        if not year_only_ok:
-                            v, msg = False, f"Outdated academic year ({year_label or 'None'}). Expected: {expected_year or 'None'}"
+                        if not name_ok:
+                            v, msg = False, "Full name mismatch"
+                        elif not year_level_ok:
+                            v, msg = False, f"Year level mismatch ({expected_year_level or 'None'})"
+                        elif not gpa_ok:
+                            v, msg = False, f"GPA mismatch ({expected_gpa or 'None'})"
+                        elif not year_only_ok:
+                            v, msg = False, f"Outdated academic year ({year_label or 'None'}). Expected: {expected_academic_year or 'None'}"
                         elif not semester_ok:
-                            v, msg = False, f"Semester mismatch ({normalized_semester_label or semester_label or 'None'}). Expected: {format_academic_period(expected_year, expected_semester)}"
+                            v, msg = False, f"Semester mismatch ({normalized_semester_label or semester_label or 'None'}). Expected: {format_academic_period(expected_academic_year, expected_semester)}"
                         elif not year_ok:
-                            v, msg = False, f"Academic period mismatch ({year_label or 'None'}, {normalized_semester_label or semester_label or 'None'}). Expected: {format_academic_period(expected_year, expected_semester)}"
+                            v, msg = False, f"Academic period mismatch ({year_label or 'None'}, {normalized_semester_label or semester_label or 'None'}). Expected: {format_academic_period(expected_academic_year, expected_semester)}"
                         elif not school_ok: 
                             v, msg = False, f"School mismatch ({school_name})"
                         else: 
-                            msg = f"Verified: A.Y. {year_label}" + (f" {normalized_semester_label}" if normalized_semester_label else "") + (f" | {school_name}" if school_name else "")
+                            detail_parts = []
+                            if school_name:
+                                detail_parts.append(school_name)
+                            if expected_year_level:
+                                detail_parts.append(expected_year_level)
+                            if matched_gpa is not None:
+                                detail_parts.append(f"GPA {matched_gpa}")
+                            msg = f"Verified: A.Y. {year_label}" + (f" {normalized_semester_label}" if normalized_semester_label else "") + (f" | {' | '.join(detail_parts)}" if detail_parts else "")
                     
                     return {'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
 
@@ -2059,27 +2220,30 @@ def ocr_check():
                     return {'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'SchoolID':
-                    if v:
-                        msg = "School ID front verified against student name"
+                    id_ok, _ = id_number_matches_text(raw, expected_id_no)
+                    year_level_ok, _ = year_level_matches_text(raw, expected_year_level)
+
+                    if v and not id_ok:
+                        v, msg = False, f"School ID number mismatch ({expected_id_no or 'None'})"
+                    elif v and not year_level_ok:
+                        v, msg = False, f"School ID year level mismatch ({expected_year_level or 'None'})"
+                    elif v:
+                        msg = "School ID front verified against student name, ID number, and year level"
 
                     return {'doc': 'Identity Front', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'SchoolIDBack':
                     school_ok, matched_variant, school_variants = school_name_matches_text(raw, school_name)
-                    year_label = extract_school_year_from_text(raw)
-                    year_ok = is_current_school_year(year_label, expected_year=expected_year)
                     
                     if v and not school_ok:
                         expected_label = school_name or 'selected school'
                         fallback_hint = f" Tried: {', '.join(school_variants[:4])}" if school_variants else ''
                         v, msg = False, f"School name mismatch ({expected_label}).{fallback_hint}"
-                    elif v and not year_ok:
-                        v, msg = False, f"ID validity expired or Year Mismatch. Found: '{year_label or 'None'}'. Expected: {expected_year}."
                     elif v:
                         school_suffix = f" using '{matched_variant}'" if matched_variant else ''
-                        msg = f"School ID back verified{school_suffix} for Academic Year: {year_label}"
+                        msg = f"School ID back verified{school_suffix} for school name"
                         
-                    return {'doc': 'Identity Back', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
+                    return {'doc': 'Identity Back', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 return None
             except Exception as worker_err:
@@ -2101,12 +2265,7 @@ def ocr_check():
         overall_verified = True
         
         if jobs:
-            # Use eventlet.GreenPool for parallel fetching and processing.
-            # Even though OCR itself is serialized by a semaphore in ocr_utils, 
-            # fetching video bytes and preprocessing happen in parallel.
-            from eventlet import GreenPool
-            # size limit to 3 to avoid memory spikes on Render 512MB
-            pool = GreenPool(size=min(len(jobs), 3)) 
+            pool = GreenPool(size=min(len(jobs), 5)) 
             
             def run_job(job_data):
                 try:
