@@ -40,8 +40,8 @@ _FACE_MODEL_LOCK = eventlet.semaphore.Semaphore(1)
 _FACE_DETECTOR = None
 _FACE_RECOGNIZER = None
 _FACE_MODEL_INIT_ERROR = None
-_FACE_MATCH_THRESHOLD = 0.60
-_FACE_DETECTION_THRESHOLD = 0.50
+_FACE_MATCH_THRESHOLD = 0.45
+_FACE_DETECTION_THRESHOLD = 0.35
 
 def _hash_image(image_bytes, suffix=b"_v2"):
     """Generate MD5 hash of image bytes for caching."""
@@ -120,7 +120,7 @@ def decode_base64(data):
 # ─── Image preprocessing & quality assessment (Optimization #3) ──────────────
 _MAX_OCR_WIDTH = 800       # Higher resolution for A4 document legibility (Indigency/COE)
 _MAX_VIDEO_OCR_WIDTH = 800 # Restored to 800 for better OCR on small text
-_MAX_FACE_WIDTH = 224
+_MAX_FACE_WIDTH = 512  # Increased from 224 to help detector catch small faces on ID cards
 
 # Module-level CLAHE instance (reused across all OCR calls instead of recreating each time)
 _CLAHE = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
