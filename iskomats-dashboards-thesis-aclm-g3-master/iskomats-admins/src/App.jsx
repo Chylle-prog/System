@@ -95,7 +95,7 @@ function AppContent() {
 
     verifySession({ force: true });
 
-    const intervalId = window.setInterval(verifySession, 30000);
+    const intervalId = window.setInterval(verifySession, 60000);
     const handleFocus = () => verifySession({ force: true });
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {

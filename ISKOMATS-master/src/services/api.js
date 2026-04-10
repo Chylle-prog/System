@@ -359,6 +359,17 @@ export const applicantAPI = {
   },
 
   /**
+   * Fetch a single large document independently to avoid OOM
+   * @param {string} fieldName 
+   * @returns {Promise} - { fieldName, data }
+   */
+  getDocument: async (fieldName) => {
+    return makeRequest(`/student/applicant/document/${fieldName}`, {
+      method: 'GET',
+    });
+  },
+
+  /**
    * Upload front and back ID images for OCR verification
    * @param {File} frontFile  - Front side of the ID
    * @param {File} backFile   - Back side of the ID

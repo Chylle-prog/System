@@ -399,30 +399,36 @@ except Exception as e:
 
 # ===== DECORATORS =====
 
+def _extract_token_from_request():
+    token = None
+
+    if 'Authorization' in request.headers:
+        auth_header = request.headers['Authorization']
+        try:
+            token = auth_header.split(" ")[1]
+        except IndexError:
+            raise ValueError('Invalid token format')
+
+    if not token:
+        raise ValueError('Token is missing')
+
+    return token
+
+
+def _decode_request_token():
+    token = _extract_token_from_request()
+    data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+    return data['user_id'], data.get('pro_no'), data.get('role')
+
 def token_required(f):
     """Require valid JWT token"""
     @wraps(f)
     def decorated(*args, **kwargs):
-        token = None
         conn = None
         cursor = None
         
-        # Check for token in Authorization header
-        if 'Authorization' in request.headers:
-            auth_header = request.headers['Authorization']
-            try:
-                token = auth_header.split(" ")[1]
-            except IndexError:
-                return jsonify({'message': 'Invalid token format'}), 401
-        
-        if not token:
-            return jsonify({'message': 'Token is missing'}), 401
-        
         try:
-            data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-            current_user_id = data['user_id']
-            pro_no = data.get('pro_no')
-            role = data.get('role')
+            current_user_id, pro_no, role = _decode_request_token()
             
             # Real-time synchronization check: Verify if the account is locked in the database
             conn = get_db()
@@ -447,6 +453,8 @@ def token_required(f):
             cursor = None
             conn = None
             
+        except ValueError as e:
+            return jsonify({'message': str(e)}), 401
         except jwt.ExpiredSignatureError:
             return jsonify({'message': 'Token has expired'}), 401
         except jwt.InvalidTokenError:
@@ -470,6 +478,24 @@ def token_required(f):
         
         return f(current_user_id, pro_no, role, *args, **kwargs)
     
+    return decorated
+
+
+def token_required_lightweight(f):
+    """Require a valid JWT token without a database synchronization check."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        try:
+            current_user_id, pro_no, role = _decode_request_token()
+        except ValueError as e:
+            return jsonify({'message': str(e)}), 401
+        except jwt.ExpiredSignatureError:
+            return jsonify({'message': 'Token has expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'message': 'Invalid token'}), 401
+
+        return f(current_user_id, pro_no, role, *args, **kwargs)
+
     return decorated
 
 def generate_token(user_id, role, pro_no):
@@ -3501,7 +3527,7 @@ def get_applicant_image(applicant_no, column_name):
 # ===== UTILITY ENDPOINTS =====
 
 @api_bp.route('/auth/me', methods=['GET'])
-@token_required
+@token_required_lightweight
 def get_current_user_info(current_user_id, pro_no, role):
     """Utility to verify token payload"""
     return jsonify({

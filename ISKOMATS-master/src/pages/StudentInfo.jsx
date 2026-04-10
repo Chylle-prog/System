@@ -1117,42 +1117,67 @@ const StudentInfo = () => {
 
         setFormData(prev => mergeMeaningfulValues(prev, updates));
 
-        if (profile.profile_picture) {
-          setIdPicturePreview(profile.profile_picture);
-          setFormData(prev => ({ ...prev, profile_picture: profile.profile_picture }));
-        }
-        
-        if (profile.id_img_front) {
-          setSchoolIdPhotos(prev => ({ ...prev, front: profile.id_img_front }));
-          setFormData(prev => ({ ...prev, schoolIdFront: profile.id_img_front }));
-        }
-        if (profile.id_img_back) {
-          setSchoolIdPhotos(prev => ({ ...prev, back: profile.id_img_back }));
-          setFormData(prev => ({ ...prev, schoolIdBack: profile.id_img_back }));
-        }
-        
-        if (profile.enrollment_certificate_doc) {
-          setPhotos(prev => ({ ...prev, mayorCOE_photo: profile.enrollment_certificate_doc }));
-          setFormData(prev => ({ ...prev, mayorCOE_photo: profile.enrollment_certificate_doc }));
-        }
-        if (profile.grades_doc) {
-          setPhotos(prev => ({ ...prev, mayorGrades_photo: profile.grades_doc }));
-          setFormData(prev => ({ ...prev, mayorGrades_photo: profile.grades_doc }));
-        }
-        if (profile.indigency_doc) {
-          setPhotos(prev => ({ ...prev, mayorIndigency_photo: profile.indigency_doc }));
-          setFormData(prev => ({ ...prev, mayorIndigency_photo: profile.indigency_doc }));
-        }
-        
-        if (profile.id_pic) {
-          setPhotos(prev => ({ ...prev, face_photo: profile.id_pic, mayorValidID_photo: profile.id_pic }));
-          setFormData(prev => ({ ...prev, face_photo: profile.id_pic, mayorValidID_photo: profile.id_pic }));
-        }
-        
-        if (profile.signature_image_data) {
-          setFormData(prev => ({ ...prev, applicantSignatureName: profile.signature_image_data }));
-          setSignaturePreview(profile.signature_image_data);
-        }
+        // --- LAZY LOADING OPTIMIZATION ---
+        // Instead of loading all heavy blobs at once (which causes 502 OOM on Render),
+        // we fetch them one-by-one in the background.
+        const fetchHeavyBlobs = async (prof) => {
+          const blobFields = [
+            'profile_picture', 'id_img_front', 'id_img_back', 
+            'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 
+            'id_pic', 'signature_image_data'
+          ];
+          
+          for (const field of blobFields) {
+            if (prof[field] && String(prof[field]).startsWith('/api/')) {
+              try {
+                const result = await applicantAPI.getDocument(field);
+                if (result && result.data) {
+                  const b64 = result.data;
+                  
+                  // Update specialized previews and formData with correct mappings
+                  if (field === 'profile_picture') {
+                    setIdPicturePreview(b64);
+                    setFormData(prev => ({ ...prev, profile_picture: b64 }));
+                  }
+                  else if (field === 'id_img_front') {
+                    setSchoolIdPhotos(p => ({...p, front: b64}));
+                    setFormData(prev => ({ ...prev, schoolIdFront: b64 }));
+                  }
+                  else if (field === 'id_img_back') {
+                    setSchoolIdPhotos(p => ({...p, back: b64}));
+                    setFormData(prev => ({ ...prev, schoolIdBack: b64 }));
+                  }
+                  else if (field === 'enrollment_certificate_doc') {
+                    setPhotos(p => ({...p, mayorCOE_photo: b64}));
+                    setFormData(prev => ({ ...prev, mayorCOE_photo: b64 }));
+                  }
+                  else if (field === 'grades_doc') {
+                    setPhotos(p => ({...p, mayorGrades_photo: b64}));
+                    setFormData(prev => ({ ...prev, mayorGrades_photo: b64 }));
+                  }
+                  else if (field === 'indigency_doc') {
+                    setPhotos(p => ({...p, mayorIndigency_photo: b64}));
+                    setFormData(prev => ({ ...prev, mayorIndigency_photo: b64 }));
+                  }
+                  else if (field === 'id_pic') {
+                    setPhotos(p => ({...p, face_photo: b64, mayorValidID_photo: b64}));
+                    setFormData(prev => ({ ...prev, face_photo: b64, mayorValidID_photo: b64 }));
+                  }
+                  else if (field === 'signature_image_data') {
+                    setSignaturePreview(b64);
+                    // Important: Signature field in form is 'applicantSignatureName'
+                    setFormData(prev => ({ ...prev, applicantSignatureName: b64 }));
+                  }
+                }
+              } catch (e) {
+                console.warn(`Lazy-load failed for ${field}:`, e);
+              }
+            }
+          }
+        };
+
+        // Start background loading of images
+        fetchHeavyBlobs(profile);
         
         if (profile.has_other_assistance) {
           setHasOtherAssistance('Yes');

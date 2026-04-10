@@ -1512,36 +1512,43 @@ def get_profile():
         if not applicant:
             return jsonify({'message': 'Not found'}), 404
 
+        # Specialized handling for large binary fields to prevent OOM
+        blob_fields = [
+            'profile_picture', 'signature_image_data', 'id_img_front', 'id_img_back', 
+            'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic'
+        ]
+        
         for key, value in list(applicant.items()):
-            if isinstance(value, (bytes, memoryview)):
-                if key == 'profile_picture':
-                    applicant[key] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
-                elif key == 'signature_image_data':
-                    # Decrypt signature if encrypted
-                    sig_bytes = decode_signature(value)
-                    applicant['signature_image_data'] = f"data:image/png;base64,{base64.b64encode(sig_bytes).decode('utf-8')}"
-                    applicant['has_signature'] = True
-                elif key == 'id_img_front':
-                    applicant['id_img_front'] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
-                    applicant['has_id'] = True
-                elif key == 'id_img_back':
-                    applicant['id_img_back'] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
-                elif key == 'enrollment_certificate_doc':
-                    applicant['enrollment_certificate_doc'] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
-                    applicant['has_mayorCOE_photo'] = True
-                elif key == 'grades_doc':
-                    applicant['grades_doc'] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
-                    applicant['has_mayorGrades_photo'] = True
-                elif key == 'indigency_doc':
-                    applicant['indigency_doc'] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
-                    applicant['has_mayorIndigency_photo'] = True
-                elif key == 'id_pic':
-                    applicant['id_pic'] = f"data:image/jpeg;base64,{base64.b64encode(bytes(value)).decode('utf-8')}"
-                    applicant['has_mayorValidID_photo'] = True
+            # Detect binary fields
+            if key in blob_fields:
+                if value is not None:
+                    # Map the field to a descriptive "has_" flag for the frontend
+                    flag_map = {
+                        'profile_picture': 'has_profile_picture',
+                        'signature_image_data': 'has_signature',
+                        'id_img_front': 'has_id',
+                        'id_img_back': 'has_id_back',
+                        'enrollment_certificate_doc': 'has_mayorCOE_photo',
+                        'grades_doc': 'has_mayorGrades_photo',
+                        'indigency_doc': 'has_mayorIndigency_photo',
+                        'id_pic': 'has_mayorValidID_photo'
+                    }
+                    if key in flag_map:
+                        applicant[flag_map[key]] = True
+                    else:
+                        applicant[f'has_{key}'] = True
+                        
+                    # Instead of the actual blob data, provide a URL for lazy-loading
+                    # This prevents the 502 Bad Gateway (OOM) on 512MB RAM instances
+                    applicant[key] = f"/api/student/applicant/document/{key}"
                 else:
-                    # Generic mapping for other blob fields if any
-                    applicant[f'has_{key}'] = True
-                    del applicant[key]
+                    applicant[key] = None
+                continue
+
+            if isinstance(value, (bytes, memoryview)):
+                # Generic fallback for unhandled blobs
+                applicant[f'has_{key}'] = True
+                del applicant[key]
             elif isinstance(value, datetime):
                 applicant[key] = value.isoformat()
             elif key == 'birthdate' and value:
@@ -1560,6 +1567,58 @@ def get_profile():
         if 'conn' in locals():
             conn.close()
 
+
+@student_api_bp.route('/applicant/document/<string:field_name>', methods=['GET'])
+@token_required
+def get_applicant_document(field_name):
+    """
+    Focused endpoint to fetch a single large binary field (ID, Photo, etc.)
+    This prevents memory exhaustion by avoiding loading ALL images at once in /profile.
+    """
+    allowed_fields = [
+        'profile_picture', 'signature_image_data', 'id_img_front', 'id_img_back',
+        'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic'
+    ]
+    
+    if field_name not in allowed_fields:
+        return jsonify({'message': 'Invalid field name'}), 400
+        
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        # Only select the specific field we need
+        cur.execute(f'SELECT {field_name} FROM applicants WHERE applicant_no = %s', (request.user_no,))
+        row = cur.fetchone()
+        
+        if not row or not row[field_name]:
+            return jsonify({'message': 'Document not found'}), 404
+            
+        value = row[field_name]
+        
+        # Handle decryption for signature if needed
+        if field_name == 'signature_image_data':
+            value = decode_signature(value)
+        else:
+            value = bytes(value)
+            
+        # Determine mime type
+        mime_type = 'image/jpeg'
+        if field_name == 'signature_image_data':
+            mime_type = 'image/png'
+            
+        # Optimization: Return as Base64 string so frontend can easily use it in data URI
+        # But we only do it for ONE image at a time
+        encoded = base64.b64encode(value).decode('utf-8')
+        return jsonify({
+            'fieldName': field_name,
+            'data': f"data:{mime_type};base64,{encoded}"
+        })
+    except Exception as exc:
+        print(f"[DOCUMENT] Error fetching {field_name}: {exc}", flush=True)
+        return jsonify({'message': str(exc)}), 500
+    finally:
+        if 'conn' in locals():
+            conn.close()
 
 @student_api_bp.route('/applicant/profile', methods=['PUT'])
 @token_required
