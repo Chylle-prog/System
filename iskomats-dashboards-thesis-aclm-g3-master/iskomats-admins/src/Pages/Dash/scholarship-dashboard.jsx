@@ -817,7 +817,7 @@ export default function ScholarshipDashboard({
       if (response.data.message || response.data.success) {
         alert(`Announcement ${manageMode === 'edit' ? 'updated' : 'created'} successfully!`);
         resetForm();
-        loadAnnouncements();
+        await loadAnnouncements();
         setManageMode('list');
         
         // Notify other admins of the announcement update via socket
