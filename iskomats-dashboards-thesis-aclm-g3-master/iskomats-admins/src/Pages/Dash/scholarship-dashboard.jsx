@@ -793,8 +793,8 @@ export default function ScholarshipDashboard({
       if (response.data.success) {
         alert(`Scholarship ${manageMode === 'edit' ? 'updated' : 'created'} successfully!`);
         resetForm();
-        await loadScholarships();
         setManageMode('list');
+        loadScholarships(false);
         
         // Notify other admins of the update via socket
         socketService.emit('scholarship_update', {
