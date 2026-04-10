@@ -1271,7 +1271,10 @@ const StudentInfo = () => {
     navigate('/');
   };
 
+  const isAnyScanning = [idVerified, coeVerified, gradesVerified, ocrVerified, faceVerified].some(v => v === 'verifying') || isFaceMatching;
+
   const handleInputChange = (e) => {
+    if (isAnyScanning || isSavingStep) return;
     const { name, value, type, checked, files } = e.target;
     
     // Prevent modification of locked name fields (except in Step 1 where editing is allowed)
@@ -1436,8 +1439,10 @@ const StudentInfo = () => {
 
   const handleNextStep = async (e) => {
     if (e) e.preventDefault();
-    
-    // Safety check: wait for background uploads
+    if (isAnyScanning) {
+      showPromptMessage('⚠️ Please wait for individual verification to complete before proceeding.');
+      return;
+    }
     const pendingUploads = Object.values(uploadingFields);
     if (pendingUploads.length > 0) {
       setLoadingMessage({ title: 'Completing Uploads', message: 'Finalizing your video uploads. Please wait a moment...' });
@@ -1527,8 +1532,11 @@ const StudentInfo = () => {
   };
 
   const handlePrevStep = () => {
-    setCurrentStep(prev => Math.max(prev - 1, 1));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (isAnyScanning || isSavingStep) return;
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1);
+      window.scrollTo(0, 0);
+    }
   };
 
   const handleApplicationSubmit = async (e) => {
@@ -2436,6 +2444,7 @@ const StudentInfo = () => {
           </div>
 
           <form onSubmit={handleApplicationSubmit} noValidate>
+            <fieldset disabled={isAnyScanning || isSavingStep} style={{border: 'none', padding: 0, margin: 0}}>
 
             {/* Step 1: Personal Information */}
             <div className={`step-container ${currentStep === 1 ? 'active' : ''}`}>
@@ -2621,6 +2630,7 @@ const StudentInfo = () => {
                       onRecordComplete={(blob) => handleVideoUpload('mayorIndigency_video', blob)} 
                       initialVideoUrl={documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url}
                       isUploading={Boolean(uploadingFields['mayorIndigency_video'])}
+                      disabled={isAnyScanning || isSavingStep}
                       containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
                     />
                   </div>
@@ -2913,6 +2923,7 @@ const StudentInfo = () => {
                         onRecordComplete={(blob) => handleVideoUpload('schoolIdFront_video', blob)} 
                         initialVideoUrl={documentVideos.schoolIdFront_video || userProfile?.schoolid_front_vid_url}
                         isUploading={Boolean(uploadingFields['schoolIdFront_video'])}
+                        disabled={isAnyScanning || isSavingStep}
                         containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
                       />
                     </div>
@@ -2963,6 +2974,7 @@ const StudentInfo = () => {
                         onRecordComplete={(blob) => handleVideoUpload('schoolIdBack_video', blob)} 
                         initialVideoUrl={documentVideos.schoolIdBack_video || userProfile?.schoolid_back_vid_url}
                         isUploading={Boolean(uploadingFields['schoolIdBack_video'])}
+                        disabled={isAnyScanning || isSavingStep}
                         containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
                       />
                     </div>
@@ -3080,6 +3092,7 @@ const StudentInfo = () => {
                         onRecordComplete={(blob) => handleVideoUpload('mayorCOE_video', blob)} 
                         initialVideoUrl={documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url}
                         isUploading={Boolean(uploadingFields['mayorCOE_video'])}
+                        disabled={isAnyScanning || isSavingStep}
                         containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
                       />
                     </div>
@@ -3186,6 +3199,7 @@ const StudentInfo = () => {
                         onRecordComplete={(blob) => handleVideoUpload('mayorGrades_video', blob)} 
                         initialVideoUrl={documentVideos.mayorGrades_video || userProfile?.grades_vid_url}
                         isUploading={Boolean(uploadingFields['mayorGrades_video'])}
+                        disabled={isAnyScanning || isSavingStep}
                         containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
                       />
                     </div>
@@ -3465,6 +3479,7 @@ const StudentInfo = () => {
                 </button>
               </div>
             </div>
+            </fieldset>
           </form>
         </div>
 
@@ -3523,18 +3538,7 @@ const StudentInfo = () => {
       </div>
 
       {/* Loading overlay */}
-      <div className={`loading-overlay ${
-        isSubmitting || 
-        isSavingStep || 
-        isInitialLoading || 
-        idVerified === 'verifying' || 
-        coeVerified === 'verifying' || 
-        gradesVerified === 'verifying' || 
-        ocrVerified === 'verifying' || 
-        faceVerified === 'verifying' || 
-        isFaceMatching
-          ? 'active' : ''
-      }`}>
+      <div className={`loading-overlay ${isSubmitting || isSavingStep || isInitialLoading ? 'active' : ''}`}>
         <div className="loading-modal">
           <div className="loading-spinner"></div>
           <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>

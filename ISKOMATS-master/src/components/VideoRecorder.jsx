@@ -10,7 +10,7 @@ import React, { useState, useEffect } from 'react';
  * @param {string} initialVideoUrl - Existing video URL to show as preview
  * @param {boolean} isUploading - Whether the video is currently uploading
  */
-const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoUrl, isUploading = false, containerStyle = {} }) => {
+const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoUrl, isUploading = false, containerStyle = {}, disabled = false }) => {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [fileName, setFileName] = useState('');
   const [videoError, setVideoError] = useState(null);
@@ -31,6 +31,7 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
   }, [initialVideoUrl]);
 
   const handleFileChange = (e) => {
+    if (disabled) return;
     const file = e.target.files[0];
     if (file) {
       // Validate file type
@@ -50,6 +51,7 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
   };
 
   const handleReset = () => {
+    if (disabled) return;
     setPreviewUrl(null);
     setFileName('');
     if (onRecordComplete) onRecordComplete(null, null);
@@ -91,13 +93,14 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
       {!previewUrl ? (
         <div style={{ padding: '1rem' }}>
           <label 
-            htmlFor={`v-upload-${label.replace(/\s+/g, '-')}`}
+            htmlFor={disabled ? undefined : `v-upload-${label.replace(/\s+/g, '-')}`}
             style={{ 
-              cursor: 'pointer', 
+              cursor: disabled ? 'not-allowed' : 'pointer', 
               display: 'flex', 
               flexDirection: 'column', 
               alignItems: 'center', 
-              gap: '12px' 
+              gap: '12px',
+              opacity: disabled ? 0.6 : 1
             }}
           >
             <div style={{ 
@@ -175,7 +178,9 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
                 
                 <button
                   type="button"
+                  disabled={disabled}
                   onClick={() => {
+                    if (disabled) return;
                     setPreviewUrl(null);
                     setFileName('');
                     setVideoError(null);
@@ -189,9 +194,10 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
                     borderRadius: '6px',
                     fontSize: '0.8rem',
                     fontWeight: '600',
-                    cursor: 'pointer',
+                    cursor: disabled ? 'not-allowed' : 'pointer',
                     display: 'inline-flex',
-                    alignItems: 'center'
+                    alignItems: 'center',
+                    opacity: disabled ? 0.6 : 1
                   }}
                 >
                   <i className="fas fa-redo" style={{ marginRight: '4px' }}></i>
@@ -230,15 +236,17 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
             </span>
             <button 
               type="button" 
+              disabled={disabled}
               onClick={handleReset} 
               style={{ 
                 background: 'transparent', 
                 border: 'none', 
                 color: '#e74c3c', 
                 fontSize: '0.8rem', 
-                cursor: 'pointer',
+                cursor: disabled ? 'not-allowed' : 'pointer',
                 fontWeight: '600',
-                textDecoration: 'underline'
+                textDecoration: 'underline',
+                opacity: disabled ? 0.5 : 1
               }}
             >
               Change Video

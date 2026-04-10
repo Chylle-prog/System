@@ -26,7 +26,8 @@ from services.ocr_utils import (
     extract_school_year_from_text, is_current_school_year, 
     verify_signature_against_id, save_signature_profile, verify_video_content,
     extract_semester_from_text,
-    _perform_text_matching
+    _perform_text_matching,
+    extract_document_text
 )
 from services.notification_service import create_notification, fetch_google_access_token
 from services.google_auth_service import verify_google_token
@@ -1867,6 +1868,14 @@ def ocr_check():
                 vid_url = vid_url_map.get(doc_type)
                 name_keywords = build_student_name_keywords(first_name, middle_name, last_name)
                 school_variants = build_school_name_variants(school_name)
+                fast_video_verification = doc_type in ['Enrollment', 'Grades']
+                video_keywords_map = {
+                    'Indigency': ['Indigency', 'Certificate', 'Barangay'],
+                    'Enrollment': ['Enrollment', 'Certificate', 'COE', 'Registered'],
+                    'Grades': ['Grades', 'Grade', 'Transcript', 'Record', 'Evaluation'],
+                    'SchoolID': name_keywords or ['Student', 'Name'],
+                    'SchoolIDBack': school_variants or ['School', 'Campus']
+                }
                 # Define keywords for each document type
                 # Indigency can be detected as 'Certificate' + other indicators
                 doc_keywords = {
@@ -1895,8 +1904,11 @@ def ocr_check():
                     if vid_bytes:
                         v_video, msg_video = verify_video_content(
                             video_bytes=vid_bytes,
-                            keywords=doc_keywords.get(doc_type),
-                            expected_address=None  # Address matching in videos is unreliable and slow; keywords alone are sufficient
+                            keywords=video_keywords_map.get(doc_type),
+                            expected_address=None,  # Address matching in videos is unreliable and slow; keywords alone are sufficient
+                            sample_positions=[0.18, 0.55, 0.85] if fast_video_verification else None,
+                            max_width=480 if fast_video_verification else None,
+                            allow_alt_pass=not fast_video_verification
                         )
                     else:
                         msg_video = f"Video file unreachable ({fetch_err})"
@@ -1914,7 +1926,11 @@ def ocr_check():
                 # 1.b OCR Extraction from document image
                 target_address = town_city if doc_type == 'Indigency' else None
                 
-                if doc_type == 'SchoolIDBack':
+                if doc_type in ['Enrollment', 'Grades']:
+                    raw, extraction_error = extract_document_text(doc_bytes, max_width=900)
+                    v = bool(raw and raw.strip())
+                    msg = extraction_error or ('Verified' if v else 'Unable to read document text')
+                elif doc_type == 'SchoolIDBack':
                     v, msg, raw, _ = verify_id_with_ocr(doc_bytes, None, None, None, None)
                 else:
                     v, msg, raw, _ = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address)

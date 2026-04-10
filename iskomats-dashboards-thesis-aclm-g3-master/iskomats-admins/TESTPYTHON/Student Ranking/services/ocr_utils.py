@@ -44,9 +44,9 @@ _FACE_MODEL_INIT_ERROR = None
 _FACE_MATCH_THRESHOLD = 0.60
 _FACE_DETECTION_THRESHOLD = 0.50
 
-def _hash_image(image_bytes):
+def _hash_image(image_bytes, suffix=b"_v2"):
     """Generate MD5 hash of image bytes for caching."""
-    return hashlib.md5(image_bytes + b"_v2").hexdigest()
+    return hashlib.md5(image_bytes + suffix).hexdigest()
 
 def _cache_get(image_hash):
     """Retrieve cached OCR result if available."""
@@ -456,13 +456,55 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     return False, "Identity verification mismatch", best_text, 0.0
 
 
+def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH):
+    """Fast OCR text extraction for non-identity documents like COE and grades."""
+    if not _check_tesseract():
+        return "", "OCR Engine (Tesseract) not found."
+    if not image_bytes:
+        return "", "No image data provided."
+
+    cache_key = _hash_image(image_bytes, suffix=b"_doc_text_v1")
+    cached_result = _cache_get(cache_key)
+    if cached_result is not None:
+        return cached_result
+
+    try:
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            return "", "Invalid image format"
+
+        is_good, quality_reason = assess_image_quality(img)
+        if not is_good:
+            return "", f"Image quality issue: {quality_reason}"
+
+        h, w = img.shape[:2]
+        if w > max_width:
+            scale = max_width / w
+            img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+    except Exception as e:
+        return "", f"Preprocessing error: {str(e)}"
+
+    with OCR_SEMAPHORE:
+        try:
+            text = _run_tesseract_on_image(img, psm=6, skip_pass2=True)
+            if len(text.strip()) < 20:
+                text = _run_tesseract_on_image(img, psm=3, skip_pass2=False)
+        except Exception as e:
+            return "", f"OCR extraction error: {str(e)}"
+
+    result = (text, None)
+    _cache_set(cache_key, result)
+    return result
+
+
 def _preprocess_frame_for_ocr(frame):
     """Enhance a video frame for better OCR accuracy (handles compression artifacts)."""
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     return _CLAHE.apply(gray)
 
 
-def verify_video_content(video_bytes, keywords, expected_address=None):
+def verify_video_content(video_bytes, keywords, expected_address=None, sample_positions=None, max_width=None, allow_alt_pass=True):
     """
     Captures frames from video bytes and scans for keywords and address using OCR.
     Optimized to sample 2 key frames for balanced speed/accuracy.
@@ -475,7 +517,8 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
     
     # --- SPEED OPTIMIZATION: Check Video Cache ---
     # Instantly returns result if this specific video byte signature was already scanned
-    vid_hash = _hash_image(video_bytes)
+    hash_suffix = f"_video_{sample_positions}_{max_width}_{allow_alt_pass}".encode()
+    vid_hash = _hash_image(video_bytes, suffix=hash_suffix)
     cached_res = _cache_get(vid_hash)
     if cached_res is not None:
         print(f"[VIDEO CACHE] Reusing extremely fast cached result for {vid_hash[:8]}...", flush=True)
@@ -502,7 +545,7 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
                 return False, "Invalid video frame count"
             
             # Frame positions to sample: Increased for more comprehensive coverage (0.1 to 0.9)
-            sample_positions = [0.1, 0.3, 0.5, 0.7, 0.9]
+            sample_positions = sample_positions or [0.1, 0.3, 0.5, 0.7, 0.9]
             sample_indices = []
             for pos in sample_positions:
                 idx = int(frame_count * pos)
@@ -530,15 +573,16 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
                 processed_frame = _preprocess_frame_for_ocr(frame)
                 
                 h, w = processed_frame.shape[:2]
-                if w > _MAX_VIDEO_OCR_WIDTH:
-                    scale = _MAX_VIDEO_OCR_WIDTH / w
+                width_limit = max_width or _MAX_VIDEO_OCR_WIDTH
+                if w > width_limit:
+                    scale = width_limit / w
                     processed_frame = cv2.resize(processed_frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
 
                 # Try Primary Pass (PSM 3 - Sparse Text)
                 text = pytesseract.image_to_string(processed_frame, config='--psm 3 --oem 1')
                 
                 # If sparse pass is weak, try block-mode pass (PSM 6 - Uniform block)
-                if len(text.strip()) < 10:
+                if allow_alt_pass and len(text.strip()) < 10:
                     text_alt = pytesseract.image_to_string(processed_frame, config='--psm 6 --oem 1')
                     if len(text_alt.strip()) > len(text.strip()):
                         text = text_alt
