@@ -198,8 +198,8 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     text1 = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 3')
     if text1.strip():
         results.append(text1.strip())
-        # If Pass 1 is very successful, skip Pass 2 to save significant time
-        if len(text1.strip()) > 50:
+        # OPTIMIZATION: If Pass 1 is even slightly successful (25+ chars), skip Pass 2 to save 5-10 seconds
+        if len(text1.strip()) > 25:
             return text1.strip()
         
     # Pass 2: Adaptive Thresholding (Fails on white-on-dark, but great for shadows on paper)
@@ -562,8 +562,9 @@ def verify_video_content(video_bytes, keywords, expected_address=None, sample_po
                 _cache_set(vid_hash, (False, "Invalid video frame count"))
                 return False, "Invalid video frame count"
             
-            # Frame positions to sample: Increased for more comprehensive coverage (0.1 to 0.9)
-            sample_positions = sample_positions or [0.1, 0.3, 0.5, 0.7, 0.9]
+            # --- SPEED OPTIMIZATION: Sample 2 frames (Start/End) instead of 5 ---
+            # This reduces Video OCR time by ~60%
+            sample_positions = sample_positions or [0.3, 0.75]
             sample_indices = []
             for pos in sample_positions:
                 idx = int(frame_count * pos)
@@ -590,8 +591,9 @@ def verify_video_content(video_bytes, keywords, expected_address=None, sample_po
                 # Preprocessing for Video Frames (Optimization: Handles compression artifacts/blur)
                 processed_frame = _preprocess_frame_for_ocr(frame)
                 
+                # Use lower resolution for video frames (640px) to speed up Tesseract
                 h, w = processed_frame.shape[:2]
-                width_limit = max_width or _MAX_VIDEO_OCR_WIDTH
+                width_limit = max_width or 640 
                 if w > width_limit:
                     scale = width_limit / w
                     processed_frame = cv2.resize(processed_frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
