@@ -679,20 +679,31 @@ def is_current_school_year(year_str, semester_str=None, expected_year="2026", ex
     expected_years = [int(y) for y in re.findall(r'20\d{2}', str(expected_year))]
     if not expected_years:
         # Fallback to current year if expected_year doesn't contain a valid year string
-        expected_years = [2026]
+        expected_years = [2025, 2026]
     
-    # Check if any extracted year matches any of the expected years
-    year_ok = any(y in expected_years for y in extracted_years)
+    # --- YEAR RANGE CHECK ---
+    # Check if any extracted year falls within the range [min_expected, max_expected]
+    min_exp, max_exp = min(expected_years), max(expected_years)
+    year_ok = any(min_exp <= y <= max_exp for y in extracted_years)
+    
     if not year_ok: return False
 
-    # --- SEMESTER VALIDATION (Optional) ---
+    # --- SEMESTER VALIDATION ---
+    norm_expected = None
     if expected_semester:
-        # Normalize expected_semester (e.g., "1st Semester" -> "1st", "2nd" -> "2nd")
-        norm_expected = "1st" if "1" in str(expected_semester) else ("2nd" if "2" in str(expected_semester) else None)
-        if norm_expected and semester_str:
-            norm_extracted = "1st" if "1" in str(semester_str) else ("2nd" if "2" in str(semester_str) else None)
-            if norm_extracted and norm_extracted != norm_expected:
-                return False # Year ok but semester mismatch
+        # Map 1/2 or 1st/2nd to normalized strings
+        s = str(expected_semester).lower()
+        if '1' in s or 'first' in s: norm_expected = "1st"
+        elif '2' in s or 'second' in s: norm_expected = "2nd"
+
+    norm_extracted = None
+    if semester_str:
+        s = str(semester_str).lower()
+        if '1' in s or 'first' in s: norm_extracted = "1st"
+        elif '2' in s or 'second' in s: norm_extracted = "2nd"
+
+    if norm_expected and norm_extracted and norm_expected != norm_extracted:
+        return False
     
     return True
 
