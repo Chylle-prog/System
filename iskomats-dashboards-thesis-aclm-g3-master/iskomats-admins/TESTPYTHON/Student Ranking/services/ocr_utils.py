@@ -16,6 +16,15 @@ import eventlet.tpool
 import eventlet.semaphore
 from collections import OrderedDict
 
+# ─── Environment hints for threading & memory ──────────────────────────────────
+# Force single-threaded execution for heavy ML (ONNX/UniFace) 
+# to stay within Render's memory limits (512MB) and prevent server freezes.
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
 # Global OCR Concurrency Control: Increased to 2 for better parallel throughput on Render
 OCR_SEMAPHORE = eventlet.semaphore.Semaphore(2)
 
@@ -736,11 +745,17 @@ def _init_face_models():
         try:
             from uniface.detection import RetinaFace
             from uniface.recognition import ArcFace
+            import onnxruntime as ort
 
-            providers = ['CPUExecutionProvider']
-            _FACE_DETECTOR = RetinaFace(providers=providers)
-            _FACE_RECOGNIZER = ArcFace(providers=providers)
-            print("[FACE] UniFace RetinaFace and ArcFace initialized on CPU.", flush=True)
+            # Limit thread count to avoid OOM and server freeze on Render
+            sess_options = ort.SessionOptions()
+            sess_options.intra_op_num_threads = 1
+            sess_options.inter_op_num_threads = 1
+            sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+
+            _FACE_DETECTOR = RetinaFace(providers=providers, session_options=sess_options)
+            _FACE_RECOGNIZER = ArcFace(providers=providers, session_options=sess_options)
+            print("[FACE] UniFace RetinaFace and ArcFace initialized on CPU (Single-Threaded).", flush=True)
         except Exception as exc:
             _FACE_MODEL_INIT_ERROR = f"Failed to initialize UniFace models: {str(exc)}"
             print(f"[FACE] {_FACE_MODEL_INIT_ERROR}", flush=True)

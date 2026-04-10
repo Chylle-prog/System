@@ -3516,9 +3516,9 @@ const StudentInfo = () => {
                             }
                           } catch (err) {
                             console.error('Match error:', err);
-                            // Generic success for technical issues on matching too
-                            showPromptMessage('ℹ️ Verification service issue. Proceeding with manual check.');
-                            setFaceMatchResult({ verified: true, technical_unavailable: true });
+                            // Do not auto-verify on technical errors for security
+                            showPromptMessage('ℹ️ Verification service issue. Please try again with a clearer photo.');
+                            setFaceMatchResult({ verified: false, technical_unavailable: true });
                           } finally {
                             setIsFaceMatching(false);
                           }

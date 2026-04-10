@@ -1,4 +1,5 @@
 import base64
+import eventlet.tpool
 import os
 import re
 import time
@@ -2616,18 +2617,23 @@ def face_match():
         if not face_bytes or not id_bytes:
             return jsonify({'verified': False, 'message': 'Invalid image format. Must be base64 data URI.'}), 400
 
-        # Run face verification using UniFace/ONNX (via ocr_utils)
-        verified, message, confidence = verify_face_with_id(face_bytes, id_bytes)
-        
+        # Face match can take 10-20s on first load due to model init
+        # Use tpool.execute to avoid blocking the main Eventlet loop, 
+        # which prevents timeouts and 'CORS issues' caused by dropped connections.
+        verified, message, confidence = eventlet.tpool.execute(
+            verify_face_with_id, face_bytes, id_bytes
+        )
         return jsonify({
             'verified': verified,
             'message': message,
             'confidence': confidence
         })
+    except ValueError as e:
+        # Proper domain error (e.g. face too small, no face detected)
+        return jsonify({'verified': False, 'message': str(e), 'confidence': 0.0}), 200
     except Exception as e:
-        print(f"[FACE-MATCH] Error: {str(e)}", flush=True)
-        traceback.print_exc()
-        return jsonify({'verified': False, 'message': f'Internal verification error: {str(e)}'}), 500
+        print(f"[FACE-MATCH] Unexpected Error: {str(e)}", flush=True)
+        return jsonify({'verified': False, 'message': f'Internal service error: {str(e)}'}), 500
 
 
 @student_api_bp.route('/verification/signature-match', methods=['POST'])

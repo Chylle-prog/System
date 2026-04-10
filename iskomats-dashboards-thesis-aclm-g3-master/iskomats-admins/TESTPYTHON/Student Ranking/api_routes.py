@@ -2593,22 +2593,51 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
         cursor = conn.cursor()
         resolved_provider_no, _ = resolve_provider_context(cursor, current_user_id, role, pro_no)
         is_super_admin = (role or '').strip().lower() == 'admin'
+
+        cursor.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'scholarships'
+              AND column_name IN ('desc', 'date_created', 'semester', 'year', 'is_removed')
+            """
+        )
+        scholarship_columns = {
+            row['column_name'] if isinstance(row, dict) else row[0]
+            for row in cursor.fetchall()
+        }
+
+        description_expr = 's."desc"' if 'desc' in scholarship_columns else 'NULL'
+        date_created_expr = 's.date_created' if 'date_created' in scholarship_columns else 'NULL'
+        semester_expr = 's.semester' if 'semester' in scholarship_columns else 'NULL'
+        year_expr = 's.year' if 'year' in scholarship_columns else 'NULL'
+
+        where_clauses = []
+        if 'is_removed' in scholarship_columns:
+            where_clauses.append('COALESCE(s.is_removed, FALSE) = FALSE')
         
         query = '''
             SELECT s.req_no as id, s.req_no as "reqNo", s.scholarship_name as "scholarshipName", 
                    s.gpa as "minGpa", s.location, s.parent_finance as "parentFinance",
                    s.slots, s.deadline, s.pro_no as "proNo", p.provider_name as "providerName",
-                                         s."desc" as description, s.date_created as "dateCreated",
-                                         s.semester, s.year,
+                                         {description_expr} as description, {date_created_expr} as "dateCreated",
+                                         {semester_expr} as semester, {year_expr} as year,
                                          COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS TRUE) as "acceptedCount",
                                          COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS NULL) as "pendingCount",
                                          COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS FALSE) as "declinedCount"
             FROM scholarships s
             LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
                         LEFT JOIN applicant_status ast ON ast.scholarship_no = s.req_no
-                 WHERE COALESCE(s.is_removed, FALSE) = FALSE
-        '''
+        '''.format(
+            description_expr=description_expr,
+            date_created_expr=date_created_expr,
+            semester_expr=semester_expr,
+            year_expr=year_expr,
+        )
         params = []
+
+        if where_clauses:
+            query += ' WHERE ' + ' AND '.join(where_clauses)
         
         # Isolation: If not superadmin, only show scholarships for this provider
         if not is_super_admin:
@@ -2616,18 +2645,33 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
                 cursor.close()
                 conn.close()
                 return jsonify({'message': 'User not associated with a scholarship provider'}), 403
-            query += ' AND s.pro_no = %s'
+            query += (' AND ' if where_clauses else ' WHERE ') + 's.pro_no = %s'
             params.append(resolved_provider_no)
         elif program.lower() != 'all':
-            query += ' AND (p.provider_name ILIKE %s OR (s.pro_no IS NULL AND %s != "all"))'
-            params.extend([f"%{program}%", program])
+            query += (' AND ' if where_clauses else ' WHERE ') + 'p.provider_name ILIKE %s'
+            params.append(f"%{program}%")
             
-        query += '''
-            GROUP BY s.req_no, s.scholarship_name, s.gpa, s.location, s.parent_finance,
-                     s.slots, s.deadline, s.pro_no, p.provider_name, s."desc",
-                     s.date_created, s.semester, s.year
-            ORDER BY s.req_no DESC
-        '''
+        group_by_columns = [
+            's.req_no',
+            's.scholarship_name',
+            's.gpa',
+            's.location',
+            's.parent_finance',
+            's.slots',
+            's.deadline',
+            's.pro_no',
+            'p.provider_name',
+        ]
+        if 'desc' in scholarship_columns:
+            group_by_columns.append('s."desc"')
+        if 'date_created' in scholarship_columns:
+            group_by_columns.append('s.date_created')
+        if 'semester' in scholarship_columns:
+            group_by_columns.append('s.semester')
+        if 'year' in scholarship_columns:
+            group_by_columns.append('s.year')
+
+        query += '\n            GROUP BY ' + ', '.join(group_by_columns) + '\n            ORDER BY s.req_no DESC\n        '
         
         cursor.execute(query, params)
         rows = cursor.fetchall()
