@@ -8,6 +8,7 @@ import json
 import requests
 import urllib.request as urllib_request
 from urllib import error as urllib_error
+from urllib.parse import urlparse
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from functools import wraps
@@ -275,6 +276,53 @@ def fetch_video_bytes_from_url(url):
         return None, "Connection timeout"
     except Exception as e:
         return None, str(e)
+
+
+def is_trusted_storage_url(url):
+    if not isinstance(url, str):
+        return False
+
+    try:
+        parsed_url = urlparse(url.strip())
+    except Exception:
+        return False
+
+    if parsed_url.scheme not in ('http', 'https') or not parsed_url.netloc:
+        return False
+
+    supabase_url = os.environ.get('SUPABASE_URL', '').strip()
+    if supabase_url:
+        try:
+            supabase_host = urlparse(supabase_url).netloc.lower()
+            if parsed_url.netloc.lower() == supabase_host:
+                return True
+        except Exception:
+            pass
+
+    return parsed_url.netloc.lower().endswith('.supabase.co')
+
+
+def resolve_verification_image_bytes(image_data):
+    if isinstance(image_data, memoryview):
+        return image_data.tobytes()
+    if isinstance(image_data, (bytes, bytearray)):
+        return bytes(image_data)
+    if not isinstance(image_data, str):
+        return None
+
+    normalized = image_data.strip()
+    if not normalized:
+        return None
+
+    decoded = decode_base64(normalized)
+    if decoded:
+        return decoded
+
+    if normalized.startswith('http') and is_trusted_storage_url(normalized):
+        content, _error = fetch_video_bytes_from_url(normalized)
+        return content
+
+    return None
 
 
 def normalize_matching_text(value):
@@ -588,10 +636,15 @@ def token_required(route_handler):
 
 
 def decode_base64(data_uri):
-    if not data_uri or not isinstance(data_uri, str) or ',' not in data_uri:
+    if not data_uri or not isinstance(data_uri, str):
         return None
     try:
-        return base64.b64decode(data_uri.split(',')[1])
+        payload = data_uri.strip()
+        if payload.startswith('data:'):
+            if ',' not in payload:
+                return None
+            payload = payload.split(',', 1)[1]
+        return base64.b64decode(payload, validate=True)
     except Exception:
         return None
 
@@ -2669,12 +2722,11 @@ def face_match():
         return jsonify({'verified': False, 'message': 'Missing face or ID image.'}), 400
 
     try:
-        # Check if the images are base64 strings
-        face_bytes = decode_base64(face_image_data) if isinstance(face_image_data, str) and face_image_data.startswith('data:') else None
-        id_bytes = decode_base64(id_image_data) if isinstance(id_image_data, str) and id_image_data.startswith('data:') else None
+        face_bytes = resolve_verification_image_bytes(face_image_data)
+        id_bytes = resolve_verification_image_bytes(id_image_data)
 
         if not face_bytes or not id_bytes:
-            return jsonify({'verified': False, 'message': 'Invalid image format. Must be base64 data URI.'}), 400
+            return jsonify({'verified': False, 'message': 'Invalid image format. Must be base64 or a trusted Supabase storage URL.'}), 400
 
         # Face match can take 10-20s on first load due to model init
         # Use tpool.execute to avoid blocking the main Eventlet loop, 
@@ -2711,12 +2763,11 @@ def signature_match():
         return jsonify({'verified': False, 'message': 'Missing signature or ID back image.', 'confidence': 0.0}), 400
 
     try:
-        # Check if the images are base64 strings
-        signature_bytes = decode_base64(signature_data) if isinstance(signature_data, str) and signature_data.startswith('data:') else None
-        id_back_bytes = decode_base64(id_back_data) if isinstance(id_back_data, str) and id_back_data.startswith('data:') else None
+        signature_bytes = resolve_verification_image_bytes(signature_data)
+        id_back_bytes = resolve_verification_image_bytes(id_back_data)
 
         if not signature_bytes or not id_back_bytes:
-            return jsonify({'verified': False, 'message': 'Invalid image format. Must be base64 data URI.', 'confidence': 0.0}), 400
+            return jsonify({'verified': False, 'message': 'Invalid image format. Must be base64 or a trusted Supabase storage URL.', 'confidence': 0.0}), 400
 
         # Use new signature verification function
         # Pass request.user_no (from token) to enable local profile matching

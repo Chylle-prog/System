@@ -88,6 +88,40 @@ const normalizeGuideVideoUrl = (value) => {
   }
 };
 
+const isDataUrl = (value) => typeof value === 'string' && value.startsWith('data:');
+const isHttpUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(value);
+
+const fetchImageAsDataUrl = async (url) => {
+  const response = await fetch(url, { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`Failed to load image: ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Failed to convert image to data URL'));
+    reader.readAsDataURL(blob);
+  });
+};
+
+const normalizeVerificationImage = async (value) => {
+  if (!value) {
+    return value;
+  }
+
+  if (isDataUrl(value)) {
+    return value;
+  }
+
+  if (isHttpUrl(value)) {
+    return fetchImageAsDataUrl(value);
+  }
+
+  return value;
+};
+
 const STEP_FIELDS = {
   1: [
     'lastName', 'firstName', 'middleName', 'maidenName', 'dateOfBirth', 'placeOfBirth',
@@ -3522,7 +3556,7 @@ const StudentInfo = () => {
                     <div style={{width: '100%', maxWidth: '300px', margin: '0 auto'}}>
                       {!faceMatchResult ? (
                         <button type="button" onClick={async () => {
-                          const idImg = schoolIdPhotos.front;
+                          const idImg = schoolIdPhotos.front || userProfile?.id_img_front;
                           if (!idImg) {
                             showPromptMessage('⚠️ Please upload your School ID in Step 3 first.');
                             return;
@@ -3532,7 +3566,9 @@ const StudentInfo = () => {
                           setLoadingMessage({ title: 'Matching Face', message: 'Comparing captured photo with your School ID...' });
                           
                           try {
-                            const result = await applicantAPI.verifyFaceAgainstId(photos.face_photo, idImg);
+                            const faceImage = await normalizeVerificationImage(photos.face_photo);
+                            const normalizedIdImage = await normalizeVerificationImage(idImg);
+                            const result = await applicantAPI.verifyFaceAgainstId(faceImage, normalizedIdImage);
                             setFaceMatchResult(result);
                             if (result.verified) {
                               showPromptMessage('✅ Face successfully matched with ID!');
