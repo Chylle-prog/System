@@ -752,6 +752,9 @@ def _init_face_models():
             sess_options.intra_op_num_threads = 1
             sess_options.inter_op_num_threads = 1
             sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+            
+            # Explicitly define CPU provider for ONNX Runtime to avoid NameError
+            providers = ['CPUExecutionProvider']
 
             _FACE_DETECTOR = RetinaFace(providers=providers, session_options=sess_options)
             _FACE_RECOGNIZER = ArcFace(providers=providers, session_options=sess_options)
