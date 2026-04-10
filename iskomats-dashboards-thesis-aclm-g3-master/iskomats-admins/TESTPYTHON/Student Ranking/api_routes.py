@@ -3461,7 +3461,6 @@ def get_admin_announcements(current_user_id, pro_no, role):
     try:
         conn = get_db()
         cur = conn.cursor()
-        ensure_schema_integrity(cur)
         resolved_provider_no, _ = resolve_provider_context(cur, current_user_id, role, pro_no)
         is_super_admin = (role or '').strip().lower() == 'admin'
         try:
@@ -3474,7 +3473,7 @@ def get_admin_announcements(current_user_id, pro_no, role):
             SELECT column_name
             FROM information_schema.columns
             WHERE table_name = 'announcements'
-              AND column_name IN ('time_added', 'status_updated', 'ann_date')
+              AND column_name IN ('time_added', 'status_updated', 'ann_date', 'is_removed')
             """
         )
         announcement_columns = {
@@ -3495,6 +3494,10 @@ def get_admin_announcements(current_user_id, pro_no, role):
             date_col = 'NULL'
             order_col = 'a.ann_no DESC'
 
+        where_clauses = []
+        if 'is_removed' in announcement_columns:
+            where_clauses.append('COALESCE(a.is_removed, FALSE) = FALSE')
+
         query = """
             SELECT
                 a.ann_no,
@@ -3507,7 +3510,6 @@ def get_admin_announcements(current_user_id, pro_no, role):
             FROM announcements a
             LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
             {image_join}
-            WHERE COALESCE(a.is_removed, FALSE) = FALSE
         """.format(
             date_col=date_col,
             image_select=f"ai.{primary_key_column} AS image_id" if primary_key_column and foreign_key_column else "NULL AS image_id",
@@ -3515,12 +3517,15 @@ def get_admin_announcements(current_user_id, pro_no, role):
         )
         params = []
 
+        if where_clauses:
+            query += ' WHERE ' + ' AND '.join(where_clauses)
+
         if not is_super_admin:
             if resolved_provider_no is None:
                 cur.close()
                 conn.close()
                 return jsonify({'message': 'User not associated with a scholarship provider'}), 403
-            query += ' AND a.pro_no = %s'
+            query += (' AND ' if where_clauses else ' WHERE ') + 'a.pro_no = %s'
             params.append(resolved_provider_no)
 
         if primary_key_column and foreign_key_column:
