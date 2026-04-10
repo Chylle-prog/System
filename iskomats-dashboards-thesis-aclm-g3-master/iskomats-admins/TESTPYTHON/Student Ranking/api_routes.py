@@ -404,6 +404,8 @@ def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
+        conn = None
+        cursor = None
         
         # Check for token in Authorization header
         if 'Authorization' in request.headers:
@@ -436,10 +438,14 @@ def token_required(f):
             if lock_record and lock_record.get('is_locked'):
                 cursor.close()
                 conn.close()
+                cursor = None
+                conn = None
                 return jsonify({'message': 'Account has been suspended. Please contact the administrator.', 'suspended': True}), 403
                 
             cursor.close()
             conn.close()
+            cursor = None
+            conn = None
             
         except jwt.ExpiredSignatureError:
             return jsonify({'message': 'Token has expired'}), 401
@@ -449,6 +455,17 @@ def token_required(f):
             print(f"[AUTH] Synchronization check failed: {e}")
             # If database check fails, we allow the request to proceed if the JWT is valid to prevent complete system lock-out
             # during temporary DB hiccups, but in production, you might want to block this as well.
+        finally:
+            if cursor:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
         
         return f(current_user_id, pro_no, role, *args, **kwargs)

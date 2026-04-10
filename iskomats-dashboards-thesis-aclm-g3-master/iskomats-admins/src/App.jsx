@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Dash from './Pages/Dash/dash.jsx'
 import ProviderDashboard from './Pages/Dash/provider-dashboard'
 import { PROVIDER_DASHBOARD_ROUTE, isProviderDashboardRole } from './Pages/Dash/provider-dashboard-config'
@@ -43,6 +43,8 @@ function AppContent() {
   const location = useLocation();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState('');
+  const isVerifyingSessionRef = useRef(false);
+  const lastSessionCheckRef = useRef(0);
   const isSuspended = localStorage.getItem('accountSuspended') === 'true';
 
   if (isSuspended && location.pathname !== '/suspended') {
@@ -66,19 +68,38 @@ function AppContent() {
       return undefined;
     }
 
-    const verifySession = () => {
-      authAPI.me().catch(() => {
+    const verifySession = async ({ force = false } = {}) => {
+      if (document.visibilityState === 'hidden') {
+        return;
+      }
+
+      if (isVerifyingSessionRef.current) {
+        return;
+      }
+
+      const now = Date.now();
+      if (!force && now - lastSessionCheckRef.current < 10000) {
+        return;
+      }
+
+      isVerifyingSessionRef.current = true;
+      try {
+        await authAPI.me();
+        lastSessionCheckRef.current = Date.now();
+      } catch {
         // Interceptors handle suspension and expired session redirects.
-      });
+      } finally {
+        isVerifyingSessionRef.current = false;
+      }
     };
 
-    verifySession();
+    verifySession({ force: true });
 
     const intervalId = window.setInterval(verifySession, 30000);
-    const handleFocus = () => verifySession();
+    const handleFocus = () => verifySession({ force: true });
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        verifySession();
+        verifySession({ force: true });
       }
     };
 
