@@ -985,14 +985,11 @@ def ensure_admin_activity_log_table(cursor):
         CREATE TABLE IF NOT EXISTS admin_activity_logs (
             log_id SERIAL PRIMARY KEY,
             actor_user_no INTEGER,
-            actor_name VARCHAR(255) NOT NULL,
-            actor_email VARCHAR(255),
             action VARCHAR(120) NOT NULL,
             target_type VARCHAR(80),
             target_id VARCHAR(80),
             target_label VARCHAR(255),
             provider_no INTEGER,
-            provider_name VARCHAR(255),
             status VARCHAR(50) NOT NULL DEFAULT 'success',
             occurred_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         )
@@ -1003,6 +1000,9 @@ def ensure_admin_activity_log_table(cursor):
     )
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_admin_activity_logs_provider_no ON admin_activity_logs(provider_no)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_admin_activity_logs_actor_user_no ON admin_activity_logs(actor_user_no)"
     )
 
 
@@ -1100,14 +1100,11 @@ def fetch_account_activity_context(cursor, account_id):
 def record_admin_activity(
     *,
     actor_user_no=None,
-    actor_name=None,
-    actor_email=None,
     action,
     target_type=None,
     target_id=None,
     target_label=None,
     provider_no=None,
-    provider_name=None,
     status='success',
 ):
     """Persist an audit event without interrupting the primary request flow."""
@@ -1123,37 +1120,28 @@ def record_admin_activity(
         if actor_user_no:
             actor_context = fetch_actor_context(cursor, actor_user_no)
 
-        resolved_actor_name = actor_name or (actor_context['actor_name'] if actor_context else 'Unknown User')
-        resolved_actor_email = actor_email or (actor_context['actor_email'] if actor_context else None)
         resolved_provider_no = provider_no if provider_no is not None else (actor_context['provider_no'] if actor_context else None)
-        resolved_provider_name = provider_name or (actor_context['provider_name'] if actor_context else 'All')
 
         cursor.execute(
             """
             INSERT INTO admin_activity_logs (
                 actor_user_no,
-                actor_name,
-                actor_email,
                 action,
                 target_type,
                 target_id,
                 target_label,
                 provider_no,
-                provider_name,
                 status
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 actor_user_no,
-                resolved_actor_name,
-                resolved_actor_email,
                 action,
                 target_type,
                 str(target_id) if target_id is not None else None,
                 target_label,
                 resolved_provider_no,
-                resolved_provider_name,
                 (status or 'success').lower(),
             ),
         )
@@ -1650,8 +1638,6 @@ def login():
         if not user or user['applicant_no'] is not None or user['user_no'] is None:
             # Users with applicant_no are applicants, disregarding them entirely
             record_admin_activity(
-                actor_name=normalized_email,
-                actor_email=normalized_email,
                 action='Login Failed',
                 status='failed',
             )
@@ -1663,11 +1649,8 @@ def login():
         if not bcrypt.check_password_hash(user['password_hash'], data['password']):
             record_admin_activity(
                 actor_user_no=user['user_no'],
-                actor_name=user_name,
-                actor_email=normalized_email,
                 action='Login Failed',
                 provider_no=user['pro_no'],
-                provider_name=provider_name,
                 status='failed',
             )
             return jsonify({'message': 'Incorrect password'}), 401
@@ -1676,11 +1659,8 @@ def login():
         if user.get('is_locked'):
             record_admin_activity(
                 actor_user_no=user['user_no'],
-                actor_name=user_name,
-                actor_email=normalized_email,
                 action='Login Failed',
                 provider_no=user['pro_no'],
-                provider_name=provider_name,
                 status='failed',
             )
             return jsonify({'message': 'Account has been suspended. Please contact the administrator.', 'suspended': True}), 403
@@ -1704,11 +1684,8 @@ def login():
 
         record_admin_activity(
             actor_user_no=user['user_no'],
-            actor_name=user_name,
-            actor_email=normalized_email,
             action='Login',
             provider_no=user['pro_no'],
-            provider_name=prov_name,
             status='success',
         )
         
@@ -1922,14 +1899,11 @@ def register():
 
         record_admin_activity(
             actor_user_no=user_no,
-            actor_name=data['fullName'],
-            actor_email=normalized_email,
             action='Account Registered (Awaiting Verification)',
             target_type='Admin',
             target_id=user_no,
             target_label=data['fullName'],
             provider_no=pro_no,
-            provider_name=data['role'],
             status='success',
         )
         
@@ -1953,7 +1927,6 @@ def logout(current_user_id, pro_no, role):
         actor_user_no=current_user_id,
         action='Logout',
         provider_no=pro_no,
-        provider_name=role or 'All',
         status='success',
     )
     return jsonify({'message': 'Logged out successfully'}), 200
@@ -2071,12 +2044,9 @@ def reset_password():
 
         record_admin_activity(
             actor_user_no=payload['user_no'],
-            actor_name=payload.get('provider_name') or payload['email'],
-            actor_email=payload['email'],
             action='Change Password',
             target_type='Auth',
             provider_no=payload.get('pro_no'),
-            provider_name=payload.get('provider_name') or 'All',
             status='success',
         )
         return jsonify({'message': 'Password reset successfully'}), 200
@@ -2322,7 +2292,6 @@ def create_account(current_user_id, pro_no, role):
         conn.close()
 
         audit_provider_no = target_provider_no
-        audit_provider_name = provider_name if provider_name not in ['admin', 'scholar'] else (role or 'All')
         record_admin_activity(
             actor_user_no=current_user_id,
             action='Account Created',
@@ -2330,7 +2299,6 @@ def create_account(current_user_id, pro_no, role):
             target_id=account_id,
             target_label=full_name,
             provider_no=audit_provider_no,
-            provider_name=audit_provider_name,
             status='success',
         )
         
@@ -2416,7 +2384,6 @@ def update_account(current_user_id, pro_no, role, account_id):
             target_id=account_id,
             target_label=updated_name,
             provider_no=account_context['provider_no'],
-            provider_name=account_context['provider_name'],
             status='success',
         )
         
@@ -2467,7 +2434,6 @@ def delete_account(current_user_id, pro_no, role, account_id):
             target_id=account_id,
             target_label=account_context['name'],
             provider_no=account_context['provider_no'],
-            provider_name=account_context['provider_name'],
             status='success',
         )
         
@@ -2520,7 +2486,6 @@ def toggle_account_lock(current_user_id, pro_no, role, account_id):
             target_id=account_id,
             target_label=account_context['name'],
             provider_no=account_context['provider_no'],
-            provider_name=account_context['provider_name'],
             status='success',
         )
         
@@ -2619,27 +2584,38 @@ def get_activity_logs(current_user_id, pro_no, role):
 
         query = '''
             SELECT
-                log_id AS id,
-                actor_name AS user,
-                action AS activity,
-                status,
-                COALESCE(provider_name, 'All') AS scholarship,
-                occurred_at
-            FROM admin_activity_logs
+                logs.log_id AS id,
+                COALESCE(u.user_name, actor_provider.provider_name, 'Unknown User') AS user,
+                logs.action AS activity,
+                logs.status,
+                COALESCE(event_provider.provider_name, 'All') AS scholarship,
+                occurred_at,
+                actor_email.email_address AS actor_email
+            FROM admin_activity_logs AS logs
+            LEFT JOIN users u ON logs.actor_user_no = u.user_no
+            LEFT JOIN scholarship_providers AS actor_provider ON u.pro_no = actor_provider.pro_no
+            LEFT JOIN LATERAL (
+                SELECT email_address
+                FROM email
+                WHERE user_no = logs.actor_user_no
+                ORDER BY em_no ASC
+                LIMIT 1
+            ) AS actor_email ON TRUE
+            LEFT JOIN scholarship_providers AS event_provider ON logs.provider_no = event_provider.pro_no
             WHERE 1=1
         '''
         params = []
 
         if role != 'Admin':
-            query += ' AND provider_no = %s'
+            query += ' AND logs.provider_no = %s'
             params.append(pro_no)
 
         if filters.get('program') and filters.get('program') != 'All':
-            query += ' AND provider_name = %s'
+            query += " AND COALESCE(event_provider.provider_name, 'All') = %s"
             params.append(filters.get('program'))
 
         if filters.get('action') and filters.get('action') != 'All':
-            query += ' AND action ILIKE %s'
+            query += ' AND logs.action ILIKE %s'
             params.append(f"%{filters.get('action')}%")
 
         search = (filters.get('search') or '').strip()
@@ -2647,16 +2623,16 @@ def get_activity_logs(current_user_id, pro_no, role):
             search_term = f"%{search}%"
             query += '''
                 AND (
-                    actor_name ILIKE %s
-                    OR COALESCE(actor_email, '') ILIKE %s
-                    OR action ILIKE %s
-                    OR COALESCE(target_label, '') ILIKE %s
-                    OR COALESCE(provider_name, '') ILIKE %s
+                    COALESCE(u.user_name, actor_provider.provider_name, 'Unknown User') ILIKE %s
+                    OR COALESCE(actor_email.email_address, '') ILIKE %s
+                    OR logs.action ILIKE %s
+                    OR COALESCE(logs.target_label, '') ILIKE %s
+                    OR COALESCE(event_provider.provider_name, 'All') ILIKE %s
                 )
             '''
             params.extend([search_term, search_term, search_term, search_term, search_term])
 
-        query += ' ORDER BY occurred_at DESC, log_id DESC LIMIT 250'
+        query += ' ORDER BY logs.occurred_at DESC, logs.log_id DESC LIMIT 250'
         cursor.execute(query, params)
         rows = cursor.fetchall()
 
