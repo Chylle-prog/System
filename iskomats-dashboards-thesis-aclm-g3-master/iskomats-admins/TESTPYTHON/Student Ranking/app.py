@@ -32,16 +32,18 @@ print("[STARTUP] 4. Services imported. Initializing Flask app...", flush=True)
 app = Flask(__name__)
 app.secret_key = get_secret_key()
 
-allowed_origins = get_allowed_origins()
-exact_allowed_origins, preview_origin_patterns = split_allowed_origins(allowed_origins)
+# Get origins and split into exact strings and regex patterns
+all_allowed_origins = get_allowed_origins()
+exact_allowed_origins, preview_origin_patterns = split_allowed_origins(all_allowed_origins)
 
 # Note: We handle CORS manually in before_request and after_request to have full control
 # Don't use CORS() extension - it can conflict with manual handlers
 
-print("[STARTUP] Initializing SocketIO with extended timeouts...")
+print(f"[STARTUP] Initializing SocketIO with {len(exact_allowed_origins)} exact origins...")
+# Pass only string origins to SocketIO to avoid issues with regex objects
 socketio = SocketIO(
     app, 
-    cors_allowed_origins=allowed_origins,
+    cors_allowed_origins=exact_allowed_origins,
     engineio_logger=True,
     ping_timeout=120,
     ping_interval=30
@@ -72,134 +74,94 @@ def index():
     }), 200
 
 
-@app.before_request
-def handle_preflight():
-    """Handle CORS preflight OPTIONS requests"""
-    if request.method == 'OPTIONS':
-        origin = request.headers.get('Origin')
-        is_allowed = origin and is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns)
-        
-        # Log preflight requests for debugging
-        print(f"[CORS] Preflight OPTIONS for: {request.path}", flush=True)
-        print(f"       Origin: {origin}", flush=True)
-        print(f"       Allowed: {is_allowed}", flush=True)
-
-        response = jsonify({'status': 'ok'}) if is_allowed else jsonify({'status': 'blocked'})
-        
-        # ALWAYS add CORS headers to OPTIONS responses
-        if origin:
-            response.headers['Access-Control-Allow-Origin'] = origin
-            response.headers['Vary'] = 'Origin'
-        
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, PATCH, OPTIONS'
-        
-        # Allow requested headers or default comprehensive set
-        requested_headers = request.headers.get('Access-Control-Request-Headers')
-        if requested_headers:
-            response.headers['Access-Control-Allow-Headers'] = requested_headers
-        else:
-            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept, X-Requested-With, X-CSRF-Token'
-        
-        response.headers['Access-Control-Max-Age'] = '86400'
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-        
-        # Return 200 OK for all preflight requests (even denied ones)
-        return response, 200
-    return None
-
-
-@app.after_request
-def add_cors_headers(response):
-    """Add CORS headers to all responses"""
-    origin = request.headers.get('Origin')
+def apply_cors_headers(response, origin):
+    """Internal helper to apply standard CORS headers to any response object."""
+    if not origin:
+       return response
+       
+    is_allowed = is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns)
     
-    # Always add Vary: Origin header to ensure proper caching
+    # We ALWAYS add Vary: Origin to ensure proper browser/CDN caching
     response.headers['Vary'] = 'Origin'
     
-    # Add CORS headers if origin is allowed
-    if origin and is_origin_allowed(origin, exact_allowed_origins, preview_origin_patterns):
+    if is_allowed:
         response.headers['Access-Control-Allow-Origin'] = origin
-        response.headers['Access-Control-Allow-Methods'] = 'DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD'
         response.headers['Access-Control-Allow-Headers'] = request.headers.get(
             'Access-Control-Request-Headers',
             'Content-Type, Authorization, Accept, X-Requested-With, X-CSRF-Token'
         )
         response.headers['Access-Control-Allow-Credentials'] = 'true'
         response.headers['Access-Control-Max-Age'] = '86400'
-    
-    # Debug: Log responses with potential CORS issues
-    if not response.headers.get('Access-Control-Allow-Origin') and request.method != 'OPTIONS':
-        # Don't log missing CORS for simple health check pings without Origin
-        if origin or request.path not in ['/', '/_health', '/api/health']:
-            print(f"[CORS] WARNING: No CORS header for response to {request.method} {request.path}", flush=True)
-            print(f"       Origin: {origin}", flush=True)
+    else:
+        # If not allowed, we still want to log it
+        if request.path not in ['/', '/_health', '/api/health']:
+            print(f"[CORS] Denied: {request.method} {request.path} from {origin}", flush=True)
 
     return response
+
+
+@app.before_request
+def handle_preflight():
+    """Handle CORS preflight OPTIONS requests early."""
+    if request.method == 'OPTIONS':
+        origin = request.headers.get('Origin')
+        
+        # We return a 200 OK for all preflight requests.
+        # The apply_cors_headers function will determine if Access-Control-Allow-Origin is added.
+        response = jsonify({'status': 'ok'})
+        return apply_cors_headers(response, origin), 200
+    return None
+
+
+@app.after_request
+def add_cors_headers(response):
+    """Add CORS headers to all outgoing responses that didn't come from handle_preflight."""
+    # If the response already has the header (e.g. from handle_preflight or error handler), don't duplicate
+    if 'Access-Control-Allow-Origin' in response.headers:
+        return response
+        
+    return apply_cors_headers(response, request.headers.get('Origin'))
 
 
 @app.errorhandler(401)
 def handle_401(e):
-    origin = request.headers.get('Origin')
     response = jsonify({'error': 'Unauthorized', 'message': str(e), 'status': 401})
     response.status_code = 401
-    if origin:
-        response.headers['Access-Control-Allow-Origin'] = origin
-        response.headers['Vary'] = 'Origin'
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-    return response
+    return apply_cors_headers(response, request.headers.get('Origin'))
 
 
 @app.errorhandler(403)
 def handle_403(e):
-    origin = request.headers.get('Origin')
     response = jsonify({'error': 'Forbidden', 'message': str(e), 'status': 403})
     response.status_code = 403
-    if origin:
-        response.headers['Access-Control-Allow-Origin'] = origin
-        response.headers['Vary'] = 'Origin'
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-    return response
+    return apply_cors_headers(response, request.headers.get('Origin'))
 
 
 @app.errorhandler(404)
 def handle_404(e):
-    origin = request.headers.get('Origin')
     response = jsonify({'error': 'Not found', 'path': request.path, 'status': 404})
     response.status_code = 404
-    if origin:
-        response.headers['Access-Control-Allow-Origin'] = origin
-        response.headers['Vary'] = 'Origin'
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-    return response
+    return apply_cors_headers(response, request.headers.get('Origin'))
 
 
 @app.errorhandler(500)
 def handle_500(e):
-    origin = request.headers.get('Origin')
     print(f"[ERROR 500] {str(e)}", flush=True)
     response = jsonify({'error': 'Internal server error', 'status': 500})
     response.status_code = 500
-    if origin:
-        response.headers['Access-Control-Allow-Origin'] = origin
-        response.headers['Vary'] = 'Origin'
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-    return response
+    return apply_cors_headers(response, request.headers.get('Origin'))
 
 
 @app.errorhandler(413)
 def handle_413(e):
-    origin = request.headers.get('Origin')
     response = jsonify({
         'error': 'Payload Too Large',
         'message': 'The uploaded images may be too large. Please try with smaller files.',
         'status': 413
     })
     response.status_code = 413
-    if origin:
-        response.headers['Access-Control-Allow-Origin'] = origin
-        response.headers['Vary'] = 'Origin'
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-    return response
+    return apply_cors_headers(response, request.headers.get('Origin'))
 
 
 @app.errorhandler(Exception)
@@ -211,11 +173,7 @@ def handle_exception(e):
     
     if isinstance(e, HTTPException):
         resp = e.get_response()
-        if origin:
-            resp.headers['Access-Control-Allow-Origin'] = origin
-            resp.headers['Vary'] = 'Origin'
-            resp.headers['Access-Control-Allow-Credentials'] = 'true'
-        return resp
+        return apply_cors_headers(resp, origin)
 
     # Handle non-HTTP exceptions
     print(f"[EXCEPTION] {str(e)}", flush=True)
@@ -225,11 +183,7 @@ def handle_exception(e):
         'status': 500
     })
     response.status_code = 500
-    if origin:
-        response.headers['Access-Control-Allow-Origin'] = origin
-        response.headers['Vary'] = 'Origin'
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-    return response
+    return apply_cors_headers(response, origin)
 def health_check():
     try:
         conn = get_db()
