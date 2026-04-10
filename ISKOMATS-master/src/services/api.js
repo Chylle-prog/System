@@ -421,7 +421,12 @@ export const applicantAPI = {
     fData.append('idNumber', idNumber || '');
     fData.append('yearLevel', yearLevel || '');
     fData.append('gpa', gpa || '');
-    fData.append('video_url', videoUrl || '');
+    if (videoUrl && typeof videoUrl === 'object') {
+      fData.append('video_url', videoUrl.front || '');
+      fData.append('video_url_back', videoUrl.back || '');
+    } else {
+      fData.append('video_url', videoUrl || '');
+    }
     if (scholarshipNo) fData.append('scholarship_no', scholarshipNo);
 
     return makeRequest('/student/verification/ocr-check', {

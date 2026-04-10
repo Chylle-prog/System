@@ -38,6 +38,21 @@ bcrypt = Bcrypt()
 SECRET_KEY = get_secret_key()
 
 _announcement_image_columns = None
+HARD_CODED_SCHOOL_NAMES = [
+    'DLSL/De La Salle Lipa',
+    'NU/National University Lipa',
+    'Batangas State University',
+    'Kolehiyo ng Lungsod ng Lipa',
+    'Philippine State College of Aeronautics',
+    'Lipa City Colleges',
+    'University of Batangas',
+    'New Era University',
+    'Batangas College of Arts and Sciences',
+    'Royal British College',
+    'STI Academic Center',
+    'AMA Computer College',
+    'ICT-ED'
+]
 
 
 def get_announcement_image_columns(cursor):
@@ -105,6 +120,84 @@ def fetch_video_bytes_from_url(url):
         return None, "Connection timeout"
     except Exception as e:
         return None, str(e)
+
+
+def normalize_matching_text(value):
+    return re.sub(r'[^a-z0-9]+', ' ', str(value or '').lower()).strip()
+
+
+def build_student_name_keywords(first_name, middle_name, last_name):
+    name_parts = [part.strip() for part in [first_name, middle_name, last_name] if str(part or '').strip()]
+    keywords = set(name_parts)
+
+    if len(name_parts) >= 2:
+        keywords.add(' '.join(name_parts))
+        keywords.add(f"{name_parts[0]} {name_parts[-1]}")
+
+    return sorted((keyword for keyword in keywords if len(normalize_matching_text(keyword)) >= 2), key=len, reverse=True)
+
+
+def build_school_name_variants(school_name):
+    normalized_input = normalize_matching_text(school_name)
+    variants = set()
+
+    for entry in HARD_CODED_SCHOOL_NAMES:
+        aliases = [alias.strip() for alias in entry.split('/') if alias.strip()]
+        normalized_aliases = [normalize_matching_text(alias) for alias in aliases]
+        is_match = normalized_input and any(
+            normalized_input in alias or alias in normalized_input
+            for alias in normalized_aliases
+            if alias
+        )
+
+        if is_match:
+            variants.update(aliases)
+
+    if not variants and school_name:
+        variants.add(school_name.strip())
+
+    expanded = set()
+    for variant in variants:
+        cleaned = variant.strip()
+        if not cleaned:
+            continue
+
+        expanded.add(cleaned)
+        normalized = normalize_matching_text(cleaned)
+        if normalized:
+            expanded.add(normalized)
+
+        words = [word for word in re.split(r'[\s./-]+', cleaned) if word]
+        if len(words) > 1:
+            acronym = ''.join(word[0] for word in words if word[0].isalnum()).upper()
+            if len(acronym) >= 2:
+                expanded.add(acronym)
+
+    return sorted((variant for variant in expanded if len(normalize_matching_text(variant)) >= 2), key=len, reverse=True)
+
+
+def school_name_matches_text(raw_text, school_name):
+    variants = build_school_name_variants(school_name)
+    normalized_raw = normalize_matching_text(raw_text)
+
+    for variant in variants:
+        normalized_variant = normalize_matching_text(variant)
+        if normalized_variant and normalized_variant in normalized_raw:
+            return True, variant, variants
+
+    _, _, found_keywords, _ = _perform_text_matching(
+        raw_text,
+        None,
+        None,
+        None,
+        None,
+        keywords=variants,
+        is_indigency=False
+    )
+    if found_keywords:
+        return True, found_keywords[0], variants
+
+    return False, None, variants
 
 @student_api_bp.route('/debug/env', methods=['GET'])
 def debug_env():
@@ -186,7 +279,9 @@ def ensure_verification_columns():
             'indigency_vid_url': 'indigency_vid_url',
             'grades_vid_url': 'grades_vid_url',
             'enrollment_certificate_vid_url': 'enrollment_certificate_vid_url',
-            'schoolId_vid_url': 'schoolId_vid_url'
+            'schoolId_vid_url': 'schoolId_vid_url',
+            'schoolId_front_vid_url': 'schoolId_front_vid_url',
+            'schoolId_back_vid_url': 'schoolId_back_vid_url'
         }
         
         cur.execute("""
@@ -200,6 +295,14 @@ def ensure_verification_columns():
             if col not in existing_cols:
                 print(f"[MIGRATION] Adding column {col} to applicants table")
                 cur.execute(f"ALTER TABLE applicants ADD COLUMN {col} TEXT")
+
+        cur.execute("""
+            UPDATE applicants
+            SET
+                schoolId_front_vid_url = COALESCE(schoolId_front_vid_url, schoolId_vid_url),
+                schoolId_back_vid_url = COALESCE(schoolId_back_vid_url, schoolId_vid_url)
+            WHERE schoolId_vid_url IS NOT NULL
+        """)
             
         conn.commit()
         conn.close()
@@ -1341,6 +1444,8 @@ def update_profile():
             'mayorGrades_video': 'grades_vid_url',
             'mayorCOE_video': 'enrollment_certificate_vid_url',
             'schoolId_video': 'schoolId_vid_url',
+            'schoolIdFront_video': 'schoolId_front_vid_url',
+            'schoolIdBack_video': 'schoolId_back_vid_url',
         }
 
         for frontend_key, db_col in field_mapping.items():
@@ -1535,9 +1640,9 @@ def submit_application():
 
                     # 3. Video OCR Validations
                     video_requirements = {
-                        'mayorIndigency_video': ['Indigency', 'Barangay'],
-                        'mayorGrades_video': ['Grades', 'Evaluation', 'Academic'],
-                        'mayorCOE_video': ['Enrollment', 'Certificate', 'Enrolled']
+                        'mayorIndigency_video': ['Indigency', 'Barangay', 'Certificate', 'Resident'],
+                        'mayorGrades_video': ['Grades', 'Grade', 'Transcript', 'Records', 'Units', 'Unit', 'Subject', 'GPA', 'Evaluation', 'Academic', 'Semester'],
+                        'mayorCOE_video': ['Enrollment', 'Enrolment', 'Certificate', 'Registration', 'Registered', 'College', 'Enrolled', 'COE', 'Semester']
                     }
                     def _threaded_verify(v_url, kws, addr, upl_bytes):
                         data_bytes = upl_bytes
@@ -1606,6 +1711,8 @@ def submit_application():
             'mayorGrades_video': 'grades_vid_url',
             'mayorCOE_video': 'enrollment_certificate_vid_url',
             'schoolId_video': 'schoolId_vid_url',
+            'schoolIdFront_video': 'schoolId_front_vid_url',
+            'schoolIdBack_video': 'schoolId_back_vid_url',
         }
 
         for form_key, db_col in field_mapping.items():
@@ -1685,7 +1792,7 @@ def ocr_check():
         # 1. Get applicant record from DB
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT applicant_no, first_name, middle_name, last_name, town_city_municipality, id_img_front, id_img_back, indigency_doc, id_vid_url, schoolId_vid_url, indigency_vid_url, enrollment_certificate_vid_url, grades_vid_url FROM applicants WHERE applicant_no = %s", (request.user_no,))
+        cur.execute("SELECT applicant_no, first_name, middle_name, last_name, town_city_municipality, id_img_front, id_img_back, indigency_doc, id_vid_url, schoolId_vid_url, schoolId_front_vid_url, schoolId_back_vid_url, indigency_vid_url, enrollment_certificate_vid_url, grades_vid_url FROM applicants WHERE applicant_no = %s", (request.user_no,))
         applicant = cur.fetchone()
 
         if not applicant:
@@ -1757,15 +1864,20 @@ def ocr_check():
 
                 # 1. Main OCR Verification (Identity)
                 # Determine video URL for this document type (Prioritize request payload)
-                frontend_video_url = data.get('video_url')
+                frontend_video_front_url = data.get('video_url')
+                frontend_video_back_url = data.get('video_url_back') or frontend_video_front_url
+                school_id_front_video = applicant.get('schoolId_front_vid_url') or applicant.get('schoolId_vid_url')
+                school_id_back_video = applicant.get('schoolId_back_vid_url') or applicant.get('schoolId_vid_url')
                 vid_url_map = {
-                    'Indigency': frontend_video_url or applicant.get('indigency_vid_url'),
-                    'SchoolID': frontend_video_url or applicant.get('schoolId_vid_url'),
-                    'SchoolIDBack': frontend_video_url or applicant.get('schoolId_vid_url'),
-                    'Enrollment': frontend_video_url or applicant.get('enrollment_certificate_vid_url'),
-                    'Grades': frontend_video_url or applicant.get('grades_vid_url')
+                    'Indigency': frontend_video_front_url or applicant.get('indigency_vid_url'),
+                    'SchoolID': frontend_video_front_url or school_id_front_video,
+                    'SchoolIDBack': frontend_video_back_url or school_id_back_video,
+                    'Enrollment': frontend_video_front_url or applicant.get('enrollment_certificate_vid_url'),
+                    'Grades': frontend_video_front_url or applicant.get('grades_vid_url')
                 }
                 vid_url = vid_url_map.get(doc_type)
+                name_keywords = build_student_name_keywords(first_name, middle_name, last_name)
+                school_variants = build_school_name_variants(school_name)
                 # Define keywords for each document type
                 # Indigency can be detected as 'Certificate' + other indicators
                 doc_keywords = {
@@ -1775,16 +1887,16 @@ def ocr_check():
                         # Common headers on Philippine TORs
                         'Grades', 'Grade', 'Transcript', 'Records', 'Report',
                         # Unit/credit fields always present on any TOR
-                        'Units', 'Unit', 'Credit',
+                        'Units', 'Unit', 'Credit', 'Subject',
                         # Grading period terms
                         'Prelim', 'Midterm', 'Finals', 'Final',
                         # Other common column headers
                         'Subject', 'Course', 'Rating', 'Evaluation', 'GPA',
                         # Filipino-context terms
-                        'Semestral', 'Semester', 'Academic',
+                        'Semestral', 'Semester', 'Academic', 'College', 'Registrar'
                     ],
-                    'SchoolID': ['School', 'ID', 'Identification', 'Card'],
-                    'SchoolIDBack': ['School Year', 'A.Y.', 'S.Y.', 'Semester', 'Valid']
+                    'SchoolID': name_keywords or ['Student', 'Name'],
+                    'SchoolIDBack': school_variants or ['School', 'Campus']
                 }
 
                 # 1.a Video Content Verification (if URL present)
@@ -1872,38 +1984,27 @@ def ocr_check():
                     return {'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'SchoolID':
-                    raw_lower = raw.lower()
-                    school_ok = True if not school_name else (school_name.lower() in raw_lower)
-                    if school_name and not school_ok:
-                        school_parts = [p.strip() for p in school_name.lower().split() if len(p.strip()) > 3]
-                        school_ok = any(p in raw_lower for p in school_parts) if school_parts else True
-
-                    id_no_ok = True if not expected_id_no else (expected_id_no.lower() in raw_lower)
-                    # For ID front, we only check School Name and ID Number (Year Level is on the back)
-
-                    # Fallback overriding: If name match failed, but ID number explicitly matches, allow verification
-                    if not v and raw_lower.strip() and expected_id_no and len(expected_id_no) >= 3 and id_no_ok:
-                        v = True
-
                     if v:
-                        if not school_ok: v, msg = False, f"School name mismatch ({school_name})"
-                        elif not id_no_ok: v, msg = False, f"ID number mismatch ({expected_id_no})"
-                        else: msg = "School ID (front) details verified successfully"
+                        msg = "School ID front verified against student name"
 
                     return {'doc': 'Identity Front', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'SchoolIDBack':
-                    # Verify academic year validity from the sticker or text on ID back
+                    school_ok, matched_variant, school_variants = school_name_matches_text(raw, school_name)
                     year_label = extract_school_year_from_text(raw)
-                    # Check against scholarship year
                     year_ok = is_current_school_year(year_label, expected_year=expected_year)
                     
-                    if v and not year_ok:
+                    if v and not school_ok:
+                        expected_label = school_name or 'selected school'
+                        fallback_hint = f" Tried: {', '.join(school_variants[:4])}" if school_variants else ''
+                        v, msg = False, f"School name mismatch ({expected_label}).{fallback_hint}"
+                    elif v and not year_ok:
                         v, msg = False, f"ID validity expired or Year Mismatch. Found: '{year_label or 'None'}'. Expected: {expected_year}."
                     elif v:
-                        msg = f"ID validity verified for Academic Year: {year_label}"
+                        school_suffix = f" using '{matched_variant}'" if matched_variant else ''
+                        msg = f"School ID back verified{school_suffix} for Academic Year: {year_label}"
                         
-                    return {'doc': 'Identity Back', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label}
+                    return {'doc': 'Identity Back', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
 
                 return None
             except Exception as worker_err:
@@ -2462,6 +2563,8 @@ def upload_video():
                 'mayorCOE_video': 'coe',
                 'mayorGrades_video': 'grades',
                 'schoolId_video': 'school_id',
+                'schoolIdFront_video': 'school_id',
+                'schoolIdBack_video': 'school_id',
                 'id_vid_url': 'id_verification',
                 'face_video': 'id_verification'
             }
@@ -2477,6 +2580,8 @@ def upload_video():
                 'mayorCOE_video': 'enrollment_certificate_vid_url',
                 'mayorGrades_video': 'grades_vid_url',
                 'schoolId_video': 'schoolId_vid_url',
+                'schoolIdFront_video': 'schoolId_front_vid_url',
+                'schoolIdBack_video': 'schoolId_back_vid_url',
                 'face_video': 'id_vid_url'
             }
             db_col = db_column_map.get(field_name)

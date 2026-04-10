@@ -521,22 +521,30 @@ def verify_video_content(video_bytes, keywords, expected_address=None):
             addr_ok = False
 
             def process_frame(idx, text_accumulator, keywords_found, address_ok_val):
-                # Faster Video OCR Strategy
+                # Faster Video OCR Strategy with Enhanced Preprocessing
                 cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
                 ret, frame = cap.read()
                 if not ret or frame is None: return text_accumulator, keywords_found, address_ok_val
-
-                h, w = frame.shape[:2]
+                
+                # Preprocessing for Video Frames (Optimization: Handles compression artifacts/blur)
+                processed_frame = _preprocess_frame_for_ocr(frame)
+                
+                h, w = processed_frame.shape[:2]
                 if w > _MAX_VIDEO_OCR_WIDTH:
                     scale = _MAX_VIDEO_OCR_WIDTH / w
-                    frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+                    processed_frame = cv2.resize(processed_frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
 
-                # Use raw grayscale (fastest for modern Tesseract)
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                text = pytesseract.image_to_string(gray, config='--psm 3 --oem 1')
+                # Try Primary Pass (PSM 3 - Sparse Text)
+                text = pytesseract.image_to_string(processed_frame, config='--psm 3 --oem 1')
                 
+                # If sparse pass is weak, try block-mode pass (PSM 6 - Uniform block)
+                if len(text.strip()) < 10:
+                    text_alt = pytesseract.image_to_string(processed_frame, config='--psm 6 --oem 1')
+                    if len(text_alt.strip()) > len(text.strip()):
+                        text = text_alt
+
                 text_accumulator += " " + text
-                print(f"[VIDEO OCR] Frame {idx} fast-scanned ({len(text.strip())} chars)...", flush=True)
+                print(f"[VIDEO OCR] Frame {idx} scanned ({len(text.strip())} chars)...", flush=True)
 
                 _, new_addr, new_kws, _ = _perform_text_matching(text_accumulator, None, None, None, None, keywords=keywords, is_indigency=is_address_verification)
                 return text_accumulator, new_kws, new_addr

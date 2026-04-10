@@ -8,8 +8,9 @@ import React, { useState, useEffect } from 'react';
  * @param {Function} onRecordComplete - Callback when file is selected, receives (file, videoUrl)
  * @param {string} label - Display label for the uploader
  * @param {string} initialVideoUrl - Existing video URL to show as preview
+ * @param {boolean} isUploading - Whether the video is currently uploading
  */
-const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoUrl }) => {
+const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoUrl, isUploading = false }) => {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [fileName, setFileName] = useState('');
   const [videoError, setVideoError] = useState(null);
@@ -63,8 +64,29 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
       border: '1px solid #e1e8f0',
       textAlign: 'center',
       boxShadow: '0 4px 15px rgba(0,0,0,0.03)',
-      transition: 'all 0.3s ease'
+      transition: 'all 0.3s ease',
+      position: 'relative',
+      overflow: 'hidden'
     }}>
+      {isUploading && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          background: 'rgba(255,255,255,0.8)',
+          zIndex: 10,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backdropFilter: 'blur(2px)'
+        }}>
+          <div className="loading-spinner" style={{ width: '30px', height: '30px', border: '3px solid #f3f3f3', borderTop: '3px solid var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: '10px' }}></div>
+          <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--primary)' }}>Uploading...</span>
+        </div>
+      )}
       {!previewUrl ? (
         <div style={{ padding: '1rem' }}>
           <label 

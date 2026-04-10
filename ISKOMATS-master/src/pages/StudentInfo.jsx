@@ -25,6 +25,41 @@ const BARANGAYS = [
   "Talisay", "Tambo", "Tangob", "Tanguay", "Tibig", "Tipacan"
 ];
 
+const SCHOOLS = [
+  "DLSL/De La Salle Lipa",
+  "NU/National University Lipa",
+  "Batangas State University",
+  "Kolehiyo ng Lungsod ng Lipa",
+  "Philippine State College of Aeronautics",
+  "Lipa City Colleges",
+  "University of Batangas",
+  "New Era University",
+  "Batangas College of Arts and Sciences",
+  "Royal British College",
+  "STI Academic Center",
+  "AMA Computer College",
+  "ICT-ED"
+];
+
+const normalizeSelectValue = (value, options) => {
+  if (!value) return '';
+  const normalized = String(value).trim().toLowerCase();
+  
+  // 1. Check exact match (ignoring case)
+  const exactMatch = options.find(opt => opt.toLowerCase() === normalized);
+  if (exactMatch) return exactMatch;
+
+  // 2. Check if normalized value is contained in any option (DLSL -> DLSL/De La Salle Lipa)
+  const optionContainsValue = options.find(opt => opt.toLowerCase().includes(normalized));
+  if (optionContainsValue) return optionContainsValue;
+
+  // 3. Check if any option is contained in the normalized value (De La Salle Lipa -> DLSL/De La Salle Lipa)
+  const valueContainsOption = options.find(opt => normalized.includes(opt.toLowerCase()));
+  if (valueContainsOption) return valueContainsOption;
+  
+  return '';
+};
+
 const STEP_FIELDS = {
   1: [
     'lastName', 'firstName', 'middleName', 'maidenName', 'dateOfBirth', 'placeOfBirth',
@@ -211,33 +246,53 @@ const StudentInfo = () => {
     face_photo: null
   });
   
-  const handleVideoUpload = async (fieldName, blob) => {
-    try {
-      if (!blob) return;
-      
-      const localUrl = URL.createObjectURL(blob);
-      setDocumentVideos(prev => ({ ...prev, [fieldName]: localUrl }));
-      
-      setLoadingMessage({ title: 'Uploading Video', message: 'Securely storing your video requirement...' });
-      setIsSavingStep(true);
-      
-      const result = await applicantAPI.uploadRequirementVideo(fieldName, blob);
-      const publicUrl = result.publicUrl;
-      
-      setFormData(prev => ({ ...prev, [fieldName]: publicUrl }));
-      setDocumentVideos(prev => ({ ...prev, [fieldName]: publicUrl }));
-      
-      applicantAPI.updateProfile({ [fieldName]: publicUrl }).catch(err => {
-        console.warn(`Could not persist video URL for ${fieldName} to profile:`, err.message);
+  const handleVideoUpload = (fieldName, blob) => {
+    if (!blob) return;
+    
+    // Immediate local preview
+    const localUrl = URL.createObjectURL(blob);
+    setDocumentVideos(prev => ({ ...prev, [fieldName]: localUrl }));
+    
+    // Reset verification on video change
+    if (fieldName === 'mayorIndigency_video') { setOcrVerified(null); setOcrStatus(''); }
+    else if (fieldName === 'mayorCOE_video') { setCoeVerified(null); setCoeStatus(''); }
+    else if (fieldName === 'mayorGrades_video') { setGradesVerified(null); setGradesStatus(''); }
+    else if (fieldName === 'schoolIdFront_video' || fieldName === 'schoolIdBack_video') { setIdVerified(null); setIdStatus(''); }
+    else if (fieldName === 'face_video') { setFaceVerified(null); }
+    
+    // Start background upload
+    const uploadPromise = applicantAPI.uploadRequirementVideo(fieldName, blob)
+      .then(result => {
+        const publicUrl = result.publicUrl;
+        setFormData(prev => ({ ...prev, [fieldName]: publicUrl }));
+        setDocumentVideos(prev => ({ ...prev, [fieldName]: publicUrl }));
+        
+        // Remove from uploading state
+        setUploadingFields(prev => {
+          const next = { ...prev };
+          delete next[fieldName];
+          return next;
+        });
+
+        // Persist to profile in background
+        applicantAPI.updateProfile({ [fieldName]: publicUrl }).catch(err => {
+          console.warn(`Could not sync ${fieldName} to profile:`, err.message);
+        });
+        
+        console.log(`Video uploaded successfully for ${fieldName}:`, publicUrl);
+      })
+      .catch(err => {
+        console.error(`Failed to upload video for ${fieldName}:`, err);
+        alert(`Video upload failed: ${err.message}. Please try again.`);
+        
+        setUploadingFields(prev => {
+          const next = { ...prev };
+          delete next[fieldName];
+          return next;
+        });
       });
-      
-      console.log(`Video uploaded successfully for ${fieldName}:`, publicUrl);
-    } catch (err) {
-      console.error(`Failed to upload video for ${fieldName}:`, err);
-      alert(`Video upload failed: ${err.message}. Please try again.`);
-    } finally {
-      setIsSavingStep(false);
-    }
+
+    setUploadingFields(prev => ({ ...prev, [fieldName]: uploadPromise }));
   };
 
   const [extraSignaturePhoto, setExtraSignaturePhoto] = useState(null);
@@ -249,9 +304,12 @@ const StudentInfo = () => {
     mayorIndigency_video: null,
     mayorGrades_video: null,
     mayorCOE_video: null,
-    schoolId_video: null,
+    schoolIdFront_video: null,
+    schoolIdBack_video: null,
     face_video: null
   });
+
+  const [uploadingFields, setUploadingFields] = useState({}); // { fieldName: Promise }
 
   const [coeVerified, setCoeVerified] = useState(null); 
   const [coeStatus, setCoeStatus] = useState('');
@@ -315,6 +373,8 @@ const StudentInfo = () => {
 
     schoolIdFront: null,
     schoolIdBack: null,
+    schoolIdFront_video: null,
+    schoolIdBack_video: null,
     
     privacyConsent: false,
     dataCertifyConsent: false,
@@ -455,7 +515,6 @@ const StudentInfo = () => {
     }
 
     setLoadingMessage({ title: 'Scanning Document', message: 'Verifying your Certificate of Indigency and Video Content...' });
-    setIsSavingStep(true);
     
     try {
       const success = await performOcrVerification('Indigency', indigencyDoc, { townCity }, videoUrl);
@@ -464,8 +523,8 @@ const StudentInfo = () => {
       } else {
         showPromptMessage('❌ Verification failed. Please ensure document and video are clear.');
       }
-    } finally {
-      setIsSavingStep(false);
+    } catch (err) {
+      console.error('Scan Error:', err);
     }
   };
 
@@ -485,7 +544,6 @@ const StudentInfo = () => {
     }
 
     setLoadingMessage({ title: 'Scanning COE', message: 'Verifying your Certificate of Enrollment and Video Content...' });
-    setIsSavingStep(true);
     
     try {
       const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, yearLevel }, videoUrl);
@@ -494,8 +552,8 @@ const StudentInfo = () => {
       } else {
         showPromptMessage('❌ COE verification failed.');
       }
-    } finally {
-      setIsSavingStep(false);
+    } catch (err) {
+      console.error('Scan Error:', err);
     }
   };
 
@@ -516,7 +574,6 @@ const StudentInfo = () => {
     }
 
     setLoadingMessage({ title: 'Scanning Grades', message: 'Verifying your Grades document and Video Content...' });
-    setIsSavingStep(true);
     
     try {
       const success = await performOcrVerification('Grades', gradesDoc, { schoolName, yearLevel, gpa }, videoUrl);
@@ -525,37 +582,46 @@ const StudentInfo = () => {
       } else {
         showPromptMessage('❌ Grades verification failed.');
       }
-    } finally {
-      setIsSavingStep(false);
+    } catch (err) {
+      console.error('Scan Error:', err);
     }
   };
 
   const handleIdScan = async () => {
     const idFront = schoolIdPhotos.front;
     const idBack = schoolIdPhotos.back;
-    const videoUrl = formData.schoolId_video || documentVideos.schoolId_video;
+    const frontVideoUrl = formData.schoolIdFront_video || documentVideos.schoolIdFront_video;
+    const backVideoUrl = formData.schoolIdBack_video || documentVideos.schoolIdBack_video;
 
     if (!idFront || !idBack) {
       showPromptMessage('⚠️ Please upload both front and back of your School ID first.');
       return;
     }
-    if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
-      showPromptMessage('⚠️ Please record and upload the School ID video first.');
+    if (!frontVideoUrl || typeof frontVideoUrl !== 'string' || !frontVideoUrl.startsWith('http')) {
+      showPromptMessage('⚠️ Please record and upload the front School ID video first.');
+      return;
+    }
+    if (!backVideoUrl || typeof backVideoUrl !== 'string' || !backVideoUrl.startsWith('http')) {
+      showPromptMessage('⚠️ Please record and upload the back School ID video first.');
       return;
     }
 
     setLoadingMessage({ title: 'Scanning School ID', message: 'Verifying your School ID images and Video Content...' });
-    setIsSavingStep(true);
     
     try {
-      const success = await performOcrVerification('SchoolID', { front: idFront, back: idBack }, {}, videoUrl);
+      const success = await performOcrVerification(
+        'SchoolID',
+        { front: idFront, back: idBack },
+        {},
+        { front: frontVideoUrl, back: backVideoUrl }
+      );
       if (success) {
         showPromptMessage('✅ School ID verified successfully!');
       } else {
         showPromptMessage('❌ School ID verification failed.');
       }
-    } finally {
-      setIsSavingStep(false);
+    } catch (err) {
+      console.error('Scan Error:', err);
     }
   };
 
@@ -667,7 +733,7 @@ const StudentInfo = () => {
         hasPayload = true;
       }
 
-      const videoFields = ['mayorIndigency_video', 'mayorGrades_video', 'mayorCOE_video', 'schoolId_video', 'face_video'];
+      const videoFields = ['mayorIndigency_video', 'mayorGrades_video', 'mayorCOE_video', 'schoolIdFront_video', 'schoolIdBack_video', 'face_video'];
       videoFields.forEach(field => {
         if (formData[field] && typeof formData[field] === 'string' && formData[field].startsWith('http')) {
           jsonData[field] = formData[field];
@@ -779,13 +845,14 @@ const StudentInfo = () => {
       firstName: searchNameParts.firstName,
       middleName: searchNameParts.middleName,
       lastName: searchNameParts.lastName,
-      schoolName: scholarshipSearchProfile?.university,
+      schoolName: normalizeSelectValue(scholarshipSearchProfile?.university, SCHOOLS),
       gpa: urlGpa || scholarshipSearchProfile?.gpa || '',
       parentsGrossIncome: urlIncome || scholarshipSearchProfile?.income || '',
-      barangay: scholarshipSearchProfile?.street_brgy,
+      barangay: normalizeSelectValue(scholarshipSearchProfile?.street_brgy, BARANGAYS),
       townCityMunicipality: scholarshipSearchProfile?.town_city_municipality,
       province: scholarshipSearchProfile?.province,
       zipCode: scholarshipSearchProfile?.zip_code,
+      schoolName: normalizeSelectValue(scholarshipSearchProfile?.university, SCHOOLS),
     }));
 
     const draftKey = buildDraftStorageKey(user, searchParams, scholarship || scholarshipName);
@@ -820,7 +887,7 @@ const StudentInfo = () => {
           sex: profile.sex === 'M' ? 'Male' : profile.sex === 'F' ? 'Female' : (profile.sex || ''),
           citizenship: profile.citizenship || '',
           schoolIdNumber: profile.school_id_no || '',
-          schoolName: scholarshipSearchProfile?.university || profile.school || '',
+          schoolName: normalizeSelectValue(scholarshipSearchProfile?.university || profile.school, SCHOOLS),
           schoolAddress: profile.school_address || '',
           schoolSector: profile.school_sector || '',
           mobileNumber: profile.mobile_no || '',
@@ -841,7 +908,7 @@ const StudentInfo = () => {
         };
 
         if (scholarshipSearchProfile?.street_brgy || profile.street_brgy || profile.streetBarangay) {
-          updates.barangay = scholarshipSearchProfile?.street_brgy || profile.street_brgy || profile.streetBarangay;
+          updates.barangay = normalizeSelectValue(scholarshipSearchProfile?.street_brgy || profile.street_brgy || profile.streetBarangay, BARANGAYS);
         }
         if (scholarshipSearchProfile?.town_city_municipality || profile.town_city_municipality || profile.townCity) {
           updates.townCityMunicipality = scholarshipSearchProfile?.town_city_municipality || profile.town_city_municipality || profile.townCity;
@@ -902,7 +969,8 @@ const StudentInfo = () => {
           indigency_vid_url: 'mayorIndigency_video',
           grades_vid_url: 'mayorGrades_video',
           enrollment_certificate_vid_url: 'mayorCOE_video',
-          schoolId_vid_url: 'schoolId_video'
+          schoolId_front_vid_url: 'schoolIdFront_video',
+          schoolId_back_vid_url: 'schoolIdBack_video'
         };
 
         const loadedVideos = {};
@@ -912,6 +980,17 @@ const StudentInfo = () => {
             setFormData(prev => ({ ...prev, [stateField]: profile[dbField] }));
           }
         });
+
+        if (profile.schoolId_vid_url) {
+          if (!loadedVideos.schoolIdFront_video) {
+            loadedVideos.schoolIdFront_video = profile.schoolId_vid_url;
+            setFormData(prev => ({ ...prev, schoolIdFront_video: profile.schoolId_vid_url }));
+          }
+          if (!loadedVideos.schoolIdBack_video) {
+            loadedVideos.schoolIdBack_video = profile.schoolId_vid_url;
+            setFormData(prev => ({ ...prev, schoolIdBack_video: profile.schoolId_vid_url }));
+          }
+        }
         
         if (Object.keys(loadedVideos).length > 0) {
           setDocumentVideos(prev => ({ ...prev, ...loadedVideos }));
@@ -1047,6 +1126,7 @@ const StudentInfo = () => {
     const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
     setPhotos(prev => ({ ...prev, face_photo: dataUrl }));
     setFaceVerificationPreview(dataUrl);
+    setFaceVerified(null);
     
     closeCamera();
   };
@@ -1062,7 +1142,20 @@ const StudentInfo = () => {
     if (file && window.compressImage) {
       window.compressImage(file).then(compressedBase64 => {
         setPhotos(prev => ({ ...prev, [type]: compressedBase64 }));
-        if (type === 'face_photo') setFaceVerificationPreview(compressedBase64);
+        
+        if (type === 'face_photo') {
+          setFaceVerificationPreview(compressedBase64);
+          setFaceVerified(null);
+        } else if (type === 'mayorIndigency_photo') {
+          setOcrVerified(null);
+          setOcrStatus('');
+        } else if (type === 'mayorCOE_photo') {
+          setCoeVerified(null);
+          setCoeStatus('');
+        } else if (type === 'mayorGrades_photo') {
+          setGradesVerified(null);
+          setGradesStatus('');
+        }
         
         if (type !== 'face_photo') {
           applicantAPI.updateProfile({ [type]: compressedBase64 }).catch(console.error);
@@ -1073,7 +1166,20 @@ const StudentInfo = () => {
 
   const removePhoto = (type) => {
     setPhotos(prev => ({ ...prev, [type]: null }));
-    if (type === 'face_photo') setFaceVerificationPreview(null);
+    
+    if (type === 'face_photo') {
+      setFaceVerificationPreview(null);
+      setFaceVerified(null);
+    } else if (type === 'mayorIndigency_photo') {
+      setOcrVerified(null);
+      setOcrStatus('');
+    } else if (type === 'mayorCOE_photo') {
+      setCoeVerified(null);
+      setCoeStatus('');
+    } else if (type === 'mayorGrades_photo') {
+      setGradesVerified(null);
+      setGradesStatus('');
+    }
     const fileInput = document.getElementById(`photo_${type}`);
     if (fileInput) fileInput.value = '';
   };
@@ -1102,6 +1208,12 @@ const StudentInfo = () => {
         window.compressImage(file).then(compressedBase64 => {
           setFormData(prev => ({ ...prev, [name]: compressedBase64 }));
           setPhotos(prev => ({ ...prev, [name]: compressedBase64 }));
+          
+          // Reset verification on photo change
+          if (name === 'mayorIndigency_photo') { setOcrVerified(null); setOcrStatus(''); }
+          else if (name === 'mayorCOE_photo') { setCoeVerified(null); setCoeStatus(''); }
+          else if (name === 'mayorGrades_photo') { setGradesVerified(null); setGradesStatus(''); }
+          else if (name === 'mayorValidID_photo') { setIdVerified(null); setIdStatus(''); }
           
           applicantAPI.updateProfile({ [name]: compressedBase64 }).catch(console.error);
         });
@@ -1165,6 +1277,8 @@ const StudentInfo = () => {
     if (file && window.compressImage) {
       window.compressImage(file).then(compressedBase64 => {
         setSchoolIdPhotos(prev => ({ ...prev, [side]: compressedBase64 }));
+        setIdVerified(null);
+        setIdStatus('');
         setFormData(prev => ({ 
           ...prev, 
           [`schoolId${side.charAt(0).toUpperCase() + side.slice(1)}`]: compressedBase64
@@ -1181,6 +1295,8 @@ const StudentInfo = () => {
 
   const removeSchoolIdPhoto = (side) => {
     setSchoolIdPhotos(prev => ({ ...prev, [side]: null }));
+    setIdVerified(null);
+    setIdStatus('');
     setFormData(prev => ({ ...prev, [`schoolId${side.charAt(0).toUpperCase() + side.slice(1)}`]: null }));
   };
 
@@ -1236,6 +1352,15 @@ const StudentInfo = () => {
 
   const handleNextStep = async (e) => {
     if (e) e.preventDefault();
+    
+    // Safety check: wait for background uploads
+    const pendingUploads = Object.values(uploadingFields);
+    if (pendingUploads.length > 0) {
+      setLoadingMessage({ title: 'Completing Uploads', message: 'Finalizing your video uploads. Please wait a moment...' });
+      setIsSavingStep(true);
+      try { await Promise.all(pendingUploads); } catch(err) { console.error("Delayed wait failed:", err); }
+      setIsSavingStep(false);
+    }
     
     const stepContainer = document.querySelector('.step-container.active');
     if (!stepContainer) return;
@@ -1309,6 +1434,15 @@ const StudentInfo = () => {
 
   const handleApplicationSubmit = async (e) => {
     e.preventDefault();
+
+    // Safety check: wait for background uploads
+    const pendingUploads = Object.values(uploadingFields);
+    if (pendingUploads.length > 0) {
+      setLoadingMessage({ title: 'Completing Uploads', message: 'Finalizing your video uploads before submission...' });
+      setIsSavingStep(true);
+      try { await Promise.all(pendingUploads); } catch(err) { console.error("Delayed wait failed:", err); }
+      setIsSavingStep(false);
+    }
 
     const requiredFields = [
       { name: 'lastName', label: 'Last Name' },
@@ -1487,13 +1621,18 @@ const StudentInfo = () => {
         }
       }
 
-      if (documentVideos.schoolId_video) {
-        if (typeof documentVideos.schoolId_video === 'string' && documentVideos.schoolId_video.startsWith('http')) {
-           submissionData.append('schoolId_video', documentVideos.schoolId_video);
-        } else {
-           submissionData.append('schoolId_video', documentVideos.schoolId_video, 'schoolId_video.webm');
+      ['schoolIdFront_video', 'schoolIdBack_video'].forEach((videoField) => {
+        const videoValue = documentVideos[videoField];
+        if (!videoValue) {
+          return;
         }
-      }
+
+        if (typeof videoValue === 'string' && videoValue.startsWith('http')) {
+          submissionData.append(videoField, videoValue);
+        } else {
+          submissionData.append(videoField, videoValue, `${videoField}.webm`);
+        }
+      });
 
       const result = await applicationAPI.submit(numericReqNo, submissionData, skipVerification);
       console.log('Submission result:', result);
@@ -2427,6 +2566,7 @@ const StudentInfo = () => {
                         label="Record Verification" 
                         onRecordComplete={(blob) => handleVideoUpload('mayorIndigency_video', blob)} 
                         initialVideoUrl={documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url}
+                        isUploading={Boolean(uploadingFields['mayorIndigency_video'])}
                       />
                     </div>
                     <div style={{marginTop: '1rem', padding: '12px', background: '#fffbeb', borderRadius: '14px', border: '1px solid #fef3c7', display: 'flex', gap: '10px'}}>
@@ -2569,19 +2709,9 @@ const StudentInfo = () => {
                   <label>Name of School <span style={{color: '#e74c3c'}}>*</span></label>
                   <select name="schoolName" value={formData.schoolName} onChange={handleInputChange} required={currentStep === 3}>
                     <option value="">Select School</option>
-                    <option value="DLSL/De La Salle Lipa">DLSL/De La Salle Lipa</option>
-                    <option value="NU/National University Lipa">NU/National University Lipa</option>
-                    <option value="Batangas State University">Batangas State University</option>
-                    <option value="Kolehiyo ng Lungsod ng Lipa">Kolehiyo ng Lungsod ng Lipa</option>
-                    <option value="Philippine State College of Aeronautics">Philippine State College of Aeronautics</option>
-                    <option value="Lipa City Colleges">Lipa City Colleges</option>
-                    <option value="University of Batangas">University of Batangas</option>
-                    <option value="New Era University">New Era University</option>
-                    <option value="Batangas College of Arts and Sciences">Batangas College of Arts and Sciences</option>
-                    <option value="Royal British College">Royal British College</option>
-                    <option value="STI Academic Center">STI Academic Center</option>
-                    <option value="AMA Computer College">AMA Computer College</option>
-                    <option value="ICT-ED">ICT-ED</option>
+                    {SCHOOLS.map(school => (
+                      <option key={school} value={school}>{school}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -2719,20 +2849,37 @@ const StudentInfo = () => {
                   <div className="preview-box" style={{background: '#fff', borderStyle: 'solid'}}>
                      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
                       <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155'}}>ID Video Verification</label>
-                      <div style={{fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca'}}>REQUIRED</div>
+                      <div style={{fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca'}}>BOTH REQUIRED</div>
                     </div>
-                    <div style={{flex: 1, minHeight: '180px'}}>
-                      <VideoRecorder 
-                        label="Record ID Check" 
-                        onRecordComplete={(blob) => handleVideoUpload('schoolId_video', blob)} 
-                        initialVideoUrl={documentVideos.schoolId_video || userProfile?.schoolId_vid_url}
-                      />
-                    </div>
-                    <div style={{marginTop: '1rem', padding: '12px', background: '#fffbeb', borderRadius: '14px', border: '1px solid #fef3c7', display: 'flex', gap: '10px'}}>
-                      <i className="fas fa-video-slash" style={{color: '#d97706', fontSize: '1rem', marginTop: '2px'}}></i>
-                      <p style={{fontSize: '0.75rem', color: '#92400e', margin: 0, lineHeight: '1.4'}}>
-                        <b>Scan Tip:</b> Slowly tilt your ID front to back. Keep it steady so our AI can read the hologram and SY sticker.
-                      </p>
+                    <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                      <div style={{flex: 1, minHeight: '180px'}}>
+                        <VideoRecorder 
+                          label="Record ID Front Check" 
+                          onRecordComplete={(blob) => handleVideoUpload('schoolIdFront_video', blob)} 
+                          initialVideoUrl={documentVideos.schoolIdFront_video || userProfile?.schoolId_front_vid_url || userProfile?.schoolId_vid_url}
+                          isUploading={Boolean(uploadingFields['schoolIdFront_video'])}
+                        />
+                      </div>
+                      <div style={{marginTop: '-0.25rem', padding: '12px', background: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px'}}>
+                        <i className="fas fa-user-check" style={{color: '#2563eb', fontSize: '1rem', marginTop: '2px'}}></i>
+                        <p style={{fontSize: '0.75rem', color: '#1e3a8a', margin: 0, lineHeight: '1.4'}}>
+                          <b>Front check:</b> Keep your name area visible. This video is used to confirm the student name on the ID front.
+                        </p>
+                      </div>
+                      <div style={{flex: 1, minHeight: '180px'}}>
+                        <VideoRecorder 
+                          label="Record ID Back Check" 
+                          onRecordComplete={(blob) => handleVideoUpload('schoolIdBack_video', blob)} 
+                          initialVideoUrl={documentVideos.schoolIdBack_video || userProfile?.schoolId_back_vid_url || userProfile?.schoolId_vid_url}
+                          isUploading={Boolean(uploadingFields['schoolIdBack_video'])}
+                        />
+                      </div>
+                      <div style={{marginTop: '-0.25rem', padding: '12px', background: '#fffbeb', borderRadius: '14px', border: '1px solid #fef3c7', display: 'flex', gap: '10px'}}>
+                        <i className="fas fa-school" style={{color: '#d97706', fontSize: '1rem', marginTop: '2px'}}></i>
+                        <p style={{fontSize: '0.75rem', color: '#92400e', margin: 0, lineHeight: '1.4'}}>
+                          <b>Back check:</b> Focus on the school name and validity details so the scanner can match your campus name and current academic year.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2831,6 +2978,7 @@ const StudentInfo = () => {
                           label="Record COE Video" 
                           onRecordComplete={(blob) => handleVideoUpload('mayorCOE_video', blob)} 
                           initialVideoUrl={documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url}
+                          isUploading={Boolean(uploadingFields['mayorCOE_video'])}
                         />
                       </div>
                     </div>
@@ -2928,6 +3076,7 @@ const StudentInfo = () => {
                           label="Record Grades Video" 
                           onRecordComplete={(blob) => handleVideoUpload('mayorGrades_video', blob)} 
                           initialVideoUrl={documentVideos.mayorGrades_video || userProfile?.grades_vid_url}
+                          isUploading={Boolean(uploadingFields['mayorGrades_video'])}
                         />
                       </div>
                     </div>
