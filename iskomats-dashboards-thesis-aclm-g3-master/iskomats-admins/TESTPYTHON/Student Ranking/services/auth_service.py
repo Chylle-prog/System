@@ -27,9 +27,14 @@ def get_allowed_origins():
     preview_patterns = []
 
     for origin in origins:
-        if origin.endswith('.netlify.app') and '--' not in origin:
-            host = origin.removeprefix('https://').removeprefix('http://')
-            preview_patterns.append(re.compile(rf"https://.*--{re.escape(host)}$"))
+        # Wildcard support for surge.sh and netlify.app
+        if origin.endswith('.surge.sh') or origin.endswith('.netlify.app'):
+            host = origin.removeprefix('https://').removeprefix('http://').split('/')[0]
+            # Match current host and any subdomains
+            preview_patterns.append(re.compile(rf"^https?://([a-z0-9\-]+\.)*{re.escape(host)}$"))
+            # Also add common pattern for surge.sh generally
+            if 'surge.sh' in host:
+                preview_patterns.append(re.compile(rf"^https?://[a-z0-9\-]+\.surge\.sh/?$"))
 
     return origins + preview_patterns
 
@@ -52,6 +57,13 @@ def is_origin_allowed(origin, exact_origins, regex_origins):
         return False
 
     if origin in exact_origins:
+        print(f"[CORS] Origin '{origin}' matched exactly.", flush=True)
         return True
 
-    return any(pattern.match(origin) for pattern in regex_origins)
+    for pattern in regex_origins:
+        if pattern.match(origin):
+            print(f"[CORS] Origin '{origin}' matched regex pattern: {pattern.pattern}", flush=True)
+            return True
+
+    print(f"[CORS] Origin '{origin}' REJECTED. (Allowed exact: {len(exact_origins)}, patterns: {len(regex_origins)})", flush=True)
+    return False

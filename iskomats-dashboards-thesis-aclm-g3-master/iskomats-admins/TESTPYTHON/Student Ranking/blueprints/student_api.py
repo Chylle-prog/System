@@ -1906,8 +1906,9 @@ def ocr_check():
                             video_bytes=vid_bytes,
                             keywords=video_keywords_map.get(doc_type),
                             expected_address=None,  # Address matching in videos is unreliable and slow; keywords alone are sufficient
-                            sample_positions=[0.18, 0.55, 0.85] if fast_video_verification else None,
-                            max_width=480 if fast_video_verification else None,
+                            # Reduced sampling for School ID to speed up verification (2 key frames)
+                            sample_positions=[0.25, 0.75] if not fast_video_verification and 'SchoolID' in doc_type else ([0.18, 0.55, 0.85] if fast_video_verification else None),
+                            max_width=480, # Always downscale video frames for OCR speed
                             allow_alt_pass=not fast_video_verification
                         )
                     else:
@@ -2023,15 +2024,27 @@ def ocr_check():
 
         results = []
         overall_verified = True
+        
         if jobs:
-            # Use eventlet.tpool to offload blocking OCR/CPU tasks (like Tesseract) to real OS threads.
-            # This prevents the single eventlet worker from freezing while processing multiple documents.
-            import eventlet.tpool
+            # Use eventlet.GreenPool for parallel fetching and processing.
+            # Even though OCR itself is serialized by a semaphore in ocr_utils, 
+            # fetching video bytes and preprocessing happen in parallel.
+            from eventlet import GreenPool
+            # size limit to 3 to avoid memory spikes on Render 512MB
+            pool = GreenPool(size=min(len(jobs), 3)) 
             
-            # We run them sequentially here to avoid memory spikes, but since it's in tpool.execute, 
-            # the main worker can still handle other users and SocketIO events in the meantime.
-            for job in jobs:
-                res = eventlet.tpool.execute(process_doc, *job)
+            def run_job(job_data):
+                try:
+                    # process_doc uses tpool.execute internally for blocking Tesseract tasks
+                    return process_doc(*job_data)
+                except Exception as e:
+                    print(f"[OCR POOL ERROR] {job_data[0]}: {e}", flush=True)
+                    return {'doc': job_data[0], 'verified': False, 'message': f'Pool error: {str(e)}'}
+
+            # Use imap to run jobs in parallel and collect results
+            job_results = list(pool.imap(run_job, jobs))
+            
+            for res in job_results:
                 if res:
                     results.append(res)
                     if not res.get('verified', False): 
