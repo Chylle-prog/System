@@ -183,7 +183,7 @@ export default function ScholarshipDashboard({
   const messengerTitle = `${scholarshipLabel} Messenger`;
   const administratorTitle = `${scholarshipLabel} Administrator`;
 
-  const [section, setSection] = useState('dashboard'); // dashboard | manage | track | reports | inbox | view-applicant
+  const [section, setSection] = useState('dashboard'); // dashboard | finder | manage | track | reports | inbox | view-applicant
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [reportsView, setReportsView] = useState('tables'); // analytics | tables
   const [trackTab, setTrackTab] = useState('all'); // pending | all | accepted | declined
@@ -191,6 +191,8 @@ export default function ScholarshipDashboard({
   const [trackScholarshipFilter, setTrackScholarshipFilter] = useState('all');
   const [data, setData] = useState(initialDashboardData);
   const [searchTrack, setSearchTrack] = useState('');
+  const [finderSearch, setFinderSearch] = useState('');
+  const [finderAvailabilityFilter, setFinderAvailabilityFilter] = useState('all'); // all | open | full
   const [reportTab, setReportTab] = useState('pending'); // pending | accepted | declined
   const [viewApplicant, setViewApplicant] = useState(null); // { listType: 'all'|'accepted'|'declined', index }
   const [inboxSearch, setInboxSearch] = useState('');
@@ -426,6 +428,41 @@ export default function ScholarshipDashboard({
     if (income <= 70000) return "Low";
     if (income <= 100000) return "High";
     return "Very High";
+  };
+
+  const parseNumericValue = (value) => {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+
+    const parsed = parseFloat(String(value).replace(/,/g, ''));
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const normalizeFinderText = (value) => String(value || '').toLowerCase().trim();
+
+  const applicantMatchesScholarshipCriteria = (applicant, scholarship) => {
+    const applicantGrade = parseNumericValue(applicant.grade);
+    const minimumGpa = parseNumericValue(scholarship.minGpa);
+    if (minimumGpa !== null && (applicantGrade === null || applicantGrade < minimumGpa)) {
+      return false;
+    }
+
+    const incomeLimit = parseNumericValue(scholarship.parentFinance);
+    const applicantIncome = parseNumericValue(applicant.income);
+    if (incomeLimit !== null && incomeLimit > 0 && (applicantIncome === null || applicantIncome > incomeLimit)) {
+      return false;
+    }
+
+    const scholarshipLocation = normalizeFinderText(scholarship.location);
+    if (scholarshipLocation) {
+      const applicantLocation = normalizeFinderText(applicant.location);
+      if (!applicantLocation || (!applicantLocation.includes(scholarshipLocation) && !scholarshipLocation.includes(applicantLocation))) {
+        return false;
+      }
+    }
+
+    return true;
   };
 
   const calculateHistoricalData = (applicants) => {
@@ -854,6 +891,72 @@ export default function ScholarshipDashboard({
     );
   }, [data.announcements, manageSearch]);
 
+  const scholarshipFinderResults = useMemo(() => {
+    const search = normalizeFinderText(finderSearch);
+    const allTrackedApplicants = [...data.applicants, ...data.accepted, ...data.declined];
+
+    return (data.scholarshipPosts || [])
+      .map((post) => {
+        const scholarshipId = String(post.reqNo || post.id || '');
+        const acceptedCount = Number(post.acceptedCount ?? data.accepted.filter((applicant) => matchesScholarshipSelection(applicant, scholarshipId)).length);
+        const pendingCount = Number(post.pendingCount ?? data.applicants.filter((applicant) => matchesScholarshipSelection(applicant, scholarshipId)).length);
+        const declinedCount = Number(post.declinedCount ?? data.declined.filter((applicant) => matchesScholarshipSelection(applicant, scholarshipId)).length);
+        const totalApplicants = Number(post.totalApplicants ?? (acceptedCount + pendingCount + declinedCount));
+        const slotLimit = Number(post.slots ?? 0);
+        const availableSlots = post.availableSlots ?? Math.max(slotLimit - acceptedCount, 0);
+        const isFull = typeof post.isFull === 'boolean' ? post.isFull : (slotLimit > 0 && availableSlots <= 0);
+        const eligibleApplicantIds = new Set(
+          allTrackedApplicants
+            .filter((applicant) => applicantMatchesScholarshipCriteria(applicant, post))
+            .map((applicant) => applicant.id || applicant.applicant_no)
+            .filter(Boolean)
+        );
+
+        return {
+          ...post,
+          acceptedCount,
+          pendingCount,
+          declinedCount,
+          totalApplicants,
+          availableSlots,
+          isFull,
+          eligibleApplicantCount: eligibleApplicantIds.size,
+        };
+      })
+      .filter((post) => {
+        if (finderAvailabilityFilter === 'open' && post.isFull) {
+          return false;
+        }
+
+        if (finderAvailabilityFilter === 'full' && !post.isFull) {
+          return false;
+        }
+
+        if (!search) {
+          return true;
+        }
+
+        return [
+          post.scholarshipName,
+          post.description,
+          post.location,
+          post.semester,
+          post.year,
+        ].some((value) => normalizeFinderText(value).includes(search));
+      })
+      .sort((left, right) => {
+        if (left.isFull !== right.isFull) {
+          return Number(left.isFull) - Number(right.isFull);
+        }
+
+        if (left.availableSlots !== right.availableSlots) {
+          return right.availableSlots - left.availableSlots;
+        }
+
+        return String(left.scholarshipName || '').localeCompare(String(right.scholarshipName || ''));
+      });
+  }, [data.accepted, data.applicants, data.declined, data.scholarshipPosts, finderAvailabilityFilter, finderSearch, matchesScholarshipSelection]);
+
   const scholarshipFilterOptions = useMemo(() => {
     return (data.scholarshipPosts || []).map((post) => {
       const value = String(post.reqNo || post.id || post.scholarshipName || post.title || '').trim();
@@ -922,6 +1025,19 @@ export default function ScholarshipDashboard({
     () => calculateHistoricalData(filteredReportApplicants.all),
     [filteredReportApplicants]
   );
+
+  const openScholarshipInTrack = (post) => {
+    const scholarshipValue = String(post.reqNo || post.id || 'all');
+    setTrackScholarshipFilter(scholarshipValue);
+    setAnalyticsScholarshipFilter(scholarshipValue);
+    setSection('track');
+  };
+
+  const openScholarshipEditor = (post) => {
+    setManageTab('scholarship');
+    editPost(post);
+    setSection('manage');
+  };
 
   useEffect(() => {
     if (section !== 'reports') return;
@@ -1488,6 +1604,153 @@ export default function ScholarshipDashboard({
           </div>
         </div>
       </div>
+    );
+  };
+
+  const renderFinder = () => {
+    const openScholarships = scholarshipFinderResults.filter((post) => !post.isFull).length;
+    const totalOpenSlots = scholarshipFinderResults.reduce((sum, post) => sum + (Number(post.availableSlots) || 0), 0);
+
+    return (
+      <section className="space-y-6">
+        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.25em] text-[#800020]/70 mb-2">Scholarship Finder</p>
+              <h2 className="text-2xl font-black text-gray-900">Find scholarships with open slots and matching demand</h2>
+              <p className="text-sm text-gray-500 mt-2 max-w-2xl">
+                Search your scholarship posts, review real-time slot usage, and jump straight into applicant tracking or editing.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                resetForm();
+                setManageTab('scholarship');
+                setManageMode('create');
+                setSection('manage');
+              }}
+              className="px-5 py-3 rounded-2xl bg-[#800020] text-white font-bold shadow-sm hover:bg-[#650018] transition-colors"
+            >
+              Add Scholarship Post
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+              <p className="text-xs font-black uppercase tracking-widest text-emerald-700 mb-2">Open Scholarships</p>
+              <p className="text-3xl font-black text-emerald-900">{openScholarships}</p>
+            </div>
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+              <p className="text-xs font-black uppercase tracking-widest text-blue-700 mb-2">Open Slots</p>
+              <p className="text-3xl font-black text-blue-900">{totalOpenSlots}</p>
+            </div>
+            <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
+              <p className="text-xs font-black uppercase tracking-widest text-amber-700 mb-2">Visible Posts</p>
+              <p className="text-3xl font-black text-amber-900">{scholarshipFinderResults.length}</p>
+            </div>
+          </div>
+
+          <div className="flex flex-col lg:flex-row gap-3 mb-6">
+            <div className="flex-1 flex items-center gap-3 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+              <FaSearch className="text-[#800020]" />
+              <input
+                type="text"
+                value={finderSearch}
+                onChange={(event) => setFinderSearch(event.target.value)}
+                placeholder="Search by scholarship, location, term, or year"
+                className="w-full bg-transparent outline-none text-sm font-medium text-gray-700"
+              />
+            </div>
+            <select
+              value={finderAvailabilityFilter}
+              onChange={(event) => setFinderAvailabilityFilter(event.target.value)}
+              className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700"
+            >
+              <option value="all">All Scholarships</option>
+              <option value="open">Open Slots Only</option>
+              <option value="full">Full Scholarships</option>
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+            {scholarshipFinderResults.length > 0 ? (
+              scholarshipFinderResults.map((post) => (
+                <article key={post.reqNo || post.id} className="rounded-3xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-6 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap mb-2">
+                        <span className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider ${post.isFull ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                          {post.isFull ? 'Full' : `${post.availableSlots} Open Slot${post.availableSlots === 1 ? '' : 's'}`}
+                        </span>
+                        <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-100 text-[#800020]">
+                          {post.semester || 'Semester TBD'} {post.year || ''}
+                        </span>
+                      </div>
+                      <h3 className="text-xl font-black text-gray-900">{post.scholarshipName || 'Untitled Scholarship'}</h3>
+                      <p className="text-sm text-gray-500 mt-1">{post.location || 'Open location criteria'}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[11px] font-black uppercase tracking-widest text-gray-400">Deadline</p>
+                      <p className="text-sm font-bold text-gray-700">{formatDate(post.deadline)}</p>
+                    </div>
+                  </div>
+
+                  <p className="text-sm text-gray-600 mb-4 line-clamp-3">{post.description || 'No description provided for this scholarship post yet.'}</p>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                    <div className="rounded-2xl bg-gray-100 px-3 py-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Slots</p>
+                      <p className="text-lg font-black text-gray-900">{post.acceptedCount}/{post.slots || 0}</p>
+                    </div>
+                    <div className="rounded-2xl bg-gray-100 px-3 py-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Pending</p>
+                      <p className="text-lg font-black text-amber-700">{post.pendingCount}</p>
+                    </div>
+                    <div className="rounded-2xl bg-gray-100 px-3 py-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Declined</p>
+                      <p className="text-lg font-black text-red-700">{post.declinedCount}</p>
+                    </div>
+                    <div className="rounded-2xl bg-gray-100 px-3 py-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Eligible Pool</p>
+                      <p className="text-lg font-black text-[#800020]">{post.eligibleApplicantCount}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-gray-600 mb-5">
+                    <span className="px-3 py-1 rounded-full bg-white border border-gray-200">Min GPA: {post.minGpa ?? 'N/A'}</span>
+                    <span className="px-3 py-1 rounded-full bg-white border border-gray-200">Income Cap: {post.parentFinance ? `PHP ${Number(post.parentFinance).toLocaleString()}` : 'Open'}</span>
+                    <span className="px-3 py-1 rounded-full bg-white border border-gray-200">Applicants: {post.totalApplicants}</span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => openScholarshipInTrack(post)}
+                      className="px-4 py-2 rounded-xl bg-[#800020] text-white font-bold hover:bg-[#650018] transition-colors"
+                    >
+                      Track Applicants
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openScholarshipEditor(post)}
+                      className="px-4 py-2 rounded-xl bg-white border border-gray-300 text-gray-700 font-bold hover:border-[#800020] hover:text-[#800020] transition-colors"
+                    >
+                      Edit Post
+                    </button>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <div className="col-span-full rounded-3xl border border-dashed border-gray-300 bg-gray-50 p-12 text-center">
+                <FaSearch className="text-4xl text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-black text-gray-800 mb-2">No scholarships matched this search</h3>
+                <p className="text-sm text-gray-500">Try a different keyword or switch the availability filter.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
     );
   };
 
@@ -3599,6 +3862,7 @@ export default function ScholarshipDashboard({
           <div className={`${sidebarCollapsed ? 'px-1' : 'px-2'} py-4 space-y-1`}>
             {[
               { id: 'dashboard', label: 'Dashboard', icon: <FaTachometerAlt /> },
+              { id: 'finder', label: 'Find Scholarship', icon: <FaSearch /> },
               { id: 'manage', label: 'Manage', icon: <FaFilter /> },
               { id: 'track', label: 'Track', icon: <FaUsers /> },
               { id: 'reports', label: 'Reports', icon: <FaChartBar /> },
@@ -3637,6 +3901,7 @@ export default function ScholarshipDashboard({
         </header>
 
         {section === 'dashboard' && renderDashboard()}
+        {section === 'finder' && renderFinder()}
         {section === 'manage' && renderManage()}
         {section === 'track' && renderTrack()}
         {section === 'reports' && renderReports()}

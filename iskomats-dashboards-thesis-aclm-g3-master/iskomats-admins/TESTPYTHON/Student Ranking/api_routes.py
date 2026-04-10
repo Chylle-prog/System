@@ -2532,10 +2532,14 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
             SELECT s.req_no as id, s.req_no as "reqNo", s.scholarship_name as "scholarshipName", 
                    s.gpa as "minGpa", s.location, s.parent_finance as "parentFinance",
                    s.slots, s.deadline, s.pro_no as "proNo", p.provider_name as "providerName",
-                     s."desc" as description, s.date_created as "dateCreated",
-                     s.semester, s.year
+                                         s."desc" as description, s.date_created as "dateCreated",
+                                         s.semester, s.year,
+                                         COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS TRUE) as "acceptedCount",
+                                         COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS NULL) as "pendingCount",
+                                         COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS FALSE) as "declinedCount"
             FROM scholarships s
             LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
+                        LEFT JOIN applicant_status ast ON ast.scholarship_no = s.req_no
                  WHERE COALESCE(s.is_removed, FALSE) = FALSE
         '''
         params = []
@@ -2548,7 +2552,12 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
             query += ' AND (p.provider_name ILIKE %s OR (s.pro_no IS NULL AND %s != "all"))'
             params.extend([f"%{program}%", program])
             
-        query += ' ORDER BY s.req_no DESC'
+        query += '''
+            GROUP BY s.req_no, s.scholarship_name, s.gpa, s.location, s.parent_finance,
+                     s.slots, s.deadline, s.pro_no, p.provider_name, s."desc",
+                     s.date_created, s.semester, s.year
+            ORDER BY s.req_no DESC
+        '''
         
         cursor.execute(query, params)
         rows = cursor.fetchall()
@@ -2558,7 +2567,28 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
         if not rows:
             return jsonify({'success': True, 'scholarships': []}), 200
 
-        result = [dict(row) for row in rows]
+        result = []
+        for row in rows:
+            scholarship = dict(row)
+            slots = scholarship.get('slots')
+            accepted_count = int(scholarship.get('acceptedCount') or 0)
+            pending_count = int(scholarship.get('pendingCount') or 0)
+            declined_count = int(scholarship.get('declinedCount') or 0)
+
+            scholarship['acceptedCount'] = accepted_count
+            scholarship['pendingCount'] = pending_count
+            scholarship['declinedCount'] = declined_count
+            scholarship['totalApplicants'] = accepted_count + pending_count + declined_count
+
+            if slots is None:
+                scholarship['availableSlots'] = None
+                scholarship['isFull'] = False
+            else:
+                scholarship['availableSlots'] = max(int(slots) - accepted_count, 0)
+                scholarship['isFull'] = accepted_count >= int(slots)
+
+            result.append(scholarship)
+
         return jsonify({'success': True, 'scholarships': result}), 200
     
     except Exception as e:
