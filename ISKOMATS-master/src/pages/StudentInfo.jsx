@@ -232,12 +232,6 @@ const StudentInfo = () => {
 
   const [showSignaturePad, setShowSignaturePad] = useState(false);
 
-  const scholarshipSearchSnapshot = {
-    scholarship: scholarshipName,
-    gpa: formData.gpa || searchParams.get('gpa') || '',
-    income: formData.parentsGrossIncome || searchParams.get('income') || '',
-  };
-
   const [formData, setFormData] = useState({
     lastName: '',
     firstName: '',
@@ -284,6 +278,12 @@ const StudentInfo = () => {
     applicantSignatureName: '',
     dateAccomplished: ''
   });
+
+  const scholarshipSearchSnapshot = {
+    scholarship: scholarshipName,
+    gpa: formData.gpa || searchParams.get('gpa') || '',
+    income: formData.parentsGrossIncome || searchParams.get('income') || '',
+  };
 
   const persistDraft = (user, nextFormData = formData, nextStep = currentStep) => {
     if (!user) {
