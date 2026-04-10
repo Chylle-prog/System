@@ -1479,6 +1479,17 @@ export default function ScholarshipDashboard({
     }));
   };
 
+  const markConversationAsRead = (applicantNo, room) => {
+    setData((d) => ({
+      ...d,
+      inbox: d.inbox.map((m) => {
+        const sameApplicant = applicantNo && m.applicant_no?.toString() === applicantNo?.toString();
+        const sameRoom = room && m.room === room;
+        return sameApplicant || sameRoom ? { ...m, read: true } : m;
+      }),
+    }));
+  };
+
   const toggleStar = (messageId) => {
     setData((d) => ({
       ...d,
@@ -3694,6 +3705,7 @@ export default function ScholarshipDashboard({
                       onClick={() => {
                         if (conv.messages.length > 0) {
                           const room = conv.messages[0].room;
+                          markConversationAsRead(conv.applicant_no, room);
                           setViewMessage({ messageId: conv.lastMessage.id, applicant_no: conv.applicant_no });
                           socketService.loadHistory(room);
                         }
