@@ -10,7 +10,7 @@ import React, { useState, useEffect, useRef } from 'react';
  * @param {string} initialVideoUrl - Existing video URL to show as preview
  * @param {boolean} isUploading - Whether the video is currently uploading
  */
-const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoUrl, isUploading = false, containerStyle = {}, disabled = false }) => {
+const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoUrl, isUploading = false, containerStyle = {}, disabled = false, hideButton = false }) => {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [fileName, setFileName] = useState('');
   const [videoError, setVideoError] = useState(null);
