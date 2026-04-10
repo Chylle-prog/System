@@ -2228,6 +2228,7 @@ const StudentInfo = () => {
                     </div>
 
                     {(photos.mayorIndigency_photo || userProfile?.indigency_doc) && (
+                      <>
                         <div className="scanning-container">
                           <div className="image-container" onClick={() => setLightboxSrc(photos.mayorIndigency_photo || userProfile?.indigency_doc)}>
                             <img src={photos.mayorIndigency_photo || userProfile?.indigency_doc} alt="Indigency Preview" />
@@ -2283,7 +2284,7 @@ const StudentInfo = () => {
                             </div>
                           </div>
                         )}
-                      </div>
+                      </>
                     )}
                   </div>
 
