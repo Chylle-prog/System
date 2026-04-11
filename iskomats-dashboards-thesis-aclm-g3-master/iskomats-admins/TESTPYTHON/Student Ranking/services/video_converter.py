@@ -8,16 +8,28 @@ import tempfile
 import os
 import sys
 
+_ffmpeg_checked = None
+_ffmpeg_available = False
+
 def is_ffmpeg_available():
-    """Check if ffmpeg is installed on the system."""
+    """Check if ffmpeg is installed on the system (cached)."""
+    global _ffmpeg_checked, _ffmpeg_available
+    if _ffmpeg_checked is not None:
+        return _ffmpeg_available
+        
     try:
+        # Increased timeout and more robust exception handling
         subprocess.run(['ffmpeg', '-version'],
                       capture_output=True,
-                      timeout=5,
+                      timeout=15, 
                       check=True)
-        return True
-    except (FileNotFoundError, subprocess.TimeoutExpired, subprocess.CalledProcessError):
-        return False
+        _ffmpeg_available = True
+    except Exception as e:
+        print(f"[VIDEO CONVERT] ffmpeg check failed or timed out: {e}", flush=True)
+        _ffmpeg_available = False
+        
+    _ffmpeg_checked = True
+    return _ffmpeg_available
 def faststart_video_stream(video_bytes, ext='.mp4'):
     """
     Makes video web-safe for browser streaming.
