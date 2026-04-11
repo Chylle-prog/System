@@ -885,6 +885,83 @@ def verify_face_with_id(user_photo_bytes, id_photo_bytes):
         print(f"[FACE] Verification error: {exc}", flush=True)
         return False, f"Face verification error: {str(exc)}", 0.0
 
+
+def _prepare_signature_preview(signature_img):
+    if signature_img is None:
+        return None
+
+    gray = cv2.cvtColor(signature_img, cv2.COLOR_BGR2GRAY) if len(signature_img.shape) == 3 else signature_img
+    _, binary = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
+    coords = cv2.findNonZero(binary)
+    if coords is None:
+        return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+
+    x, y, w, h = cv2.boundingRect(coords)
+    pad = max(4, int(min(w, h) * 0.15))
+    x0 = max(0, x - pad)
+    y0 = max(0, y - pad)
+    x1 = min(gray.shape[1], x + w + pad)
+    y1 = min(gray.shape[0], y + h + pad)
+    cropped = gray[y0:y1, x0:x1]
+
+    preview = np.full((cropped.shape[0], cropped.shape[1], 3), 255, dtype=np.uint8)
+    preview_mask = cv2.threshold(cropped, 200, 255, cv2.THRESH_BINARY_INV)[1]
+    preview[preview_mask > 0] = (0, 0, 0)
+    return preview
+
+
+def _extract_signature_from_id_back(id_img):
+    if id_img is None:
+        return None
+
+    gray = cv2.cvtColor(id_img, cv2.COLOR_BGR2GRAY) if len(id_img.shape) == 3 else id_img
+    height, width = gray.shape[:2]
+    if height == 0 or width == 0:
+        return None
+
+    # Signature blocks are typically in the lower part of the card.
+    lower_half_start = int(height * 0.45)
+    roi = gray[lower_half_start:, :]
+
+    blur = cv2.GaussianBlur(roi, (5, 5), 0)
+    _, binary = cv2.threshold(blur, 185, 255, cv2.THRESH_BINARY_INV)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 3))
+    connected = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=2)
+
+    contours, _ = cv2.findContours(connected, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    best_crop = None
+    best_score = -1.0
+
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(contour)
+        area = w * h
+        if area < 500:
+            continue
+
+        aspect_ratio = w / float(max(h, 1))
+        if aspect_ratio < 1.8 or aspect_ratio > 18:
+            continue
+
+        y_global = y + lower_half_start
+        bottom_bias = y_global / float(height)
+        score = area * (1.0 + bottom_bias)
+        if score > best_score:
+            pad_x = max(6, int(w * 0.08))
+            pad_y = max(6, int(h * 0.2))
+            x0 = max(0, x - pad_x)
+            y0 = max(0, y_global - pad_y)
+            x1 = min(width, x + w + pad_x)
+            y1 = min(height, y_global + h + pad_y)
+            best_crop = id_img[y0:y1, x0:x1]
+            best_score = score
+
+    if best_crop is not None:
+        return best_crop
+
+    fallback_y = int(height * 0.68)
+    fallback = id_img[fallback_y:, int(width * 0.08):int(width * 0.92)]
+    return fallback if fallback.size else id_img
+
 def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None):
     """
     Neural signature matching against ID back image.
@@ -925,20 +1002,23 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
         
         if sig_img is None or id_img is None:
             return False, "Could not decode images", 0.0, None, None
+
+        preview_signature = _prepare_signature_preview(sig_img)
+        extracted_id_signature = _extract_signature_from_id_back(id_img)
         
         # Neural matching
         try:
             score = calculate_neural_match(sig_img, student_id) if student_id else calculate_neural_match(sig_img, None)
         except Exception as e:
             print(f"[SIGNATURE] Error in neural matching: {e}", flush=True)
-            return False, f"Matching error: {str(e)}", 0.0, sig_img, id_img
+            return False, f"Matching error: {str(e)}", 0.0, preview_signature, extracted_id_signature
         
         # Threshold 0.65 as established in previous neural training sessions
         threshold = 0.65
         is_verified = score >= threshold
         status = "Neural signature match successful" if is_verified else f"Neural signature mismatch (score: {score:.2f}, threshold: {threshold})"
         
-        return is_verified, status, float(score), sig_img, id_img
+        return is_verified, status, float(score), preview_signature, extracted_id_signature
     except Exception as e:
         print(f"[SIGNATURE] Wrapper error: {e}", flush=True)
         return False, str(e), 0.0, None, None
