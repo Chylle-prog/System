@@ -649,42 +649,47 @@ def verify_video_content(video_bytes, keywords, expected_address=None, sample_po
         found_keywords = []
         addr_ok = False
 
-        def process_frame(idx, text_accumulator, keywords_found, address_ok_val):
-            # Faster Video OCR Strategy with Enhanced Preprocessing
-            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-            ret, frame = cap.read()
-            if not ret or frame is None:
-                return text_accumulator, keywords_found, address_ok_val
-            
-            # Preprocessing for Video Frames (Optimization: Handles compression artifacts/blur)
-            processed_frame = _preprocess_frame_for_ocr(frame)
-            
-            # Use even lower resolution for video frames (400px) for non-indigency fast scanning
-            h, w = processed_frame.shape[:2]
-            default_width = 400 if not is_address_verification else 520
-            width_limit = max_width or default_width
-            if w > width_limit:
-                scale = width_limit / w
-                processed_frame = cv2.resize(processed_frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
-
-            text = _ocr_video_frame(processed_frame, allow_alt_pass=allow_alt_pass)
-
-            text_accumulator += " " + text
-            print(f"[VIDEO OCR] Frame {idx} scanned ({len(text.strip())} chars)...", flush=True)
-
-            _, new_addr, new_kws, _ = _perform_text_matching(text_accumulator, None, None, None, None, keywords=keywords, is_indigency=is_address_verification)
-            return text_accumulator, new_kws, new_addr
-
-        is_success = False
+        # Use even lower resolution for video frames (400px) for non-indigency fast scanning
+        frames_to_ocr = []
         for sample_idx in sample_indices:
-            all_ocr_text, found_keywords, addr_ok = process_frame(sample_idx, all_ocr_text, found_keywords, addr_ok)
-            missing_kw = [kw for kw in (keywords or []) if kw not in found_keywords]
-            if not missing_kw and (not expected_address or addr_ok):
-                is_success = True
-                break
-            elif not is_address_verification and found_keywords:
-                is_success = True
-                break
+            cap.set(cv2.CAP_PROP_POS_FRAMES, sample_idx)
+            ret, frame = cap.read()
+            if ret and frame is not None:
+                # Preprocess and resize immediately to keep memory usage low
+                processed_frame = _preprocess_frame_for_ocr(frame)
+                h, w = processed_frame.shape[:2]
+                default_width = 400 if not is_address_verification else 520
+                width_limit = max_width or default_width
+                if w > width_limit:
+                    scale = width_limit / w
+                    processed_frame = cv2.resize(processed_frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+                frames_to_ocr.append(processed_frame)
+        
+        cap.release()
+        cap = None # Explicitly release to free memory
+
+        if not frames_to_ocr:
+            return False, "Could not capture readable frames from video"
+
+        # Now run OCR on captured frames in parallel
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(len(frames_to_ocr), 3)) as executor:
+            # allow_alt_pass=True for thoroughness on documents
+            ocr_results = list(executor.map(lambda f: _ocr_video_frame(f, allow_alt_pass=allow_alt_pass), frames_to_ocr))
+
+        all_ocr_text = " ".join(ocr_results)
+        found_keywords = []
+        addr_ok = False
+        
+        # Check against keywords
+        _, addr_ok, found_keywords, _ = _perform_text_matching(
+            all_ocr_text, None, None, None, None, 
+            keywords=keywords, is_indigency=is_address_verification
+        )
+        
+        is_success = bool(found_keywords) # For COE/Grades, any keyword found is success
+        if expected_address and not addr_ok:
+            is_success = False
                 
         if expected_address and not addr_ok:
             fail_msg = f"Address mismatch: Region '{expected_address}' not clearly visible in video."

@@ -3052,52 +3052,65 @@ def ocr_check():
                     'SchoolIDBack': academic_year_keywords or ['School Year', 'Academic Year', 'A.Y.', 'S.Y.']
                 }
 
-                # 1.a Video Content Verification (if URL present)
-                v_video, msg_video = True, "Not provided"
-                if vid_url:
-                    if doc_type in ['SchoolID', 'SchoolIDBack']:
-                        v_video, msg_video = verify_video_reference(vid_url)
-                    else:
-                        vid_bytes, fetch_err = fetch_video_bytes_from_url(vid_url)
-                        if vid_bytes:
-                            scan_options = video_scan_options.get(doc_type, video_scan_options['Enrollment'])
-                            v_video, msg_video = verify_video_content(
-                                video_bytes=vid_bytes,
-                                keywords=video_keywords_map.get(doc_type),
-                                expected_address=None,
-                                sample_positions=scan_options['sample_positions'],
-                                max_width=scan_options['max_width'],
-                                allow_alt_pass=scan_options['allow_alt_pass'],
-                                fallback_text_length=scan_options['fallback_text_length']
-                            )
-                        else:
-                            msg_video = f"Video file unreachable ({fetch_err})"
-                            v_video = False
-                else:
-                    # Video is now mandatory for these specific documents
-                    if doc_type in ['Indigency', 'Enrollment', 'Grades', 'SchoolID', 'SchoolIDBack']:
-                        v_video = False
-                        msg_video = "Mandatory supporting video is missing"
-                
-                # If video verification fails, the entire document verification fails
-                if not v_video:
-                    return {'doc': doc_type, 'verified': False, 'message': f"Video verification failed: {msg_video}", 'video_verified': False, 'video_message': msg_video}
-                
-                # 1.b OCR Extraction from document image
+                # ─── PARALLEL VERIFICATION (Part 1: Preparation) ───
                 target_address = town_city if doc_type == 'Indigency' else None
                 
-                if doc_type in ['Enrollment', 'Grades']:
-                    raw, extraction_error = extract_document_text(doc_bytes)
-                    v = bool(raw and raw.strip())
-                    msg = extraction_error or ('Verified' if v else 'Unable to read document text')
-                elif doc_type == 'SchoolIDBack':
-                    # Optimization: Use fast ID back mode (skips header bands, uses PSM6)
-                    raw, extraction_error = extract_document_text(doc_bytes, is_id_back=True)
-                    v = bool(raw and raw.strip())
-                    msg = extraction_error or ('Verified' if v else 'Unable to read school ID back text')
-                else:
-                    # ID Front/Indigency check: Validate Name + ID Number (for ID) + Address (for Indigency)
-                    v, msg, raw, _ = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=expected_id_no if doc_type != 'Indigency' else None)
+                # Pre-define results
+                video_res = [True, "Not provided"]
+                ocr_res = [False, "Unable to read document text", ""]
+
+                def run_video_check():
+                    if not vid_url:
+                        if doc_type in ['Indigency', 'Enrollment', 'Grades', 'SchoolID', 'SchoolIDBack']:
+                            return False, "Mandatory supporting video is missing"
+                        return True, "Not provided"
+                    
+                    if doc_type in ['SchoolID', 'SchoolIDBack']:
+                        return verify_video_reference(vid_url)
+                    
+                    vid_bytes, fetch_err = fetch_video_bytes_from_url(vid_url)
+                    if not vid_bytes:
+                        return False, f"Video file unreachable ({fetch_err})"
+                    
+                    scan_options = video_scan_options.get(doc_type, video_scan_options['Enrollment'])
+                    return verify_video_content(
+                        video_bytes=vid_bytes,
+                        keywords=video_keywords_map.get(doc_type),
+                        expected_address=None, # Only Indigency uses address in document OCR, not video usually here
+                        sample_positions=scan_options['sample_positions'],
+                        max_width=scan_options['max_width'],
+                        allow_alt_pass=scan_options['allow_alt_pass'],
+                        fallback_text_length=scan_options['fallback_text_length']
+                    )
+
+                def run_ocr_check():
+                    if doc_type in ['Enrollment', 'Grades']:
+                        raw_t, extraction_error = extract_document_text(doc_bytes)
+                        v_t = bool(raw_t and raw_t.strip())
+                        return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t
+                    elif doc_type == 'SchoolIDBack':
+                        raw_t, extraction_error = extract_document_text(doc_bytes, is_id_back=True)
+                        v_t = bool(raw_t and raw_t.strip())
+                        return v_t, extraction_error or ('Verified' if v_t else 'Unable to read school ID back text'), raw_t
+                    else:
+                        v_t, msg_t, raw_t, _ = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=expected_id_no if doc_type != 'Indigency' else None)
+                        return v_t, msg_t, raw_t
+
+                # ─── PARALLEL EXECUTION (Concurrency) ───
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    video_future = executor.submit(run_video_check)
+                    ocr_future = executor.submit(run_ocr_check)
+                    
+                    video_res = video_future.result()
+                    v_video, msg_video = video_res[0], video_res[1]
+                    
+                    # If video fails early, we can technically stop, but it's simpler to wait for both
+                    ocr_data = ocr_future.result()
+                    v, msg, raw = ocr_data[0], ocr_data[1], ocr_data[2]
+
+                # ─── COMBINED RESULT ───
+                if not v_video:
+                    return {'doc': doc_type, 'verified': False, 'message': f"Video verification failed: {msg_video}", 'video_verified': False, 'video_message': msg_video}
                 raw_lower = raw.lower() if raw else ""
                 
                 # If primary OCR extraction failed, return error
