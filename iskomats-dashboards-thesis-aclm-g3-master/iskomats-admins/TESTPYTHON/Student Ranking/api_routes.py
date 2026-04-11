@@ -39,6 +39,12 @@ if PROJECT_DIR not in sys.path:
 
 from project_config import get_db, get_db_startup
 from services.notification_service import create_notification
+from services.email_table_service import (
+    get_applicant_email_table,
+    get_user_email_table,
+    make_account_identifier,
+    parse_account_identifier,
+)
 
 def convert_bytea_array_to_urls(bytea_array):
     """Convert PostgreSQL bytea[] array to list of base64 data URLs."""
@@ -385,23 +391,24 @@ def ensure_verification_columns():
     try:
         conn = get_db_startup()
         cur = conn.cursor()
+        user_email_table = get_user_email_table(cur)
         
         # Check if verification columns exist
         cur.execute("""
             SELECT column_name
             FROM information_schema.columns
-            WHERE table_name = 'email' AND column_name IN ('is_verified', 'verification_code')
-        """)
+            WHERE table_name = %s AND column_name IN ('is_verified', 'verification_code')
+        """, (user_email_table,))
         existing = [row['column_name'] for row in cur.fetchall()]
         
         if 'is_verified' not in existing:
-            print("[MIGRATION] Adding is_verified to email table")
-            cur.execute("ALTER TABLE email ADD COLUMN is_verified BOOLEAN DEFAULT FALSE")
-            cur.execute("UPDATE email SET is_verified = TRUE") # Existing accounts are considered verified
+            print(f"[MIGRATION] Adding is_verified to {user_email_table}")
+            cur.execute(f"ALTER TABLE {user_email_table} ADD COLUMN is_verified BOOLEAN DEFAULT FALSE")
+            cur.execute(f"UPDATE {user_email_table} SET is_verified = TRUE")
         
         if 'verification_code' not in existing:
-            print("[MIGRATION] Adding verification_code to email table")
-            cur.execute("ALTER TABLE email ADD COLUMN verification_code VARCHAR(10)")
+            print(f"[MIGRATION] Adding verification_code to {user_email_table}")
+            cur.execute(f"ALTER TABLE {user_email_table} ADD COLUMN verification_code VARCHAR(10)")
         
         conn.commit()
         cur.close()
@@ -462,12 +469,14 @@ def token_required(f):
             # Real-time synchronization check: Verify if the account is locked in the database
             conn = get_db()
             cursor = conn.cursor()
+            user_email_table = get_user_email_table(cursor)
+            applicant_email_table = get_applicant_email_table(cursor)
             
             # Check either user_no (for admins) or applicant_no (for scholars)
             if role and (role.lower() == 'scholar' or role.lower() == 'user'):
-                cursor.execute("SELECT is_locked FROM email WHERE applicant_no = %s", (current_user_id,))
+                cursor.execute(f"SELECT is_locked FROM {applicant_email_table} WHERE applicant_no = %s", (current_user_id,))
             else:
-                cursor.execute("SELECT is_locked FROM email WHERE user_no = %s", (current_user_id,))
+                cursor.execute(f"SELECT is_locked FROM {user_email_table} WHERE user_no = %s", (current_user_id,))
             
             lock_record = cursor.fetchone()
             if lock_record and lock_record.get('is_locked'):
@@ -774,24 +783,25 @@ def send_announcement_emails(
     try:
         conn = get_db()
         cur = conn.cursor()
+        applicant_email_table = get_applicant_email_table(cur)
         
         # Get applicants based on send_to_all flag
         if send_to_all:
             # Send to ALL applicants in the system
-            cur.execute("""
+            cur.execute(f"""
                 SELECT DISTINCT a.applicant_no, a.first_name, a.last_name, COALESCE(e.email_address, a.email) AS email_address
                 FROM applicants a
-                LEFT JOIN email e ON a.applicant_no = e.applicant_no
+                LEFT JOIN {applicant_email_table} e ON a.applicant_no = e.applicant_no
                 WHERE COALESCE(e.email_address, a.email) IS NOT NULL
             """)
         else:
             # Send only to applicants who applied to this provider's scholarships
-            cur.execute("""
+            cur.execute(f"""
                 SELECT DISTINCT a.applicant_no, a.first_name, a.last_name, COALESCE(e.email_address, a.email) AS email_address
                 FROM applicants a
                 INNER JOIN applicant_status ast ON a.applicant_no = ast.applicant_no
                 INNER JOIN scholarships s ON ast.scholarship_no = s.req_no
-                LEFT JOIN email e ON a.applicant_no = e.applicant_no
+                LEFT JOIN {applicant_email_table} e ON a.applicant_no = e.applicant_no
                 WHERE s.pro_no = %s AND COALESCE(e.email_address, a.email) IS NOT NULL
             """, (provider_no,))
         
@@ -1011,8 +1021,10 @@ def fetch_actor_context(cursor, user_no):
     if not user_no:
         return None
 
+    user_email_table = get_user_email_table(cursor)
+
     cursor.execute(
-        """
+        f"""
         SELECT
             u.user_no,
             COALESCE(u.user_name, p.provider_name, 'Unknown User') AS actor_name,
@@ -1021,7 +1033,7 @@ def fetch_actor_context(cursor, user_no):
             COALESCE(p.provider_name, 'All') AS provider_name
         FROM users u
         LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
-        LEFT JOIN email e ON e.user_no = u.user_no
+        LEFT JOIN {user_email_table} e ON e.user_no = u.user_no
         WHERE u.user_no = %s
         LIMIT 1
         """,
@@ -1064,46 +1076,94 @@ def resolve_provider_context(cursor, user_no, role, token_pro_no=None):
     return resolved_provider_no, resolved_provider_name
 
 
+def resolve_account_email_record(cursor, account_id):
+    """Resolve a synthetic account id to its underlying auth-table row."""
+    requested_type, numeric_id = parse_account_identifier(account_id)
+    user_email_table = get_user_email_table(cursor)
+    applicant_email_table = get_applicant_email_table(cursor)
+
+    def fetch_admin_record(email_id):
+        cursor.execute(
+            f"""
+            SELECT
+                'Admin' AS account_type,
+                {email_id}::INTEGER AS lookup_id,
+                ue.user_em_no AS email_id,
+                ue.email_address AS email,
+                ue.user_no,
+                NULL::INTEGER AS applicant_no,
+                COALESCE(u.user_name, p.provider_name, 'Unknown Account') AS name,
+                p.pro_no AS provider_no,
+                COALESCE(p.provider_name, 'All') AS provider_name,
+                COALESCE(ue.is_locked, FALSE) AS locked
+            FROM {user_email_table} ue
+            LEFT JOIN users u ON ue.user_no = u.user_no
+            LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
+            WHERE ue.user_em_no = %s
+            LIMIT 1
+            """,
+            (email_id,),
+        )
+        return cursor.fetchone()
+
+    def fetch_applicant_record(email_id):
+        cursor.execute(
+            f"""
+            SELECT
+                'Applicant' AS account_type,
+                {email_id}::INTEGER AS lookup_id,
+                ae.app_em_no AS email_id,
+                ae.email_address AS email,
+                NULL::INTEGER AS user_no,
+                ae.applicant_no,
+                COALESCE(
+                    NULLIF(TRIM(COALESCE(a.first_name, '') || ' ' || COALESCE(a.last_name, '')), ''),
+                    'Unknown Account'
+                ) AS name,
+                s.pro_no AS provider_no,
+                COALESCE(sch.scholarship_name, 'Unassigned') AS provider_name,
+                COALESCE(ae.is_locked, FALSE) AS locked
+            FROM {applicant_email_table} ae
+            LEFT JOIN applicants a ON ae.applicant_no = a.applicant_no
+            LEFT JOIN (
+                SELECT applicant_no, scholarship_no,
+                       ROW_NUMBER() OVER (PARTITION BY applicant_no ORDER BY stat_no DESC) AS rn
+                FROM applicant_status
+            ) ast ON ast.applicant_no = a.applicant_no AND ast.rn = 1
+            LEFT JOIN scholarships sch ON ast.scholarship_no = sch.req_no
+            LEFT JOIN scholarship_providers s ON sch.pro_no = s.pro_no
+            WHERE ae.app_em_no = %s
+            LIMIT 1
+            """,
+            (email_id,),
+        )
+        return cursor.fetchone()
+
+    if requested_type == 'admin':
+        return fetch_admin_record(numeric_id)
+    if requested_type == 'applicant':
+        return fetch_applicant_record(numeric_id)
+
+    admin_record = fetch_admin_record(numeric_id)
+    applicant_record = fetch_applicant_record(numeric_id)
+
+    if admin_record and applicant_record:
+        raise ValueError('Ambiguous account identifier. Refresh the account list and retry.')
+    return admin_record or applicant_record
+
+
 def fetch_account_activity_context(cursor, account_id):
-    """Resolve the current account context for audit logging."""
-    cursor.execute(
-        """
-        SELECT
-            e.em_no AS account_id,
-            e.email_address AS email,
-            COALESCE(
-                u.user_name,
-                NULLIF(TRIM(COALESCE(a.first_name, '') || ' ' || COALESCE(a.last_name, '')), ''),
-                'Unknown Account'
-            ) AS name,
-            CASE WHEN e.user_no IS NOT NULL THEN 'Admin' ELSE 'Applicant' END AS account_type,
-            COALESCE(p.pro_no, s.pro_no) AS provider_no,
-            COALESCE(p.provider_name, s.scholarship_name, 'All') AS provider_name
-        FROM email e
-        LEFT JOIN users u ON e.user_no = u.user_no
-        LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
-        LEFT JOIN applicants a ON e.applicant_no = a.applicant_no
-        LEFT JOIN (
-            SELECT applicant_no, scholarship_no,
-                   ROW_NUMBER() OVER (PARTITION BY applicant_no ORDER BY stat_no DESC) AS rn
-            FROM applicant_status
-        ) ast ON ast.applicant_no = a.applicant_no AND ast.rn = 1
-        LEFT JOIN scholarships s ON ast.scholarship_no = s.req_no
-        WHERE e.em_no = %s
-        LIMIT 1
-        """,
-        (account_id,),
-    )
-    return cursor.fetchone()
+    return resolve_account_email_record(cursor, account_id)
 
 
 def record_admin_activity(
+        user_email_table = get_user_email_table(cur)
     *,
     actor_user_no=None,
     action,
-    target_type=None,
+        cursor.execute(f'''
     target_id=None,
-    target_label=None,
+            FROM {user_email_table} e
     provider_no=None,
     status='success',
 ):
@@ -1621,12 +1681,13 @@ def login():
     try:
         conn = get_db()
         cursor = conn.cursor()
+        user_email_table = get_user_email_table(cursor)
         normalized_email = data['email'].strip()
         
         # Query user from database based on email table joining with user and scholarship_providers
-        cursor.execute('''
-            SELECT e.password_hash, e.applicant_no, e.user_no, e.is_locked, u.user_name, u.pro_no, p.provider_name
-            FROM email e
+        cursor.execute(f'''
+            SELECT e.password_hash, e.user_no, e.is_locked, u.user_name, u.pro_no, p.provider_name
+            FROM {user_email_table} e
             LEFT JOIN users u ON e.user_no = u.user_no
             LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
             WHERE e.email_address ILIKE %s
@@ -1635,8 +1696,7 @@ def login():
         cursor.close()
         conn.close()
         
-        if not user or user['applicant_no'] is not None or user['user_no'] is None:
-            # Users with applicant_no are applicants, disregarding them entirely
+        if not user or user['user_no'] is None:
             record_admin_activity(
                 action='Login Failed',
                 status='failed',
@@ -1727,25 +1787,20 @@ def check_email():
     try:
         conn = get_db()
         cursor = conn.cursor()
+        user_email_table = get_user_email_table(cursor)
+        applicant_email_table = get_applicant_email_table(cursor)
         
-        # Check if email exists and get account type
-        cursor.execute('''
-            SELECT applicant_no, user_no 
-            FROM email 
-            WHERE email_address ILIKE %s
-        ''', (data['email'],))
-        result = cursor.fetchone()
+        cursor.execute(f'SELECT user_no FROM {user_email_table} WHERE email_address ILIKE %s LIMIT 1', (data['email'],))
+        user_result = cursor.fetchone()
+        cursor.execute(f'SELECT applicant_no FROM {applicant_email_table} WHERE email_address ILIKE %s LIMIT 1', (data['email'],))
+        applicant_result = cursor.fetchone()
         cursor.close()
         conn.close()
         
-        if result:
-            applicant_no = result.get('applicant_no')
-            user_no = result.get('user_no')
-            
-            # Determine what's currently registered
-            has_admin_account = user_no is not None
-            has_applicant_account = applicant_no is not None
-            
+        has_admin_account = user_result is not None
+        has_applicant_account = applicant_result is not None
+
+        if has_admin_account or has_applicant_account:
             # Check conflict based on what account type is being registered
             if account_type_to_check == 'admin':
                 # Registering as admin: only reject if email already has a user account
@@ -1843,11 +1898,12 @@ def register():
     try:
         conn = get_db()
         cursor = conn.cursor()
+        user_email_table = get_user_email_table(cursor)
 
         normalized_email = data['email'].strip()
         # Only check if email exists as an ADMIN user (user_no is not NULL)
         # Applicant emails (applicant_no only) are allowed to register as admin
-        cursor.execute("SELECT 1 FROM email WHERE email_address ILIKE %s AND user_no IS NOT NULL", (normalized_email,))
+        cursor.execute(f"SELECT 1 FROM {user_email_table} WHERE email_address ILIKE %s AND user_no IS NOT NULL", (normalized_email,))
         if cursor.fetchone():
             cursor.close()
             conn.close()
@@ -1875,12 +1931,12 @@ def register():
         )
         user_no = cursor.fetchone()['user_no']
         
-        # 4. Insert into email table with verification code
+        # 4. Insert into user auth table with verification code
         cursor.execute(
-            "INSERT INTO email (email_address, password_hash, user_no, verification_code, is_verified) VALUES (%s, %s, %s, %s, %s) RETURNING em_no",
+            f"INSERT INTO {user_email_table} (email_address, password_hash, user_no, verification_code, is_verified) VALUES (%s, %s, %s, %s, %s) RETURNING user_em_no",
             (normalized_email, password_hash, user_no, verification_code, False)
         )
-        em_no = cursor.fetchone()['em_no']
+        user_em_no = cursor.fetchone()['user_em_no']
         
         conn.commit()
         cursor.close()
@@ -1910,7 +1966,7 @@ def register():
         return jsonify({
             'success': True,
             'message': 'Registration successful. Please check your email for the verification code.',
-            'userId': em_no,
+            'userId': make_account_identifier('admin', user_em_no),
             'email': normalized_email
         }), 201
     
@@ -1943,17 +1999,18 @@ def forgot_password():
         normalized_email = data['email'].strip()
         conn = get_db()
         cursor = conn.cursor()
+        user_email_table = get_user_email_table(cursor)
+        applicant_email_table = get_applicant_email_table(cursor)
         
         # Check if email exists as a USER account ONLY (user_no must be set, applicant_no must be NULL)
         cursor.execute(
-            '''
+            f'''
             SELECT e.user_no, e.email_address, u.user_name, u.pro_no, p.provider_name
-            FROM email e
+            FROM {user_email_table} e
             JOIN users u ON e.user_no = u.user_no
             LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
             WHERE e.email_address ILIKE %s
             AND e.user_no IS NOT NULL
-            AND e.applicant_no IS NULL
             LIMIT 1
             ''',
             (normalized_email,),
@@ -1982,9 +2039,9 @@ def forgot_password():
         else:
             # No user account found - check if it's an applicant-only or non-existent
             cursor.execute(
-                '''
-                SELECT e.applicant_no, e.user_no
-                FROM email e
+                f'''
+                SELECT e.applicant_no
+                FROM {applicant_email_table} e
                 WHERE e.email_address ILIKE %s
                 LIMIT 1
                 ''',
@@ -2025,12 +2082,13 @@ def reset_password():
 
         conn = get_db()
         cursor = conn.cursor()
+        user_email_table = get_user_email_table(cursor)
         cursor.execute(
-            '''
-            UPDATE email
+            f'''
+            UPDATE {user_email_table}
             SET password_hash = %s
             WHERE user_no = %s AND email_address ILIKE %s
-            RETURNING em_no
+            RETURNING user_em_no
             ''',
             (password_hash, payload['user_no'], payload['email']),
         )
@@ -2071,10 +2129,11 @@ def verify_email():
         
         conn = get_db()
         cursor = conn.cursor()
+        user_email_table = get_user_email_table(cursor)
         
         # Check if email exists and code matches
         cursor.execute(
-            "SELECT user_no, verification_code, is_verified FROM email WHERE email_address ILIKE %s",
+            f"SELECT user_no, verification_code, is_verified FROM {user_email_table} WHERE email_address ILIKE %s",
             (email,)
         )
         result = cursor.fetchone()
@@ -2103,7 +2162,7 @@ def verify_email():
         
         # Mark email as verified
         cursor.execute(
-            "UPDATE email SET is_verified = TRUE, verification_code = NULL WHERE email_address ILIKE %s",
+            f"UPDATE {user_email_table} SET is_verified = TRUE, verification_code = NULL WHERE email_address ILIKE %s",
             (email,)
         )
         conn.commit()
@@ -2127,6 +2186,8 @@ def get_accounts(current_user_id, pro_no, role):
         filters = request.args
         conn = get_db()
         cursor = conn.cursor()
+        user_email_table = get_user_email_table(cursor)
+        applicant_email_table = get_applicant_email_table(cursor)
 
         cursor.execute(
             '''
@@ -2139,67 +2200,83 @@ def get_accounts(current_user_id, pro_no, role):
         )
         has_status_updated = cursor.fetchone()['has_status_updated']
         joined_expr = 'COALESCE(ast.status_updated, NOW())::date' if has_status_updated else 'NULL::date'
-        
+        status_column = ', status_updated' if has_status_updated else ''
+        applicant_order = 'status_updated DESC' if has_status_updated else 'stat_no DESC'
+
         query = f'''
-            SELECT e.em_no as id, e.email_address as email, 
-                   COALESCE(u.user_name, p.provider_name, a.first_name || ' ' || a.last_name, 'Unknown') as name,
-                   COALESCE(u.user_name, a.first_name, p.provider_name, 'Unknown') as first_name,
-                   COALESCE(a.last_name, '') as last_name,
-                   CASE WHEN e.user_no IS NOT NULL THEN 'admin' ELSE 'scholar' END as role,
-                   CASE WHEN e.user_no IS NOT NULL THEN 'Admin' ELSE 'Applicant' END as type,
-                   COALESCE(p.provider_name, s.scholarship_name, 'All') as scholarship,
-                   COALESCE(p.pro_no, s.pro_no) as provider_no,
-                   CASE
-                       WHEN e.user_no IS NOT NULL THEN 'Registered'
-                       WHEN ast.is_accepted IS TRUE THEN 'Accepted'
-                       WHEN ast.is_accepted IS FALSE THEN 'Rejected'
-                       ELSE 'Pending'
-                   END as status,
-                   {joined_expr} as joined,
-                   COALESCE(e.is_locked, false) as locked
-            FROM email e
-            LEFT JOIN users u ON e.user_no = u.user_no
-            LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
-            LEFT JOIN applicants a ON e.applicant_no = a.applicant_no
-            LEFT JOIN (
-                SELECT applicant_no, scholarship_no, is_accepted{', status_updated' if has_status_updated else ''},
-                       ROW_NUMBER() OVER(PARTITION BY applicant_no ORDER BY {'status_updated DESC' if has_status_updated else 'stat_no DESC'}) as rn
-                FROM applicant_status
-            ) ast ON a.applicant_no = ast.applicant_no AND ast.rn = 1
-            LEFT JOIN scholarships s ON ast.scholarship_no = s.req_no
-            WHERE COALESCE(s.is_removed, FALSE) = FALSE
+            SELECT *
+            FROM (
+                SELECT
+                    'admin-' || ue.user_em_no::text AS id,
+                    ue.email_address AS email,
+                    COALESCE(u.user_name, p.provider_name, 'Unknown') AS name,
+                    COALESCE(u.user_name, p.provider_name, 'Unknown') AS first_name,
+                    '' AS last_name,
+                    'admin' AS role,
+                    'Admin' AS type,
+                    COALESCE(p.provider_name, 'All') AS scholarship,
+                    p.pro_no AS provider_no,
+                    'Registered' AS status,
+                    NULL::date AS joined,
+                    COALESCE(ue.is_locked, FALSE) AS locked
+                FROM {user_email_table} ue
+                LEFT JOIN users u ON ue.user_no = u.user_no
+                LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
+
+                UNION ALL
+
+                SELECT
+                    'applicant-' || ae.app_em_no::text AS id,
+                    ae.email_address AS email,
+                    COALESCE(NULLIF(TRIM(COALESCE(a.first_name, '') || ' ' || COALESCE(a.last_name, '')), ''), 'Unknown') AS name,
+                    COALESCE(a.first_name, 'Unknown') AS first_name,
+                    COALESCE(a.last_name, '') AS last_name,
+                    'scholar' AS role,
+                    'Applicant' AS type,
+                    COALESCE(s.scholarship_name, 'Unassigned') AS scholarship,
+                    s.pro_no AS provider_no,
+                    CASE
+                        WHEN ast.is_accepted IS TRUE THEN 'Accepted'
+                        WHEN ast.is_accepted IS FALSE THEN 'Rejected'
+                        ELSE 'Pending'
+                    END AS status,
+                    {joined_expr} AS joined,
+                    COALESCE(ae.is_locked, FALSE) AS locked
+                FROM {applicant_email_table} ae
+                LEFT JOIN applicants a ON ae.applicant_no = a.applicant_no
+                LEFT JOIN (
+                    SELECT applicant_no, scholarship_no, is_accepted{status_column},
+                           ROW_NUMBER() OVER(PARTITION BY applicant_no ORDER BY {applicant_order}) as rn
+                    FROM applicant_status
+                ) ast ON a.applicant_no = ast.applicant_no AND ast.rn = 1
+                LEFT JOIN scholarships s ON ast.scholarship_no = s.req_no
+                WHERE COALESCE(s.is_removed, FALSE) = FALSE OR s.req_no IS NULL
+            ) accounts
+            WHERE 1=1
         '''
         params = []
         
         # Isolation: If not superadmin, only show accounts related to this provider
         if role != 'Admin':
-            query += ' AND (u.pro_no = %s OR s.pro_no = %s)'
-            params.extend([pro_no, pro_no])
+            query += ' AND provider_no = %s'
+            params.append(pro_no)
         
         if filters.get('role'):
             role_filter = filters['role'].lower()
             if role_filter == 'admin':
-                query += ' AND e.user_no IS NOT NULL'
+                query += " AND role = 'admin'"
             elif role_filter == 'scholar':
-                query += ' AND e.applicant_no IS NOT NULL'
+                query += " AND role = 'scholar'"
         
         if filters.get('search'):
-            query += ' AND (e.email_address ILIKE %s OR a.first_name ILIKE %s OR a.last_name ILIKE %s OR p.provider_name ILIKE %s OR u.user_name ILIKE %s)'
+            query += ' AND (email ILIKE %s OR name ILIKE %s OR scholarship ILIKE %s OR id ILIKE %s)'
             search_term = f"%{filters['search']}%"
-            params.extend([search_term, search_term, search_term, search_term, search_term])
+            params.extend([search_term, search_term, search_term, search_term])
+
+        query += ' ORDER BY name ASC, id ASC'
         
         cursor.execute(query, params)
         accounts = cursor.fetchall()
-        
-        # Deduplicate accounts
-        seen_ids = set()
-        unique_accounts = []
-        for acc in accounts:
-            if acc['id'] not in seen_ids:
-                seen_ids.add(acc['id'])
-                unique_accounts.append(acc)
-        
-        accounts = unique_accounts
         cursor.close()
         conn.close()
         
@@ -2221,10 +2298,15 @@ def create_account(current_user_id, pro_no, role):
     try:
         conn = get_db()
         cursor = conn.cursor()
+        user_email_table = get_user_email_table(cursor)
+        applicant_email_table = get_applicant_email_table(cursor)
 
         normalized_email = data['email'].strip()
-        cursor.execute("SELECT em_no FROM email WHERE email_address ILIKE %s", (normalized_email,))
-        if cursor.fetchone():
+        cursor.execute(f"SELECT user_em_no FROM {user_email_table} WHERE email_address ILIKE %s LIMIT 1", (normalized_email,))
+        existing_admin = cursor.fetchone()
+        cursor.execute(f"SELECT app_em_no FROM {applicant_email_table} WHERE email_address ILIKE %s LIMIT 1", (normalized_email,))
+        existing_applicant = cursor.fetchone()
+        if existing_admin or existing_applicant:
             cursor.close()
             conn.close()
             return jsonify({'message': 'Email already exists'}), 409
@@ -2255,12 +2337,12 @@ def create_account(current_user_id, pro_no, role):
             )
             user_no = cursor.fetchone()['user_no']
             
-            # 3a. Insert into email table
+            # 3a. Insert into user auth table
             cursor.execute(
-                "INSERT INTO email (email_address, password_hash, user_no) VALUES (%s, %s, %s) RETURNING em_no",
+                f"INSERT INTO {user_email_table} (email_address, password_hash, user_no, is_verified) VALUES (%s, %s, %s, TRUE) RETURNING user_em_no",
                 (normalized_email, password_hash, user_no)
             )
-            account_id = cursor.fetchone()['em_no']
+            account_id = make_account_identifier('admin', cursor.fetchone()['user_em_no'])
         else:
             # 2b. Insert into applicants table
             cursor.execute(
@@ -2280,12 +2362,12 @@ def create_account(current_user_id, pro_no, role):
                          (applicant_no, sch['req_no'])
                      )
             
-            # 3b. Insert into email table
+            # 3b. Insert into applicant auth table
             cursor.execute(
-                "INSERT INTO email (email_address, password_hash, applicant_no) VALUES (%s, %s, %s) RETURNING em_no",
+                f"INSERT INTO {applicant_email_table} (email_address, password_hash, applicant_no) VALUES (%s, %s, %s) RETURNING app_em_no",
                 (normalized_email, password_hash, applicant_no)
             )
-            account_id = cursor.fetchone()['em_no']
+            account_id = make_account_identifier('applicant', cursor.fetchone()['app_em_no'])
         
         conn.commit()
         cursor.close()
@@ -2325,7 +2407,7 @@ def create_account(current_user_id, pro_no, role):
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
-@api_bp.route('/accounts/<int:account_id>', methods=['PUT'])
+@api_bp.route('/accounts/<account_id>', methods=['PUT'])
 @token_required
 def update_account(current_user_id, pro_no, role, account_id):
     """Update user account"""
@@ -2341,36 +2423,30 @@ def update_account(current_user_id, pro_no, role, account_id):
             conn.close()
             return jsonify({'message': 'Account not found'}), 404
         
-        # Get user_no or applicant_no from email table
-        cursor.execute("SELECT user_no, applicant_no FROM email WHERE em_no = %s", (account_id,))
-        email_record = cursor.fetchone()
-        
-        if not email_record:
-            cursor.close()
-            conn.close()
-            return jsonify({'message': 'Account not found'}), 404
-            
-        if email_record['user_no']:
+        if account_context['user_no']:
             # Update user table
             if 'name' in data or 'firstName' in data or 'lastName' in data:
                 name = data.get('name') or f"{data.get('firstName', '')} {data.get('lastName', '')}".strip()
                 if name:
-                    cursor.execute("UPDATE users SET user_name = %s WHERE user_no = %s", (name, email_record['user_no']))
-        elif email_record['applicant_no'] and ('name' in data or 'firstName' in data or 'lastName' in data):
+                    cursor.execute("UPDATE users SET user_name = %s WHERE user_no = %s", (name, account_context['user_no']))
+        elif account_context['applicant_no'] and ('name' in data or 'firstName' in data or 'lastName' in data):
             full_name = data.get('name') or f"{data.get('firstName', '')} {data.get('lastName', '')}".strip()
             name_parts = full_name.split()
             if len(name_parts) >= 2:
                 cursor.execute(
                     "UPDATE applicants SET first_name = %s, last_name = %s WHERE applicant_no = %s",
-                    (' '.join(name_parts[:-1]), name_parts[-1], email_record['applicant_no'])
+                    (' '.join(name_parts[:-1]), name_parts[-1], account_context['applicant_no'])
                 )
                     
-        # Update email table
+        target_table = get_user_email_table(cursor) if account_context['account_type'] == 'Admin' else get_applicant_email_table(cursor)
+        id_column = 'user_em_no' if account_context['account_type'] == 'Admin' else 'app_em_no'
+
+        # Update auth table
         if 'email' in data:
-            cursor.execute("UPDATE email SET email_address = %s WHERE em_no = %s", (data['email'], account_id))
+            cursor.execute(f"UPDATE {target_table} SET email_address = %s WHERE {id_column} = %s", (data['email'], account_context['email_id']))
         if 'password' in data and data['password']:
             password_hash = bcrypt.generate_password_hash(data['password']).decode('utf-8')
-            cursor.execute("UPDATE email SET password_hash = %s WHERE em_no = %s", (password_hash, account_id))
+            cursor.execute(f"UPDATE {target_table} SET password_hash = %s WHERE {id_column} = %s", (password_hash, account_context['email_id']))
             
         conn.commit()
         cursor.close()
@@ -2395,7 +2471,7 @@ def update_account(current_user_id, pro_no, role, account_id):
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
-@api_bp.route('/accounts/<int:account_id>', methods=['DELETE'])
+@api_bp.route('/accounts/<account_id>', methods=['DELETE'])
 @token_required
 def delete_account(current_user_id, pro_no, role, account_id):
     """Delete user account"""
@@ -2408,17 +2484,19 @@ def delete_account(current_user_id, pro_no, role, account_id):
             conn.close()
             return jsonify({'message': 'Account not found'}), 404
         
-        # Get user_no from email table
-        cursor.execute("SELECT user_no FROM email WHERE em_no = %s", (account_id,))
-        email_record = cursor.fetchone()
-        
-        # Delete from email table
-        cursor.execute('DELETE FROM email WHERE em_no = %s RETURNING em_no', (account_id,))
+        if account_context['account_type'] == 'Admin':
+            target_table = get_user_email_table(cursor)
+            id_column = 'user_em_no'
+        else:
+            target_table = get_applicant_email_table(cursor)
+            id_column = 'app_em_no'
+
+        cursor.execute(f'DELETE FROM {target_table} WHERE {id_column} = %s RETURNING {id_column}', (account_context['email_id'],))
         deleted = cursor.fetchone()
         
-        if deleted and email_record and email_record['user_no']:
+        if deleted and account_context['user_no']:
             # Also delete from users table
-            cursor.execute('DELETE FROM users WHERE user_no = %s', (email_record['user_no'],))
+            cursor.execute('DELETE FROM users WHERE user_no = %s', (account_context['user_no'],))
             
         conn.commit()
         cursor.close()
@@ -2445,7 +2523,7 @@ def delete_account(current_user_id, pro_no, role, account_id):
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
-@api_bp.route('/accounts/<int:account_id>/lock', methods=['PUT'])
+@api_bp.route('/accounts/<account_id>/lock', methods=['PUT'])
 @token_required
 def toggle_account_lock(current_user_id, pro_no, role, account_id):
     """Lock or unlock a user account"""
@@ -2462,13 +2540,15 @@ def toggle_account_lock(current_user_id, pro_no, role, account_id):
             conn.close()
             return jsonify({'message': 'Account not found'}), 404
         
-        # Update the email table with lock status
-        cursor.execute('''
-            UPDATE email 
-            SET is_locked = %s 
-            WHERE em_no = %s
-            RETURNING em_no
-        ''', (data['locked'], account_id))
+        target_table = get_user_email_table(cursor) if account_context['account_type'] == 'Admin' else get_applicant_email_table(cursor)
+        id_column = 'user_em_no' if account_context['account_type'] == 'Admin' else 'app_em_no'
+
+        cursor.execute(f'''
+            UPDATE {target_table}
+            SET is_locked = %s
+            WHERE {id_column} = %s
+            RETURNING {id_column}
+        ''', (data['locked'], account_context['email_id']))
         
         result = cursor.fetchone()
         conn.commit()
@@ -2504,34 +2584,49 @@ def get_statistics(current_user_id, pro_no, role):
     try:
         conn = get_db()
         cursor = conn.cursor()
+        user_email_table = get_user_email_table(cursor)
+        applicant_email_table = get_applicant_email_table(cursor)
         
         if role != 'Admin':
             # Get total users related to this provider
             cursor.execute('''
-                SELECT COUNT(DISTINCT e.em_no) as total FROM email e 
-                LEFT JOIN users u ON e.user_no = u.user_no 
-                WHERE u.pro_no = %s OR e.applicant_no IN (
-                    SELECT applicant_no FROM applicant_status ast 
-                    JOIN scholarships s ON ast.scholarship_no = s.req_no 
-                    WHERE s.pro_no = %s
-                )
+                SELECT (
+                    (SELECT COUNT(DISTINCT ue.user_em_no)
+                     FROM ''' + user_email_table + ''' ue
+                     LEFT JOIN users u ON ue.user_no = u.user_no
+                     WHERE u.pro_no = %s) +
+                    (SELECT COUNT(DISTINCT ae.app_em_no)
+                     FROM ''' + applicant_email_table + ''' ae
+                     WHERE ae.applicant_no IN (
+                        SELECT applicant_no FROM applicant_status ast 
+                        JOIN scholarships s ON ast.scholarship_no = s.req_no 
+                        WHERE s.pro_no = %s
+                     ))
+                ) as total
             ''', (pro_no, pro_no))
             total_users = cursor.fetchone()['total']
             
-            # Get users by role for this provider
-            cursor.execute('''
-                SELECT CASE WHEN e.user_no IS NOT NULL THEN 'admin' ELSE 'scholar' END as role, 
-                       COUNT(DISTINCT e.em_no) as count 
-                FROM email e
-                LEFT JOIN users u ON e.user_no = u.user_no
-                WHERE u.pro_no = %s OR e.applicant_no IN (
+            by_role = [
+                {'role': 'admin', 'count': 0},
+                {'role': 'scholar', 'count': 0},
+            ]
+            cursor.execute(f'''
+                SELECT COUNT(DISTINCT ue.user_em_no) as count
+                FROM {user_email_table} ue
+                LEFT JOIN users u ON ue.user_no = u.user_no
+                WHERE u.pro_no = %s
+            ''', (pro_no,))
+            by_role[0]['count'] = cursor.fetchone()['count']
+            cursor.execute(f'''
+                SELECT COUNT(DISTINCT ae.app_em_no) as count
+                FROM {applicant_email_table} ae
+                WHERE ae.applicant_no IN (
                     SELECT applicant_no FROM applicant_status ast 
                     JOIN scholarships s ON ast.scholarship_no = s.req_no 
                     WHERE s.pro_no = %s
                 )
-                GROUP BY CASE WHEN e.user_no IS NOT NULL THEN 'admin' ELSE 'scholar' END
-            ''', (pro_no, pro_no))
-            by_role = cursor.fetchall()
+            ''', (pro_no,))
+            by_role[1]['count'] = cursor.fetchone()['count']
             
             # Get total applications for this provider
             cursor.execute('''
@@ -2543,15 +2638,17 @@ def get_statistics(current_user_id, pro_no, role):
             total_applicants = cursor.fetchone()['total']
         else:
             # Superadmin gets everything
-            cursor.execute('SELECT COUNT(*) as total FROM email')
+            cursor.execute(f'SELECT (SELECT COUNT(*) FROM {user_email_table}) + (SELECT COUNT(*) FROM {applicant_email_table}) as total')
             total_users = cursor.fetchone()['total']
-            
-            cursor.execute('''
-                SELECT CASE WHEN user_no IS NOT NULL THEN 'admin' ELSE 'scholar' END as role, 
-                       COUNT(*) as count 
-                FROM email GROUP BY CASE WHEN user_no IS NOT NULL THEN 'admin' ELSE 'scholar' END
-            ''')
-            by_role = cursor.fetchall()
+
+            cursor.execute(f'SELECT COUNT(*) as count FROM {user_email_table}')
+            admin_count = cursor.fetchone()['count']
+            cursor.execute(f'SELECT COUNT(*) as count FROM {applicant_email_table}')
+            applicant_count = cursor.fetchone()['count']
+            by_role = [
+                {'role': 'admin', 'count': admin_count},
+                {'role': 'scholar', 'count': applicant_count},
+            ]
             
             cursor.execute('SELECT COUNT(*) as total FROM applicants')
             total_applicants = cursor.fetchone()['total']
@@ -2579,6 +2676,7 @@ def get_activity_logs(current_user_id, pro_no, role):
         filters = request.args
         conn = get_db()
         cursor = conn.cursor()
+        user_email_table = get_user_email_table(cursor)
 
         ensure_admin_activity_log_table(cursor)
 
@@ -2596,9 +2694,9 @@ def get_activity_logs(current_user_id, pro_no, role):
             LEFT JOIN scholarship_providers AS actor_provider ON u.pro_no = actor_provider.pro_no
             LEFT JOIN LATERAL (
                 SELECT email_address
-                FROM email
+                FROM ''' + user_email_table + '''
                 WHERE user_no = logs.actor_user_no
-                ORDER BY em_no ASC
+                ORDER BY user_em_no ASC
                 LIMIT 1
             ) AS actor_email ON TRUE
             LEFT JOIN scholarship_providers AS event_provider ON logs.provider_no = event_provider.pro_no
@@ -2793,8 +2891,9 @@ def get_applicants(current_user_id, pro_no, role, program):
         filters = request.args
         conn = get_db()
         cursor = conn.cursor()
+        applicant_email_table = get_applicant_email_table(cursor)
         
-        query = '''
+        query = f'''
             SELECT a.applicant_no as id, a.first_name as "firstName", a.last_name as "lastName", 
                    a.middle_name as "middleName",
                    a.mother_fname as "motherFirstName", a.mother_lname as "motherLastName",
@@ -2849,7 +2948,7 @@ def get_applicants(current_user_id, pro_no, role, program):
             INNER JOIN applicant_status s ON a.applicant_no = s.applicant_no
             INNER JOIN scholarships esc ON s.scholarship_no = esc.req_no
             INNER JOIN scholarship_providers p ON esc.pro_no = p.pro_no
-            LEFT JOIN email e ON a.applicant_no = e.applicant_no
+            LEFT JOIN {applicant_email_table} e ON a.applicant_no = e.applicant_no
             WHERE 1=1
         '''
         params = []

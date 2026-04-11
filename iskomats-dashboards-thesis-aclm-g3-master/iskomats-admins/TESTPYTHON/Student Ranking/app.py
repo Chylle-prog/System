@@ -28,6 +28,7 @@ from blueprints import admin_bp, init_admin_socketio, register_admin_routes, stu
 print("[STARTUP] 3. Blueprints imported. Loading services...", flush=True)
 from services.auth_service import get_allowed_origins, get_secret_key, is_origin_allowed, split_allowed_origins
 from services.db_service import get_db, get_db_display_config
+from services.email_table_service import get_applicant_email_table, get_user_email_table
 
 print("[STARTUP] 4. Services imported. Initializing Flask app...", flush=True)
 app = Flask(__name__)
@@ -196,7 +197,16 @@ def health_check():
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute('SELECT COUNT(*) as count FROM email;')
+        user_email_table = get_user_email_table(cur)
+        applicant_email_table = get_applicant_email_table(cur)
+        cur.execute(
+            f'''
+            SELECT (
+                (SELECT COUNT(*) FROM {user_email_table}) +
+                (SELECT COUNT(*) FROM {applicant_email_table})
+            ) AS count
+            '''
+        )
         count = cur.fetchone()['count']
         cur.close()
         conn.close()

@@ -5,6 +5,7 @@ from datetime import datetime
 from email.mime.text import MIMEText
 from urllib import parse, request as urllib_request, error as urllib_error
 from services.db_service import get_db
+from services.email_table_service import get_applicant_email_table
 
 def fetch_google_access_token():
     """Exchange the configured refresh token for a Gmail API access token."""
@@ -121,7 +122,8 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
         # This service stores notifications against applicants(applicant_no), so
         # do not fall back to user_no here. Applicant ids and admin user ids can
         # collide numerically and send mail to the wrong person.
-        cur.execute("SELECT email_address FROM email WHERE applicant_no = %s LIMIT 1", (user_no,))
+        applicant_email_table = get_applicant_email_table(cur)
+        cur.execute(f"SELECT email_address FROM {applicant_email_table} WHERE applicant_no = %s LIMIT 1", (user_no,))
         user_row = cur.fetchone()
         conn.commit()
         

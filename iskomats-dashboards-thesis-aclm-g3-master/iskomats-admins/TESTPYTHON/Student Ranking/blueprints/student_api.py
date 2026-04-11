@@ -23,6 +23,7 @@ import cv2
 import numpy as np
 from services.auth_service import get_secret_key
 from services.db_service import get_db, get_db_startup
+from services.email_table_service import get_applicant_email_table, get_user_email_table
 
 from services.ocr_utils import (
     verify_id_with_ocr, verify_face_with_id, extract_school_year, 
@@ -478,28 +479,11 @@ GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
 GOOGLE_REFRESH_TOKEN = os.environ.get('GOOGLE_REFRESH_TOKEN')
 
-# Database Migration: Ensure email table has verification columns
+# Database Migration: Ensure auth-related support tables exist
 def ensure_verification_columns():
     try:
         conn = get_db_startup()  # Fast-fail: 3 retries × 0.5s to avoid 300s deploy stall
         cur = conn.cursor()
-        
-        # Check if columns exist
-        cur.execute("""
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'email' AND column_name IN ('is_verified', 'verification_code')
-        """)
-        existing = [row['column_name'] for row in cur.fetchall()]
-        
-        if 'is_verified' not in existing:
-            print("[MIGRATION] Adding is_verified to email table")
-            cur.execute("ALTER TABLE email ADD COLUMN is_verified BOOLEAN DEFAULT FALSE")
-            cur.execute("UPDATE email SET is_verified = TRUE") # Existing accounts are considered verified
-            
-        if 'verification_code' not in existing:
-            print("[MIGRATION] Adding verification_code to email table")
-            cur.execute("ALTER TABLE email ADD COLUMN verification_code VARCHAR(10)")
 
         # Create pending_registrations table
         cur.execute("""
@@ -642,7 +626,8 @@ def token_required(route_handler):
             try:
                 conn = get_db()
                 cur = conn.cursor()
-                cur.execute('SELECT is_locked FROM email WHERE applicant_no = %s', (applicant_no,))
+                applicant_email_table = get_applicant_email_table(cur)
+                cur.execute(f'SELECT is_locked FROM {applicant_email_table} WHERE applicant_no = %s', (applicant_no,))
                 lock_row = cur.fetchone()
                 cur.close()
                 conn.close()
@@ -842,11 +827,12 @@ def student_login():
     try:
         conn = get_db()
         cur = conn.cursor()
+        applicant_email_table = get_applicant_email_table(cur)
         # Only allow applicant logins - must have applicant_no
         cur.execute(
-            """
-            SELECT em_no, applicant_no, password_hash, is_verified, is_locked
-            FROM email
+            f"""
+            SELECT app_em_no, applicant_no, password_hash, is_locked
+            FROM {applicant_email_table}
             WHERE email_address ILIKE %s AND applicant_no IS NOT NULL
             """,
             (email,),
@@ -870,9 +856,6 @@ def student_login():
 
         if user.get('is_locked'):
             return jsonify({'message': 'Account has been suspended. Please contact the administrator.', 'suspended': True}), 403
-
-        if not user.get('is_verified'):
-            return jsonify({'message': 'Email not verified. Please verify your email first.'}), 401
  
         payload = {
             'exp': datetime.utcnow() + timedelta(days=7),
@@ -909,10 +892,11 @@ def student_register():
     try:
         conn = get_db()
         cur = conn.cursor()
+        applicant_email_table = get_applicant_email_table(cur)
         
         # 1. Check if email ALREADY exists as an APPLICANT (applicant_no is not NULL)
         # Admin emails (user_no only) are allowed to register as applicant
-        cur.execute('SELECT em_no FROM email WHERE email_address ILIKE %s AND applicant_no IS NOT NULL LIMIT 1', (email,))
+        cur.execute(f'SELECT app_em_no FROM {applicant_email_table} WHERE email_address ILIKE %s AND applicant_no IS NOT NULL LIMIT 1', (email,))
         if cur.fetchone():
             return jsonify({'message': 'Email already registered as applicant and verified. Please sign in.'}), 400
 
@@ -969,6 +953,7 @@ def student_verify_email():
     try:
         conn = get_db()
         cur = conn.cursor()
+        applicant_email_table = get_applicant_email_table(cur)
         
         # 1. Look up in pending_registrations
         if email:
@@ -981,7 +966,7 @@ def student_verify_email():
         if not pending:
             # Check if already verified as applicant
             if email:
-                cur.execute('SELECT em_no FROM email WHERE email_address ILIKE %s AND applicant_no IS NOT NULL', (email,))
+                cur.execute(f'SELECT app_em_no FROM {applicant_email_table} WHERE email_address ILIKE %s AND applicant_no IS NOT NULL', (email,))
                 if cur.fetchone():
                     return jsonify({'message': 'Email already verified. Please sign in.'}), 200
             return jsonify({'message': 'Invalid verification code or link has expired'}), 400
@@ -1001,11 +986,11 @@ def student_verify_email():
         )
         applicant_no = cur.fetchone()['applicant_no']
 
-        # Insert into email
+        # Insert into applicant auth table
         cur.execute(
-            """
-            INSERT INTO email (email_address, applicant_no, password_hash, is_verified)
-            VALUES (%s, %s, %s, TRUE)
+            f"""
+            INSERT INTO {applicant_email_table} (email_address, applicant_no, password_hash)
+            VALUES (%s, %s, %s)
             """,
             (pending['email_address'], applicant_no, pending['password_hash']),
         )
@@ -1047,11 +1032,12 @@ def student_resend_verification_email():
     try:
         conn = get_db()
         cur = conn.cursor()
+        applicant_email_table = get_applicant_email_table(cur)
         
         # 1. Check if email exists in permanent table (already verified)
-        cur.execute('SELECT is_verified FROM email WHERE email_address ILIKE %s', (email,))
+        cur.execute(f'SELECT app_em_no FROM {applicant_email_table} WHERE email_address ILIKE %s', (email,))
         user = cur.fetchone()
-        if user and user.get('is_verified'):
+        if user:
             return jsonify({'message': 'Email already verified. Please sign in.'}), 400
 
         # 2. Check if email exists in pending registrations
@@ -1103,35 +1089,29 @@ def student_check_email():
     try:
         conn = get_db()
         cur = conn.cursor()
+        applicant_email_table = get_applicant_email_table(cur)
+        user_email_table = get_user_email_table(cur)
         
-        # Check if email exists and get account type
-        cur.execute('''
-            SELECT applicant_no, user_no 
-            FROM email 
-            WHERE email_address ILIKE %s
-        ''', (email,))
-        result = cur.fetchone()
-        
-        if result:
-            applicant_no = result.get('applicant_no') if hasattr(result, 'get') else result[0]
-            user_no = result.get('user_no') if hasattr(result, 'get') else result[1]
-            
-            # For applicant registration: only reject if email already has an applicant account
-            if applicant_no:
-                return jsonify({
-                    'exists': True,
-                    'account_type': 'applicant',
-                    'available': False,
-                    'message': 'Email already registered as applicant'
-                })
-            else:
-                # Email may exist as admin, but that's OK for applicant registration
-                return jsonify({
-                    'exists': True,
-                    'account_type': 'admin' if user_no else None,
-                    'available': True,
-                    'message': 'Email available for applicant registration'
-                })
+        cur.execute(f'SELECT applicant_no FROM {applicant_email_table} WHERE email_address ILIKE %s LIMIT 1', (email,))
+        applicant_result = cur.fetchone()
+        if applicant_result:
+            return jsonify({
+                'exists': True,
+                'account_type': 'applicant',
+                'available': False,
+                'message': 'Email already registered as applicant'
+            })
+
+        cur.execute(f'SELECT user_no FROM {user_email_table} WHERE email_address ILIKE %s LIMIT 1', (email,))
+        admin_result = cur.fetchone()
+
+        if admin_result:
+            return jsonify({
+                'exists': True,
+                'account_type': 'admin',
+                'available': True,
+                'message': 'Email available for applicant registration'
+            })
         else:
             return jsonify({
                 'exists': False,
@@ -1163,10 +1143,11 @@ def student_google_login():
         # 2. Check if user exists
         conn = get_db()
         cur = conn.cursor()
+        applicant_email_table = get_applicant_email_table(cur)
         cur.execute(
-            """
+            f"""
             SELECT e.applicant_no, e.email_address, a.first_name, a.last_name
-            FROM email e
+            FROM {applicant_email_table} e
             JOIN applicants a ON e.applicant_no = a.applicant_no
             WHERE e.email_address ILIKE %s
             LIMIT 1
@@ -1177,9 +1158,6 @@ def student_google_login():
         
         # 3. Handle Existing vs. New user
         if user:
-            # For existing users, always force is_verified=TRUE since Google login IS a verification
-            cur.execute("UPDATE email SET is_verified = TRUE WHERE email_address ILIKE %s", (email,))
-            
             # If the profile is still the default "User Account", update it with Google's real name
             # This allows the user to go directly to the portal without being forced into 'Profile Setup'
             if user['first_name'] == 'User' and user['last_name'] == 'Account':
@@ -1210,14 +1188,14 @@ def student_google_login():
             
             # Create email/auth record
             cur.execute(
-                """
-                INSERT INTO email (applicant_no, email_address, is_verified)
-                VALUES (%s, %s, TRUE)
-                RETURNING em_no
+                f"""
+                INSERT INTO {applicant_email_table} (applicant_no, email_address)
+                VALUES (%s, %s)
+                RETURNING app_em_no
                 """,
                 (applicant_no, email),
             )
-            em_no = cur.fetchone()['em_no']
+            cur.fetchone()['app_em_no']
             conn.commit()
             
             user = {
@@ -1269,12 +1247,14 @@ def student_forgot_password():
     try:
         conn = get_db()
         cur = conn.cursor()
+        applicant_email_table = get_applicant_email_table(cur)
+        user_email_table = get_user_email_table(cur)
         
         # Check if email exists as an applicant
         cur.execute(
-            """
+            f"""
             SELECT e.applicant_no, e.email_address, a.first_name, a.last_name
-            FROM email e
+            FROM {applicant_email_table} e
             JOIN applicants a ON e.applicant_no = a.applicant_no
             WHERE e.email_address ILIKE %s
             LIMIT 1
@@ -1286,9 +1266,9 @@ def student_forgot_password():
         # If not found as applicant, check if it exists as an admin user (to treat as not found)
         if not user:
             cur.execute(
-                """
+                f"""
                 SELECT e.user_no
-                FROM email e
+                FROM {user_email_table} e
                 JOIN users u ON e.user_no = u.user_no
                 WHERE e.email_address ILIKE %s
                 LIMIT 1
@@ -1352,13 +1332,14 @@ def student_reset_password():
             return jsonify({'message': 'Database connection error'}), 500
             
         cur = conn.cursor()
+        applicant_email_table = get_applicant_email_table(cur)
         
         # Check if record exists first (for better error reporting)
         # Use TRIM and ILIKE for robustness
-        cur.execute("SELECT applicant_no FROM email WHERE applicant_no = %s AND TRIM(email_address) ILIKE %s", (user_no, email))
+        cur.execute(f"SELECT applicant_no FROM {applicant_email_table} WHERE applicant_no = %s AND TRIM(email_address) ILIKE %s", (user_no, email))
         if not cur.fetchone():
             # Debug: Check if email exists AT ALL for this applicant_no
-            cur.execute("SELECT email_address FROM email WHERE applicant_no = %s", (user_no,))
+            cur.execute(f"SELECT email_address FROM {applicant_email_table} WHERE applicant_no = %s", (user_no,))
             actual_record = cur.fetchone()
             actual_email = actual_record[0] if actual_record else "NOT FOUND"
             print(f"[AUTH ERROR] No matching student record found. Input: applicant_no={user_no}, email='{email}'. DB Record Email: '{actual_email}'", flush=True)
@@ -1368,7 +1349,7 @@ def student_reset_password():
 
         # Update password
         cur.execute(
-            "UPDATE email SET password_hash = %s WHERE applicant_no = %s AND TRIM(email_address) ILIKE %s",
+            f"UPDATE {applicant_email_table} SET password_hash = %s WHERE applicant_no = %s AND TRIM(email_address) ILIKE %s",
             (hashed_password, user_no, email)
         )
         conn.commit()
