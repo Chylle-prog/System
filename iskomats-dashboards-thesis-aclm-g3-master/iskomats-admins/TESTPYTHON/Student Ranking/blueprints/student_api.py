@@ -2949,11 +2949,16 @@ def ocr_check():
                             detail_issues = []
                             if not year_only_ok: 
                                 v, msg = False, f"Academic Year mismatch: Document found for A.Y. '{year_label}', but scholarship requires A.Y. '{expected_academic_year}'"
-                            elif not id_ok: detail_issues.append(f"ID No mismatch ({expected_id_no})")
-                            elif not year_level_ok: detail_issues.append(f"Year level mismatch ({expected_year_level})")
-                            elif not semester_ok: detail_issues.append(f"Semester mismatch")
-                            elif not year_ok: detail_issues.append(f"Period mismatch")
-                            if not school_ok: detail_issues.append(f"School mismatch ({school_name})")
+                            elif not id_ok:
+                                v, msg = False, f"ID Number mismatch: Expected '{expected_id_no}' but it was not found on the enrollment document"
+                            elif not year_level_ok:
+                                v, msg = False, f"Year Level mismatch: Expected '{expected_year_level}' but it was not found on the enrollment document"
+                            else:
+                                # Remaining secondary details stay as warnings for now
+                                detail_issues = []
+                                if not semester_ok: detail_issues.append(f"Semester mismatch")
+                                if not year_ok: detail_issues.append(f"Period mismatch")
+                                if not school_ok: detail_issues.append(f"School mismatch ({school_name})")
 
                             if detail_issues:
                                 msg = f"Verified with warnings: {', '.join(detail_issues)}"
@@ -2988,11 +2993,16 @@ def ocr_check():
                             detail_issues = []
                             if not year_only_ok:
                                 v, msg = False, f"Academic Year mismatch: Grade report/TOR found for A.Y. '{year_label}', but scholarship requires A.Y. '{expected_academic_year}'"
-                            elif not year_level_ok: detail_issues.append(f"Year level mismatch ({expected_year_level})")
-                            elif not gpa_ok: detail_issues.append(f"GPA mismatch ({expected_gpa})")
-                            elif not semester_ok: detail_issues.append(f"Semester mismatch")
-                            elif not year_ok: detail_issues.append(f"Period mismatch")
-                            if not school_ok: detail_issues.append(f"School mismatch ({school_name})")
+                            elif not year_level_ok:
+                                v, msg = False, f"Year Level mismatch: Expected '{expected_year_level}' but it was not found on the grade report"
+                            elif not gpa_ok:
+                                v, msg = False, f"GPA mismatch: Expected minimum {expected_gpa} but a different value was detected"
+                            else:
+                                # Remaining secondary details stay as warnings
+                                detail_issues = []
+                                if not semester_ok: detail_issues.append(f"Semester mismatch")
+                                if not year_ok: detail_issues.append(f"Period mismatch")
+                                if not school_ok: detail_issues.append(f"School mismatch ({school_name})")
 
                             if detail_issues:
                                 msg = f"Verified with warnings: {', '.join(detail_issues)}"
