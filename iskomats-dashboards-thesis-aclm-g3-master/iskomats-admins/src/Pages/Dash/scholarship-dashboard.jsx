@@ -2002,7 +2002,10 @@ export default function ScholarshipDashboard({
                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${ann.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
                             {ann.status}
                           </span>
-                          <h4 className="text-lg font-semibold text-[#800020]">{ann.title}</h4>
+                          <div className="flex flex-col">
+                            <h4 className="text-lg font-semibold text-[#800020]">{ann.title}</h4>
+                            <span className="text-[10px] text-gray-500 font-mono">ID: {ann.ann_no || ann.id || 'N/A'}</span>
+                          </div>
                         </div>
                         <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">{ann.content}</p>
                         {ann.announcementImages && ann.announcementImages.length > 0 && (
@@ -3417,7 +3420,7 @@ export default function ScholarshipDashboard({
                   }}
                 />
               ) : f.type.startsWith('video') ? (
-                <video src={f.src} controls className="w-full h-28 object-cover rounded-lg" />
+                <video src={f.src} controls className="w-full h-28 object-contain rounded-lg" />
               ) : null}
               <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] py-0.5 text-center font-bold">
                 {f.type.startsWith('image') ? 'IMAGE' : 'VIDEO'}
@@ -3682,7 +3685,7 @@ export default function ScholarshipDashboard({
                     <span className="w-1.5 h-1.5 rounded-full bg-[#800020]"></span> Indigency Video
                   </p>
                   <div className="aspect-video bg-black rounded-xl overflow-hidden shadow-md border-2 border-white">
-                    <video src={a.indigency_vid_url} controls muted className="w-full h-full object-cover" />
+                    <video src={a.indigency_vid_url} controls muted className="w-full h-full object-contain" />
                   </div>
                 </div>
               )}
@@ -3692,7 +3695,7 @@ export default function ScholarshipDashboard({
                     <span className="w-1.5 h-1.5 rounded-full bg-[#800020]"></span> Enrollment Video
                   </p>
                   <div className="aspect-video bg-black rounded-xl overflow-hidden shadow-md border-2 border-white">
-                    <video src={a.enrollment_certificate_vid_url} controls muted className="w-full h-full object-cover" />
+                    <video src={a.enrollment_certificate_vid_url} controls muted className="w-full h-full object-contain" />
                   </div>
                 </div>
               )}
@@ -3702,7 +3705,7 @@ export default function ScholarshipDashboard({
                     <span className="w-1.5 h-1.5 rounded-full bg-[#800020]"></span> Grades/GPA Video
                   </p>
                   <div className="aspect-video bg-black rounded-xl overflow-hidden shadow-md border-2 border-white">
-                    <video src={a.grades_vid_url} controls muted className="w-full h-full object-cover" />
+                    <video src={a.grades_vid_url} controls muted className="w-full h-full object-contain" />
                   </div>
                 </div>
               )}

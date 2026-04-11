@@ -31,8 +31,6 @@ import { adminAPI, scholarshipAPI } from '../../services/api';
 import socketService from '../../services/socket';
 
 const ACTION_EVENT_OPTIONS = [
-  { label: 'Login', value: 'Login' },
-  { label: 'Logout', value: 'Logout' },
   { label: 'Password / Security', value: 'Password' },
   { label: 'Profile Updates', value: 'Profile' },
   { label: 'Account Management', value: 'Account' },

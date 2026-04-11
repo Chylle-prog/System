@@ -40,71 +40,63 @@ def _cosine_similarity(vector_a, vector_b):
 
 def _extract_ink_crop(img_np):
     gray = cv2.cvtColor(img_np, cv2.COLOR_BGR2GRAY) if len(img_np.shape) == 3 else img_np
-    _, binary = cv2.threshold(gray, 215, 255, cv2.THRESH_BINARY_INV)
-    binary = cv2.morphologyEx(
-        binary,
-        cv2.MORPH_OPEN,
-        cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2)),
-        iterations=1,
+    
+    # Simple CLAHE for contrast
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
+    
+    # Adaptive threshold - smaller block preserves thin strokes
+    binary = cv2.adaptiveThreshold(
+        enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+        cv2.THRESH_BINARY_INV, 15, 10
     )
-    binary = cv2.morphologyEx(
-        binary,
-        cv2.MORPH_CLOSE,
-        cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)),
-        iterations=1,
-    )
-
+    
+    # ONLY close small gaps (2-3 pixels), not large ones
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=1)
+    
+    # Remove tiny noise dots
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=1)
+    
+    # Find contours and filter - DON'T fill holes aggressively
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         print("[BRAIN] No ink detected, using full canvas.", flush=True)
         return gray
 
-    min_area = max(10, int(gray.shape[0] * gray.shape[1] * 0.0001))
-    components = []
+    # Find bounding box of all significant contours
+    min_area = max(30, int(gray.shape[0] * gray.shape[1] * 0.0005))
+    all_x, all_y, all_w, all_h = [], [], [], []
+    
     for contour in contours:
-        x, y, w, h = cv2.boundingRect(contour)
         area = cv2.contourArea(contour)
-        if area < min_area or w <= 1 or h <= 1:
+        if area < min_area:
             continue
-        components.append((x, y, w, h, area))
-
-    if not components:
-        coords = cv2.findNonZero(binary)
-        if coords is None:
-            print("[BRAIN] No ink detected, using full canvas.", flush=True)
-            return gray
-        x, y, w, h = cv2.boundingRect(coords)
-    else:
-        row_density = (binary > 0).sum(axis=1).astype(np.float32)
-        row_density = cv2.GaussianBlur(row_density.reshape(-1, 1), (1, 15), 0).reshape(-1)
-        peak_row = int(np.argmax(row_density))
-        band_half_height = max(10, int(gray.shape[0] * 0.18))
-        selected = []
-
-        for component in components:
-            x_i, y_i, w_i, h_i, area_i = component
-            center_y = y_i + (h_i / 2.0)
-            touches_border = x_i <= 1 or y_i <= 1 or (x_i + w_i) >= (gray.shape[1] - 1) or (y_i + h_i) >= (gray.shape[0] - 1)
-            if touches_border and area_i < (gray.shape[0] * gray.shape[1] * 0.01):
-                continue
-            if abs(center_y - peak_row) <= band_half_height:
-                selected.append(component)
-
-        if not selected:
-            selected = sorted(components, key=lambda item: item[4], reverse=True)[:3]
-
-        x = min(item[0] for item in selected)
-        y = min(item[1] for item in selected)
-        w = max(item[0] + item[2] for item in selected) - x
-        h = max(item[1] + item[3] for item in selected) - y
-
-    pad = max(1, int(min(w, h) * 0.04))
+        x, y, w, h = cv2.boundingRect(contour)
+        # Skip obvious underlines
+        if w > gray.shape[1] * 0.6 and h < 10:
+            continue
+        all_x.append(x)
+        all_y.append(y)
+        all_w.append(x + w)
+        all_h.append(y + h)
+    
+    if not all_x:
+        print("[BRAIN] No significant components, using full canvas.", flush=True)
+        return gray
+    
+    x = min(all_x)
+    y = min(all_y)
+    w = max(all_w) - x
+    h = max(all_h) - y
+    
+    # Add padding
+    pad = max(5, int(min(w, h) * 0.1))
     x_p, y_p = max(0, x - pad), max(0, y - pad)
     w_p = min(gray.shape[1] - x_p, w + 2 * pad)
     h_p = min(gray.shape[0] - y_p, h + 2 * pad)
-    print(f"[BRAIN] Auto-Cropping ink: {w}x{h} pixels detected.", flush=True)
+    
     return gray[y_p:y_p + h_p, x_p:x_p + w_p]
-
 
 def _prepare_signature_canvas(img_np, size=224):
     cropped = _extract_ink_crop(img_np)

@@ -204,9 +204,12 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
                 onError={() => setVideoError('Video preview failed')}
                 style={{ 
                   width: '100%', 
+                  height: '100%',
+                  maxHeight: '100%',
                   borderRadius: '12px', 
                   boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                  background: '#000' 
+                  background: '#000',
+                  objectFit: 'contain'
                 }} 
               />
               {!hideButton && (

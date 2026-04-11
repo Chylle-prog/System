@@ -505,6 +505,22 @@ def build_restriction_identity(first_name=None, middle_name=None, last_name=None
     }
 
 
+def build_duplicate_account_identity(first_name=None, middle_name=None, last_name=None, father_fname=None, father_lname=None, mother_fname=None, mother_lname=None):
+    applicant_full_name = normalize_identity_name(' '.join(filter(None, [first_name, middle_name, last_name])))
+    father_name = normalize_identity_name(' '.join(filter(None, [father_fname, father_lname])))
+    mother_name = normalize_identity_name(' '.join(filter(None, [mother_fname, mother_lname])))
+
+    if not applicant_full_name or not father_name or not mother_name:
+        return None
+
+    return {
+        'applicant_full_name': applicant_full_name,
+        'father_name': father_name,
+        'mother_name': mother_name,
+        'identity_key': '|'.join([applicant_full_name, father_name, mother_name]),
+    }
+
+
 def build_restriction_identity_from_applicant(applicant, source_data=None):
     source_data = source_data or {}
 
@@ -535,6 +551,36 @@ def build_restriction_identity_from_applicant(applicant, source_data=None):
     )
 
 
+def build_duplicate_account_identity_from_applicant(applicant, source_data=None):
+    source_data = source_data or {}
+
+    first_name = source_data.get('firstName') or source_data.get('first_name') or applicant.get('first_name')
+    middle_name = source_data.get('middleName') or source_data.get('middle_name') or applicant.get('middle_name')
+    last_name = source_data.get('lastName') or source_data.get('last_name') or applicant.get('last_name')
+
+    if 'fatherName' in source_data or 'father_name' in source_data:
+        father_fname, father_lname = split_parent_full_name(source_data.get('fatherName') or source_data.get('father_name'))
+    else:
+        father_fname = applicant.get('father_fname')
+        father_lname = applicant.get('father_lname')
+
+    if 'motherName' in source_data or 'mother_name' in source_data:
+        mother_fname, mother_lname = split_parent_full_name(source_data.get('motherName') or source_data.get('mother_name'))
+    else:
+        mother_fname = applicant.get('mother_fname')
+        mother_lname = applicant.get('mother_lname')
+
+    return build_duplicate_account_identity(
+        first_name=first_name,
+        middle_name=middle_name,
+        last_name=last_name,
+        father_fname=father_fname,
+        father_lname=father_lname,
+        mother_fname=mother_fname,
+        mother_lname=mother_lname,
+    )
+
+
 def get_matching_applicant_ids_by_identity(cursor, applicant, source_data=None):
     current_applicant_no = applicant['applicant_no']
     identity = build_restriction_identity_from_applicant(applicant, source_data=source_data)
@@ -553,6 +599,30 @@ def get_matching_applicant_ids_by_identity(cursor, applicant, source_data=None):
     matching_ids = {current_applicant_no}
     for row in rows:
         row_identity = build_restriction_identity_from_applicant(row)
+        if row_identity and row_identity['identity_key'] == identity['identity_key']:
+            matching_ids.add(row['applicant_no'])
+
+    return sorted(matching_ids), True, identity
+
+
+def get_matching_duplicate_applicant_ids(cursor, applicant, source_data=None):
+    current_applicant_no = applicant['applicant_no']
+    identity = build_duplicate_account_identity_from_applicant(applicant, source_data=source_data)
+
+    if not identity:
+        return [current_applicant_no], False, None
+
+    cursor.execute(
+        """
+        SELECT applicant_no, first_name, middle_name, last_name, father_fname, father_lname, mother_fname, mother_lname
+        FROM applicants
+        """
+    )
+    rows = cursor.fetchall()
+
+    matching_ids = {current_applicant_no}
+    for row in rows:
+        row_identity = build_duplicate_account_identity_from_applicant(row)
         if row_identity and row_identity['identity_key'] == identity['identity_key']:
             matching_ids.add(row['applicant_no'])
 
@@ -1968,6 +2038,10 @@ def get_profile():
         if not applicant:
             return jsonify({'message': 'Not found'}), 404
 
+        duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, applicant)
+        applicant['duplicate_applicant_exists'] = any(applicant_no != request.user_no for applicant_no in duplicate_ids)
+        applicant['portal_lock_message'] = 'You already exist in the system' if applicant['duplicate_applicant_exists'] else None
+
         document_values = fetch_applicant_document_values(cur, request.user_no, blob_fields)
 
         # 2. Add lazy-load URLs for the frontend to fetch binary data on-demand
@@ -2711,12 +2785,28 @@ def ocr_check():
                 vid_url = vid_url_map.get(doc_type)
                 name_keywords = build_student_name_keywords(first_name, middle_name, last_name)
                 school_variants = build_school_name_variants(school_name)
+                parsed_year_level = parse_expected_year_level(expected_year_level)
+                year_level_keywords = []
+                if parsed_year_level:
+                    year_level_keywords.append(parsed_year_level)
+                    year_level_keywords.append(f'{parsed_year_level} year')
+                    year_level_keywords.append(f'{parsed_year_level}yr')
+                    ordinal_map = {
+                        '1': ['1st', 'first', 'freshman'],
+                        '2': ['2nd', 'second', 'sophomore'],
+                        '3': ['3rd', 'third', 'junior'],
+                        '4': ['4th', 'fourth', 'senior'],
+                        '5': ['5th', 'fifth'],
+                        '6': ['6th', 'sixth'],
+                    }
+                    year_level_keywords.extend(ordinal_map.get(parsed_year_level, []))
+
                 video_keywords_map = {
                     'Indigency': ['Indigency', 'Certificate', 'Barangay'],
                     'Enrollment': ['Enrollment', 'Certificate', 'COE', 'Registered'],
-                    'Grades': ['Grades', 'Grade', 'Transcript', 'Record', 'Evaluation', 'Rating', 'Units', 'Credit', 'Sem', 'GPA', 'Report', 'Card', 'Evaluation'],
+                    'Grades': ['Grades', 'Grade', 'Transcript', 'Record', 'Evaluation', 'Rating', 'Units', 'Credit', 'Sem', 'GPA', 'Report', 'Card', 'Academic'],
                     'SchoolID': name_keywords or ['Student', 'Name'],
-                    'SchoolIDBack': school_variants or ['School', 'Campus']
+                    'SchoolIDBack': year_level_keywords or ['Year', 'Level', 'Student']
                 }
                 video_scan_options = {
                     'Indigency': {
@@ -2732,10 +2822,10 @@ def ocr_check():
                         'fallback_text_length': 15,
                     },
                     'Grades': {
-                        'sample_positions': [0.5],
-                        'max_width': 480,
-                        'allow_alt_pass': False,
-                        'fallback_text_length': 15,
+                        'sample_positions': [0.35, 0.6],
+                        'max_width': 560,
+                        'allow_alt_pass': True,
+                        'fallback_text_length': 8,
                     },
                     'SchoolID': {
                         'sample_positions': [0.35, 0.65],
@@ -2746,8 +2836,8 @@ def ocr_check():
                     'SchoolIDBack': {
                         'sample_positions': [0.35, 0.65],
                         'max_width': 480,
-                        'allow_alt_pass': False,
-                        'fallback_text_length': 12,
+                        'allow_alt_pass': True,
+                        'fallback_text_length': 8,
                     },
                 }
                 # Define keywords for each document type
@@ -2768,7 +2858,7 @@ def ocr_check():
                         'Semestral', 'Semester', 'Academic', 'College', 'Registrar'
                     ],
                     'SchoolID': name_keywords or ['Student', 'Name'],
-                    'SchoolIDBack': school_variants or ['School', 'Campus']
+                    'SchoolIDBack': year_level_keywords or ['Year', 'Level']
                 }
 
                 # 1.a Video Content Verification (if URL present)
@@ -2807,9 +2897,11 @@ def ocr_check():
                     v = bool(raw and raw.strip())
                     msg = extraction_error or ('Verified' if v else 'Unable to read document text')
                 elif doc_type == 'SchoolIDBack':
-                    v, msg, raw, _ = verify_id_with_ocr(doc_bytes, None, None, None, None)
+                    # ID Back check: Validate only the Year Level
+                    v, msg, raw, _ = verify_id_with_ocr(doc_bytes, None, None, None, None, None, expected_year_level=year_level)
                 else:
-                    v, msg, raw, _ = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address)
+                    # ID Front/Indigency check: Validate Name + ID Number (for ID) + Address (for Indigency)
+                    v, msg, raw, _ = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=id_number)
                 raw_lower = raw.lower() if raw else ""
                 
                 # If primary OCR extraction failed, return error
@@ -2916,15 +3008,14 @@ def ocr_check():
                     return {'doc': 'Identity Front', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'SchoolIDBack':
-                    school_ok, matched_variant, school_variants = school_name_matches_text(raw, school_name)
-                    
-                    if v and not school_ok:
-                        expected_label = school_name or 'selected school'
-                        fallback_hint = f" Tried: {', '.join(school_variants[:4])}" if school_variants else ''
-                        v, msg = False, f"School name mismatch ({expected_label}).{fallback_hint}"
+                    year_level_ok, matched_year_level = year_level_matches_text(raw, expected_year_level)
+
+                    if v and not year_level_ok:
+                        expected_label = expected_year_level or 'selected year level'
+                        v, msg = False, f"Year level mismatch ({expected_label})"
                     elif v:
-                        school_suffix = f" using '{matched_variant}'" if matched_variant else ''
-                        msg = f"School ID back verified{school_suffix} for school name"
+                        year_suffix = f" using '{matched_year_level}'" if matched_year_level else ''
+                        msg = f"School ID back verified{year_suffix} for year level"
                         
                     return {'doc': 'Identity Back', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 

@@ -1173,6 +1173,9 @@ def record_admin_activity(
     status='success',
 ):
     """Persist an audit event without interrupting the primary request flow."""
+    # REDUCE LOG NOISE: Do not log high-frequency login/logout events in the activity audit table
+    if action in ['Login', 'Logout']:
+        return
     conn = None
     cursor = None
 
@@ -2713,6 +2716,8 @@ def get_activity_logs(current_user_id, pro_no, role):
             query += ' AND logs.provider_no = %s'
             params.append(pro_no)
 
+        query += " AND logs.action NOT IN ('Login', 'Logout', 'Login Failed')"
+
         if filters.get('program') and filters.get('program') != 'All':
             query += " AND COALESCE(event_provider.provider_name, 'All') = %s"
             params.append(filters.get('program'))
@@ -3066,7 +3071,7 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
         cursor = conn.cursor()
 
         cursor.execute(
-            '''SELECT ast.is_accepted, s.slots, s.pro_no
+            '''SELECT ast.is_accepted, s.slots, s.pro_no, s.scholarship_name
                FROM applicant_status ast
                INNER JOIN scholarships s ON ast.scholarship_no = s.req_no
                WHERE ast.applicant_no = %s AND ast.scholarship_no = %s''',
@@ -3131,6 +3136,19 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
             except: pass
 
         conn.commit()
+
+        try:
+            create_notification(
+                user_no=applicant_no,
+                title='Application Accepted',
+                message=f"Your application for {status_row['scholarship_name']} has been accepted.",
+                notif_type='result'
+            )
+            # Notify the student portal instantly via socket
+            safe_emit('notification_update', {'user_no': applicant_no}, broadcast=True)
+        except Exception as notif_err:
+            print(f"[NOTIF ERROR] Failed to notify accepted applicant {applicant_no}: {notif_err}", flush=True)
+
         cursor.close()
         conn.close()
         
@@ -3153,7 +3171,7 @@ def decline_applicant(current_user_id, pro_no, role, applicant_no):
         cursor = conn.cursor()
 
         cursor.execute(
-            '''SELECT s.pro_no
+            '''SELECT s.pro_no, s.scholarship_name
                FROM applicant_status ast
                INNER JOIN scholarships s ON ast.scholarship_no = s.req_no
                WHERE ast.applicant_no = %s AND ast.scholarship_no = %s''',
@@ -3178,6 +3196,19 @@ def decline_applicant(current_user_id, pro_no, role, applicant_no):
             (applicant_no, scholarship_no)
         )
         conn.commit()
+
+        try:
+            create_notification(
+                user_no=applicant_no,
+                title='Application Declined',
+                message=f"Your application for {status_row['scholarship_name']} has been declined.",
+                notif_type='result'
+            )
+            # Notify the student portal instantly via socket
+            safe_emit('notification_update', {'user_no': applicant_no}, broadcast=True)
+        except Exception as notif_err:
+            print(f"[NOTIF ERROR] Failed to notify declined applicant {applicant_no}: {notif_err}", flush=True)
+
         cursor.close()
         conn.close()
         

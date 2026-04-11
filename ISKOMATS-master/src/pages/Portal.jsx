@@ -77,6 +77,20 @@ const Portal = () => {
   // Notification data structure
   const [dbAnnouncements, setDbAnnouncements] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const portalLocked = Boolean(userProfile?.duplicate_applicant_exists);
+  const portalLockMessage = userProfile?.portal_lock_message || 'You already exist in the system';
+
+  const setPortalSection = (nextSection) => {
+    if (portalLocked && nextSection !== 'menu') {
+      setShowMessageDropdown(false);
+      setShowNotificationDropdown(false);
+      setShowChatModal(false);
+      setActiveSection('menu');
+      return;
+    }
+
+    setActiveSection(nextSection);
+  };
 
   useEffect(() => {
     // Add Font Awesome link
@@ -140,9 +154,7 @@ const Portal = () => {
     
     if (user) {
       fetchApplications();
-      if (!profiles[user]) {
-        fetchProfile();
-      }
+      fetchProfile();
     }
 
     // Load scholarship resources
@@ -301,6 +313,21 @@ const Portal = () => {
       if (document.head.contains(googleFontsSheet)) document.head.removeChild(googleFontsSheet);
     };
   }, [navigate]);
+
+  useEffect(() => {
+    if (!portalLocked) {
+      return;
+    }
+
+    setShowMessageDropdown(false);
+    setShowNotificationDropdown(false);
+    setShowChatModal(false);
+    setShowAnnouncementModal(false);
+
+    if (activeSection !== 'menu') {
+      setActiveSection('menu');
+    }
+  }, [portalLocked, activeSection]);
 
   useEffect(() => {
     const hasAnnouncementNotification = notifications.some((notification) => notification.type === 'announcement');
@@ -516,6 +543,10 @@ const Portal = () => {
   };
 
   const handleNotificationClick = async (notif) => {
+    if (portalLocked) {
+      return;
+    }
+
     // 1. Mark as read in DB if not already
     if (!notif.read) {
       try {
@@ -532,24 +563,27 @@ const Portal = () => {
     setShowNotificationDropdown(false);
     
     if (notif.type === 'message') {
-      setActiveSection('community');
+      setPortalSection('community');
     } else if (notif.type === 'announcement') {
-      setActiveSection('community');
+      setPortalSection('community');
       // Find the specific announcement to open it
       // Use fuzzy matching for title or message if ID isn't linked
+      const notifText = `${notif.title || ''} ${notif.message || ''}`;
       const ann = dbAnnouncements.find(a => 
-        (a.ann_title && notif.message.includes(a.ann_title)) || 
-        (a.ann_message && notif.message.includes(a.ann_message.substring(0, 20)))
+        (a.ann_no && notifText.includes(String(a.ann_no))) ||
+        (a.ann_title && (notif.title || '').includes(a.ann_title)) ||
+        (a.ann_title && notifText.includes(a.ann_title)) || 
+        (a.ann_message && notifText.includes(a.ann_message.substring(0, 20)))
       );
       if (ann) {
         openAnnouncement(ann);
       }
     } else if (notif.type === 'scholarship') {
-      setActiveSection('menu');
+      setPortalSection('menu');
     } else if (notif.type === 'result') {
-      setActiveSection('applications');
+      setPortalSection('applications');
     } else {
-      setActiveSection('menu');
+      setPortalSection('menu');
     }
   };
 
@@ -616,10 +650,24 @@ const Portal = () => {
     }
   };
 
-  const openAnnouncement = (ann) => {
-    setSelectedAnnouncement(ann);
-    setShowAnnouncementModal(true);
-  };
+   const openAnnouncement = (ann) => {
+     if (!ann) return;
+     const id = ann?.ann_no ?? ann?.id ?? ann?.announcement_id ?? 'N/A';
+     const title = ann?.ann_title || ann?.title || 'Announcement';
+     const message = ann?.ann_message || ann?.message || ann?.content || 'No details provided.';
+     const provider = ann?.provider_name || ann?.providerName || 'Scholarship Team';
+     const date = ann?.time_added || ann?.status_updated || ann?.ann_date || null;
+
+     setSelectedAnnouncement({
+       ...ann,
+       announcementId: id,
+       announcementTitle: title,
+       announcementMessage: message,
+       announcementProvider: provider,
+       postedAt: date,
+     });
+     setShowAnnouncementModal(true);
+   };
 
   const closeAnnouncementModal = () => {
     setShowAnnouncementModal(false);
@@ -2076,7 +2124,7 @@ const Portal = () => {
           {/* MESSAGE ICON WITH DROPDOWN - ONLY SHOW AFTER APPLICATION */}
           {applications.length > 0 && (
             <div className="message-wrapper" ref={messageDropdownRef}>
-              <button className="message-btn" onClick={() => setShowMessageDropdown(!showMessageDropdown)}>
+              <button className="message-btn" onClick={() => !portalLocked && setShowMessageDropdown(!showMessageDropdown)} disabled={portalLocked} title={portalLocked ? portalLockMessage : 'Open scholarship chats'}>
                 <i className="fas fa-envelope"></i>
                 {totalUnreadMessages > 0 && (
                   <span className="message-badge">
@@ -2137,7 +2185,7 @@ const Portal = () => {
 
           {/* NOTIFICATION BELL WITH DROPDOWN */}
           <div className="notification-wrapper" ref={notificationDropdownRef}>
-            <button className="notification-btn" onClick={() => setShowNotificationDropdown(!showNotificationDropdown)}>
+            <button className="notification-btn" onClick={() => !portalLocked && setShowNotificationDropdown(!showNotificationDropdown)} disabled={portalLocked} title={portalLocked ? portalLockMessage : 'Open notifications'}>
               <i className="fas fa-bell"></i>
               {totalUnreadNotifications > 0 && (
                 <span className="notification-badge">
@@ -2257,23 +2305,27 @@ const Portal = () => {
                 <div className="provider-icon">
                   <i className="fas fa-bullhorn"></i>
                 </div>
-                <span className="provider-name">{selectedAnnouncement.provider_name}</span>
+                <span className="provider-name">{selectedAnnouncement.announcementProvider}</span>
               </div>
-              <h2 className="ann-modal-title">{selectedAnnouncement.ann_title || 'Announcement Details'}</h2>
+              <h2 className="ann-modal-title">{selectedAnnouncement.announcementTitle}</h2>
               <div className="ann-modal-meta">
+                <span style={{ background: 'var(--accent-soft)', padding: '0.2rem 0.6rem', borderRadius: '6px', color: 'var(--primary)', fontWeight: '700' }}>
+                  <i className="fas fa-hashtag" style={{marginRight: '8px'}}></i>
+                  {selectedAnnouncement.announcementId}
+                </span>
                 <span>
                   <i className="far fa-calendar-alt" style={{marginRight: '8px'}}></i>
-                  Posted on {selectedAnnouncement.time_added ? new Date(selectedAnnouncement.time_added).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Recently'}
+                  Posted on {selectedAnnouncement.postedAt ? new Date(selectedAnnouncement.postedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Recently'}
                 </span>
                 <span>
                   <i className="far fa-user" style={{marginRight: '8px'}}></i>
-                  For Scholarship Applicants
+                  {selectedAnnouncement.announcementProvider}
                 </span>
               </div>
             </div>
             <div className="ann-modal-body">
               <div className="ann-modal-message">
-                {selectedAnnouncement.ann_message}
+                {selectedAnnouncement.announcementMessage}
               </div>
               {selectedAnnouncement.announcementImages?.length > 0 && (
                 <div className="ann-modal-gallery">
@@ -2318,27 +2370,61 @@ const Portal = () => {
           <p>Your personalized scholarship dashboard</p>
         </div>
         <div className="portal-content">
+          {portalLocked && (
+            <div style={{
+              marginBottom: '1.5rem',
+              padding: '1rem 1.2rem',
+              borderRadius: '18px',
+              border: '1px solid #fca5a5',
+              background: 'linear-gradient(135deg, #fff1f2, #ffffff)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.9rem',
+              color: '#991b1b'
+            }}>
+              <div style={{
+                width: '42px',
+                height: '42px',
+                borderRadius: '50%',
+                background: '#fee2e2',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}>
+                <i className="fas fa-user-lock"></i>
+              </div>
+              <div>
+                <div style={{fontWeight: 800, fontSize: '1rem', marginBottom: '0.2rem'}}>{portalLockMessage}</div>
+                <div style={{fontSize: '0.88rem', lineHeight: '1.5'}}>Only your Profile remains available while this account is restricted.</div>
+              </div>
+            </div>
+          )}
           {activeSection === 'menu' && (
             <div className="portal-menu">
               <div className="menu-card">
                 <h3>Find Scholarships</h3>
                 <p>Discover personalized scholarship opportunities that match your profile and qualifications.</p>
-                <Link to="/findscholarship" className="menu-btn">Get Started</Link>
+                {portalLocked ? (
+                  <button className="menu-btn" disabled style={{cursor: 'not-allowed', opacity: 0.7}}>{portalLockMessage}</button>
+                ) : (
+                  <Link to="/findscholarship" className="menu-btn">Get Started</Link>
+                )}
               </div>
               <div className="menu-card">
                 <h3>My Applications</h3>
                 <p>Track and manage your scholarship applications in one convenient location.</p>
-                <button className="menu-btn" onClick={() => setActiveSection('applications')}>View Applications</button>
+                <button className="menu-btn" onClick={() => setPortalSection('applications')} disabled={portalLocked} style={portalLocked ? {cursor: 'not-allowed', opacity: 0.7} : undefined}>View Applications</button>
               </div>
               <div className="menu-card">
                 <h3>Community</h3>
                 <p>Connect with other students, mentors, and scholarship providers.</p>
-                <button className="menu-btn" onClick={() => setActiveSection('community')}>Join Community</button>
+                <button className="menu-btn" onClick={() => setPortalSection('community')} disabled={portalLocked} style={portalLocked ? {cursor: 'not-allowed', opacity: 0.7} : undefined}>Join Community</button>
               </div>
               <div className="menu-card">
                 <h3>Resources</h3>
                 <p>Access guides, templates, and tools to strengthen your applications.</p>
-                <button className="menu-btn" onClick={() => setActiveSection('resources')}>Browse Resources</button>
+                <button className="menu-btn" onClick={() => setPortalSection('resources')} disabled={portalLocked} style={portalLocked ? {cursor: 'not-allowed', opacity: 0.7} : undefined}>Browse Resources</button>
               </div>
             </div>
           )}
@@ -2346,7 +2432,7 @@ const Portal = () => {
           {/* applications */}
           {activeSection === 'applications' && (
             <div className="content-section active">
-              <button className="back-button" onClick={() => setActiveSection('menu')}>
+              <button className="back-button" onClick={() => setPortalSection('menu')}>
                 <i className="fas fa-arrow-left"></i> Back
               </button>
               <h3 style={{color: 'var(--primary)', fontSize: '1.8rem'}}>Ongoing Applications</h3>
@@ -2394,7 +2480,7 @@ const Portal = () => {
           {/* community */}
           {activeSection === 'community' && (
             <div className="content-section active">
-              <button className="back-button" onClick={() => setActiveSection('menu')}>
+              <button className="back-button" onClick={() => setPortalSection('menu')}>
                 <i className="fas fa-arrow-left"></i> Back
               </button>
 
@@ -2655,7 +2741,7 @@ const Portal = () => {
           {/* resources */}
           {activeSection === 'resources' && (
             <div className="content-section active">
-              <button className="back-button" onClick={() => setActiveSection('menu')}>
+              <button className="back-button" onClick={() => setPortalSection('menu')}>
                 <i className="fas fa-arrow-left"></i> Back
               </button>
               <h3 style={{color: 'var(--primary)', fontSize: '1.8rem', fontWeight: '700', marginBottom: '2rem'}}>

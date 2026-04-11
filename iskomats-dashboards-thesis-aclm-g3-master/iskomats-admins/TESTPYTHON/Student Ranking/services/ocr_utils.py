@@ -249,16 +249,46 @@ def _run_tesseract(image_bytes, fast_mode=True):
         return ""
 
 def normalize_for_ocr(s):
-    """Normalize text for fuzzy matching."""
+    """Deeply normalize string for better matching (removes symbols, lowercases)."""
     if not s: return ""
     return re.sub(r'[^a-z0-9\s]', ' ', s.lower()).strip()
 
+def year_level_matches_text(target_year, text):
+    """
+    Checks if a target year level (e.g., '1st Year', 'Grade 11') is mentioned in the text.
+    Handles various formats like '1st', '2nd', 'Grade 12', etc.
+    """
+    if not target_year: return True
+    
+    t_year = str(target_year).lower().strip()
+    norm_text = text.lower()
+    
+    # 1. Exact match
+    if t_year in norm_text: return True
+    
+    # 2. Map year level to variations
+    variations = []
+    if '1st' in t_year or '1' == t_year: variations.extend(['1st', 'first', 'yr 1', 'year 1'])
+    elif '2nd' in t_year or '2' == t_year: variations.extend(['2nd', 'second', 'yr 2', 'year 2'])
+    elif '3rd' in t_year or '3' == t_year: variations.extend(['3rd', 'third', 'yr 3', 'year 3'])
+    elif '4th' in t_year or '4' == t_year: variations.extend(['4th', 'fourth', 'yr 4', 'year 4'])
+    elif '5th' in t_year or '5' == t_year: variations.extend(['5th', 'fifth', 'yr 5', 'year 5'])
+    
+    if 'grade' in t_year:
+        g_num = "".join(filter(str.isdigit, t_year))
+        if g_num: variations.append(f"grade {g_num}")
+        
+    for v in variations:
+        if v in norm_text: return True
+        
+    return False
 
-def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=None, target_last_name=None, target_address=None, keywords=None, is_indigency=False):
+
+def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=None, target_last_name=None, target_address=None, target_id_no=None, target_year_level=None, keywords=None, is_indigency=False):
     """
     Unified fuzzy matching logic for names, addresses, and keywords.
     Checks first name, middle name (full or initial), and last name individually if provided.
-    Middle name can match either the full name or just the first letter (initial).
+    Also handles ID number and year level validation.
     Returns: (name_ok, addr_ok, keywords_found, match_ratio)
     """
     if not ocr_text.strip(): 
@@ -303,6 +333,22 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
         
         # All present names must pass for full verification
         n_verified = first_ok and middle_ok and last_ok
+        
+        # 1.b ID Number Matching (If provided)
+        if target_id_no and str(target_id_no).strip():
+            # Basic digit extraction from OCR to handle dashes/spaces in IDs
+            ocr_digits = "".join(filter(str.isdigit, norm_txt))
+            target_id_str = "".join(filter(str.isdigit, str(target_id_no)))
+            if target_id_str and target_id_str not in ocr_digits:
+                # If digits aren't found, try fuzzy match on the actual string
+                if str(target_id_no).lower() not in norm_txt:
+                    n_verified = False
+        
+        # 1.c Year Level Matching (If provided)
+        if target_year_level and str(target_year_level).strip():
+            if not year_level_matches_text(target_year_level, norm_txt):
+                n_verified = False
+
         num_names = sum([bool(target_first_name), bool(target_middle_name), bool(target_last_name)])
         if num_names > 0:
             m_ratio = sum([first_ratio if target_first_name else 0, 
@@ -376,7 +422,7 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
     return n_verified, a_verified, found_keywords, m_ratio
 
 
-def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, expected_last_name, expected_address=None):
+def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, expected_last_name, expected_address=None, expected_id_no=None, expected_year_level=None):
     """
     Optimized version with multiple improvements:
     1. Image quality pre-check (Optimization #3)
@@ -398,7 +444,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     cached_result = _cache_get(image_hash)
     if cached_result is not None:
         cached_text, cached_ratio, cached_message = cached_result
-        name_v, addr_v, found_kw, score = _perform_text_matching(cached_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, None, is_indigency)
+        name_v, addr_v, found_kw, score = _perform_text_matching(cached_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, None, is_indigency)
         if name_v and addr_v:
             print(f"[OCR CACHE HIT] Reusing previous results for {image_hash[:8]}...", flush=True)
             return True, f"Verified (cached)", cached_text, 1.0
@@ -442,7 +488,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             clear_heavy_memory()
     
     
-    name_v, addr_v, found_kw, best_ratio = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, None, is_indigency)
+    name_v, addr_v, found_kw, best_ratio = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, None, is_indigency)
     if name_v and addr_v:
         _cache_set(image_hash, (best_text, best_ratio, "verified_psm3"))
         return True, "Verified", best_text, 1.0
@@ -520,7 +566,9 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH):
 def _preprocess_frame_for_ocr(frame):
     """Enhance a video frame for better OCR accuracy (handles compression artifacts)."""
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    return _CLAHE.apply(gray)
+    enhanced = _CLAHE.apply(gray)
+    enhanced = cv2.fastNlMeansDenoising(enhanced, None, 10, 7, 21)
+    return cv2.normalize(enhanced, None, 0, 255, cv2.NORM_MINMAX)
 
 
 def verify_video_content(video_bytes, keywords, expected_address=None, sample_positions=None, max_width=None, allow_alt_pass=True, fallback_text_length=0):
@@ -632,8 +680,8 @@ def verify_video_content(video_bytes, keywords, expected_address=None, sample_po
 
             normalized_text = re.sub(r'\s+', ' ', all_ocr_text).strip()
 
-            if not is_success and fallback_text_length and not is_address_verification and len(normalized_text) >= fallback_text_length:
-                msg = f"Validated: readable document text detected ({len(normalized_text)} chars)"
+            if not is_success and not is_address_verification and len(normalized_text) >= (fallback_text_length or 20):
+                msg = f"Validated: recognizable document text detected ({len(normalized_text)} chars)"
                 _cache_set(vid_hash, (True, msg))
                 return True, msg
 
@@ -1007,13 +1055,14 @@ def _build_signature_mask(gray_image):
     clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
     enhanced = clahe.apply(denoised)
 
+    # Adaptive threshold - smaller block preserves thin strokes
     adaptive = cv2.adaptiveThreshold(
         enhanced,
         255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY_INV,
-        31,
-        12,
+        15,
+        10,
     )
 
     return _refine_signature_mask(adaptive)
@@ -1034,25 +1083,28 @@ def _refine_signature_mask(binary_mask):
     if binary_mask is None or binary_mask.size == 0:
         return binary_mask
 
+    # Light close to connect nearby strokes slightly
     refined = cv2.morphologyEx(
         binary_mask,
-        cv2.MORPH_OPEN,
-        cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2)),
-        iterations=1,
-    )
-    refined = cv2.morphologyEx(
-        refined,
         cv2.MORPH_CLOSE,
-        cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)),
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
         iterations=1,
     )
+    
+    # Remove granular noise
+    refined = cv2.medianBlur(refined, 3)
 
     contours, _ = cv2.findContours(refined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # Filter by area to remove final small specks
+    min_area = max(15, int(refined.shape[0] * refined.shape[1] * 0.00018))
     cleaned = np.zeros_like(refined)
-    min_area = max(12, int(refined.shape[0] * refined.shape[1] * 0.00015))
     for contour in contours:
         area = cv2.contourArea(contour)
         if area >= min_area:
+            # Skip likely underlines
+            x, y, w, h = cv2.boundingRect(contour)
+            if w > refined.shape[1] * 0.7 and h < 8:
+                 continue
             cv2.drawContours(cleaned, [contour], -1, 255, thickness=cv2.FILLED)
 
     return cleaned
@@ -1081,10 +1133,18 @@ def _isolate_signature_ink_region(signature_crop):
         if area < 20:
             continue
 
-        if area > (width * height * 0.18):
+        if area > (width * height * 0.25): # More lenient with large signatures
             continue
 
-        if x <= 1 or y <= 1 or (x + w) >= (width - 1) or (y + h) >= (height - 1):
+        # Ignore anything touching the borders (likely the crop frame or outer boxes)
+        if x <= 2 or y <= 2 or (x + w) >= (width - 2) or (y + h) >= (height - 2):
+            continue
+
+        # Ignore large hollow boxes - typically ID photo borders
+        # Most signatures aren't perfect rectangles
+        extent = area / float(w * h) if w * h > 0 else 0
+        if extent > 0.8 and area > (width * height * 0.08): 
+            # This is likely a solid border or a printed box
             continue
 
         center_y = y + (h / 2.0)
@@ -1092,14 +1152,17 @@ def _isolate_signature_ink_region(signature_crop):
 
         # Ignore the top logo/star and bottom printed "Signature" label.
         # The handwritten mark sits in a fairly narrow middle band.
-        if center_y < height * 0.22 or center_y > height * 0.52:
+        if center_y < height * 0.18 or center_y > height * 0.58:
             continue
 
         # Reject long thin printed lines and underline strokes.
-        if w > width * 0.7 and h < height * 0.08:
+        # Handwritten signatures are rarely perfectly horizontal and very long ( > 70% width)
+        if w > width * 0.65 and h < max(12, int(height * 0.12)) and aspect_ratio > 8.0:
+            print(f"[SIGNATURE] Rejecting potential underline: {w}x{h}, aspect {aspect_ratio:.1f}", flush=True)
             continue
 
-        if h < max(6, int(height * 0.08)):
+        # Reject extremely small noise (already handled by area but as a safety)
+        if h < 5:
             continue
 
         candidate_boxes.append((x, y, w, h))
@@ -1107,10 +1170,45 @@ def _isolate_signature_ink_region(signature_crop):
     if not candidate_boxes:
         return signature_crop
 
-    x0 = min(box[0] for box in candidate_boxes)
-    y0 = min(box[1] for box in candidate_boxes)
-    x1 = max(box[0] + box[2] for box in candidate_boxes)
-    y1 = max(box[1] + box[3] for box in candidate_boxes)
+    # CLUSTER SELECTION: Find the most significant cluster (presumably the signature)
+    # Sort boxes by area (descending)
+    candidate_boxes.sort(key=lambda b: b[2] * b[3], reverse=True)
+    
+    # Start with the largest component that is likely a signature part (not a border)
+    # Borders are usually very wide and thin, or very tall and thin.
+    primary_box = None
+    for box in candidate_boxes:
+        x_p, y_p, w_p, h_p = box
+        ar = w_p / float(h_p)
+        # Signature typical aspect ratios 1.5 to 7.0
+        if 1.0 < ar < 10.0:
+            primary_box = box
+            break
+            
+    if not primary_box:
+        primary_box = candidate_boxes[0]
+
+    # Only keep boxes that are within a reasonable distance of the primary box
+    selected_boxes = [primary_box]
+    px, py, pw, ph = primary_box
+    pcx, pcy = px + pw/2, py + ph/2
+    
+    max_dist = max(width * 0.35, height * 0.35)
+    
+    for box in candidate_boxes:
+        if box == primary_box: continue
+        bx, by, bw, bh = box
+        bcx, bcy = bx + bw/2, by + bh/2
+        
+        # Manhattan distance to center
+        dist = abs(bcx - pcx) + abs(bcy - pcy)
+        if dist < max_dist:
+            selected_boxes.append(box)
+
+    x0 = min(box[0] for box in selected_boxes)
+    y0 = min(box[1] for box in selected_boxes)
+    x1 = max(box[0] + box[2] for box in selected_boxes)
+    y1 = max(box[1] + box[3] for box in selected_boxes)
 
     pad_x = max(6, int((x1 - x0) * 0.12))
     pad_y = max(6, int((y1 - y0) * 0.25))
@@ -1120,13 +1218,20 @@ def _isolate_signature_ink_region(signature_crop):
     y1 = min(height, y1 + pad_y)
 
     cropped_gray = gray[y0:y1, x0:x1]
+    # Isolate only ink pixels on a clean white background
     isolated = np.full((cropped_gray.shape[0], cropped_gray.shape[1], 3), 255, dtype=np.uint8)
     isolated_mask = _build_signature_mask(cropped_gray)
     if isolated_mask is None:
         return signature_crop
+    
+    # Final noise pass on the isolated mask
+    isolated_mask = cv2.medianBlur(isolated_mask, 3)
+    
     isolated_mask = _match_mask_to_image(isolated_mask, cropped_gray.shape)
     isolated[isolated_mask > 0] = (0, 0, 0)
-    isolated = cv2.resize(isolated, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+    
+    # Resize up with cubic interpolation to keep it smooth but not blurry
+    isolated = cv2.resize(isolated, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_CUBIC)
     return isolated
 
 

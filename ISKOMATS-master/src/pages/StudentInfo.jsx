@@ -304,6 +304,72 @@ const StudentInfo = () => {
     mayorIndigency_photo: null,
     mayorValidID_photo: null
   });
+
+  const invalidateVerificationState = (docType, reason) => {
+    const message = `Invalid: ${reason}. Please run the scan again.`;
+
+    if (docType === 'Indigency' && ocrVerified === 'success') {
+      setOcrVerified('failed');
+      setOcrStatus(message);
+    } else if (docType === 'Enrollment' && coeVerified === 'success') {
+      setCoeVerified('failed');
+      setCoeStatus(message);
+    } else if (docType === 'Grades' && gradesVerified === 'success') {
+      setGradesVerified('failed');
+      setGradesStatus(message);
+    } else if (docType === 'SchoolID' && idVerified === 'success') {
+      setIdVerified('failed');
+      setIdStatus(message);
+    }
+  };
+
+  const invalidateVerificationDependencies = (fieldName, nextValue) => {
+    const currentValue = formData[fieldName];
+    if (currentValue === nextValue) {
+      return;
+    }
+
+    if (['firstName', 'middleName', 'lastName'].includes(fieldName)) {
+      invalidateVerificationState('Indigency', 'name details changed');
+      invalidateVerificationState('Enrollment', 'name details changed');
+      invalidateVerificationState('Grades', 'name details changed');
+      invalidateVerificationState('SchoolID', 'name details changed');
+      return;
+    }
+
+    if (['barangay', 'streetBarangay', 'townCityMunicipality', 'province', 'zipCode'].includes(fieldName)) {
+      invalidateVerificationState('Indigency', 'location details changed');
+      return;
+    }
+
+    if (fieldName === 'schoolIdNumber') {
+      invalidateVerificationState('SchoolID', 'school ID number changed');
+      invalidateVerificationState('Enrollment', 'school ID number changed');
+      return;
+    }
+
+    if (fieldName === 'yearLevel') {
+      invalidateVerificationState('SchoolID', 'year level changed');
+      invalidateVerificationState('Enrollment', 'year level changed');
+      invalidateVerificationState('Grades', 'year level changed');
+      return;
+    }
+
+    if (fieldName === 'schoolName') {
+      invalidateVerificationState('Enrollment', 'school name changed');
+      invalidateVerificationState('Grades', 'school name changed');
+      return;
+    }
+
+    if (fieldName === 'course') {
+      invalidateVerificationState('Enrollment', 'course changed');
+      return;
+    }
+
+    if (fieldName === 'gpa') {
+      invalidateVerificationState('Grades', 'GPA changed');
+    }
+  };
   
   const handleVideoUpload = (fieldName, blob) => {
     if (!blob) return;
@@ -1460,6 +1526,7 @@ const StudentInfo = () => {
     }
 
     if (type === 'checkbox') {
+      invalidateVerificationDependencies(name, checked);
       setFormData(prev => ({
         ...prev,
         [name]: checked
@@ -1504,6 +1571,7 @@ const StudentInfo = () => {
         setFormData(prev => ({ ...prev, [name]: file }));
       }
     } else {
+      invalidateVerificationDependencies(name, value);
       setFormData(prev => ({
         ...prev,
         [name]: value
@@ -3022,6 +3090,29 @@ const StudentInfo = () => {
                 </div>
               </div>
 
+              <div style={{
+                marginBottom: '1.5rem',
+                padding: '1rem 1.1rem',
+                borderRadius: '18px',
+                background: 'linear-gradient(135deg, #fff7ed, #ffffff)',
+                border: '1px solid #fed7aa',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: '0.85rem'
+              }}>
+                {[
+                  '1. Upload front and back ID photos.',
+                  '2. Record a clear front and back ID video.',
+                  '3. Run the ID scan to unlock COE and Grades.',
+                  '4. Re-scan if name, ID number, year, or location changes.'
+                ].map((item) => (
+                  <div key={item} style={{display: 'flex', gap: '10px', alignItems: 'flex-start'}}>
+                    <i className="fas fa-circle-check" style={{color: 'var(--primary)', marginTop: '3px'}}></i>
+                    <span style={{fontSize: '0.78rem', color: '#7c2d12', lineHeight: '1.45', fontWeight: '700'}}>{item}</span>
+                  </div>
+                ))}
+              </div>
+
               <div className="requirement-card">
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
                   <div>
@@ -3148,7 +3239,7 @@ const StudentInfo = () => {
                     <div style={{padding: '12px', background: '#fffbeb', borderRadius: '14px', border: '1px solid #fef3c7', display: 'flex', gap: '10px'}}>
                       <i className="fas fa-school" style={{color: '#d97706', fontSize: '1rem', marginTop: '2px'}}></i>
                       <p style={{fontSize: '0.72rem', color: '#92400e', margin: 0, lineHeight: '1.4'}}>
-                        <b>Back side:</b> Focus on campus details and validity dates so we can verify your current enrollment status.
+                        <b>Back side:</b> Keep the year level or current validity details readable so we can confirm the ID is for your present school year.
                       </p>
                     </div>
                   </div>
