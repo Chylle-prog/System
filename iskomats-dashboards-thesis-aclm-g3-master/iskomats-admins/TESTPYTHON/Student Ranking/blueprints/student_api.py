@@ -2909,9 +2909,10 @@ def ocr_check():
                         else:
                             # Secondary details are now non-blocking warnings to avoid false-positive rejections
                             detail_issues = []
-                            if not id_ok: detail_issues.append(f"ID No mismatch ({expected_id_no})")
-                            if not year_level_ok: detail_issues.append(f"Year level mismatch ({expected_year_level})")
-                            if not year_only_ok: detail_issues.append(f"A.Y. mismatch ({year_label})")
+                            if not year_only_ok: 
+                                v, msg = False, f"Academic Year mismatch: Document found for A.Y. '{year_label}', but scholarship requires A.Y. '{expected_academic_year}'"
+                            elif not id_ok: detail_issues.append(f"ID No mismatch ({expected_id_no})")
+                            elif not year_level_ok: detail_issues.append(f"Year level mismatch ({expected_year_level})")
                             elif not semester_ok: detail_issues.append(f"Semester mismatch")
                             elif not year_ok: detail_issues.append(f"Period mismatch")
                             if not school_ok: detail_issues.append(f"School mismatch ({school_name})")
@@ -2947,9 +2948,10 @@ def ocr_check():
                         else:
                             # Secondary details are non-blocking warnings
                             detail_issues = []
-                            if not year_level_ok: detail_issues.append(f"Year level mismatch ({expected_year_level})")
-                            if not gpa_ok: detail_issues.append(f"GPA mismatch ({expected_gpa})")
-                            if not year_only_ok: detail_issues.append(f"A.Y. mismatch ({year_label})")
+                            if not year_only_ok:
+                                v, msg = False, f"Academic Year mismatch: Grade report/TOR found for A.Y. '{year_label}', but scholarship requires A.Y. '{expected_academic_year}'"
+                            elif not year_level_ok: detail_issues.append(f"Year level mismatch ({expected_year_level})")
+                            elif not gpa_ok: detail_issues.append(f"GPA mismatch ({expected_gpa})")
                             elif not semester_ok: detail_issues.append(f"Semester mismatch")
                             elif not year_ok: detail_issues.append(f"Period mismatch")
                             if not school_ok: detail_issues.append(f"School mismatch ({school_name})")
