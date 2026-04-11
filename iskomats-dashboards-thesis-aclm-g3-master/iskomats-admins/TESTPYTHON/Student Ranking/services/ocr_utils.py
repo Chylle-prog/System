@@ -1244,76 +1244,78 @@ def _extract_signature_from_id_back(id_img):
     if height == 0 or width == 0:
         return None
 
-    # Search band for signature area
-    lane_x0 = int(width * 0.20)
-    lane_x1 = int(width * 0.82)
-    lane_y0 = int(height * 0.25)
-    lane_y1 = int(height * 0.45)  # Expanded slightly
+    # Step 1: Targeting the student signature zone
+    lane_y0, lane_y1 = int(height * 0.25), int(height * 0.45)
+    lane_x0, lane_x1 = int(width * 0.15), int(width * 0.85)
+    roi_gray = gray[lane_y0:lane_y1, lane_x0:lane_x1]
     
-    # Extract and process the candidate region ONCE
-    roi = gray[lane_y0:lane_y1, lane_x0:lane_x1]
-    
-    # Single processing pass - no double thresholding
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    enhanced = clahe.apply(roi)
-    
-    # Adaptive threshold - preserves thin strokes
+    # Step 2: High-contrast smoothing
+    norm = cv2.normalize(roi_gray, None, 0, 255, cv2.NORM_MINMAX)
+    smooth = cv2.bilateralFilter(norm, 9, 75, 75)
     binary = cv2.adaptiveThreshold(
-        enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV, 15, 10
+        smooth, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV, 21, 5
     )
     
-    # Light cleanup only (no aggressive closing)
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
-    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=1)
-    
-    # Find the largest ink component (the signature)
+    # Step 3: Component isolation
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return None
+    candidates = []
+    h_idx, w_idx = binary.shape[:2]
     
-    # Filter and find bounds
-    min_area = max(100, int(roi.shape[0] * roi.shape[1] * 0.005))
-    all_boxes = []
-    for contour in contours:
-        area = cv2.contourArea(contour)
-        if area < min_area:
-            continue
-        x, y, w, h = cv2.boundingRect(contour)
-        # Skip obvious underlines
-        if w > roi.shape[1] * 0.7 and h < 8:
-            continue
-        all_boxes.append((x, y, w, h))
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        
+        # SIDE-MARGIN PURGE: The frame lines always sit at the edges.
+        # Handwriting is centered. 30px is a safe 'no-ink' buffer.
+        if x < 30 or (x+w) > w_idx-30: continue
+        if y < 4 or (y+h) > h_idx-4: continue
+        
+        area = cv2.contourArea(cnt)
+        if area < 30: continue
+        
+        # SOLIDITY REJECTION: Printed lines are solid; handwriting is flowy/hollow.
+        solidity = area / float(w * h)
+        aspect = max(w/h, h/w)
+        
+        # Any component that is "line-like" AND "solid" is a printed frame line.
+        if aspect > 3.0 and solidity > 0.55: continue
+            
+        complexity = cv2.arcLength(cnt, True)
+        candidates.append({'box': (x, y, w, h), 'complex': complexity, 'y_mid': y + h/2})
+
+    if not candidates:
+        ch, cw = int(h_idx * 0.6), int(w_idx * 0.7)
+        qy0, qx0 = int((h_idx - ch)/2), int((w_idx - cw)/2)
+        fallback = roi_gray[qy0:qy0+ch, qx0:qx0+cw]
+        result = cv2.cvtColor(fallback, cv2.COLOR_GRAY2BGR)
+        return cv2.resize(result, (400, int(400 * ch/cw)), interpolation=cv2.INTER_LINEAR)
+        
+    # Step 4: ANCHOR ON THE SIGNATURE
+    candidates.sort(key=lambda c: c['complex'], reverse=True)
+    top_candidates = [c for c in candidates if c['y_mid'] < h_idx * 0.55]
+    anchor = top_candidates[0] if top_candidates else candidates[0]
     
-    if not all_boxes:
-        return None
+    # Vertically tighten: Only grab pieces that flow with the anchor
+    final_parts = [anchor['box']]
+    for c in candidates:
+        if abs(c['y_mid'] - anchor['y_mid']) < h_idx * 0.20:
+            final_parts.append(c['box'])
+            
+    x0 = min(b[0] for b in final_parts)
+    y0 = min(b[1] for b in final_parts)
+    x1 = max(b[0] + b[2] for b in final_parts)
+    y1 = max(b[1] + b[3] for b in final_parts)
     
-    # Combine all boxes
-    x = min(b[0] for b in all_boxes)
-    y = min(b[1] for b in all_boxes)
-    w = max(b[0] + b[2] for b in all_boxes) - x
-    h = max(b[1] + b[3] for b in all_boxes) - y
+    pad = 4
+    crop_bin = binary[max(0, y0-pad):min(h_idx, y1+pad), 
+                      max(0, x0-pad):min(w_idx, x1+pad)]
     
-    # Add padding
-    pad = max(5, int(min(w, h) * 0.15))
-    x0 = max(0, x - pad)
-    y0 = max(0, y - pad)
-    x1 = min(roi.shape[1], x + w + pad)
-    y1 = min(roi.shape[0], y + h + pad)
+    result = np.full((crop_bin.shape[0], crop_bin.shape[1], 3), 255, dtype=np.uint8)
+    result[crop_bin > 0] = (0, 0, 0)
     
-    # Return the cropped signature region (still in binary mask form on white background)
-    cropped_binary = binary[y0:y1, x0:x1]
-    
-    # Convert to BGR for display (black ink on white background)
-    result = np.full((cropped_binary.shape[0], cropped_binary.shape[1], 3), 255, dtype=np.uint8)
-    result[cropped_binary > 0] = (0, 0, 0)
-    
-    # Optional: slight upscale for better visibility
-    if result.shape[1] < 200:
-        scale = 400 / max(result.shape[1], 1)
-        result = cv2.resize(result, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
-    
-    return result
+    target_w = 400
+    target_h = int(target_w * (result.shape[0] / float(result.shape[1])))
+    return cv2.resize(result, (target_w, target_h), interpolation=cv2.INTER_CUBIC)
 
 def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None):
     """

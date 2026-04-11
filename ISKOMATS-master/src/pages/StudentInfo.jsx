@@ -281,6 +281,8 @@ const StudentInfo = () => {
   const [faceVerificationPreview, setFaceVerificationPreview] = useState(null);
   const [signaturePreview, setSignaturePreview] = useState(null);
   const [drawnSignature, setDrawnSignature] = useState(null);
+  const [signatureVerified, setSignatureVerified] = useState(null);
+  const [signatureStatus, setSignatureStatus] = useState('');
   const [hasOtherAssistance, setHasOtherAssistance] = useState('');
   const [scholarshipName, setScholarshipName] = useState('Scholarship Application');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -330,6 +332,9 @@ const StudentInfo = () => {
     } else if (docType === 'SchoolID' && idVerified === 'success') {
       setIdVerified('failed');
       setIdStatus(message);
+    } else if (docType === 'Signature' && signatureVerified === 'success') {
+      setSignatureVerified('failed');
+      setSignatureStatus(message);
     }
   };
 
@@ -708,6 +713,52 @@ const StudentInfo = () => {
     }
 
     sessionStorage.removeItem(buildDraftStorageKey(user, searchParams, scholarshipName));
+  };
+
+    }
+  };
+
+  const handleSignatureScan = async () => {
+    // We need both the drawn signature and the ID back photo
+    const idBack = schoolIdPhotos.back || userProfile?.id_img_back;
+    const currentSignature = drawnSignature || formData.applicantSignatureName;
+
+    if (!currentSignature) {
+      showPromptMessage('⚠️ Please provide your signature first using the digital pad.');
+      return;
+    }
+
+    if (!idBack) {
+      showPromptMessage('⚠️ Reference ID (Back) not found. Please upload it in Step 3 first.');
+      return;
+    }
+
+    try {
+      setSignatureVerified('verifying');
+      setSignatureStatus('Analyzing handwriting patterns...');
+      setScanProgress(20);
+
+      const pInterval = setInterval(() => {
+        setScanProgress(p => p < 90 ? p + (Math.random() * 15) : p);
+      }, 100);
+
+      const result = await applicantAPI.verifySignatureAgainstIdBack(currentSignature, idBack);
+      
+      clearInterval(pInterval);
+      setScanProgress(100);
+
+      if (result.verified) {
+        setSignatureVerified('success');
+        setSignatureStatus(result.message || 'Signature patterns match your ID!');
+      } else {
+        setSignatureVerified('failed');
+        setSignatureStatus(result.message || 'Signature mismatch. Please ensure you sign as you did on your ID.');
+      }
+    } catch (err) {
+      console.error('Signature Verification Error:', err);
+      setSignatureVerified('failed');
+      setSignatureStatus(`Technical Issue: ${err.message}`);
+    }
   };
 
   const performOcrVerification = async (docType, docParam, extraParams = {}, videoUrl = null) => {
@@ -1540,9 +1591,12 @@ const StudentInfo = () => {
     navigate('/');
   };
 
-  const isAnyScanning = [idVerified, coeVerified, gradesVerified, ocrVerified, faceVerified].some(v => v === 'verifying') || isFaceMatching;
+  const isAnyScanning = [idVerified, coeVerified, gradesVerified, ocrVerified, faceVerified, signatureVerified].some(v => v === 'verifying') || isFaceMatching;
   const isStep1DocumentsVerified = ocrVerified === 'success';
+  const isStep1Complete = STEP_FIELDS[1].every(field => formData[field]);
+  const isStep2Complete = STEP_FIELDS[2].every(field => formData[field]);
   const isStep3DocumentsVerified = idVerified === 'success' && coeVerified === 'success' && gradesVerified === 'success';
+  const isStep4Complete = formData.privacyConsent && formData.dataCertifyConsent && (drawnSignature || formData.applicantSignatureName) && signatureVerified === 'success';
 
   const handleInputChange = (e) => {
     if (isAnyScanning || isSavingStep) return;
@@ -1682,9 +1736,10 @@ const StudentInfo = () => {
     if (sigPad.current && !sigPad.current.isEmpty()) {
       const canvas = sigPad.current.getTrimmedCanvas();
       const dataUrl = canvas.toDataURL('image/png');
-      setDrawnSignature(dataUrl);
       setFormData(prev => ({ ...prev, applicantSignatureName: dataUrl }));
       setShowSignaturePad(false);
+      setSignatureVerified(null); // Reset verification when updated
+      setSignatureStatus('');
       applicantAPI.updateProfile({ signature_data: dataUrl }).catch(console.error);
     } else {
       showPromptMessage('⚠️ Please provide a signature first.');
@@ -1781,6 +1836,21 @@ const StudentInfo = () => {
       }
       if (gradesVerified !== 'success') {
         showPromptMessage('⚠️ Please verify your Grades document before proceeding to the next step.');
+        return;
+      }
+    }
+
+    if (currentStep === 4) {
+      if (!(drawnSignature || formData.applicantSignatureName)) {
+        showPromptMessage('⚠️ Please provide your signature before proceeding.');
+        return;
+      }
+      if (signatureVerified !== 'success') {
+        showPromptMessage('⚠️ Please verify your handwriting against your ID signature before submitting.');
+        return;
+      }
+      if (faceVerified !== 'success' && faceMatchResult?.is_match !== true) {
+        showPromptMessage('⚠️ Please complete the final Face Identity Verification before submitting.');
         return;
       }
     }
@@ -3635,10 +3705,53 @@ const StudentInfo = () => {
                         </div>
                       </div>
                     ) : (
-                      <div className="signature-preview-box">
-                        <img src={formData.applicantSignatureName} alt="Signature" style={{maxHeight: '80px'}} />
-                        <button type="button" onClick={() => setShowSignaturePad(true)} style={{position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer'}}><i className="fas fa-undo"></i></button>
-                      </div>
+                      <>
+                        <div className="signature-preview-box">
+                          <img src={formData.applicantSignatureName} alt="Signature" style={{maxHeight: '80px'}} />
+                          <button type="button" onClick={() => setShowSignaturePad(true)} style={{position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer'}}><i className="fas fa-undo"></i></button>
+                        </div>
+                        
+                        <div style={{marginTop: '1rem'}}>
+                          <button 
+                            type="button" 
+                            onClick={handleSignatureScan}
+                            disabled={signatureVerified === 'verifying' || !(schoolIdPhotos.back || userProfile?.id_img_back)}
+                            style={{
+                              width: '100%',
+                              padding: '0.6rem',
+                              borderRadius: '10px',
+                              background: signatureVerified === 'success' ? '#10b981' : (signatureVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
+                              color: 'white',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontSize: '0.8rem',
+                              fontWeight: '700',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '8px',
+                              transition: 'all 0.2s ease'
+                            }}
+                          >
+                            <i className={`fas ${signatureVerified === 'verifying' ? 'fa-spinner fa-spin' : (signatureVerified === 'success' ? 'fa-check-circle' : 'fa-signature')}`}></i>
+                            {signatureVerified === 'verifying' ? 'Matching...' : (signatureVerified === 'success' ? 'Verified!' : 'Verify Handwriting')}
+                          </button>
+                          
+                          {signatureStatus && (
+                            <div style={{
+                              marginTop: '8px',
+                              fontSize: '0.65rem',
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              background: signatureVerified === 'success' ? '#ecfdf5' : '#fef2f2',
+                              color: signatureVerified === 'success' ? '#059669' : '#dc2626',
+                              fontWeight: '600'
+                            }}>
+                              {signatureStatus}
+                            </div>
+                          )}
+                        </div>
+                      </>
                     )}
                   </div>
 
