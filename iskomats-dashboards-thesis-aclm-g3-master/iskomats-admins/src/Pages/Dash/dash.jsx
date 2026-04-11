@@ -628,7 +628,7 @@ export default function Dash() {
         </div>
       </aside>
 
-      <main className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-20' : 'ml-64'} flex-1 flex flex-col overflow-y-auto scroll-smooth custom-scrollbar border-l border-gray-200/80 shadow-[inset_10px_0_15px_-10px_rgba(0,0,0,0.05)]`} style={{ height: 'calc(100vh - 5rem)', position: 'relative' }}>
+      <main className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-24' : 'ml-[17rem]'} flex-1 flex flex-col overflow-y-auto scroll-smooth custom-scrollbar border-l border-gray-200/80 shadow-[inset_10px_0_15px_-10px_rgba(0,0,0,0.05)]`} style={{ height: 'calc(100vh - 5rem)', position: 'relative' }}>
         <div className="flex-shrink-0 p-6 pb-4">
           <header className="bg-white rounded-2xl shadow-sm px-8 py-5 flex items-center justify-between border border-gray-100">
             <div>

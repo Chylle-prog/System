@@ -715,9 +715,6 @@ const StudentInfo = () => {
     sessionStorage.removeItem(buildDraftStorageKey(user, searchParams, scholarshipName));
   };
 
-    }
-  };
-
   const handleSignatureScan = async () => {
     // We need both the drawn signature and the ID back photo
     const idBack = schoolIdPhotos.back || userProfile?.id_img_back;
@@ -3618,6 +3615,7 @@ const StudentInfo = () => {
                       </div>
                     )}
                   </div>
+                </div>
                 </div>
               ) : (
                 <div style={{

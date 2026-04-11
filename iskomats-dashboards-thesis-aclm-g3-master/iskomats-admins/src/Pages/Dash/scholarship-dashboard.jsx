@@ -4041,7 +4041,7 @@ export default function ScholarshipDashboard({
         </nav>
       </aside>
 
-      <main className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-20' : 'ml-72'} flex-1 flex flex-col overflow-y-auto border-l border-gray-200/80 shadow-[inset_10px_0_15px_-10px_rgba(0,0,0,0.05)]`} style={{ maxHeight: 'calc(100vh - 5rem)' }}>
+      <main className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-24' : 'ml-[19rem]'} flex-1 flex flex-col overflow-y-auto border-l border-gray-200/80 shadow-[inset_10px_0_15px_-10px_rgba(0,0,0,0.05)]`} style={{ maxHeight: 'calc(100vh - 5rem)' }}>
         <header className="bg-white rounded-xl shadow-sm px-6 py-4 mb-6 flex items-center justify-between">
           <div className="flex items-center gap-2 text-[#800020] font-bold text-xl">
             {dashboardTitle}
