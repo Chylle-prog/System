@@ -891,7 +891,7 @@ def _prepare_signature_preview(signature_img):
         return None
 
     gray = cv2.cvtColor(signature_img, cv2.COLOR_BGR2GRAY) if len(signature_img.shape) == 3 else signature_img
-    _, binary = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
+    binary = _build_signature_mask(gray)
     coords = cv2.findNonZero(binary)
     if coords is None:
         return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
@@ -903,11 +903,132 @@ def _prepare_signature_preview(signature_img):
     x1 = min(gray.shape[1], x + w + pad)
     y1 = min(gray.shape[0], y + h + pad)
     cropped = gray[y0:y1, x0:x1]
+    cropped_mask = binary[y0:y1, x0:x1]
 
     preview = np.full((cropped.shape[0], cropped.shape[1], 3), 255, dtype=np.uint8)
-    preview_mask = cv2.threshold(cropped, 200, 255, cv2.THRESH_BINARY_INV)[1]
+    preview_mask = _refine_signature_mask(cropped_mask)
     preview[preview_mask > 0] = (0, 0, 0)
+    preview = cv2.resize(preview, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
     return preview
+
+
+def _build_signature_mask(gray_image):
+    if gray_image is None or gray_image.size == 0:
+        return None
+
+    normalized = cv2.normalize(gray_image, None, 0, 255, cv2.NORM_MINMAX)
+    upscaled = cv2.resize(normalized, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+    denoised = cv2.bilateralFilter(upscaled, 7, 50, 50)
+    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+    enhanced = clahe.apply(denoised)
+
+    adaptive = cv2.adaptiveThreshold(
+        enhanced,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV,
+        31,
+        12,
+    )
+
+    return _refine_signature_mask(adaptive)
+
+
+def _refine_signature_mask(binary_mask):
+    if binary_mask is None or binary_mask.size == 0:
+        return binary_mask
+
+    refined = cv2.morphologyEx(
+        binary_mask,
+        cv2.MORPH_OPEN,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2)),
+        iterations=1,
+    )
+    refined = cv2.morphologyEx(
+        refined,
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)),
+        iterations=1,
+    )
+
+    contours, _ = cv2.findContours(refined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cleaned = np.zeros_like(refined)
+    min_area = max(12, int(refined.shape[0] * refined.shape[1] * 0.00015))
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area >= min_area:
+            cv2.drawContours(cleaned, [contour], -1, 255, thickness=cv2.FILLED)
+
+    return cleaned
+
+
+def _isolate_signature_ink_region(signature_crop):
+    if signature_crop is None or signature_crop.size == 0:
+        return signature_crop
+
+    gray = cv2.cvtColor(signature_crop, cv2.COLOR_BGR2GRAY) if len(signature_crop.shape) == 3 else signature_crop
+    height, width = gray.shape[:2]
+    if height == 0 or width == 0:
+        return signature_crop
+
+    binary = _build_signature_mask(gray)
+    if binary is None:
+        return signature_crop
+
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    candidate_boxes = []
+
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(contour)
+        area = w * h
+        if area < 20:
+            continue
+
+        if area > (width * height * 0.18):
+            continue
+
+        if x <= 1 or y <= 1 or (x + w) >= (width - 1) or (y + h) >= (height - 1):
+            continue
+
+        center_y = y + (h / 2.0)
+        aspect_ratio = w / float(max(h, 1))
+
+        # Ignore the top logo/star and bottom printed "Signature" label.
+        if center_y < height * 0.10 or center_y > height * 0.62:
+            continue
+
+        # Reject long thin printed lines and underline strokes.
+        if w > width * 0.7 and h < height * 0.08:
+            continue
+
+        if h < max(6, int(height * 0.08)):
+            continue
+
+        candidate_boxes.append((x, y, w, h))
+
+    if not candidate_boxes:
+        return signature_crop
+
+    x0 = min(box[0] for box in candidate_boxes)
+    y0 = min(box[1] for box in candidate_boxes)
+    x1 = max(box[0] + box[2] for box in candidate_boxes)
+    y1 = max(box[1] + box[3] for box in candidate_boxes)
+
+    pad_x = max(6, int((x1 - x0) * 0.12))
+    pad_y = max(6, int((y1 - y0) * 0.25))
+    x0 = max(0, x0 - pad_x)
+    y0 = max(0, y0 - pad_y)
+    x1 = min(width, x1 + pad_x)
+    y1 = min(height, y1 + pad_y)
+
+    cropped_gray = gray[y0:y1, x0:x1]
+    isolated = np.full((cropped_gray.shape[0], cropped_gray.shape[1], 3), 255, dtype=np.uint8)
+    isolated_mask = _build_signature_mask(cropped_gray)
+    if isolated_mask is None:
+        return signature_crop
+    isolated[isolated_mask > 0] = (0, 0, 0)
+    isolated = cv2.resize(isolated, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+    return isolated
 
 
 def _extract_signature_from_id_back(id_img):
@@ -920,10 +1041,24 @@ def _extract_signature_from_id_back(id_img):
         return None
 
     # Student IDs in this system usually place the handwritten signature block
-    # near the upper third of the card, while printed/chancellor signatures sit lower.
-    roi_start = int(height * 0.10)
-    roi_end = int(height * 0.55)
-    roi = gray[roi_start:roi_end, :]
+    # in the upper-middle section. Focus there first to avoid the top logo and shadowed edges.
+    lane_x0 = int(width * 0.20)
+    lane_x1 = int(width * 0.82)
+    lane_y0 = int(height * 0.20)
+    lane_y1 = int(height * 0.38)
+    primary_lane = id_img[lane_y0:lane_y1, lane_x0:lane_x1]
+    isolated_primary_lane = _isolate_signature_ink_region(primary_lane)
+    if isolated_primary_lane is not None and isolated_primary_lane.size:
+        primary_gray = cv2.cvtColor(isolated_primary_lane, cv2.COLOR_BGR2GRAY)
+        dark_pixels = np.count_nonzero(primary_gray < 240)
+        if dark_pixels >= 40:
+            return isolated_primary_lane
+
+    roi_start = int(height * 0.12)
+    roi_end = int(height * 0.45)
+    roi_x0 = int(width * 0.12)
+    roi_x1 = int(width * 0.88)
+    roi = gray[roi_start:roi_end, roi_x0:roi_x1]
 
     blur = cv2.GaussianBlur(roi, (5, 5), 0)
     _, binary = cv2.threshold(blur, 185, 255, cv2.THRESH_BINARY_INV)
@@ -944,6 +1079,7 @@ def _extract_signature_from_id_back(id_img):
         if aspect_ratio < 1.4 or aspect_ratio > 18:
             continue
 
+        x_global = x + roi_x0
         y_global = y + roi_start
 
         # Reject tiny printed text rows and long address lines.
@@ -955,24 +1091,28 @@ def _extract_signature_from_id_back(id_img):
         # Prefer the earliest valid handwritten region in the upper half.
         top_priority = 1.0 - (y_global / float(height))
         compactness = min(aspect_ratio, 6.0) / 6.0
-        score = (top_priority * 100000.0) + (area * 0.5) + (compactness * 1000.0)
+        center_x = x_global + (w / 2.0)
+        center_bias = 1.0 - abs((center_x / float(width)) - 0.5)
+        score = (top_priority * 100000.0) + (center_bias * 5000.0) + (area * 0.5) + (compactness * 1000.0)
         if score > best_score:
             pad_x = max(6, int(w * 0.08))
             pad_y = max(6, int(h * 0.2))
-            x0 = max(0, x - pad_x)
+            x0 = max(0, x_global - pad_x)
             y0 = max(0, y_global - pad_y)
-            x1 = min(width, x + w + pad_x)
+            x1 = min(width, x_global + w + pad_x)
             y1 = min(height, y_global + h + pad_y)
             best_crop = id_img[y0:y1, x0:x1]
             best_score = score
 
     if best_crop is not None:
-        return best_crop
+        return _isolate_signature_ink_region(best_crop)
 
     fallback_y0 = int(height * 0.12)
     fallback_y1 = int(height * 0.40)
     fallback = id_img[fallback_y0:fallback_y1, int(width * 0.12):int(width * 0.88)]
-    return fallback if fallback.size else id_img
+    if fallback.size:
+        return _isolate_signature_ink_region(fallback)
+    return id_img
 
 def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None):
     """
