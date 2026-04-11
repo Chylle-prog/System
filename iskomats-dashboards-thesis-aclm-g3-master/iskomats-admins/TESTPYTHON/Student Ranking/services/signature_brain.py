@@ -1,21 +1,107 @@
 import os
 import cv2
 import numpy as np
-import tensorflow as tf
-from tensorflow.keras.applications import MobileNetV2
-from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
-from tensorflow.keras.preprocessing import image
-from sklearn.metrics.pairwise import cosine_similarity
+
+try:
+    from tensorflow.keras.applications import MobileNetV2
+    from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+    from tensorflow.keras.preprocessing import image
+    TENSORFLOW_AVAILABLE = True
+except Exception as exc:
+    MobileNetV2 = None
+    preprocess_input = None
+    image = None
+    TENSORFLOW_AVAILABLE = False
+    print(f"[BRAIN] TensorFlow unavailable, using OpenCV fallback: {exc}", flush=True)
 
 # --- GLOBAL MODEL CACHE ---
 # Using MobileNetV2 for its extreme efficiency on CPU
 _SIGNATURE_MODELS = {}
+
+
+def _normalize_vector(vector):
+    if vector is None:
+        return None
+
+    vector = np.asarray(vector, dtype=np.float32).flatten()
+    norm = np.linalg.norm(vector)
+    if not np.isfinite(norm) or norm <= 1e-8:
+        return None
+    return vector / norm
+
+
+def _cosine_similarity(vector_a, vector_b):
+    normalized_a = _normalize_vector(vector_a)
+    normalized_b = _normalize_vector(vector_b)
+    if normalized_a is None or normalized_b is None:
+        return 0.0
+    return float(np.clip(np.dot(normalized_a, normalized_b), -1.0, 1.0))
+
+
+def _extract_ink_crop(img_np):
+    gray = cv2.cvtColor(img_np, cv2.COLOR_BGR2GRAY) if len(img_np.shape) == 3 else img_np
+    _, binary = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
+    coords = cv2.findNonZero(binary)
+
+    if coords is None:
+        print("[BRAIN] No ink detected, using full canvas.", flush=True)
+        return gray
+
+    x, y, w, h = cv2.boundingRect(coords)
+    pad = max(2, int(min(w, h) * 0.1))
+    x_p, y_p = max(0, x - pad), max(0, y - pad)
+    w_p = min(gray.shape[1] - x_p, w + 2 * pad)
+    h_p = min(gray.shape[0] - y_p, h + 2 * pad)
+    print(f"[BRAIN] Auto-Cropping ink: {w}x{h} pixels detected.", flush=True)
+    return gray[y_p:y_p + h_p, x_p:x_p + w_p]
+
+
+def _prepare_signature_canvas(img_np, size=224):
+    cropped = _extract_ink_crop(img_np)
+    h_c, w_c = cropped.shape[:2]
+    if h_c == 0 or w_c == 0:
+        return None
+
+    if h_c > w_c:
+        new_h, new_w = size, max(1, int(w_c * size / h_c))
+        pad_w = (size - new_w) // 2
+        pad_h = 0
+    else:
+        new_h, new_w = max(1, int(h_c * size / w_c)), size
+        pad_h = (size - new_h) // 2
+        pad_w = 0
+
+    resized = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    canvas = np.full((size, size), 255, dtype=np.uint8)
+    canvas[pad_h:pad_h + new_h, pad_w:pad_w + new_w] = resized
+    return canvas
+
+
+def _extract_classical_embedding(img_np):
+    canvas = _prepare_signature_canvas(img_np, size=128)
+    if canvas is None:
+        return None
+
+    _, binary = cv2.threshold(canvas, 200, 255, cv2.THRESH_BINARY_INV)
+    normalized_binary = binary.astype(np.float32) / 255.0
+
+    downsampled = cv2.resize(normalized_binary, (64, 32), interpolation=cv2.INTER_AREA).flatten()
+    horizontal_projection = normalized_binary.sum(axis=1)
+    vertical_projection = normalized_binary.sum(axis=0)
+    hu_moments = cv2.HuMoments(cv2.moments(binary)).flatten()
+    hu_moments = np.sign(hu_moments) * np.log1p(np.abs(hu_moments))
+
+    embedding = np.concatenate([downsampled, horizontal_projection, vertical_projection, hu_moments])
+    return _normalize_vector(embedding)
 
 def get_signature_extractor():
     """
     Lazy-loads a pre-trained MobileNetV2 model for feature extraction.
     Weights are frozen (ImageNet pre-trained).
     """
+    if not TENSORFLOW_AVAILABLE:
+        return None
+
     if "mobilenet" not in _SIGNATURE_MODELS:
         print("[BRAIN] Initializing Neural Signature Extractor (MobileNetV2)...", flush=True)
         # Load pre-trained model without the classification head
@@ -29,61 +115,28 @@ def extract_signature_embedding(img_np):
     Now with Translation & Scale Invariance via Auto-Cropping.
     """
     try:
+        if not TENSORFLOW_AVAILABLE:
+            print("[BRAIN] Using classical OpenCV signature embedding.", flush=True)
+            return _extract_classical_embedding(img_np)
+
         model = get_signature_extractor()
-        
-        # 1. AUTO-CROP TO CONTENT (FIX FOR LEARNING FAILURE)
-        # Convert to grayscale binary to find the ink bounding box
-        gray = cv2.cvtColor(img_np, cv2.COLOR_BGR2GRAY) if len(img_np.shape) == 3 else img_np
-        _, binary = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
-        coords = cv2.findNonZero(binary)
-        
-        if coords is not None:
-            x, y, w, h = cv2.boundingRect(coords)
-            # Add a small 10% padding around the ink for better context
-            pad = int(min(w, h) * 0.1)
-            x_p, y_p = max(0, x-pad), max(0, y-pad)
-            w_p, h_p = min(img_np.shape[1]-x_p, w+2*pad), min(img_np.shape[0]-y_p, h+2*pad)
-            cropped = img_np[y_p:y_p+h_p, x_p:x_p+w_p]
-            print(f"[BRAIN] Auto-Cropping ink: {w}x{h} pixels detected.", flush=True)
-        else:
-            cropped = img_np
-            print("[BRAIN] No ink detected, using full canvas.", flush=True)
-            
-        # 2. Resize and Pad to 224x224 (MobileNetV2 standard)
-        h_c, w_c = cropped.shape[:2]
-        size = 224
-        if h_c > w_c:
-            new_h, new_w = size, int(w_c * size / h_c)
-            pad_w = (size - new_w) // 2
-            pad_h = 0
-        else:
-            new_h, new_w = int(h_c * size / w_c), size
-            pad_h = (size - new_h) // 2
-            pad_w = 0
-            
-        resized = cv2.resize(cropped, (new_w, new_h))
-        # Use white background for the 224x224 canvas
-        canvas = np.full((size, size, 3), 255, dtype=np.uint8)
-        
-        # Convert back to BGR for MobileNetV2 compatibility
-        if len(resized.shape) == 2:
-            canvas[pad_h:pad_h+new_h, pad_w:pad_w+new_w] = cv2.cvtColor(resized, cv2.COLOR_GRAY2BGR)
-        else:
-            canvas[pad_h:pad_h+new_h, pad_w:pad_w+new_w] = resized
-            
-        # 3. Predict embedding
+        if model is None:
+            return _extract_classical_embedding(img_np)
+
+        canvas_gray = _prepare_signature_canvas(img_np, size=224)
+        if canvas_gray is None:
+            return None
+
+        canvas = cv2.cvtColor(canvas_gray, cv2.COLOR_GRAY2BGR)
         x = image.img_to_array(canvas)
         x = np.expand_dims(x, axis=0)
         x = preprocess_input(x)
-        
+
         embedding = model.predict(x, verbose=0)
-        embedding_flat = embedding.flatten()
-        # Normalize for consistent cosine similarity comparison
-        embedding_normalized = embedding_flat / np.linalg.norm(embedding_flat)
-        return embedding_normalized
+        return _normalize_vector(embedding)
     except Exception as e:
         print(f"[BRAIN] Embedding extraction failed: {e}", flush=True)
-        return None
+        return _extract_classical_embedding(img_np)
 
 def get_mean_profile_vector(student_id):
     """
@@ -125,7 +178,9 @@ def get_mean_profile_vector(student_id):
         # Calculate the Centroid (Mean Vector)
         mean_vector = np.mean(embeddings, axis=0)
         # Re-normalize after averaging (averaging normalized vectors can reduce magnitude)
-        normalized_mean = mean_vector / np.linalg.norm(mean_vector)
+        normalized_mean = _normalize_vector(mean_vector)
+        if normalized_mean is None:
+            return None
         print(f"[BRAIN] Mean vector: {len(embeddings)} samples, final norm {np.linalg.norm(normalized_mean):.6f}", flush=True)
         return normalized_mean
     except Exception as e:
@@ -148,10 +203,7 @@ def calculate_neural_match(drawing_img, student_id):
         return 0.0
     
     # Calculate Cosine Similarity
-    similarity = cosine_similarity(
-        current_embedding.reshape(1, -1), 
-        mean_real_vector.reshape(1, -1)
-    )[0][0]
+    similarity = _cosine_similarity(current_embedding, mean_real_vector)
     
     print(f"[BRAIN] Cosine similarity: {similarity:.6f} (current norm: {np.linalg.norm(current_embedding):.6f}, mean norm: {np.linalg.norm(mean_real_vector):.6f})", flush=True)
     return float(similarity)
