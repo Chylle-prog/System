@@ -2908,8 +2908,8 @@ def get_applicants(current_user_id, pro_no, role, program):
         query = f'''
             SELECT a.applicant_no as id, a.first_name as "firstName", a.last_name as "lastName", 
                    a.middle_name as "middleName",
-                   a.mother_fname as "motherFirstName", a.mother_lname as "motherLastName",
-                   a.father_fname as "fatherFirstName", a.father_lname as "fatherLastName",
+                   a.mother_name as "motherName",
+                   a.father_name as "fatherName",
                    a.first_name as name, a.overall_gpa as grade,
                    a.financial_income_of_parents as income, CONCAT_WS(', ', NULLIF(a.street_brgy, ''), NULLIF(a.town_city_municipality, ''), NULLIF(a.province, ''), NULLIF(a.zip_code, '')) as location,
                    a.maiden_name as "maidenName",

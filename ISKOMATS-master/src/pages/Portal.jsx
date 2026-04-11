@@ -2938,11 +2938,11 @@ const Portal = () => {
                 <div className="view-grid">
                   <div className="view-item">
                     <label>Father's Name</label>
-                    <div className="value">{userProfile?.father_fname} {userProfile?.father_lname}</div>
+                    <div className="value">{userProfile?.father_name}</div>
                   </div>
                   <div className="view-item">
                     <label>Mother's Name</label>
-                    <div className="value">{userProfile?.mother_fname} {userProfile?.mother_lname}</div>
+                    <div className="value">{userProfile?.mother_name}</div>
                   </div>
                   <div className="view-item">
                     <label>Parents' Gross Income</label>

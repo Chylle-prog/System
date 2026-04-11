@@ -3388,13 +3388,13 @@ export default function ScholarshipDashboard({
     // Normalize family data for display
     const familyData = {
       father: {
-        name: a.fatherFirstName ? `${a.fatherFirstName} ${a.fatherLastName || ''}` : (a.family?.father?.name || 'N/A'),
+        name: a.fatherName || a.family?.father?.name || 'N/A',
         status: a.fatherStatus || a.family?.father?.status || 'Living',
         job: a.fatherOccupation || a.family?.father?.job || 'N/A',
         phone: a.fatherPhone || a.family?.father?.phone || 'N/A'
       },
       mother: {
-        name: a.motherFirstName ? `${a.motherFirstName} ${a.motherLastName || ''}` : (a.family?.mother?.name || 'N/A'),
+        name: a.motherName || a.family?.mother?.name || 'N/A',
         status: a.motherStatus || a.family?.mother?.status || 'Living',
         job: a.motherOccupation || a.family?.mother?.job || 'N/A',
         phone: a.motherPhone || a.family?.mother?.phone || 'N/A'

@@ -459,16 +459,6 @@ def normalize_matching_text(value):
     return re.sub(r'[^a-z0-9]+', ' ', str(value or '').lower()).strip()
 
 
-def split_parent_full_name(full_name):
-    cleaned = ' '.join(str(full_name or '').split())
-    if not cleaned:
-        return None, None
-
-    parts = cleaned.split(' ')
-    if len(parts) == 1:
-        return cleaned, None
-
-    return ' '.join(parts[:-1]), parts[-1]
 
 
 def parse_parent_status_value(value):
@@ -489,10 +479,15 @@ def normalize_identity_name(value):
     return normalize_matching_text(value)
 
 
-def build_restriction_identity(first_name=None, middle_name=None, last_name=None, father_fname=None, father_lname=None, mother_fname=None, mother_lname=None):
+def normalize_parent_full_name(value):
+    cleaned = ' '.join(str(value or '').split())
+    return cleaned or None
+
+
+def build_restriction_identity(first_name=None, middle_name=None, last_name=None, father_name=None, mother_name=None):
     family_last_name = normalize_identity_name(last_name)
-    father_name = normalize_identity_name(' '.join(filter(None, [father_fname, father_lname])))
-    mother_name = normalize_identity_name(' '.join(filter(None, [mother_fname, mother_lname])))
+    father_name = normalize_identity_name(father_name)
+    mother_name = normalize_identity_name(mother_name)
 
     if not family_last_name or not father_name or not mother_name:
         return None
@@ -505,10 +500,10 @@ def build_restriction_identity(first_name=None, middle_name=None, last_name=None
     }
 
 
-def build_duplicate_account_identity(first_name=None, middle_name=None, last_name=None, father_fname=None, father_lname=None, mother_fname=None, mother_lname=None):
+def build_duplicate_account_identity(first_name=None, middle_name=None, last_name=None, father_name=None, mother_name=None):
     applicant_full_name = normalize_identity_name(' '.join(filter(None, [first_name, middle_name, last_name])))
-    father_name = normalize_identity_name(' '.join(filter(None, [father_fname, father_lname])))
-    mother_name = normalize_identity_name(' '.join(filter(None, [mother_fname, mother_lname])))
+    father_name = normalize_identity_name(father_name)
+    mother_name = normalize_identity_name(mother_name)
 
     if not applicant_full_name or not father_name or not mother_name:
         return None
@@ -529,25 +524,21 @@ def build_restriction_identity_from_applicant(applicant, source_data=None):
     last_name = source_data.get('lastName') or source_data.get('last_name') or applicant.get('last_name')
 
     if 'fatherName' in source_data or 'father_name' in source_data:
-        father_fname, father_lname = split_parent_full_name(source_data.get('fatherName') or source_data.get('father_name'))
+        father_name = normalize_parent_full_name(source_data.get('fatherName') or source_data.get('father_name'))
     else:
-        father_fname = applicant.get('father_fname')
-        father_lname = applicant.get('father_lname')
+        father_name = normalize_parent_full_name(applicant.get('father_name'))
 
     if 'motherName' in source_data or 'mother_name' in source_data:
-        mother_fname, mother_lname = split_parent_full_name(source_data.get('motherName') or source_data.get('mother_name'))
+        mother_name = normalize_parent_full_name(source_data.get('motherName') or source_data.get('mother_name'))
     else:
-        mother_fname = applicant.get('mother_fname')
-        mother_lname = applicant.get('mother_lname')
+        mother_name = normalize_parent_full_name(applicant.get('mother_name'))
 
     return build_restriction_identity(
         first_name=first_name,
         middle_name=middle_name,
         last_name=last_name,
-        father_fname=father_fname,
-        father_lname=father_lname,
-        mother_fname=mother_fname,
-        mother_lname=mother_lname,
+        father_name=father_name,
+        mother_name=mother_name,
     )
 
 
@@ -559,25 +550,21 @@ def build_duplicate_account_identity_from_applicant(applicant, source_data=None)
     last_name = source_data.get('lastName') or source_data.get('last_name') or applicant.get('last_name')
 
     if 'fatherName' in source_data or 'father_name' in source_data:
-        father_fname, father_lname = split_parent_full_name(source_data.get('fatherName') or source_data.get('father_name'))
+        father_name = normalize_parent_full_name(source_data.get('fatherName') or source_data.get('father_name'))
     else:
-        father_fname = applicant.get('father_fname')
-        father_lname = applicant.get('father_lname')
+        father_name = normalize_parent_full_name(applicant.get('father_name'))
 
     if 'motherName' in source_data or 'mother_name' in source_data:
-        mother_fname, mother_lname = split_parent_full_name(source_data.get('motherName') or source_data.get('mother_name'))
+        mother_name = normalize_parent_full_name(source_data.get('motherName') or source_data.get('mother_name'))
     else:
-        mother_fname = applicant.get('mother_fname')
-        mother_lname = applicant.get('mother_lname')
+        mother_name = normalize_parent_full_name(applicant.get('mother_name'))
 
     return build_duplicate_account_identity(
         first_name=first_name,
         middle_name=middle_name,
         last_name=last_name,
-        father_fname=father_fname,
-        father_lname=father_lname,
-        mother_fname=mother_fname,
-        mother_lname=mother_lname,
+        father_name=father_name,
+        mother_name=mother_name,
     )
 
 
@@ -590,7 +577,7 @@ def get_matching_applicant_ids_by_identity(cursor, applicant, source_data=None):
 
     cursor.execute(
         """
-        SELECT applicant_no, first_name, middle_name, last_name, father_fname, father_lname, mother_fname, mother_lname
+        SELECT applicant_no, first_name, middle_name, last_name, father_name, mother_name
         FROM applicants
         """
     )
@@ -614,7 +601,7 @@ def get_matching_duplicate_applicant_ids(cursor, applicant, source_data=None):
 
     cursor.execute(
         """
-        SELECT applicant_no, first_name, middle_name, last_name, father_fname, father_lname, mother_fname, mother_lname
+        SELECT applicant_no, first_name, middle_name, last_name, father_name, mother_name
         FROM applicants
         """
     )
@@ -1859,7 +1846,7 @@ def get_rankings():
         if user_no:
             cur.execute(
                 """
-                SELECT applicant_no, first_name, middle_name, last_name, father_fname, father_lname, mother_fname, mother_lname
+                SELECT applicant_no, first_name, middle_name, last_name, father_name, mother_name
                 FROM applicants
                 WHERE applicant_no = %s
                 """,
@@ -2181,15 +2168,6 @@ def update_profile():
             updates.append(f'{column_name} = %s')
             params.append(value)
 
-        def split_parent_name(full_name):
-            cleaned = ' '.join((full_name or '').split())
-            if not cleaned:
-                return None, None
-            parts = cleaned.split(' ')
-            if len(parts) == 1:
-                return cleaned, None
-            return ' '.join(parts[:-1]), parts[-1]
-
         def parse_parent_status(value):
             if isinstance(value, bool):
                 return value
@@ -2242,14 +2220,10 @@ def update_profile():
                 document_updates[db_col] = data[frontend_key]
 
         if 'fatherName' in data:
-            father_fname, father_lname = split_parent_name(data.get('fatherName'))
-            add_update('father_fname', father_fname)
-            add_update('father_lname', father_lname)
+            add_update('father_name', normalize_parent_full_name(data.get('fatherName')))
 
         if 'motherName' in data:
-            mother_fname, mother_lname = split_parent_name(data.get('motherName'))
-            add_update('mother_fname', mother_fname)
-            add_update('mother_lname', mother_lname)
+            add_update('mother_name', normalize_parent_full_name(data.get('motherName')))
 
         if 'fatherStatus' in data:
             father_status = parse_parent_status(data.get('fatherStatus'))
@@ -2571,14 +2545,10 @@ def submit_application():
                 add_update(db_col, value)
 
         if 'fatherName' in request_payload:
-            father_fname, father_lname = split_parent_full_name(request_payload.get('fatherName'))
-            add_update('father_fname', father_fname)
-            add_update('father_lname', father_lname)
+            add_update('father_name', normalize_parent_full_name(request_payload.get('fatherName')))
 
         if 'motherName' in request_payload:
-            mother_fname, mother_lname = split_parent_full_name(request_payload.get('motherName'))
-            add_update('mother_fname', mother_fname)
-            add_update('mother_lname', mother_lname)
+            add_update('mother_name', normalize_parent_full_name(request_payload.get('motherName')))
 
         if 'fatherStatus' in request_payload:
             father_status = parse_parent_status_value(request_payload.get('fatherStatus'))
