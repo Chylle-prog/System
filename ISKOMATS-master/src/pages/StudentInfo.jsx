@@ -1589,7 +1589,8 @@ const StudentInfo = () => {
     navigate('/');
   };
 
-  const isAnyScanning = [idVerified, coeVerified, gradesVerified, ocrVerified, faceVerified, signatureVerified].some(v => v === 'verifying') || isFaceMatching;
+  const isAnyVideoUploading = Object.keys(uploadingFields).some(key => key.toLowerCase().includes('video'));
+  const isAnyScanning = [idVerified, coeVerified, gradesVerified, ocrVerified, faceVerified, signatureVerified].some(v => v === 'verifying') || isFaceMatching || isAnyVideoUploading;
   const isStep1DocumentsVerified = ocrVerified === 'success';
   const isStep1Complete = STEP_FIELDS[1].every(field => formData[field]);
   const isStep2Complete = STEP_FIELDS[2].every(field => formData[field]);
@@ -2965,7 +2966,7 @@ const StudentInfo = () => {
                       <button 
                         type="button" 
                         onClick={handleIndigencyScan}
-                        disabled={isSavingStep || ocrVerified === 'verifying'}
+                        disabled={isSavingStep || ocrVerified === 'verifying' || isAnyVideoUploading}
                         style={{
                           width: '100%',
                           padding: '0.9rem',
@@ -3346,7 +3347,7 @@ const StudentInfo = () => {
                   <button 
                     type="button" 
                     onClick={handleIdScan}
-                    disabled={isSavingStep || idVerified === 'verifying' || (!schoolIdPhotos.front && !userProfile?.id_img_front)}
+                    disabled={isSavingStep || idVerified === 'verifying' || isAnyVideoUploading || (!schoolIdPhotos.front && !userProfile?.id_img_front)}
                     style={{
                       width: '100%',
                       padding: '1rem',
@@ -3461,7 +3462,7 @@ const StudentInfo = () => {
                         <button 
                           type="button" 
                           onClick={handleCOEScan}
-                          disabled={isSavingStep || coeVerified === 'verifying'}
+                          disabled={isSavingStep || coeVerified === 'verifying' || isAnyVideoUploading}
                           style={{
                             width: '100%',
                             padding: '0.85rem',
@@ -3573,7 +3574,7 @@ const StudentInfo = () => {
                         <button 
                           type="button" 
                           onClick={handleGradesScan}
-                          disabled={isSavingStep || gradesVerified === 'verifying'}
+                          disabled={isSavingStep || gradesVerified === 'verifying' || isAnyVideoUploading}
                           style={{
                             width: '100%',
                             padding: '0.85rem',
