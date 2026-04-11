@@ -1313,6 +1313,11 @@ const StudentInfo = () => {
         const fetchHeavyBlobs = async (prof) => {
           const blobFields = [
             'profile_picture',
+            'id_img_front',
+            'id_img_back',
+            'enrollment_certificate_doc',
+            'grades_doc',
+            'indigency_doc',
             'id_pic',
             'signature_image_data'
           ];

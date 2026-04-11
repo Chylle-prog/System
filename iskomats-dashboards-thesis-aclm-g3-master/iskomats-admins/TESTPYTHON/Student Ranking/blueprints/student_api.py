@@ -2139,7 +2139,16 @@ def get_profile():
         applicant['duplicate_applicant_exists'] = any(applicant_no != request.user_no for applicant_no in duplicate_ids)
         applicant['portal_lock_message'] = 'You already exist in the system' if applicant['duplicate_applicant_exists'] else None
 
-        document_values = fetch_applicant_document_values(cur, request.user_no, blob_fields)
+        media_document_fields = [
+            *blob_fields,
+            'id_vid_url',
+            'indigency_vid_url',
+            'grades_vid_url',
+            'enrollment_certificate_vid_url',
+            'schoolid_front_vid_url',
+            'schoolid_back_vid_url',
+        ]
+        document_values = fetch_applicant_document_values(cur, request.user_no, media_document_fields)
 
         # 2. Add lazy-load URLs for the frontend to fetch binary data on-demand
         # This ensures the browser can still access the data without bloating the initial profile load
@@ -2152,6 +2161,16 @@ def get_profile():
                 applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
             else:
                 applicant[key] = None
+
+        for key in (
+            'id_vid_url',
+            'indigency_vid_url',
+            'grades_vid_url',
+            'enrollment_certificate_vid_url',
+            'schoolid_front_vid_url',
+            'schoolid_back_vid_url',
+        ):
+            applicant[key] = document_values.get(key) or applicant.get(key)
 
         # 3. Clean up other types
         for key, value in list(applicant.items()):
