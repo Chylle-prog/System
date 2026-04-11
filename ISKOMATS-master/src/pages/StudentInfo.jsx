@@ -798,7 +798,8 @@ const StudentInfo = () => {
         middleName,
         schoolName, idNumber, yearLevel, gpa, course,
         videoUrl,
-        reqNo
+        reqNo,
+        docType
       );
 
       clearInterval(pInterval);

@@ -519,7 +519,7 @@ export const applicantAPI = {
    * @param {string} lastName - User's current last name for verification
    * @returns {Promise}
    */
-  ocrCheck: async (idFront = null, idBack = null, indigencyDoc = null, townCity = null, enrollmentDoc = null, grades_doc = null, firstName = null, lastName = null, middleName = null, schoolName = null, idNumber = null, yearLevel = null, gpa = null, course = null, videoUrl = null, scholarshipNo = null) => {
+  ocrCheck: async (idFront = null, idBack = null, indigencyDoc = null, townCity = null, enrollmentDoc = null, grades_doc = null, firstName = null, lastName = null, middleName = null, schoolName = null, idNumber = null, yearLevel = null, gpa = null, course = null, videoUrl = null, scholarshipNo = null, targetDoc = null) => {
     const fData = new FormData();
 
     const appendDocumentIfNeeded = (fieldName, value) => {
@@ -568,6 +568,7 @@ export const applicantAPI = {
       fData.append('video_url', videoUrl || '');
     }
     if (scholarshipNo) fData.append('scholarship_no', scholarshipNo);
+    if (targetDoc) fData.append('target_doc', targetDoc);
 
     return makeRequest('/student/verification/ocr-check', {
       method: 'POST',

@@ -720,8 +720,9 @@ def extract_school_year_from_text(text):
     range_match = re.search(r'20\d{2}\s*[-–]\s*20\d{2}', text)
     if range_match:
         return range_match.group(0)
-    # Priority 3: First standalone 20XX year (original fallback)
-    match = re.search(r'20\d{2}', text)
+    # Priority 3: First standalone year in a plausible range (e.g. 2020-2029)
+    # We avoid years like 2004 which are likely birth years.
+    match = re.search(r'202\d', text)
     return match.group(0) if match else None
 
 def extract_school_year(image_bytes):

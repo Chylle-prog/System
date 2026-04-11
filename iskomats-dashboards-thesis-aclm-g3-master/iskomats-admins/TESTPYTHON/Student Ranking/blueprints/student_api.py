@@ -2708,6 +2708,7 @@ def ocr_check():
 
         expected_semester = None
         scholarship_no = data.get('scholarship_no')
+        target_doc = data.get('target_doc')  # New: Filter by specific document type
         if scholarship_no:
             try:
                 cur.execute("SELECT year, semester FROM scholarships WHERE req_no = %s", (scholarship_no,))
@@ -2998,16 +2999,26 @@ def ocr_check():
 
         # 3. Schedule Parallel Jobs
         jobs = []
-        if enrollment_doc_param or applicant.get('enrollment_certificate_doc'):
-            jobs.append(('Enrollment', enrollment_doc_param, applicant.get('enrollment_certificate_doc')))
-        if grades_doc_param or applicant.get('grades_doc'):
-            jobs.append(('Grades', grades_doc_param, applicant.get('grades_doc')))
-        if indigency_doc_param or applicant.get('indigency_doc'):
-            jobs.append(('Indigency', indigency_doc_param, applicant.get('indigency_doc')))
-        if id_front_param or applicant.get('id_img_front'):
-            jobs.append(('SchoolID', id_front_param, applicant.get('id_img_front')))
-        if id_back_param or applicant.get('id_img_back'):
-            jobs.append(('SchoolIDBack', id_back_param, applicant.get('id_img_back')))
+        # If target_doc is provided, we strictly only verify that one.
+        # Otherwise, we fallback to our 'verify what we have' logic for legacy support.
+        
+        if not target_doc or target_doc == 'Enrollment':
+            if enrollment_doc_param or applicant.get('enrollment_certificate_doc'):
+                jobs.append(('Enrollment', enrollment_doc_param, applicant.get('enrollment_certificate_doc')))
+
+        if not target_doc or target_doc == 'Grades':
+            if grades_doc_param or applicant.get('grades_doc'):
+                jobs.append(('Grades', grades_doc_param, applicant.get('grades_doc')))
+
+        if not target_doc or target_doc == 'Indigency':
+            if indigency_doc_param or applicant.get('indigency_doc'):
+                jobs.append(('Indigency', indigency_doc_param, applicant.get('indigency_doc')))
+
+        if not target_doc or target_doc == 'SchoolID':
+            if id_front_param or applicant.get('id_img_front'):
+                jobs.append(('SchoolID', id_front_param, applicant.get('id_img_front')))
+            if id_back_param or applicant.get('id_img_back'):
+                jobs.append(('SchoolIDBack', id_back_param, applicant.get('id_img_back')))
 
         results = []
         overall_verified = True
