@@ -919,9 +919,11 @@ def _extract_signature_from_id_back(id_img):
     if height == 0 or width == 0:
         return None
 
-    # Signature blocks are typically in the lower part of the card.
-    lower_half_start = int(height * 0.45)
-    roi = gray[lower_half_start:, :]
+    # Student IDs in this system usually place the handwritten signature block
+    # near the upper third of the card, while printed/chancellor signatures sit lower.
+    roi_start = int(height * 0.10)
+    roi_end = int(height * 0.55)
+    roi = gray[roi_start:roi_end, :]
 
     blur = cv2.GaussianBlur(roi, (5, 5), 0)
     _, binary = cv2.threshold(blur, 185, 255, cv2.THRESH_BINARY_INV)
@@ -939,12 +941,21 @@ def _extract_signature_from_id_back(id_img):
             continue
 
         aspect_ratio = w / float(max(h, 1))
-        if aspect_ratio < 1.8 or aspect_ratio > 18:
+        if aspect_ratio < 1.4 or aspect_ratio > 18:
             continue
 
-        y_global = y + lower_half_start
-        bottom_bias = y_global / float(height)
-        score = area * (1.0 + bottom_bias)
+        y_global = y + roi_start
+
+        # Reject tiny printed text rows and long address lines.
+        if h < max(12, int(height * 0.015)):
+            continue
+        if w > int(width * 0.75) and h < int(height * 0.08):
+            continue
+
+        # Prefer the earliest valid handwritten region in the upper half.
+        top_priority = 1.0 - (y_global / float(height))
+        compactness = min(aspect_ratio, 6.0) / 6.0
+        score = (top_priority * 100000.0) + (area * 0.5) + (compactness * 1000.0)
         if score > best_score:
             pad_x = max(6, int(w * 0.08))
             pad_y = max(6, int(h * 0.2))
@@ -958,8 +969,9 @@ def _extract_signature_from_id_back(id_img):
     if best_crop is not None:
         return best_crop
 
-    fallback_y = int(height * 0.68)
-    fallback = id_img[fallback_y:, int(width * 0.08):int(width * 0.92)]
+    fallback_y0 = int(height * 0.12)
+    fallback_y1 = int(height * 0.40)
+    fallback = id_img[fallback_y0:fallback_y1, int(width * 0.12):int(width * 0.88)]
     return fallback if fallback.size else id_img
 
 def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None):
