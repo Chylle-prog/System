@@ -3444,24 +3444,20 @@ def update_application_status(req_no):
         conn = get_db()
         cur = conn.cursor()
         
-        # If rejecting the application, delete associated messages first
-        if status in [False, 0, 'false', 'False']:
-            cur.execute(
-                """
-                SELECT pro_no FROM scholarships WHERE req_no = %s
-                """,
-                (req_no,),
-            )
-            scholarship_row = cur.fetchone()
-            if scholarship_row:
-                pro_no = scholarship_row['pro_no']
-                # Delete all messages between applicant and provider
-                cur.execute(
-                    """
-                    DELETE FROM message WHERE applicant_no = %s AND pro_no = %s
-                    """,
-                    (applicant_no, pro_no),
-                )
+        # Get Provider Info for Automated Response
+        cur.execute("""
+            SELECT s.pro_no, sp.provider_name, s.scholarship_name 
+            FROM scholarships s 
+            JOIN scholarship_providers sp ON s.pro_no = sp.pro_no 
+            WHERE s.req_no = %s
+        """, (req_no,))
+        prov_row = cur.fetchone()
+        if not prov_row:
+            return jsonify({'message': 'Scholarship not found'}), 404
+            
+        pro_no = prov_row['pro_no']
+        pro_name = prov_row['provider_name']
+        sch_name = prov_row['scholarship_name']
         
         cur.execute(
             """
@@ -3477,7 +3473,15 @@ def update_application_status(req_no):
         if status in [True, 1, 'true', 'True']:
             # Find which scholarships are being auto-declined to notify the student
             cur.execute(
-                "SELECT s.scholarship_name, s.req_no FROM applicant_status ast JOIN scholarships s ON ast.scholarship_no = s.req_no WHERE ast.applicant_no = %s AND ast.scholarship_no != %s AND (ast.is_accepted IS NULL OR ast.is_accepted = TRUE)",
+                """
+                SELECT s.scholarship_name, s.req_no, s.pro_no, sp.provider_name 
+                FROM applicant_status ast 
+                JOIN scholarships s ON ast.scholarship_no = s.req_no 
+                JOIN scholarship_providers sp ON s.pro_no = sp.pro_no
+                WHERE ast.applicant_no = %s 
+                AND ast.scholarship_no != %s 
+                AND (ast.is_accepted IS NULL OR ast.is_accepted = TRUE)
+                """,
                 (applicant_no, req_no)
             )
             declined_scholarships = cur.fetchall()
@@ -3490,7 +3494,6 @@ def update_application_status(req_no):
                 """,
                 (applicant_no, req_no),
             )
-            
             for ds in declined_scholarships:
                 try:
                     create_notification(
@@ -3499,15 +3502,23 @@ def update_application_status(req_no):
                         message=f"Your application for {ds['scholarship_name']} has been closed because you were accepted into another scholarship. Students may only hold one active scholarship.",
                         notif_type='result'
                     )
+                    
+                    # Also send a chat message for the auto-declined scholarship
+                    cur.execute("""
+                        INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp)
+                        VALUES (%s, %s, %s, %s, %s, NOW())
+                    """, (
+                        applicant_no, 
+                        ds['pro_no'], 
+                        f"{applicant_no}+{ds['pro_no']}", 
+                        ds['provider_name'], 
+                        f"System: Your application for {ds['scholarship_name']} has been closed because you were accepted into another scholarship."
+                    ))
                 except: pass
 
-        conn.commit()
-        
         # Trigger Notification for the applicant
-        status_label = "Accepted" if status in [True, 1, 'true', 'True'] else "Rejected"
-        cur.execute("SELECT scholarship_name FROM scholarships WHERE req_no = %s", (req_no,))
-        sch_row = cur.fetchone()
-        sch_name = sch_row['scholarship_name'] if sch_row else f"Scholarship #{req_no}"
+        is_acc = status in [True, 1, 'true', 'True']
+        status_label = "Accepted" if is_acc else "Rejected"
         
         try:
             create_notification(
@@ -3516,8 +3527,22 @@ def update_application_status(req_no):
                 message=f"Your application for {sch_name} has been {status_label.lower()}.",
                 notif_type='result'
             )
+            
+            # Send the Automated Chat Message
+            if is_acc:
+                automessage = f"Congratulations! We are pleased to inform you that your application for {sch_name} has been {status_label.lower()}."
+            else:
+                automessage = f"Thank you for your interest in {sch_name}. We regret to inform you that your application has been {status_label.lower()}."
+                
+            cur.execute("""
+                INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp)
+                VALUES (%s, %s, %s, %s, %s, NOW())
+            """, (applicant_no, pro_no, f"{applicant_no}+{pro_no}", pro_name, automessage))
+            
         except Exception as e:
-            print(f"[NOTIF ERROR] Failed to trigger result notification: {e}")
+            print(f"[RESULT ERROR] Failed to send notification/chat: {e}")
+
+        conn.commit()
 
         return jsonify({'message': 'Status updated'})
     except Exception as exc:
