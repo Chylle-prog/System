@@ -58,6 +58,7 @@ _video_fetch_cache = OrderedDict()
 _video_fetch_cache_lock = threading.Lock()
 _VIDEO_FETCH_CACHE_SIZE_LIMIT = 24
 _VIDEO_FETCH_CACHE_TTL_SECONDS = 300
+PENDING_REGISTRATION_EXPIRY_WINDOW = timedelta(hours=1)
 HARD_CODED_SCHOOL_NAMES = [
     'DLSL/De La Salle Lipa',
     'NU/National University Lipa',
@@ -302,6 +303,41 @@ def ensure_applicant_status_created_at_column(cursor):
         """
     )
     _applicant_status_created_at_checked = True
+
+
+def fetch_pending_registration(cursor, *, email=None, verification_code=None):
+    if not email and not verification_code:
+        return None, False
+
+    if email:
+        cursor.execute(
+            '''
+            SELECT pr_no, email_address, password_hash, verification_code, created_at
+            FROM pending_registrations
+            WHERE email_address ILIKE %s
+            ''',
+            (email,),
+        )
+    else:
+        cursor.execute(
+            '''
+            SELECT pr_no, email_address, password_hash, verification_code, created_at
+            FROM pending_registrations
+            WHERE verification_code = %s
+            ''',
+            (verification_code,),
+        )
+
+    pending = cursor.fetchone()
+    if not pending:
+        return None, False
+
+    created_at = pending.get('created_at')
+    if created_at and created_at <= datetime.utcnow() - PENDING_REGISTRATION_EXPIRY_WINDOW:
+        cursor.execute('DELETE FROM pending_registrations WHERE pr_no = %s', (pending['pr_no'],))
+        return None, True
+
+    return pending, False
 
 
 def _cache_video_fetch(url, content, error):
@@ -885,9 +921,6 @@ def ensure_verification_columns():
                 pr_no SERIAL PRIMARY KEY,
                 email_address TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
-                first_name TEXT NOT NULL,
-                middle_name TEXT,
-                last_name TEXT NOT NULL,
                 verification_code VARCHAR(10) NOT NULL,
                 created_at TIMESTAMP DEFAULT NOW()
             )
@@ -1236,15 +1269,17 @@ def student_login():
 
         # If email not found in permanent email table, check if it exists in pending registrations
         if not user:
-            cur.execute(
-                "SELECT email_address FROM pending_registrations WHERE email_address ILIKE %s",
-                (email,),
-            )
-            pending_reg = cur.fetchone()
+            pending_reg, pending_expired = fetch_pending_registration(cur, email=email)
+            if pending_expired:
+                conn.commit()
+                return jsonify({'message': 'This session has expired', 'session_expired': True}), 401
             if pending_reg:
                 return jsonify({'message': 'Email not verified. Please check your email and enter the verification code to complete registration.', 'requires_verification': True}), 401
             else:
                 return jsonify({'message': 'Email does not exist. Please register first.'}), 401
+
+        if not user.get('password_hash'):
+            return jsonify({'message': 'This email is linked to an existing Google account. Please use "Sign in with Google" to access your account.'}), 401
 
         if not bcrypt.check_password_hash(user['password_hash'], password):
             return jsonify({'message': 'Incorrect password'}), 401
@@ -1275,13 +1310,10 @@ def student_login():
 @student_api_bp.route('/auth/register', methods=['POST'])
 def student_register():
     data = request.get_json() or {}
-    first_name = data.get('first_name', '').strip()
-    middle_name = data.get('middle_name', '').strip()
-    last_name = data.get('last_name', '').strip()
     email = data.get('email', '').strip()
     password = data.get('password', '')
 
-    if not all([first_name, last_name, email, password]):
+    if not all([email, password]):
         return jsonify({'message': 'Missing required fields'}), 400
 
     try:
@@ -1302,17 +1334,14 @@ def student_register():
         # 3. Store in pending_registrations table (Upsert allowed for re-registration)
         cur.execute(
             """
-            INSERT INTO pending_registrations (email_address, password_hash, first_name, middle_name, last_name, verification_code)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO pending_registrations (email_address, password_hash, verification_code)
+            VALUES (%s, %s, %s)
             ON CONFLICT (email_address) DO UPDATE SET
                 password_hash = EXCLUDED.password_hash,
-                first_name = EXCLUDED.first_name,
-                middle_name = EXCLUDED.middle_name,
-                last_name = EXCLUDED.last_name,
                 verification_code = EXCLUDED.verification_code,
                 created_at = NOW()
             """,
-            (email, password_hash, first_name, middle_name or None, last_name, verification_code),
+            (email, password_hash, verification_code),
         )
         conn.commit()
 
@@ -1351,12 +1380,15 @@ def student_verify_email():
         applicant_email_table = get_applicant_email_table(cur)
         
         # 1. Look up in pending_registrations
-        if email:
-            cur.execute('SELECT * FROM pending_registrations WHERE email_address ILIKE %s', (email,))
-        else:
-            cur.execute('SELECT * FROM pending_registrations WHERE verification_code = %s', (token,))
-            
-        pending = cur.fetchone()
+        pending, pending_expired = fetch_pending_registration(
+            cur,
+            email=email if email else None,
+            verification_code=token if not email else None,
+        )
+
+        if pending_expired:
+            conn.commit()
+            return jsonify({'message': 'This session has expired', 'session_expired': True}), 410
 
         if not pending:
             # Check if already verified as applicant
@@ -1370,14 +1402,14 @@ def student_verify_email():
             return jsonify({'message': 'Incorrect verification code'}), 400
 
         # 2. Promote to permanent tables
-        # Insert into applicants
+        # Insert a blank applicant profile. Profile setup fills the identity fields after verification.
         cur.execute(
             """
             INSERT INTO applicants (first_name, middle_name, last_name)
             VALUES (%s, %s, %s)
             RETURNING applicant_no
             """,
-            (pending['first_name'], pending['middle_name'], pending['last_name']),
+            ('', None, ''),
         )
         applicant_no = cur.fetchone()['applicant_no']
 
@@ -1406,6 +1438,7 @@ def student_verify_email():
         return jsonify({
             'message': 'Email verified successfully',
             'token': session_token,
+            'applicant_no': applicant_no,
             'user_no': applicant_no,
             'is_applicant': True
         }), 200
@@ -1436,8 +1469,11 @@ def student_resend_verification_email():
             return jsonify({'message': 'Email already verified. Please sign in.'}), 400
 
         # 2. Check if email exists in pending registrations
-        cur.execute('SELECT pr_no FROM pending_registrations WHERE email_address ILIKE %s', (email,))
-        pending = cur.fetchone()
+        pending, pending_expired = fetch_pending_registration(cur, email=email)
+
+        if pending_expired:
+            conn.commit()
+            return jsonify({'message': 'This session has expired', 'session_expired': True}), 410
 
         if not pending:
             return jsonify({'message': 'No pending registration found for this email. Please register first.'}), 404
@@ -1553,17 +1589,6 @@ def student_google_login():
         
         # 3. Handle Existing vs. New user
         if user:
-            # If the profile is still the default "User Account", update it with Google's real name
-            # This allows the user to go directly to the portal without being forced into 'Profile Setup'
-            if user['first_name'] == 'User' and user['last_name'] == 'Account':
-                cur.execute(
-                    "UPDATE applicants SET first_name = %s, last_name = %s WHERE applicant_no = %s",
-                    (google_profile['first_name'], google_profile['last_name'], user['applicant_no'])
-                )
-                # Update our local record for the JWT and response
-                user['first_name'] = google_profile['first_name']
-                user['last_name'] = google_profile['last_name']
-            
             conn.commit()
             print(f"[GOOGLE AUTH] Existing user {email} synced and verified.", flush=True)
 
@@ -1648,7 +1673,7 @@ def student_forgot_password():
         # Check if email exists as an applicant
         cur.execute(
             f"""
-            SELECT e.applicant_no, e.email_address, a.first_name, a.last_name
+            SELECT e.applicant_no, e.email_address, a.first_name, a.last_name, e.password_hash
             FROM {applicant_email_table} e
             JOIN applicants a ON e.applicant_no = a.applicant_no
             WHERE e.email_address ILIKE %s
@@ -1675,6 +1700,10 @@ def student_forgot_password():
                 print(f"[PASSWORD RESET] Email {email} is registered as admin user, not applicant")
         
         if user:
+            # Block reset for Google accounts
+            if not user.get('password_hash'):
+                return jsonify({'message': 'This account uses Google authentication. Please sign in using the "Sign in with Google" button instead.'}), 400
+            
             reset_token = generate_password_reset_token(user['applicant_no'], user['email_address'])
             reset_url = f"{STUDENT_FRONTEND_URL}/reset-password?token={reset_token}"
             print(f"[PASSWORD RESET] Sending reset email to {user['email_address']}", flush=True)

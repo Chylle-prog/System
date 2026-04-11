@@ -202,10 +202,7 @@ const Login = () => {
       setLoadingMessage({ title: 'Creating Account', message: 'Setting up your account...' });
       
       // Register user with backend directly
-      const registerResponse = await authAPI.register({
-        first_name: 'User',
-        middle_name: '',
-        last_name: 'Account',
+      await authAPI.register({
         email,
         password
       });

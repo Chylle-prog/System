@@ -252,7 +252,7 @@ export const authAPI = {
 
   /**
    * Register new user
-   * @param {object} userData - {firstName, lastName, email, password, middleName}
+    * @param {object} userData - {email, password}
    * @returns {Promise}
    */
   register: async (userData) => {

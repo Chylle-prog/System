@@ -190,7 +190,7 @@ const Profile = () => {
       // We don't automatically close the edit form here to prevent UI flicker; 
       // the useEffect will handle the transition based on the userProfile state change if needed,
       // but typically we'll want a deliberate close.
-      const isNewProfile = userProfile && userProfile.first_name === 'User' && userProfile.last_name === 'Account';
+      const isNewProfile = !userProfile?.town_city_municipality;
 
       setTimeout(() => {
         setShowSuccessModal(false);

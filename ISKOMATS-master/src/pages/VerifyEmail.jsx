@@ -18,6 +18,11 @@ const VerifyEmail = () => {
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
 
+  const handleExpiredSession = () => {
+    localStorage.removeItem('registrationEmail');
+    localStorage.removeItem('registrationPassword');
+  };
+
   useEffect(() => {
     // Add Font Awesome link
     const fontAwesomeLink = document.createElement('link');
@@ -49,7 +54,7 @@ const VerifyEmail = () => {
     const authToken = localStorage.getItem('authToken');
     if (authToken && fetchProfile) {
       fetchProfile(registrationEmail).then(profile => {
-        if (profile && profile.first_name !== 'User' && profile.last_name !== 'Account') {
+        if (profile && profile.town_city_municipality) {
           console.log('[VERIFY] User already verified and has profile, redirecting to portal');
           navigate('/portal');
         }
@@ -93,6 +98,9 @@ const VerifyEmail = () => {
         navigate('/login?setup=true');
       }, 2000);
     } catch (error) {
+      if (error?.message === 'This session has expired') {
+        handleExpiredSession();
+      }
       setShowLoadingOverlay(false);
       setVerificationState("error");
       setFormData({
@@ -150,6 +158,9 @@ const VerifyEmail = () => {
         navigate('/login?setup=true');
       }, 2000);
     } catch (error) {
+      if (error?.message === 'This session has expired') {
+        handleExpiredSession();
+      }
       setShowLoadingOverlay(false);
       setVerificationState("error");
       setFormData({
@@ -193,6 +204,9 @@ const VerifyEmail = () => {
         setFormData((prev) => ({ ...prev, success: false }));
       }, 3000);
     } catch (error) {
+      if (error?.message === 'This session has expired') {
+        handleExpiredSession();
+      }
       setShowLoadingOverlay(false);
       setFormData({
         ...formData,
