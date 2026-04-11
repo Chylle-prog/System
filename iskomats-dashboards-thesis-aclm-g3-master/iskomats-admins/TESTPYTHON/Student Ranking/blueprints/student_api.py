@@ -293,14 +293,32 @@ def gpa_matches_text(raw_text, expected_gpa):
         return True, None
 
     expected_value = float(match.group(0))
-    raw_numbers = [float(number) for number in re.findall(r'\d+(?:\.\d+)?', str(raw_text or ''))]
+    raw_text_str = str(raw_text or '')
+    raw_numbers = [float(number) for number in re.findall(r'\d+(?:\.\d+)?', raw_text_str)]
     if not raw_numbers:
         return False, None
 
-    tolerance = 0.10 if expected_value <= 5 else 1.0
-    for number in raw_numbers:
+    gpa_candidates = []
+    for labeled_match in re.finditer(r'gpa\s*[:=]?\s*(\d+(?:\.\d+)?)', raw_text_str, re.IGNORECASE):
+        try:
+            gpa_candidates.append(float(labeled_match.group(1)))
+        except (TypeError, ValueError):
+            continue
+
+    candidate_numbers = gpa_candidates + [number for number in raw_numbers if number not in gpa_candidates]
+
+    tolerance = 0.12 if expected_value <= 5 else 1.0
+    for number in candidate_numbers:
         if abs(number - expected_value) <= tolerance:
             return True, number
+
+        rounded_two_decimals = round(number, 2)
+        if abs(rounded_two_decimals - expected_value) <= 0.02:
+            return True, rounded_two_decimals
+
+        truncated_two_decimals = int(number * 100) / 100
+        if abs(truncated_two_decimals - expected_value) <= 0.02:
+            return True, truncated_two_decimals
 
     return False, None
 
@@ -3087,14 +3105,13 @@ def ocr_check():
                     if doc_type in ['Enrollment', 'Grades']:
                         raw_t, extraction_error = extract_document_text(doc_bytes)
                         v_t = bool(raw_t and raw_t.strip())
-                        return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t
+                        return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'SchoolIDBack':
                         raw_t, extraction_error = extract_document_text(doc_bytes, is_id_back=True)
                         v_t = bool(raw_t and raw_t.strip())
-                        return v_t, extraction_error or ('Verified' if v_t else 'Unable to read school ID back text'), raw_t
+                        return v_t, extraction_error or ('Verified' if v_t else 'Unable to read school ID back text'), raw_t, {}
                     else:
-                        v_t, msg_t, raw_t, _ = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=expected_id_no if doc_type != 'Indigency' else None)
-                        return v_t, msg_t, raw_t
+                        return verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=expected_id_no if doc_type != 'Indigency' else None)
 
                 # ─── PARALLEL EXECUTION (Concurrency) ───
                 with ThreadPoolExecutor(max_workers=2) as executor:
@@ -3106,7 +3123,7 @@ def ocr_check():
                     
                     # If video fails early, we can technically stop, but it's simpler to wait for both
                     ocr_data = ocr_future.result()
-                    v, msg, raw = ocr_data[0], ocr_data[1], ocr_data[2]
+                    v, msg, raw, meta = ocr_data[0], ocr_data[1], ocr_data[2], ocr_data[3]
 
                 # ─── COMBINED RESULT ───
                 if not v_video:
@@ -3209,15 +3226,21 @@ def ocr_check():
                     return {'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'Indigency':
-                    checklist = [f"Name: {'OK' if v else 'X'}"]
+                    # Use provided metadata from verify_id_with_ocr
+                    name_ok = meta.get('name_ok', v)
+                    addr_ok = meta.get('addr_ok', True)
+                    
+                    checklist = [f"Name: {'OK' if name_ok else 'X'}"]
                     if target_address:
-                        # Re-run address check specifically to verify for checklist
-                        _, addr_ok, _, _ = _perform_text_matching(raw, None, None, None, target_address, is_indigency=True)
                         checklist.append(f"Address: {'OK' if addr_ok else 'X'}")
-                        v = v and addr_ok
+                        v = name_ok and addr_ok
+                    else:
+                        v = name_ok
                         
                     msg = f"{'Verified' if v else 'Verification failed'}. Checklist: [{' | '.join(checklist)}]"
                     return {'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+
+                elif doc_type == 'SchoolID':
 
                 elif doc_type == 'SchoolID':
                     # For physical ID cards, we completely skip year level checks

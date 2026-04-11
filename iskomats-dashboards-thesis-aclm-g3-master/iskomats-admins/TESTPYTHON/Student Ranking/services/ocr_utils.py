@@ -320,6 +320,8 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
                     found_approx = False
                     for ocr_w in all_ocr_words:
                         if len(ocr_w) < 2: continue
+                        # OPTIMIZATION: Skip comparison if length delta is > 50%
+                        if abs(len(ocr_w) - len(check_word)) > (len(check_word) // 2 + 1): continue
                         if difflib.SequenceMatcher(None, check_word, ocr_w).ratio() >= (0.7 if is_indigency else 0.8):
                             f_count += 1; found_approx = True; break
                     if found_approx: found = True; break
@@ -381,13 +383,20 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
             
             f_a_count = 0
             for word in a_words:
-                if word in norm_txt: f_a_count += 1; continue
+                if word in norm_txt: 
+                    f_a_count += 1
+                    if is_indigency: break # Optimization: Early success for Indigency
+                    continue
                 found_approx = False
                 for ocr_w in all_ocr_words:
                     if len(ocr_w) < 2: continue
+                    # OPTIMIZATION: Skip comparison if length delta is > 50%
+                    if abs(len(ocr_w) - len(word)) > (len(word) // 2 + 1): continue
                     if difflib.SequenceMatcher(None, word, ocr_w).ratio() >= 0.7:
                         f_a_count += 1; found_approx = True; break
-                if found_approx: continue
+                if found_approx:
+                    if is_indigency: break # Optimization: Early success for Indigency
+                    continue
             
             # Option A: For indigency, we only need at least one word to match (lenient)
             if is_indigency:
@@ -492,9 +501,16 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     
     
     name_v, addr_v, found_kw, best_ratio = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, None, is_indigency)
+    details = {
+        'name_ok': name_v,
+        'addr_ok': addr_v,
+        'name_ratio': best_ratio,
+        'keywords': found_kw
+    }
+    
     if name_v and addr_v:
         _cache_set(image_hash, (best_text, best_ratio, "verified_psm3"))
-        return True, "Verified", best_text, 1.0
+        return True, "Verified", best_text, details
     
     # Return result - no additional fallback passes.
     # Do not auto-verify on partial ratios alone because the OCR payload is
@@ -735,6 +751,11 @@ def extract_school_year_from_text(text):
     # Flatten whitespace so line breaks between labels and values do not block matching.
     compact_text = re.sub(r'\s+', ' ', clean_text).strip()
 
+    # Normalize common shorthand label variants so grade sheets like
+    # "SY/Sem 2026 1st Semester" are treated as a school-year marker.
+    compact_text = re.sub(r'\bsy\s*[/\\-]?\s*sem(?:ester)?\b', 'school year sem', compact_text, flags=re.IGNORECASE)
+    compact_text = re.sub(r'\bs\.?y\.?\s*[/\\-]?\s*sem(?:ester)?\b', 'school year sem', compact_text, flags=re.IGNORECASE)
+
     # Priority 1: Year range or single year preceded by a school-year keyword
     # e.g. "School Year Sem 2025-2026", "S.Y. 2025-2026", "A.Y. 2025-2026", "VALID UNTIL 2025-2026"
     keyword_match = re.search(
@@ -752,6 +773,16 @@ def extract_school_year_from_text(text):
     )
     if label_line_match:
         return label_line_match.group(1).strip()
+
+    # Priority 1c: Semester shorthand with year on the same line, such as
+    # "SY/Sem 2026 1st Semester" or "Sem 1 2026".
+    semester_year_match = re.search(
+        r'(?:school\s*year\s*sem|semester|sem)\s*[:\-]?\s*(20\d{2}(?:\s*[/\\\-–]\s*20\d{2})?)',
+        compact_text,
+        re.IGNORECASE,
+    )
+    if semester_year_match:
+        return semester_year_match.group(1).strip()
 
     # Priority 2: Any year RANGE (e.g. "2025 - 2026", "2025/2026") anywhere in the text
     range_match = re.search(r'20\d{2}\s*[/\\\-–]\s*20\d{2}', compact_text)
