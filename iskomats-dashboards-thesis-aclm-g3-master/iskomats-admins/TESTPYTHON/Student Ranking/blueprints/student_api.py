@@ -97,7 +97,11 @@ def academic_year_matches_expected(found_year, expected_year):
 
 
 def academic_year_matches_latest_expected(found_year, expected_year):
-    if not found_year or not expected_year:
+    # Safety fallback: if no expectation is provided, default to current academic period (2025-2026)
+    if not expected_year:
+        expected_year = "2025-2026"
+        
+    if not found_year:
         return False
 
     found_years = [int(year) for year in re.findall(r'20\d{2}', str(found_year))]
@@ -109,9 +113,15 @@ def academic_year_matches_latest_expected(found_year, expected_year):
     latest_found = max(found_years)
     latest_expected = max(expected_years)
 
-    if len(found_years) >= 2:
-        return latest_found == latest_expected
+    # SUCCESS CASE 1: Exact match of the latest year (2026 == 2026)
+    if latest_found == latest_expected:
+        return True
+        
+    # SUCCESS CASE 2: Found ID is NEWER than expected (Student already has next year's sticker)
+    if latest_found > latest_expected:
+        return True
 
+    # SUCCESS CASE 3: Found year is within the expected range
     return min(expected_years) <= latest_found <= latest_expected
 
 

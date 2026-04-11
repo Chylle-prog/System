@@ -545,10 +545,10 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
 
     with OCR_SEMAPHORE:
         try:
-            # For ID backs, utilize PSM 6 (uniform block) as primary - it's much faster
-            # and accurate for the tabular nature of ID back stickers.
-            primary_psm = 6 if is_id_back else 3
-            text = _run_tesseract_on_image(img, psm=primary_psm, skip_pass2=is_id_back)
+            # For ID backs, use PSM 3 (auto segmentation) because cards have varied labels, 
+            # signatures, and stickers. Also enable Pass 2 for better shadow tolerance.
+            primary_psm = 3
+            text = _run_tesseract_on_image(img, psm=primary_psm, skip_pass2=False)
             
             # Skip heavy background header scan if it's an ID back
             if not is_id_back and len(text.strip()) < 150:
@@ -722,21 +722,27 @@ def verify_video_content(video_bytes, keywords, expected_address=None, sample_po
 
 def extract_school_year_from_text(text):
     if not text: return None
+    
+    # Character hygiene for common OCR slips in years (O->0, S->5, G->6/9, B->8)
+    clean_text = text.replace('O', '0').replace('o', '0')
+    clean_text = re.sub(r'(?<=202)[SBG]', lambda m: {'S':'5', 'B':'8', 'G':'6'}.get(m.group(0), m.group(0)), clean_text)
+
     # Priority 1: Year range or single year preceded by a school-year keyword
-    # e.g. "School Year Sem : 2025 - 2026", "S.Y. 2025-2026", "A.Y. 2025-2026"
+    # e.g. "S.Y. 2025-2026", "A.Y. 2025-2026", "VALID UNTIL 2025-2026"
     keyword_match = re.search(
-        r'(?:school\s*year|s\.?y\.?|a\.?y\.?)\s*[:\-]?\s*(20\d{2}(?:\s*[-–]\s*20\d{2})?)',
-        text, re.IGNORECASE
+        r'(?:school\s*year|s\.?y\.?|a\.?y\.?|valid\s*until|v\.?u\.?)\s*[:\-]?\s*(20\d{2}(?:\s*[/\\\-–]\s*20\d{2})?)',
+        clean_text, re.IGNORECASE
     )
     if keyword_match:
         return keyword_match.group(1).strip()
-    # Priority 2: Any year RANGE (e.g. "2025 - 2026") anywhere in the text
-    range_match = re.search(r'20\d{2}\s*[-–]\s*20\d{2}', text)
+
+    # Priority 2: Any year RANGE (e.g. "2025 - 2026", "2025/2026") anywhere in the text
+    range_match = re.search(r'20\d{2}\s*[/\\\-–]\s*20\d{2}', clean_text)
     if range_match:
         return range_match.group(0)
+
     # Priority 3: First standalone year in a plausible range (e.g. 2020-2029)
-    # We avoid years like 2004 which are likely birth years.
-    match = re.search(r'202\d', text)
+    match = re.search(r'20[23]\d', clean_text)
     return match.group(0) if match else None
 
 def extract_school_year(image_bytes):
