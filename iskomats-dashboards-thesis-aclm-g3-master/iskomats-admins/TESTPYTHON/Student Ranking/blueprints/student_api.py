@@ -1721,8 +1721,8 @@ def get_profile():
             if key != 'profile_picture':
                 applicant[flag_name] = document_values.get(key) is not None
             if applicant.get(flag_name):
-                # USE RAW ENDPOINT: Ensures <img> tags can render these immediately
-                applicant[key] = f"/api/student/applicant/document/raw/{key}"
+                # Use absolute URL for raw bytes to avoid origin issues on Surge
+                applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
             else:
                 applicant[key] = None
 
@@ -3024,11 +3024,13 @@ def signature_match():
         # Use new signature verification function
         # Pass request.user_no (from token) to enable local profile matching
         student_id = getattr(request, 'user_no', None)
-        verified, message, confidence, sub_img, ext_img = verify_signature_against_id(signature_bytes, id_back_bytes, student_id=student_id)
+        verified, message, confidence, sub_img, ext_img, matcher_sub_img, matcher_ref_img = verify_signature_against_id(signature_bytes, id_back_bytes, student_id=student_id)
         
         # Convert images to base64 for frontend display
         processed_submitted = None
         extracted_signature = None
+        matcher_submitted = None
+        matcher_reference = None
         
         if sub_img is not None:
              _, buffer = cv2.imencode('.png', sub_img)
@@ -3037,6 +3039,14 @@ def signature_match():
         if ext_img is not None:
              _, buffer = cv2.imencode('.png', ext_img)
              extracted_signature = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+
+           if matcher_sub_img is not None:
+              _, buffer = cv2.imencode('.png', matcher_sub_img)
+              matcher_submitted = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+
+           if matcher_ref_img is not None:
+              _, buffer = cv2.imencode('.png', matcher_ref_img)
+              matcher_reference = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
         
         # Ensure all values are native Python types (not numpy types)
         return jsonify({
@@ -3044,7 +3054,9 @@ def signature_match():
             'message': str(message),
             'confidence': float(confidence),
             'processed_submitted': processed_submitted,
-            'extracted_signature': extracted_signature
+              'extracted_signature': extracted_signature,
+              'matcher_submitted': matcher_submitted,
+              'matcher_reference': matcher_reference
         })
     except Exception as e:
         print(f"[SIGNATURE-MATCH] Error: {str(e)}", flush=True)

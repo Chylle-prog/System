@@ -7,7 +7,7 @@ import { supabase } from '../supabaseClient';
 
 // API Base URL - change this if backend is on different server
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
+export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
 let backendWarmupPromise = null;
 
 const sanitizeStorageSegment = (value, fallback = 'anonymous') => {

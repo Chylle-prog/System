@@ -1,8 +1,15 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { applicantAPI, applicationAPI, scholarshipAPI, announcementAPI, notificationAPI } from '../services/api';
+import { applicantAPI, applicationAPI, scholarshipAPI, announcementAPI, notificationAPI, API_ORIGIN } from '../services/api';
 import socketService from '../services/socket';
+
+const ensureAbsoluteUrl = (url) => {
+  if (!url) return url;
+  if (url.startsWith('http')) return url;
+  if (url.startsWith('/api')) return `${API_ORIGIN}${url}`;
+  return url;
+};
 
 const toChatTimestamp = (value) => {
   const parsed = new Date(value || 0).getTime();
@@ -2869,35 +2876,35 @@ const Portal = () => {
                 </div>
                 <div className="doc-gallery">
                   {userProfile?.profile_picture && (
-                    <div className="doc-card" onClick={() => window.open(userProfile.profile_picture)}>
+                    <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.profile_picture))}>
                       <div className="doc-icon"><i className="fas fa-user-image"></i></div>
                       <div className="doc-name">Profile Picture</div>
                       <div className="doc-status available">View File</div>
                     </div>
                   )}
                   {userProfile?.id_img_front && (
-                    <div className="doc-card" onClick={() => window.open(userProfile.id_img_front)}>
+                    <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.id_img_front))}>
                       <div className="doc-icon"><i className="fas fa-id-card"></i></div>
                       <div className="doc-name">School ID (Front)</div>
                       <div className="doc-status available">View File</div>
                     </div>
                   )}
                   {userProfile?.grades_doc && (
-                    <div className="doc-card" onClick={() => window.open(userProfile.grades_doc)}>
+                    <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.grades_doc))}>
                       <div className="doc-icon"><i className="fas fa-file-invoice"></i></div>
                       <div className="doc-name">Scholastic Record</div>
                       <div className="doc-status available">View File</div>
                     </div>
                   )}
                   {userProfile?.enrollment_certificate_doc && (
-                    <div className="doc-card" onClick={() => window.open(userProfile.enrollment_certificate_doc)}>
+                    <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.enrollment_certificate_doc))}>
                       <div className="doc-icon"><i className="fas fa-certificate"></i></div>
                       <div className="doc-name">Enrollment Certificate</div>
                       <div className="doc-status available">View File</div>
                     </div>
                   )}
                   {userProfile?.indigency_doc && (
-                    <div className="doc-card" onClick={() => window.open(userProfile.indigency_doc)}>
+                    <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.indigency_doc))}>
                       <div className="doc-icon"><i className="fas fa-house-user"></i></div>
                       <div className="doc-name">Certificate of Indigency</div>
                       <div className="doc-status available">View File</div>

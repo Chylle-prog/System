@@ -10,7 +10,7 @@ const api = axios.create({
 });
 
 const RETRYABLE_METHODS = new Set(['get', 'head', 'options']);
-const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
+export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
 let backendWarmupPromise = null;
 
 const wait = (ms) => new Promise((resolve) => {
