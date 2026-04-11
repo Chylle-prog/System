@@ -3939,7 +3939,7 @@ export default function ScholarshipDashboard({
               <button
                 type="button"
                 onClick={acceptApplicant}
-                disabled={Boolean(getApplicantProcessingState(applicant))}
+                disabled={Boolean(getApplicantProcessingState(a))}
                 className="px-8 py-3 rounded-xl bg-green-600 text-white font-black uppercase tracking-widest text-xs hover:bg-green-700 shadow-lg shadow-green-100 transition-all flex items-center gap-2 disabled:cursor-not-allowed disabled:bg-green-300 disabled:shadow-none"
               >
                 <FaCheckCircle /> Approve
@@ -3947,7 +3947,7 @@ export default function ScholarshipDashboard({
               <button
                 type="button"
                 onClick={declineApplicant}
-                disabled={Boolean(getApplicantProcessingState(applicant))}
+                disabled={Boolean(getApplicantProcessingState(a))}
                 className="px-8 py-3 rounded-xl bg-red-600 text-white font-black uppercase tracking-widest text-xs hover:bg-red-700 shadow-lg shadow-red-100 transition-all flex items-center gap-2 disabled:cursor-not-allowed disabled:bg-red-300 disabled:shadow-none"
               >
                 <FaTimesCircle /> Decline
