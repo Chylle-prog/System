@@ -91,6 +91,43 @@ def academic_year_matches_expected(found_year, expected_year):
     return any(min_expected <= year <= max_expected for year in found_years)
 
 
+def academic_year_matches_latest_expected(found_year, expected_year):
+    if not found_year or not expected_year:
+        return False
+
+    found_years = [int(year) for year in re.findall(r'20\d{2}', str(found_year))]
+    expected_years = [int(year) for year in re.findall(r'20\d{2}', str(expected_year))]
+
+    if not found_years or not expected_years:
+        return False
+
+    latest_found = max(found_years)
+    latest_expected = max(expected_years)
+
+    if len(found_years) >= 2:
+        return latest_found == latest_expected
+
+    return min(expected_years) <= latest_found <= latest_expected
+
+
+def build_academic_year_keywords(expected_year):
+    keywords = ['School Year', 'Academic Year', 'A.Y.', 'S.Y.']
+    years = re.findall(r'20\d{2}', str(expected_year or ''))
+
+    if years:
+        keywords.extend(years)
+        if len(years) >= 2:
+            start_year, end_year = years[0], years[1]
+            keywords.extend([
+                f'{start_year}-{end_year}',
+                f'{start_year} - {end_year}',
+                f'{start_year}–{end_year}',
+                f'{start_year} – {end_year}',
+            ])
+
+    return list(dict.fromkeys(keyword for keyword in keywords if keyword))
+
+
 def format_academic_period(expected_year, expected_semester=None):
     parts = []
     if expected_year:
@@ -2811,13 +2848,14 @@ def ocr_check():
                         '6': ['6th', 'sixth'],
                     }
                     year_level_keywords.extend(ordinal_map.get(parsed_year_level, []))
+                academic_year_keywords = build_academic_year_keywords(expected_academic_year)
 
                 video_keywords_map = {
                     'Indigency': ['Indigency', 'Certificate', 'Barangay'],
                     'Enrollment': ['Enrollment', 'Certificate', 'COE', 'Registered'],
                     'Grades': ['Grades', 'Grade', 'Transcript', 'Record', 'Evaluation', 'Rating', 'Units', 'Credit', 'Sem', 'GPA', 'Report', 'Card', 'Academic'],
                     'SchoolID': name_keywords or ['Student', 'Name'],
-                    'SchoolIDBack': year_level_keywords or ['Year', 'Level', 'Student']
+                    'SchoolIDBack': academic_year_keywords or ['School Year', 'Academic Year', 'A.Y.', 'S.Y.']
                 }
                 video_scan_options = {
                     'Indigency': {
@@ -2869,7 +2907,7 @@ def ocr_check():
                         'Semestral', 'Semester', 'Academic', 'College', 'Registrar'
                     ],
                     'SchoolID': name_keywords or ['Student', 'Name'],
-                    'SchoolIDBack': year_level_keywords or ['Year', 'Level']
+                    'SchoolIDBack': academic_year_keywords or ['School Year', 'Academic Year', 'A.Y.', 'S.Y.']
                 }
 
                 # 1.a Video Content Verification (if URL present)
@@ -2908,8 +2946,9 @@ def ocr_check():
                     v = bool(raw and raw.strip())
                     msg = extraction_error or ('Verified' if v else 'Unable to read document text')
                 elif doc_type == 'SchoolIDBack':
-                    # ID Back check: Validate only the Year Level
-                    v, msg, raw, _ = verify_id_with_ocr(doc_bytes, None, None, None, None, None, expected_year_level=expected_year_level)
+                    raw, extraction_error = extract_document_text(doc_bytes)
+                    v = bool(raw and raw.strip())
+                    msg = extraction_error or ('Verified' if v else 'Unable to read school ID back text')
                 else:
                     # ID Front/Indigency check: Validate Name + ID Number (for ID) + Address (for Indigency)
                     v, msg, raw, _ = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=expected_id_no if doc_type != 'Indigency' else None)
@@ -3031,14 +3070,15 @@ def ocr_check():
                     return {'doc': 'Identity Front', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'SchoolIDBack':
-                    year_level_ok, matched_year_level = year_level_matches_text(raw, expected_year_level)
+                    year_label = extract_school_year_from_text(raw)
+                    year_ok = academic_year_matches_latest_expected(year_label, expected_academic_year)
 
-                    if v and not year_level_ok:
-                        expected_label = expected_year_level or 'selected year level'
-                        v, msg = False, f"Year level mismatch ({expected_label})"
+                    if v and not year_label:
+                        v, msg = False, "Academic year was not detected on the school ID back"
+                    elif v and expected_academic_year and not year_ok:
+                        v, msg = False, f"Academic Year mismatch: School ID back found A.Y. '{year_label}', but scholarship requires A.Y. '{expected_academic_year}'"
                     elif v:
-                        year_suffix = f" using '{matched_year_level}'" if matched_year_level else ''
-                        msg = f"School ID back verified{year_suffix} for year level"
+                        msg = f"School ID back verified for A.Y. {year_label}"
                         
                     return {'doc': 'Identity Back', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 

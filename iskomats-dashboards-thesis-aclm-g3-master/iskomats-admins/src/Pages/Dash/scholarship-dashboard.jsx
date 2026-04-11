@@ -276,6 +276,7 @@ export default function ScholarshipDashboard({
   const [indigencyVerifModal, setIndigencyVerifModal] = useState(null); // applicant object
   const [schoolVerifSent, setSchoolVerifSent] = useState({}); // { [applicantName]: true }
   const [indigencyVerifSent, setIndigencyVerifSent] = useState({}); // { [applicantName]: true }
+  const [confirmDeleteModal, setConfirmDeleteModal] = useState(null); // { type: 'scholarship'|'announcement', id, title, label }
   const [formData, setFormData] = useState({
     scholarshipName: '',
     deadline: '',
@@ -869,17 +870,39 @@ export default function ScholarshipDashboard({
     }
   };
 
-  const deletePost = async (postId) => {
-    if (confirm('Are you sure you want to delete this scholarship post?')) {
+  const deletePost = (postId) => {
+    const post = data.scholarshipPosts.find(p => (p.reqNo || p.id) === postId);
+    setConfirmDeleteModal({
+      type: 'scholarship',
+      id: postId,
+      title: 'Delete Scholarship Post',
+      label: post?.scholarshipName || 'this scholarship post'
+    });
+  };
+
+  const deleteAnnouncement = (id) => {
+    const ann = data.announcements.find(a => (a.id || a.ann_no) === id);
+    setConfirmDeleteModal({
+      type: 'announcement',
+      id: id,
+      title: 'Delete Announcement',
+      label: ann?.title || 'this announcement'
+    });
+  };
+
+  const executeDelete = async () => {
+    if (!confirmDeleteModal) return;
+    const { type, id } = confirmDeleteModal;
+    setConfirmDeleteModal(null);
+
+    if (type === 'scholarship') {
       showActionOverlay('Deleting scholarship post', 'Please wait while the scholarship post is being removed.');
       try {
-        const response = await scholarshipAPI.deleteScholarship(postId);
+        const response = await scholarshipAPI.deleteScholarship(id);
         if (response.data.success) {
-          // Refresh both scholarships and applicants to ensure data consistency
-          // Applicants who applied to this scholarship remain in the system
           await loadScholarships(false);
           await loadApplicants();
-          if (editingPost && (editingPost.reqNo || editingPost.id) === postId) {
+          if (editingPost && (editingPost.reqNo || editingPost.id) === id) {
             resetForm();
             setManageMode('list');
           }
@@ -888,6 +911,22 @@ export default function ScholarshipDashboard({
       } catch (error) {
         console.error('Failed to delete scholarship:', error);
         alert(getRequestErrorMessage(error, 'Error deleting scholarship'));
+      } finally {
+        hideActionOverlay();
+      }
+    } else if (type === 'announcement') {
+      showActionOverlay('Deleting announcement', 'Please wait while the announcement is being removed.');
+      try {
+        await announcementAPI.delete(id);
+        if (editingPost && (editingPost.id || editingPost.ann_no) === id) {
+          resetForm();
+          setManageMode('list');
+        }
+        await loadAnnouncements();
+        alert('Announcement deleted successfully.');
+      } catch (error) {
+        console.error('Failed to delete announcement:', error);
+        alert(getRequestErrorMessage(error, 'Error deleting announcement'));
       } finally {
         hideActionOverlay();
       }
@@ -976,26 +1015,6 @@ export default function ScholarshipDashboard({
     ));
     setAnnouncementImages(normalizedImages);
     setManageMode('edit');
-  };
-
-  const deleteAnnouncement = async (id) => {
-    if (window.confirm('Are you sure you want to delete this announcement?')) {
-      showActionOverlay('Deleting announcement', 'Please wait while the announcement is being removed.');
-      try {
-        await announcementAPI.delete(id);
-        if (editingPost && (editingPost.id || editingPost.ann_no) === id) {
-          resetForm();
-          setManageMode('list');
-        }
-        await loadAnnouncements();
-        alert('Announcement deleted successfully.');
-      } catch (error) {
-        console.error('Failed to delete announcement:', error);
-        alert(getRequestErrorMessage(error, 'Error deleting announcement'));
-      } finally {
-        hideActionOverlay();
-      }
-    }
   };
 
   const filteredScholarshipPosts = useMemo(() => {

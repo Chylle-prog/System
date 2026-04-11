@@ -14,12 +14,19 @@ const Navbar = () => {
   // Check if current route is a dashboard route
   const isDashboardRoute = ['/dash', PROVIDER_DASHBOARD_ROUTE, '/dash-africa', '/dash-vilma', '/dash-tulong'].includes(location.pathname);
 
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
   const handleLogout = () => {
+    setShowLogoutConfirm(true);
+  };
+
+  const confirmLogout = () => {
     clearAdminSession();
     window.location.href = '/login';
   };
 
   return (
+    <>
     <nav className="fixed top-0 left-0 right-0 z-50 bg-gray-900/95 backdrop-blur-lg border-b border-gray-800 shadow-lg transition-all duration-300">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between relative">
         {/* Left side - Logo/Brand */}
@@ -137,6 +144,36 @@ const Navbar = () => {
         </div>
       </div>
     </nav>
+
+    {/* Logout Confirmation Modal */}
+    {showLogoutConfirm && (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="bg-gray-900 border border-gray-800 rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="w-16 h-16 bg-red-900/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <FaSignOutAlt className="text-3xl text-red-500" />
+          </div>
+          
+          <h3 className="text-xl font-bold text-white text-center mb-2">Logout Confirmation</h3>
+          <p className="text-gray-400 text-center mb-8">Are you sure you want to end your session? You will need to login again to access the dashboard.</p>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              onClick={() => setShowLogoutConfirm(false)}
+              className="px-6 py-3 rounded-xl border border-gray-700 text-gray-300 font-semibold transition-all hover:bg-gray-800"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmLogout}
+              className="px-6 py-3 rounded-xl bg-red-600 text-white font-semibold transition-all hover:bg-red-700 hover:shadow-lg hover:shadow-red-600/20"
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 };
 
