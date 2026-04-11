@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { applicantAPI, scholarshipAPI, applicationAPI, verificationAPI } from '../services/api';
+import { applicantAPI, scholarshipAPI } from '../services/api';
 
 const FIND_SCHOLARSHIP_FORM_KEY = 'findScholarshipForm';
 const FIND_SCHOLARSHIP_PROFILE_KEY = 'findScholarshipProfile';
@@ -18,7 +18,6 @@ const FindScholarship = () => {
   const [scholarshipMatches, setScholarshipMatches] = useState([]);
   const [ineligibleMatches, setIneligibleMatches] = useState([]);
   const [successBanner, setSuccessBanner] = useState('');
-  const [hasApprovedApplication, setHasApprovedApplication] = useState(false);
 
 
   const [incomeLevel, setIncomeLevel] = useState('');
@@ -108,18 +107,6 @@ const FindScholarship = () => {
             zip_code: prev.zip_code || profile.zip_code || '',
             // gpa and income intentionally left as '' (empty)
           }));
-        }
-
-        try {
-          const apps = await applicationAPI.getUserApplications();
-          if (apps && Array.isArray(apps)) {
-            const approvedApp = apps.find(app => app.status === 'Approved');
-            if (approvedApp) {
-              setHasApprovedApplication(true);
-            }
-          }
-        } catch (appErr) {
-          console.warn('Could not load user applications:', appErr.message);
         }
 
       } catch (err) {
@@ -1091,10 +1078,10 @@ const FindScholarship = () => {
                   <button
                     className="apply-btn"
                     onClick={() => applyForScholarship(match.name, match.req_no)}
-                    disabled={hasApprovedApplication || match.alreadyApplied}
-                    style={(hasApprovedApplication || match.alreadyApplied) ? { backgroundColor: 'var(--gray-3)', cursor: 'not-allowed', color: 'white', opacity: 0.8 } : {}}
+                    disabled={Boolean(match.restrictionBlocked || match.alreadyApplied)}
+                    style={(match.restrictionBlocked || match.alreadyApplied) ? { backgroundColor: 'var(--gray-3)', cursor: 'not-allowed', color: 'white', opacity: 0.8 } : {}}
                   >
-                    {hasApprovedApplication ? 'Limit Reached: Already Approved' :
+                    {match.restrictionBlocked ? (match.restrictionMessage || 'Application unavailable') :
                       match.alreadyApplied ? 'Already Applied' : 'Apply for this Scholarship'}
                   </button>
                 </div>

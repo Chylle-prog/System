@@ -459,6 +459,240 @@ def normalize_matching_text(value):
     return re.sub(r'[^a-z0-9]+', ' ', str(value or '').lower()).strip()
 
 
+def split_parent_full_name(full_name):
+    cleaned = ' '.join(str(full_name or '').split())
+    if not cleaned:
+        return None, None
+
+    parts = cleaned.split(' ')
+    if len(parts) == 1:
+        return cleaned, None
+
+    return ' '.join(parts[:-1]), parts[-1]
+
+
+def parse_parent_status_value(value):
+    if isinstance(value, bool):
+        return value
+
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {'living', 'true', '1', 'yes'}:
+            return True
+        if normalized in {'deceased', 'false', '0', 'no'}:
+            return False
+
+    return None
+
+
+def normalize_identity_name(value):
+    return normalize_matching_text(value)
+
+
+def build_restriction_identity(first_name=None, middle_name=None, last_name=None, father_fname=None, father_lname=None, mother_fname=None, mother_lname=None):
+    family_last_name = normalize_identity_name(last_name)
+    father_name = normalize_identity_name(' '.join(filter(None, [father_fname, father_lname])))
+    mother_name = normalize_identity_name(' '.join(filter(None, [mother_fname, mother_lname])))
+
+    if not family_last_name or not father_name or not mother_name:
+        return None
+
+    return {
+        'family_last_name': family_last_name,
+        'father_name': father_name,
+        'mother_name': mother_name,
+        'identity_key': '|'.join([family_last_name, father_name, mother_name]),
+    }
+
+
+def build_restriction_identity_from_applicant(applicant, source_data=None):
+    source_data = source_data or {}
+
+    first_name = source_data.get('firstName') or source_data.get('first_name') or applicant.get('first_name')
+    middle_name = source_data.get('middleName') or source_data.get('middle_name') or applicant.get('middle_name')
+    last_name = source_data.get('lastName') or source_data.get('last_name') or applicant.get('last_name')
+
+    if 'fatherName' in source_data or 'father_name' in source_data:
+        father_fname, father_lname = split_parent_full_name(source_data.get('fatherName') or source_data.get('father_name'))
+    else:
+        father_fname = applicant.get('father_fname')
+        father_lname = applicant.get('father_lname')
+
+    if 'motherName' in source_data or 'mother_name' in source_data:
+        mother_fname, mother_lname = split_parent_full_name(source_data.get('motherName') or source_data.get('mother_name'))
+    else:
+        mother_fname = applicant.get('mother_fname')
+        mother_lname = applicant.get('mother_lname')
+
+    return build_restriction_identity(
+        first_name=first_name,
+        middle_name=middle_name,
+        last_name=last_name,
+        father_fname=father_fname,
+        father_lname=father_lname,
+        mother_fname=mother_fname,
+        mother_lname=mother_lname,
+    )
+
+
+def get_matching_applicant_ids_by_identity(cursor, applicant, source_data=None):
+    current_applicant_no = applicant['applicant_no']
+    identity = build_restriction_identity_from_applicant(applicant, source_data=source_data)
+
+    if not identity:
+        return [current_applicant_no], False, None
+
+    cursor.execute(
+        """
+        SELECT applicant_no, first_name, middle_name, last_name, father_fname, father_lname, mother_fname, mother_lname
+        FROM applicants
+        """
+    )
+    rows = cursor.fetchall()
+
+    matching_ids = {current_applicant_no}
+    for row in rows:
+        row_identity = build_restriction_identity_from_applicant(row)
+        if row_identity and row_identity['identity_key'] == identity['identity_key']:
+            matching_ids.add(row['applicant_no'])
+
+    return sorted(matching_ids), True, identity
+
+
+def scholarship_is_active_record(record, today=None):
+    today = today or datetime.now().date()
+    if record.get('is_removed'):
+        return False
+
+    deadline = record.get('deadline')
+    if deadline and deadline < today:
+        return False
+
+    return True
+
+
+def get_identity_restriction_scope(cursor, applicant, source_data=None, today=None):
+    today = today or datetime.now().date()
+    applicant_ids, identity_ready, identity = get_matching_applicant_ids_by_identity(cursor, applicant, source_data=source_data)
+
+    cursor.execute(
+        """
+        SELECT ast.applicant_no,
+               ast.scholarship_no,
+               ast.is_accepted,
+               ast.created_at,
+               s.scholarship_name,
+               s.deadline,
+               COALESCE(s.is_removed, FALSE) AS is_removed
+        FROM applicant_status ast
+        JOIN scholarships s ON s.req_no = ast.scholarship_no
+        WHERE ast.applicant_no = ANY(%s)
+        """,
+        (applicant_ids,),
+    )
+    applications = cursor.fetchall()
+
+    return {
+        'applicant_ids': applicant_ids,
+        'current_applicant_ids': [applicant['applicant_no']],
+        'identity_ready': identity_ready,
+        'identity': identity,
+        'applications': applications,
+        'today': today,
+    }
+
+
+def describe_identity_subject(scope):
+    if scope.get('identity_ready') and len(scope.get('applicant_ids') or []) > 1:
+        return 'An applicant with the same last name and parent names'
+    return 'You'
+
+
+def get_scholarship_restriction(scope, scholarship_no):
+    today = scope.get('today') or datetime.now().date()
+    applications = scope.get('applications') or []
+    current_applicant_ids = set(scope.get('current_applicant_ids') or [])
+    self_related_rows = [
+        row for row in applications
+        if row['scholarship_no'] == scholarship_no and row['applicant_no'] in current_applicant_ids
+    ]
+    active_accepted_rows = [
+        row for row in applications
+        if row['applicant_no'] in current_applicant_ids and row['is_accepted'] is True and scholarship_is_active_record(row, today=today)
+    ]
+    subject = describe_identity_subject(scope)
+
+    family_other_rows = [
+        row for row in applications
+        if row['scholarship_no'] == scholarship_no and row['applicant_no'] not in current_applicant_ids
+    ]
+    if family_other_rows:
+        prior_row = min(
+            family_other_rows,
+            key=lambda row: (row.get('created_at') or datetime.max, row['applicant_no'])
+        )
+        status_label = 'applied for'
+        reason = 'family-existing-same-scholarship'
+        if prior_row['is_accepted'] is True:
+            status_label = 'already has an accepted application for'
+            reason = 'family-accepted-same-scholarship'
+        elif prior_row['is_accepted'] is None:
+            status_label = 'has already applied for'
+            reason = 'family-pending-same-scholarship'
+
+        return {
+            'already_applied': True,
+            'blocked': True,
+            'message': f"An applicant with the same last name and parent names {status_label} this scholarship.",
+            'reason': reason,
+            'auto_reject': True,
+            'blocking_application': prior_row,
+        }
+
+    same_scholarship_row = next((row for row in self_related_rows if row['is_accepted'] is True), None)
+    if same_scholarship_row:
+        return {
+            'already_applied': True,
+            'blocked': True,
+            'message': f"{subject} already has an accepted application for this scholarship.",
+            'reason': 'identity-accepted-same-scholarship',
+            'auto_reject': False,
+            'blocking_application': same_scholarship_row,
+        }
+
+    same_scholarship_row = next((row for row in self_related_rows if row['is_accepted'] is None), None)
+    if same_scholarship_row:
+        return {
+            'already_applied': True,
+            'blocked': True,
+            'message': f"{subject} has already applied for this scholarship and is still pending review.",
+            'reason': 'identity-pending-same-scholarship',
+            'auto_reject': False,
+            'blocking_application': same_scholarship_row,
+        }
+
+    active_accepted_row = next((row for row in active_accepted_rows), None)
+    if active_accepted_row:
+        scholarship_name = active_accepted_row.get('scholarship_name') or 'another scholarship'
+        return {
+            'already_applied': False,
+            'blocked': True,
+            'message': f"{subject} cannot apply for another scholarship while the accepted scholarship '{scholarship_name}' is still active.",
+            'reason': 'identity-active-accepted-scholarship',
+            'auto_reject': False,
+            'blocking_application': active_accepted_row,
+        }
+
+    return {
+        'already_applied': False,
+        'blocked': False,
+        'message': None,
+        'reason': None,
+        'auto_reject': False,
+        'blocking_application': None,
+    }
+
+
 def build_student_name_keywords(first_name, middle_name, last_name):
     name_parts = [part.strip() for part in [first_name, middle_name, last_name] if str(part or '').strip()]
     keywords = set(name_parts)
@@ -1537,6 +1771,7 @@ def get_rankings():
     try:
         conn = get_db()
         cur = conn.cursor()
+        today = datetime.now().date()
         
         # ─── Optional Auth Check ──────────────────────────────────────
         user_no = None
@@ -1550,11 +1785,19 @@ def get_rankings():
             except Exception:
                 pass # Non-critical if token is invalid for just ranking
         
-        # Get list of scholarships the user has already applied for
-        applied_sch_ids = set()
+        restriction_scope = None
         if user_no:
-            cur.execute("SELECT scholarship_no FROM applicant_status WHERE applicant_no = %s", (user_no,))
-            applied_sch_ids = {row['scholarship_no'] for row in cur.fetchall()}
+            cur.execute(
+                """
+                SELECT applicant_no, first_name, middle_name, last_name, father_fname, father_lname, mother_fname, mother_lname
+                FROM applicants
+                WHERE applicant_no = %s
+                """,
+                (user_no,),
+            )
+            applicant = cur.fetchone()
+            if applicant:
+                restriction_scope = get_identity_restriction_scope(cur, applicant, today=today)
         
         cur.execute("""
             SELECT s.*, p.provider_name,
@@ -1568,7 +1811,6 @@ def get_rankings():
         """)
         scholarships = cur.fetchall()
 
-        today = datetime.now().date()
         ranked = []
         ineligible = []
 
@@ -1629,6 +1871,17 @@ def get_rankings():
             else:
                 score += 10
 
+            restriction = {
+                'already_applied': False,
+                'blocked': False,
+                'message': None,
+                'reason': None,
+            }
+            if restriction_scope:
+                restriction = get_scholarship_restriction(restriction_scope, sch['req_no'])
+                if restriction['blocked'] and restriction['message']:
+                    reasons.append(restriction['message'])
+
             item = {
                 'req_no': sch['req_no'],
                 'name': sch['scholarship_name'],
@@ -1644,7 +1897,10 @@ def get_rankings():
                 'deadline': str(deadline) if deadline else None,
                 'score': round(score),
                 'reasons': reasons,
-                'alreadyApplied': sch['req_no'] in applied_sch_ids,
+                'alreadyApplied': restriction['already_applied'],
+                'restrictionBlocked': restriction['blocked'],
+                'restrictionMessage': restriction['message'],
+                'restrictionReason': restriction['reason'],
                 'isExpired': is_expired
             }
 
@@ -1999,6 +2255,7 @@ def submit_application():
 
         form_data = request.form
         files_data = request.files
+        request_payload = request.get_json(silent=True) or request.form.to_dict(flat=True)
 
         if request.is_json:
             req_no = request.json.get('req_no')
@@ -2072,6 +2329,35 @@ def submit_application():
         cur.execute('SELECT req_no FROM scholarships WHERE req_no = %s', (scholarship_id,))
         if not cur.fetchone():
             return jsonify({'message': 'Scholarship not found'}), 404
+
+        preliminary_identity = build_restriction_identity_from_applicant(applicant, source_data=request_payload)
+        if preliminary_identity:
+            cur.execute(
+                'SELECT pg_advisory_xact_lock(hashtext(%s), %s)',
+                (preliminary_identity['identity_key'], scholarship_id),
+            )
+
+        restriction_scope = get_identity_restriction_scope(cur, applicant, source_data=request_payload)
+        restriction = get_scholarship_restriction(restriction_scope, scholarship_id)
+        if restriction['blocked']:
+            if restriction['auto_reject']:
+                cur.execute(
+                    """
+                    INSERT INTO applicant_status (scholarship_no, applicant_no, is_accepted, created_at)
+                    VALUES (%s, %s, FALSE, NOW())
+                    ON CONFLICT (scholarship_no, applicant_no)
+                    DO UPDATE SET is_accepted = FALSE, created_at = applicant_status.created_at
+                    """,
+                    (scholarship_id, current_user_id),
+                )
+                conn.commit()
+            response_payload = {
+                'message': restriction['message'],
+                'restriction_reason': restriction['reason'],
+            }
+            if restriction['auto_reject']:
+                response_payload['status'] = 'Rejected'
+            return jsonify(response_payload), 409
 
         # ── Data Preparation ──────────────────────────────────────────────────
         id_front_bytes = decode_base64(form_data.get('id_front')) or db_bytes(applicant.get('id_img_front'))
@@ -2173,6 +2459,11 @@ def submit_application():
         # ── UPDATE APPLICANT PROFILE ──────────────────────────────────────────
         updates = []
         params = []
+
+        def add_update(column_name, value):
+            updates.append(f'{column_name} = %s')
+            params.append(value)
+
         field_mapping = {
             'lastName': 'last_name', 'firstName': 'first_name', 'middleName': 'middle_name',
             'dateOfBirth': 'birthdate', 'streetBarangay': 'street_brgy', 'townCity': 'town_city_municipality',
@@ -2180,6 +2471,8 @@ def submit_application():
             'schoolIdNumber': 'school_id_no', 'schoolName': 'school', 'schoolAddress': 'school_address',
             'schoolSector': 'school_sector', 'mobileNumber': 'mobile_no', 'yearLevel': 'year_lvl',
             'parentsGrossIncome': 'financial_income_of_parents', 'course': 'course',
+            'fatherPhoneNumber': 'father_phone_no', 'motherPhoneNumber': 'mother_phone_no',
+            'fatherOccupation': 'father_occupation', 'motherOccupation': 'mother_occupation',
         }
 
         document_field_mapping = {
@@ -2193,21 +2486,40 @@ def submit_application():
         }
 
         for form_key, db_col in field_mapping.items():
-            if form_key in form_data:
-                value = form_data[form_key]
+            if form_key in request_payload:
+                value = request_payload[form_key]
                 # school_id_no is an INTEGER column — coerce safely
                 if db_col == 'school_id_no':
                     try:
                         value = int(value) if value not in (None, '', 'null') else None
                     except (ValueError, TypeError):
                         value = None
-                updates.append(f'{db_col} = %s')
-                params.append(value)
+                add_update(db_col, value)
+
+        if 'fatherName' in request_payload:
+            father_fname, father_lname = split_parent_full_name(request_payload.get('fatherName'))
+            add_update('father_fname', father_fname)
+            add_update('father_lname', father_lname)
+
+        if 'motherName' in request_payload:
+            mother_fname, mother_lname = split_parent_full_name(request_payload.get('motherName'))
+            add_update('mother_fname', mother_fname)
+            add_update('mother_lname', mother_lname)
+
+        if 'fatherStatus' in request_payload:
+            father_status = parse_parent_status_value(request_payload.get('fatherStatus'))
+            if father_status is not None:
+                add_update('father_status', father_status)
+
+        if 'motherStatus' in request_payload:
+            mother_status = parse_parent_status_value(request_payload.get('motherStatus'))
+            if mother_status is not None:
+                add_update('mother_status', mother_status)
 
         document_updates = {}
         for form_key, db_col in document_field_mapping.items():
-            if form_key in form_data:
-                document_updates[db_col] = form_data[form_key]
+            if form_key in request_payload:
+                document_updates[db_col] = request_payload[form_key]
 
         binary_map = {
             'id_img_front': id_front_bytes,
