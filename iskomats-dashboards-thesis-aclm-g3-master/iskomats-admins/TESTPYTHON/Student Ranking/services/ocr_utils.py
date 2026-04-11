@@ -1244,86 +1244,76 @@ def _extract_signature_from_id_back(id_img):
     if height == 0 or width == 0:
         return None
 
-    # Student IDs in this system usually place the handwritten signature block
-    # directly above the printed word "Signature" and below the logo.
-    # Keep the first-pass search band tight so the logo cannot win.
+    # Search band for signature area
     lane_x0 = int(width * 0.20)
     lane_x1 = int(width * 0.82)
     lane_y0 = int(height * 0.25)
-    lane_y1 = int(height * 0.39)
-    primary_lane = id_img[lane_y0:lane_y1, lane_x0:lane_x1]
-    isolated_primary_lane = _isolate_signature_ink_region(primary_lane)
-    if isolated_primary_lane is not None and isolated_primary_lane.size:
-        primary_gray = cv2.cvtColor(isolated_primary_lane, cv2.COLOR_BGR2GRAY)
-        dark_pixels = np.count_nonzero(primary_gray < 240)
-        if dark_pixels >= 40:
-            return isolated_primary_lane
-
-    roi_start = int(height * 0.22)
-    roi_end = int(height * 0.42)
-    roi_x0 = int(width * 0.12)
-    roi_x1 = int(width * 0.88)
-    roi = gray[roi_start:roi_end, roi_x0:roi_x1]
-
-    blur = cv2.GaussianBlur(roi, (5, 5), 0)
-    _, binary = cv2.threshold(blur, 185, 255, cv2.THRESH_BINARY_INV)
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 3))
-    connected = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=2)
-
-    contours, _ = cv2.findContours(connected, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    best_crop = None
-    best_score = -1.0
-
+    lane_y1 = int(height * 0.45)  # Expanded slightly
+    
+    # Extract and process the candidate region ONCE
+    roi = gray[lane_y0:lane_y1, lane_x0:lane_x1]
+    
+    # Single processing pass - no double thresholding
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(roi)
+    
+    # Adaptive threshold - preserves thin strokes
+    binary = cv2.adaptiveThreshold(
+        enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV, 15, 10
+    )
+    
+    # Light cleanup only (no aggressive closing)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=1)
+    
+    # Find the largest ink component (the signature)
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+    
+    # Filter and find bounds
+    min_area = max(100, int(roi.shape[0] * roi.shape[1] * 0.005))
+    all_boxes = []
     for contour in contours:
+        area = cv2.contourArea(contour)
+        if area < min_area:
+            continue
         x, y, w, h = cv2.boundingRect(contour)
-        area = w * h
-        if area < 500:
+        # Skip obvious underlines
+        if w > roi.shape[1] * 0.7 and h < 8:
             continue
-
-        aspect_ratio = w / float(max(h, 1))
-        if aspect_ratio < 1.4 or aspect_ratio > 18:
-            continue
-
-        x_global = x + roi_x0
-        y_global = y + roi_start
-
-        # Reject tiny printed text rows and long address lines.
-        if h < max(12, int(height * 0.015)):
-            continue
-        if w > int(width * 0.75) and h < int(height * 0.08):
-            continue
-
-        contour_center_y = y_global + (h / 2.0)
-        if contour_center_y < height * 0.24 or contour_center_y > height * 0.40:
-            continue
-
-        # Prefer regions centered in the expected signature band, not the top-most mark.
-        target_center_y = height * 0.31
-        vertical_distance = abs(contour_center_y - target_center_y) / float(max(height, 1))
-        vertical_priority = max(0.0, 1.0 - (vertical_distance * 4.0))
-        compactness = min(aspect_ratio, 6.0) / 6.0
-        center_x = x_global + (w / 2.0)
-        center_bias = 1.0 - abs((center_x / float(width)) - 0.5)
-        score = (vertical_priority * 100000.0) + (center_bias * 5000.0) + (area * 0.5) + (compactness * 1000.0)
-        if score > best_score:
-            pad_x = max(6, int(w * 0.08))
-            pad_y = max(6, int(h * 0.2))
-            x0 = max(0, x_global - pad_x)
-            y0 = max(0, y_global - pad_y)
-            x1 = min(width, x_global + w + pad_x)
-            y1 = min(height, y_global + h + pad_y)
-            best_crop = id_img[y0:y1, x0:x1]
-            best_score = score
-
-    if best_crop is not None:
-        return _isolate_signature_ink_region(best_crop)
-
-    fallback_y0 = int(height * 0.12)
-    fallback_y1 = int(height * 0.40)
-    fallback = id_img[fallback_y0:fallback_y1, int(width * 0.12):int(width * 0.88)]
-    if fallback.size:
-        return _isolate_signature_ink_region(fallback)
-    return id_img
+        all_boxes.append((x, y, w, h))
+    
+    if not all_boxes:
+        return None
+    
+    # Combine all boxes
+    x = min(b[0] for b in all_boxes)
+    y = min(b[1] for b in all_boxes)
+    w = max(b[0] + b[2] for b in all_boxes) - x
+    h = max(b[1] + b[3] for b in all_boxes) - y
+    
+    # Add padding
+    pad = max(5, int(min(w, h) * 0.15))
+    x0 = max(0, x - pad)
+    y0 = max(0, y - pad)
+    x1 = min(roi.shape[1], x + w + pad)
+    y1 = min(roi.shape[0], y + h + pad)
+    
+    # Return the cropped signature region (still in binary mask form on white background)
+    cropped_binary = binary[y0:y1, x0:x1]
+    
+    # Convert to BGR for display (black ink on white background)
+    result = np.full((cropped_binary.shape[0], cropped_binary.shape[1], 3), 255, dtype=np.uint8)
+    result[cropped_binary > 0] = (0, 0, 0)
+    
+    # Optional: slight upscale for better visibility
+    if result.shape[1] < 200:
+        scale = 400 / max(result.shape[1], 1)
+        result = cv2.resize(result, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+    
+    return result
 
 def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None):
     """
@@ -1369,7 +1359,7 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
         if extracted_id_signature is None or extracted_id_signature.size == 0:
             return False, "Could not isolate a signature from the ID back image", 0.0, preview_signature, None, matcher_submitted_view, None
 
-        extracted_id_preview = _prepare_signature_blob_preview(extracted_id_signature)
+        extracted_id_preview = extracted_id_signature  # Already display-ready via single-pass extraction
         matcher_reference_view = prepare_signature_match_view(extracted_id_signature)
         
         # Neural matching
