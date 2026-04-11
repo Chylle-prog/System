@@ -32,6 +32,37 @@ const compareChatMessages = (left, right) => {
 
 const sortChatMessages = (messages) => [...messages].sort(compareChatMessages);
 
+const formatAnnouncementDate = (value, options) => {
+  if (!value) return 'Recently';
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return 'Recently';
+  }
+
+  return parsed.toLocaleDateString('en-US', options || {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const getAnnouncementPreview = (message) => {
+  const normalized = String(message || '').replace(/\s+/g, ' ').trim();
+
+  if (!normalized) {
+    return 'No details provided.';
+  }
+
+  if (normalized.length <= 180) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, 177)}...`;
+};
+
 const Portal = () => {
   const navigate = useNavigate();
   const { logout: authLogout, userProfile: globalProfile } = useAuth();
@@ -1895,71 +1926,170 @@ const Portal = () => {
         }
 
         .announcement-modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(8px);
-            z-index: 99999;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 2rem;
-            animation: modalFadeIn 0.3s ease forwards;
-          }
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.6);
+          backdrop-filter: blur(8px);
+          z-index: 99999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 2rem;
+          animation: modalFadeIn 0.3s ease forwards;
+        }
 
-          .announcement-modal {
-            background: white;
-            width: 100%;
-            max-width: 650px;
-            border-radius: 32px;
-            box-shadow: var(--shadow-lg);
-            overflow: hidden;
-            animation: modalSlideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-          }
+        .announcement-modal {
+          background: white;
+          width: 100%;
+          max-width: 650px;
+          max-height: 88vh;
+          border-radius: 32px;
+          box-shadow: var(--shadow-lg);
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          animation: modalSlideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
 
-          .ann-modal-header {
-            padding: 2.5rem 2.5rem 1.5rem;
-            position: relative;
-            border-bottom: 1px solid var(--gray-1);
-          }
+        .ann-modal-header {
+          padding: 2.5rem 2.5rem 1.5rem;
+          position: relative;
+          border-bottom: 1px solid var(--gray-1);
+        }
 
-            cursor: zoom-in;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-          }
+        .ann-modal-close {
+          position: absolute;
+          top: 2rem;
+          right: 2rem;
+          background: var(--gray-1);
+          border: none;
+          width: 38px;
+          height: 38px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          color: var(--text-soft);
+          transition: all 0.2s;
+        }
 
-          .ann-modal-image-card:hover {
-            transform: translateY(-3px);
-            box-shadow: var(--shadow-md);
-          .ann-modal-close {
-            position: absolute;
-            top: 2rem;
-            right: 2rem;
-            background: var(--gray-1);
-            border: none;
-            width: 38px;
-            height: 38px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            color: var(--text-soft);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 0.75rem;
-          }
+        .ann-modal-close:hover {
+          background: var(--accent-soft);
+          color: var(--primary);
+          transform: rotate(90deg);
+        }
 
-          .ann-modal-image-caption-hint {
-            color: var(--primary);
-            font-size: 0.75rem;
-            font-weight: 700;
-            letter-spacing: 0.02em;
-            white-space: nowrap;
-          }
+        .ann-modal-body {
+          padding: 2.5rem;
+          max-height: 70vh;
+          overflow-y: auto;
+        }
+
+        .ann-modal-title {
+          font-size: 1.8rem;
+          font-weight: 800;
+          color: var(--text-dark);
+          line-height: 1.25;
+          letter-spacing: -0.02em;
+          margin-top: 0.5rem;
+        }
+
+        .ann-modal-provider {
+          display: flex;
+          align-items: center;
+          gap: 0.8rem;
+          margin-bottom: 0.5rem;
+        }
+
+        .provider-icon {
+          width: 32px;
+          height: 32px;
+          background: var(--accent-soft);
+          color: var(--primary);
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 0.9rem;
+        }
+
+        .provider-name {
+          font-weight: 700;
+          color: var(--primary);
+          font-size: 0.95rem;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .ann-modal-meta {
+          display: flex;
+          align-items: center;
+          gap: 1.5rem;
+          margin-top: 1.5rem;
+          color: var(--text-soft);
+          font-size: 0.85rem;
+          font-weight: 500;
+          flex-wrap: wrap;
+        }
+
+        .ann-modal-message {
+          font-size: 1.1rem;
+          line-height: 1.7;
+          color: var(--text-dark);
+          white-space: pre-wrap;
+        }
+
+        .ann-modal-gallery {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 1rem;
+          margin-top: 2rem;
+        }
+
+        .ann-modal-image-card {
+          background: var(--gray-1);
+          border-radius: 18px;
+          overflow: hidden;
+          box-shadow: var(--shadow-sm);
+          border: 1px solid rgba(79, 13, 0, 0.08);
+          cursor: zoom-in;
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+          padding: 0;
+          width: 100%;
+        }
+
+        .ann-modal-image-card:hover {
+          transform: translateY(-3px);
+          box-shadow: var(--shadow-md);
+        }
+
+        .ann-modal-image {
+          display: block;
+          width: 100%;
+          height: 160px;
+          object-fit: cover;
+          background: white;
+        }
+
+        .ann-modal-image-caption {
+          padding: 0.85rem 1rem;
+          font-size: 0.82rem;
+          font-weight: 600;
+          color: var(--text-soft);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.75rem;
+        }
+
+        .ann-modal-image-caption-hint {
+          color: var(--primary);
+          font-size: 0.75rem;
+          font-weight: 700;
+          letter-spacing: 0.02em;
+          white-space: nowrap;
+        }
 
           .announcement-image-lightbox {
             position: fixed;
@@ -2013,102 +2143,7 @@ const Portal = () => {
             transition: all 0.2s;
           }
 
-          .ann-modal-close:hover {
-            background: var(--accent-soft);
-            color: var(--primary);
-            transform: rotate(90deg);
-          }
-
-          .ann-modal-body {
-            padding: 2.5rem;
-            max-height: 70vh;
-            overflow-y: auto;
-          }
-
-          .ann-modal-title {
-            font-size: 1.8rem;
-            font-weight: 800;
-            color: var(--text-dark);
-            line-height: 1.25;
-            letter-spacing: -0.02em;
-            margin-top: 0.5rem;
-          }
-
-          .ann-modal-provider {
-            display: flex;
-            align-items: center;
-            gap: 0.8rem;
-            margin-bottom: 0.5rem;
-          }
-
-          .provider-icon {
-            width: 32px;
-            height: 32px;
-            background: var(--accent-soft);
-            color: var(--primary);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.9rem;
-          }
-
-          .provider-name {
-            font-weight: 700;
-            color: var(--primary);
-            font-size: 0.95rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-          }
-
-          .ann-modal-meta {
-            display: flex;
-            align-items: center;
-            gap: 1.5rem;
-            margin-top: 1.5rem;
-            color: var(--text-soft);
-            font-size: 0.85rem;
-            font-weight: 500;
-          }
-
-          .ann-modal-message {
-            font-size: 1.1rem;
-            line-height: 1.7;
-            color: var(--text-dark);
-            white-space: pre-wrap;
-          }
-
-          .ann-modal-gallery {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 1rem;
-            margin-top: 2rem;
-          }
-
-          .ann-modal-image-card {
-            background: var(--gray-1);
-            border-radius: 18px;
-            overflow: hidden;
-            box-shadow: var(--shadow-sm);
-            border: 1px solid rgba(79, 13, 0, 0.08);
-          }
-
-          .ann-modal-image {
-            display: block;
-            width: 100%;
-            height: auto;
-            max-height: min(70vh, 560px);
-            object-fit: contain;
-            background: white;
-            padding: 0.75rem;
-          }
-
-          .ann-modal-image-caption {
-            padding: 0.85rem 1rem;
-            font-size: 0.82rem;
-            font-weight: 600;
-            color: var(--text-soft);
-          }
+          
 
           .message-dropdown,
           .notification-dropdown {
@@ -2429,7 +2464,7 @@ const Portal = () => {
               {selectedAnnouncement.announcementImages?.length > 0 && (
                 <div className="ann-modal-gallery">
                   {selectedAnnouncement.announcementImages.map((image, index) => {
-                    const imageSrc = typeof image === 'string' ? image : image?.url;
+                    const imageSrc = ensureAbsoluteUrl(typeof image === 'string' ? image : image?.url);
 
                     if (!imageSrc) {
                       return null;
