@@ -535,7 +535,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     return False, "Identity verification mismatch", best_text, 0.0
 
 
-def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=False):
+def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=False, prefer_fast_layout=False):
     """
     Fast OCR text extraction for non-identity documents like COE and grades.
     Added is_id_back flag for ultra-fast extraction (skips header bands).
@@ -545,7 +545,8 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
     if not image_bytes:
         return "", "No image data provided."
 
-    cache_key = _hash_image(image_bytes, suffix=b"_doc_text_v2")
+    cache_suffix = f"_doc_text_v3_{max_width}_{is_id_back}_{prefer_fast_layout}".encode()
+    cache_key = _hash_image(image_bytes, suffix=cache_suffix)
     cached_result = _cache_get(cache_key)
     if cached_result is not None:
         return cached_result
@@ -571,22 +572,28 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
 
     with OCR_SEMAPHORE:
         try:
-            # For ID backs, use PSM 3 (auto segmentation) because cards have varied labels, 
-            # signatures, and stickers. Also enable Pass 2 for better shadow tolerance.
-            primary_psm = 3
-            text = _run_tesseract_on_image(img, psm=primary_psm, skip_pass2=False)
-            
-            # Skip heavy background header scan if it's an ID back
-            if not is_id_back and len(text.strip()) < 150:
-                header_height = max(int(img.shape[0] * 0.28), 1)
-                header_img = img[:header_height, :]
-                header_text = _run_tesseract_on_image(header_img, psm=6, skip_pass2=True)
+            # Enrollment/other structured documents can use a faster single-block OCR path.
+            if prefer_fast_layout:
+                primary_psm = 6
+                skip_pass2 = True
+            else:
+                primary_psm = 3
+                skip_pass2 = False
 
-                if header_text.strip():
-                    normalized_text = normalize_for_ocr(text)
-                    normalized_header = normalize_for_ocr(header_text)
-                    if normalized_header and normalized_header not in normalized_text:
-                        text = f"{header_text.strip()}\n{text}".strip()
+            text = _run_tesseract_on_image(img, psm=primary_psm, skip_pass2=skip_pass2)
+            
+            # Fast-layout documents skip the extra header pass to keep latency down.
+            if not is_id_back and len(text.strip()) < 150:
+                if not prefer_fast_layout:
+                    header_height = max(int(img.shape[0] * 0.28), 1)
+                    header_img = img[:header_height, :]
+                    header_text = _run_tesseract_on_image(header_img, psm=6, skip_pass2=True)
+
+                    if header_text.strip():
+                        normalized_text = normalize_for_ocr(text)
+                        normalized_header = normalize_for_ocr(header_text)
+                        if normalized_header and normalized_header not in normalized_text:
+                            text = f"{header_text.strip()}\n{text}".strip()
         finally:
             clear_heavy_memory()
 

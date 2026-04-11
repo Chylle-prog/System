@@ -275,6 +275,7 @@ export default function ScholarshipDashboard({
   const [schoolVerifSent, setSchoolVerifSent] = useState({}); // { [applicantName]: true }
   const [indigencyVerifSent, setIndigencyVerifSent] = useState({}); // { [applicantName]: true }
   const [confirmDeleteModal, setConfirmDeleteModal] = useState(null); // { type: 'scholarship'|'announcement', id, title, label }
+  const [pendingAction, setPendingAction] = useState(null); // { type, applicant, onConfirm, recipient, messageSummary }
   const [formData, setFormData] = useState({
     scholarshipName: '',
     deadline: '',
@@ -1361,17 +1362,31 @@ export default function ScholarshipDashboard({
       return;
     }
 
-    showActionOverlay('Sending school verification', 'Preparing the applicant documents and emailing the school verification address.');
-    try {
-      const response = await scholarshipAPI.sendSchoolVerification(applicantId, scholarshipNo);
-      setSchoolVerifSent((prev) => ({ ...prev, [dispatchKey]: true }));
-      alert(response.data?.message || 'School verification email sent successfully.');
-    } catch (error) {
-      console.error('Failed to send school verification email:', error);
-      alert(getRequestErrorMessage(error, 'Error sending school verification'));
-    } finally {
-      hideActionOverlay();
-    }
+    // Resolve school email for preview
+    const schoolName = (applicant?.school || '').toLowerCase();
+    const recipient = schoolName.includes('dlsl') || schoolName.includes('de la salle') 
+      ? 'dlsl.edu.ph@gmail.com' 
+      : 'Institutional Verification Office';
+
+    setPendingAction({
+      type: 'verification',
+      title: 'Confirm School Verification',
+      recipient: recipient,
+      messageSummary: `Formal request to verify enrollment and grades for ${applicant.name || 'this applicant'}.`,
+      onConfirm: async () => {
+        showActionOverlay('Sending school verification', 'Preparing the applicant documents and emailing the school verification address.');
+        try {
+          const response = await scholarshipAPI.sendSchoolVerification(applicantId, scholarshipNo);
+          setSchoolVerifSent((prev) => ({ ...prev, [dispatchKey]: true }));
+          // No alert here, overlay will show success briefly or we just hide
+        } catch (error) {
+          console.error('Failed to send school verification email:', error);
+          alert('Error sending school verification');
+        } finally {
+          hideActionOverlay();
+        }
+      }
+    });
   };
 
   const handleSendIndigencyVerification = async (applicant) => {
@@ -1384,17 +1399,26 @@ export default function ScholarshipDashboard({
       return;
     }
 
-    showActionOverlay('Sending indigency verification', 'Preparing the indigency document and emailing the city hall verification address.');
-    try {
-      const response = await scholarshipAPI.sendIndigencyVerification(applicantId, scholarshipNo);
-      setIndigencyVerifSent((prev) => ({ ...prev, [dispatchKey]: true }));
-      alert(response.data?.message || 'Indigency verification email sent successfully.');
-    } catch (error) {
-      console.error('Failed to send indigency verification email:', error);
-      alert(getRequestErrorMessage(error, 'Error sending indigency verification'));
-    } finally {
-      hideActionOverlay();
-    }
+    const recipient = 'lipacityhall.gov.ph@gmail.com';
+
+    setPendingAction({
+      type: 'verification',
+      title: 'Confirm Indigency Verification',
+      recipient: recipient,
+      messageSummary: `Formal request to verify the indigency status for ${applicant.name || 'this applicant'} at Lipa City Hall.`,
+      onConfirm: async () => {
+        showActionOverlay('Sending indigency verification', 'Preparing the indigency document and emailing the city hall verification address.');
+        try {
+          const response = await scholarshipAPI.sendIndigencyVerification(applicantId, scholarshipNo);
+          setIndigencyVerifSent((prev) => ({ ...prev, [dispatchKey]: true }));
+        } catch (error) {
+          console.error('Failed to send indigency verification email:', error);
+          alert('Error sending indigency verification');
+        } finally {
+          hideActionOverlay();
+        }
+      }
+    });
   };
 
   const viewApplicantFn = (index, listType = 'all') => {
@@ -1421,154 +1445,188 @@ export default function ScholarshipDashboard({
 
   const acceptRecommended = async (applicant) => {
     const idx = data.applicants.findIndex((a) => a.studentContact?.email === applicant.studentContact?.email || a.name === applicant.name);
-    if (idx >= 0) {
-      try {
-        // Call API to persist the change
-        const applicantToAccept = data.applicants[idx];
-        await scholarshipAPI.acceptApplicant(applicantToAccept.id, applicantToAccept.scholarshipNo);
-        
-        // Update local state
-        setData((d) => ({
-          ...d,
-          applicants: d.applicants.filter((_, i) => i !== idx),
-          accepted: [...d.accepted, d.applicants[idx]],
-        }));
+    if (idx < 0) return;
 
-        // Emit socket event to notify other admins
-        socketService.emit('applicant_accept', {
-          applicantId: applicantToAccept.id,
-          applicantName: applicantToAccept.name,
-          program: providerKey,
-          newStatus: 'Accepted',
-          adminName: userName,
-          timestamp: new Date().toISOString()
-        });
-      } catch (error) {
-        console.error('Failed to accept applicant:', error);
-        alert('Failed to accept applicant. Please try again.');
+    const applicantToAccept = data.applicants[idx];
+    const recipient = applicantToAccept.studentContact?.email || applicantToAccept.emailAddress || applicantToAccept.email || 'Student Email';
+
+    setPendingAction({
+      type: 'acceptance',
+      title: 'Approve Applicant',
+      recipient: recipient,
+      messageSummary: `Congratulations! Your application for ${scholarshipLabel} has been accepted.`,
+      onConfirm: async () => {
+        showActionOverlay('Approving Applicant', 'Updating status and sending notification email...');
+        try {
+          await scholarshipAPI.acceptApplicant(applicantToAccept.id, applicantToAccept.scholarshipNo);
+          
+          setData((d) => ({
+            ...d,
+            applicants: d.applicants.filter((_, i) => i !== idx),
+            accepted: [...d.accepted, d.applicants[idx]],
+          }));
+
+          socketService.emit('applicant_accept', {
+            applicantId: applicantToAccept.id,
+            applicantName: applicantToAccept.name,
+            program: providerKey,
+            newStatus: 'Accepted',
+            adminName: userName,
+            timestamp: new Date().toISOString()
+          });
+          setRecommendationModal(false);
+        } catch (error) {
+          console.error('Failed to accept applicant:', error);
+          alert('Failed to accept applicant.');
+        } finally {
+          hideActionOverlay();
+        }
       }
-    }
-    setRecommendationModal(false);
+    });
   };
 
   const declineRecommended = async (applicant) => {
     const idx = data.applicants.findIndex((a) => a.studentContact?.email === applicant.studentContact?.email || a.name === applicant.name);
-    if (idx >= 0) {
-      try {
-        // Call API to persist the change
-        const applicantToDecline = data.applicants[idx];
-        await scholarshipAPI.declineApplicant(applicantToDecline.id, applicantToDecline.scholarshipNo);
-        
-        // Update local state
-        setData((d) => ({
-          ...d,
-          applicants: d.applicants.filter((_, i) => i !== idx),
-          declined: [...d.declined, d.applicants[idx]],
-        }));
+    if (idx < 0) return;
 
-        // Emit socket event to notify other admins
-        socketService.emit('applicant_decline', {
-          applicantId: applicantToDecline.id,
-          applicantName: applicantToDecline.name,
-          program: providerKey,
-          newStatus: 'Declined',
-          adminName: userName,
-          timestamp: new Date().toISOString()
-        });
-      } catch (error) {
-        console.error('Failed to decline applicant:', error);
-        alert('Failed to decline applicant. Please try again.');
+    const applicantToDecline = data.applicants[idx];
+    const recipient = applicantToDecline.studentContact?.email || applicantToDecline.emailAddress || applicantToDecline.email || 'Student Email';
+
+    setPendingAction({
+      type: 'rejection',
+      title: 'Decline Applicant',
+      recipient: recipient,
+      messageSummary: `Thank you for your interest. We regret to inform you that your application has been declined.`,
+      onConfirm: async () => {
+        showActionOverlay('Declining Applicant', 'Updating status and sending notification email...');
+        try {
+          await scholarshipAPI.declineApplicant(applicantToDecline.id, applicantToDecline.scholarshipNo);
+          
+          setData((d) => ({
+            ...d,
+            applicants: d.applicants.filter((_, i) => i !== idx),
+            declined: [...d.declined, d.applicants[idx]],
+          }));
+
+          socketService.emit('applicant_decline', {
+            applicantId: applicantToDecline.id,
+            applicantName: applicantToDecline.name,
+            program: providerKey,
+            newStatus: 'Declined',
+            adminName: userName,
+            timestamp: new Date().toISOString()
+          });
+          setRecommendationModal(false);
+        } catch (error) {
+          console.error('Failed to decline applicant:', error);
+          alert('Failed to decline applicant.');
+        } finally {
+          hideActionOverlay();
+        }
       }
-    }
-    setRecommendationModal(false);
+    });
   };
 
   const acceptApplicant = async () => {
     if (!viewApplicant || viewApplicant.listType !== 'all') return;
     const { index } = viewApplicant;
-    
-    try {
-      const applicant = data.applicants[index];
-      if (!applicant) return;
-      
-      // Call backend API to persist the change
-      await scholarshipAPI.acceptApplicant(applicant.id, applicant.scholarshipNo);
-      
-      // Update frontend state
-      setData((d) => {
-        const applicant = d.applicants[index];
-        if (!applicant) return d;
-        return {
-          ...d,
-          applicants: d.applicants.filter((_, i) => i !== index),
-          accepted: [...d.accepted, applicant],
-        };
-      });
+    const applicant = data.applicants[index];
+    if (!applicant) return;
 
-      // Emit socket event to notify other admins
-      socketService.emit('applicant_accept', {
-        applicantId: applicant.id,
-        applicantName: applicant.name,
-        program: providerKey,
-        newStatus: 'Accepted',
-        adminName: userName,
-        timestamp: new Date().toISOString()
-      });
-      
-      // Refresh scholarship data to update slot availability
-      await loadScholarships();
-      
-      setViewApplicant(null);
-      setSection('track');
-      setTrackTab('accepted');
-    } catch (error) {
-      console.error('Error accepting applicant:', error);
-      alert('Failed to accept applicant. Please try again.');
-    }
+    const recipient = applicant.studentContact?.email || applicant.emailAddress || applicant.email || 'Student Email';
+
+    setPendingAction({
+      type: 'acceptance',
+      title: 'Approve Applicant',
+      recipient: recipient,
+      messageSummary: `Congratulations! Your application for ${scholarshipLabel} has been accepted.`,
+      onConfirm: async () => {
+        showActionOverlay('Approving Applicant', 'Updating status and sending notification email...');
+        try {
+          await scholarshipAPI.acceptApplicant(applicant.id, applicant.scholarshipNo);
+          
+          setData((d) => {
+            const currentApplicant = d.applicants[index];
+            if (!currentApplicant) return d;
+            return {
+              ...d,
+              applicants: d.applicants.filter((_, i) => i !== index),
+              accepted: [...d.accepted, currentApplicant],
+            };
+          });
+
+          socketService.emit('applicant_accept', {
+            applicantId: applicant.id,
+            applicantName: applicant.name,
+            program: providerKey,
+            newStatus: 'Accepted',
+            adminName: userName,
+            timestamp: new Date().toISOString()
+          });
+          
+          await loadScholarships();
+          setViewApplicant(null);
+          setSection('track');
+          setTrackTab('accepted');
+        } catch (error) {
+          console.error('Error accepting applicant:', error);
+          alert('Failed to accept applicant.');
+        } finally {
+          hideActionOverlay();
+        }
+      }
+    });
   };
 
   const declineApplicant = async () => {
     if (!viewApplicant || viewApplicant.listType !== 'all') return;
     const { index } = viewApplicant;
-    
-    try {
-      const applicant = data.applicants[index];
-      if (!applicant) return;
-      
-      // Call backend API to persist the change
-      await scholarshipAPI.declineApplicant(applicant.id, applicant.scholarshipNo);
-      
-      // Update frontend state
-      setData((d) => {
-        const applicant = d.applicants[index];
-        if (!applicant) return d;
-        return {
-          ...d,
-          applicants: d.applicants.filter((_, i) => i !== index),
-          declined: [...d.declined, applicant],
-        };
-      });
+    const applicant = data.applicants[index];
+    if (!applicant) return;
 
-      // Emit socket event to notify other admins
-      socketService.emit('applicant_decline', {
-        applicantId: applicant.id,
-        applicantName: applicant.name,
-        program: providerKey,
-        newStatus: 'Declined',
-        adminName: userName,
-        timestamp: new Date().toISOString()
-      });
-      
-      // Refresh scholarship data to update slot availability
-      await loadScholarships();
-      
-      setViewApplicant(null);
-      setSection('track');
-      setTrackTab('declined');
-    } catch (error) {
-      console.error('Error declining applicant:', error);
-      alert('Failed to decline applicant. Please try again.');
-    }
+    const recipient = applicant.studentContact?.email || applicant.emailAddress || applicant.email || 'Student Email';
+
+    setPendingAction({
+      type: 'rejection',
+      title: 'Decline Applicant',
+      recipient: recipient,
+      messageSummary: `Thank you for your interest. We regret to inform you that your application for ${scholarshipLabel} has been declined.`,
+      onConfirm: async () => {
+        showActionOverlay('Declining Applicant', 'Updating status and sending notification email...');
+        try {
+          await scholarshipAPI.declineApplicant(applicant.id, applicant.scholarshipNo);
+          
+          setData((d) => {
+            const currentApplicant = d.applicants[index];
+            if (!currentApplicant) return d;
+            return {
+              ...d,
+              applicants: d.applicants.filter((_, i) => i !== index),
+              declined: [...d.declined, currentApplicant],
+            };
+          });
+
+          socketService.emit('applicant_decline', {
+            applicantId: applicant.id,
+            applicantName: applicant.name,
+            program: providerKey,
+            newStatus: 'Declined',
+            adminName: userName,
+            timestamp: new Date().toISOString()
+          });
+          
+          await loadScholarships();
+          setViewApplicant(null);
+          setSection('track');
+          setTrackTab('declined');
+        } catch (error) {
+          console.error('Error declining applicant:', error);
+          alert('Failed to decline applicant.');
+        } finally {
+          hideActionOverlay();
+        }
+      }
+    });
   };
 
   const cancelApplicant = async (listType, index) => {
@@ -4243,6 +4301,58 @@ export default function ScholarshipDashboard({
       )}
 
       {/* Custom Delete Confirmation Modal */}
+      {/* Action Confirmation Modal */}
+      {pendingAction && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl animate-in zoom-in-95 duration-200 border border-gray-100 overflow-hidden relative">
+            <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-[#800020] to-[#650018]"></div>
+            
+            <div className="w-16 h-16 bg-[#800020]/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <FaEnvelope className="text-3xl text-[#800020]" />
+            </div>
+            
+            <h3 className="text-xl font-bold text-gray-900 text-center mb-2">{pendingAction.title}</h3>
+            
+            <div className="bg-gray-50 rounded-2xl p-4 mb-6 border border-gray-100">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Recipient:</span>
+                <span className="text-sm font-bold text-[#800020] truncate">{pendingAction.recipient}</span>
+              </div>
+              <div className="border-t border-gray-200/50 pt-3">
+                <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider block mb-1">Message Preview:</span>
+                <p className="text-xs text-gray-600 leading-relaxed italic">
+                  "{pendingAction.messageSummary}"
+                </p>
+              </div>
+            </div>
+
+            <p className="text-center text-[10px] text-gray-400 mb-8 px-4">
+              Clicking confirm will send this {pendingAction.type === 'verification' ? 'dispatch' : 'notification'} via the ISKOMATS Gmail system.
+            </p>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => setPendingAction(null)}
+                className="px-6 py-3 rounded-xl border border-gray-200 text-gray-600 font-semibold transition-all hover:bg-gray-50 active:scale-95"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  pendingAction.onConfirm();
+                  setPendingAction(null);
+                }}
+                className="px-6 py-3 rounded-xl bg-[#800020] text-white font-semibold transition-all hover:bg-[#650018] hover:shadow-lg hover:shadow-[#800020]/20 active:scale-95 flex items-center justify-center gap-2"
+              >
+                <FaPaperPlane className="text-xs" /> Confirm & Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmDeleteModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200 border border-gray-100">

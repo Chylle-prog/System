@@ -134,10 +134,13 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
             
         receiver_email = user_row['email_address']
         
-        # 3. Send Email alert via Gmail API
+        # 3. Send Email alert via Gmail API in a background thread
         if GMAIL_SENDER_EMAIL:
-            # Prepare email
-            email_body = f"""Hello,
+            def _email_worker():
+                # Separate worker to handle Gmail API communication without blocking DB commit/HTTP response
+                try:
+                    # Prepare email
+                    email_body = f"""Hello,
 
 You have a new notification from ISKOMATS:
 
@@ -149,38 +152,40 @@ Please log in to the portal to view more details.
 Best regards,
 The ISKOMATS Team
 """
-            msg = MIMEText(email_body)
-            msg['Subject'] = f"ISKOMATS Notification: {title}"
-            msg['From'] = GMAIL_SENDER_EMAIL
-            msg['To'] = receiver_email
-            
-            try:
-                access_token = fetch_google_access_token()
-                if not access_token:
-                    print(f"[NOTIF EMAIL ERROR] No access token, skipping email.")
-                    conn.close()
-                    return {'created': True, 'email_sent': False, 'email': receiver_email, 'reason': 'missing-access-token'}
+                    msg = MIMEText(email_body)
+                    msg['Subject'] = f"ISKOMATS Notification: {title}"
+                    msg['From'] = GMAIL_SENDER_EMAIL
+                    msg['To'] = receiver_email
+                    
+                    access_token = fetch_google_access_token()
+                    if not access_token:
+                        print(f"[NOTIF EMAIL ERROR] No access token for {receiver_email}, skipping email.")
+                        return
 
-                encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
-                
-                email_request = urllib_request.Request(
-                    'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
-                    data=json.dumps({'raw': encoded_message}).encode('utf-8'),
-                    headers={
-                        'Authorization': f'Bearer {access_token}',
-                        'Content-Type': 'application/json',
-                    },
-                    method='POST',
-                )
-                
-                with urllib_request.urlopen(email_request, timeout=30) as response:
-                    print(f"[NOTIF] Email sent to {receiver_email}")
-                conn.close()
-                return {'created': True, 'email_sent': True, 'email': receiver_email}
-            except Exception as email_err:
-                print(f"[NOTIF EMAIL ERROR] Failed to send email to {receiver_email}: {email_err}")
-                conn.close()
-                return {'created': True, 'email_sent': False, 'email': receiver_email, 'reason': str(email_err)}
+                    encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
+                    
+                    email_request = urllib_request.Request(
+                        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+                        data=json.dumps({'raw': encoded_message}).encode('utf-8'),
+                        headers={
+                            'Authorization': f'Bearer {access_token}',
+                            'Content-Type': 'application/json',
+                        },
+                        method='POST',
+                    )
+                    
+                    with urllib_request.urlopen(email_request, timeout=30) as response:
+                        print(f"[NOTIF BG] Email sent successfully to {receiver_email}")
+                except Exception as email_err:
+                    print(f"[NOTIF BG ERROR] Failed to send email to {receiver_email}: {email_err}")
+
+            import threading
+            thread = threading.Thread(target=_email_worker)
+            thread.daemon = True
+            thread.start()
+            
+            conn.close()
+            return {'created': True, 'email_sent': True, 'email': receiver_email, 'info': 'Sending in background'}
         else:
             print(f"[NOTIF] GMAIL_SENDER_EMAIL not configured - notification saved but email not sent to {receiver_email if receiver_email else 'unknown'}")
             conn.close()

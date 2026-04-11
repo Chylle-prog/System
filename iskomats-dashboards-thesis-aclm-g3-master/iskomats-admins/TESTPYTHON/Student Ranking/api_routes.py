@@ -754,6 +754,23 @@ def send_gmail_message(receiver_email, subject, body, attachments=None):
         raise RuntimeError('Gmail API request failed because the network request could not be completed') from exc
 
 
+def send_gmail_message_async(receiver_email, subject, body, attachments=None):
+    """Send a Gmail message in a background thread to prevent blocking the HTTP response."""
+    def _worker():
+        try:
+            print(f"[BG_EMAIL] Starting background send to {receiver_email}...", flush=True)
+            send_gmail_message(receiver_email, subject, body, attachments)
+            print(f"[BG_EMAIL] Success: Message sent to {receiver_email}", flush=True)
+        except Exception as e:
+            print(f"[BG_EMAIL ERROR] Failed to send email to {receiver_email}: {e}", flush=True)
+            traceback.print_exc()
+
+    thread = threading.Thread(target=_worker)
+    thread.daemon = True
+    thread.start()
+    return thread
+
+
 def load_applicant_verification_context(cursor, applicant_no, scholarship_no):
     cursor.execute(
         '''
@@ -1005,10 +1022,12 @@ ISKOMATS Admin
             conn.close()
             conn = None
 
-        send_gmail_message(school_email, subject, body, attachments=attachments)
+        # Send email in background to return response instantly
+        send_gmail_message_async(school_email, subject, body, attachments=attachments)
+        
         return jsonify({
             'success': True,
-            'message': f'School verification email sent to {school_email}',
+            'message': f'School verification dispatch initiated to {school_email}. The email is being sent in the background.',
             'email': school_email,
         }), 200
     except Exception as e:
@@ -1087,10 +1106,12 @@ ISKOMATS Admin
             conn.close()
             conn = None
 
-        send_gmail_message(INDIGENCY_VERIFICATION_EMAIL, subject, body, attachments=attachments)
+        # Send email in background to return response instantly
+        send_gmail_message_async(INDIGENCY_VERIFICATION_EMAIL, subject, body, attachments=attachments)
+        
         return jsonify({
             'success': True,
-            'message': f'Indigency verification email sent to {INDIGENCY_VERIFICATION_EMAIL}',
+            'message': f'Indigency verification dispatch initiated to {INDIGENCY_VERIFICATION_EMAIL}. The email is being sent in the background.',
             'email': INDIGENCY_VERIFICATION_EMAIL,
         }), 200
     except Exception as e:
@@ -3484,7 +3505,7 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
             create_notification(
                 user_no=applicant_no,
                 title='Application Accepted',
-                message=f"Your application for {status_row['scholarship_name']} has been accepted.",
+                message=f"Congratulations! We are pleased to inform you that your application for {status_row['scholarship_name']} has been accepted.",
                 notif_type='result'
             )
             # Notify the student portal instantly via socket
@@ -3544,7 +3565,7 @@ def decline_applicant(current_user_id, pro_no, role, applicant_no):
             create_notification(
                 user_no=applicant_no,
                 title='Application Declined',
-                message=f"Your application for {status_row['scholarship_name']} has been declined.",
+                message=f"Thank you for your interest in {status_row['scholarship_name']}. We regret to inform you that your application has been declined.",
                 notif_type='result'
             )
             # Notify the student portal instantly via socket

@@ -3037,14 +3037,14 @@ def ocr_check():
                     },
                     'Enrollment': {
                         'sample_positions': [0.5],
-                        'max_width': 480,
+                        'max_width': 360,
                         'allow_alt_pass': False,
-                        'fallback_text_length': 15,
+                        'fallback_text_length': 8,
                     },
                     'Grades': {
-                        'sample_positions': [0.35, 0.6],
-                        'max_width': 560,
-                        'allow_alt_pass': True,
+                        'sample_positions': [0.5],
+                        'max_width': 420,
+                        'allow_alt_pass': False,
                         'fallback_text_length': 8,
                     },
                     'SchoolID': {
@@ -3113,8 +3113,12 @@ def ocr_check():
                     )
 
                 def run_ocr_check():
-                    if doc_type in ['Enrollment', 'Grades']:
-                        raw_t, extraction_error = extract_document_text(doc_bytes)
+                    if doc_type == 'Enrollment':
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1500, prefer_fast_layout=True)
+                        v_t = bool(raw_t and raw_t.strip())
+                        return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
+                    elif doc_type == 'Grades':
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1500, prefer_fast_layout=True)
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'SchoolIDBack':

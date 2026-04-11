@@ -755,7 +755,10 @@ const StudentInfo = () => {
       console.error('Signature Verification Error:', err);
       setSignatureVerified('failed');
       setSignatureStatus(`Technical Issue: ${err.message}`);
-    }  const preScanDocument = async (docType, base64) => {
+    }
+  };
+
+  const preScanDocument = async (docType, base64) => {
     // Only pre-scan if we have content and it's not already verified
     const isAlreadyVerified = 
       (docType === 'Indigency' && ocrVerified === 'success') ||
@@ -1349,7 +1352,7 @@ const StudentInfo = () => {
           ];
           
           for (const field of blobFields) {
-            if (prof[field] && String(prof[field]).startsWith('/api/')) {
+            if (prof[field] && (String(prof[field]).includes('/document/') || String(prof[field]).startsWith('data:'))) {
               try {
                 const result = await applicantAPI.getDocument(field);
                 if (result && result.data) {
