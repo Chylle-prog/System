@@ -1163,13 +1163,12 @@ def fetch_account_activity_context(cursor, account_id):
 
 
 def record_admin_activity(
-        user_email_table = get_user_email_table(cur)
     *,
     actor_user_no=None,
     action,
-        cursor.execute(f'''
+    target_type=None,
     target_id=None,
-            FROM {user_email_table} e
+    target_label=None,
     provider_no=None,
     status='success',
 ):
