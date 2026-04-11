@@ -2595,14 +2595,14 @@ def get_statistics(current_user_id, pro_no, role):
         
         if role != 'Admin':
             # Get total users related to this provider
-            cursor.execute('''
+            cursor.execute(f'''
                 SELECT (
                     (SELECT COUNT(DISTINCT ue.user_em_no)
-                     FROM ''' + user_email_table + ''' ue
+                     FROM {user_email_table} ue
                      LEFT JOIN users u ON ue.user_no = u.user_no
                      WHERE u.pro_no = %s) +
                     (SELECT COUNT(DISTINCT ae.app_em_no)
-                     FROM ''' + applicant_email_table + ''' ae
+                     FROM {applicant_email_table} ae
                      WHERE ae.applicant_no IN (
                         SELECT applicant_no FROM applicant_status ast 
                         JOIN scholarships s ON ast.scholarship_no = s.req_no 
@@ -2686,7 +2686,7 @@ def get_activity_logs(current_user_id, pro_no, role):
 
         ensure_admin_activity_log_table(cursor)
 
-        query = '''
+        query = f'''
             SELECT
                 logs.log_id AS id,
                 COALESCE(u.user_name, actor_provider.provider_name, 'Unknown User') AS user,
@@ -2700,7 +2700,7 @@ def get_activity_logs(current_user_id, pro_no, role):
             LEFT JOIN scholarship_providers AS actor_provider ON u.pro_no = actor_provider.pro_no
             LEFT JOIN LATERAL (
                 SELECT email_address
-                FROM ''' + user_email_table + '''
+                FROM {user_email_table}
                 WHERE user_no = logs.actor_user_no
                 ORDER BY user_em_no ASC
                 LIMIT 1
