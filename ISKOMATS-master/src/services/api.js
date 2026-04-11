@@ -103,6 +103,30 @@ const warmBackendConnection = async ({ force = false } = {}) => {
   return backendWarmupPromise;
 };
 
+const resolveApplicantDocumentForDisplay = async (fieldName, value) => {
+  if (!value || typeof value !== 'string') {
+    return value;
+  }
+
+  if (value.startsWith('data:') || value.startsWith('blob:')) {
+    return value;
+  }
+
+  if (!value.startsWith('/api') && !value.startsWith('http')) {
+    return value;
+  }
+
+  try {
+    const result = await makeRequest(`/student/applicant/document/${fieldName}`, {
+      method: 'GET',
+    });
+    return result?.data || value;
+  } catch (error) {
+    console.warn(`Failed to resolve applicant document for display: ${fieldName}`, error);
+    return value;
+  }
+};
+
 // Helper function to get stored auth token
 const getAuthToken = () => {
   return localStorage.getItem('authToken');
@@ -402,9 +426,15 @@ export const applicantAPI = {
    * @returns {Promise}
    */
   getProfile: async () => {
-    return makeRequest('/student/applicant/profile', {
+    const profile = await makeRequest('/student/applicant/profile', {
       method: 'GET',
     });
+
+    if (profile?.profile_picture) {
+      profile.profile_picture = await resolveApplicantDocumentForDisplay('profile_picture', profile.profile_picture);
+    }
+
+    return profile;
   },
 
   /**

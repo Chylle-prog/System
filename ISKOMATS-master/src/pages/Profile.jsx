@@ -199,7 +199,8 @@ const Profile = () => {
         street_brgy: formData.streetBrgy,
         town_city_municipality: formData.townCityMunicipality,
         province: formData.province,
-        zip_code: formData.zipCode
+        zip_code: formData.zipCode,
+        profile_picture: formData.profile_picture || userProfile?.profile_picture || null
       };
 
       setUserProfile(locallyUpdatedProfile);

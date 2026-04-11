@@ -2150,6 +2150,15 @@ const Portal = () => {
             width: 300px;
             right: -20px;
           }
+
+          .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+          }
+          
+          .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+          }
           
           .chat-modal {
             width: 95%;
