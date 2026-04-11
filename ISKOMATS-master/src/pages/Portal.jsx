@@ -1067,6 +1067,15 @@ const Portal = () => {
           color: white;
         }
 
+        .nav-profile-avatar {
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
+          object-fit: cover;
+          border: 1.5px solid rgba(255, 255, 255, 0.8);
+          margin-right: 8px;
+        }
+
         .message-wrapper,
         .notification-wrapper {
           position: relative;
@@ -2227,8 +2236,17 @@ const Portal = () => {
             </div>
           </div>
 
-          <button className="profile-btn" onClick={() => navigate('/profile')}>
-            <i className="fas fa-user-circle" style={{marginRight: '6px'}}></i>Profile
+          <button className="profile-btn" onClick={() => navigate('/profile')} style={{ display: 'flex', alignItems: 'center', padding: '0.4rem 1.2rem' }}>
+            {globalProfile?.profile_picture || userProfile?.profile_picture ? (
+              <img 
+                src={globalProfile?.profile_picture || userProfile?.profile_picture} 
+                alt="Avatar" 
+                className="nav-profile-avatar"
+              />
+            ) : (
+              <i className="fas fa-user-circle" style={{marginRight: '6px'}}></i>
+            )}
+            Profile
           </button>
           <button className="logout-btn" onClick={logout}>
             <i className="fas fa-sign-out-alt" style={{marginRight: '6px'}}></i>Logout

@@ -22,7 +22,8 @@ const Profile = () => {
     streetBrgy: '',
     townCityMunicipality: 'Lipa City',
     province: 'Batangas',
-    zipCode: '4217'
+    zipCode: '4217',
+    profile_picture: null
   });
 
   useEffect(() => {
@@ -110,7 +111,8 @@ const Profile = () => {
         streetBrgy: userProfile.street_brgy || userProfile.streetBarangay || '',
         townCityMunicipality: userProfile.town_city_municipality || userProfile.townCity || 'Lipa City',
         province: userProfile.province || 'Batangas',
-        zipCode: userProfile.zip_code || userProfile.zipCode || '4217'
+        zipCode: userProfile.zip_code || userProfile.zipCode || '4217',
+        profile_picture: userProfile.profile_picture || null
       });
     } else if (currentUser) {
       // New user, show edit form
@@ -125,10 +127,28 @@ const Profile = () => {
         streetBrgy: '',
         townCityMunicipality: 'Lipa City',
         province: 'Batangas',
-        zipCode: '4217'
+        zipCode: '4217',
+        profile_picture: null
       });
     }
   }, [currentUser, userProfile]);
+
+  const handleProfilePictureUpload = (e) => {
+    const file = e.target.files[0];
+    if (file && window.compressImage) {
+      window.compressImage(file, 400).then(compressedBase64 => {
+        setFormData(prev => ({ ...prev, profile_picture: compressedBase64 }));
+        // Logically update it in DB immediately on select for better UX, or wait for submit?
+        // Let's wait for submit to be consistent with the rest of the form.
+      });
+    } else if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData(prev => ({ ...prev, profile_picture: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
 
   const logout = () => {
@@ -160,7 +180,8 @@ const Profile = () => {
         streetBarangay: formData.streetBrgy,
         townCity: formData.townCityMunicipality,
         province: formData.province,
-        zipCode: formData.zipCode
+        zipCode: formData.zipCode,
+        profile_picture: formData.profile_picture
       };
 
       // Update profile via API
@@ -881,16 +902,26 @@ const Profile = () => {
           {/* Profile Display View */}
           {userProfile && !showEditForm && (
             <div className="form-section active">
-              <h2>Your Profile</h2>
-              <div style={{ flex: 1 }}>
-                <h3 style={{ color: 'var(--primary)', fontSize: '1.5rem', marginBottom: '0.3rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {userProfile.first_name && userProfile.last_name ? `${userProfile.first_name} ${userProfile.last_name}` : 'No name provided'}
-                  {userProfile.email_verified && (
-                    <i className="fas fa-check-circle" style={{ color: '#28a745', fontSize: '1.1rem' }} title="Verified Account"></i>
+              <div className="profile-display-header">
+                <div className="profile-pic">
+                  {userProfile.profile_picture ? (
+                    <img src={userProfile.profile_picture} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <i className="fas fa-user-circle"></i>
                   )}
-                </h3>
-                <p style={{ color: 'var(--text-soft)', margin: 0 }}>{currentUser}</p>
+                </div>
+                <div className="profile-info">
+                  <h3>
+                    {userProfile.first_name && userProfile.last_name ? `${userProfile.first_name} ${userProfile.last_name}` : 'No name provided'}
+                    {userProfile.email_verified && (
+                      <i className="fas fa-check-circle" style={{ color: '#28a745', fontSize: '1.1rem', marginLeft: '8px' }} title="Verified Account"></i>
+                    )}
+                  </h3>
+                  <p className="email">{currentUser}</p>
+                </div>
               </div>
+
+              <div className="profile-details">
 
               <div className="form-group">
                 <label>First name</label>
@@ -993,6 +1024,48 @@ const Profile = () => {
             <div className="form-section active">
               <h2>{userProfile ? 'Edit Profile' : 'Complete Profile'}</h2>
               {error && <div style={{ color: 'var(--danger)', marginBottom: '1rem', padding: '0.8rem', backgroundColor: 'var(--danger-bg)', borderRadius: '8px' }}>{error}</div>}
+              
+              <div className="profile-picture-upload">
+                <div className="profile-pic" style={{ width: '120px', height: '120px', position: 'relative' }}>
+                  {formData.profile_picture ? (
+                    <img src={formData.profile_picture} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <i className="fas fa-user"></i>
+                  )}
+                  <div style={{ 
+                    position: 'absolute', 
+                    bottom: 0, 
+                    left: 0, 
+                    right: 0, 
+                    background: 'rgba(0,0,0,0.5)', 
+                    color: 'white', 
+                    fontSize: '0.7rem', 
+                    padding: '4px 0',
+                    cursor: 'pointer' 
+                  }}>
+                    <i className="fas fa-camera"></i> Change
+                  </div>
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={handleProfilePictureUpload}
+                    style={{ 
+                      position: 'absolute', 
+                      top: 0, 
+                      left: 0, 
+                      width: '100%', 
+                      height: '100%', 
+                      opacity: 0, 
+                      cursor: 'pointer' 
+                    }} 
+                  />
+                </div>
+                <div style={{ textAlign: 'left' }}>
+                  <h4 style={{ color: 'var(--primary)', marginBottom: '0.5rem' }}>Profile Picture</h4>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-soft)' }}>Upload a formal 2x2 picture</p>
+                </div>
+              </div>
+
               <form onSubmit={handleProfileSubmit}>
                 <div className="form-group">
                   <label>First name</label>
