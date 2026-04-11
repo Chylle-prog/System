@@ -1017,6 +1017,7 @@ const Profile = () => {
                 <i className="fas fa-edit" style={{ marginRight: '8px' }}></i> Edit Profile
               </button>
             </div>
+          </div>
           )}
 
           {/* Profile Edit Form */}
