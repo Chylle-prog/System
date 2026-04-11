@@ -1095,10 +1095,26 @@ const StudentInfo = () => {
         const profile = await applicantAPI.getProfile();
         setUserProfile(profile);
 
+        const profileFullName = [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(' ');
+        const searchFullName = scholarshipSearchProfile?.fullName || '';
+        
+        let targetFirstName = profile.first_name || '';
+        let targetMiddleName = profile.middle_name || '';
+        let targetLastName = profile.last_name || '';
+
+        // Only override profile parts if the search name was explicitly changed in the search form.
+        // This prevents splitFullName from mangling multi-word first names (e.g., "Alex Kyle").
+        if (searchFullName && searchFullName.trim().toLowerCase() !== profileFullName.trim().toLowerCase()) {
+           const parts = splitFullName(searchFullName);
+           targetFirstName = parts.firstName || targetFirstName;
+           targetMiddleName = parts.middleName || targetMiddleName;
+           targetLastName = parts.lastName || targetLastName;
+        }
+
         const updates = {
-          firstName: searchNameParts.firstName || profile.first_name || '',
-          lastName: searchNameParts.lastName || profile.last_name || '',
-          middleName: searchNameParts.middleName || profile.middle_name || '',
+          firstName: targetFirstName,
+          lastName: targetLastName,
+          middleName: targetMiddleName,
           maidenName: profile.maiden_name || '',
           dateOfBirth: profile.birthdate || '',
           placeOfBirth: profile.birth_place || '',
@@ -1138,7 +1154,15 @@ const StudentInfo = () => {
           updates.zipCode = scholarshipSearchProfile?.zip_code || profile.zip_code || profile.zipCode;
         }
 
-        setFormData(prev => mergeMeaningfulValues(prev, updates));
+        setFormData(prev => {
+          const merged = mergeMeaningfulValues(prev, updates);
+          return {
+            ...merged,
+            firstName: targetFirstName,
+            lastName: targetLastName,
+            middleName: targetMiddleName
+          };
+        });
 
         // --- LAZY LOADING OPTIMIZATION ---
         // Instead of loading all heavy blobs at once (which causes 502 OOM on Render),
