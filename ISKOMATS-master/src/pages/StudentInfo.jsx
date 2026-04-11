@@ -784,12 +784,6 @@ const StudentInfo = () => {
 
   const performOcrVerification = async (docType, docParam, extraParams = {}, videoUrl = null, silent = false) => {
     try {
-      if (!silent) {
-        setVerified('verifying');
-        setStatus(`Verifying your ${docType} document and video...`);
-        setScanProgress(15);
-      }
-      
       const setStatus = (status) => {
         if (silent) return;
         if (docType === 'Indigency') { setOcrStatus(status); }
@@ -805,6 +799,12 @@ const StudentInfo = () => {
         else if (docType === 'Grades') { setGradesVerified(v); }
         else if (docType === 'SchoolID') { setIdVerified(v); }
       };
+
+      if (!silent) {
+        setVerified('verifying');
+        setStatus(`Verifying your ${docType} document and video...`);
+        setScanProgress(15);
+      }
 
       let pInterval;
       if (!silent) {
@@ -1630,6 +1630,58 @@ const StudentInfo = () => {
   const isStep2Complete = STEP_FIELDS[2].every(field => formData[field]);
   const isStep3DocumentsVerified = idVerified === 'success' && coeVerified === 'success' && gradesVerified === 'success';
   const isStep4Complete = formData.privacyConsent && formData.dataCertifyConsent && (drawnSignature || formData.applicantSignatureName) && signatureVerified === 'success';
+
+  useEffect(() => {
+    // ─── AUTO-SCAN LOGIC ───
+    if (isAnyScanning || isSavingStep) return;
+
+    const autoTrigger = async () => {
+      // Step 1: Indigency
+      if (currentStep === 1 && ocrVerified === null) {
+        const doc = getVerificationDocumentSource(photos.mayorIndigency_photo, formData.mayorIndigency_photo, userProfile?.indigency_doc);
+        const vid = formData.mayorIndigency_video || documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url;
+        if (doc && vid && typeof vid === 'string' && vid.startsWith('http')) {
+          handleIndigencyScan();
+        }
+      }
+      
+      // Step 3: School ID, COE, Grades
+      if (currentStep === 3) {
+        if (idVerified === null) {
+          const front = getVerificationDocumentSource(schoolIdPhotos.front, userProfile?.id_img_front);
+          const back = getVerificationDocumentSource(schoolIdPhotos.back, userProfile?.id_img_back);
+          const fVid = formData.schoolIdFront_video || documentVideos.schoolIdFront_video;
+          const bVid = formData.schoolIdBack_video || documentVideos.schoolIdBack_video;
+          if (front && back && fVid && bVid && typeof fVid === 'string' && fVid.startsWith('http') && typeof bVid === 'string' && bVid.startsWith('http')) {
+            handleIdScan();
+          }
+        }
+        if (coeVerified === null && idVerified === 'success') {
+          const doc = getVerificationDocumentSource(photos.mayorCOE_photo, formData.mayorCOE_photo, userProfile?.enrollment_certificate_doc);
+          const vid = formData.mayorCOE_video || documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url;
+          if (doc && vid && typeof vid === 'string' && vid.startsWith('http')) {
+            handleCOEScan();
+          }
+        }
+        if (gradesVerified === null && coeVerified === 'success') {
+          const doc = getVerificationDocumentSource(photos.mayorGrades_photo, formData.mayorGrades_photo, userProfile?.grades_doc);
+          const vid = formData.mayorGrades_video || documentVideos.mayorGrades_video || userProfile?.grades_vid_url;
+          if (doc && vid && typeof vid === 'string' && vid.startsWith('http')) {
+            handleGradesScan();
+          }
+        }
+      }
+    };
+
+    autoTrigger();
+  }, [
+    currentStep, ocrVerified, idVerified, coeVerified, gradesVerified,
+    photos.mayorIndigency_photo, documentVideos.mayorIndigency_video,
+    schoolIdPhotos.front, schoolIdPhotos.back, documentVideos.schoolIdFront_video, documentVideos.schoolIdBack_video,
+    photos.mayorCOE_photo, documentVideos.mayorCOE_video,
+    photos.mayorGrades_photo, documentVideos.mayorGrades_video,
+    isAnyScanning, isSavingStep
+  ]);
 
   const handleInputChange = (e) => {
     if (isAnyScanning || isSavingStep) return;
@@ -2972,7 +3024,7 @@ const StudentInfo = () => {
                       <div className="image-container" style={{height: '240px'}} onClick={() => (photos.mayorIndigency_photo || userProfile?.indigency_doc) && setLightboxSrc(photos.mayorIndigency_photo || userProfile?.indigency_doc)}>
                         {(photos.mayorIndigency_photo || userProfile?.indigency_doc) ? (
                           <>
-                            <img src={photos.mayorIndigency_photo || userProfile?.indigency_doc} alt="Indigency Preview" />
+                            <img src={photos.mayorIndigency_photo || userProfile?.indigency_doc} style={{objectFit: 'contain', background: '#000'}} alt="Indigency Preview" />
                             <div style={{position: 'absolute', bottom: '12px', right: '12px', background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '6px 10px', borderRadius: '10px', fontSize: '0.7rem', backdropFilter: 'blur(4px)'}}>
                               <i className="fas fa-expand-alt" style={{marginRight: '6px'}}></i> Tap to view
                             </div>
@@ -3470,7 +3522,7 @@ const StudentInfo = () => {
                       <div className="scanning-container">
                         <div className="image-container" style={{height: '240px'}} onClick={() => (photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && setLightboxSrc(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc)}>
                           {(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) ? (
-                            <img src={photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc} alt="COE Preview" />
+                            <img src={photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc} style={{objectFit: 'contain', background: '#000'}} alt="COE Preview" />
                           ) : (
                             <div style={{height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc'}}>
                               <i className="fas fa-image" style={{fontSize: '2rem', marginBottom: '8px'}}></i>
@@ -3582,7 +3634,7 @@ const StudentInfo = () => {
                       <div className="scanning-container">
                         <div className="image-container" style={{height: '240px'}} onClick={() => (photos.mayorGrades_photo || userProfile?.grades_doc) && setLightboxSrc(photos.mayorGrades_photo || userProfile?.grades_doc)}>
                           {(photos.mayorGrades_photo || userProfile?.grades_doc) ? (
-                            <img src={photos.mayorGrades_photo || userProfile?.grades_doc} alt="Grades Preview" />
+                            <img src={photos.mayorGrades_photo || userProfile?.grades_doc} style={{objectFit: 'contain', background: '#000'}} alt="Grades Preview" />
                           ) : (
                             <div style={{height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc'}}>
                               <i className="fas fa-image" style={{fontSize: '2rem', marginBottom: '8px'}}></i>

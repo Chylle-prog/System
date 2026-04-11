@@ -129,8 +129,8 @@ def decode_base64(data):
     return data
 
 # ─── Image preprocessing & quality assessment (Optimization #3) ──────────────
-_MAX_OCR_WIDTH = 750       # Reduced from 800 for faster processing
-_MAX_VIDEO_OCR_WIDTH = 640 # Reduced from 800 (Video OCR is for keywords only)
+_MAX_OCR_WIDTH = 600       # Optimized from 750 for faster cloud processing
+_MAX_VIDEO_OCR_WIDTH = 420 # Optimized for keyword detection speed
 _MAX_FACE_WIDTH = 512  # Increased from 224 to help detector catch small faces on ID cards
 
 # Module-level CLAHE instance (reused across all OCR calls instead of recreating each time)
