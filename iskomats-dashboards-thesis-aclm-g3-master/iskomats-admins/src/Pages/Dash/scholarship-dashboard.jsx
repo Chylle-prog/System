@@ -272,8 +272,6 @@ export default function ScholarshipDashboard({
   const [activeOverlay, setActiveOverlay] = useState(null);
   const [manageTab, setManageTab] = useState('scholarship'); // scholarship | announcement
   const [manageSearch, setManageSearch] = useState('');
-  const [schoolVerifModal, setSchoolVerifModal] = useState(null); // applicant object
-  const [indigencyVerifModal, setIndigencyVerifModal] = useState(null); // applicant object
   const [schoolVerifSent, setSchoolVerifSent] = useState({}); // { [applicantName]: true }
   const [indigencyVerifSent, setIndigencyVerifSent] = useState({}); // { [applicantName]: true }
   const [confirmDeleteModal, setConfirmDeleteModal] = useState(null); // { type: 'scholarship'|'announcement', id, title, label }
@@ -1349,6 +1347,54 @@ export default function ScholarshipDashboard({
     const date = new Date(timestamp);
     if (isNaN(date.getTime())) return timestamp;
     return date.toISOString().split('T')[0];
+  };
+
+  const getApplicantDispatchKey = (applicant) => applicant?.applicant_no || applicant?.id || applicant?.studentContact?.email || applicant?.email || applicant?.name;
+
+  const handleSendSchoolVerification = async (applicant) => {
+    const applicantId = applicant?.applicant_no || applicant?.id;
+    const scholarshipNo = applicant?.scholarshipNo;
+    const dispatchKey = getApplicantDispatchKey(applicant);
+
+    if (!applicantId || !scholarshipNo) {
+      alert('Unable to send school verification because the applicant record is incomplete.');
+      return;
+    }
+
+    showActionOverlay('Sending school verification', 'Preparing the applicant documents and emailing the school verification address.');
+    try {
+      const response = await scholarshipAPI.sendSchoolVerification(applicantId, scholarshipNo);
+      setSchoolVerifSent((prev) => ({ ...prev, [dispatchKey]: true }));
+      alert(response.data?.message || 'School verification email sent successfully.');
+    } catch (error) {
+      console.error('Failed to send school verification email:', error);
+      alert(getRequestErrorMessage(error, 'Error sending school verification'));
+    } finally {
+      hideActionOverlay();
+    }
+  };
+
+  const handleSendIndigencyVerification = async (applicant) => {
+    const applicantId = applicant?.applicant_no || applicant?.id;
+    const scholarshipNo = applicant?.scholarshipNo;
+    const dispatchKey = getApplicantDispatchKey(applicant);
+
+    if (!applicantId || !scholarshipNo) {
+      alert('Unable to send indigency verification because the applicant record is incomplete.');
+      return;
+    }
+
+    showActionOverlay('Sending indigency verification', 'Preparing the indigency document and emailing the city hall verification address.');
+    try {
+      const response = await scholarshipAPI.sendIndigencyVerification(applicantId, scholarshipNo);
+      setIndigencyVerifSent((prev) => ({ ...prev, [dispatchKey]: true }));
+      alert(response.data?.message || 'Indigency verification email sent successfully.');
+    } catch (error) {
+      console.error('Failed to send indigency verification email:', error);
+      alert(getRequestErrorMessage(error, 'Error sending indigency verification'));
+    } finally {
+      hideActionOverlay();
+    }
   };
 
   const viewApplicantFn = (index, listType = 'all') => {
@@ -3435,6 +3481,7 @@ export default function ScholarshipDashboard({
     const a = list[index];
     if (!a) return null;
     const isPending = listType === 'all';
+    const dispatchKey = getApplicantDispatchKey(a);
 
     // Normalize family data for display
     const familyData = {
@@ -3496,19 +3543,19 @@ export default function ScholarshipDashboard({
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => setSchoolVerifModal(a)}
-                disabled={schoolVerifSent[a.name]}
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${schoolVerifSent[a.name] ? 'bg-green-100 text-green-700 cursor-default' : 'bg-[#800020] text-white hover:bg-[#650018]'}`}
+                onClick={() => handleSendSchoolVerification(a)}
+                disabled={schoolVerifSent[dispatchKey]}
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${schoolVerifSent[dispatchKey] ? 'bg-green-100 text-green-700 cursor-default' : 'bg-[#800020] text-white hover:bg-[#650018]'}`}
               >
-                <FaPaperPlane /> {schoolVerifSent[a.name] ? 'School Dispatch Sent' : 'Send for School Verification'}
+                <FaPaperPlane /> {schoolVerifSent[dispatchKey] ? 'School Dispatch Sent' : 'Send for School Verification'}
               </button>
               <button
                 type="button"
-                onClick={() => setIndigencyVerifModal(a)}
-                disabled={indigencyVerifSent[a.name]}
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${indigencyVerifSent[a.name] ? 'bg-green-100 text-green-700 cursor-default' : 'bg-[#800020] text-white hover:bg-[#650018]'}`}
+                onClick={() => handleSendIndigencyVerification(a)}
+                disabled={indigencyVerifSent[dispatchKey]}
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${indigencyVerifSent[dispatchKey] ? 'bg-green-100 text-green-700 cursor-default' : 'bg-[#800020] text-white hover:bg-[#650018]'}`}
               >
-                <FaPaperPlane /> {indigencyVerifSent[a.name] ? 'City Hall Dispatch Sent' : 'Verify Indigency (City Hall)'}
+                <FaPaperPlane /> {indigencyVerifSent[dispatchKey] ? 'City Hall Dispatch Sent' : 'Verify Indigency (City Hall)'}
               </button>
             </div>
             <button
@@ -4186,12 +4233,44 @@ export default function ScholarshipDashboard({
         </div>
       )}
 
-      {/* Fullscreen Image Modal */}
       {imageModalSrc && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80" onClick={() => setImageModalSrc(null)}>
           <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
             <img src={imageModalSrc} alt="Full size" className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl" />
             <button type="button" onClick={() => setImageModalSrc(null)} className="absolute top-3 right-3 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-[#800020]">×</button>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Delete Confirmation Modal */}
+      {confirmDeleteModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200 border border-gray-100">
+            <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <FaTrashAlt className="text-3xl text-red-600" />
+            </div>
+            
+            <h3 className="text-xl font-bold text-gray-900 text-center mb-2">{confirmDeleteModal.title}</h3>
+            <p className="text-gray-500 text-center mb-8">
+              Are you sure you want to delete <span className="font-semibold text-gray-700">"{confirmDeleteModal.label}"</span>? This action cannot be undone.
+            </p>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteModal(null)}
+                className="px-6 py-3 rounded-xl border border-gray-200 text-gray-600 font-semibold transition-all hover:bg-gray-50 active:scale-95"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={executeDelete}
+                className="px-6 py-3 rounded-xl bg-red-600 text-white font-semibold transition-all hover:bg-red-700 hover:shadow-lg hover:shadow-red-600/20 active:scale-95"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}

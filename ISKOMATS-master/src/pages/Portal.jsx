@@ -51,6 +51,7 @@ const Portal = () => {
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
+  const [selectedAnnouncementImage, setSelectedAnnouncementImage] = useState(null);
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedAppForView, setSelectedAppForView] = useState(null);
   
@@ -672,6 +673,16 @@ const Portal = () => {
   const closeAnnouncementModal = () => {
     setShowAnnouncementModal(false);
     setSelectedAnnouncement(null);
+    setSelectedAnnouncementImage(null);
+  };
+
+  const openAnnouncementImage = (imageSrc, imageAlt) => {
+    if (!imageSrc) return;
+    setSelectedAnnouncementImage({ src: imageSrc, alt: imageAlt || 'Announcement image' });
+  };
+
+  const closeAnnouncementImage = () => {
+    setSelectedAnnouncementImage(null);
   };
 
   const totalUnreadMessages = scholarships.reduce((sum, s) => sum + s.unread, 0);
@@ -1915,6 +1926,13 @@ const Portal = () => {
             border-bottom: 1px solid var(--gray-1);
           }
 
+            cursor: zoom-in;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+          }
+
+          .ann-modal-image-card:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-md);
           .ann-modal-close {
             position: absolute;
             top: 2rem;
@@ -1929,6 +1947,69 @@ const Portal = () => {
             justify-content: center;
             cursor: pointer;
             color: var(--text-soft);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+          }
+
+          .ann-modal-image-caption-hint {
+            color: var(--primary);
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+          }
+
+          .announcement-image-lightbox {
+            position: fixed;
+            inset: 0;
+            z-index: 100000;
+            background: rgba(8, 11, 18, 0.88);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+          }
+
+          .announcement-image-lightbox-content {
+            position: relative;
+            max-width: min(92vw, 1100px);
+            max-height: 90vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+
+          .announcement-image-lightbox img {
+            max-width: 100%;
+            max-height: 90vh;
+            border-radius: 24px;
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+            object-fit: contain;
+            background: white;
+          }
+
+          .announcement-image-lightbox-close {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            width: 42px;
+            height: 42px;
+            border: none;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.92);
+            color: var(--text-dark);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--shadow-md);
+          }
+
+          .announcement-image-lightbox-close:hover {
+            background: white;
             transition: all 0.2s;
           }
 
@@ -2354,15 +2435,25 @@ const Portal = () => {
                       return null;
                     }
 
+                    const imageAlt = `${selectedAnnouncement.ann_title || 'Announcement'} image ${index + 1}`;
+
                     return (
-                      <div key={`${selectedAnnouncement.ann_no || selectedAnnouncement.ann_title || 'announcement'}-${index}`} className="ann-modal-image-card">
+                      <button
+                        key={`${selectedAnnouncement.ann_no || selectedAnnouncement.ann_title || 'announcement'}-${index}`}
+                        type="button"
+                        className="ann-modal-image-card"
+                        onClick={() => openAnnouncementImage(imageSrc, imageAlt)}
+                      >
                         <img
                           src={imageSrc}
-                          alt={`${selectedAnnouncement.ann_title || 'Announcement'} image ${index + 1}`}
+                          alt={imageAlt}
                           className="ann-modal-image"
                         />
-                        <div className="ann-modal-image-caption">Announcement image {index + 1}</div>
-                      </div>
+                        <div className="ann-modal-image-caption">
+                          <span>Announcement image {index + 1}</span>
+                          <span className="ann-modal-image-caption-hint">Click to enlarge</span>
+                        </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -2377,6 +2468,17 @@ const Portal = () => {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {selectedAnnouncementImage && (
+        <div className="announcement-image-lightbox" onClick={closeAnnouncementImage}>
+          <div className="announcement-image-lightbox-content" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="announcement-image-lightbox-close" onClick={closeAnnouncementImage}>
+              <i className="fas fa-times"></i>
+            </button>
+            <img src={selectedAnnouncementImage.src} alt={selectedAnnouncementImage.alt} />
           </div>
         </div>
       )}

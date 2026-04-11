@@ -11,6 +11,9 @@ from datetime import date, datetime, timedelta
 import psycopg2
 import base64
 from urllib import parse, request as urllib_request, error as urllib_error
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from cryptography.fernet import Fernet
 from io import BytesIO
@@ -197,6 +200,11 @@ GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
 GOOGLE_REFRESH_TOKEN = os.environ.get('GOOGLE_REFRESH_TOKEN')
 GMAIL_SENDER_EMAIL = os.environ.get('GMAIL_SENDER_EMAIL') or os.environ.get('SMTP_SENDER_EMAIL') or os.environ.get('SMTP_EMAIL')
+SCHOOL_VERIFICATION_EMAILS = {
+    'dlsl': 'dlsl.edu.ph@gmail.com',
+    'de la salle lipa': 'dlsl.edu.ph@gmail.com',
+}
+INDIGENCY_VERIFICATION_EMAIL = 'lipacityhall.gov.ph@gmail.com'
 
 # ===== ENCRYPTION SETUP =====
 _ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
@@ -641,6 +649,136 @@ def generate_verification_code():
     return str(random.randint(100000, 999999))
 
 
+def resolve_school_verification_email(school_name):
+    normalized_school = ' '.join(str(school_name or '').strip().lower().split())
+    if not normalized_school:
+        return None
+
+    for school_key, school_email in SCHOOL_VERIFICATION_EMAILS.items():
+        if school_key in normalized_school:
+            return school_email
+
+    return None
+
+
+def build_applicant_full_name(applicant_row):
+    return ' '.join(
+        part for part in [
+            applicant_row.get('first_name'),
+            applicant_row.get('middle_name'),
+            applicant_row.get('last_name'),
+        ]
+        if str(part or '').strip()
+    ).strip()
+
+
+def coerce_binary_bytes(value):
+    if value is None:
+        return None
+    if hasattr(value, 'tobytes'):
+        return value.tobytes()
+    if isinstance(value, bytearray):
+        return bytes(value)
+    if isinstance(value, bytes):
+        return value
+    return bytes(value)
+
+
+def guess_extension_for_mime(mime_type):
+    extension_map = {
+        'image/jpeg': 'jpg',
+        'image/png': 'png',
+        'image/gif': 'gif',
+        'image/webp': 'webp',
+        'image/avif': 'avif',
+        'image/heic': 'heic',
+        'image/heif': 'heif',
+        'image/svg+xml': 'svg',
+        'application/pdf': 'pdf',
+    }
+    return extension_map.get(mime_type, 'bin')
+
+
+def create_email_attachment(filename, content_bytes, mime_type):
+    safe_bytes = coerce_binary_bytes(content_bytes)
+    if not safe_bytes:
+        return None
+
+    if '/' in mime_type:
+        main_type, sub_type = mime_type.split('/', 1)
+    else:
+        main_type, sub_type = 'application', 'octet-stream'
+
+    attachment = MIMEBase(main_type, sub_type)
+    attachment.set_payload(safe_bytes)
+    encoders.encode_base64(attachment)
+    attachment.add_header('Content-Disposition', 'attachment', filename=filename)
+    return attachment
+
+
+def send_gmail_message(receiver_email, subject, body, attachments=None):
+    if not GMAIL_SENDER_EMAIL:
+        raise RuntimeError('Gmail sender email is not configured.')
+
+    message = MIMEMultipart()
+    message['Subject'] = subject
+    message['From'] = GMAIL_SENDER_EMAIL
+    message['To'] = receiver_email
+    message.attach(MIMEText(body))
+
+    for attachment in attachments or []:
+        if attachment is not None:
+            message.attach(attachment)
+
+    access_token = fetch_google_access_token()
+    encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+    gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
+
+    email_request = urllib_request.Request(
+        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+        data=gmail_request_body,
+        headers={
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+        },
+        method='POST',
+    )
+
+    try:
+        with urllib_request.urlopen(email_request, timeout=30) as response:
+            return json.loads(response.read().decode('utf-8'))
+    except urllib_error.HTTPError as exc:
+        response_body = exc.read().decode('utf-8', errors='replace')
+        raise RuntimeError(f'Gmail API send failed: {response_body}') from exc
+    except OSError as exc:
+        raise RuntimeError('Gmail API request failed because the network request could not be completed') from exc
+
+
+def load_applicant_verification_context(cursor, applicant_no, scholarship_no):
+    cursor.execute(
+        '''
+        SELECT a.applicant_no,
+               a.first_name,
+               a.middle_name,
+               a.last_name,
+               a.school,
+               a.school_id_no,
+               esc.req_no AS scholarship_no,
+               esc.scholarship_name,
+               esc.pro_no,
+               p.provider_name
+        FROM applicants a
+        INNER JOIN applicant_status ast ON a.applicant_no = ast.applicant_no
+        INNER JOIN scholarships esc ON ast.scholarship_no = esc.req_no
+        INNER JOIN scholarship_providers p ON esc.pro_no = p.pro_no
+        WHERE a.applicant_no = %s AND ast.scholarship_no = %s
+        LIMIT 1
+        ''',
+        (applicant_no, scholarship_no),
+    )
+    return cursor.fetchone()
+
+
 def send_verification_email(receiver_email, code):
     """Send a verification email via the Gmail API."""
     if not GMAIL_SENDER_EMAIL:
@@ -759,6 +897,211 @@ The ISKOMATS Team
         raise RuntimeError('Gmail API request failed because the network request could not be completed') from exc
     except Exception as exc:
         print(f"[SEND_PASSWORD_RESET_EMAIL] Unexpected error: {str(exc)}", flush=True)
+
+
+@api_bp.route('/applicants/<int:applicant_no>/school-verification', methods=['POST'])
+@token_required
+def send_school_verification_dispatch(current_user_id, pro_no, role, applicant_no):
+    """Email school verification documents to the configured school contact."""
+    conn = None
+    cursor = None
+    try:
+        data = request.get_json(silent=True) or {}
+        scholarship_no = data.get('scholarshipNo')
+        if scholarship_no is None:
+            return jsonify({'success': False, 'message': 'scholarshipNo is required'}), 400
+
+        conn = get_db()
+        cursor = conn.cursor()
+        applicant_row = load_applicant_verification_context(cursor, applicant_no, scholarship_no)
+
+        if not applicant_row:
+            return jsonify({'success': False, 'message': 'Applicant record not found for this scholarship'}), 404
+
+        if role != 'Admin' and applicant_row['pro_no'] != pro_no:
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+
+        school_email = resolve_school_verification_email(applicant_row.get('school'))
+        if not school_email:
+            return jsonify({
+                'success': False,
+                'message': f"No verification email is configured yet for {applicant_row.get('school') or 'this school'}. Currently only DLSL is supported.",
+            }), 400
+
+        document_values = fetch_applicant_document_values(
+            cursor,
+            applicant_no,
+            ['enrollment_certificate_doc', 'grades_doc', 'id_img_front', 'id_img_back', 'schoolID_photo']
+        )
+
+        front_id = document_values.get('id_img_front') or document_values.get('schoolID_photo')
+        back_id = document_values.get('id_img_back')
+        enrollment_doc = document_values.get('enrollment_certificate_doc')
+        grades_doc = document_values.get('grades_doc')
+
+        missing_documents = []
+        if not enrollment_doc:
+            missing_documents.append('Enrollment Certificate')
+        if not grades_doc:
+            missing_documents.append('Grades Report')
+        if not front_id:
+            missing_documents.append('School ID Front')
+        if not back_id:
+            missing_documents.append('School ID Back')
+
+        if missing_documents:
+            return jsonify({
+                'success': False,
+                'message': f"Missing required documents: {', '.join(missing_documents)}",
+            }), 400
+
+        applicant_name = build_applicant_full_name(applicant_row) or f"Applicant #{applicant_no}"
+        attachment_specs = [
+            ('enrollment_certificate', enrollment_doc),
+            ('grades_report', grades_doc),
+            ('school_id_front', front_id),
+            ('school_id_back', back_id),
+        ]
+        attachments = []
+        for label, raw_content in attachment_specs:
+            content_bytes = coerce_binary_bytes(raw_content)
+            mime_type = get_mime_type(content_bytes)
+            extension = guess_extension_for_mime(mime_type)
+            attachments.append(
+                create_email_attachment(
+                    f"{applicant_name.replace(' ', '_').lower()}_{label}.{extension}",
+                    content_bytes,
+                    mime_type,
+                )
+            )
+
+        subject = f"School Verification Request - {applicant_name}"
+        body = f"""Hello,
+
+Please help verify the attached applicant records for {applicant_name}.
+
+Scholarship: {applicant_row.get('scholarship_name') or 'N/A'}
+Provider: {applicant_row.get('provider_name') or 'N/A'}
+Applicant ID: {applicant_row.get('applicant_no')}
+School: {applicant_row.get('school') or 'N/A'}
+School ID Number: {applicant_row.get('school_id_no') or 'N/A'}
+
+Attached documents:
+- Enrollment certificate
+- Grades report
+- School ID front
+- School ID back
+
+Please review the documents and respond to this email with your verification findings.
+
+Best regards,
+ISKOMATS Admin
+"""
+
+        if cursor:
+            cursor.close()
+            cursor = None
+        if conn:
+            conn.close()
+            conn = None
+
+        send_gmail_message(school_email, subject, body, attachments=attachments)
+        return jsonify({
+            'success': True,
+            'message': f'School verification email sent to {school_email}',
+            'email': school_email,
+        }), 200
+    except Exception as e:
+        print(f"[SCHOOL VERIFICATION EMAIL] Error: {e}", flush=True)
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Failed to send school verification email: {str(e)}'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@api_bp.route('/applicants/<int:applicant_no>/indigency-verification', methods=['POST'])
+@token_required
+def send_indigency_verification_dispatch(current_user_id, pro_no, role, applicant_no):
+    """Email the applicant indigency image to the city hall verification inbox."""
+    conn = None
+    cursor = None
+    try:
+        data = request.get_json(silent=True) or {}
+        scholarship_no = data.get('scholarshipNo')
+        if scholarship_no is None:
+            return jsonify({'success': False, 'message': 'scholarshipNo is required'}), 400
+
+        conn = get_db()
+        cursor = conn.cursor()
+        applicant_row = load_applicant_verification_context(cursor, applicant_no, scholarship_no)
+
+        if not applicant_row:
+            return jsonify({'success': False, 'message': 'Applicant record not found for this scholarship'}), 404
+
+        if role != 'Admin' and applicant_row['pro_no'] != pro_no:
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+
+        document_values = fetch_applicant_document_values(cursor, applicant_no, ['indigency_doc'])
+        indigency_doc = document_values.get('indigency_doc')
+        if not indigency_doc:
+            return jsonify({'success': False, 'message': 'Missing required document: Indigency Proof'}), 400
+
+        applicant_name = build_applicant_full_name(applicant_row) or f"Applicant #{applicant_no}"
+        indigency_bytes = coerce_binary_bytes(indigency_doc)
+        indigency_mime = get_mime_type(indigency_bytes)
+        indigency_extension = guess_extension_for_mime(indigency_mime)
+        attachments = [
+            create_email_attachment(
+                f"{applicant_name.replace(' ', '_').lower()}_indigency_proof.{indigency_extension}",
+                indigency_bytes,
+                indigency_mime,
+            )
+        ]
+
+        subject = f"Indigency Verification Request - {applicant_name}"
+        body = f"""Hello,
+
+Please help verify the attached indigency document for {applicant_name}.
+
+Scholarship: {applicant_row.get('scholarship_name') or 'N/A'}
+Provider: {applicant_row.get('provider_name') or 'N/A'}
+Applicant ID: {applicant_row.get('applicant_no')}
+School: {applicant_row.get('school') or 'N/A'}
+
+Attached document:
+- Indigency proof image
+
+Please review the attachment and respond to this email with your verification findings.
+
+Best regards,
+ISKOMATS Admin
+"""
+
+        if cursor:
+            cursor.close()
+            cursor = None
+        if conn:
+            conn.close()
+            conn = None
+
+        send_gmail_message(INDIGENCY_VERIFICATION_EMAIL, subject, body, attachments=attachments)
+        return jsonify({
+            'success': True,
+            'message': f'Indigency verification email sent to {INDIGENCY_VERIFICATION_EMAIL}',
+            'email': INDIGENCY_VERIFICATION_EMAIL,
+        }), 200
+    except Exception as e:
+        print(f"[INDIGENCY VERIFICATION EMAIL] Error: {e}", flush=True)
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Failed to send indigency verification email: {str(e)}'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
         raise
         
     print("[SEND_PASSWORD_RESET_EMAIL] Email sent successfully!", flush=True)

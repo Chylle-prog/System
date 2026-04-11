@@ -213,6 +213,12 @@ export const scholarshipAPI = {
   
   cancelApplicant: (applicantId, scholarshipNo) =>
     api.post(`/admin/applicants/${applicantId}/cancel`, { scholarshipNo }),
+
+  sendSchoolVerification: (applicantId, scholarshipNo) =>
+    api.post(`/admin/applicants/${applicantId}/school-verification`, { scholarshipNo }),
+
+  sendIndigencyVerification: (applicantId, scholarshipNo) =>
+    api.post(`/admin/applicants/${applicantId}/indigency-verification`, { scholarshipNo }),
 };
 
 // ===== ANNOUNCEMENT ENDPOINTS =====
