@@ -577,6 +577,19 @@ def _preprocess_frame_for_ocr(frame):
     return cv2.normalize(enhanced, None, 0, 255, cv2.NORM_MINMAX)
 
 
+def _ocr_video_frame(processed_frame, allow_alt_pass=True):
+    """Run OCR for a single video frame while holding the shared OCR gate only for Tesseract work."""
+    with OCR_SEMAPHORE:
+        text = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config='--psm 3 --oem 3')
+
+        if allow_alt_pass and len(text.strip()) < 10:
+            text_alt = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config='--psm 6 --oem 3')
+            if len(text_alt.strip()) > len(text.strip()):
+                text = text_alt
+
+    return text
+
+
 def verify_video_content(video_bytes, keywords, expected_address=None, sample_positions=None, max_width=None, allow_alt_pass=True, fallback_text_length=0):
     """
     Captures frames from video bytes and scans for keywords and address using OCR.
@@ -605,113 +618,107 @@ def verify_video_content(video_bytes, keywords, expected_address=None, sample_po
         tmp.write(video_bytes)
         tmp_path = tmp.name
         
-    with OCR_SEMAPHORE:
+    try:
+        cap = cv2.VideoCapture(tmp_path)
+        if not cap.isOpened():
+            return False, "Could not open video file"
+        
+        # Ensure frame count is perfectly accessible
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if frame_count <= 0:
+            _cache_set(vid_hash, (False, "Invalid video frame count"))
+            return False, "Invalid video frame count"
+        
+        # --- SPEED OPTIMIZATION: Sample 2 frames (Start/End) instead of 5 ---
+        # This reduces Video OCR time by ~60%
+        sample_positions = sample_positions or [0.3, 0.75]
+        sample_indices = []
+        for pos in sample_positions:
+            idx = int(frame_count * pos)
+            if idx not in sample_indices:
+                sample_indices.append(idx)
+
+        # Insert cooperative yield for eventlet to prevent blocking other requests
         try:
-            cap = cv2.VideoCapture(tmp_path)
-            if not cap.isOpened():
-                return False, "Could not open video file"
+            import eventlet
+            eventlet.sleep(0)
+        except ImportError:
+            pass
+
+        all_ocr_text = ""
+        found_keywords = []
+        addr_ok = False
+
+        def process_frame(idx, text_accumulator, keywords_found, address_ok_val):
+            # Faster Video OCR Strategy with Enhanced Preprocessing
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                return text_accumulator, keywords_found, address_ok_val
             
-            # Ensure frame count is perfectly accessible
-            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            if frame_count <= 0:
-                _cache_set(vid_hash, (False, "Invalid video frame count"))
-                return False, "Invalid video frame count"
+            # Preprocessing for Video Frames (Optimization: Handles compression artifacts/blur)
+            processed_frame = _preprocess_frame_for_ocr(frame)
             
-            # --- SPEED OPTIMIZATION: Sample 2 frames (Start/End) instead of 5 ---
-            # This reduces Video OCR time by ~60%
-            sample_positions = sample_positions or [0.3, 0.75]
-            sample_indices = []
-            for pos in sample_positions:
-                idx = int(frame_count * pos)
-                if idx not in sample_indices:
-                    sample_indices.append(idx)
+            # Use even lower resolution for video frames (400px) for non-indigency fast scanning
+            h, w = processed_frame.shape[:2]
+            default_width = 400 if not is_address_verification else 520
+            width_limit = max_width or default_width
+            if w > width_limit:
+                scale = width_limit / w
+                processed_frame = cv2.resize(processed_frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
 
-            # Insert cooperative yield for eventlet to prevent blocking other requests
-            try:
-                import eventlet
-                eventlet.sleep(0)
-            except ImportError:
-                pass
+            text = _ocr_video_frame(processed_frame, allow_alt_pass=allow_alt_pass)
 
-            all_ocr_text = ""
-            found_keywords = []
-            addr_ok = False
+            text_accumulator += " " + text
+            print(f"[VIDEO OCR] Frame {idx} scanned ({len(text.strip())} chars)...", flush=True)
 
-            def process_frame(idx, text_accumulator, keywords_found, address_ok_val):
-                # Faster Video OCR Strategy with Enhanced Preprocessing
-                cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-                ret, frame = cap.read()
-                if not ret or frame is None: return text_accumulator, keywords_found, address_ok_val
+            _, new_addr, new_kws, _ = _perform_text_matching(text_accumulator, None, None, None, None, keywords=keywords, is_indigency=is_address_verification)
+            return text_accumulator, new_kws, new_addr
+
+        is_success = False
+        for sample_idx in sample_indices:
+            all_ocr_text, found_keywords, addr_ok = process_frame(sample_idx, all_ocr_text, found_keywords, addr_ok)
+            missing_kw = [kw for kw in (keywords or []) if kw not in found_keywords]
+            if not missing_kw and (not expected_address or addr_ok):
+                is_success = True
+                break
+            elif not is_address_verification and found_keywords:
+                is_success = True
+                break
                 
-                # Preprocessing for Video Frames (Optimization: Handles compression artifacts/blur)
-                processed_frame = _preprocess_frame_for_ocr(frame)
-                
-                # Use even lower resolution for video frames (400px) for non-indigency fast scanning
-                h, w = processed_frame.shape[:2]
-                default_width = 400 if not is_address_verification else 520
-                width_limit = max_width or default_width
-                if w > width_limit:
-                    scale = width_limit / w
-                    processed_frame = cv2.resize(processed_frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+        if expected_address and not addr_ok:
+            fail_msg = f"Address mismatch: Region '{expected_address}' not clearly visible in video."
+            _cache_set(vid_hash, (False, fail_msg))
+            return False, fail_msg
 
-                # Try Primary Pass (PSM 3 - Sparse Text)
-                text = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config='--psm 3 --oem 3')
-                
-                # If sparse pass is weak, try block-mode pass (PSM 6 - Uniform block)
-                if allow_alt_pass and len(text.strip()) < 10:
-                    text_alt = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config='--psm 6 --oem 3')
-                    if len(text_alt.strip()) > len(text.strip()):
-                        text = text_alt
+        normalized_text = re.sub(r'\s+', ' ', all_ocr_text).strip()
 
-                text_accumulator += " " + text
-                print(f"[VIDEO OCR] Frame {idx} scanned ({len(text.strip())} chars)...", flush=True)
-
-                _, new_addr, new_kws, _ = _perform_text_matching(text_accumulator, None, None, None, None, keywords=keywords, is_indigency=is_address_verification)
-                return text_accumulator, new_kws, new_addr
-
-            is_success = False
-            for sample_idx in sample_indices:
-                all_ocr_text, found_keywords, addr_ok = process_frame(sample_idx, all_ocr_text, found_keywords, addr_ok)
-                missing_kw = [kw for kw in (keywords or []) if kw not in found_keywords]
-                if not missing_kw and (not expected_address or addr_ok):
-                    is_success = True
-                    break
-                elif not is_address_verification and found_keywords:
-                    is_success = True
-                    break
-                    
-            if expected_address and not addr_ok:
-                fail_msg = f"Address mismatch: Region '{expected_address}' not clearly visible in video."
-                _cache_set(vid_hash, (False, fail_msg))
-                return False, fail_msg
-
-            normalized_text = re.sub(r'\s+', ' ', all_ocr_text).strip()
-
-            if not is_success and not is_address_verification and len(normalized_text) >= (fallback_text_length or 20):
-                msg = f"Validated: recognizable document text detected ({len(normalized_text)} chars)"
-                _cache_set(vid_hash, (True, msg))
-                return True, msg
-
-            if not is_success:
-                fail_msg = "Required document content not detected in video."
-                _cache_set(vid_hash, (False, fail_msg))
-                return False, fail_msg
-            
-            msg = f"Validated: Found {', '.join(found_keywords)}"
-            if expected_address: msg += f" and address matched."
+        if not is_success and not is_address_verification and len(normalized_text) >= (fallback_text_length or 20):
+            msg = f"Validated: recognizable document text detected ({len(normalized_text)} chars)"
             _cache_set(vid_hash, (True, msg))
             return True, msg
-        except Exception as e:
-            print(f"[VIDEO OCR ERROR] {e}")
-            return False, f"Processing error: {str(e)}"
-        finally:
-            if 'cap' in locals() and cap is not None:
-                try: cap.release()
-                except: pass
-            if os.path.exists(tmp_path):
-                try: os.remove(tmp_path)
-                except: pass
-            clear_heavy_memory()
+
+        if not is_success:
+            fail_msg = "Required document content not detected in video."
+            _cache_set(vid_hash, (False, fail_msg))
+            return False, fail_msg
+        
+        msg = f"Validated: Found {', '.join(found_keywords)}"
+        if expected_address:
+            msg += f" and address matched."
+        _cache_set(vid_hash, (True, msg))
+        return True, msg
+    except Exception as e:
+        print(f"[VIDEO OCR ERROR] {e}")
+        return False, f"Processing error: {str(e)}"
+    finally:
+        if 'cap' in locals() and cap is not None:
+            try: cap.release()
+            except: pass
+        if os.path.exists(tmp_path):
+            try: os.remove(tmp_path)
+            except: pass
+        clear_heavy_memory()
 
 def extract_school_year_from_text(text):
     if not text: return None

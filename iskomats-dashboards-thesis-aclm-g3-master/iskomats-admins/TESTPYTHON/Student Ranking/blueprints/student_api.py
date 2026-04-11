@@ -2,6 +2,7 @@ import base64
 from collections import OrderedDict
 import eventlet.tpool
 from eventlet import GreenPool
+import hashlib
 import os
 import re
 import threading
@@ -58,6 +59,10 @@ _video_fetch_cache = OrderedDict()
 _video_fetch_cache_lock = threading.Lock()
 _VIDEO_FETCH_CACHE_SIZE_LIMIT = 24
 _VIDEO_FETCH_CACHE_TTL_SECONDS = 300
+_verification_result_cache = OrderedDict()
+_verification_result_cache_lock = threading.Lock()
+_VERIFICATION_RESULT_CACHE_SIZE_LIMIT = 128
+_VERIFICATION_RESULT_CACHE_TTL_SECONDS = 300
 PENDING_REGISTRATION_EXPIRY_WINDOW = timedelta(hours=1)
 HARD_CODED_SCHOOL_NAMES = [
     'DLSL/De La Salle Lipa',
@@ -401,6 +406,45 @@ def _get_cached_video_fetch(url):
             return None
         _video_fetch_cache.move_to_end(url)
         return cached['content'], cached['error']
+
+
+def _hash_verification_source(value):
+    if value is None:
+        return None
+    if hasattr(value, 'tobytes'):
+        value = value.tobytes()
+    elif isinstance(value, bytearray):
+        value = bytes(value)
+
+    if isinstance(value, bytes):
+        return hashlib.md5(value).hexdigest()
+
+    return str(value).strip()
+
+
+def _cache_verification_result(cache_key, payload):
+    now = time.time()
+    with _verification_result_cache_lock:
+        _verification_result_cache[cache_key] = {
+            'payload': payload,
+            'timestamp': now,
+        }
+        _verification_result_cache.move_to_end(cache_key)
+        while len(_verification_result_cache) > _VERIFICATION_RESULT_CACHE_SIZE_LIMIT:
+            _verification_result_cache.popitem(last=False)
+
+
+def _get_cached_verification_result(cache_key):
+    now = time.time()
+    with _verification_result_cache_lock:
+        cached = _verification_result_cache.get(cache_key)
+        if not cached:
+            return None
+        if now - cached['timestamp'] > _VERIFICATION_RESULT_CACHE_TTL_SECONDS:
+            _verification_result_cache.pop(cache_key, None)
+            return None
+        _verification_result_cache.move_to_end(cache_key)
+        return cached['payload']
 
 
 def prefetch_video_urls(urls, max_workers=4):
@@ -2798,6 +2842,39 @@ def ocr_check():
             except Exception as sch_err:
                 print(f"[OCR ERROR] Failed to fetch scholarship year: {sch_err}", flush=True)
 
+        verification_cache_key = json.dumps({
+            'user_no': request.user_no,
+            'target_doc': target_doc,
+            'scholarship_no': scholarship_no,
+            'first_name': first_name,
+            'middle_name': middle_name,
+            'last_name': last_name,
+            'town_city': town_city,
+            'school_name': school_name,
+            'course': course,
+            'expected_gpa': expected_gpa,
+            'expected_year_level': expected_year_level,
+            'expected_academic_year': expected_academic_year,
+            'expected_semester': expected_semester,
+            'expected_id_no': expected_id_no,
+            'id_front': _hash_verification_source(id_front_param or applicant.get('id_img_front')),
+            'id_back': _hash_verification_source(id_back_param or applicant.get('id_img_back')),
+            'indigency_doc': _hash_verification_source(indigency_doc_param or applicant.get('indigency_doc')),
+            'enrollment_doc': _hash_verification_source(enrollment_doc_param or applicant.get('enrollment_certificate_doc')),
+            'grades_doc': _hash_verification_source(grades_doc_param or applicant.get('grades_doc')),
+            'video_url': str(data.get('video_url') or '').strip(),
+            'video_url_back': str(data.get('video_url_back') or '').strip(),
+            'indigency_video': str(data.get('mayorIndigency_video') or applicant.get('indigency_vid_url') or '').strip(),
+            'enrollment_video': str(data.get('mayorCOE_video') or applicant.get('enrollment_certificate_vid_url') or '').strip(),
+            'grades_video': str(data.get('mayorGrades_video') or applicant.get('grades_vid_url') or '').strip(),
+            'school_front_video': str(data.get('schoolIdFront_video') or applicant.get('schoolid_front_vid_url') or '').strip(),
+            'school_back_video': str(data.get('schoolIdBack_video') or applicant.get('schoolid_back_vid_url') or '').strip(),
+        }, sort_keys=True)
+        cached_verification = _get_cached_verification_result(verification_cache_key)
+        if cached_verification is not None:
+            print(f"[OCR CACHE HIT] Reusing cached verification for user={request.user_no}, target={target_doc or 'all'}", flush=True)
+            return jsonify(cached_verification)
+
         def get_bytes(param, db_val):
             if isinstance(param, bytes):
                 return param
@@ -2971,43 +3048,43 @@ def ocr_check():
                     semester_label = extract_semester_from_text(raw)
                     normalized_expected_semester = normalize_semester_label(expected_semester)
                     normalized_semester_label = normalize_semester_label(semester_label)
+                    
                     year_only_ok = academic_year_matches_expected(year_label, expected_academic_year)
                     semester_ok = True
                     if normalized_expected_semester and normalized_semester_label:
                         semester_ok = normalized_expected_semester == normalized_semester_label
+                    
                     year_ok = is_current_school_year(year_label, semester_str=semester_label, expected_year=expected_academic_year, expected_semester=expected_semester)
                     school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
-                    name_ok, _ = student_name_matches_text(raw, first_name, middle_name, last_name)
+                    name_ok, name_ratio = student_name_matches_text(raw, first_name, middle_name, last_name)
                     id_ok, _ = id_number_matches_text(raw, expected_id_no)
                     year_level_ok, _ = year_level_matches_text(raw, expected_year_level)
 
-                    if v:
-                        if not name_ok:
-                            v, msg = False, "Name mismatch: Student name not detected on document"
-                        else:
-                            # Secondary details are now non-blocking warnings to avoid false-positive rejections
-                            detail_issues = []
-                            if not year_only_ok: 
-                                v, msg = False, f"Academic Year mismatch: Document found for A.Y. '{year_label}', but scholarship requires A.Y. '{expected_academic_year}'"
-                            elif not id_ok:
-                                v, msg = False, f"ID Number mismatch: Expected '{expected_id_no}' but it was not found on the enrollment document"
-                            elif not year_level_ok:
-                                v, msg = False, f"Year Level mismatch: Expected '{expected_year_level}' but it was not found on the enrollment document"
-                            else:
-                                # Remaining secondary details stay as warnings for now
-                                detail_issues = []
-                                if not semester_ok: detail_issues.append(f"Semester mismatch")
-                                if not year_ok: detail_issues.append(f"Period mismatch")
-                                if not school_ok: detail_issues.append(f"School mismatch ({school_name})")
-
-                            if detail_issues:
-                                msg = f"Verified with warnings: {', '.join(detail_issues)}"
-                            else:
-                                detail_parts = []
-                                if school_name: detail_parts.append(school_name)
-                                if expected_year_level: detail_parts.append(expected_year_level)
-                                msg = f"Verified: A.Y. {year_label}" + (f" {normalized_semester_label}" if normalized_semester_label else "") + (f" | {' | '.join(detail_parts)}" if detail_parts else "")
+                    # Build Check-list Message
+                    checklist = []
+                    checklist.append(f"Name: {'OK' if name_ok else 'X'}")
+                    checklist.append(f"Year: {'OK' if year_only_ok else 'X'}")
+                    if expected_id_no: checklist.append(f"ID: {'OK' if id_ok else 'X'}")
+                    if expected_year_level: checklist.append(f"Level: {'OK' if year_level_ok else 'X'}")
                     
+                    # Update 'v' based on core requirements
+                    v = name_ok and year_only_ok and id_ok and year_level_ok
+                    
+                    if not v:
+                        msg = f"Verification failed. Checklist: [{' | '.join(checklist)}]"
+                        if not name_ok: msg += f" (Name ratio: {name_ratio:.2f})"
+                    else:
+                        # Success msg with secondary details as warnings
+                        detail_issues = []
+                        if not semester_ok: detail_issues.append("Semester mismatch")
+                        if not year_ok: detail_issues.append("Period mismatch")
+                        if not school_ok: detail_issues.append(f"School mismatch")
+
+                        if detail_issues:
+                            msg = f"Verified with warnings: {', '.join(detail_issues)} | Checklist: [{' | '.join(checklist)}]"
+                        else:
+                            msg = f"Verified for A.Y. {year_label} | Checklist: [{' | '.join(checklist)}]"
+
                     return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'Grades':
@@ -3015,58 +3092,72 @@ def ocr_check():
                     semester_label = extract_semester_from_text(raw)
                     normalized_expected_semester = normalize_semester_label(expected_semester)
                     normalized_semester_label = normalize_semester_label(semester_label)
+                    
                     year_only_ok = academic_year_matches_expected(year_label, expected_academic_year)
                     semester_ok = True
                     if normalized_expected_semester and normalized_semester_label:
                         semester_ok = normalized_expected_semester == normalized_semester_label
+                    
                     year_ok = is_current_school_year(year_label, semester_str=semester_label, expected_year=expected_academic_year, expected_semester=expected_semester)
                     school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
-                    name_ok, _ = student_name_matches_text(raw, first_name, middle_name, last_name)
+                    name_ok, name_ratio = student_name_matches_text(raw, first_name, middle_name, last_name)
                     year_level_ok, _ = year_level_matches_text(raw, expected_year_level)
                     gpa_ok, matched_gpa = gpa_matches_text(raw, expected_gpa)
 
-                    if v:
-                        if not name_ok:
-                            v, msg = False, "Full name mismatch: Name not found on grade report"
-                        else:
-                            # Secondary details are non-blocking warnings
-                            detail_issues = []
-                            if not year_only_ok:
-                                v, msg = False, f"Academic Year mismatch: Grade report/TOR found for A.Y. '{year_label}', but scholarship requires A.Y. '{expected_academic_year}'"
-                            elif not year_level_ok:
-                                v, msg = False, f"Year Level mismatch: Expected '{expected_year_level}' but it was not found on the grade report"
-                            elif not gpa_ok:
-                                v, msg = False, f"GPA mismatch: Expected minimum {expected_gpa} but a different value was detected"
-                            else:
-                                # Remaining secondary details stay as warnings
-                                detail_issues = []
-                                if not semester_ok: detail_issues.append(f"Semester mismatch")
-                                if not year_ok: detail_issues.append(f"Period mismatch")
-                                if not school_ok: detail_issues.append(f"School mismatch ({school_name})")
+                    # Build Check-list
+                    checklist = []
+                    checklist.append(f"Name: {'OK' if name_ok else 'X'}")
+                    checklist.append(f"Year: {'OK' if year_only_ok else 'X'}")
+                    if expected_year_level: checklist.append(f"Level: {'OK' if year_level_ok else 'X'}")
+                    if expected_gpa: checklist.append(f"GPA: {'OK' if gpa_ok else 'X'}")
 
-                            if detail_issues:
-                                msg = f"Verified with warnings: {', '.join(detail_issues)}"
-                            else:
-                                detail_parts = []
-                                if school_name: detail_parts.append(school_name)
-                                if expected_year_level: detail_parts.append(expected_year_level)
-                                if matched_gpa is not None: detail_parts.append(f"GPA {matched_gpa}")
-                                msg = f"Verified: A.Y. {year_label}" + (f" {normalized_semester_label}" if normalized_semester_label else "") + (f" | {' | '.join(detail_parts)}" if detail_parts else "")
-                    
+                    v = name_ok and year_only_ok and year_level_ok and gpa_ok
+
+                    if not v:
+                        msg = f"Verification failed. Checklist: [{' | '.join(checklist)}]"
+                        if not name_ok: msg += f" (Name ratio: {name_ratio:.2f})"
+                    else:
+                        detail_issues = []
+                        if not semester_ok: detail_issues.append("Semester mismatch")
+                        if not year_ok: detail_issues.append("Period mismatch")
+                        if not school_ok: detail_issues.append(f"School mismatch")
+
+                        if detail_issues:
+                            msg = f"Verified with warnings: {', '.join(detail_issues)} | Checklist: [{' | '.join(checklist)}]"
+                        else:
+                            msg = f"Verified Grade Report | Checklist: [{' | '.join(checklist)}]"
+
                     return {'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'Indigency':
+                    checklist = [f"Name: {'OK' if v else 'X'}"]
+                    if target_address:
+                        # Re-run address check specifically to verify for checklist
+                        _, addr_ok, _, _ = _perform_text_matching(raw, None, None, None, target_address, is_indigency=True)
+                        checklist.append(f"Address: {'OK' if addr_ok else 'X'}")
+                        v = v and addr_ok
+                        
+                    msg = f"{'Verified' if v else 'Verification failed'}. Checklist: [{' | '.join(checklist)}]"
                     return {'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'SchoolID':
                     # For physical ID cards, we completely skip year level checks
                     # as they are rarely printed on the card face.
                     id_ok, _ = id_number_matches_text(raw, expected_id_no)
-
-                    if v and not id_ok:
-                        v, msg = False, f"School ID number mismatch ({expected_id_no or 'None'})"
-                    elif v:
-                        msg = "School ID front verified against name and ID number"
+                    name_ok, name_ratio = student_name_matches_text(raw, first_name, middle_name, last_name)
+                    
+                    # Build checklist
+                    checklist = [
+                        f"Name: {'OK' if name_ok else 'X'}",
+                        f"ID: {'OK' if id_ok else 'X'}"
+                    ]
+                    
+                    v = name_ok and id_ok
+                    if v:
+                        msg = f"School ID verified | Checklist: [{' | '.join(checklist)}]"
+                    else:
+                        msg = f"Verification failed. Checklist: [{' | '.join(checklist)}]"
+                        if not name_ok: msg += f" (Name ratio: {name_ratio:.2f})"
 
                     return {'doc': 'Identity Front', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
@@ -3074,12 +3165,14 @@ def ocr_check():
                     year_label = extract_school_year_from_text(raw)
                     year_ok = academic_year_matches_latest_expected(year_label, expected_academic_year)
 
-                    if v and not year_label:
-                        v, msg = False, "Academic year was not detected on the school ID back"
-                    elif v and expected_academic_year and not year_ok:
-                        v, msg = False, f"Academic Year mismatch: School ID back found A.Y. '{year_label}', but scholarship requires A.Y. '{expected_academic_year}'"
-                    elif v:
-                        msg = f"School ID back verified for A.Y. {year_label}"
+                    v = bool(v and year_label and year_ok)
+                    checklist = [f"Year: {'OK' if year_ok else 'X'}"]
+                    
+                    if v:
+                        msg = f"School ID back verified | Checklist: [{' | '.join(checklist)}]"
+                    else:
+                        msg = f"Verification failed. Checklist: [{' | '.join(checklist)}]"
+                        if not year_label: msg += " (Year not detected)"
                         
                     return {'doc': 'Identity Back', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
@@ -3142,7 +3235,9 @@ def ocr_check():
             return jsonify({'verified': False, 'message': 'No documents provided for verification'}), 400
 
         final_msg = " | ".join([f"{r['doc']}: {r['message']}" for r in results])
-        return jsonify({'verified': overall_verified, 'message': final_msg, 'results': results})
+        response_payload = {'verified': overall_verified, 'message': final_msg, 'results': results}
+        _cache_verification_result(verification_cache_key, response_payload)
+        return jsonify(response_payload)
 
     except Exception as e:
         traceback.print_exc()
