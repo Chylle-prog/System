@@ -366,7 +366,7 @@ def _get_cached_video_fetch(url):
         return cached['content'], cached['error']
 
 
-def prefetch_video_urls(urls, max_workers=3):
+def prefetch_video_urls(urls, max_workers=4):
     unique_urls = []
     seen = set()
     for url in urls:
@@ -2659,6 +2659,8 @@ def ocr_check():
             data = request.json
         else:
             data = request.form.to_dict()
+        
+        target_doc = data.get('target_doc')
 
         # 1. Get applicant record from DB
         conn = get_db()
@@ -2685,22 +2687,29 @@ def ocr_check():
         if document_values:
             applicant.update(document_values)
 
-        prefetch_video_urls([
+        urls_to_prefetch = [
             data.get('video_url'),
             data.get('video_url_back'),
-            data.get('mayorIndigency_video'),
-            data.get('mayorGrades_video'),
-            data.get('mayorCOE_video'),
-            data.get('schoolIdFront_video'),
-            data.get('schoolIdBack_video'),
             data.get('face_video'),
-            applicant.get('indigency_vid_url'),
-            applicant.get('enrollment_certificate_vid_url'),
-            applicant.get('grades_vid_url'),
-            applicant.get('schoolid_front_vid_url'),
-            applicant.get('schoolid_back_vid_url'),
-            applicant.get('id_vid_url'),
-        ])
+            applicant.get('id_vid_url')
+        ]
+
+        if not target_doc or target_doc == 'Indigency':
+            urls_to_prefetch.extend([data.get('mayorIndigency_video'), applicant.get('indigency_vid_url')])
+        
+        if not target_doc or target_doc == 'Enrollment':
+            urls_to_prefetch.extend([data.get('mayorCOE_video'), applicant.get('enrollment_certificate_vid_url')])
+            
+        if not target_doc or target_doc == 'Grades':
+            urls_to_prefetch.extend([data.get('mayorGrades_video'), applicant.get('grades_vid_url')])
+
+        if not target_doc or target_doc == 'SchoolID':
+            urls_to_prefetch.extend([
+                data.get('schoolIdFront_video'), data.get('schoolIdBack_video'),
+                applicant.get('schoolid_front_vid_url'), applicant.get('schoolid_back_vid_url')
+            ])
+
+        prefetch_video_urls(urls_to_prefetch)
 
         if not applicant:
             return jsonify({'verified': False, 'message': 'Applicant profile not found'}), 404

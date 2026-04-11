@@ -26,8 +26,8 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 cv2.setNumThreads(1) # Crucial: prevents OpenCV from spawning ghost threads that kill RAM
 
-# Global OCR Concurrency Control: Set to 2 to allow parallel multi-part verification (e.g., ID Front/Back)
-OCR_SEMAPHORE = eventlet.semaphore.Semaphore(2)
+# Global OCR Concurrency Control: Set to 3 to allow parallel multi-part verification (e.g., ID Front/Back + Indigency)
+OCR_SEMAPHORE = eventlet.semaphore.Semaphore(3)
 
 
 # ─── Environment hints for threading & memory ──────────────────────────────────
@@ -196,7 +196,8 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     
     # Pass 1: Raw Grayscale (Best for modern LSTM Tesseract, handles white-on-black perfectly)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
-    text1 = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 3')
+    # Use eventlet.tpool to prevent Tesseract (blocking C call) from freezing the green thread pool
+    text1 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 3')
     if text1.strip():
         results.append(text1.strip())
         # OPTIMIZATION: If Pass 1 is even slightly successful (20+ chars), skip Pass 2 to save time
@@ -208,7 +209,7 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
         try:
             gray_clahe = _CLAHE.apply(gray)
             binary = cv2.adaptiveThreshold(gray_clahe, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 10)
-            text2 = pytesseract.image_to_string(binary, config=f'--psm {psm}')
+            text2 = eventlet.tpool.execute(pytesseract.image_to_string, binary, config=f'--psm {psm}')
             if text2.strip() and text2.strip() not in results:
                 results.append(text2.strip())
         except:
@@ -219,7 +220,7 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
         for strat_fn in strategies:
             try:
                 processed = strat_fn(img)
-                txt = pytesseract.image_to_string(processed, config=f'--psm {psm}')
+                txt = eventlet.tpool.execute(pytesseract.image_to_string, processed, config=f'--psm {psm}')
                 if txt.strip(): results.append(txt.strip())
             except Exception as e:
                 print(f"[OCR] Strategy error: {e}", flush=True)
@@ -640,19 +641,19 @@ def verify_video_content(video_bytes, keywords, expected_address=None, sample_po
                 # Preprocessing for Video Frames (Optimization: Handles compression artifacts/blur)
                 processed_frame = _preprocess_frame_for_ocr(frame)
                 
-                # Use lower resolution for video frames (640px) to speed up Tesseract
+                # Use lower resolution for video frames (520px) to speed up Tesseract significantly
                 h, w = processed_frame.shape[:2]
-                width_limit = max_width or 640 
+                width_limit = max_width or 520 
                 if w > width_limit:
                     scale = width_limit / w
                     processed_frame = cv2.resize(processed_frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
 
                 # Try Primary Pass (PSM 3 - Sparse Text)
-                text = pytesseract.image_to_string(processed_frame, config='--psm 3 --oem 1')
+                text = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config='--psm 3 --oem 3')
                 
                 # If sparse pass is weak, try block-mode pass (PSM 6 - Uniform block)
                 if allow_alt_pass and len(text.strip()) < 10:
-                    text_alt = pytesseract.image_to_string(processed_frame, config='--psm 6 --oem 1')
+                    text_alt = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config='--psm 6 --oem 3')
                     if len(text_alt.strip()) > len(text.strip()):
                         text = text_alt
 
