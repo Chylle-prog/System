@@ -3030,9 +3030,9 @@ def ocr_check():
                 }
                 video_scan_options = {
                     'Indigency': {
-                        'sample_positions': [0.35, 0.7],
-                        'max_width': 560,
-                        'allow_alt_pass': True,
+                        'sample_positions': [0.5],
+                        'max_width': 420,
+                        'allow_alt_pass': False,
                         'fallback_text_length': 0,
                     },
                     'Enrollment': {
