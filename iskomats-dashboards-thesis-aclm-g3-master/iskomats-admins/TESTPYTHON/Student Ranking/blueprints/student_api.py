@@ -525,6 +525,48 @@ def fetch_video_bytes_from_url(url):
         return None, error_message
 
 
+def verify_video_reference(url):
+    if not url:
+        return False, "Mandatory supporting video is missing"
+    if not isinstance(url, str) or not url.startswith('http'):
+        return False, f"Invalid URL: {url}"
+
+    normalized_url = url.strip()
+    cached = _get_cached_video_fetch(normalized_url)
+    if cached is not None:
+        content, error = cached
+        if content is not None:
+            return True, "Supporting video linked"
+        if error:
+            return False, f"Video reference unavailable ({error})"
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ISKOMATS-Verification-Bot/1.0'
+    }
+    url_to_fetch = normalized_url
+    supabase_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
+    if supabase_key and 'supabase.co' in normalized_url:
+        if '/object/public/' in normalized_url:
+            url_to_fetch = normalized_url.replace('/object/public/', '/object/authenticated/')
+        headers['apikey'] = supabase_key
+        headers['Authorization'] = f"Bearer {supabase_key}"
+
+    try:
+        response = requests.head(url_to_fetch, headers=headers, timeout=5, allow_redirects=True)
+        status_code = response.status_code
+        if status_code == 405:
+            response = requests.get(url_to_fetch, headers={**headers, 'Range': 'bytes=0-0'}, timeout=5, stream=True)
+            status_code = response.status_code
+
+        if 200 <= status_code < 400 or status_code == 206:
+            return True, "Supporting video linked"
+        return False, f"Video reference unavailable (HTTP {status_code})"
+    except requests.exceptions.Timeout:
+        return False, "Video reference timeout"
+    except Exception as e:
+        return False, str(e)
+
+
 def is_trusted_storage_url(url):
     if not isinstance(url, str):
         return False
@@ -2803,12 +2845,6 @@ def ocr_check():
         if not target_doc or target_doc == 'Grades':
             urls_to_prefetch.extend([data.get('mayorGrades_video'), applicant.get('grades_vid_url')])
 
-        if not target_doc or target_doc == 'SchoolID':
-            urls_to_prefetch.extend([
-                data.get('schoolIdFront_video'), data.get('schoolIdBack_video'),
-                applicant.get('schoolid_front_vid_url'), applicant.get('schoolid_back_vid_url')
-            ])
-
         prefetch_video_urls(urls_to_prefetch)
 
         if not applicant:
@@ -3009,21 +3045,24 @@ def ocr_check():
                 # 1.a Video Content Verification (if URL present)
                 v_video, msg_video = True, "Not provided"
                 if vid_url:
-                    vid_bytes, fetch_err = fetch_video_bytes_from_url(vid_url)
-                    if vid_bytes:
-                        scan_options = video_scan_options.get(doc_type, video_scan_options['Enrollment'])
-                        v_video, msg_video = verify_video_content(
-                            video_bytes=vid_bytes,
-                            keywords=video_keywords_map.get(doc_type),
-                            expected_address=None,
-                            sample_positions=scan_options['sample_positions'],
-                            max_width=scan_options['max_width'],
-                            allow_alt_pass=scan_options['allow_alt_pass'],
-                            fallback_text_length=scan_options['fallback_text_length']
-                        )
+                    if doc_type in ['SchoolID', 'SchoolIDBack']:
+                        v_video, msg_video = verify_video_reference(vid_url)
                     else:
-                        msg_video = f"Video file unreachable ({fetch_err})"
-                        v_video = False
+                        vid_bytes, fetch_err = fetch_video_bytes_from_url(vid_url)
+                        if vid_bytes:
+                            scan_options = video_scan_options.get(doc_type, video_scan_options['Enrollment'])
+                            v_video, msg_video = verify_video_content(
+                                video_bytes=vid_bytes,
+                                keywords=video_keywords_map.get(doc_type),
+                                expected_address=None,
+                                sample_positions=scan_options['sample_positions'],
+                                max_width=scan_options['max_width'],
+                                allow_alt_pass=scan_options['allow_alt_pass'],
+                                fallback_text_length=scan_options['fallback_text_length']
+                            )
+                        else:
+                            msg_video = f"Video file unreachable ({fetch_err})"
+                            v_video = False
                 else:
                     # Video is now mandatory for these specific documents
                     if doc_type in ['Indigency', 'Enrollment', 'Grades', 'SchoolID', 'SchoolIDBack']:

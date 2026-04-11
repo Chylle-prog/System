@@ -33,7 +33,15 @@ const resolveVideoUploadExtension = (file) => {
 
 const shouldDirectUploadVideo = (file) => {
   const ext = resolveVideoUploadExtension(file);
-  return ext === '.mp4' || ext === '.webm';
+  const mimeType = String(file?.type || '').toLowerCase();
+  
+  // Allow direct upload for common web formats and iPhone MOV files
+  return ext === '.mp4' || 
+         ext === '.webm' || 
+         ext === '.mov' || 
+         mimeType.includes('quicktime') ||
+         mimeType.includes('video/mp4') ||
+         mimeType.includes('video/webm');
 };
 
 const uploadRequirementVideoDirect = async (fieldName, file) => {

@@ -1000,9 +1000,9 @@ const StudentInfo = () => {
         { front: frontVideoUrl, back: backVideoUrl }
       );
       if (success) {
-        showPromptMessage('✅ School ID verified successfully!');
+        showPromptMessage('✅ Front & Back ID verified successfully!');
       } else {
-        showPromptMessage('❌ School ID verification failed.');
+        showPromptMessage('❌ Front & Back ID verification failed.');
       }
     } catch (err) {
       console.error('Scan Error:', err);
@@ -1144,7 +1144,7 @@ const StudentInfo = () => {
     googleFontsSheet.href = 'https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap';
     document.head.appendChild(googleFontsSheet);
 
-    const compressImage = (file, maxWidth = 800, quality = 0.6) => {
+    const compressImage = (file, maxWidth = 1200, quality = 0.7) => {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
@@ -1819,7 +1819,7 @@ const StudentInfo = () => {
 
     if (currentStep === 3) {
       if (!schoolIdPhotos.front || !schoolIdPhotos.back) {
-        showPromptMessage('⚠️ Please upload both front and back of your School ID.');
+        showPromptMessage('⚠️ Please upload both Front and Back of your ID.');
         return;
       }
       if (!photos.mayorCOE_photo && !formData.mayorCOE_photo) {
@@ -1831,7 +1831,7 @@ const StudentInfo = () => {
         return;
       }
       if (idVerified !== 'success') {
-        showPromptMessage('⚠️ Please verify your School ID before proceeding to the next step.');
+        showPromptMessage('⚠️ Please verify your Front & Back ID before proceeding to the next step.');
         return;
       }
       if (coeVerified !== 'success') {
@@ -3218,13 +3218,10 @@ const StudentInfo = () => {
               <div className="requirement-card">
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
                   <div>
-                    <h4 style={{fontSize: '1.15rem', color: '#1a202c', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px'}}>
-                      <div style={{width: '36px', height: '36px', background: 'var(--accent-soft)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                        <i className="fas fa-id-card" style={{color: 'var(--primary)', fontSize: '1.1rem'}}></i>
-                      </div>
-                      Updated School ID <span style={{color: '#e74c3c'}}>*</span>
-                    </h4>
-                    <p style={{fontSize: '0.85rem', color: '#64748b', marginTop: '6px', marginLeft: '46px'}}>Current academic year ID for identity verification</p>
+                    <div className="step-subtitle">
+                      Identity Verification (ID) <span style={{color: '#e74c3c'}}>*</span>
+                    </div>
+                    <p style={{fontSize: '0.85rem', color: '#64748b', marginTop: '6px'}}>Current academic year ID for identity verification</p>
                   </div>
                   {(schoolIdPhotos.front || schoolIdPhotos.back) && (
                     <div style={{display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0'}}>
@@ -3238,12 +3235,13 @@ const StudentInfo = () => {
                   <div className="preview-box" style={{background: '#fff', borderStyle: 'solid'}}>
                     <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', paddingBottom: '0.8rem', borderBottom: '1px solid #f1f5f9'}}>
                       <h5 style={{margin: 0, fontSize: '0.95rem', fontWeight: '800', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px'}}>
-                        <i className="fas fa-id-card"></i> Front Side Details
+                        <i className="fas fa-id-card"></i> Front ID
                       </h5>
                       <div style={{fontSize: '0.65rem', color: '#3b82f6', fontWeight: '800', background: '#eff6ff', padding: '3px 8px', borderRadius: '6px', border: '1px solid #bfdbfe'}}>REQUIRED</div>
                     </div>
 
                     {renderDocumentMediaPicker({
+                      photoLabel: 'Front ID',
                       photoId: 'school_id_front_photo',
                       photoValue: schoolIdPhotos.front || userProfile?.id_img_front,
                       onPhotoChange: (e) => handleSchoolIdPhotoUpload('front', e),
@@ -3294,7 +3292,7 @@ const StudentInfo = () => {
                   <div className="preview-box" style={{background: '#fff', borderStyle: 'solid'}}>
                     <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', paddingBottom: '0.8rem', borderBottom: '1px solid #f1f5f9'}}>
                       <h5 style={{margin: 0, fontSize: '0.95rem', fontWeight: '800', color: '#9a3412', display: 'flex', alignItems: 'center', gap: '8px'}}>
-                        <i className="fas fa-id-card"></i> Back Side Details
+                        <i className="fas fa-id-card"></i> Back ID
                       </h5>
                       <div style={{fontSize: '0.65rem', color: '#d97706', fontWeight: '800', background: '#fffbeb', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fef3c7'}}>REQUIRED</div>
                     </div>
@@ -3374,7 +3372,7 @@ const StudentInfo = () => {
                     }}
                   >
                     <i className={`fas ${idVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-bolt-lightning'}`}></i>
-                    {idVerified === 'verifying' ? 'AI Analyzing Both ID Sides...' : (idVerified === 'success' ? 'Identity Verified Successfully' : 'Start Instant Multi-Side Scan')}
+                    {idVerified === 'verifying' ? 'AI Analyzing Front & Back ID...' : (idVerified === 'success' ? 'Identity Verified Successfully' : 'Start Front & Back ID Scan')}
                   </button>
 
                   {idVerified === 'verifying' && (
@@ -3799,7 +3797,7 @@ const StudentInfo = () => {
                   <div style={{background: '#fff', padding: '1.2rem', borderRadius: '20px', border: '1px solid #e1e8f0', boxShadow: '0 4px 15px rgba(0,0,0,0.03)'}}>
                     <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
                       <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#1a202c'}}>REFERENCE SOURCE</label>
-                      <div style={{fontSize: '0.65rem', color: '#6366f1', fontWeight: '800', background: '#eef2ff', padding: '3px 8px', borderRadius: '6px'}}>SCHOOL ID FRONT</div>
+                      <div style={{fontSize: '0.65rem', color: '#6366f1', fontWeight: '800', background: '#eef2ff', padding: '3px 8px', borderRadius: '6px'}}>FRONT ID</div>
                     </div>
                     <div style={{height: '240px', border: '2px dashed #cbd5e1', borderRadius: '15px', overflow: 'hidden', background: '#f8fafc', position: 'relative'}}>
                       {(schoolIdPhotos.front || userProfile?.id_img_front) ? (

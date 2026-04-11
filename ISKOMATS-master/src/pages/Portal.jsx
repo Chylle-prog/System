@@ -2680,6 +2680,50 @@ const Portal = () => {
                       <p style={{marginBottom: '1rem', color: 'var(--text-soft)', fontSize: '0.95rem', lineHeight: '1.6', display: '-webkit-box', WebkitLineClamp: '3', WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
                         {ann.ann_message}
                       </p>
+
+                      {/* Compact Image Preview for the List Card */}
+                      {ann.announcementImages?.length > 0 && (
+                        <div style={{
+                          display: 'flex', 
+                          gap: '8px', 
+                          overflowX: 'auto', 
+                          paddingBottom: '0.8rem', 
+                          marginBottom: '0.8rem',
+                          scrollbarWidth: 'none',
+                          msOverflowStyle: 'none'
+                        }} className="hide-scrollbar">
+                          {ann.announcementImages.map((image, i) => {
+                            const imageSrc = ensureAbsoluteUrl(typeof image === 'string' ? image : image?.url);
+                            if (!imageSrc) return null;
+                            const imageAlt = `Image ${i+1} of ${ann.ann_title || 'Announcement'}`;
+
+                            return (
+                              <img 
+                                key={i}
+                                src={imageSrc}
+                                alt={imageAlt}
+                                onClick={(e) => {
+                                  e.stopPropagation(); // Don't trigger the card's openAnnouncement
+                                  openAnnouncementImage(imageSrc, imageAlt);
+                                }}
+                                style={{
+                                  height: '80px',
+                                  width: 'auto',
+                                  maxWidth: '120px',
+                                  borderRadius: '8px',
+                                  objectFit: 'cover',
+                                  cursor: 'zoom-in',
+                                  border: '1px solid var(--border-light)',
+                                  transition: 'transform 0.2s',
+                                  backgroundColor: '#f8f9fa'
+                                }}
+                                onMouseEnter={(e) => e.target.style.transform = 'scale(1.05)'}
+                                onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
+                              />
+                            );
+                          })}
+                        </div>
+                      )}
                       <button 
                         onClick={() => openAnnouncement(ann)}
                         style={{
