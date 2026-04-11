@@ -1,8 +1,10 @@
 import base64
+from collections import OrderedDict
 import eventlet.tpool
 from eventlet import GreenPool
 import os
 import re
+import threading
 import time
 import traceback
 import json
@@ -51,6 +53,11 @@ bcrypt = Bcrypt()
 SECRET_KEY = get_secret_key()
 
 _announcement_image_columns = None
+_applicant_status_created_at_checked = False
+_video_fetch_cache = OrderedDict()
+_video_fetch_cache_lock = threading.Lock()
+_VIDEO_FETCH_CACHE_SIZE_LIMIT = 24
+_VIDEO_FETCH_CACHE_TTL_SECONDS = 300
 HARD_CODED_SCHOOL_NAMES = [
     'DLSL/De La Salle Lipa',
     'NU/National University Lipa',
@@ -272,19 +279,103 @@ def get_announcement_image_columns(cursor):
     _announcement_image_columns = (primary_key_column, foreign_key_column)
     return _announcement_image_columns
 
+
+def ensure_applicant_status_created_at_column(cursor):
+    global _applicant_status_created_at_checked
+
+    if _applicant_status_created_at_checked:
+        return
+
+    cursor.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name='applicant_status' AND column_name='created_at'
+            ) THEN
+                ALTER TABLE applicant_status
+                ADD COLUMN created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+            END IF;
+        END $$;
+        """
+    )
+    _applicant_status_created_at_checked = True
+
+
+def _cache_video_fetch(url, content, error):
+    now = time.time()
+    with _video_fetch_cache_lock:
+        _video_fetch_cache[url] = {
+            'content': content,
+            'error': error,
+            'timestamp': now,
+        }
+        _video_fetch_cache.move_to_end(url)
+        while len(_video_fetch_cache) > _VIDEO_FETCH_CACHE_SIZE_LIMIT:
+            _video_fetch_cache.popitem(last=False)
+
+
+def _get_cached_video_fetch(url):
+    now = time.time()
+    with _video_fetch_cache_lock:
+        cached = _video_fetch_cache.get(url)
+        if not cached:
+            return None
+        if now - cached['timestamp'] > _VIDEO_FETCH_CACHE_TTL_SECONDS:
+            _video_fetch_cache.pop(url, None)
+            return None
+        _video_fetch_cache.move_to_end(url)
+        return cached['content'], cached['error']
+
+
+def prefetch_video_urls(urls, max_workers=3):
+    unique_urls = []
+    seen = set()
+    for url in urls:
+        if not isinstance(url, str):
+            continue
+        normalized = url.strip()
+        if not normalized or not normalized.startswith('http'):
+            continue
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        unique_urls.append(normalized)
+
+    if not unique_urls:
+        return
+
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(unique_urls))) as executor:
+        futures = [executor.submit(fetch_video_bytes_from_url, url) for url in unique_urls]
+        for future in futures:
+            try:
+                future.result()
+            except Exception:
+                pass
+
 def fetch_video_bytes_from_url(url):
     if not url: return None, "No URL provided"
     if not isinstance(url, str) or not url.startswith('http'):
         return None, f"Invalid URL: {url}"
+
+    normalized_url = url.strip()
+    cached = _get_cached_video_fetch(normalized_url)
+    if cached is not None:
+        content, error = cached
+        if content is not None:
+            print(f"[VIDEO FETCH CACHE] Reusing {len(content)} bytes for: {normalized_url}", flush=True)
+        return content, error
         
     try:
-        print(f"[VIDEO FETCH] Fetching video from: {url}", flush=True)
+        print(f"[VIDEO FETCH] Fetching video from: {normalized_url}", flush=True)
         # Use requests with a reasonable timeout and user-agent
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ISKOMATS-Verification-Bot/1.0'
         }
         
-        url_to_fetch = url
+        url_to_fetch = normalized_url
         # If it's a Supabase URL, try to use the Service Role Key for authentication
         # (This allows fetching from private buckets)
         supabase_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -301,15 +392,20 @@ def fetch_video_bytes_from_url(url):
         if response.status_code == 200:
             content = response.content
             print(f"[VIDEO FETCH] Successfully fetched {len(content)} bytes", flush=True)
+            _cache_video_fetch(normalized_url, content, None)
             return content, None
         else:
             err_msg = f"HTTP {response.status_code}"
             print(f"[VIDEO FETCH] {err_msg} for {url_to_fetch}", flush=True)
+            _cache_video_fetch(normalized_url, None, err_msg)
             return None, err_msg
     except requests.exceptions.Timeout:
+        _cache_video_fetch(normalized_url, None, "Connection timeout")
         return None, "Connection timeout"
     except Exception as e:
-        return None, str(e)
+        error_message = str(e)
+        _cache_video_fetch(normalized_url, None, error_message)
+        return None, error_message
 
 
 def is_trusted_storage_url(url):
@@ -1923,16 +2019,8 @@ def submit_application():
         cur = conn.cursor()
         has_profile_picture_column = applicant_has_column(cur, 'profile_picture')
         
-        # Migration: Ensure created_at column exists in applicant_status
-        cur.execute("""
-            DO $$ 
-            BEGIN 
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                             WHERE table_name='applicant_status' AND column_name='created_at') THEN 
-                    ALTER TABLE applicant_status ADD COLUMN created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
-                END IF;
-            END $$;
-        """)
+        # Ensure the created_at support column exists only once per process.
+        ensure_applicant_status_created_at_column(cur)
         conn.commit()
         
         # Get applicant data
@@ -1961,6 +2049,21 @@ def submit_application():
         )
         if document_values:
             applicant.update(document_values)
+
+        prefetch_video_urls([
+            form_data.get('mayorIndigency_video'),
+            form_data.get('mayorGrades_video'),
+            form_data.get('mayorCOE_video'),
+            form_data.get('schoolIdFront_video'),
+            form_data.get('schoolIdBack_video'),
+            form_data.get('face_video'),
+            applicant.get('indigency_vid_url'),
+            applicant.get('grades_vid_url'),
+            applicant.get('enrollment_certificate_vid_url'),
+            applicant.get('schoolid_front_vid_url'),
+            applicant.get('schoolid_back_vid_url'),
+            applicant.get('id_vid_url'),
+        ])
 
         # In this system, req_no (passed from frontend) is the primary scholarship identifier
         scholarship_id = req_no
@@ -2212,6 +2315,23 @@ def ocr_check():
         )
         if document_values:
             applicant.update(document_values)
+
+        prefetch_video_urls([
+            data.get('video_url'),
+            data.get('video_url_back'),
+            data.get('mayorIndigency_video'),
+            data.get('mayorGrades_video'),
+            data.get('mayorCOE_video'),
+            data.get('schoolIdFront_video'),
+            data.get('schoolIdBack_video'),
+            data.get('face_video'),
+            applicant.get('indigency_vid_url'),
+            applicant.get('enrollment_certificate_vid_url'),
+            applicant.get('grades_vid_url'),
+            applicant.get('schoolid_front_vid_url'),
+            applicant.get('schoolid_back_vid_url'),
+            applicant.get('id_vid_url'),
+        ])
 
         if not applicant:
             return jsonify({'verified': False, 'message': 'Applicant profile not found'}), 404
