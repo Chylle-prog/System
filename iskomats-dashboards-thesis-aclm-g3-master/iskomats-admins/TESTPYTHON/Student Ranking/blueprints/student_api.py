@@ -3033,20 +3033,20 @@ def signature_match():
         matcher_reference = None
         
         if sub_img is not None:
-             _, buffer = cv2.imencode('.png', sub_img)
-             processed_submitted = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+            _, buffer = cv2.imencode('.png', sub_img)
+            processed_submitted = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
              
         if ext_img is not None:
-             _, buffer = cv2.imencode('.png', ext_img)
-             extracted_signature = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+            _, buffer = cv2.imencode('.png', ext_img)
+            extracted_signature = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
 
-           if matcher_sub_img is not None:
-              _, buffer = cv2.imencode('.png', matcher_sub_img)
-              matcher_submitted = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+        if matcher_sub_img is not None:
+            _, buffer = cv2.imencode('.png', matcher_sub_img)
+            matcher_submitted = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
 
-           if matcher_ref_img is not None:
-              _, buffer = cv2.imencode('.png', matcher_ref_img)
-              matcher_reference = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+        if matcher_ref_img is not None:
+            _, buffer = cv2.imencode('.png', matcher_ref_img)
+            matcher_reference = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
         
         # Ensure all values are native Python types (not numpy types)
         return jsonify({
@@ -3054,9 +3054,9 @@ def signature_match():
             'message': str(message),
             'confidence': float(confidence),
             'processed_submitted': processed_submitted,
-              'extracted_signature': extracted_signature,
-              'matcher_submitted': matcher_submitted,
-              'matcher_reference': matcher_reference
+            'extracted_signature': extracted_signature,
+            'matcher_submitted': matcher_submitted,
+            'matcher_reference': matcher_reference
         })
     except Exception as e:
         print(f"[SIGNATURE-MATCH] Error: {str(e)}", flush=True)

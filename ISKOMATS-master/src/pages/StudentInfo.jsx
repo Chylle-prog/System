@@ -3205,7 +3205,8 @@ const StudentInfo = () => {
               </div>
 
               {/* Documentary Requirements: COE and Grades */}
-              <div style={{marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.2rem'}}>
+              {idVerified === 'success' ? (
+                <div style={{marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.2rem'}}>
                 <div className="requirement-card">
                   <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
                     <div>
@@ -3429,7 +3430,29 @@ const StudentInfo = () => {
                     )}
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div style={{
+                  marginTop: '1.5rem', 
+                  padding: '2.5rem 1.5rem', 
+                  background: '#f8fafc', 
+                  borderRadius: '28px', 
+                  border: '1.5px dashed #e2e8f0',
+                  textAlign: 'center',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '12px',
+                  animation: 'fadeIn 0.5s ease'
+                }}>
+                  <div style={{width: '64px', height: '64px', background: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px rgba(0,0,0,0.04)', marginBottom: '4px'}}>
+                    <i className="fas fa-file-shield" style={{color: '#94a3b8', fontSize: '1.4rem'}}></i>
+                  </div>
+                  <h4 style={{fontSize: '1.1rem', color: '#334155', fontWeight: '800', margin: 0}}>Document Uploads Locked</h4>
+                  <p style={{fontSize: '0.85rem', color: '#64748b', maxWidth: '320px', margin: 0, lineHeight: '1.5'}}>
+                    Please complete the <b>Updated School ID verification</b> above first. Once verified, the COE and Academic Grades sections will automatically appear.
+                  </p>
+                </div>
+              )}
 
               <div style={{marginTop: '2rem', display: 'flex', justifyContent: 'space-between'}}>
                 <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>

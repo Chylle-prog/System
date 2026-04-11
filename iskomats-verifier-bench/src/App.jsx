@@ -428,6 +428,36 @@ const App = () => {
           </div>
         </div>
 
+        <div className="bg-slate-900/80 p-5 rounded-xl border border-slate-800 shadow-inner">
+          <h4 className="text-xs font-bold text-emerald-300 uppercase tracking-widest mb-4 flex items-center gap-2">
+            <Info className="w-4 h-4" /> What The Matcher Sees
+          </h4>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="text-center space-y-2">
+              <p className="text-[10px] text-slate-500 uppercase font-bold">ID Signature Used For Matching</p>
+              <div className="aspect-square bg-white rounded-lg border-2 border-emerald-500/30 flex items-center justify-center overflow-hidden p-2">
+                {data.matcher_reference ? (
+                  <img src={data.matcher_reference} alt="Matcher reference signature" className="max-w-full max-h-full object-contain" />
+                ) : (
+                  <span className="text-xs text-slate-400 font-mono italic">No Matcher View</span>
+                )}
+              </div>
+            </div>
+
+            <div className="text-center space-y-2">
+              <p className="text-[10px] text-slate-500 uppercase font-bold">Submitted Signature Used For Matching</p>
+              <div className="aspect-square bg-white rounded-lg border-2 border-emerald-500/30 flex items-center justify-center overflow-hidden p-2">
+                {data.matcher_submitted ? (
+                  <img src={data.matcher_submitted} alt="Matcher submitted signature" className="max-w-full max-h-full object-contain" />
+                ) : (
+                  <span className="text-xs text-slate-400 font-mono italic">No Matcher View</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className={`p-4 rounded-xl border flex gap-3 ${
           isMatch ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-rose-500/5 border-rose-500/20'
         }`}>

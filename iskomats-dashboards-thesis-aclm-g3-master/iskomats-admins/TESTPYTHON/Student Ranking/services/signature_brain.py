@@ -40,15 +40,65 @@ def _cosine_similarity(vector_a, vector_b):
 
 def _extract_ink_crop(img_np):
     gray = cv2.cvtColor(img_np, cv2.COLOR_BGR2GRAY) if len(img_np.shape) == 3 else img_np
-    _, binary = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
-    coords = cv2.findNonZero(binary)
+    _, binary = cv2.threshold(gray, 215, 255, cv2.THRESH_BINARY_INV)
+    binary = cv2.morphologyEx(
+        binary,
+        cv2.MORPH_OPEN,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2)),
+        iterations=1,
+    )
+    binary = cv2.morphologyEx(
+        binary,
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)),
+        iterations=1,
+    )
 
-    if coords is None:
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
         print("[BRAIN] No ink detected, using full canvas.", flush=True)
         return gray
 
-    x, y, w, h = cv2.boundingRect(coords)
-    pad = max(2, int(min(w, h) * 0.1))
+    min_area = max(10, int(gray.shape[0] * gray.shape[1] * 0.0001))
+    components = []
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(contour)
+        area = cv2.contourArea(contour)
+        if area < min_area or w <= 1 or h <= 1:
+            continue
+        components.append((x, y, w, h, area))
+
+    if not components:
+        coords = cv2.findNonZero(binary)
+        if coords is None:
+            print("[BRAIN] No ink detected, using full canvas.", flush=True)
+            return gray
+        x, y, w, h = cv2.boundingRect(coords)
+    else:
+        row_density = (binary > 0).sum(axis=1).astype(np.float32)
+        row_density = cv2.GaussianBlur(row_density.reshape(-1, 1), (1, 15), 0).reshape(-1)
+        peak_row = int(np.argmax(row_density))
+        band_half_height = max(10, int(gray.shape[0] * 0.18))
+        selected = []
+
+        for component in components:
+            x_i, y_i, w_i, h_i, area_i = component
+            center_y = y_i + (h_i / 2.0)
+            touches_border = x_i <= 1 or y_i <= 1 or (x_i + w_i) >= (gray.shape[1] - 1) or (y_i + h_i) >= (gray.shape[0] - 1)
+            if touches_border and area_i < (gray.shape[0] * gray.shape[1] * 0.01):
+                continue
+            if abs(center_y - peak_row) <= band_half_height:
+                selected.append(component)
+
+        if not selected:
+            selected = sorted(components, key=lambda item: item[4], reverse=True)[:3]
+
+        x = min(item[0] for item in selected)
+        y = min(item[1] for item in selected)
+        w = max(item[0] + item[2] for item in selected) - x
+        h = max(item[1] + item[3] for item in selected) - y
+
+    pad = max(1, int(min(w, h) * 0.04))
     x_p, y_p = max(0, x - pad), max(0, y - pad)
     w_p = min(gray.shape[1] - x_p, w + 2 * pad)
     h_p = min(gray.shape[0] - y_p, h + 2 * pad)
@@ -62,19 +112,32 @@ def _prepare_signature_canvas(img_np, size=224):
     if h_c == 0 or w_c == 0:
         return None
 
+    margin = max(4, int(size * 0.04))
+    usable_size = max(8, size - (margin * 2))
+
     if h_c > w_c:
-        new_h, new_w = size, max(1, int(w_c * size / h_c))
-        pad_w = (size - new_w) // 2
-        pad_h = 0
+        new_h, new_w = usable_size, max(1, int(w_c * usable_size / h_c))
+        pad_w = margin + ((usable_size - new_w) // 2)
+        pad_h = margin
     else:
-        new_h, new_w = max(1, int(h_c * size / w_c)), size
-        pad_h = (size - new_h) // 2
-        pad_w = 0
+        new_h, new_w = max(1, int(h_c * usable_size / w_c)), usable_size
+        pad_h = margin + ((usable_size - new_h) // 2)
+        pad_w = margin
 
     resized = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_AREA)
     canvas = np.full((size, size), 255, dtype=np.uint8)
     canvas[pad_h:pad_h + new_h, pad_w:pad_w + new_w] = resized
     return canvas
+
+
+def prepare_signature_match_view(img_np, size=224):
+    """
+    Return the normalized canvas used by the matcher as a displayable BGR image.
+    """
+    canvas = _prepare_signature_canvas(img_np, size=size)
+    if canvas is None:
+        return None
+    return cv2.cvtColor(canvas, cv2.COLOR_GRAY2BGR)
 
 
 def _extract_classical_embedding(img_np):
@@ -206,6 +269,31 @@ def calculate_neural_match(drawing_img, student_id):
     similarity = _cosine_similarity(current_embedding, mean_real_vector)
     
     print(f"[BRAIN] Cosine similarity: {similarity:.6f} (current norm: {np.linalg.norm(current_embedding):.6f}, mean norm: {np.linalg.norm(mean_real_vector):.6f})", flush=True)
+    return float(similarity)
+
+
+def compare_signature_images(submitted_img, reference_img):
+    """
+    Compare a submitted signature directly against a reference signature crop.
+    Returns a cosine-similarity score from 0.0 to 1.0.
+    """
+    submitted_embedding = extract_signature_embedding(submitted_img)
+    if submitted_embedding is None:
+        print("[BRAIN] Submitted signature embedding is None", flush=True)
+        return 0.0
+
+    reference_embedding = extract_signature_embedding(reference_img)
+    if reference_embedding is None:
+        print("[BRAIN] Reference signature embedding is None", flush=True)
+        return 0.0
+
+    similarity = _cosine_similarity(submitted_embedding, reference_embedding)
+    print(
+        f"[BRAIN] Direct signature similarity: {similarity:.6f} "
+        f"(submitted norm: {np.linalg.norm(submitted_embedding):.6f}, "
+        f"reference norm: {np.linalg.norm(reference_embedding):.6f})",
+        flush=True,
+    )
     return float(similarity)
 
 def get_training_count(student_id):

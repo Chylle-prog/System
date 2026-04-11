@@ -892,6 +892,9 @@ def _prepare_signature_preview(signature_img):
 
     gray = cv2.cvtColor(signature_img, cv2.COLOR_BGR2GRAY) if len(signature_img.shape) == 3 else signature_img
     binary = _build_signature_mask(gray)
+    if binary is None:
+        return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+
     coords = cv2.findNonZero(binary)
     if coords is None:
         return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
@@ -904,12 +907,91 @@ def _prepare_signature_preview(signature_img):
     y1 = min(gray.shape[0], y + h + pad)
     cropped = gray[y0:y1, x0:x1]
     cropped_mask = binary[y0:y1, x0:x1]
+    if cropped.size == 0 or cropped_mask.size == 0:
+        return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
 
-    preview = np.full((cropped.shape[0], cropped.shape[1], 3), 255, dtype=np.uint8)
     preview_mask = _refine_signature_mask(cropped_mask)
-    preview[preview_mask > 0] = (0, 0, 0)
-    preview = cv2.resize(preview, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+    mask_coords = cv2.findNonZero(preview_mask)
+    if mask_coords is not None:
+        mx, my, mw, mh = cv2.boundingRect(mask_coords)
+        inner_pad = max(2, int(min(mw, mh) * 0.08))
+        mx0 = max(0, mx - inner_pad)
+        my0 = max(0, my - inner_pad)
+        mx1 = min(cropped.shape[1], mx + mw + inner_pad)
+        my1 = min(cropped.shape[0], my + mh + inner_pad)
+        cropped = cropped[my0:my1, mx0:mx1]
+        preview_mask = preview_mask[my0:my1, mx0:mx1]
+
+    softened_mask = cv2.GaussianBlur(preview_mask, (3, 3), 0)
+    preview_gray = np.full(cropped.shape, 255, dtype=np.uint8)
+    preview_gray[preview_mask > 0] = cropped[preview_mask > 0]
+    preview_gray = cv2.normalize(preview_gray, None, 0, 255, cv2.NORM_MINMAX)
+    preview_gray = cv2.min(preview_gray, 245)
+    preview_gray[softened_mask <= 8] = 255
+    preview = cv2.cvtColor(preview_gray, cv2.COLOR_GRAY2BGR)
+
+    target_width = 480
+    scale = target_width / float(max(preview.shape[1], 1))
+    if scale > 1.0:
+        preview = cv2.resize(preview, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+
     return preview
+
+
+def _prepare_signature_blob_preview(signature_img):
+    if signature_img is None:
+        return None
+
+    gray = cv2.cvtColor(signature_img, cv2.COLOR_BGR2GRAY) if len(signature_img.shape) == 3 else signature_img
+    binary = _build_signature_mask(gray)
+    if binary is None:
+        return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+
+    coords = cv2.findNonZero(binary)
+    if coords is None:
+        return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+
+    x, y, w, h = cv2.boundingRect(coords)
+    pad = max(4, int(min(w, h) * 0.10))
+    x0 = max(0, x - pad)
+    y0 = max(0, y - pad)
+    x1 = min(gray.shape[1], x + w + pad)
+    y1 = min(gray.shape[0], y + h + pad)
+    blob_mask = binary[y0:y1, x0:x1]
+    if blob_mask.size == 0:
+        return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+
+    preview = np.full((blob_mask.shape[0], blob_mask.shape[1], 3), 255, dtype=np.uint8)
+    preview[blob_mask > 0] = (0, 0, 0)
+
+    target_width = 480
+    scale = target_width / float(max(preview.shape[1], 1))
+    if scale > 1.0:
+        preview = cv2.resize(preview, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
+
+    return preview
+
+
+def _decode_cv_image(image_bytes, white_background=False):
+    data = decode_base64(image_bytes)
+    img_array = np.frombuffer(data, np.uint8)
+    img = cv2.imdecode(img_array, cv2.IMREAD_UNCHANGED)
+    if img is None:
+        return None
+
+    if len(img.shape) == 2:
+        return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+    if len(img.shape) == 3 and img.shape[2] == 4:
+        if white_background:
+            alpha = img[:, :, 3].astype(np.float32) / 255.0
+            rgb = img[:, :, :3].astype(np.float32)
+            white = np.full_like(rgb, 255.0)
+            blended = (rgb * alpha[..., None]) + (white * (1.0 - alpha[..., None]))
+            return blended.astype(np.uint8)
+        return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+
+    return img
 
 
 def _build_signature_mask(gray_image):
@@ -994,7 +1076,8 @@ def _isolate_signature_ink_region(signature_crop):
         aspect_ratio = w / float(max(h, 1))
 
         # Ignore the top logo/star and bottom printed "Signature" label.
-        if center_y < height * 0.10 or center_y > height * 0.62:
+        # The handwritten mark sits in a fairly narrow middle band.
+        if center_y < height * 0.22 or center_y > height * 0.52:
             continue
 
         # Reject long thin printed lines and underline strokes.
@@ -1041,11 +1124,12 @@ def _extract_signature_from_id_back(id_img):
         return None
 
     # Student IDs in this system usually place the handwritten signature block
-    # in the upper-middle section. Focus there first to avoid the top logo and shadowed edges.
+    # directly above the printed word "Signature" and below the logo.
+    # Keep the first-pass search band tight so the logo cannot win.
     lane_x0 = int(width * 0.20)
     lane_x1 = int(width * 0.82)
-    lane_y0 = int(height * 0.20)
-    lane_y1 = int(height * 0.38)
+    lane_y0 = int(height * 0.25)
+    lane_y1 = int(height * 0.39)
     primary_lane = id_img[lane_y0:lane_y1, lane_x0:lane_x1]
     isolated_primary_lane = _isolate_signature_ink_region(primary_lane)
     if isolated_primary_lane is not None and isolated_primary_lane.size:
@@ -1054,8 +1138,8 @@ def _extract_signature_from_id_back(id_img):
         if dark_pixels >= 40:
             return isolated_primary_lane
 
-    roi_start = int(height * 0.12)
-    roi_end = int(height * 0.45)
+    roi_start = int(height * 0.22)
+    roi_end = int(height * 0.42)
     roi_x0 = int(width * 0.12)
     roi_x1 = int(width * 0.88)
     roi = gray[roi_start:roi_end, roi_x0:roi_x1]
@@ -1088,12 +1172,18 @@ def _extract_signature_from_id_back(id_img):
         if w > int(width * 0.75) and h < int(height * 0.08):
             continue
 
-        # Prefer the earliest valid handwritten region in the upper half.
-        top_priority = 1.0 - (y_global / float(height))
+        contour_center_y = y_global + (h / 2.0)
+        if contour_center_y < height * 0.24 or contour_center_y > height * 0.40:
+            continue
+
+        # Prefer regions centered in the expected signature band, not the top-most mark.
+        target_center_y = height * 0.31
+        vertical_distance = abs(contour_center_y - target_center_y) / float(max(height, 1))
+        vertical_priority = max(0.0, 1.0 - (vertical_distance * 4.0))
         compactness = min(aspect_ratio, 6.0) / 6.0
         center_x = x_global + (w / 2.0)
         center_bias = 1.0 - abs((center_x / float(width)) - 0.5)
-        score = (top_priority * 100000.0) + (center_bias * 5000.0) + (area * 0.5) + (compactness * 1000.0)
+        score = (vertical_priority * 100000.0) + (center_bias * 5000.0) + (area * 0.5) + (compactness * 1000.0)
         if score > best_score:
             pad_x = max(6, int(w * 0.08))
             pad_y = max(6, int(h * 0.2))
@@ -1129,25 +1219,21 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
          processed_signature_img: ndarray, extracted_id_img: ndarray)
     """
     try:
-        from .signature_brain import calculate_neural_match
+        from .signature_brain import calculate_neural_match, compare_signature_images, prepare_signature_match_view
         
         if not signature_bytes or not id_back_bytes:
             return False, "Missing signature or ID image", 0.0, None, None
         
         # Safely decode signature
         try:
-            sig_data = decode_base64(signature_bytes)
-            sig_arr = np.frombuffer(sig_data, np.uint8)
-            sig_img = cv2.imdecode(sig_arr, cv2.IMREAD_COLOR)
+            sig_img = _decode_cv_image(signature_bytes, white_background=True)
         except Exception as e:
             print(f"[SIGNATURE] Error decoding signature: {e}", flush=True)
             return False, "Invalid signature format", 0.0, None, None
         
         # Safely decode ID back image
         try:
-            id_data = decode_base64(id_back_bytes)
-            id_arr = np.frombuffer(id_data, np.uint8)
-            id_img = cv2.imdecode(id_arr, cv2.IMREAD_COLOR)
+            id_img = _decode_cv_image(id_back_bytes)
         except Exception as e:
             print(f"[SIGNATURE] Error decoding ID image: {e}", flush=True)
             return False, "Invalid ID image format", 0.0, None, None
@@ -1157,23 +1243,41 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
 
         preview_signature = _prepare_signature_preview(sig_img)
         extracted_id_signature = _extract_signature_from_id_back(id_img)
+        matcher_submitted_view = prepare_signature_match_view(sig_img)
+
+        if extracted_id_signature is None or extracted_id_signature.size == 0:
+            return False, "Could not isolate a signature from the ID back image", 0.0, preview_signature, None, matcher_submitted_view, None
+
+        extracted_id_preview = _prepare_signature_blob_preview(extracted_id_signature)
+        matcher_reference_view = prepare_signature_match_view(extracted_id_signature)
         
         # Neural matching
         try:
-            score = calculate_neural_match(sig_img, student_id) if student_id else calculate_neural_match(sig_img, None)
+            direct_score = compare_signature_images(sig_img, extracted_id_signature)
+            profile_score = calculate_neural_match(sig_img, student_id) if student_id else 0.0
+
+            if profile_score > 0.0:
+                score = (direct_score * 0.8) + (profile_score * 0.2)
+                score_source = f"direct={direct_score:.2f}, profile={profile_score:.2f}"
+            else:
+                score = direct_score
+                score_source = f"direct={direct_score:.2f}"
         except Exception as e:
             print(f"[SIGNATURE] Error in neural matching: {e}", flush=True)
-            return False, f"Matching error: {str(e)}", 0.0, preview_signature, extracted_id_signature
+            return False, f"Matching error: {str(e)}", 0.0, preview_signature, extracted_id_preview, matcher_submitted_view, matcher_reference_view
         
-        # Threshold 0.65 as established in previous neural training sessions
-        threshold = 0.65
+        threshold = 0.52
         is_verified = score >= threshold
-        status = "Neural signature match successful" if is_verified else f"Neural signature mismatch (score: {score:.2f}, threshold: {threshold})"
+        status = (
+            f"Signature match successful ({score_source})"
+            if is_verified else
+            f"Signature mismatch ({score_source}, threshold: {threshold:.2f})"
+        )
         
-        return is_verified, status, float(score), preview_signature, extracted_id_signature
+        return is_verified, status, float(score), preview_signature, extracted_id_preview, matcher_submitted_view, matcher_reference_view
     except Exception as e:
         print(f"[SIGNATURE] Wrapper error: {e}", flush=True)
-        return False, str(e), 0.0, None, None
+        return False, str(e), 0.0, None, None, None, None
 
 def save_signature_profile(student_id, drawing_data):
     """
