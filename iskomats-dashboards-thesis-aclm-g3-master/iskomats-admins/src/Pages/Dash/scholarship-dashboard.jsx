@@ -1869,15 +1869,6 @@ export default function ScholarshipDashboard({
           </div>
 
 
-        {activeOverlay && (
-          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#2b0a14]/45 backdrop-blur-sm px-4">
-            <div className="w-full max-w-sm rounded-3xl border border-white/50 bg-white/95 p-8 text-center shadow-2xl">
-              <div className="mx-auto mb-5 h-14 w-14 rounded-full border-4 border-[#f1d8df] border-t-[#800020] animate-spin" />
-              <h3 className="text-xl font-black text-[#800020]">{activeOverlay.title}</h3>
-              <p className="mt-3 text-sm font-medium leading-6 text-gray-600">{activeOverlay.message}</p>
-            </div>
-          </div>
-        )}
           {/* Recent Messages */}
           <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="p-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
@@ -4301,6 +4292,16 @@ export default function ScholarshipDashboard({
       )}
 
       {/* Custom Delete Confirmation Modal */}
+      {activeOverlay && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-[#2b0a14]/45 backdrop-blur-sm px-4">
+          <div className="w-full max-w-sm rounded-3xl border border-white/50 bg-white/95 p-8 text-center shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="mx-auto mb-5 h-14 w-14 rounded-full border-4 border-[#f1d8df] border-t-[#800020] animate-spin" />
+            <h3 className="text-xl font-black text-[#800020]">{activeOverlay.title}</h3>
+            <p className="mt-3 text-sm font-medium leading-6 text-gray-600">{activeOverlay.message}</p>
+          </div>
+        </div>
+      )}
+
       {/* Action Confirmation Modal */}
       {pendingAction && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
