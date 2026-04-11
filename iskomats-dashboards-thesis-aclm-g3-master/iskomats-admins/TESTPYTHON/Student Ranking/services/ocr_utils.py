@@ -26,8 +26,8 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 cv2.setNumThreads(1) # Crucial: prevents OpenCV from spawning ghost threads that kill RAM
 
-# Global OCR Concurrency Control: Set to 1 for strict memory safety on Render (prevent OOM)
-OCR_SEMAPHORE = eventlet.semaphore.Semaphore(1)
+# Global OCR Concurrency Control: Set to 2 to allow parallel multi-part verification (e.g., ID Front/Back)
+OCR_SEMAPHORE = eventlet.semaphore.Semaphore(2)
 
 
 # ─── Environment hints for threading & memory ──────────────────────────────────
@@ -128,8 +128,8 @@ def decode_base64(data):
     return data
 
 # ─── Image preprocessing & quality assessment (Optimization #3) ──────────────
-_MAX_OCR_WIDTH = 800       # Higher resolution for A4 document legibility (Indigency/COE)
-_MAX_VIDEO_OCR_WIDTH = 800 # Restored to 800 for better OCR on small text
+_MAX_OCR_WIDTH = 750       # Reduced from 800 for faster processing
+_MAX_VIDEO_OCR_WIDTH = 640 # Reduced from 800 (Video OCR is for keywords only)
 _MAX_FACE_WIDTH = 512  # Increased from 224 to help detector catch small faces on ID cards
 
 # Module-level CLAHE instance (reused across all OCR calls instead of recreating each time)
@@ -199,8 +199,8 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     text1 = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 3')
     if text1.strip():
         results.append(text1.strip())
-        # OPTIMIZATION: If Pass 1 is even slightly successful (25+ chars), skip Pass 2 to save 5-10 seconds
-        if len(text1.strip()) > 25:
+        # OPTIMIZATION: If Pass 1 is even slightly successful (20+ chars), skip Pass 2 to save time
+        if len(text1.strip()) > 20:
             return text1.strip()
         
     # Pass 2: Adaptive Thresholding (Fails on white-on-dark, but great for shadows on paper)
@@ -417,10 +417,10 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             print(f"[QUALITY REJECT] {quality_reason}", flush=True)
             return False, f"Image quality issue: {quality_reason}", "", 0.0
         
-        # Resize image once - Lowered to 850px for memory safety on Render
+        # Resize image once - Lowered to 750px for faster processing
         h, w = img.shape[:2]
-        if w > 850:
-            scale = 850 / w
+        if w > 750:
+            scale = 750 / w
             img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
     except Exception as e:
         return False, f"Preprocessing error: {str(e)}", "", 0.0
@@ -894,6 +894,7 @@ def _prepare_signature_preview(signature_img):
     binary = _build_signature_mask(gray)
     if binary is None:
         return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+    binary = _match_mask_to_image(binary, gray.shape)
 
     coords = cv2.findNonZero(binary)
     if coords is None:
@@ -911,6 +912,7 @@ def _prepare_signature_preview(signature_img):
         return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
 
     preview_mask = _refine_signature_mask(cropped_mask)
+    preview_mask = _match_mask_to_image(preview_mask, cropped.shape)
     mask_coords = cv2.findNonZero(preview_mask)
     if mask_coords is not None:
         mx, my, mw, mh = cv2.boundingRect(mask_coords)
@@ -946,6 +948,7 @@ def _prepare_signature_blob_preview(signature_img):
     binary = _build_signature_mask(gray)
     if binary is None:
         return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+    binary = _match_mask_to_image(binary, gray.shape)
 
     coords = cv2.findNonZero(binary)
     if coords is None:
@@ -1016,6 +1019,17 @@ def _build_signature_mask(gray_image):
     return _refine_signature_mask(adaptive)
 
 
+def _match_mask_to_image(mask, image_shape):
+    if mask is None:
+        return None
+
+    image_height, image_width = image_shape[:2]
+    if mask.shape[:2] == (image_height, image_width):
+        return mask
+
+    return cv2.resize(mask, (image_width, image_height), interpolation=cv2.INTER_NEAREST)
+
+
 def _refine_signature_mask(binary_mask):
     if binary_mask is None or binary_mask.size == 0:
         return binary_mask
@@ -1056,6 +1070,7 @@ def _isolate_signature_ink_region(signature_crop):
     binary = _build_signature_mask(gray)
     if binary is None:
         return signature_crop
+    binary = _match_mask_to_image(binary, gray.shape)
 
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     candidate_boxes = []
@@ -1109,6 +1124,7 @@ def _isolate_signature_ink_region(signature_crop):
     isolated_mask = _build_signature_mask(cropped_gray)
     if isolated_mask is None:
         return signature_crop
+    isolated_mask = _match_mask_to_image(isolated_mask, cropped_gray.shape)
     isolated[isolated_mask > 0] = (0, 0, 0)
     isolated = cv2.resize(isolated, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
     return isolated

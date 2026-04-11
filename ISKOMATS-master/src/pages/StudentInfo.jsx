@@ -655,8 +655,8 @@ const StudentInfo = () => {
       setScanProgress(15);
       
       const pInterval = setInterval(() => {
-        setScanProgress(p => p < 95 ? p + (Math.random() * 15) : p);
-      }, 200);
+        setScanProgress(p => p < 95 ? p + (Math.random() * 25) : p);
+      }, 80);
 
       const { townCity, schoolName, idNumber, yearLevel, gpa, course } = extraParams;
       const { firstName, lastName, middleName } = formData;
