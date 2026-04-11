@@ -762,6 +762,12 @@ export default function ScholarshipDashboard({
       return;
     }
 
+    const actionLabel = requestedStatus === 'Accepted' ? 'Approving Applicant' : 'Declining Applicant';
+    const actionMsg = requestedStatus === 'Accepted' 
+      ? `Processing approval for ${applicant.name}. Notifying via ${applicant.email || 'email'} and updating records.` 
+      : `Processing decline for ${applicant.name}. Sending notification and updating records.`;
+      
+    showActionOverlay(actionLabel, actionMsg);
     markApplicantProcessing(applicant, requestedStatus);
     onStart?.();
 
@@ -778,10 +784,18 @@ export default function ScholarshipDashboard({
           timestamp: new Date().toISOString(),
         });
 
+        // Show a brief success state in the overlay
+        showActionOverlay(
+          requestedStatus === 'Accepted' ? 'Approval Complete' : 'Decline Complete',
+          `The applicant has been successfully ${requestedStatus.toLowerCase()}.`
+        );
+        
         await Promise.all([loadApplicants(), loadScholarships(false)]);
+        setTimeout(() => hideActionOverlay(), 800);
       } catch (error) {
         console.error(`Failed to update applicant status to ${requestedStatus.toLowerCase()}:`, error);
         await Promise.all([loadApplicants(), loadScholarships(false)]);
+        hideActionOverlay();
         alert(getRequestErrorMessage(error, failureMessage));
       } finally {
         markApplicantProcessing(applicant, null);
@@ -1672,56 +1686,22 @@ export default function ScholarshipDashboard({
     });
   };
 
-  const cancelApplicant = async (listType, index) => {
-    try {
-      const list = data[listType] || [];
-      const applicant = list[index];
-      if (!applicant) return;
-      const applicantKey = applicant.id || applicant.applicant_no || applicant.studentContact?.email || applicant.name;
-      
-      // Call backend API to persist the change
-      await scholarshipAPI.cancelApplicant(applicant.id, applicant.scholarshipNo);
-      
-      // Update frontend state
-      setData((d) => {
-        const sourceList = d[listType] || [];
-        const applicantToRestore = sourceList.find((item) => (
-          (item.id || item.applicant_no || item.studentContact?.email || item.name) === applicantKey
-        ));
-        if (!applicantToRestore) return d;
+  const cancelApplicant = (listType, index) => {
+    const list = data[listType] || [];
+    const applicant = list[index];
+    if (!applicant) return;
 
-        const restoredApplicant = {
-          ...applicantToRestore,
-          status: 'Pending',
-        };
-
-        const updatedApplicants = [
-          ...d.applicants.filter((item) => (item.id || item.applicant_no || item.studentContact?.email || item.name) !== applicantKey),
-          restoredApplicant,
-        ];
-        const updatedSourceList = sourceList.filter((item) => (
-          (item.id || item.applicant_no || item.studentContact?.email || item.name) !== applicantKey
-        ));
-        const nextAccepted = listType === 'accepted' ? updatedSourceList : d.accepted;
-        const nextDeclined = listType === 'declined' ? updatedSourceList : d.declined;
-        const historicalData = calculateHistoricalData([...updatedApplicants, ...nextAccepted, ...nextDeclined]);
-
-        return {
-          ...d,
-          applicants: updatedApplicants,
-          [listType]: updatedSourceList,
-          historicalData,
-        };
-      });
-      
-      // Refresh scholarship data to update slot availability
-      await loadScholarships();
-      
-      setTrackTab('all');
-    } catch (error) {
-      console.error('Error canceling applicant:', error);
-      alert('Failed to cancel applicant status. Please try again.');
-    }
+    beginApplicantStatusRequest({
+      applicant,
+      requestedStatus: 'Pending',
+      request: (applicantId, scholarshipNo) => scholarshipAPI.cancelApplicant(applicantId, scholarshipNo),
+      successEvent: 'applicant_cancel',
+      failureMessage: 'Failed to cancel applicant',
+      onStart: () => {
+        setSection('track');
+        setTrackTab('all');
+      },
+    });
   };
 
   const getStudentStatus = (id, name, currentStatus) => {
@@ -2687,7 +2667,8 @@ export default function ScholarshipDashboard({
                           <button type="button" onClick={() => viewApplicantFn(idx, 'accepted')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
                             View
                           </button>
-                          <button type="button" onClick={() => cancelApplicant('accepted', idx)} className="px-3 py-1 rounded bg-amber-500 text-gray-900 text-xs font-semibold">
+                          <button type="button" onClick={() => cancelApplicant('accepted', idx)} className="px-3 py-1 rounded bg-amber-500 text-gray-900 text-xs font-semibold flex items-center gap-2" disabled={!!getApplicantProcessingState(a)}>
+                            {getApplicantProcessingState(a) ? <FaSpinner className="animate-spin" /> : null}
                             Cancel
                           </button>
                         </div>
@@ -2711,7 +2692,8 @@ export default function ScholarshipDashboard({
                           <button type="button" onClick={() => viewApplicantFn(idx, 'declined')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
                             View
                           </button>
-                          <button type="button" onClick={() => cancelApplicant('declined', idx)} className="px-3 py-1 rounded bg-amber-500 text-gray-900 text-xs font-semibold">
+                          <button type="button" onClick={() => cancelApplicant('declined', idx)} className="px-3 py-1 rounded bg-amber-500 text-gray-900 text-xs font-semibold flex items-center gap-2" disabled={!!getApplicantProcessingState(a)}>
+                            {getApplicantProcessingState(a) ? <FaSpinner className="animate-spin" /> : null}
                             Cancel
                           </button>
                         </div>

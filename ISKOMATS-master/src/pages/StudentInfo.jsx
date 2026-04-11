@@ -433,6 +433,7 @@ const StudentInfo = () => {
       });
 
     setUploadingFields(prev => ({ ...prev, [fieldName]: uploadPromise }));
+    setHasInteracted(true);
   };
 
   const [extraSignaturePhoto, setExtraSignaturePhoto] = useState(null);
@@ -1594,6 +1595,7 @@ const StudentInfo = () => {
         if (type !== 'face_photo') {
           applicantAPI.updateProfile({ [type]: compressedBase64 }).catch(console.error);
         }
+        setHasInteracted(true);
       });
     }
   };
@@ -1631,9 +1633,11 @@ const StudentInfo = () => {
   const isStep3DocumentsVerified = idVerified === 'success' && coeVerified === 'success' && gradesVerified === 'success';
   const isStep4Complete = formData.privacyConsent && formData.dataCertifyConsent && (drawnSignature || formData.applicantSignatureName) && signatureVerified === 'success';
 
+  const [hasInteracted, setHasInteracted] = useState(false);
+
   useEffect(() => {
     // ─── AUTO-SCAN LOGIC ───
-    if (isAnyScanning || isSavingStep) return;
+    if (isAnyScanning || isSavingStep || !hasInteracted) return;
 
     const autoTrigger = async () => {
       // Step 1: Indigency

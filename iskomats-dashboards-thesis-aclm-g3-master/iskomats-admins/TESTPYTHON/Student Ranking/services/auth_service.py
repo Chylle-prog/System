@@ -47,6 +47,11 @@ def get_allowed_origins():
 
     # Return unique list
     final_origins = list(dict.fromkeys(origins))
+    
+    # LIBERAL SURGE/NETLIFY SUPPORT: Always allow any surge.sh or netlify.app origin to avoid blockers
+    preview_patterns.append(re.compile(r"^https?://[a-z0-9\-]+\.surge\.sh/?$"))
+    preview_patterns.append(re.compile(r"^https?://[a-z0-9\-]+\.netlify\.app/?$"))
+
     return final_origins + preview_patterns
 
 
