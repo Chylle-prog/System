@@ -269,6 +269,7 @@ export default function ScholarshipDashboard({
   const [manageMode, setManageMode] = useState('list'); // create | edit | list
   const [editingPost, setEditingPost] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [activeOverlay, setActiveOverlay] = useState(null);
   const [manageTab, setManageTab] = useState('scholarship'); // scholarship | announcement
   const [manageSearch, setManageSearch] = useState('');
   const [schoolVerifModal, setSchoolVerifModal] = useState(null); // applicant object
@@ -671,6 +672,14 @@ export default function ScholarshipDashboard({
     }));
   };
 
+  const showActionOverlay = (title, message) => {
+    setActiveOverlay({ title, message });
+  };
+
+  const hideActionOverlay = () => {
+    setActiveOverlay(null);
+  };
+
   const resetForm = () => {
     setFormData({
       scholarshipName: '',
@@ -763,12 +772,15 @@ export default function ScholarshipDashboard({
   };
 
   const saveScholarshipPost = async () => {
+    const actionLabel = manageMode === 'edit' ? 'Updating scholarship post' : 'Publishing scholarship post';
     setIsSaving(true);
+    showActionOverlay(actionLabel, 'Please wait while the scholarship details are being saved.');
     try {
       const normalizedYear = normalizeAcademicYear(formData.year);
       if (!isValidAcademicYear(normalizedYear)) {
         alert('Academic year must use the YYYY-YYYY format, for example 2025-2026.');
         setIsSaving(false);
+        hideActionOverlay();
         return;
       }
 
@@ -794,7 +806,7 @@ export default function ScholarshipDashboard({
         alert(`Scholarship ${manageMode === 'edit' ? 'updated' : 'created'} successfully!`);
         resetForm();
         setManageMode('list');
-        loadScholarships(false);
+        await loadScholarships(false);
         
         // Notify other admins of the update via socket
         socketService.emit('scholarship_update', {
@@ -813,6 +825,7 @@ export default function ScholarshipDashboard({
       alert(getRequestErrorMessage(error, 'Error saving scholarship'));
     } finally {
       setIsSaving(false);
+      hideActionOverlay();
     }
   };
 
@@ -858,6 +871,7 @@ export default function ScholarshipDashboard({
 
   const deletePost = async (postId) => {
     if (confirm('Are you sure you want to delete this scholarship post?')) {
+      showActionOverlay('Deleting scholarship post', 'Please wait while the scholarship post is being removed.');
       try {
         const response = await scholarshipAPI.deleteScholarship(postId);
         if (response.data.success) {
@@ -874,6 +888,8 @@ export default function ScholarshipDashboard({
       } catch (error) {
         console.error('Failed to delete scholarship:', error);
         alert(getRequestErrorMessage(error, 'Error deleting scholarship'));
+      } finally {
+        hideActionOverlay();
       }
     }
   };
@@ -884,7 +900,9 @@ export default function ScholarshipDashboard({
       return;
     }
 
+    const actionLabel = manageMode === 'edit' ? 'Updating announcement' : 'Publishing announcement';
     setIsSaving(true);
+    showActionOverlay(actionLabel, 'Please wait while the announcement is being saved.');
     try {
       // Use FormData for better performance and to avoid base64 overhead
       const fData = new FormData();
@@ -940,6 +958,7 @@ export default function ScholarshipDashboard({
       alert(getRequestErrorMessage(error, 'Error saving announcement'));
     } finally {
       setIsSaving(false);
+      hideActionOverlay();
     }
   };
 
@@ -961,6 +980,7 @@ export default function ScholarshipDashboard({
 
   const deleteAnnouncement = async (id) => {
     if (window.confirm('Are you sure you want to delete this announcement?')) {
+      showActionOverlay('Deleting announcement', 'Please wait while the announcement is being removed.');
       try {
         await announcementAPI.delete(id);
         if (editingPost && (editingPost.id || editingPost.ann_no) === id) {
@@ -972,6 +992,8 @@ export default function ScholarshipDashboard({
       } catch (error) {
         console.error('Failed to delete announcement:', error);
         alert(getRequestErrorMessage(error, 'Error deleting announcement'));
+      } finally {
+        hideActionOverlay();
       }
     }
   };
@@ -1723,6 +1745,16 @@ export default function ScholarshipDashboard({
             </div>
           </div>
 
+
+        {activeOverlay && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#2b0a14]/45 backdrop-blur-sm px-4">
+            <div className="w-full max-w-sm rounded-3xl border border-white/50 bg-white/95 p-8 text-center shadow-2xl">
+              <div className="mx-auto mb-5 h-14 w-14 rounded-full border-4 border-[#f1d8df] border-t-[#800020] animate-spin" />
+              <h3 className="text-xl font-black text-[#800020]">{activeOverlay.title}</h3>
+              <p className="mt-3 text-sm font-medium leading-6 text-gray-600">{activeOverlay.message}</p>
+            </div>
+          </div>
+        )}
           {/* Recent Messages */}
           <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="p-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
