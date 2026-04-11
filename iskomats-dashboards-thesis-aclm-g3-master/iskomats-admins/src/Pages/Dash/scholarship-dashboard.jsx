@@ -31,7 +31,8 @@ import {
   FaTrashAlt,
   FaPaperPlane,
   FaPlusCircle,
-  FaRobot
+  FaRobot,
+  FaSpinner
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 import { scholarshipAPI, announcementAPI, warmBackendConnection } from '../../services/api';
@@ -130,26 +131,6 @@ const getRequestErrorMessage = (error, fallbackMessage) => {
   return `${fallbackMessage}: ${error.message}`;
 };
 
-const APPLICANT_STATUS_LISTS = {
-  Pending: 'applicants',
-  Accepted: 'accepted',
-  Declined: 'declined',
-};
-
-const normalizeApplicantStatus = (value, fallback = 'Pending') => {
-  const normalized = String(value || '').trim().toLowerCase();
-  if (normalized === 'accepted') {
-    return 'Accepted';
-  }
-  if (normalized === 'declined') {
-    return 'Declined';
-  }
-  if (normalized === 'pending') {
-    return 'Pending';
-  }
-  return fallback;
-};
-
 const getApplicantIdentityKey = (applicant) => String(
   applicant?.id
     ?? applicant?.applicant_no
@@ -159,51 +140,6 @@ const getApplicantIdentityKey = (applicant) => String(
     ?? applicant?.name
     ?? ''
 ).trim().toLowerCase();
-
-const getApplicantScholarshipValues = (applicant) => new Set(
-  [
-    applicant?.appliedScholarshipId,
-    applicant?.reqNo,
-    applicant?.req_no,
-    applicant?.request_no,
-    applicant?.scholarshipId,
-    applicant?.scholarship_id,
-    applicant?.scholarshipNo,
-    applicant?.scholarship_no,
-    applicant?.scholarshipName,
-    applicant?.scholarship_name,
-    applicant?.appliedScholarship,
-    applicant?.scholarship,
-    applicant?.scholarshipTitle,
-  ]
-    .filter(Boolean)
-    .map((value) => String(value).trim().toLowerCase())
-);
-
-const getPostScholarshipValues = (post) => new Set(
-  [
-    post?.reqNo,
-    post?.req_no,
-    post?.id,
-    post?.scholarshipName,
-    post?.title,
-  ]
-    .filter(Boolean)
-    .map((value) => String(value).trim().toLowerCase())
-);
-
-const applicantMatchesScholarshipPost = (applicant, post) => {
-  const applicantValues = getApplicantScholarshipValues(applicant);
-  const postValues = getPostScholarshipValues(post);
-
-  for (const value of applicantValues) {
-    if (postValues.has(value)) {
-      return true;
-    }
-  }
-
-  return false;
-};
 
 const optimizeImageFile = (file) => new Promise((resolve) => {
   if (!(file instanceof File) || !file.type.startsWith('image/') || file.size <= 500 * 1024) {
@@ -351,7 +287,7 @@ export default function ScholarshipDashboard({
   const [indigencyVerifSent, setIndigencyVerifSent] = useState({}); // { [applicantName]: true }
   const [confirmDeleteModal, setConfirmDeleteModal] = useState(null); // { type: 'scholarship'|'announcement', id, title, label }
   const [pendingAction, setPendingAction] = useState(null); // { type, applicant, onConfirm, recipient, messageSummary }
-  const [syncingApplicantStatuses, setSyncingApplicantStatuses] = useState({});
+  const [processingApplicantActions, setProcessingApplicantActions] = useState({});
   const [formData, setFormData] = useState({
     scholarshipName: '',
     deadline: '',
@@ -382,7 +318,6 @@ export default function ScholarshipDashboard({
   const locationChartInstance = useRef(null);
   const currentInboxRoomRef = useRef(null);
   const inboxMessagesEndRef = useRef(null);
-  const applicantStatusQueueRef = useRef(Promise.resolve());
 
   const loadApplicants = async () => {
     try {
@@ -757,22 +692,14 @@ export default function ScholarshipDashboard({
     setActiveOverlay(null);
   };
 
-  const enqueueApplicantStatusSync = (task) => {
-    applicantStatusQueueRef.current = applicantStatusQueueRef.current
-      .catch(() => undefined)
-      .then(task);
-
-    return applicantStatusQueueRef.current;
-  };
-
-  const markApplicantStatusSync = (applicant, nextStatus = null) => {
+  const markApplicantProcessing = (applicant, requestedStatus = null) => {
     const applicantKey = getApplicantIdentityKey(applicant);
     if (!applicantKey) {
       return;
     }
 
-    setSyncingApplicantStatuses((current) => {
-      if (!nextStatus) {
+    setProcessingApplicantActions((current) => {
+      if (!requestedStatus) {
         if (!current[applicantKey]) {
           return current;
         }
@@ -784,116 +711,47 @@ export default function ScholarshipDashboard({
 
       return {
         ...current,
-        [applicantKey]: nextStatus,
+        [applicantKey]: {
+          requestedStatus,
+          startedAt: Date.now(),
+        },
       };
     });
   };
 
-  const applyApplicantStatusTransition = (currentData, applicant, nextStatus) => {
-    const applicantKey = getApplicantIdentityKey(applicant);
-    if (!applicantKey) {
-      return currentData;
-    }
+  const getApplicantProcessingState = (applicant) => processingApplicantActions[getApplicantIdentityKey(applicant)] || null;
 
-    const normalizedNextStatus = normalizeApplicantStatus(nextStatus);
-    const targetListKey = APPLICANT_STATUS_LISTS[normalizedNextStatus];
-    const listEntries = Object.entries(APPLICANT_STATUS_LISTS);
+  const prioritizeProcessingApplicants = (applicants) => {
+    return [...applicants].sort((left, right) => {
+      const leftProcessing = getApplicantProcessingState(left);
+      const rightProcessing = getApplicantProcessingState(right);
 
-    let sourceApplicant = null;
-    let previousStatus = 'Pending';
-
-    const nextLists = listEntries.reduce((accumulator, [statusLabel, listKey]) => {
-      const list = currentData[listKey] || [];
-      const remainingItems = [];
-
-      list.forEach((item) => {
-        if (getApplicantIdentityKey(item) === applicantKey) {
-          if (!sourceApplicant) {
-            sourceApplicant = item;
-            previousStatus = statusLabel;
-          }
-          return;
-        }
-
-        remainingItems.push(item);
-      });
-
-      accumulator[listKey] = remainingItems;
-      return accumulator;
-    }, {});
-
-    const resolvedApplicant = sourceApplicant || applicant;
-    const movedApplicant = {
-      ...resolvedApplicant,
-      status: normalizedNextStatus,
-    };
-
-    nextLists[targetListKey] = [...(nextLists[targetListKey] || []), movedApplicant];
-
-    const scholarshipPosts = (currentData.scholarshipPosts || []).map((post) => {
-      if (!applicantMatchesScholarshipPost(resolvedApplicant, post)) {
-        return post;
+      if (leftProcessing && rightProcessing) {
+        return rightProcessing.startedAt - leftProcessing.startedAt;
       }
 
-      const acceptedDelta = (normalizedNextStatus === 'Accepted' ? 1 : 0) - (previousStatus === 'Accepted' ? 1 : 0);
-      const pendingDelta = (normalizedNextStatus === 'Pending' ? 1 : 0) - (previousStatus === 'Pending' ? 1 : 0);
-      const declinedDelta = (normalizedNextStatus === 'Declined' ? 1 : 0) - (previousStatus === 'Declined' ? 1 : 0);
+      if (leftProcessing) {
+        return -1;
+      }
 
-      const nextAcceptedCount = post.acceptedCount == null
-        ? post.acceptedCount
-        : Math.max(Number(post.acceptedCount) + acceptedDelta, 0);
-      const nextPendingCount = post.pendingCount == null
-        ? post.pendingCount
-        : Math.max(Number(post.pendingCount) + pendingDelta, 0);
-      const nextDeclinedCount = post.declinedCount == null
-        ? post.declinedCount
-        : Math.max(Number(post.declinedCount) + declinedDelta, 0);
+      if (rightProcessing) {
+        return 1;
+      }
 
-      const slotLimit = Number(post.slots ?? 0);
-      const resolvedAcceptedCount = Number.isFinite(Number(nextAcceptedCount))
-        ? Number(nextAcceptedCount)
-        : Math.max(Number(post.acceptedCount ?? 0) + acceptedDelta, 0);
-      const nextAvailableSlots = post.availableSlots == null
-        ? post.availableSlots
-        : Math.max(slotLimit - resolvedAcceptedCount, 0);
-      const nextIsFull = slotLimit > 0 && Math.max(slotLimit - resolvedAcceptedCount, 0) <= 0;
-
-      return {
-        ...post,
-        acceptedCount: nextAcceptedCount,
-        pendingCount: nextPendingCount,
-        declinedCount: nextDeclinedCount,
-        availableSlots: nextAvailableSlots,
-        isFull: typeof post.isFull === 'boolean' ? nextIsFull : post.isFull,
-      };
+      return 0;
     });
-
-    const allApplicants = [
-      ...(nextLists.applicants || []),
-      ...(nextLists.accepted || []),
-      ...(nextLists.declined || []),
-    ];
-
-    return {
-      ...currentData,
-      ...nextLists,
-      scholarshipPosts,
-      historicalData: calculateHistoricalData(allApplicants),
-    };
   };
 
-  const queueApplicantStatusUpdate = ({
+  const beginApplicantStatusRequest = ({
     applicant,
-    nextStatus,
-    previousStatus = 'Pending',
+    requestedStatus,
     request,
     successEvent,
     failureMessage,
-    onOptimistic,
-    onSettled,
+    onStart,
   }) => {
     const applicantKey = getApplicantIdentityKey(applicant);
-    if (!applicantKey || syncingApplicantStatuses[applicantKey]) {
+    if (!applicantKey || processingApplicantActions[applicantKey]) {
       return;
     }
 
@@ -904,11 +762,10 @@ export default function ScholarshipDashboard({
       return;
     }
 
-    markApplicantStatusSync(applicant, nextStatus);
-    setData((current) => applyApplicantStatusTransition(current, applicant, nextStatus));
-    onOptimistic?.();
+    markApplicantProcessing(applicant, requestedStatus);
+    onStart?.();
 
-    enqueueApplicantStatusSync(async () => {
+    void (async () => {
       try {
         await request(applicantId, scholarshipNo);
 
@@ -916,22 +773,20 @@ export default function ScholarshipDashboard({
           applicantId: applicant.id,
           applicantName: applicant.name,
           program: providerKey,
-          newStatus: nextStatus,
+          newStatus: requestedStatus,
           adminName: userName,
           timestamp: new Date().toISOString(),
         });
 
-        await loadScholarships(false);
+        await Promise.all([loadApplicants(), loadScholarships(false)]);
       } catch (error) {
-        console.error(`Failed to update applicant status to ${nextStatus.toLowerCase()}:`, error);
-        setData((current) => applyApplicantStatusTransition(current, applicant, previousStatus));
-        await loadScholarships(false);
+        console.error(`Failed to update applicant status to ${requestedStatus.toLowerCase()}:`, error);
+        await Promise.all([loadApplicants(), loadScholarships(false)]);
         alert(getRequestErrorMessage(error, failureMessage));
       } finally {
-        markApplicantStatusSync(applicant, null);
-        onSettled?.();
+        markApplicantProcessing(applicant, null);
       }
-    });
+    })();
   };
 
   const resetForm = () => {
@@ -1712,13 +1567,17 @@ export default function ScholarshipDashboard({
       recipient: recipient,
       messageSummary: `Congratulations! Your application for ${scholarshipLabel} has been accepted.`,
       onConfirm: async () => {
-        queueApplicantStatusUpdate({
+        beginApplicantStatusRequest({
           applicant: applicantToAccept,
-          nextStatus: 'Accepted',
+          requestedStatus: 'Accepted',
           request: (applicantId, scholarshipNo) => scholarshipAPI.acceptApplicant(applicantId, scholarshipNo),
           successEvent: 'applicant_accept',
           failureMessage: 'Failed to accept applicant',
-          onOptimistic: () => setRecommendationModal(false),
+          onStart: () => {
+            setRecommendationModal(false);
+            setSection('track');
+            setTrackTab('pending');
+          },
         });
       }
     });
@@ -1737,13 +1596,17 @@ export default function ScholarshipDashboard({
       recipient: recipient,
       messageSummary: `Thank you for your interest. We regret to inform you that your application has been declined.`,
       onConfirm: async () => {
-        queueApplicantStatusUpdate({
+        beginApplicantStatusRequest({
           applicant: applicantToDecline,
-          nextStatus: 'Declined',
+          requestedStatus: 'Declined',
           request: (applicantId, scholarshipNo) => scholarshipAPI.declineApplicant(applicantId, scholarshipNo),
           successEvent: 'applicant_decline',
           failureMessage: 'Failed to decline applicant',
-          onOptimistic: () => setRecommendationModal(false),
+          onStart: () => {
+            setRecommendationModal(false);
+            setSection('track');
+            setTrackTab('pending');
+          },
         });
       }
     });
@@ -1763,16 +1626,16 @@ export default function ScholarshipDashboard({
       recipient: recipient,
       messageSummary: `Congratulations! Your application for ${scholarshipLabel} has been accepted.`,
       onConfirm: async () => {
-        queueApplicantStatusUpdate({
+        beginApplicantStatusRequest({
           applicant,
-          nextStatus: 'Accepted',
+          requestedStatus: 'Accepted',
           request: (applicantId, scholarshipNo) => scholarshipAPI.acceptApplicant(applicantId, scholarshipNo),
           successEvent: 'applicant_accept',
           failureMessage: 'Failed to accept applicant',
-          onOptimistic: () => {
+          onStart: () => {
             setViewApplicant(null);
             setSection('track');
-            setTrackTab('accepted');
+            setTrackTab('pending');
           },
         });
       }
@@ -1793,16 +1656,16 @@ export default function ScholarshipDashboard({
       recipient: recipient,
       messageSummary: `Thank you for your interest. We regret to inform you that your application for ${scholarshipLabel} has been declined.`,
       onConfirm: async () => {
-        queueApplicantStatusUpdate({
+        beginApplicantStatusRequest({
           applicant,
-          nextStatus: 'Declined',
+          requestedStatus: 'Declined',
           request: (applicantId, scholarshipNo) => scholarshipAPI.declineApplicant(applicantId, scholarshipNo),
           successEvent: 'applicant_decline',
           failureMessage: 'Failed to decline applicant',
-          onOptimistic: () => {
+          onStart: () => {
             setViewApplicant(null);
             setSection('track');
-            setTrackTab('declined');
+            setTrackTab('pending');
           },
         });
       }
@@ -1869,8 +1732,6 @@ export default function ScholarshipDashboard({
     if (inList(data.applicants)) return 'Pending';
     return 'Unknown';
   };
-
-  const getApplicantSyncStatus = (applicant) => syncingApplicantStatuses[getApplicantIdentityKey(applicant)] || null;
 
   const groupMessagesByStudent = (messages) => {
     const grouped = {};
@@ -2656,7 +2517,7 @@ export default function ScholarshipDashboard({
       });
     };
 
-    const pendingTagged = filterList(data.applicants).map((a, i) => ({ ...a, _listType: 'all', _listIdx: data.applicants.indexOf(a) }));
+    const pendingTagged = prioritizeProcessingApplicants(filterList(data.applicants)).map((a) => ({ ...a, _listType: 'all', _listIdx: data.applicants.indexOf(a) }));
     const acceptedTagged = filterList(data.accepted).map((a, i) => ({ ...a, _listType: 'accepted', _listIdx: data.accepted.indexOf(a) }));
     const declinedTagged = filterList(data.declined).map((a, i) => ({ ...a, _listType: 'declined', _listIdx: data.declined.indexOf(a) }));
     const allList = [...pendingTagged, ...acceptedTagged, ...declinedTagged];
@@ -2745,7 +2606,7 @@ export default function ScholarshipDashboard({
               {trackTab === 'pending' &&
                 pendingTagged.map((a, i) => {
                   const idx = a._listIdx;
-                  const syncStatus = getApplicantSyncStatus(a);
+                  const processingState = getApplicantProcessingState(a);
                   return (
                     <tr key={`pending-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className="px-4 py-3">
@@ -2753,19 +2614,23 @@ export default function ScholarshipDashboard({
                           <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{a.applicant_no}</span>
                           <div className="font-semibold">{a.name}</div>
                         </div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${syncStatus ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                          {syncStatus ? `${syncStatus}...` : 'Pending'}
-                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700">Pending</span>
                       </td>
                       <td className="px-4 py-3">{a.grade}</td>
                       <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       <td className="px-4 py-3 text-xs">{a.school}</td>
                       <td className="px-4 py-3 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
                       <td className="px-4 py-3">
-                        <div className="flex gap-1">
+                        <div className="flex items-center justify-between gap-3">
                           <button type="button" onClick={() => viewApplicantFn(idx, 'all')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
                             View
                           </button>
+                          {processingState && (
+                            <span className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#800020]">
+                              <FaSpinner className="animate-spin text-xs" />
+                              {processingState.requestedStatus === 'Accepted' ? 'Approving' : 'Rejecting'}
+                            </span>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -2776,7 +2641,7 @@ export default function ScholarshipDashboard({
                 allList.map((a, i) => {
                   const statusColors = { all: 'bg-yellow-100 text-yellow-700', accepted: 'bg-green-100 text-green-700', declined: 'bg-red-100 text-red-700' };
                   const statusLabels = { all: 'Pending', accepted: 'Accepted', declined: 'Declined' };
-                  const syncStatus = getApplicantSyncStatus(a);
+                  const processingState = getApplicantProcessingState(a);
                   return (
                     <tr key={`all-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className="px-4 py-3">
@@ -2784,17 +2649,23 @@ export default function ScholarshipDashboard({
                           <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{a.applicant_no}</span>
                           <div className="font-semibold">{a.name}</div>
                         </div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${syncStatus ? 'bg-blue-100 text-blue-700' : statusColors[a._listType]}`}>{syncStatus ? `${syncStatus}...` : statusLabels[a._listType]}</span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusColors[a._listType]}`}>{statusLabels[a._listType]}</span>
                       </td>
                       <td className="px-4 py-3">{a.grade}</td>
                       <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       <td className="px-4 py-3 text-xs">{a.school}</td>
                       <td className="px-4 py-3 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
                       <td className="px-4 py-3">
-                        <div className="flex gap-1">
+                        <div className="flex items-center justify-between gap-3">
                           <button type="button" onClick={() => viewApplicantFn(a._listIdx, a._listType)} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
                             View
                           </button>
+                          {processingState && a._listType === 'all' && (
+                            <span className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#800020]">
+                              <FaSpinner className="animate-spin text-xs" />
+                              {processingState.requestedStatus === 'Accepted' ? 'Approving' : 'Rejecting'}
+                            </span>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -2804,15 +2675,9 @@ export default function ScholarshipDashboard({
               {trackTab === 'accepted' &&
                 acceptedList.map((a) => {
                   const idx = a._listIdx;
-                  const syncStatus = getApplicantSyncStatus(a);
                   return (
                     <tr key={`accepted-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <div className="font-semibold">{a.name}</div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${syncStatus ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                          {syncStatus ? `${syncStatus}...` : 'Accepted'}
-                        </span>
-                      </td>
+                      <td className="px-4 py-3">{a.name}</td>
                       <td className="px-4 py-3">{a.grade}</td>
                       <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       <td className="px-4 py-3 text-xs">{a.school}</td>
@@ -2822,8 +2687,8 @@ export default function ScholarshipDashboard({
                           <button type="button" onClick={() => viewApplicantFn(idx, 'accepted')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
                             View
                           </button>
-                          <button type="button" onClick={() => cancelApplicant('accepted', idx)} disabled={Boolean(syncStatus)} className="px-3 py-1 rounded bg-amber-500 text-gray-900 text-xs font-semibold disabled:cursor-not-allowed disabled:bg-amber-200 disabled:text-amber-700">
-                            {syncStatus ? 'Syncing' : 'Cancel'}
+                          <button type="button" onClick={() => cancelApplicant('accepted', idx)} className="px-3 py-1 rounded bg-amber-500 text-gray-900 text-xs font-semibold">
+                            Cancel
                           </button>
                         </div>
                       </td>
@@ -2834,15 +2699,9 @@ export default function ScholarshipDashboard({
               {trackTab === 'declined' &&
                 declinedList.map((a) => {
                   const idx = a._listIdx;
-                  const syncStatus = getApplicantSyncStatus(a);
                   return (
                     <tr key={`declined-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <div className="font-semibold">{a.name}</div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${syncStatus ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>
-                          {syncStatus ? `${syncStatus}...` : 'Declined'}
-                        </span>
-                      </td>
+                      <td className="px-4 py-3">{a.name}</td>
                       <td className="px-4 py-3">{a.grade}</td>
                       <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       <td className="px-4 py-3 text-xs">{a.school}</td>
@@ -2852,8 +2711,8 @@ export default function ScholarshipDashboard({
                           <button type="button" onClick={() => viewApplicantFn(idx, 'declined')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
                             View
                           </button>
-                          <button type="button" onClick={() => cancelApplicant('declined', idx)} disabled={Boolean(syncStatus)} className="px-3 py-1 rounded bg-amber-500 text-gray-900 text-xs font-semibold disabled:cursor-not-allowed disabled:bg-amber-200 disabled:text-amber-700">
-                            {syncStatus ? 'Syncing' : 'Cancel'}
+                          <button type="button" onClick={() => cancelApplicant('declined', idx)} className="px-3 py-1 rounded bg-amber-500 text-gray-900 text-xs font-semibold">
+                            Cancel
                           </button>
                         </div>
                       </td>
@@ -4096,7 +3955,7 @@ export default function ScholarshipDashboard({
               <button
                 type="button"
                 onClick={acceptApplicant}
-                disabled={Boolean(getApplicantSyncStatus(applicant))}
+                disabled={Boolean(getApplicantProcessingState(applicant))}
                 className="px-8 py-3 rounded-xl bg-green-600 text-white font-black uppercase tracking-widest text-xs hover:bg-green-700 shadow-lg shadow-green-100 transition-all flex items-center gap-2 disabled:cursor-not-allowed disabled:bg-green-300 disabled:shadow-none"
               >
                 <FaCheckCircle /> Approve
@@ -4104,7 +3963,7 @@ export default function ScholarshipDashboard({
               <button
                 type="button"
                 onClick={declineApplicant}
-                disabled={Boolean(getApplicantSyncStatus(applicant))}
+                disabled={Boolean(getApplicantProcessingState(applicant))}
                 className="px-8 py-3 rounded-xl bg-red-600 text-white font-black uppercase tracking-widest text-xs hover:bg-red-700 shadow-lg shadow-red-100 transition-all flex items-center gap-2 disabled:cursor-not-allowed disabled:bg-red-300 disabled:shadow-none"
               >
                 <FaTimesCircle /> Decline
