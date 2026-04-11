@@ -3154,12 +3154,12 @@ def ocr_check():
                     
                     v = name_ok and id_ok
                     if v:
-                        msg = f"School ID verified | Checklist: [{' | '.join(checklist)}]"
+                        msg = f"Front ID verified | Checklist: [{' | '.join(checklist)}]"
                     else:
                         msg = f"Verification failed. Checklist: [{' | '.join(checklist)}]"
                         if not name_ok: msg += f" (Name ratio: {name_ratio:.2f})"
 
-                    return {'doc': 'Identity Front', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                    return {'doc': 'Front ID', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'SchoolIDBack':
                     year_label = extract_school_year_from_text(raw)
@@ -3169,12 +3169,12 @@ def ocr_check():
                     checklist = [f"Year: {'OK' if year_ok else 'X'}"]
                     
                     if v:
-                        msg = f"School ID back verified | Checklist: [{' | '.join(checklist)}]"
+                        msg = f"Back ID verified | Checklist: [{' | '.join(checklist)}]"
                     else:
                         msg = f"Verification failed. Checklist: [{' | '.join(checklist)}]"
                         if not year_label: msg += " (Year not detected)"
                         
-                    return {'doc': 'Identity Back', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                    return {'doc': 'Back ID', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 return None
             except Exception as worker_err:
