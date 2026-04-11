@@ -3145,12 +3145,15 @@ def ocr_check():
                     return {'doc': doc_type, 'verified': False, 'message': f"Video verification failed: {msg_video}", 'video_verified': False, 'video_message': msg_video}
                 raw_lower = raw.lower() if raw else ""
                 
-                # If primary OCR extraction failed, return error
-                if not v:
+                # Early return only if extraction failed completely or it's a simple document type
+                # For high-priority docs with checklists (ID, COE, Grades), we proceed to specific logic 
+                # even if 'v' (basic identity check) failed, so we can build the checklist.
+                if not v and doc_type not in ['SchoolID', 'SchoolIDBack', 'Enrollment', 'Grades', 'Indigency']:
                     return {'doc': doc_type, 'verified': False, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
                 
-                # Double-check keywords
-                if doc_type in doc_keywords and doc_type not in ['SchoolID', 'SchoolIDBack']: # SchoolID images have separate front/back checks
+                # Double-check keywords for mandatory document types
+                is_complex_doc = doc_type in ['Enrollment', 'Grades', 'Indigency']
+                if doc_type in doc_keywords and is_complex_doc:
                     _, _, found_kw, _ = _perform_text_matching(raw, None, None, None, None, keywords=doc_keywords[doc_type], is_indigency=True)
                     if not found_kw:
                         return {'doc': doc_type, 'verified': False, 'message': f"Document type mismatch: Required '{doc_keywords[doc_type][0]}' not detected.", 'raw_text': raw}
@@ -3198,51 +3201,32 @@ def ocr_check():
 
                     return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
 
-                elif doc_type == 'Grades':
-                    year_label = extract_school_year_from_text(raw)
-                    semester_label = extract_semester_from_text(raw)
-                    normalized_expected_semester = normalize_semester_label(expected_semester)
-                    normalized_semester_label = normalize_semester_label(semester_label)
-                    
-                    year_only_ok = academic_year_matches_expected(year_label, expected_academic_year)
-                    semester_ok = True
-                    if normalized_expected_semester and normalized_semester_label:
-                        semester_ok = normalized_expected_semester == normalized_semester_label
-                    
-                    year_ok = is_current_school_year(year_label, semester_str=semester_label, expected_year=expected_academic_year, expected_semester=expected_semester)
-                    school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
-                    name_ok, name_ratio = student_name_matches_text(raw, first_name, middle_name, last_name)
-                    year_level_ok, _ = year_level_matches_text(raw, expected_year_level)
-                    gpa_ok, matched_gpa = gpa_matches_text(raw, expected_gpa)
-
-                    # Build Check-list
-                    checklist = []
-                    checklist.append(f"Name: {'OK' if name_ok else 'X'}")
-                    checklist.append(f"Year: {'OK' if year_only_ok else 'X'}")
-                    if expected_year_level: checklist.append(f"Level: {'OK' if year_level_ok else 'X'}")
-                    if expected_gpa: checklist.append(f"GPA: {'OK' if gpa_ok else 'X'}")
-
                     v = name_ok and year_only_ok and year_level_ok and gpa_ok
 
+                    checklist = [
+                        f"Name: {'OK' if name_ok else 'X'}",
+                        f"Year: {'OK' if year_only_ok else 'X'}",
+                        f"Level: {'OK' if year_level_ok else 'X'}",
+                        f"GPA: {'OK' if gpa_ok else 'X'}"
+                    ]
+
                     if not v:
-                        msg = f"Verification failed. Checklist: [{' | '.join(checklist)}]"
-                        if not name_ok: msg += f" (Name ratio: {name_ratio:.2f})"
+                        msg = f"Verification failed. Checklist items: [{', '.join(checklist)}]"
+                        if not name_ok: msg += f" (Name mismatch)"
                     else:
                         detail_issues = []
                         if not semester_ok: detail_issues.append("Semester mismatch")
                         if not year_ok: detail_issues.append("Period mismatch")
                         if not school_ok: detail_issues.append(f"School mismatch")
 
-                        if detail_issues:
-                            msg = f"Verified with warnings: {', '.join(detail_issues)} | Checklist: [{' | '.join(checklist)}]"
-                        else:
-                            msg = f"Verified Grade Report | Checklist: [{' | '.join(checklist)}]"
+                        msg = f"Verified Grade Report. Checklist: [{', '.join(checklist)}]"
+                        if detail_issues: msg = f"Verified (with warnings: {', '.join(detail_issues)}). Checklist: [{', '.join(checklist)}]"
 
                     return {'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'Indigency':
                     # Use provided metadata from verify_id_with_ocr
-                    name_ok = meta.get('name_ok', v)
+                    name_ok = meta.get('name_ok', False)
                     addr_ok = meta.get('addr_ok', True)
                     
                     checklist = [f"Name: {'OK' if name_ok else 'X'}"]
@@ -3252,29 +3236,31 @@ def ocr_check():
                     else:
                         v = name_ok
                         
-                    msg = f"{'Verified' if v else 'Verification failed'}. Checklist: [{' | '.join(checklist)}]"
+                    msg = f"Checklist results: [{', '.join(checklist)}]"
+                    if not v:
+                         msg = f"Verification failed. Checklist: [{', '.join(checklist)}]"
+                    
                     return {'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'SchoolID':
-                    # For physical ID cards, we completely skip year level checks
-                    # as they are rarely printed on the card face.
+                    # For physical ID cards, we check Name and ID Number
+                    # Use both general ID verification and specific ID number check
                     id_ok, _ = id_number_matches_text(raw, expected_id_no)
                     name_ok, name_ratio = student_name_matches_text(raw, first_name, middle_name, last_name)
                     
-                    # Build checklist
                     checklist = [
                         f"Name: {'OK' if name_ok else 'X'}",
-                        f"ID: {'OK' if id_ok else 'X'}"
+                        f"ID Number: {'OK' if id_ok else 'X'}"
                     ]
                     
                     v = name_ok and id_ok
                     if v:
-                        msg = f"Front ID verified | Checklist: [{' | '.join(checklist)}]"
+                        msg = f"Front ID verified successfully. Checklist: [{', '.join(checklist)}]"
                     else:
-                        msg = f"Verification failed. Checklist: [{' | '.join(checklist)}]"
-                        if not name_ok: msg += f" (Name ratio: {name_ratio:.2f})"
+                        msg = f"Verification failed. Checklist: [{', '.join(checklist)}]"
+                        if not name_ok: msg += f" (Name mismatch)"
 
-                    return {'doc': 'Front ID', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                    return {'doc': 'SchoolID', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'SchoolIDBack':
                     year_label = extract_school_year_from_text(raw)

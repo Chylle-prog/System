@@ -853,6 +853,9 @@ const StudentInfo = () => {
         }
 
         setVerified('failed');
+        const finalFailMsg = result.message || 'Verification failed. Please ensure your document is clear and all details (Name, ID, Year) are correct.';
+        setStatus(finalFailMsg);
+        return false;
       }
     } catch (err) {
       console.error('OCR Error:', err);
