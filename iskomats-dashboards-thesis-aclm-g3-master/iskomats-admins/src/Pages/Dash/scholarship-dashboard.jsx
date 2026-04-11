@@ -3565,6 +3565,8 @@ export default function ScholarshipDashboard({
   const renderViewApplicant = () => {
     if (!viewApplicant) return null;
     const { listType, index } = viewApplicant;
+
+    // Use 'a' as the applicant object throughout
     const list = listType === 'all' ? data.applicants : data[listType];
     const a = list[index];
     if (!a) return null;
