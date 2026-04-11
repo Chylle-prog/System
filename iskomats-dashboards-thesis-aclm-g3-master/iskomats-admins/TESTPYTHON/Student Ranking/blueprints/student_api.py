@@ -2925,6 +2925,17 @@ def ocr_check():
             except Exception as sch_err:
                 print(f"[OCR ERROR] Failed to fetch scholarship year: {sch_err}", flush=True)
 
+        # ─── SPEED OPTIMIZATION: Early Video Prefetching ───
+        # Initiate parallel downloads of all relevant videos immediately
+        prefetch_video_urls([
+            data.get('video_url'), data.get('video_url_back'),
+            data.get('mayorIndigency_video'), applicant.get('indigency_vid_url'),
+            data.get('mayorCOE_video'), applicant.get('enrollment_certificate_vid_url'),
+            data.get('mayorGrades_video'), applicant.get('grades_vid_url'),
+            data.get('schoolIdFront_video'), applicant.get('schoolid_front_vid_url'),
+            data.get('schoolIdBack_video'), applicant.get('schoolid_back_vid_url')
+        ])
+        
         verification_cache_key = json.dumps({
             'user_no': request.user_no,
             'target_doc': target_doc,
@@ -3239,8 +3250,6 @@ def ocr_check():
                         
                     msg = f"{'Verified' if v else 'Verification failed'}. Checklist: [{' | '.join(checklist)}]"
                     return {'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
-
-                elif doc_type == 'SchoolID':
 
                 elif doc_type == 'SchoolID':
                     # For physical ID cards, we completely skip year level checks

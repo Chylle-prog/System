@@ -27,7 +27,8 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 cv2.setNumThreads(1) # Crucial: prevents OpenCV from spawning ghost threads that kill RAM
 
 # Global OCR Concurrency Control: Set to 3 to allow parallel multi-part verification (e.g., ID Front/Back + Indigency)
-OCR_SEMAPHORE = eventlet.semaphore.Semaphore(3)
+# Global OCR Concurrency Control: Set to 5 to allow parallel multi-part verification and background pre-scans
+OCR_SEMAPHORE = eventlet.semaphore.Semaphore(5)
 
 
 # ─── Environment hints for threading & memory ──────────────────────────────────
@@ -197,6 +198,15 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     # Pass 1: Raw Grayscale (Best for modern LSTM Tesseract, handles white-on-black perfectly)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
     # Use eventlet.tpool to prevent Tesseract (blocking C call) from freezing the green thread pool
+    # OPTIMIZATION: Use OEM 1 (LSTM-only) for Pass 1 - significantly faster
+    # than the legacy engine (OEM 0/3) for standard high-contrast text.
+    text1 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 1')
+    
+    # Check if first pass was sufficient (lenient 20-char check)
+    if len(text1.strip()) > 30:
+        return text1.strip()
+    
+    # Fallback to standard engine (OEM 3) only if LSTM fails
     text1 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 3')
     if text1.strip():
         results.append(text1.strip())

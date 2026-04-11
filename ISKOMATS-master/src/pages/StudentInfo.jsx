@@ -755,12 +755,40 @@ const StudentInfo = () => {
       console.error('Signature Verification Error:', err);
       setSignatureVerified('failed');
       setSignatureStatus(`Technical Issue: ${err.message}`);
+    }  const preScanDocument = async (docType, base64) => {
+    // Only pre-scan if we have content and it's not already verified
+    const isAlreadyVerified = 
+      (docType === 'Indigency' && ocrVerified === 'success') ||
+      (docType === 'Enrollment' && coeVerified === 'success') ||
+      (docType === 'Grades' && gradesVerified === 'success') ||
+      (docType === 'SchoolID' && idVerified === 'success');
+
+    if (!base64 || isAlreadyVerified) return;
+
+    try {
+      // Trigger a silent OCR check in background to warm up server cache
+      await performOcrVerification(
+        docType, 
+        docType === 'SchoolID' ? { front: base64, back: null } : base64, 
+        { schoolName: formData.schoolName, idNumber: formData.schoolIdNumber, yearLevel: formData.yearLevel }, 
+        null, 
+        true
+      );
+    } catch (e) {
+      console.log("Background pre-scan deferred", e);
     }
   };
 
-  const performOcrVerification = async (docType, docParam, extraParams = {}, videoUrl = null) => {
+  const performOcrVerification = async (docType, docParam, extraParams = {}, videoUrl = null, silent = false) => {
     try {
+      if (!silent) {
+        setVerified('verifying');
+        setStatus(`Verifying your ${docType} document and video...`);
+        setScanProgress(15);
+      }
+      
       const setStatus = (status) => {
+        if (silent) return;
         if (docType === 'Indigency') { setOcrStatus(status); }
         else if (docType === 'Enrollment') { setCoeStatus(status); }
         else if (docType === 'Grades') { setGradesStatus(status); }
@@ -768,19 +796,19 @@ const StudentInfo = () => {
       };
       
       const setVerified = (v) => {
+        if (silent) return;
         if (docType === 'Indigency') { setOcrVerified(v); }
         else if (docType === 'Enrollment') { setCoeVerified(v); }
         else if (docType === 'Grades') { setGradesVerified(v); }
         else if (docType === 'SchoolID') { setIdVerified(v); }
       };
 
-      setVerified('verifying');
-      setStatus(`Verifying your ${docType} document and video...`);
-      setScanProgress(15);
-      
-      const pInterval = setInterval(() => {
-        setScanProgress(p => p < 95 ? p + (Math.random() * 25) : p);
-      }, 80);
+      let pInterval;
+      if (!silent) {
+        pInterval = setInterval(() => {
+          setScanProgress(p => p < 95 ? p + (Math.random() * 25) : p);
+        }, 80);
+      }
 
       const { townCity, schoolName, idNumber, yearLevel, gpa, course } = extraParams;
       const { firstName, lastName, middleName } = formData;
@@ -802,8 +830,8 @@ const StudentInfo = () => {
         docType
       );
 
-      clearInterval(pInterval);
-      setScanProgress(100);
+      if (!silent && pInterval) clearInterval(pInterval);
+      if (!silent) setScanProgress(100);
       
       if (result.verified) {
         setVerified('success');
@@ -821,8 +849,6 @@ const StudentInfo = () => {
         }
 
         setVerified('failed');
-        setStatus(result.message || 'Verification failed.');
-        return false;
       }
     } catch (err) {
       console.error('OCR Error:', err);
@@ -1630,9 +1656,9 @@ const StudentInfo = () => {
             setPhotos(prev => ({ ...prev, [name]: compressedBase64 })); // Update with compressed version
             
             // Reset verification on photo change
-            if (name === 'mayorIndigency_photo') { setOcrVerified(null); setOcrStatus(''); }
-            else if (name === 'mayorCOE_photo') { setCoeVerified(null); setCoeStatus(''); }
-            else if (name === 'mayorGrades_photo') { setGradesVerified(null); setGradesStatus(''); }
+            if (name === 'mayorIndigency_photo') { setOcrVerified(null); setOcrStatus(''); preScanDocument('Indigency', compressedBase64); }
+            else if (name === 'mayorCOE_photo') { setCoeVerified(null); setCoeStatus(''); preScanDocument('Enrollment', compressedBase64); }
+            else if (name === 'mayorGrades_photo') { setGradesVerified(null); setGradesStatus(''); preScanDocument('Grades', compressedBase64); }
             
             applicantAPI.updateProfile({ [name]: compressedBase64 }).catch(console.error);
           });
@@ -1694,6 +1720,9 @@ const StudentInfo = () => {
         applicantAPI.updateProfile({ 
           [photoKey]: compressedBase64
         }).catch(console.error);
+
+        // Pre-scan front ID in background
+        if (side === 'front') preScanDocument('SchoolID', compressedBase64);
       });
     }
   };
