@@ -40,8 +40,32 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_DIR not in sys.path:
     sys.path.append(PROJECT_DIR)
 
+from flask import Blueprint, request, jsonify, send_file, url_for, session, current_app
+api_bp = Blueprint('admin_api', __name__, url_prefix='/api/admin')
+
+@api_bp.record_once
+def on_blueprint_init(state):
+    """Run migrations once when the app starts up."""
+    with state.app.app_context():
+        try:
+            from project_config import get_db
+            conn = get_db()
+            cur = conn.cursor()
+            ensure_schema_integrity(cur)
+            ensure_admin_activity_log_table(cur)
+            conn.commit()
+            cur.close()
+            conn.close()
+            print("[BACKEND] Admin schema initialization complete.")
+        except Exception as e:
+            print(f"[BACKEND] Admin schema migration skipped or failed: {e}")
+
 from project_config import get_db, get_db_startup
 from services.notification_service import create_notification
+
+# ─── SCHEMA & AUDIT CACHE ───
+_SCHEMA_INITIALIZED = False
+_COLUMN_CACHE = {} # { table_name: set(column_names) }
 from services.email_table_service import (
     get_applicant_email_table,
     get_user_email_table,
@@ -187,7 +211,6 @@ def decrypt_image_to_data_url(encrypted_data):
         print(f"Decryption error: {e}", file=sys.stderr)
         return None
 
-api_bp = Blueprint('admin_api', __name__, url_prefix='/api/admin')
 bcrypt = Bcrypt()
 
 # ===== JWT CONFIG =====
@@ -343,7 +366,11 @@ def get_entity_image_columns(cursor, entity='announcement'):
     return primary_key_column, foreign_key_column
 
 def ensure_schema_integrity(cursor):
-    """Ensure all required columns exist in scholarships and announcements tables."""
+    """Ensure all required columns exist (runs once per service lifetime)."""
+    global _SCHEMA_INITIALIZED
+    if _SCHEMA_INITIALIZED:
+        return
+    
     def read_count(row):
         if isinstance(row, dict):
             return next(iter(row.values()), 0)
@@ -382,6 +409,22 @@ def ensure_schema_integrity(cursor):
         if read_count(cursor.fetchone()) == 0:
             print(f"[MIGRATION] Adding {col} to scholarships table")
             cursor.execute(f"ALTER TABLE scholarships ADD COLUMN {col} {col_type}")
+    
+    _SCHEMA_INITIALIZED = True
+
+
+def get_table_columns(cursor, table_name):
+    """Retrieve and cache column list for dynamic queries."""
+    if table_name in _COLUMN_CACHE:
+        return _COLUMN_CACHE[table_name]
+    
+    cursor.execute(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = %s",
+        (table_name,)
+    )
+    cols = {row['column_name'] if isinstance(row, dict) else row[0] for row in cursor.fetchall()}
+    _COLUMN_CACHE[table_name] = cols
+    return cols
 
 
 def get_row_value(row, key, default=None):
@@ -1536,10 +1579,31 @@ def record_admin_activity(
     provider_no=None,
     status='success',
 ):
-    """Persist an audit event without interrupting the primary request flow."""
-    # REDUCE LOG NOISE: Do not log high-frequency login/logout events in the activity audit table
+    """Offload audit event to background to keep the main request fast."""
     if action in ['Login', 'Logout']:
         return
+        
+    run_background_task(
+        _record_admin_activity_worker,
+        actor_user_no=actor_user_no,
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        target_label=target_label,
+        provider_no=provider_no,
+        status=status
+    )
+
+def _record_admin_activity_worker(
+    *,
+    actor_user_no=None,
+    action,
+    target_type=None,
+    target_id=None,
+    target_label=None,
+    provider_no=None,
+    status='success',
+):
     conn = None
     cursor = None
 
@@ -3138,18 +3202,7 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
         resolved_provider_no, _ = resolve_provider_context(cursor, current_user_id, role, pro_no)
         is_super_admin = (role or '').strip().lower() == 'admin'
 
-        cursor.execute(
-            """
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name = 'scholarships'
-              AND column_name IN ('desc', 'date_created', 'semester', 'year', 'is_removed')
-            """
-        )
-        scholarship_columns = {
-            row['column_name'] if isinstance(row, dict) else row[0]
-            for row in cursor.fetchall()
-        }
+        scholarship_columns = get_table_columns(cursor, 'scholarships')
 
         description_expr = 's."desc"' if 'desc' in scholarship_columns else 'NULL'
         date_created_expr = 's.date_created' if 'date_created' in scholarship_columns else 'NULL'
@@ -4109,18 +4162,7 @@ def get_admin_announcements(current_user_id, pro_no, role):
         except Exception:
             primary_key_column, foreign_key_column = None, None
 
-        cur.execute(
-            """
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name = 'announcements'
-              AND column_name IN ('time_added', 'status_updated', 'ann_date', 'is_removed')
-            """
-        )
-        announcement_columns = {
-            row['column_name'] if isinstance(row, dict) else row[0]
-            for row in cur.fetchall()
-        }
+        announcement_columns = get_table_columns(cur, 'announcements')
 
         if 'time_added' in announcement_columns:
             date_col = 'a.time_added'
