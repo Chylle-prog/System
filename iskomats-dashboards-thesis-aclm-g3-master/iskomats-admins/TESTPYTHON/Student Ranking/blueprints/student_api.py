@@ -2912,7 +2912,7 @@ def ocr_check():
                     v, msg, raw, _ = verify_id_with_ocr(doc_bytes, None, None, None, None, None, expected_year_level=expected_year_level)
                 else:
                     # ID Front/Indigency check: Validate Name + ID Number (for ID) + Address (for Indigency)
-                    v, msg, raw, _ = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=expected_id_no)
+                    v, msg, raw, _ = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=expected_id_no if doc_type != 'Indigency' else None)
                 raw_lower = raw.lower() if raw else ""
                 
                 # If primary OCR extraction failed, return error
