@@ -2673,6 +2673,8 @@ def ocr_check():
                 'id_img_front',
                 'id_img_back',
                 'indigency_doc',
+                'enrollment_certificate_doc',
+                'grades_doc',
                 'id_vid_url',
                 'schoolid_front_vid_url',
                 'schoolid_back_vid_url',
@@ -2898,10 +2900,10 @@ def ocr_check():
                     msg = extraction_error or ('Verified' if v else 'Unable to read document text')
                 elif doc_type == 'SchoolIDBack':
                     # ID Back check: Validate only the Year Level
-                    v, msg, raw, _ = verify_id_with_ocr(doc_bytes, None, None, None, None, None, expected_year_level=year_level)
+                    v, msg, raw, _ = verify_id_with_ocr(doc_bytes, None, None, None, None, None, expected_year_level=expected_year_level)
                 else:
                     # ID Front/Indigency check: Validate Name + ID Number (for ID) + Address (for Indigency)
-                    v, msg, raw, _ = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=id_number)
+                    v, msg, raw, _ = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=expected_id_no)
                 raw_lower = raw.lower() if raw else ""
                 
                 # If primary OCR extraction failed, return error
@@ -3026,13 +3028,15 @@ def ocr_check():
 
         # 3. Schedule Parallel Jobs
         jobs = []
-        if enrollment_doc_param: jobs.append(('Enrollment', enrollment_doc_param, None))
-        if grades_doc_param: jobs.append(('Grades', grades_doc_param, None))
-        if indigency_doc_param:  # Only run Indigency if a doc was explicitly sent; no fallback guessing
+        if enrollment_doc_param or applicant.get('enrollment_certificate_doc'):
+            jobs.append(('Enrollment', enrollment_doc_param, applicant.get('enrollment_certificate_doc')))
+        if grades_doc_param or applicant.get('grades_doc'):
+            jobs.append(('Grades', grades_doc_param, applicant.get('grades_doc')))
+        if indigency_doc_param or applicant.get('indigency_doc'):
             jobs.append(('Indigency', indigency_doc_param, applicant.get('indigency_doc')))
-        if id_front_param:
+        if id_front_param or applicant.get('id_img_front'):
             jobs.append(('SchoolID', id_front_param, applicant.get('id_img_front')))
-        if id_back_param:
+        if id_back_param or applicant.get('id_img_back'):
             jobs.append(('SchoolIDBack', id_back_param, applicant.get('id_img_back')))
 
         results = []

@@ -115,6 +115,16 @@ const normalizeVerificationImage = async (value) => {
   return value;
 };
 
+const resolvePersistedDocumentUrl = (...values) => values.find((value) => isHttpUrl(value)) || null;
+
+const getVerificationDocumentSource = (localValue, ...persistedValues) => {
+  if (isFileLike(localValue) || isDataUrl(localValue)) {
+    return localValue;
+  }
+
+  return resolvePersistedDocumentUrl(localValue, ...persistedValues) || null;
+};
+
 const STEP_FIELDS = {
   1: [
     'lastName', 'firstName', 'middleName', 'maidenName', 'dateOfBirth', 'placeOfBirth',
@@ -786,7 +796,11 @@ const StudentInfo = () => {
   };
 
   const handleIndigencyScan = async () => {
-    const indigencyDoc = photos.mayorIndigency_photo || formData.mayorIndigency_photo;
+    const indigencyDoc = getVerificationDocumentSource(
+      photos.mayorIndigency_photo,
+      formData.mayorIndigency_photo,
+      userProfile?.indigency_doc
+    );
     const townCity = formData.townCityMunicipality || '';
     const videoUrl = formData.mayorIndigency_video || documentVideos.mayorIndigency_video;
 
@@ -818,7 +832,11 @@ const StudentInfo = () => {
   };
 
   const handleCOEScan = async () => {
-    const coeDoc = photos.mayorCOE_photo || formData.mayorCOE_photo;
+    const coeDoc = getVerificationDocumentSource(
+      photos.mayorCOE_photo,
+      formData.mayorCOE_photo,
+      userProfile?.enrollment_certificate_doc
+    );
     const schoolName = formData.schoolName || '';
     const idNumber = formData.schoolIdNumber || '';
     const yearLevel = formData.yearLevel || '';
@@ -853,7 +871,11 @@ const StudentInfo = () => {
   };
 
   const handleGradesScan = async () => {
-    const gradesDoc = photos.mayorGrades_photo || formData.mayorGrades_photo;
+    const gradesDoc = getVerificationDocumentSource(
+      photos.mayorGrades_photo,
+      formData.mayorGrades_photo,
+      userProfile?.grades_doc
+    );
     const schoolName = formData.schoolName || '';
     const yearLevel = formData.yearLevel || '';
     const gpa = formData.gpa || '';
@@ -887,8 +909,14 @@ const StudentInfo = () => {
   };
 
   const handleIdScan = async () => {
-    const idFront = schoolIdPhotos.front;
-    const idBack = schoolIdPhotos.back;
+    const idFront = getVerificationDocumentSource(
+      schoolIdPhotos.front,
+      userProfile?.id_img_front
+    );
+    const idBack = getVerificationDocumentSource(
+      schoolIdPhotos.back,
+      userProfile?.id_img_back
+    );
     const frontVideoUrl = formData.schoolIdFront_video || documentVideos.schoolIdFront_video;
     const backVideoUrl = formData.schoolIdBack_video || documentVideos.schoolIdBack_video;
 
@@ -1235,9 +1263,9 @@ const StudentInfo = () => {
         // we fetch them one-by-one in the background.
         const fetchHeavyBlobs = async (prof) => {
           const blobFields = [
-            'profile_picture', 'id_img_front', 'id_img_back', 
-            'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 
-            'id_pic', 'signature_image_data'
+            'profile_picture',
+            'id_pic',
+            'signature_image_data'
           ];
           
           for (const field of blobFields) {

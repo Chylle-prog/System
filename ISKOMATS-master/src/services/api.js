@@ -521,13 +521,35 @@ export const applicantAPI = {
    */
   ocrCheck: async (idFront = null, idBack = null, indigencyDoc = null, townCity = null, enrollmentDoc = null, grades_doc = null, firstName = null, lastName = null, middleName = null, schoolName = null, idNumber = null, yearLevel = null, gpa = null, course = null, videoUrl = null, scholarshipNo = null) => {
     const fData = new FormData();
+
+    const appendDocumentIfNeeded = (fieldName, value) => {
+      if (!value) {
+        return;
+      }
+
+      if (typeof File !== 'undefined' && value instanceof File) {
+        fData.append(fieldName, value);
+        return;
+      }
+
+      if (value instanceof Blob) {
+        fData.append(fieldName, value);
+        return;
+      }
+
+      if (typeof value === 'string' && /^https?:\/\//i.test(value)) {
+        return;
+      }
+
+      fData.append(fieldName, value);
+    };
     
     // Add document data (handling both base64 strings and potential Blob/Files)
-    if (idFront) fData.append('id_front', idFront);
-    if (idBack) fData.append('id_back', idBack);
-    if (indigencyDoc) fData.append('indigency_doc', indigencyDoc);
-    if (enrollmentDoc) fData.append('enrollment_doc', enrollmentDoc);
-    if (grades_doc) fData.append('grades_doc', grades_doc);
+    appendDocumentIfNeeded('id_front', idFront);
+    appendDocumentIfNeeded('id_back', idBack);
+    appendDocumentIfNeeded('indigency_doc', indigencyDoc);
+    appendDocumentIfNeeded('enrollment_doc', enrollmentDoc);
+    appendDocumentIfNeeded('grades_doc', grades_doc);
     
     // Add metadata
     fData.append('town_city', townCity || '');
