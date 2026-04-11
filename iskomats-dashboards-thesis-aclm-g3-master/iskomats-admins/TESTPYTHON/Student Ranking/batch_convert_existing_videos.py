@@ -23,6 +23,37 @@ load_dotenv()
 from services.db_service import get_db
 from services.video_converter import convert_video_to_mp4
 
+
+VIDEO_COLUMNS = (
+    'id_vid_url',
+    'indigency_vid_url',
+    'grades_vid_url',
+    'enrollment_certificate_vid_url',
+    'schoolid_front_vid_url',
+    'schoolid_back_vid_url',
+)
+
+
+def resolve_applicant_document_table(cursor):
+    """Resolve the current applicant document table name."""
+    for candidate in ('applicant_documents', 'applicant_document'):
+        cursor.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = ANY (current_schemas(FALSE))
+                  AND table_name = %s
+            ) AS exists
+            """,
+            (candidate,),
+        )
+        row = cursor.fetchone()
+        exists = row.get('exists') if hasattr(row, 'get') else row[0]
+        if exists:
+            return candidate
+    return None
+
 def fetch_video_from_supabase(url):
     """Fetch video bytes from Supabase URL."""
     if not url:
@@ -94,27 +125,42 @@ def main():
         # Connect to database
         db = get_db()
         cursor = db.cursor()
+        document_table = resolve_applicant_document_table(cursor)
         
-        # Query all video fields
-        cursor.execute("""
-            SELECT 
-                applicant_no,
-                id_vid_url,
-                indigency_vid_url,
-                grades_vid_url,
-                enrollment_certificate_vid_url,
-                schoolid_front_vid_url,
-                schoolid_back_vid_url
-            FROM applicants
-            WHERE (
-                id_vid_url IS NOT NULL OR 
-                indigency_vid_url IS NOT NULL OR 
-                grades_vid_url IS NOT NULL OR 
-                enrollment_certificate_vid_url IS NOT NULL OR
-                schoolid_front_vid_url IS NOT NULL OR
-                schoolid_back_vid_url IS NOT NULL
+        if document_table:
+            where_clause = ' OR '.join(f'{column} IS NOT NULL' for column in VIDEO_COLUMNS)
+            cursor.execute(
+                f'''
+                SELECT
+                    applicant_no,
+                    {', '.join(VIDEO_COLUMNS)}
+                FROM {document_table}
+                WHERE {where_clause}
+                '''
             )
-        """)
+        else:
+            # Legacy fallback for pre-migration databases.
+            cursor.execute(
+                """
+                SELECT 
+                    applicant_no,
+                    id_vid_url,
+                    indigency_vid_url,
+                    grades_vid_url,
+                    enrollment_certificate_vid_url,
+                    schoolid_front_vid_url,
+                    schoolid_back_vid_url
+                FROM applicants
+                WHERE (
+                    id_vid_url IS NOT NULL OR 
+                    indigency_vid_url IS NOT NULL OR 
+                    grades_vid_url IS NOT NULL OR 
+                    enrollment_certificate_vid_url IS NOT NULL OR
+                    schoolid_front_vid_url IS NOT NULL OR
+                    schoolid_back_vid_url IS NOT NULL
+                )
+                """
+            )
         
         applicants = cursor.fetchall()
         db.close()

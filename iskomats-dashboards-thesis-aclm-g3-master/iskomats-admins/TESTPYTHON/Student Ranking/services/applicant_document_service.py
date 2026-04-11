@@ -1,0 +1,181 @@
+APPLICANT_DOCUMENT_TABLE_CANDIDATES = ('applicant_documents', 'applicant_document')
+
+APPLICANT_INLINE_MEDIA_COLUMNS = (
+    'profile_picture',
+)
+
+APPLICANT_DOCUMENT_COLUMNS = (
+    'signature_image_data',
+    'schoolID_photo',
+    'id_img_front',
+    'id_img_back',
+    'enrollment_certificate_doc',
+    'grades_doc',
+    'indigency_doc',
+    'id_pic',
+    'id_vid_url',
+    'indigency_vid_url',
+    'grades_vid_url',
+    'enrollment_certificate_vid_url',
+    'schoolid_front_vid_url',
+    'schoolid_back_vid_url',
+)
+
+_TABLE_CACHE = {}
+_COLUMN_CACHE = {}
+
+
+def applicant_has_column(cursor, column_name):
+    return column_name in get_table_columns(cursor, 'applicants')
+
+
+def _table_exists(cursor, table_name):
+    cache_key = ('exists', table_name)
+    if cache_key in _TABLE_CACHE:
+        return _TABLE_CACHE[cache_key]
+
+    cursor.execute(
+        """
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = ANY (current_schemas(FALSE))
+              AND table_name = %s
+        ) AS exists
+        """,
+        (table_name,),
+    )
+    row = cursor.fetchone()
+    exists = row.get('exists') if hasattr(row, 'get') else row[0]
+    _TABLE_CACHE[cache_key] = exists
+    return exists
+
+
+def get_table_columns(cursor, table_name):
+    cache_key = ('columns', table_name)
+    if cache_key in _COLUMN_CACHE:
+        return _COLUMN_CACHE[cache_key]
+
+    cursor.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = ANY (current_schemas(FALSE))
+          AND table_name = %s
+        """,
+        (table_name,),
+    )
+    columns = {
+        row.get('column_name') if hasattr(row, 'get') else row[0]
+        for row in cursor.fetchall()
+    }
+    _COLUMN_CACHE[cache_key] = columns
+    return columns
+
+
+def get_applicant_document_table(cursor):
+    for candidate in APPLICANT_DOCUMENT_TABLE_CANDIDATES:
+        if _table_exists(cursor, candidate):
+            return candidate
+    return None
+
+
+def applicant_document_join_sql(cursor, applicant_alias='a', document_alias='ad'):
+    document_table = get_applicant_document_table(cursor)
+    if not document_table:
+        return ''
+    return f' LEFT JOIN {document_table} {document_alias} ON {document_alias}.applicant_no = {applicant_alias}.applicant_no '
+
+
+def applicant_document_expr(cursor, column_name, applicant_alias='a', document_alias='ad'):
+    applicant_columns = get_table_columns(cursor, 'applicants')
+    document_table = get_applicant_document_table(cursor)
+    applicant_expr = f'{applicant_alias}."{column_name}"' if column_name in applicant_columns else None
+
+    if document_table:
+        document_columns = get_table_columns(cursor, document_table)
+        if column_name in document_columns:
+            document_expr = f'{document_alias}."{column_name}"'
+            if applicant_expr:
+                return f'COALESCE({document_expr}, {applicant_expr})'
+            return document_expr
+
+    if applicant_expr:
+        return applicant_expr
+
+    return 'NULL'
+
+
+def fetch_applicant_document_values(cursor, applicant_no, column_names):
+    document_table = get_applicant_document_table(cursor)
+    requested_columns = list(dict.fromkeys(column_names))
+    if not requested_columns:
+        return {}
+
+    applicant_columns = get_table_columns(cursor, 'applicants')
+    joins = applicant_document_join_sql(cursor, 'a', 'ad')
+    select_parts = []
+    for column_name in requested_columns:
+        if column_name == 'applicant_no':
+            select_parts.append('a.applicant_no AS applicant_no')
+            continue
+        if column_name == 'profile_picture':
+            if 'profile_picture' not in applicant_columns:
+                select_parts.append('NULL AS profile_picture')
+            else:
+                select_parts.append('a."profile_picture" AS profile_picture')
+            continue
+        select_parts.append(f'{applicant_document_expr(cursor, column_name, "a", "ad")} AS "{column_name}"')
+
+    query = f'SELECT {", ".join(select_parts)} FROM applicants a{joins}WHERE a.applicant_no = %s LIMIT 1'
+    cursor.execute(query, (applicant_no,))
+    row = cursor.fetchone()
+    return row or {}
+
+
+def persist_applicant_document_values(cursor, applicant_no, values):
+    document_values = {key: value for key, value in values.items() if key in APPLICANT_DOCUMENT_COLUMNS}
+    if not document_values:
+        return
+
+    document_table = get_applicant_document_table(cursor)
+    if document_table:
+        document_columns = get_table_columns(cursor, document_table)
+        filtered_values = {
+            key: value
+            for key, value in document_values.items()
+            if key in document_columns
+        }
+        if not filtered_values:
+            return
+
+        insert_columns = ['applicant_no', *filtered_values.keys()]
+        placeholders = ', '.join(['%s'] * len(insert_columns))
+        assignments = ', '.join(f'"{column}" = EXCLUDED."{column}"' for column in filtered_values.keys())
+        params = [applicant_no, *filtered_values.values()]
+        cursor.execute(
+            f'''
+            INSERT INTO {document_table} ({', '.join(insert_columns)})
+            VALUES ({placeholders})
+            ON CONFLICT (applicant_no)
+            DO UPDATE SET {assignments}
+            ''',
+            tuple(params),
+        )
+        return
+
+    applicant_columns = get_table_columns(cursor, 'applicants')
+    fallback_values = {
+        key: value
+        for key, value in document_values.items()
+        if key in applicant_columns
+    }
+    if not fallback_values:
+        return
+
+    assignments = ', '.join(f'"{column}" = %s' for column in fallback_values.keys())
+    params = [*fallback_values.values(), applicant_no]
+    cursor.execute(
+        f'UPDATE applicants SET {assignments} WHERE applicant_no = %s',
+        tuple(params),
+    )

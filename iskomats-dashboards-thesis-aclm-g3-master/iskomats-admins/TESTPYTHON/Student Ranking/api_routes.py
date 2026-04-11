@@ -45,6 +45,12 @@ from services.email_table_service import (
     make_account_identifier,
     parse_account_identifier,
 )
+from services.applicant_document_service import (
+    applicant_has_column,
+    applicant_document_expr,
+    applicant_document_join_sql,
+    fetch_applicant_document_values,
+)
 
 def convert_bytea_array_to_urls(bytea_array):
     """Convert PostgreSQL bytea[] array to list of base64 data URLs."""
@@ -2892,6 +2898,8 @@ def get_applicants(current_user_id, pro_no, role, program):
         conn = get_db()
         cursor = conn.cursor()
         applicant_email_table = get_applicant_email_table(cursor)
+        document_join = applicant_document_join_sql(cursor, 'a', 'ad')
+        profile_picture_expr = '(a.profile_picture IS NOT NULL)' if applicant_has_column(cursor, 'profile_picture') else 'FALSE'
         
         query = f'''
             SELECT a.applicant_no as id, a.first_name as "firstName", a.last_name as "lastName", 
@@ -2932,23 +2940,24 @@ def get_applicants(current_user_id, pro_no, role, program):
                    esc.scholarship_name as "scholarshipName",
                    COALESCE(s.status_updated, CURRENT_DATE) as "createdAt",
                     COALESCE(s.status_updated, CURRENT_DATE) as "dateApplied",
-                    (a.indigency_doc IS NOT NULL) as "has_indigency_doc",
-                    (a.enrollment_certificate_doc IS NOT NULL) as "has_enrollment_certificate_doc",
-                    (a.grades_doc IS NOT NULL) as "has_grades_doc",
-                    (a."schoolID_photo" IS NOT NULL) as "has_schoolID_photo",
-                    (a.id_img_front IS NOT NULL) as "has_id_img_front",
-                    (a.id_img_back IS NOT NULL) as "has_id_img_back",
-                    (a.id_pic IS NOT NULL) as "has_id_pic",
-                    (a.profile_picture IS NOT NULL) as "has_profile_picture",
-                    (a.signature_image_data IS NOT NULL) as "has_signature",
-                    a.indigency_vid_url,
-                    a.enrollment_certificate_vid_url,
-                    a.grades_vid_url
+                    ({applicant_document_expr(cursor, 'indigency_doc', 'a', 'ad')} IS NOT NULL) as "has_indigency_doc",
+                    ({applicant_document_expr(cursor, 'enrollment_certificate_doc', 'a', 'ad')} IS NOT NULL) as "has_enrollment_certificate_doc",
+                    ({applicant_document_expr(cursor, 'grades_doc', 'a', 'ad')} IS NOT NULL) as "has_grades_doc",
+                    ({applicant_document_expr(cursor, 'schoolID_photo', 'a', 'ad')} IS NOT NULL) as "has_schoolID_photo",
+                    ({applicant_document_expr(cursor, 'id_img_front', 'a', 'ad')} IS NOT NULL) as "has_id_img_front",
+                    ({applicant_document_expr(cursor, 'id_img_back', 'a', 'ad')} IS NOT NULL) as "has_id_img_back",
+                    ({applicant_document_expr(cursor, 'id_pic', 'a', 'ad')} IS NOT NULL) as "has_id_pic",
+                    {profile_picture_expr} as "has_profile_picture",
+                    ({applicant_document_expr(cursor, 'signature_image_data', 'a', 'ad')} IS NOT NULL) as "has_signature",
+                    {applicant_document_expr(cursor, 'indigency_vid_url', 'a', 'ad')} as indigency_vid_url,
+                    {applicant_document_expr(cursor, 'enrollment_certificate_vid_url', 'a', 'ad')} as enrollment_certificate_vid_url,
+                    {applicant_document_expr(cursor, 'grades_vid_url', 'a', 'ad')} as grades_vid_url
             FROM applicants a
             INNER JOIN applicant_status s ON a.applicant_no = s.applicant_no
             INNER JOIN scholarships esc ON s.scholarship_no = esc.req_no
             INNER JOIN scholarship_providers p ON esc.pro_no = p.pro_no
             LEFT JOIN {applicant_email_table} e ON a.applicant_no = e.applicant_no
+            {document_join}
             WHERE 1=1
         '''
         params = []
@@ -3639,11 +3648,8 @@ def get_applicant_image(applicant_no, column_name):
     try:
         conn = get_db()
         cursor = conn.cursor()
-        
-        # Use quoted identifier for potential mixed case columns like schoolID_photo
-        query = f'SELECT "{column_name}" FROM applicants WHERE applicant_no = %s'
-        cursor.execute(query, (applicant_no,))
-        row = cursor.fetchone()
+
+        row = fetch_applicant_document_values(cursor, applicant_no, [column_name])
         cursor.close()
         conn.close()
         

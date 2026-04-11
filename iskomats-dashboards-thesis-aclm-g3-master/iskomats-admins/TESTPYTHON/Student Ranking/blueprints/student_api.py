@@ -24,6 +24,13 @@ import numpy as np
 from services.auth_service import get_secret_key
 from services.db_service import get_db, get_db_startup
 from services.email_table_service import get_applicant_email_table, get_user_email_table
+from services.applicant_document_service import (
+    APPLICANT_DOCUMENT_COLUMNS,
+    applicant_has_column,
+    fetch_applicant_document_values,
+    get_applicant_document_table,
+    persist_applicant_document_values,
+)
 
 from services.ocr_utils import (
     verify_id_with_ocr, verify_face_with_id, extract_school_year, 
@@ -512,27 +519,28 @@ def ensure_verification_columns():
             )
         """)
         
-        # Ensure applicants table has video URL columns
-        video_cols = {
-            'id_vid_url': 'id_vid_url',
-            'indigency_vid_url': 'indigency_vid_url',
-            'grades_vid_url': 'grades_vid_url',
-            'enrollment_certificate_vid_url': 'enrollment_certificate_vid_url',
-            'schoolid_front_vid_url': 'schoolid_front_vid_url',
-            'schoolid_back_vid_url': 'schoolid_back_vid_url'
-        }
-        
-        cur.execute("""
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'applicants' AND column_name IN %s
-        """, (tuple(video_cols.keys()),))
-        existing_cols = [row['column_name'] for row in cur.fetchall()]
-        
-        for col in video_cols.keys():
-            if col not in existing_cols:
-                print(f"[MIGRATION] Adding column {col} to applicants table")
-                cur.execute(f"ALTER TABLE applicants ADD COLUMN {col} TEXT")
+        # Legacy compatibility: keep applicant video columns only while documents still live on applicants.
+        if not get_applicant_document_table(cur):
+            video_cols = {
+                'id_vid_url': 'id_vid_url',
+                'indigency_vid_url': 'indigency_vid_url',
+                'grades_vid_url': 'grades_vid_url',
+                'enrollment_certificate_vid_url': 'enrollment_certificate_vid_url',
+                'schoolid_front_vid_url': 'schoolid_front_vid_url',
+                'schoolid_back_vid_url': 'schoolid_back_vid_url'
+            }
+            
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'applicants' AND column_name IN %s
+            """, (tuple(video_cols.keys()),))
+            existing_cols = [row['column_name'] for row in cur.fetchall()]
+            
+            for col in video_cols.keys():
+                if col not in existing_cols:
+                    print(f"[MIGRATION] Adding column {col} to applicants table")
+                    cur.execute(f"ALTER TABLE applicants ADD COLUMN {col} TEXT")
             
         conn.commit()
         conn.close()
@@ -1608,10 +1616,14 @@ def get_profile():
         if not applicant:
             return jsonify({'message': 'Not found'}), 404
 
+        document_values = fetch_applicant_document_values(cur, request.user_no, blob_fields)
+
         # 2. Add lazy-load URLs for the frontend to fetch binary data on-demand
         # This ensures the browser can still access the data without bloating the initial profile load
         for key in blob_fields:
             flag_name = flag_map.get(key, f"has_{key}")
+            if key != 'profile_picture':
+                applicant[flag_name] = document_values.get(key) is not None
             if applicant.get(flag_name):
                 # USE RAW ENDPOINT: Ensures <img> tags can render these immediately
                 applicant[key] = f"/api/student/applicant/document/raw/{key}"
@@ -1657,9 +1669,7 @@ def get_applicant_document(field_name):
     try:
         conn = get_db()
         cur = conn.cursor()
-        # Only select the specific field we need
-        cur.execute(f'SELECT {field_name} FROM applicants WHERE applicant_no = %s', (request.user_no,))
-        row = cur.fetchone()
+        row = fetch_applicant_document_values(cur, request.user_no, [field_name])
         
         if not row or not row[field_name]:
             return jsonify({'message': 'Document not found'}), 404
@@ -1701,8 +1711,7 @@ def get_applicant_document_raw(field_name):
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute(f'SELECT {field_name} FROM applicants WHERE applicant_no = %s', (request.user_no,))
-        row = cur.fetchone()
+        row = fetch_applicant_document_values(cur, request.user_no, [field_name])
         if not row or not row[field_name]:
             return "Not found", 404
         
@@ -1739,6 +1748,8 @@ def update_profile():
         cur = conn.cursor()
         updates = []
         params = []
+        document_updates = {}
+        has_profile_picture_column = applicant_has_column(cur, 'profile_picture')
 
         def add_update(column_name, value):
             updates.append(f'{column_name} = %s')
@@ -1777,6 +1788,9 @@ def update_profile():
             'motherPhoneNumber': 'mother_phone_no', 'fatherOccupation': 'father_occupation',
             'motherOccupation': 'mother_occupation', 'parentsGrossIncome': 'financial_income_of_parents',
             'gpa': 'overall_gpa', 'numberOfSiblings': 'sibling_no', 'course': 'course',
+        }
+
+        document_field_mapping = {
             'id_vid_url': 'id_vid_url',
             'face_video': 'id_vid_url',
             'mayorIndigency_video': 'indigency_vid_url',
@@ -1796,6 +1810,10 @@ def update_profile():
                     except (ValueError, TypeError):
                         value = None
                 add_update(db_col, value)
+
+        for frontend_key, db_col in document_field_mapping.items():
+            if frontend_key in data:
+                document_updates[db_col] = data[frontend_key]
 
         if 'fatherName' in data:
             father_fname, father_lname = split_parent_name(data.get('fatherName'))
@@ -1838,7 +1856,10 @@ def update_profile():
                 blob_bytes = uploaded_file.read()
                 if field_key == 'signature_data' and blob_bytes and fernet:
                     blob_bytes = fernet.encrypt(blob_bytes)
-                add_update(db_col, blob_bytes)
+                if db_col == 'profile_picture' and has_profile_picture_column:
+                    add_update(db_col, blob_bytes)
+                elif db_col != 'profile_picture':
+                    document_updates[db_col] = blob_bytes
                 continue
 
             if field_key in data and data[field_key]:
@@ -1846,14 +1867,20 @@ def update_profile():
                 if blob_bytes is not None:
                     if field_key == 'signature_data' and blob_bytes and fernet:
                         blob_bytes = fernet.encrypt(blob_bytes)
-                    add_update(db_col, blob_bytes)
+                    if db_col == 'profile_picture' and has_profile_picture_column:
+                        add_update(db_col, blob_bytes)
+                    elif db_col != 'profile_picture':
+                        document_updates[db_col] = blob_bytes
 
-        if not updates:
+        if not updates and not document_updates:
             return jsonify({'message': 'No changes provided'}), 200
 
-        params.append(request.user_no)
-        sql = f"UPDATE applicants SET {', '.join(updates)} WHERE applicant_no = %s"
-        cur.execute(sql, tuple(params))
+        if updates:
+            params.append(request.user_no)
+            sql = f"UPDATE applicants SET {', '.join(updates)} WHERE applicant_no = %s"
+            cur.execute(sql, tuple(params))
+        if document_updates:
+            persist_applicant_document_values(cur, request.user_no, document_updates)
         conn.commit()
 
         return jsonify({'message': 'Progress saved successfully'})
@@ -1894,6 +1921,7 @@ def submit_application():
 
         conn = get_db()
         cur = conn.cursor()
+        has_profile_picture_column = applicant_has_column(cur, 'profile_picture')
         
         # Migration: Ensure created_at column exists in applicant_status
         cur.execute("""
@@ -1912,6 +1940,27 @@ def submit_application():
         applicant = cur.fetchone()
         if not applicant:
             return jsonify({'message': 'Applicant profile not found'}), 404
+        document_values = fetch_applicant_document_values(
+            cur,
+            current_user_id,
+            [
+                'signature_image_data',
+                'id_img_front',
+                'id_img_back',
+                'enrollment_certificate_doc',
+                'grades_doc',
+                'indigency_doc',
+                'id_pic',
+                'id_vid_url',
+                'indigency_vid_url',
+                'grades_vid_url',
+                'enrollment_certificate_vid_url',
+                'schoolid_front_vid_url',
+                'schoolid_back_vid_url',
+            ],
+        )
+        if document_values:
+            applicant.update(document_values)
 
         # In this system, req_no (passed from frontend) is the primary scholarship identifier
         scholarship_id = req_no
@@ -1925,7 +1974,9 @@ def submit_application():
         id_front_bytes = decode_base64(form_data.get('id_front')) or db_bytes(applicant.get('id_img_front'))
         id_back_bytes = decode_base64(form_data.get('id_back')) or db_bytes(applicant.get('id_img_back'))
         face_photo_bytes = decode_base64(form_data.get('face_photo'))
-        profile_pic_bytes = decode_base64(form_data.get('profile_picture')) or db_bytes(applicant.get('profile_picture'))
+        profile_pic_bytes = None
+        if has_profile_picture_column:
+            profile_pic_bytes = decode_base64(form_data.get('profile_picture')) or db_bytes(applicant.get('profile_picture'))
         
         signature_bytes = decode_signature(form_data.get('signature_data')) or decode_signature(applicant.get('signature_image_data'))
 
@@ -2043,6 +2094,9 @@ def submit_application():
             'schoolIdNumber': 'school_id_no', 'schoolName': 'school', 'schoolAddress': 'school_address',
             'schoolSector': 'school_sector', 'mobileNumber': 'mobile_no', 'yearLevel': 'year_lvl',
             'parentsGrossIncome': 'financial_income_of_parents', 'course': 'course',
+        }
+
+        document_field_mapping = {
             'id_vid_url': 'id_vid_url',
             'face_video': 'id_vid_url',
             'mayorIndigency_video': 'indigency_vid_url',
@@ -2064,6 +2118,11 @@ def submit_application():
                 updates.append(f'{db_col} = %s')
                 params.append(value)
 
+        document_updates = {}
+        for form_key, db_col in document_field_mapping.items():
+            if form_key in form_data:
+                document_updates[db_col] = form_data[form_key]
+
         binary_map = {
             'id_img_front': id_front_bytes,
             'id_img_back': id_back_bytes,
@@ -2077,13 +2136,18 @@ def submit_application():
 
         for column_name, value in binary_map.items():
             if value is not None:
-                updates.append(f'{column_name} = %s')
-                params.append(value)
+                if column_name == 'profile_picture' and has_profile_picture_column:
+                    updates.append(f'{column_name} = %s')
+                    params.append(value)
+                elif column_name != 'profile_picture':
+                    document_updates[column_name] = value
 
         if updates:
             sql = f"UPDATE applicants SET {', '.join(updates)} WHERE applicant_no = %s"
             params.append(current_user_id)
             cur.execute(sql, tuple(params))
+        if document_updates:
+            persist_applicant_document_values(cur, current_user_id, document_updates)
 
         # ── CREATE/UPDATE STATUS ──────────────────────────────────────────────
         cur.execute(
@@ -2129,8 +2193,25 @@ def ocr_check():
         # 1. Get applicant record from DB
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT applicant_no, first_name, middle_name, last_name, town_city_municipality, id_img_front, id_img_back, indigency_doc, id_vid_url, schoolid_front_vid_url, schoolid_back_vid_url, indigency_vid_url, enrollment_certificate_vid_url, grades_vid_url FROM applicants WHERE applicant_no = %s", (request.user_no,))
+        cur.execute("SELECT applicant_no, first_name, middle_name, last_name, town_city_municipality FROM applicants WHERE applicant_no = %s", (request.user_no,))
         applicant = cur.fetchone()
+        document_values = fetch_applicant_document_values(
+            cur,
+            request.user_no,
+            [
+                'id_img_front',
+                'id_img_back',
+                'indigency_doc',
+                'id_vid_url',
+                'schoolid_front_vid_url',
+                'schoolid_back_vid_url',
+                'indigency_vid_url',
+                'enrollment_certificate_vid_url',
+                'grades_vid_url',
+            ],
+        )
+        if document_values:
+            applicant.update(document_values)
 
         if not applicant:
             return jsonify({'verified': False, 'message': 'Applicant profile not found'}), 404
@@ -2989,11 +3070,11 @@ def upload_video():
                 import threading
                 def _cleanup_old_video(user_id, col, supa):
                     from services.db_service import get_db
+                    from services.applicant_document_service import fetch_applicant_document_values
                     try:
                         conn = get_db()
                         cur = conn.cursor()
-                        cur.execute(f"SELECT {col} FROM applicants WHERE applicant_no = %s", (user_id,))
-                        row = cur.fetchone()
+                        row = fetch_applicant_document_values(cur, user_id, [col])
                         if row and row[col]:
                             old_url = row[col]
                             if '/public/document_videos/' in old_url:
