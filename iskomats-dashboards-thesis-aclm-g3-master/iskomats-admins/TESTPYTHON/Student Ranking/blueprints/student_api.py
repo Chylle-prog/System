@@ -2946,7 +2946,8 @@ def ocr_check():
                     v = bool(raw and raw.strip())
                     msg = extraction_error or ('Verified' if v else 'Unable to read document text')
                 elif doc_type == 'SchoolIDBack':
-                    raw, extraction_error = extract_document_text(doc_bytes)
+                    # Optimization: Use fast ID back mode (skips header bands, uses PSM6)
+                    raw, extraction_error = extract_document_text(doc_bytes, is_id_back=True)
                     v = bool(raw and raw.strip())
                     msg = extraction_error or ('Verified' if v else 'Unable to read school ID back text')
                 else:
@@ -3089,9 +3090,9 @@ def ocr_check():
 
         # 3. Schedule Parallel Jobs
         jobs = []
-        # If target_doc is provided, we strictly only verify that one.
-        # Otherwise, we fallback to our 'verify what we have' logic for legacy support.
-        
+        if target_doc:
+            print(f"[OCR-ISOLATION] Strictly verifying only: {target_doc}", flush=True)
+
         if not target_doc or target_doc == 'Enrollment':
             if enrollment_doc_param or applicant.get('enrollment_certificate_doc'):
                 jobs.append(('Enrollment', enrollment_doc_param, applicant.get('enrollment_certificate_doc')))
@@ -3109,6 +3110,9 @@ def ocr_check():
                 jobs.append(('SchoolID', id_front_param, applicant.get('id_img_front')))
             if id_back_param or applicant.get('id_img_back'):
                 jobs.append(('SchoolIDBack', id_back_param, applicant.get('id_img_back')))
+                
+        if jobs:
+            print(f"[OCR-JOBS] Launching {len(jobs)} parallel extraction tasks...", flush=True)
 
         results = []
         overall_verified = True

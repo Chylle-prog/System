@@ -464,10 +464,12 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             print(f"[QUALITY REJECT] {quality_reason}", flush=True)
             return False, f"Image quality issue: {quality_reason}", "", 0.0
         
-        # Resize image once - Lowered to 750px for faster processing
+        # Resize image - IDs are usually high-contrast, can use lower res (640px)
+        # Indigency or TORs keep 750px for small text details.
         h, w = img.shape[:2]
-        if w > 750:
-            scale = 750 / w
+        target_w = 640 if not is_indigency else 750
+        if w > target_w:
+            scale = target_w / w
             img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
     except Exception as e:
         return False, f"Preprocessing error: {str(e)}", "", 0.0
@@ -507,8 +509,11 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     return False, "Identity verification mismatch", best_text, 0.0
 
 
-def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH):
-    """Fast OCR text extraction for non-identity documents like COE and grades."""
+def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=False):
+    """
+    Fast OCR text extraction for non-identity documents like COE and grades.
+    Added is_id_back flag for ultra-fast extraction (skips header bands).
+    """
     if not _check_tesseract():
         return "", "OCR Engine (Tesseract) not found."
     if not image_bytes:
@@ -540,13 +545,13 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH):
 
     with OCR_SEMAPHORE:
         try:
-            text = _run_tesseract_on_image(img, psm=6, skip_pass2=True)
-            if len(text.strip()) < 20:
-                text = _run_tesseract_on_image(img, psm=3, skip_pass2=False)
-
-            # Only perform additional header band scan if the main scan was very sparse
-            # This saves ~10 seconds on clear documents.
-            if len(text.strip()) < 150:
+            # For ID backs, utilize PSM 6 (uniform block) as primary - it's much faster
+            # and accurate for the tabular nature of ID back stickers.
+            primary_psm = 6 if is_id_back else 3
+            text = _run_tesseract_on_image(img, psm=primary_psm, skip_pass2=is_id_back)
+            
+            # Skip heavy background header scan if it's an ID back
+            if not is_id_back and len(text.strip()) < 150:
                 header_height = max(int(img.shape[0] * 0.28), 1)
                 header_img = img[:header_height, :]
                 header_text = _run_tesseract_on_image(header_img, psm=6, skip_pass2=True)
@@ -641,9 +646,10 @@ def verify_video_content(video_bytes, keywords, expected_address=None, sample_po
                 # Preprocessing for Video Frames (Optimization: Handles compression artifacts/blur)
                 processed_frame = _preprocess_frame_for_ocr(frame)
                 
-                # Use lower resolution for video frames (520px) to speed up Tesseract significantly
+                # Use even lower resolution for video frames (400px) for non-indigency fast scanning
                 h, w = processed_frame.shape[:2]
-                width_limit = max_width or 520 
+                default_width = 400 if not is_address_verification else 520
+                width_limit = max_width or default_width
                 if w > width_limit:
                     scale = width_limit / w
                     processed_frame = cv2.resize(processed_frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
