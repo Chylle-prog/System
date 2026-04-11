@@ -3125,18 +3125,16 @@ def ocr_check():
                     year_ok = is_current_school_year(year_label, semester_str=semester_label, expected_year=expected_academic_year, expected_semester=expected_semester)
                     school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
                     name_ok, name_ratio = student_name_matches_text(raw, first_name, middle_name, last_name)
-                    id_ok, _ = id_number_matches_text(raw, expected_id_no)
                     year_level_ok, _ = year_level_matches_text(raw, expected_year_level)
 
                     # Build Check-list Message
                     checklist = []
                     checklist.append(f"Name: {'OK' if name_ok else 'X'}")
                     checklist.append(f"Year: {'OK' if year_only_ok else 'X'}")
-                    if expected_id_no: checklist.append(f"ID: {'OK' if id_ok else 'X'}")
                     if expected_year_level: checklist.append(f"Level: {'OK' if year_level_ok else 'X'}")
                     
                     # Update 'v' based on core requirements
-                    v = name_ok and year_only_ok and id_ok and year_level_ok
+                    v = name_ok and year_only_ok and year_level_ok
                     
                     if not v:
                         msg = f"Verification failed. Checklist: [{' | '.join(checklist)}]"
