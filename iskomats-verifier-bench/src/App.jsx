@@ -18,10 +18,12 @@ import {
 } from 'lucide-react';
 import * as api from './api';
 
+const DEFAULT_API_URL = api.getBaseUrl();
+
 const App = () => {
   const [activeTab, setActiveTab] = useState('ocr');
   const [token, setToken] = useState(localStorage.getItem('verifier_token') || '');
-  const [apiUrl, setApiUrl] = useState(localStorage.getItem('verifier_api_url') || 'http://localhost:5000/api');
+  const [apiUrl, setApiUrl] = useState(api.getBaseUrl());
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [lastSignatureImage, setLastSignatureImage] = useState(null);
@@ -51,6 +53,13 @@ const App = () => {
     localStorage.setItem('verifier_token', token);
     localStorage.setItem('verifier_api_url', apiUrl);
   }, [token, apiUrl]);
+
+  useEffect(() => {
+    const normalizedUrl = api.getBaseUrl();
+    if (apiUrl !== normalizedUrl) {
+      setApiUrl(normalizedUrl);
+    }
+  }, []);
 
   const handleFileChange = (e, field) => {
     const file = e.target.files[0];
@@ -84,7 +93,7 @@ const App = () => {
       });
       setResults({ type: 'ocr', data: res });
     } catch (err) {
-      setResults({ type: 'error', data: err.response?.data || { message: err.message } });
+      setResults({ type: 'error', data: api.describeRequestError(err, '/student/verification/ocr-check') });
     } finally {
       setLoading(false);
     }
@@ -97,7 +106,7 @@ const App = () => {
       const res = await api.faceMatch(form.faceImage, form.idFront);
       setResults({ type: 'face', data: res });
     } catch (err) {
-      setResults({ type: 'error', data: err.response?.data || { message: err.message } });
+      setResults({ type: 'error', data: api.describeRequestError(err, '/student/verification/face-match') });
     } finally {
       setLoading(false);
     }
@@ -118,7 +127,7 @@ const App = () => {
       const res = await api.signatureMatch(signatureData, form.idBackImage);
       setResults({ type: 'signature', data: res });
     } catch (err) {
-      setResults({ type: 'error', data: err.response?.data || { message: err.message } });
+      setResults({ type: 'error', data: api.describeRequestError(err, '/student/verification/signature-match') });
     } finally {
       setLoading(false);
     }
@@ -436,7 +445,7 @@ const App = () => {
       <div className="auth-bar">
         <label style={{ color: '#94a3b8', fontSize: '0.75rem', fontWeight: '800' }}>API CONFIG</label>
         <input 
-          placeholder="Endpoint URL (e.g. http://localhost:5000/api)" 
+          placeholder={`Endpoint URL (default: ${DEFAULT_API_URL})`} 
           value={apiUrl} 
           onChange={(e) => setApiUrl(e.target.value)} 
         />

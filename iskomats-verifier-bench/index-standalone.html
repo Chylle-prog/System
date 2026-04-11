@@ -22,7 +22,7 @@
     <!-- Header/Auth -->
     <div class="glass sticky top-0 z-50 px-8 py-4 flex gap-6 items-center">
         <div class="text-indigo-400 font-black text-xl">iskoMats <span class="font-light text-slate-400">Lab</span></div>
-        <input id="api-url" type="text" placeholder="API Base URL" value="http://localhost:5000/api" class="bg-slate-900 border border-slate-700 px-4 py-2 rounded-lg text-sm flex-1">
+        <input id="api-url" type="text" placeholder="API Base URL" class="bg-slate-900 border border-slate-700 px-4 py-2 rounded-lg text-sm flex-1">
         <input id="api-token" type="password" placeholder="Bearer Token" class="bg-slate-900 border border-slate-700 px-4 py-2 rounded-lg text-sm w-64">
     </div>
 
@@ -172,6 +172,78 @@
     <script>
         lucide.createIcons();
         let activeTab = 'ocr';
+        const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1']);
+        const LOCAL_BACKEND_ORIGIN = 'http://localhost:5001';
+        const PRODUCTION_BACKEND_ORIGIN = 'https://iskomats-backend.onrender.com';
+        const API_PREFIX = '/api';
+        const LEGACY_LOCAL_API_URL = 'http://localhost:5000/api';
+
+        function stripTrailingSlash(value) {
+            return String(value || '').replace(/\/+$/, '');
+        }
+
+        function normalizeApiBaseUrl(value) {
+            const sanitized = stripTrailingSlash(value);
+            if (!sanitized) {
+                return `${PRODUCTION_BACKEND_ORIGIN}${API_PREFIX}`;
+            }
+
+            return sanitized.endsWith(API_PREFIX) ? sanitized : `${sanitized}${API_PREFIX}`;
+        }
+
+        function isLocalPage() {
+            return LOCAL_HOSTNAMES.has(window.location.hostname);
+        }
+
+        function getDefaultApiUrl() {
+            const origin = isLocalPage() ? LOCAL_BACKEND_ORIGIN : PRODUCTION_BACKEND_ORIGIN;
+            return normalizeApiBaseUrl(origin);
+        }
+
+        function getConfiguredApiUrl() {
+            const stored = localStorage.getItem('verifier_api_url');
+            if (!stored) {
+                return getDefaultApiUrl();
+            }
+
+            const normalized = normalizeApiBaseUrl(stored);
+            if (normalized === LEGACY_LOCAL_API_URL) {
+                return getDefaultApiUrl();
+            }
+
+            if (!isLocalPage()) {
+                try {
+                    const { hostname } = new URL(normalized);
+                    if (LOCAL_HOSTNAMES.has(hostname)) {
+                        return getDefaultApiUrl();
+                    }
+                } catch {
+                    return getDefaultApiUrl();
+                }
+            }
+
+            return normalized;
+        }
+
+        function persistApiUrl(value) {
+            const normalized = normalizeApiBaseUrl(value);
+            localStorage.setItem('verifier_api_url', normalized);
+            document.getElementById('api-url').value = normalized;
+            return normalized;
+        }
+
+        function getRequestErrorPayload(error, requestUrl) {
+            return {
+                message: `Network Error: Could not reach ${requestUrl}. Check whether the backend is running, the API URL is correct, and the origin is allowed by CORS.`,
+                endpoint: requestUrl,
+                error: error && error.message ? error.message : 'Network Error'
+            };
+        }
+
+        document.getElementById('api-url').value = getConfiguredApiUrl();
+        document.getElementById('api-url').addEventListener('change', (event) => {
+            persistApiUrl(event.target.value);
+        });
 
         function switchTab(tab) {
             activeTab = tab;
@@ -212,6 +284,7 @@
         async function runOcrTest() {
             setLoading(true);
             try {
+                const apiUrl = persistApiUrl(document.getElementById('api-url').value);
                 const params = {
                     id_front: await toBase64('file-id'),
                     indigency_doc: await toBase64('file-indigency'),
@@ -222,7 +295,8 @@
                     last_name: document.getElementById('last-name').value
                 };
 
-                const res = await fetch(document.getElementById('api-url').value + '/student/verification/ocr-check', {
+                const requestUrl = apiUrl + '/student/verification/ocr-check';
+                const res = await fetch(requestUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -234,7 +308,7 @@
                 const data = await res.json();
                 renderResults('ocr', data);
             } catch (err) {
-                renderError(err);
+                renderError(getRequestErrorPayload(err, persistApiUrl(document.getElementById('api-url').value) + '/student/verification/ocr-check'));
             } finally {
                 setLoading(false);
             }
@@ -243,12 +317,14 @@
         async function runFaceTest() {
             setLoading(true);
             try {
+                const apiUrl = persistApiUrl(document.getElementById('api-url').value);
                 const params = {
                     face_image: await toBase64('file-face-selfie'),
                     id_image: await toBase64('file-face-id')
                 };
 
-                const res = await fetch(document.getElementById('api-url').value + '/student/verification/face-match', {
+                const requestUrl = apiUrl + '/student/verification/face-match';
+                const res = await fetch(requestUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -260,7 +336,7 @@
                 const data = await res.json();
                 renderResults('face', data);
             } catch (err) {
-                renderError(err);
+                renderError(getRequestErrorPayload(err, persistApiUrl(document.getElementById('api-url').value) + '/student/verification/face-match'));
             } finally {
                 setLoading(false);
             }
@@ -269,6 +345,7 @@
         async function runSignatureTest() {
             setLoading(true);
             try {
+                const apiUrl = persistApiUrl(document.getElementById('api-url').value);
                 const canvas = document.getElementById('signature-canvas');
                 const signatureData = canvas.toDataURL('image/png');
                 
@@ -283,7 +360,8 @@
                     id_back_image: await toBase64('file-id-back')
                 };
 
-                const res = await fetch(document.getElementById('api-url').value + '/student/verification/signature-match', {
+                const requestUrl = apiUrl + '/student/verification/signature-match';
+                const res = await fetch(requestUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -295,7 +373,7 @@
                 const data = await res.json();
                 renderSignatureResults(data);
             } catch (err) {
-                renderError(err);
+                renderError(getRequestErrorPayload(err, persistApiUrl(document.getElementById('api-url').value) + '/student/verification/signature-match'));
             } finally {
                 setLoading(false);
             }
@@ -441,7 +519,7 @@
             document.getElementById('results-placeholder').classList.add('hidden');
             document.getElementById('results-container').classList.remove('hidden');
             document.getElementById('doc-checks').innerHTML = `<div class="p-4 bg-rose-500/10 border border-rose-500/50 rounded-2xl text-rose-500 font-bold">Error: ${err.message}</div>`;
-            document.getElementById('raw-json').innerText = 'Check browser console for detailed logs';
+            document.getElementById('raw-json').innerText = JSON.stringify(err, null, 2);
         }
     </script>
 </body>
