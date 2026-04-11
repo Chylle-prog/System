@@ -1805,25 +1805,6 @@ const StudentInfo = () => {
     setIsSubmitting(true);
 
     try {
-      const facePhoto = photos.face_photo;
-      const idFrontForFace = schoolIdPhotos.front;
-
-      if (facePhoto && idFrontForFace && faceVerified !== 'success') {
-        setLoadingMessage({
-          title: 'Verifying Face',
-          message: 'Matching your selfie against your School ID photo…'
-        });
-        setFaceVerified('verifying');
-        try {
-          const skipVerification = true; 
-          setFaceVerified('success'); 
-          console.log('[FACE] Face verification will be handled by the backend during submission.');
-        } catch (faceErr) {
-          console.warn('[FACE] Face pre-check error:', faceErr.message);
-          setFaceVerified('technical_unavailable');
-        }
-      }
-
       const skipVerification = true; 
 
       console.log(`Submitting application (faceVerified: ${faceVerified})...`);
@@ -2723,13 +2704,6 @@ const StudentInfo = () => {
                 </div>
               </div>
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Email Address <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="email" name="emailAddress" value={formData.emailAddress} onChange={handleInputChange} placeholder="example@email.com" required />
-                </div>
-              </div>
-
               {/* Documentary Requirement: Indigency */}
               <div className="requirement-card">
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
@@ -2796,13 +2770,6 @@ const StudentInfo = () => {
                       hideButton={true}
                       containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
                     />
-                  </div>
-
-                  <div style={{marginTop: '0.25rem', padding: '12px', background: '#fffbeb', borderRadius: '14px', border: '1px solid #fef3c7', display: 'flex', gap: '10px'}}>
-                    <i className="fas fa-shield-halved" style={{color: '#d97706', fontSize: '1rem', marginTop: '2px'}}></i>
-                    <p style={{fontSize: '0.75rem', color: '#92400e', margin: 0, lineHeight: '1.4'}}>
-                      <b>Face Check:</b> Look directly at the camera while holding the original document clearly in view for 5 seconds.
-                    </p>
                   </div>
 
                   {(photos.mayorIndigency_photo || userProfile?.indigency_doc) && (

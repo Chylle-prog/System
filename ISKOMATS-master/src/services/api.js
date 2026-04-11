@@ -3,10 +3,82 @@
  * Provides functions to communicate with the Flask backend
  */
 
+import { supabase } from '../supabaseClient';
+
 // API Base URL - change this if backend is on different server
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
 let backendWarmupPromise = null;
+
+const sanitizeStorageSegment = (value, fallback = 'anonymous') => {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-');
+
+  return normalized || fallback;
+};
+
+const resolveVideoUploadExtension = (file) => {
+  const mimeType = String(file?.type || '').toLowerCase();
+  const fileName = String(file?.name || '').toLowerCase();
+
+  if (mimeType.includes('webm') || fileName.endsWith('.webm')) return '.webm';
+  if (mimeType.includes('quicktime') || fileName.endsWith('.mov')) return '.mov';
+  if (mimeType.includes('mp4') || fileName.endsWith('.mp4')) return '.mp4';
+  if (fileName.includes('.')) return fileName.slice(fileName.lastIndexOf('.'));
+
+  return '.mp4';
+};
+
+const shouldDirectUploadVideo = (file) => {
+  const ext = resolveVideoUploadExtension(file);
+  return ext === '.mp4' || ext === '.webm';
+};
+
+const uploadRequirementVideoDirect = async (fieldName, file) => {
+  const folderMap = {
+    mayorIndigency_video: 'indigency',
+    mayorCOE_video: 'coe',
+    mayorGrades_video: 'grades',
+    schoolIdFront_video: 'school_id',
+    schoolIdBack_video: 'school_id',
+    id_vid_url: 'id_verification',
+    face_video: 'id_verification',
+  };
+
+  const applicantNo = sanitizeStorageSegment(localStorage.getItem('applicantNo'), 'unknown-applicant');
+  const currentUser = sanitizeStorageSegment(localStorage.getItem('currentUser'), 'unknown-user');
+  const folder = folderMap[fieldName] || 'others';
+  const ext = resolveVideoUploadExtension(file);
+  const contentType = file?.type || (ext === '.webm' ? 'video/webm' : 'video/mp4');
+  const objectPath = `videos/${folder}/${applicantNo}-${currentUser}/${fieldName}${ext}`;
+
+  const uploadResult = await supabase.storage
+    .from('document_videos')
+    .upload(objectPath, file, {
+      upsert: true,
+      contentType,
+      cacheControl: '60',
+    });
+
+  if (uploadResult.error) {
+    throw uploadResult.error;
+  }
+
+  const { data } = supabase.storage.from('document_videos').getPublicUrl(objectPath);
+  if (!data?.publicUrl) {
+    throw new Error('Direct upload succeeded but no public URL was returned.');
+  }
+
+  return {
+    success: true,
+    publicUrl: data.publicUrl,
+    originalSize: file.size,
+    convertedSize: file.size,
+    transport: 'supabase-direct',
+  };
+};
 
 const warmBackendConnection = async ({ force = false } = {}) => {
   if (force) {
@@ -517,18 +589,29 @@ export const applicantAPI = {
   uploadRequirementVideo: async (fieldName, file, onProgress) => {
     try {
       console.log(`[VIDEO-UPLOAD] Uploading ${fieldName}: ${file.name}`, file.size, 'bytes');
-      
-      // Create FormData for backend
-      const formData = new FormData();
-      formData.append('video', file);
-      formData.append('field_name', fieldName);
 
-      // Call backend endpoint that converts WebM to H.264 MP4, then uploads
-      console.log('[VIDEO-UPLOAD] Sending to backend for conversion and upload...');
-      const response = await makeRequest('/student/videos/convert-and-upload', {
-        method: 'POST',
-        body: formData
-      });
+      let response;
+
+      if (shouldDirectUploadVideo(file)) {
+        try {
+          console.log('[VIDEO-UPLOAD] Using direct Supabase upload for faster transfer...');
+          response = await uploadRequirementVideoDirect(fieldName, file);
+        } catch (directUploadError) {
+          console.warn('[VIDEO-UPLOAD] Direct upload failed, falling back to backend:', directUploadError);
+        }
+      }
+
+      if (!response) {
+        const formData = new FormData();
+        formData.append('video', file);
+        formData.append('field_name', fieldName);
+
+        console.log('[VIDEO-UPLOAD] Sending to backend for upload fallback...');
+        response = await makeRequest('/student/videos/convert-and-upload', {
+          method: 'POST',
+          body: formData
+        });
+      }
 
       if (!response.success) {
         throw new Error(response.message || 'Upload failed');

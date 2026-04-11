@@ -2099,11 +2099,9 @@ def submit_application():
             else:
                 doc_bytes[key] = decode_base64(form_data.get(key)) or db_bytes(applicant.get(doc_column_map[key]))
 
-        # ── OCR & FACE VERIFICATION (PARALLEL) ────────────────────────────────
+        # ── OCR & VIDEO VERIFICATION (PARALLEL) ───────────────────────────────
         ocr_ok = True
         ocr_status = "Verification skipped"
-        face_ok = True
-        face_status = "Verification skipped"
         
         if not skip_verify:
             try:
@@ -2123,14 +2121,7 @@ def submit_application():
                             expected_address=town_city
                         )
 
-                    # 2. Face Verification
-                    if face_photo_bytes and id_front_bytes:
-                        print("[SUBMIT] Scheduling Face verification...")
-                        verification_tasks['face'] = executor.submit(
-                            verify_face_with_id, face_photo_bytes, id_front_bytes
-                        )
-
-                    # 3. Video OCR Validations
+                    # 2. Video OCR Validations
                     video_requirements = {
                         'mayorIndigency_video': ['Indigency', 'Barangay', 'Certificate', 'Resident'],
                         'mayorGrades_video': ['Grades', 'Grade', 'Transcript', 'Records', 'Units', 'Unit', 'Subject', 'GPA', 'Evaluation', 'Academic', 'Semester'],
@@ -2161,14 +2152,6 @@ def submit_application():
                     if 'ocr' in verification_tasks:
                         ocr_ok, ocr_status, _, _ = verification_tasks['ocr'].result()
                         print(f"[SUBMIT] OCR Result: {ocr_status}")
-                    
-                    if 'face' in verification_tasks:
-                        face_ok, face_status, _ = verification_tasks['face'].result()
-                        print(f"[SUBMIT] Face Result: {face_status}")
-                        if not face_ok:
-                            return jsonify({'message': f'Face Verification Failed: {face_status}', 'face_status': face_status}), 400
-                    elif not skip_verify:
-                         return jsonify({'message': 'Missing verification documents: Face photo or ID front missing'}), 400
 
                     for key in verification_tasks:
                         if key.startswith('video_'):
@@ -2184,7 +2167,7 @@ def submit_application():
                 print(f"[SUBMIT] Parallel Verification Exception: {str(ai_err)}")
                 return jsonify({
                     'message': f'Verification service error: {str(ai_err)}. Please ensure your photos are clear and try again.',
-                    'face_status': f"Error: {str(ai_err)}"
+                    'verification_status': f"Error: {str(ai_err)}"
                 }), 400
 
         # ── UPDATE APPLICANT PROFILE ──────────────────────────────────────────
@@ -2267,8 +2250,7 @@ def submit_application():
         print(f"[SUBMIT] Application successful for User {current_user_id} in {time.time() - start_time:.2f}s")
         return jsonify({
             'message': 'Application submitted successfully',
-            'ocr_status': ocr_status,
-            'face_status': face_status
+            'ocr_status': ocr_status
         }), 201
 
     except Exception as exc:
@@ -2417,13 +2399,44 @@ def ocr_check():
                 vid_url = vid_url_map.get(doc_type)
                 name_keywords = build_student_name_keywords(first_name, middle_name, last_name)
                 school_variants = build_school_name_variants(school_name)
-                fast_video_verification = doc_type in ['Enrollment', 'Grades']
                 video_keywords_map = {
                     'Indigency': ['Indigency', 'Certificate', 'Barangay'],
                     'Enrollment': ['Enrollment', 'Certificate', 'COE', 'Registered'],
                     'Grades': ['Grades', 'Grade', 'Transcript', 'Record', 'Evaluation', 'Rating', 'Units', 'Credit', 'Sem', 'GPA', 'Report', 'Card', 'Evaluation'],
                     'SchoolID': name_keywords or ['Student', 'Name'],
                     'SchoolIDBack': school_variants or ['School', 'Campus']
+                }
+                video_scan_options = {
+                    'Indigency': {
+                        'sample_positions': [0.35, 0.7],
+                        'max_width': 560,
+                        'allow_alt_pass': True,
+                        'fallback_text_length': 0,
+                    },
+                    'Enrollment': {
+                        'sample_positions': [0.5],
+                        'max_width': 480,
+                        'allow_alt_pass': False,
+                        'fallback_text_length': 15,
+                    },
+                    'Grades': {
+                        'sample_positions': [0.5],
+                        'max_width': 480,
+                        'allow_alt_pass': False,
+                        'fallback_text_length': 15,
+                    },
+                    'SchoolID': {
+                        'sample_positions': [0.35, 0.65],
+                        'max_width': 480,
+                        'allow_alt_pass': False,
+                        'fallback_text_length': 12,
+                    },
+                    'SchoolIDBack': {
+                        'sample_positions': [0.35, 0.65],
+                        'max_width': 480,
+                        'allow_alt_pass': False,
+                        'fallback_text_length': 12,
+                    },
                 }
                 # Define keywords for each document type
                 # Indigency can be detected as 'Certificate' + other indicators
@@ -2451,15 +2464,15 @@ def ocr_check():
                 if vid_url:
                     vid_bytes, fetch_err = fetch_video_bytes_from_url(vid_url)
                     if vid_bytes:
+                        scan_options = video_scan_options.get(doc_type, video_scan_options['Enrollment'])
                         v_video, msg_video = verify_video_content(
                             video_bytes=vid_bytes,
                             keywords=video_keywords_map.get(doc_type),
                             expected_address=None,
-                            # Optimized: 3 frames @ 640px for faster video scan on Enrollment/Grades
-                            sample_positions=[0.2, 0.5, 0.8], 
-                            max_width=640, 
-                            allow_alt_pass=True,
-                            fallback_text_length=15 
+                            sample_positions=scan_options['sample_positions'],
+                            max_width=scan_options['max_width'],
+                            allow_alt_pass=scan_options['allow_alt_pass'],
+                            fallback_text_length=scan_options['fallback_text_length']
                         )
                     else:
                         msg_video = f"Video file unreachable ({fetch_err})"
@@ -2478,7 +2491,7 @@ def ocr_check():
                 target_address = town_city if doc_type == 'Indigency' else None
                 
                 if doc_type in ['Enrollment', 'Grades']:
-                    raw, extraction_error = extract_document_text(doc_bytes, max_width=900)
+                    raw, extraction_error = extract_document_text(doc_bytes)
                     v = bool(raw and raw.strip())
                     msg = extraction_error or ('Verified' if v else 'Unable to read document text')
                 elif doc_type == 'SchoolIDBack':
