@@ -1370,9 +1370,10 @@ export default function ScholarshipDashboard({
 
     setPendingAction({
       type: 'verification',
-      title: 'Confirm School Verification',
+      title: 'Dispatch School Verification',
       recipient: recipient,
-      messageSummary: `Formal request to verify enrollment and grades for ${applicant.name || 'this applicant'}.`,
+      messageSummary: `Official request to verify student records for ${applicant.name || 'this applicant'}.`,
+      documents: ['Enrollment Certificate', 'Official Grades Report', 'Student ID (Front & Back)'],
       onConfirm: async () => {
         showActionOverlay('Sending school verification', 'Preparing the applicant documents and emailing the school verification address.');
         try {
@@ -1403,9 +1404,10 @@ export default function ScholarshipDashboard({
 
     setPendingAction({
       type: 'verification',
-      title: 'Confirm Indigency Verification',
+      title: 'Dispatch Indigency Verification',
       recipient: recipient,
-      messageSummary: `Formal request to verify the indigency status for ${applicant.name || 'this applicant'} at Lipa City Hall.`,
+      messageSummary: `Verification request for the indigency document of ${applicant.name || 'this applicant'}.`,
+      documents: ['Indigency Proof Image'],
       onConfirm: async () => {
         showActionOverlay('Sending indigency verification', 'Preparing the indigency document and emailing the city hall verification address.');
         try {
@@ -4312,32 +4314,49 @@ export default function ScholarshipDashboard({
               <FaEnvelope className="text-3xl text-[#800020]" />
             </div>
             
-            <h3 className="text-xl font-bold text-gray-900 text-center mb-2">{pendingAction.title}</h3>
+            <h3 className="text-2xl font-black text-gray-900 text-center mb-2">{pendingAction.title}</h3>
             
-            <div className="bg-gray-50 rounded-2xl p-4 mb-6 border border-gray-100">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Recipient:</span>
-                <span className="text-sm font-bold text-[#800020] truncate">{pendingAction.recipient}</span>
+            <div className="bg-gray-50 rounded-2xl p-5 mb-6 border border-gray-100">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-8 h-8 rounded-lg bg-[#800020] flex items-center justify-center text-white text-xs">TO</div>
+                <div className="overflow-hidden">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Recipient Gmail</p>
+                  <p className="text-sm font-bold text-[#800020] truncate">{pendingAction.recipient}</p>
+                </div>
               </div>
-              <div className="border-t border-gray-200/50 pt-3">
-                <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider block mb-1">Message Preview:</span>
-                <p className="text-xs text-gray-600 leading-relaxed italic">
+
+              {pendingAction.documents && (
+                <div className="mb-4 pt-4 border-t border-gray-200/50">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Attachments to be sent:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {pendingAction.documents.map((doc, idx) => (
+                      <span key={idx} className="bg-white border border-gray-200 px-3 py-1 rounded-full text-[10px] font-bold text-gray-600 shadow-sm">
+                        📎 {doc}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="border-t border-gray-200/50 pt-4">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Message Content:</p>
+                <p className="text-xs text-gray-600 leading-relaxed italic italic-serif">
                   "{pendingAction.messageSummary}"
                 </p>
               </div>
             </div>
 
-            <p className="text-center text-[10px] text-gray-400 mb-8 px-4">
-              Clicking confirm will send this {pendingAction.type === 'verification' ? 'dispatch' : 'notification'} via the ISKOMATS Gmail system.
+            <p className="text-center text-[10px] text-gray-500 mb-8 px-8 font-medium italic">
+              Confirmation results in an automated dispatch from the ISKOMATS provider system.
             </p>
             
             <div className="grid grid-cols-2 gap-4">
               <button
                 type="button"
                 onClick={() => setPendingAction(null)}
-                className="px-6 py-3 rounded-xl border border-gray-200 text-gray-600 font-semibold transition-all hover:bg-gray-50 active:scale-95"
+                className="px-6 py-4 rounded-xl border border-gray-200 text-gray-600 font-bold transition-all hover:bg-gray-50 active:scale-95"
               >
-                Cancel
+                Go Back
               </button>
               <button
                 type="button"
@@ -4345,9 +4364,9 @@ export default function ScholarshipDashboard({
                   pendingAction.onConfirm();
                   setPendingAction(null);
                 }}
-                className="px-6 py-3 rounded-xl bg-[#800020] text-white font-semibold transition-all hover:bg-[#650018] hover:shadow-lg hover:shadow-[#800020]/20 active:scale-95 flex items-center justify-center gap-2"
+                className="px-6 py-4 rounded-xl bg-[#800020] text-white font-bold transition-all hover:bg-[#650018] hover:shadow-lg hover:shadow-[#800020]/20 active:scale-95 flex items-center justify-center gap-2"
               >
-                <FaPaperPlane className="text-xs" /> Confirm & Send
+                <FaPaperPlane className="text-xs" /> Dispatch Now
               </button>
             </div>
           </div>
