@@ -320,26 +320,37 @@ const ResetPassword = () => {
         .input-wrapper input,
         .input-wrapper select {
           width: 100%;
-          padding: 0.75rem 1rem 0.75rem 2.8rem;
+          padding: 0.85rem 1rem 0.85rem 2.8rem;
           background: rgba(255, 255, 255, 0.4);
-          border: 1px solid rgba(79, 13, 0, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.2);
           border-radius: 12px;
           color: var(--text-dark);
           font-size: 0.95rem;
           font-family: 'Inter', sans-serif;
+          font-weight: 500;
           transition: var(--transition);
         }
 
         .input-wrapper input::placeholder {
-          color: rgba(44, 59, 79, 0.4);
+          color: rgba(18, 24, 38, 0.5);
         }
 
         .input-wrapper input:focus,
         .input-wrapper select:focus {
           outline: none;
           background: rgba(255, 255, 255, 0.6);
-          border-color: var(--primary);
-          box-shadow: 0 0 0 3px rgba(79, 13, 0, 0.08);
+          border-color: white;
+          box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.1);
+          color: var(--text-dark);
+        }
+
+        /* Prevent white-on-white text during Chrome autofill */
+        .input-wrapper input:-webkit-autofill,
+        .input-wrapper input:-webkit-autofill:hover,
+        .input-wrapper input:-webkit-autofill:focus {
+          -webkit-text-fill-color: var(--text-dark);
+          -webkit-box-shadow: 0 0 0px 1000px rgba(255, 255, 255, 0.5) inset;
+          transition: background-color 5000s ease-in-out 0s;
         }
 
         .error-box {

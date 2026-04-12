@@ -736,25 +736,40 @@ const Login = () => {
 
         .input-wrapper input {
           width: 100%;
-          padding: 0.8rem 1.2rem 0.8rem 2.8rem;
+          padding: 0.85rem 1.2rem 0.85rem 2.8rem;
           border: 1px solid rgba(255, 255, 255, 0.2);
           border-radius: 30px;
           font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.08);
-          color: white;
+          background: rgba(255, 255, 255, 0.4);
+          color: var(--text-dark);
           transition: var(--transition);
           font-family: 'Inter', sans-serif;
+          font-weight: 500;
+        }
+
+        .input-wrapper input::placeholder {
+          color: rgba(18, 24, 38, 0.5);
         }
 
         .input-wrapper input:focus {
           outline: none;
-          border-color: var(--primary);
-          background: white;
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08), inset 0 1px 3px #fff;
+          border-color: white;
+          background: rgba(255, 255, 255, 0.6);
+          box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.1);
+          color: var(--text-dark);
+        }
+
+        /* Prevent white-on-white text during Chrome autofill */
+        .input-wrapper input:-webkit-autofill,
+        .input-wrapper input:-webkit-autofill:hover,
+        .input-wrapper input:-webkit-autofill:focus {
+          -webkit-text-fill-color: var(--text-dark);
+          -webkit-box-shadow: 0 0 0px 1000px rgba(255, 255, 255, 0.5) inset;
+          transition: background-color 5000s ease-in-out 0s;
         }
 
         .input-wrapper input:focus+i {
-          color: var(--primary);
+          color: white;
         }
 
         .submit-btn {

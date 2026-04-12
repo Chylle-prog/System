@@ -415,6 +415,21 @@ const VerifyEmail = () => {
               )}
 
               <form onSubmit={handleSubmit} style={{ marginBottom: '30px' }}>
+                <style>{`
+                  .verify-input:focus {
+                    background: rgba(255, 255, 255, 0.6) !important;
+                    border-color: white !important;
+                    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.1) !important;
+                    outline: none !important;
+                  }
+                  .verify-input:-webkit-autofill,
+                  .verify-input:-webkit-autofill:hover,
+                  .verify-input:-webkit-autofill:focus {
+                    -webkit-text-fill-color: var(--text-dark);
+                    -webkit-box-shadow: 0 0 0px 1000px rgba(255, 255, 255, 0.5) inset;
+                    transition: background-color 5000s ease-in-out 0s;
+                  }
+                `}</style>
                 <div style={{ marginBottom: '20px' }}>
                   <label style={{
                     display: 'block',
@@ -435,17 +450,19 @@ const VerifyEmail = () => {
                     style={{
                       width: '100%',
                       padding: '12px 15px',
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      border: '1px solid rgba(255, 255, 255, 0.3)',
+                      background: 'rgba(255, 255, 255, 0.4)',
+                      border: '1px solid rgba(255, 255, 255, 0.2)',
                       borderRadius: '12px',
-                      color: 'white',
+                      color: 'var(--text-dark)',
                       fontSize: '18px',
                       letterSpacing: '4px',
                       textAlign: 'center',
                       boxSizing: 'border-box',
                       transition: 'all 0.3s ease',
-                      fontFamily: 'Inter, sans-serif'
+                      fontFamily: 'Inter, sans-serif',
+                      fontWeight: '600'
                     }}
+                    className="verify-input"
                   />
                   <p style={{
                     color: 'rgba(255, 255, 255, 0.6)',
