@@ -724,6 +724,28 @@ def coerce_binary_bytes(value):
         return bytes(value)
     if isinstance(value, bytes):
         return value
+    if isinstance(value, str):
+        # Handle Base64 URL data
+        if value.startswith('data:'):
+            try:
+                comma_idx = value.find(',')
+                if comma_idx != -1:
+                    return base64.b64decode(value[comma_idx+1:])
+            except Exception:
+                pass
+        
+        # Handle HTTP URLs (Download)
+        if value.startswith('http'):
+            try:
+                # Use a timeout to prevent hanging the background thread indefinitely
+                with urllib_request.urlopen(value, timeout=15) as response:
+                    return response.read()
+            except Exception as download_error:
+                print(f"[DOWNLOAD ERROR] Failed to fetch document from {value}: {download_error}", flush=True)
+                # Fallback to returning the URL bytes if download fails
+        
+        # Fallback to UTF-8 encoding if it's just a string (not a URL)
+        return value.encode('utf-8', errors='replace')
     return bytes(value)
 
 
@@ -962,9 +984,7 @@ The ISKOMATS Team
 @api_bp.route('/applicants/<int:applicant_no>/school-verification', methods=['POST'])
 @token_required
 def send_school_verification_dispatch(current_user_id, pro_no, role, applicant_no):
-    """Email school verification documents to the configured school contact."""
-    conn = None
-    cursor = None
+    """Email school verification documents to the configured school contact in the background."""
     try:
         data = request.get_json(silent=True) or {}
         scholarship_no = data.get('scholarshipNo')
@@ -976,67 +996,73 @@ def send_school_verification_dispatch(current_user_id, pro_no, role, applicant_n
         applicant_row = load_applicant_verification_context(cursor, applicant_no, scholarship_no)
 
         if not applicant_row:
+            cursor.close()
+            conn.close()
             return jsonify({'success': False, 'message': 'Applicant record not found for this scholarship'}), 404
 
         if role != 'Admin' and applicant_row['pro_no'] != pro_no:
+            cursor.close()
+            conn.close()
             return jsonify({'success': False, 'message': 'Unauthorized'}), 403
 
         school_email = resolve_school_verification_email(applicant_row.get('school'))
         if not school_email:
+            cursor.close()
+            conn.close()
             return jsonify({
                 'success': False,
                 'message': f"No verification email is configured yet for {applicant_row.get('school') or 'this school'}. Currently only DLSL is supported.",
             }), 400
 
-        document_values = fetch_applicant_document_values(
-            cursor,
-            applicant_no,
-            ['enrollment_certificate_doc', 'grades_doc', 'id_img_front', 'id_img_back', 'schoolID_photo']
-        )
-
-        front_id = document_values.get('id_img_front') or document_values.get('schoolID_photo')
-        back_id = document_values.get('id_img_back')
-        enrollment_doc = document_values.get('enrollment_certificate_doc')
-        grades_doc = document_values.get('grades_doc')
-
-        missing_documents = []
-        if not enrollment_doc:
-            missing_documents.append('Enrollment Certificate')
-        if not grades_doc:
-            missing_documents.append('Grades Report')
-        if not front_id:
-            missing_documents.append('School ID Front')
-        if not back_id:
-            missing_documents.append('School ID Back')
-
-        if missing_documents:
-            return jsonify({
-                'success': False,
-                'message': f"Missing required documents: {', '.join(missing_documents)}",
-            }), 400
-
         applicant_name = build_applicant_full_name(applicant_row) or f"Applicant #{applicant_no}"
-        attachment_specs = [
-            ('enrollment_certificate', enrollment_doc),
-            ('grades_report', grades_doc),
-            ('school_id_front', front_id),
-            ('school_id_back', back_id),
-        ]
-        attachments = []
-        for label, raw_content in attachment_specs:
-            content_bytes = coerce_binary_bytes(raw_content)
-            mime_type = get_mime_type(content_bytes)
-            extension = guess_extension_for_mime(mime_type)
-            attachments.append(
-                create_email_attachment(
-                    f"{applicant_name.replace(' ', '_').lower()}_{label}.{extension}",
-                    content_bytes,
-                    mime_type,
-                )
-            )
+        
+        # Clean up initial connection
+        cursor.close()
+        conn.close()
 
-        subject = f"School Verification Request - {applicant_name}"
-        body = f"""Hello,
+        def _background_dispatch():
+            bg_conn = None
+            bg_cursor = None
+            try:
+                bg_conn = get_db()
+                bg_cursor = bg_conn.cursor()
+                
+                print(f"[BG_DISPATCH] Fetching documents for school verification: Applicant #{applicant_no}", flush=True)
+                document_values = fetch_applicant_document_values(
+                    bg_cursor,
+                    applicant_no,
+                    ['enrollment_certificate_doc', 'grades_doc', 'id_img_front', 'id_img_back', 'schoolID_photo']
+                )
+
+                front_id = document_values.get('id_img_front') or document_values.get('schoolID_photo')
+                back_id = document_values.get('id_img_back')
+                enrollment_doc = document_values.get('enrollment_certificate_doc')
+                grades_doc = document_values.get('grades_doc')
+
+                attachment_specs = [
+                    ('enrollment_certificate', enrollment_doc),
+                    ('grades_report', grades_doc),
+                    ('school_id_front', front_id),
+                    ('school_id_back', back_id),
+                ]
+                
+                attachments = []
+                for label, raw_content in attachment_specs:
+                    if not raw_content:
+                        continue
+                    content_bytes = coerce_binary_bytes(raw_content)
+                    mime_type = get_mime_type(content_bytes)
+                    extension = guess_extension_for_mime(mime_type)
+                    attachments.append(
+                        create_email_attachment(
+                            f"{applicant_name.replace(' ', '_').lower()}_{label}.{extension}",
+                            content_bytes,
+                            mime_type,
+                        )
+                    )
+
+                subject = f"School Verification Request - {applicant_name}"
+                body = f"""Hello,
 
 Please help verify the attached applicant records for {applicant_name}.
 
@@ -1057,30 +1083,34 @@ Please review the documents and respond to this email with your verification fin
 Best regards,
 ISKOMATS Admin
 """
+                print(f"[BG_DISPATCH] Sending school verification email to {school_email}...", flush=True)
+                send_gmail_message(school_email, subject, body, attachments=attachments)
+                print(f"[BG_DISPATCH] Successfully sent school verification email for #{applicant_no}", flush=True)
 
-        if cursor:
-            cursor.close()
-            cursor = None
-        if conn:
-            conn.close()
-            conn = None
+            except Exception as bg_e:
+                print(f"[BG_DISPATCH ERROR] Failed to dispatch school verification: {bg_e}", flush=True)
+                traceback.print_exc()
+            finally:
+                if bg_cursor: bg_cursor.close()
+                if bg_conn: bg_conn.close()
 
-        # Send email in background to return response instantly
-        send_gmail_message_async(school_email, subject, body, attachments=attachments)
-        
+        # Start the background threat for data-heavy operations
+        threading.Thread(target=_background_dispatch, daemon=True).start()
+
         return jsonify({
-            'success': True,
-            'message': f'School verification dispatch initiated to {school_email}. The email is being sent in the background.',
-            'email': school_email,
+            'success': True, 
+            'message': f'School verification dispatch for {applicant_name} has been started in the background. The email will be sent to {school_email} shortly.',
+            'email': school_email
         }), 200
+
     except Exception as e:
         print(f"[SCHOOL VERIFICATION EMAIL] Error: {e}", flush=True)
         traceback.print_exc()
-        return jsonify({'success': False, 'message': f'Failed to send school verification email: {str(e)}'}), 500
+        return jsonify({'success': False, 'message': f'Failed to initiate school verification: {str(e)}'}), 500
     finally:
-        if cursor:
+        if 'cursor' in locals() and cursor:
             cursor.close()
-        if conn:
+        if 'conn' in locals() and conn:
             conn.close()
 
 
