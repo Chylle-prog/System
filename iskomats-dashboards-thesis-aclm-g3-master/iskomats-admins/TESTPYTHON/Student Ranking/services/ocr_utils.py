@@ -26,9 +26,8 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 cv2.setNumThreads(1) # Crucial: prevents OpenCV from spawning ghost threads that kill RAM
 
-# Global OCR Concurrency Control: Reduced to 3 to prevent CPU pinning on limited servers (Render/512MB)
-# This prevents Tesseract from competing for the same cores, which actually slows down total time.
-OCR_SEMAPHORE = eventlet.semaphore.Semaphore(3)
+# Global OCR Concurrency Control: Adjusted to 6 for a balance of speed and stability.
+OCR_SEMAPHORE = eventlet.semaphore.Semaphore(6)
 
 
 # ─── Environment hints for threading & memory ──────────────────────────────────
@@ -205,16 +204,16 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     if img is None: return ""
     results = []
     
-    # Pass 1: Raw Grayscale (Best for modern LSTM Tesseract)
-    # Optimization: Use eventlet.tpool to keep server responsive during subprocess execution
+    # Pass 1: Raw Grayscale (Best for modern LSTM Tesseract, handles white-on-black perfectly)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
     
     t1 = time.time()
     text1 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 1')
     t1_end = time.time()
     
-    # Optimization: If we got a solid block of text (30+ chars), skip secondary passes
-    if len(text1.strip()) > 30:
+    # Check if first pass was sufficient (lenient 20-char check)
+    if len(text1.strip()) > 20:
+        print(f"[OCR PERF] Pass1 ({psm}): {t1_end - t1:.3f}s", flush=True)
         return text1.strip()
     
     # Fallback to standard engine (OEM 3) only if LSTM fails and we are not in fast mode
@@ -543,35 +542,11 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     with OCR_SEMAPHORE:
         try:
             t_start = time.time()
-            # Optimization #1: Parallel PSM Execution
-            # Try PSM 3 (Standard) and PSM 11 (Sparse/Single words) in parallel
-            # Use ThreadPoolExecutor for these specific subprocess calls
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                future_psm3 = executor.submit(_run_tesseract_on_image, img, psm=3)
-                future_psm11 = executor.submit(_run_tesseract_on_image, img, psm=11)
-                
-                t1 = future_psm3.result(timeout=15)
-                # Check match on PSM3 immediately
-                n_v1, a_v1, kw1, r1 = _perform_text_matching(t1, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, None, is_indigency)
-                
-                if n_v1 and a_v1:
-                    best_text = t1
-                    best_ratio = r1
-                    print(f"[OCR PERF] Verified via parallel PSM3 in {time.time() - t_start:.2f}s", flush=True)
-                else:
-                    t2 = future_psm11.result(timeout=15)
-                    n_v2, a_v2, kw2, r2 = _perform_text_matching(t2, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, None, is_indigency)
-                    
-                    if n_v2 and a_v2:
-                        best_text = t2
-                        best_ratio = r2
-                        print(f"[OCR PERF] Verified via parallel PSM11 in {time.time() - t_start:.2f}s", flush=True)
-                    else:
-                        # Fallback to the one with the higher match ratio
-                        best_text = t1 if r1 >= r2 else t2
-                        best_ratio = max(r1, r2)
+            best_text = _run_tesseract_on_image(img, 3)
+            t_end = time.time()
+            print(f"[OCR PERF] Total ID OCR time: {t_end - t_start:.3f}s", flush=True)
         except Exception as e:
-            print(f"[OCR] Parallel error: {e}", flush=True)
+            print(f"[OCR] PSM3 error: {e}", flush=True)
             best_text = ""
         finally:
             clear_heavy_memory()

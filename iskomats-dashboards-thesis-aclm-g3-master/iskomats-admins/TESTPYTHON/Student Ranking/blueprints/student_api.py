@@ -3484,9 +3484,8 @@ def ocr_check():
         overall_verified = True
         
         if jobs:
-            # Optimization: Reduced pool size from 5 to 2 to prevent CPU/RAM exhaustion on Render.
-            # This ensures individual documents get enough CPU time to finish quickly.
-            pool = GreenPool(size=min(len(jobs), 2)) 
+            # Optimization: Restored pool size to 5 for multi-document concurrency.
+            pool = GreenPool(size=min(len(jobs), 5)) 
             
             def run_job(job_data):
                 try:
