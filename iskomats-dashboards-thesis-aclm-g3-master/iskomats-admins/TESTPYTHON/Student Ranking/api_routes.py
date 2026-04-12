@@ -3792,8 +3792,8 @@ def create_scholarship(current_user_id, pro_no, role):
         
         # 2. Insert into scholarships table (without images)
         cursor.execute('''
-            INSERT INTO scholarships (scholarship_name, gpa, parent_finance, location, pro_no, slots, deadline, "desc", semester, year)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO scholarships (scholarship_name, gpa, parent_finance, location, pro_no, slots, deadline, "desc", semester, year, date_created)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             RETURNING req_no
         ''', (
             data['scholarshipName'],

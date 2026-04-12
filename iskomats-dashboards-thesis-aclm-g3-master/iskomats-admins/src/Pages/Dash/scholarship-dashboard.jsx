@@ -2101,47 +2101,63 @@ export default function ScholarshipDashboard({
           <div className="space-y-4">
             {manageTab === 'scholarship' ? (
               filteredScholarshipPosts.length > 0 ? (
-                filteredScholarshipPosts.map((post) => (
-                  <div key={post.reqNo || post.id} className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h4 className="text-lg font-semibold text-[#800020] mb-2">{post.scholarshipName || post.title}</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-600">
-                          <div><strong>Deadline:</strong> {formatDate(post.deadline)}</div>
-                          <div><strong>Slots:</strong> {post.slots}</div>
-                          <div><strong>Location:</strong> {post.location}</div>
-                          <div><strong>Min GPA:</strong> {post.minGpa}%</div>
-                          <div><strong>Term:</strong> {post.semester} {post.year}</div>
+                filteredScholarshipPosts.map((post) => {
+                  // Determine if scholarship is NEW (created within last 3 days)
+                  let isNew = false;
+                  if (post.dateCreated) {
+                    const createdDate = new Date(post.dateCreated);
+                    const now = new Date();
+                    const diffMs = now - createdDate;
+                    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+                    isNew = diffDays <= 3;
+                  }
+                  return (
+                    <div key={post.reqNo || post.id} className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <h4 className="text-lg font-semibold text-[#800020]">{post.scholarshipName || post.title}</h4>
+                            {isNew && (
+                              <span className="ml-2 px-2 py-0.5 rounded bg-yellow-200 text-yellow-900 text-xs font-bold">NEW</span>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-600">
+                            <div><strong>Deadline:</strong> {formatDate(post.deadline)}</div>
+                            <div><strong>Slots:</strong> {post.slots}</div>
+                            <div><strong>Location:</strong> {post.location}</div>
+                            <div><strong>Min GPA:</strong> {post.minGpa}%</div>
+                            <div><strong>Term:</strong> {post.semester} {post.year}</div>
+                          </div>
+                          <p className="text-sm text-gray-700 mt-3 line-clamp-2">{post.description}</p>
+                          <div className="text-xs text-gray-500 mt-3">
+                            Date Created: {formatDate(post.dateCreated)}
+                          </div>
                         </div>
-                        <p className="text-sm text-gray-700 mt-3 line-clamp-2">{post.description}</p>
-                        <div className="text-xs text-gray-500 mt-3">
-                          Date Created: {formatDate(post.dateCreated)}
+                        <div className="flex gap-2 ml-4">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              editPost(post);
+                            }}
+                            className="p-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+                            title="Edit Post"
+                          >
+                            <FaEdit />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deletePost(post.reqNo || post.id)}
+                            className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
+                            title="Delete Post"
+                          >
+                            <FaTrash />
+                          </button>
                         </div>
-                      </div>
-                      <div className="flex gap-2 ml-4">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            editPost(post);
-                          }}
-                          className="p-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
-                          title="Edit Post"
-                        >
-                          <FaEdit />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => deletePost(post.reqNo || post.id)}
-                          className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
-                          title="Delete Post"
-                        >
-                          <FaTrash />
-                        </button>
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="text-center py-12">
                   <FaUniversity className="text-4xl text-gray-300 mx-auto mb-4" />
