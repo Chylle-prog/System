@@ -913,7 +913,6 @@ export default function ScholarshipDashboard({
       }
 
       if (response.data.success) {
-        alert(`Scholarship ${manageMode === 'edit' ? 'updated' : 'created'} successfully!`);
         resetForm();
         setManageMode('list');
         await loadScholarships(false);
@@ -980,30 +979,14 @@ export default function ScholarshipDashboard({
   };
 
   const deletePost = (postId) => {
-    const post = data.scholarshipPosts.find(p => (p.reqNo || p.id) === postId);
-    setConfirmDeleteModal({
-      type: 'scholarship',
-      id: postId,
-      title: 'Delete Scholarship Post',
-      label: post?.scholarshipName || 'this scholarship post'
-    });
+    executeDeleteDirectly('scholarship', postId);
   };
 
   const deleteAnnouncement = (id) => {
-    const ann = data.announcements.find(a => (a.id || a.ann_no) === id);
-    setConfirmDeleteModal({
-      type: 'announcement',
-      id: id,
-      title: 'Delete Announcement',
-      label: ann?.title || 'this announcement'
-    });
+    executeDeleteDirectly('announcement', id);
   };
 
-  const executeDelete = async () => {
-    if (!confirmDeleteModal) return;
-    const { type, id } = confirmDeleteModal;
-    setConfirmDeleteModal(null);
-
+  const executeDeleteDirectly = async (type, id) => {
     if (type === 'scholarship') {
       showActionOverlay('Deleting scholarship post', 'Please wait while the scholarship post is being removed.');
       try {
@@ -1015,7 +998,6 @@ export default function ScholarshipDashboard({
             resetForm();
             setManageMode('list');
           }
-          alert('Scholarship post deleted successfully.');
         }
       } catch (error) {
         console.error('Failed to delete scholarship:', error);
@@ -1032,7 +1014,6 @@ export default function ScholarshipDashboard({
           setManageMode('list');
         }
         await loadAnnouncements();
-        alert('Announcement deleted successfully.');
       } catch (error) {
         console.error('Failed to delete announcement:', error);
         alert(getRequestErrorMessage(error, 'Error deleting announcement'));
@@ -1040,6 +1021,13 @@ export default function ScholarshipDashboard({
         hideActionOverlay();
       }
     }
+  };
+
+  const executeDelete = async () => {
+    if (!confirmDeleteModal) return;
+    const { type, id } = confirmDeleteModal;
+    setConfirmDeleteModal(null);
+    await executeDeleteDirectly(type, id);
   };
 
   const saveAnnouncement = async () => {
@@ -1086,7 +1074,6 @@ export default function ScholarshipDashboard({
       }
 
       if (response.data.message || response.data.success) {
-        alert(`Announcement ${manageMode === 'edit' ? 'updated' : 'created'} successfully!`);
         resetForm();
         await loadAnnouncements();
         setManageMode('list');
