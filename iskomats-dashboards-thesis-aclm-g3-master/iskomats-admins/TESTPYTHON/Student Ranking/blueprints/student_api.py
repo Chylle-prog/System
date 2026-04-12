@@ -2073,19 +2073,12 @@ def get_all_scholarships():
     start = time.time()
     limit = int(request.args.get('limit', 50))
     offset = int(request.args.get('offset', 0))
-    cache_key = f'scholarships:{limit}:{offset}'
-    if cache:
-        cached = cache.get(cache_key)
-        if cached:
-            print(f"[CACHE] /scholarships hit in {time.time() - start:.3f}s")
-            return jsonify(cached)
+    # Optimization: Bypass invalid global 'cache' reference that causes 500
     try:
         conn = get_db()
         cur = conn.cursor()
         cur.execute('SELECT req_no, scholarship_name, deadline FROM scholarships WHERE COALESCE(is_removed, FALSE) = FALSE ORDER BY scholarship_name LIMIT %s OFFSET %s', (limit, offset))
         rows = cur.fetchall()
-        if cache:
-            cache.set(cache_key, rows, timeout=60)
         print(f"[PERF] /scholarships took {time.time() - start:.3f}s (limit={limit}, offset={offset})")
         return jsonify(rows)
     except Exception as exc:
@@ -2975,7 +2968,22 @@ def ocr_check():
         else:
             data = request.form.to_dict()
         
-        target_doc = data.get('target_doc')
+        target_doc = data.get('target_doc') or data.get('targetDoc')
+        
+        # Normalize target_doc to canonical forms used in 'jobs' population
+        if target_doc:
+            target_doc_norm = str(target_doc).lower()
+            if any(k in target_doc_norm for k in ['grade', 'mayorgrade']):
+                target_doc = 'Grades'
+            elif any(k in target_doc_norm for k in ['enrollment', 'coe', 'mayorcoe']):
+                target_doc = 'Enrollment'
+            elif any(k in target_doc_norm for k in ['indigency', 'mayorindigency']):
+                target_doc = 'Indigency'
+            elif any(k in target_doc_norm for k in ['idfront', 'schoolidfront']):
+                target_doc = 'SchoolID'
+            elif any(k in target_doc_norm for k in ['idback', 'schoolidback']):
+                target_doc = 'SchoolIDBack'
+            print(f"[OCR-NORMALIZATION] Normalized '{target_doc_norm}' to '{target_doc}'", flush=True)
 
         # 1. Get applicant record from DB
         conn = get_db()
@@ -3018,7 +3026,7 @@ def ocr_check():
         if not target_doc or target_doc == 'Grades':
             urls_to_prefetch.extend([data.get('mayorGrades_video'), applicant.get('grades_vid_url')])
 
-        prefetch_video_urls(urls_to_prefetch)
+        # Prefetch URLs moved lower and deduplicated for performance.
 
         if not applicant:
             return jsonify({'verified': False, 'message': 'Applicant profile not found'}), 404
@@ -3035,6 +3043,13 @@ def ocr_check():
         indigency_doc_param = indigency_doc_file.read() if indigency_doc_file else data.get('indigency_doc') or data.get('indigencyDoc')
         enrollment_doc_param = enrollment_doc_file.read() if enrollment_doc_file else data.get('enrollment_doc') or data.get('enrollmentDoc')
         grades_doc_param = grades_doc_file.read() if grades_doc_file else data.get('grades_doc') or data.get('gradesDoc')
+
+        # Diagnostic Logging for 'No documents provided' issue
+        print(f"[OCR DEBUG] Request for user {request.user_no}", flush=True)
+        print(f"[OCR DEBUG] target_doc: {target_doc}", flush=True)
+        print(f"[OCR DEBUG] request.files keys: {list(request.files.keys())}", flush=True)
+        print(f"[OCR DEBUG] data keys: {list(data.keys())}", flush=True)
+        print(f"[OCR DEBUG] grades_doc_param length: {len(grades_doc_param) if grades_doc_param else 'None'}", flush=True)
 
         first_name = str(data.get('first_name') or data.get('firstName') or '').strip()
         middle_name = str(data.get('middle_name') or data.get('middleName') or '').strip()
@@ -3072,14 +3087,16 @@ def ocr_check():
 
         # ─── SPEED OPTIMIZATION: Early Video Prefetching ───
         # Initiate parallel downloads of all relevant videos immediately
-        prefetch_video_urls([
+        all_relevant_urls = [
             data.get('video_url'), data.get('video_url_back'),
+            data.get('face_video'), applicant.get('id_vid_url'),
             data.get('mayorIndigency_video'), applicant.get('indigency_vid_url'),
             data.get('mayorCOE_video'), applicant.get('enrollment_certificate_vid_url'),
             data.get('mayorGrades_video'), applicant.get('grades_vid_url'),
             data.get('schoolIdFront_video'), applicant.get('schoolid_front_vid_url'),
             data.get('schoolIdBack_video'), applicant.get('schoolid_back_vid_url')
-        ])
+        ]
+        prefetch_video_urls(all_relevant_urls)
         
         verification_cache_key = json.dumps({
             'user_no': request.user_no,
@@ -3454,14 +3471,22 @@ def ocr_check():
             if id_back_param or applicant.get('id_img_back'):
                 jobs.append(('SchoolIDBack', id_back_param, applicant.get('id_img_back')))
                 
-        if jobs:
-            print(f"[OCR-JOBS] Launching {len(jobs)} parallel extraction tasks...", flush=True)
+        if not jobs:
+            # If we were strictly targeting a doc, explain why it was skipped.
+            if target_doc:
+                missing_doc_msg = f"The requested document ({target_doc}) was not found in the request or your profile records."
+                return jsonify({'verified': False, 'message': missing_doc_msg}), 400
+            return jsonify({'verified': False, 'message': 'No documents provided for verification'}), 400
+
+        print(f"[OCR-JOBS] Launching {len(jobs)} parallel extraction tasks...", flush=True)
 
         results = []
         overall_verified = True
         
         if jobs:
-            pool = GreenPool(size=min(len(jobs), 5)) 
+            # Optimization: Reduced pool size from 5 to 2 to prevent CPU/RAM exhaustion on Render.
+            # This ensures individual documents get enough CPU time to finish quickly.
+            pool = GreenPool(size=min(len(jobs), 2)) 
             
             def run_job(job_data):
                 try:
@@ -3482,7 +3507,8 @@ def ocr_check():
 
 
         if not results:
-            return jsonify({'verified': False, 'message': 'No documents provided for verification'}), 400
+             # Fallback message if jobs existed but pool returned nothing
+             return jsonify({'verified': False, 'message': 'Verification failed to produce results. Try again later.'}), 400
 
         final_msg = " | ".join([f"{r['doc']}: {r['message']}" for r in results])
         response_payload = {'verified': overall_verified, 'message': final_msg, 'results': results}
