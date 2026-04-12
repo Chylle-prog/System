@@ -207,12 +207,14 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
         return text1.strip()
     
     # Fallback to standard engine (OEM 3) only if LSTM fails
-    text1 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 3')
-    if text1.strip():
-        results.append(text1.strip())
-        # OPTIMIZATION: If Pass 1 is even slightly successful (20+ chars), skip Pass 2 to save time
-        if len(text1.strip()) > 20:
-            return text1.strip()
+    text_fallback = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 3')
+    if text_fallback.strip():
+        # If fallback gets significantly more text, prefer it
+        if len(text_fallback.strip()) > len(text1.strip()):
+            text1 = text_fallback
+        
+    if len(text1.strip()) > 30:
+        return text1.strip()
         
     # Pass 2: Adaptive Thresholding (Fails on white-on-dark, but great for shadows on paper)
     if not skip_pass2:
@@ -266,31 +268,56 @@ def normalize_for_ocr(s):
 
 def year_level_matches_text(target_year, text):
     """
-    Checks if a target year level (e.g., '1st Year', 'Grade 11') is mentioned in the text.
-    Handles various formats like '1st', '2nd', 'Grade 12', etc.
+    Checks if a target year level (e.g., '1st Year', 'Grade 11', 'Year Level: 1') is mentioned in the text.
+    Handles various formats and common OCR misreads like 'I' or 'l' for '1'.
     """
     if not target_year: return True
     
     t_year = str(target_year).lower().strip()
+    # Normalize expected to just the digit if it's something like "1st Year"
+    match_digit = re.search(r'\b([1-9])(?:st|nd|rd|th)?\b', t_year)
+    expected_level = match_digit.group(1) if match_digit else t_year
+    
     norm_text = text.lower()
     
-    # 1. Exact match
-    if t_year in norm_text: return True
+    # Common OCR misreads for specific digits
+    digit_misreads = {
+        '1': r'[1Il|!i]',
+        '2': r'[2Zz]',
+        '3': r'[3]',
+        '4': r'[4A]',
+        '5': r'[5SsS\$]',
+        '6': r'[6G]',
+    }
     
-    # 2. Map year level to variations
+    # Suffixes
+    suffix_pattern = r'(?:st|nd|rd|th|ist|lst|Is\b|si)?'
+    d_pattern = digit_misreads.get(expected_level, expected_level)
+    
+    # Pattern A: Standard labels
+    # Handles: "Year Level: 1", "Level: 1", "Year: 1"
+    if re.search(rf'\b(?:year\s*)?level\s*[:\-.;]?\s*{d_pattern}{suffix_pattern}\b', norm_text, re.IGNORECASE):
+        return True
+    
+    # Pattern B: Standalone with Year/Yr
+    if re.search(rf'\b{d_pattern}{suffix_pattern}?\s*(?:year|yr\.?)\b', norm_text, re.IGNORECASE):
+        return True
+
+    # Pattern C: Word-based mapped variations
     variations = []
-    if '1st' in t_year or '1' == t_year: variations.extend(['1st', 'first', 'yr 1', 'year 1'])
-    elif '2nd' in t_year or '2' == t_year: variations.extend(['2nd', 'second', 'yr 2', 'year 2'])
-    elif '3rd' in t_year or '3' == t_year: variations.extend(['3rd', 'third', 'yr 3', 'year 3'])
-    elif '4th' in t_year or '4' == t_year: variations.extend(['4th', 'fourth', 'yr 4', 'year 4'])
-    elif '5th' in t_year or '5' == t_year: variations.extend(['5th', 'fifth', 'yr 5', 'year 5'])
+    if expected_level == '1': variations.extend(['1st', 'first', 'yr 1', 'year 1', 'freshman', 'freshmen', 'freshie'])
+    elif expected_level == '2': variations.extend(['2nd', 'second', 'yr 2', 'year 2', 'sophomore'])
+    elif expected_level == '3': variations.extend(['3rd', 'third', 'yr 3', 'year 3', 'junior'])
+    elif expected_level == '4': variations.extend(['4th', 'fourth', 'yr 4', 'year 4', 'senior'])
     
-    if 'grade' in t_year:
-        g_num = "".join(filter(str.isdigit, t_year))
-        if g_num: variations.append(f"grade {g_num}")
-        
     for v in variations:
         if v in norm_text: return True
+    
+    # Final fallback: Look for "Year" or "Level" followed by the target number within a small window
+    if re.search(rf'\b(?:year|level)\b.{0,15}?{d_pattern}\b', norm_text, re.IGNORECASE | re.DOTALL):
+        return True
+        
+    return False
         
     return False
 
@@ -565,12 +592,17 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
 
         h, w = img.shape[:2]
         # ID backs often have very small stickers (Year stickers)
-        # 600px is often too small for Tesseract to read 8pt/10pt text clearly.
-        effective_max_width = 800 if is_id_back else max_width
+        effective_max_width = 1200 if is_id_back else max_width
         
         if w > effective_max_width:
             scale = effective_max_width / w
             img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+
+        # Specialized preprocessing for ID backs (Sharpening to help small text)
+        if is_id_back:
+            # Unsharp mask to enhance edges of small fonts
+            gaussian = cv2.GaussianBlur(img, (0, 0), 3.0)
+            img = cv2.addWeighted(img, 1.5, gaussian, -0.5, 0)
     except Exception as e:
         return "", f"Preprocessing error: {str(e)}"
 
@@ -598,6 +630,21 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
                         normalized_header = normalize_for_ocr(header_text)
                         if normalized_header and normalized_header not in normalized_text:
                             text = f"{header_text.strip()}\n{text}".strip()
+            
+            # ID backs often have very sparse text (stickers).
+            # If PSM3 didn't get much, try PSM11 (Sparse) and PSM6 (Uniform)
+            if is_id_back and (not text or len(text.strip()) < 15):
+                # Pass A: Sparse Text
+                text_spare = _run_tesseract_on_image(img, psm=11, skip_pass2=True)
+                # Pass B: Uniform Block (sometimes helps with sticker lines)
+                text_block = _run_tesseract_on_image(img, psm=6, skip_pass2=True)
+                
+                best_pass = text
+                if len(text_spare.strip()) > len(best_pass.strip()):
+                    best_pass = text_spare
+                if len(text_block.strip()) > len(best_pass.strip()):
+                    best_pass = text_block
+                text = best_pass
         finally:
             clear_heavy_memory()
 
@@ -766,15 +813,14 @@ def extract_school_year_from_text(text):
     if not text: return None
     
     # 1. Advanced Character Hygiene
-    # OCR often mistakes digits for similar-looking characters.
-    # We define a broad map and a focused regex to fix these in potential year contexts.
     hygiene_map = {
-        'O': '0', 'o': '0', 'Q': '0',
-        'I': '1', 'l': '1', '|': '1', 'i': '1', '!': '1',
-        'Z': '2', 'z': '2',
-        'S': '5', 's': '5',
-        'B': '8',
-        'G': '6', 'g': '9'
+        'O': '0', 'o': '0', 'Q': '0', 'D': '0', 'U': '0',
+        'I': '1', 'l': '1', '|': '1', 'i': '1', '!': '1', '(': '1', ')': '1', 'L': '1',
+        'Z': '2', 'z': '2', 'A': '2',
+        'S': '5', 's': '5', '$': '5',
+        'B': '8', 'E': '8',
+        'G': '6', 'b': '6',
+        'g': '9', 'q': '9', 'P': '9'
     }
     
     def apply_hygiene(s):
@@ -785,10 +831,9 @@ def extract_school_year_from_text(text):
 
     # Normalize delimiters: replace weird hyphens/dots/underscores between digits with a standard dash
     # e.g. "2024.2025", "2024/2025" or "2024_2025" -> "2024-2025"
-    text = re.sub(r'(20\d{2})[\s\.\,_\~\/\|]+(20\d{2})', r'\1-\2', text)
+    text = re.sub(r'(20\d{2})[\s\.\,_\~\/\-\|\[\]\(\)\:\;]+(20\d{2})', r'\1-\2', text)
     
     # Fix corruptions in chunks that look like years (4 chars starting with something like 2)
-    # We look for 4-char sequences that resemble 20XX
     def fix_year_chunk(m):
         chunk = m.group(0)
         fixed = apply_hygiene(chunk)
@@ -798,8 +843,7 @@ def extract_school_year_from_text(text):
         return chunk
 
     # Pass 1: Fix standalone 4-char year-like strings
-    # Pattern: Digit-like, then 0-like, then Digit-like, then any digit-like
-    clean_text = re.sub(r'[2ZSI][0OQo][2ZSI][0-9SszBGeGQ\d]', fix_year_chunk, text)
+    clean_text = re.sub(r'[2ZSI][0OQoDU][2ZSI][0-9SszBGeGQ\d]', fix_year_chunk, text)
     
     # 2. Label Normalization
     clean_text = re.sub(r'\bS\.?Y\.?\s*[:\-\/]?\s*', 'school year ', clean_text, flags=re.IGNORECASE)

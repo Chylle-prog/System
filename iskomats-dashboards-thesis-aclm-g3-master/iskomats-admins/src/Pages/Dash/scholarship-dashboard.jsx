@@ -619,11 +619,11 @@ export default function ScholarshipDashboard({
 
     return {
       monthlyApplications: Object.values(monthlyData).sort((a, b) => new Date(a.month) - new Date(b.month)),
-      courseDistribution: Object.entries(courses).map(([course, count]) => ({ course, count, percentage: Math.round((count / total) * 100) })),
+      courseDistribution: Object.entries(courses).map(([course, count]) => ({ course, count, percentage: Math.round((count / total) * 100) })).sort((a,b) => b.count - a.count),
       gradeRanges: Object.entries(grades).map(([range, count]) => ({ range, count, percentage: Math.round((count / total) * 100) })),
       financialBreakdown: Object.entries(financial).map(([level, count]) => ({ level, count, percentage: Math.round((count / total) * 100) })),
-      locationStats: Object.entries(locations).map(([location, count]) => ({ location, count, percentage: Math.round((count / total) * 100) })),
-      schoolStats: Object.entries(schools).map(([school, count]) => ({ school, count, percentage: Math.round((count / total) * 100) })),
+      locationStats: Object.entries(locations).map(([location, count]) => ({ location, count, percentage: Math.round((count / total) * 100) })).sort((a,b) => b.count - a.count),
+      schoolStats: Object.entries(schools).map(([school, count]) => ({ school, count, percentage: Math.round((count / total) * 100) })).sort((a,b) => b.count - a.count),
       performanceMetrics: {
         averageProcessingTime: 5,
         acceptanceRate: Math.round((applicants.filter(a => a.status === 'Accepted').length / total) * 100),
@@ -2493,6 +2493,9 @@ export default function ScholarshipDashboard({
           a.name.toLowerCase().includes(search) ||
           (a.school && a.school.toLowerCase().includes(search)) ||
           (a.municipality && a.municipality.toLowerCase().includes(search)) ||
+          (a.course && a.course.toLowerCase().includes(search)) ||
+          (a.barangay && a.barangay.toLowerCase().includes(search)) ||
+          (a.address && a.address.toLowerCase().includes(search)) ||
           (a.mobileNumber && a.mobileNumber.toLowerCase().includes(search));
         const matchesScholarship = matchesScholarshipSelection(a, trackScholarshipFilter);
 
@@ -2723,6 +2726,9 @@ export default function ScholarshipDashboard({
           a.name.toLowerCase().includes(search) ||
           (a.school && a.school.toLowerCase().includes(search)) ||
           (a.municipality && a.municipality.toLowerCase().includes(search)) ||
+          (a.course && a.course.toLowerCase().includes(search)) ||
+          (a.barangay && a.barangay.toLowerCase().includes(search)) ||
+          (a.address && a.address.toLowerCase().includes(search)) ||
           (a.mobileNumber && a.mobileNumber.toLowerCase().includes(search));
         const matchesScholarship = matchesScholarshipSelection(a, trackScholarshipFilter);
 
