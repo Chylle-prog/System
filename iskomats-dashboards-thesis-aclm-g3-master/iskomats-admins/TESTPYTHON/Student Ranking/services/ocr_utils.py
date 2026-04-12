@@ -526,9 +526,9 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             return False, f"Image quality issue: {quality_reason}", "", 0.0
         
         # Resize image - IDs are usually high-contrast, can use lower res (640px)
-        # Indigency or TORs keep 750px for small text details.
+        # Indigency/Certificates can use 700px, TORs keep 750px if needed.
         h, w = img.shape[:2]
-        target_w = 640 if not is_indigency else 750
+        target_w = 640 if not is_indigency else 700
         if w > target_w:
             scale = target_w / w
             img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
@@ -542,7 +542,22 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     with OCR_SEMAPHORE:
         try:
             t_start = time.time()
-            best_text = _run_tesseract_on_image(img, 3)
+            # Certificate documents (Indigency) are usually uniform blocks. PSM6 is faster than PSM3.
+            primary_psm = 6 if is_indigency else 3
+            best_text = _run_tesseract_on_image(img, primary_psm)
+            
+            # Indigency Header-Skip Optimization: If keywords found, skip redundant header pass
+            needs_header = len(best_text.strip()) < 150
+            if is_indigency and any(k.lower() in best_text.lower() for k in ['indigency', 'barangay', 'certificate']):
+                needs_header = False
+                
+            if needs_header and not is_indigency: # Only do header pass for ID cards if they are sparse
+                header_height = max(int(img.shape[0] * 0.28), 1)
+                header_img = img[:header_height, :]
+                header_text = _run_tesseract_on_image(header_img, psm=6, skip_pass2=True)
+                if header_text.strip() and header_text.strip() not in best_text:
+                    best_text = f"{header_text.strip()}\n{best_text}".strip()
+
             t_end = time.time()
             print(f"[OCR PERF] Total ID OCR time: {t_end - t_start:.3f}s", flush=True)
         except Exception as e:
@@ -634,9 +649,8 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
             text = _run_tesseract_on_image(img, psm=primary_psm, skip_pass2=skip_pass2)
             
             # Optimization: Skip header pass if keywords already found in primary text.
-            # This is specifically effective for Indigency documents where the header is often part of the main block.
             needs_header = len(text.strip()) < 150
-            if is_indigency and any(k.lower() in text.lower() for k in ['indigency', 'barangay', 'certificate']):
+            if any(k.lower() in text.lower() for k in ['indigency', 'barangay', 'certificate', 'enrollment', 'grades']):
                 needs_header = False
 
             if not is_id_back and needs_header:
@@ -684,8 +698,9 @@ def _preprocess_frame_for_ocr(frame):
 def _ocr_video_frame(processed_frame, allow_alt_pass=True, keywords=None):
     """Run OCR for a single video frame while holding the shared OCR gate only for Tesseract work."""
     with OCR_SEMAPHORE:
-        # Pass 1: Global/Mixed Layout
-        text = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config='--psm 3 --oem 1')
+        # For video keywords, PSM 11 (Sparse Text) is often faster and sufficient for 'Indigency' / 'Grades' headers.
+        psm = 11 if keywords else 3
+        text = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config=f'--psm {psm} --oem 1')
 
         # Smart Exit: If keywords provided and found, exit immediately for speed
         if keywords and any(k.lower() in text.lower() for k in keywords):
