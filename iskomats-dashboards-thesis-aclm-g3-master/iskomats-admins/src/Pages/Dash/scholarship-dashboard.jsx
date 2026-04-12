@@ -1678,16 +1678,26 @@ export default function ScholarshipDashboard({
     const applicant = list[index];
     if (!applicant) return;
 
-    beginApplicantStatusRequest({
-      applicant,
-      requestedStatus: 'Pending',
-      request: (applicantId, scholarshipNo) => scholarshipAPI.cancelApplicant(applicantId, scholarshipNo),
-      successEvent: 'applicant_cancel',
-      failureMessage: 'Failed to cancel applicant',
-      onStart: () => {
-        setSection('track');
-        setTrackTab('all');
-      },
+    const recipient = applicant.studentContact?.email || applicant.emailAddress || applicant.email || 'Student Email';
+
+    setPendingAction({
+      type: 'cancellation',
+      title: 'Cancel Application Confirmation',
+      recipient: recipient,
+      messageSummary: `Your application for ${scholarshipLabel} is being reset to Pending status. Please review your dashboard for any updates.`,
+      onConfirm: async () => {
+        beginApplicantStatusRequest({
+          applicant,
+          requestedStatus: 'Pending',
+          request: (applicantId, scholarshipNo) => scholarshipAPI.cancelApplicant(applicantId, scholarshipNo),
+          successEvent: 'applicant_cancel',
+          failureMessage: 'Failed to cancel applicant',
+          onStart: () => {
+            setSection('track');
+            setTrackTab('all');
+          },
+        });
+      }
     });
   };
 
@@ -1916,12 +1926,9 @@ export default function ScholarshipDashboard({
       <section className="space-y-6">
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.25em] text-[#800020]/70 mb-2">Scholarship Finder</p>
-              <h2 className="text-2xl font-black text-gray-900">Find scholarships with open slots and matching demand</h2>
-              <p className="text-sm text-gray-500 mt-2 max-w-2xl">
-                Search your scholarship posts, review real-time slot usage, and jump straight into applicant tracking or editing.
-              </p>
+            <div className="flex-1">
+              <h2 className="text-2xl font-black text-gray-900">Scholarship Slot Tracking</h2>
+              <p className="text-gray-500 font-medium">Monitor open slots and matching demand for all programs</p>
             </div>
             <button
               type="button"
@@ -2748,6 +2755,7 @@ export default function ScholarshipDashboard({
       const wb = XLSX.utils.book_new();
 
       const formatTracking = (list) => list.map(app => ({
+        'Scholarship': scholarshipLabel,
         'Student Name': app.name,
         'Grade': app.grade,
         'Financial Status': getFinancialStatusLabel(app.income || app.family?.grossIncome),
@@ -2767,6 +2775,7 @@ export default function ScholarshipDashboard({
 
     // Helper to format applicant data for Excel
     const formatApplicants = (list) => list.map(app => ({
+      'Scholarship': scholarshipLabel,
       'Student Name': app.name || `${app.firstName} ${app.lastName}`,
       'Grade': app.grade || 'N/A',
       'Financial Status': getFinancialStatusLabel(app.income || app.family?.grossIncome),
@@ -3379,8 +3388,24 @@ export default function ScholarshipDashboard({
 
         {/* DEDICATED PRINT-ONLY TABLE REPORT */}
         <div className="print-only mt-12 space-y-10">
-          <div className="border-b-2 border-gray-200 pb-4 mb-8">
-            <h4 className="text-xl font-bold text-gray-800 uppercase tracking-widest">Detailed Scholarship Data Tables</h4>
+          <div className="flex items-center justify-between border-b-2 border-gray-200 pb-6 mb-8">
+            <div className="flex items-center gap-6">
+              <div className="w-20 h-20 rounded-2xl bg-[#800020] p-3 flex items-center justify-center shadow-lg">
+                <img src={logo} alt="iskoMats Logo" className="w-full h-full object-contain brightness-0 invert" />
+              </div>
+              <div>
+                <h2 className="text-3xl font-black text-[#800020] tracking-tighter uppercase leading-none mb-1">iskoMats</h2>
+                <p className="text-xs font-bold text-gray-500 tracking-[0.3em] uppercase opacity-70">Unified Scholarship System</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <h4 className="text-xl font-bold text-gray-800 uppercase tracking-widest">{scholarshipLabel} Report</h4>
+              <p className="text-xs font-bold text-gray-400">{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+            </div>
+          </div>
+
+          <div className="pt-4 mb-8">
+            <h4 className="text-xl font-bold text-gray-800 uppercase tracking-widest bg-gray-50 p-4 rounded-xl inline-block border border-gray-100">Detailed Scholarship Data Tables</h4>
           </div>
 
           <div className="space-y-8">
@@ -3640,13 +3665,27 @@ export default function ScholarshipDashboard({
 
     return (
       <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 max-w-5xl mx-auto my-4 overflow-y-auto max-h-[90vh]">
-        <div className="flex items-center justify-between mb-8 pb-4 border-b-2 border-[#800020]">
-          <div className="flex items-center gap-4">
-            <h2 className="text-2xl font-black text-[#800020] uppercase tracking-tight flex items-center gap-2">
-              Applicant Dossier
-              {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-sm" />}
-            </h2>
-            <span className="bg-[#800020]/10 text-[#800020] px-3 py-1 rounded-lg text-sm font-black font-mono">ID #{a.applicant_no}</span>
+        <div className="flex items-center justify-between mb-8 pb-6 border-b-2 border-[#800020]">
+          <div className="flex items-center gap-6">
+            <div className="w-20 h-20 rounded-2xl bg-gray-50 border-2 border-gray-100 p-1 shadow-sm overflow-hidden flex-shrink-0">
+               {a.profile_picture ? (
+                 <img src={a.profile_picture} alt="Avatar" className="w-full h-full object-cover rounded-xl" />
+               ) : (
+                 <div className="w-full h-full flex items-center justify-center bg-gray-200 text-gray-400">
+                   <FaUsers className="text-2xl" />
+                 </div>
+               )}
+            </div>
+            <div>
+              <h2 className="text-2xl font-black text-[#800020] uppercase tracking-tight flex items-center gap-2 mb-1">
+                {a.name || `${a.firstName} ${a.lastName}`}
+                {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-sm" />}
+              </h2>
+              <div className="flex items-center gap-2">
+                <span className="bg-[#800020] text-white px-3 py-1 rounded-lg text-xs font-black font-mono shadow-sm tracking-widest">APPLICANT ID: {a.applicant_no || 'N/A'}</span>
+                {isPending && <span className="text-[10px] font-bold text-[#800020] uppercase bg-[#800020]/10 px-2 py-0.5 rounded">Awaiting Review</span>}
+              </div>
+            </div>
           </div>
           <div className="flex gap-2">
             <span className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase ${isPending ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
@@ -4231,7 +4270,7 @@ export default function ScholarshipDashboard({
           <div className={`${sidebarCollapsed ? 'px-1' : 'px-2'} py-4 space-y-1`}>
             {[
               { id: 'dashboard', label: 'Dashboard', icon: <FaTachometerAlt /> },
-              { id: 'finder', label: 'Find Scholarship', icon: <FaSearch /> },
+              { id: 'finder', label: 'Slot Tracking', icon: <FaSearch /> },
               { id: 'manage', label: 'Manage', icon: <FaFilter /> },
               { id: 'track', label: 'Track', icon: <FaUsers /> },
               { id: 'reports', label: 'Reports', icon: <FaChartBar /> },

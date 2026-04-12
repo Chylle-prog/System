@@ -3198,11 +3198,10 @@ def ocr_check():
                     checklist = []
                     checklist.append(f"Name: {'OK' if name_ok else 'X'}")
                     checklist.append(f"Year: {'OK' if year_only_ok else 'X'}")
-                    if expected_year_level: checklist.append(f"Level: {'OK' if year_level_ok else 'X'}")
-                    
-                    # Update 'v' based on core requirements
-                    v = name_ok and year_only_ok and year_level_ok
-                    
+
+                    # Update 'v' based on core requirements (remove year_level_ok)
+                    v = name_ok and year_only_ok
+
                     if not v:
                         msg = f"Verification failed. Checklist: [{' | '.join(checklist)}]"
                         if not name_ok: msg += f" (Name ratio: {name_ratio:.2f})"
