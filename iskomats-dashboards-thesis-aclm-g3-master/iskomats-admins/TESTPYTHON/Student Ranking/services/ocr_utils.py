@@ -761,70 +761,78 @@ def verify_video_content(video_bytes, keywords, expected_address=None, sample_po
 def extract_school_year_from_text(text):
     if not text: return None
     
-    # 1. Broad Character Hygiene for Year-like digits
-    # OCR often mistakes digits for similar-looking characters:
-    # O/o -> 0, I/l/| -> 1, Z/z -> 2, S/s -> 5, B -> 8, G -> 6/9
+    # 1. Advanced Character Hygiene
+    # OCR often mistakes digits for similar-looking characters.
+    # We define a broad map and a focused regex to fix these in potential year contexts.
     hygiene_map = {
-        'O': '0', 'o': '0',
-        'I': '1', 'l': '1', '|': '1',
+        'O': '0', 'o': '0', 'Q': '0',
+        'I': '1', 'l': '1', '|': '1', 'i': '1', '!': '1',
         'Z': '2', 'z': '2',
         'S': '5', 's': '5',
         'B': '8',
-        'G': '6'
+        'G': '6', 'g': '9'
     }
     
-    def hygienic_year_match(m):
-        year_str = m.group(0)
-        # Only apply hygiene to characters that appear within what looks like a year
-        # e.g. "2O25" -> "2025"
-        result = ""
-        for char in year_str:
-            if char in hygiene_map:
-                result += hygiene_map[char]
-            else:
-                result += char
-        return result
+    def apply_hygiene(s):
+        res = ""
+        for c in s:
+            res += hygiene_map.get(c, c)
+        return res
 
-    # Fix common year corruptions like "2O25", "202S", "202B"
-    clean_text = re.sub(r'\b[2][0OI][2OI][0-9SszBG]\b', hygienic_year_match, text)
-    # Fix ranges like "2024-2O25"
-    clean_text = re.sub(r'\b20\d[0-9SszBG]\s*[/\\\-–]\s*20\d[0-9SszBG]\b', hygienic_year_match, clean_text)
-
-    # 2. Label Normalization
-    # Normalize SY/S.Y. to 'school year' for easier matching
-    clean_text = re.sub(r'\bS\.?Y\.?\s*[:\-\/]?\b', 'school year ', clean_text, flags=re.IGNORECASE)
-    clean_text = re.sub(r'\bA\.?Y\.?\s*[:\-\/]?\b', 'academic year ', clean_text, flags=re.IGNORECASE)
-    clean_text = re.sub(r'\bVALID\s*UNTIL\s*[:\-\/]?\b', 'valid until ', clean_text, flags=re.IGNORECASE)
+    # Normalize delimiters: replace weird hyphens/dots/underscores between digits with a standard dash
+    # e.g. "2024.2025" or "2024_2025" -> "2024-2025"
+    text = re.sub(r'(20\d{2})[\s\.\,_\~\|]+(20\d{2})', r'\1-\2', text)
     
-    # Flatten whitespace
+    # Fix corruptions in chunks that look like years (4 chars starting with something like 2)
+    # We look for 4-char sequences that resemble 20XX
+    def fix_year_chunk(m):
+        chunk = m.group(0)
+        fixed = apply_hygiene(chunk)
+        # Verify it's now a plausible year (2020-2035)
+        if re.match(r'20[23][0-9]', fixed):
+            return fixed
+        return chunk
+
+    # Pass 1: Fix standalone 4-char year-like strings
+    clean_text = re.sub(r'[2ZSI][0OQo][2ZSI][0-9SszBGeGQ]', fix_year_chunk, text)
+    
+    # 2. Label Normalization
+    clean_text = re.sub(r'\bS\.?Y\.?\s*[:\-\/]?\s*', 'school year ', clean_text, flags=re.IGNORECASE)
+    clean_text = re.sub(r'\bA\.?Y\.?\s*[:\-\/]?\s*', 'academic year ', clean_text, flags=re.IGNORECASE)
+    clean_text = re.sub(r'\bVALID\s+UNTIL\s*[:\-\/]?\s*', 'valid until ', clean_text, flags=re.IGNORECASE)
+    
+    # Flatten whitespace for uniform matching
     compact_text = re.sub(r'\s+', ' ', clean_text).strip()
 
-    # 3. Pattern Matching
-    # Priority A: Year Range (2024-2025) - Highest confidence
-    # Look for ranges anywhere, preferring ones close to keywords
-    ranges = re.findall(r'\b(20\d{2}\s*[/\\\-–]\s*20\d{2})\b', compact_text)
-    if ranges:
-        # If multiple, check if one is near a keyword
-        keyword_pat = r'(?:school\s*year|academic\s*year|valid\s*until|v\.?u\.?)'
-        for r in ranges:
-            if re.search(f'{keyword_pat}.{{0,50}}{re.escape(r)}', compact_text, re.IGNORECASE):
-                return r.strip()
-        return ranges[0].strip()
+    # 3. Targeted Pattern Matching (Priority Ordered)
+    
+    # Priority A: Year Range (e.g., 2025-2026)
+    # Flexible on delimiter and spacing
+    # We look for the pattern 20XX [dash/slash] 20XX
+    range_match = re.search(r'(20\d{2})[\s\-\/\\–—]+(20\d{2})', compact_text)
+    if range_match:
+        return f"{range_match.group(1)}-{range_match.group(2)}"
 
-    # Priority B: Keywords followed by a year, allowing for intermediate words/digits
-    # Handles "Valid Until: 2nd Sem 2025", "SY 2025", "Valid Until Dec 2025"
-    # We use a non-greedy wildcard to skip over month/semester info
-    keyword_match = re.search(
-        r'(?:school\s*year|academic\s*year|valid\s*until|v\.?u\.?|exp\.?\s*date).{0,40}?(20\d{2})',
-        compact_text, re.IGNORECASE
-    )
-    if keyword_match:
-        return keyword_match.group(1).strip()
+    # Priority B: Keyword Proximity
+    # Handles "Valid Until: 2025", "SY 2026"
+    keyword_pat = r'(?:school\s*year|academic\s*year|valid\s*until|v\.?u\.?|exp\.?\s*date)'
+    keyword_year = re.search(f'{keyword_pat}.{{0,30}}?(20[2-3][0-9])', compact_text, re.IGNORECASE)
+    if keyword_year:
+        return keyword_year.group(1)
 
-    # Priority C: First plausible standalone year (2024-2030)
-    standalone_years = re.findall(r'\b(202[4-9]|203[0-1])\b', compact_text)
-    if standalone_years:
-        return standalone_years[0]
+    # Priority C: Short Range (e.g., 2024-25)
+    short_range = re.search(r'(20[2-3][0-9])[\s\-\/\\–—]+([2-3][0-9])\b', compact_text)
+    if short_range:
+        return f"{short_range.group(1)}-20{short_range.group(2)}"
+
+    # Priority D: Any plausible year in 2024-2035 range
+    all_years = re.findall(r'20[2-3][0-9]', compact_text)
+    if all_years:
+        # If we have two years close together, assume it was a range with a weird separator
+        # that we missed earlier (though delimiter normalization should catch it)
+        if len(all_years) >= 2:
+            return f"{all_years[0]}-{all_years[1]}"
+        return all_years[0]
 
     return None
 
