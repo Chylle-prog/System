@@ -42,6 +42,19 @@ Chart.register(...registerables);
 
 const ACADEMIC_YEAR_PATTERN = /^\d{4}[\-–—]\d{4}$/;
 
+const autoAdjustColumnWidths = (data) => {
+  if (!data || !data.length) return [];
+  const keys = Object.keys(data[0]);
+  return keys.map(key => {
+    let maxLen = key.length;
+    data.forEach(row => {
+      const val = row[key] ? String(row[key]) : '';
+      if (val.length > maxLen) maxLen = val.length;
+    });
+    return { wch: maxLen + 4 }; // Add padding
+  });
+};
+
 const toMessageTimestamp = (value) => {
   const parsed = new Date(value || 0).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
@@ -2757,8 +2770,12 @@ export default function ScholarshipDashboard({
 
       const addHeaderToSheet = (list, sheetName) => {
         const ws = XLSX.utils.aoa_to_sheet([[activeScholarship], [`Report: ${sheetName}`], [`Generated: ${new Date().toLocaleString()}`], []]);
-        XLSX.utils.sheet_add_json(ws, formatTracking(list), { origin: 'A5' });
-        // Style the title a bit (if possible with basic xlsx, otherwise just bolding is enough for some readers)
+        const formattedData = formatTracking(list);
+        XLSX.utils.sheet_add_json(ws, formattedData, { origin: 'A5' });
+        
+        // Auto-width adjustment
+        ws['!cols'] = autoAdjustColumnWidths(formattedData);
+        
         XLSX.utils.book_append_sheet(wb, ws, sheetName);
       };
 
@@ -2782,7 +2799,9 @@ export default function ScholarshipDashboard({
 
     const createSheetWithHeader = (list, title) => {
       const ws = XLSX.utils.aoa_to_sheet([[scholarshipLabel], [title], [`Date: ${new Date().toLocaleDateString()}`], []]);
-      XLSX.utils.sheet_add_json(ws, formatApplicants(list), { origin: 'A5' });
+      const formattedData = formatApplicants(list);
+      XLSX.utils.sheet_add_json(ws, formattedData, { origin: 'A5' });
+      ws['!cols'] = autoAdjustColumnWidths(formattedData);
       return ws;
     };
 
@@ -3406,12 +3425,32 @@ export default function ScholarshipDashboard({
             </div>
           </div>
 
-          <div className="pt-4 mb-8">
-            <h4 className="text-xl font-bold text-gray-800 uppercase tracking-widest bg-gray-50 p-4 rounded-xl inline-block border border-gray-100">Detailed Scholarship Data Tables</h4>
+          {/* EXECUTIVE SUMMARY KPIs */}
+          <div className="grid grid-cols-4 gap-4 mb-10">
+            <div className="border-2 border-gray-100 p-4 rounded-2xl text-center">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Total Applicants</p>
+              <h4 className="text-2xl font-black text-gray-900">{data.applicants.length + data.accepted.length + data.declined.length}</h4>
+            </div>
+            <div className="border-2 border-gray-100 p-4 rounded-2xl text-center">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Acceptance Rate</p>
+              <h4 className="text-2xl font-black text-green-600">{historicalData.performanceMetrics.acceptanceRate}%</h4>
+            </div>
+            <div className="border-2 border-gray-100 p-4 rounded-2xl text-center">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Avg. Processing</p>
+              <h4 className="text-2xl font-black text-blue-600">{historicalData.performanceMetrics.averageProcessingTime}d</h4>
+            </div>
+            <div className="border-2 border-gray-100 p-4 rounded-2xl text-center">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Completion Rate</p>
+              <h4 className="text-2xl font-black text-amber-600">{historicalData.performanceMetrics.applicationCompletionRate}%</h4>
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <h4 className="text-sm font-black text-gray-900 uppercase tracking-[0.2em] border-b-2 border-gray-100 pb-2 inline-block">Detailed Analytics & Distribution</h4>
           </div>
 
           <div className="space-y-8">
-            <section>
+            <section className="report-section">
               <h5 className="text-sm font-black text-[#800020] uppercase mb-4 border-l-4 border-[#800020] pl-3">Monthly Application Trends</h5>
               <table className="w-full text-sm border-collapse">
                 <thead>
@@ -3435,7 +3474,7 @@ export default function ScholarshipDashboard({
               </table>
             </section>
 
-            <section>
+            <section className="report-section">
               <h5 className="text-sm font-black text-[#800020] uppercase mb-4 border-l-4 border-[#800020] pl-3">Course Distribution</h5>
               <table className="w-full text-sm border-collapse">
                 <thead>
@@ -3457,7 +3496,7 @@ export default function ScholarshipDashboard({
               </table>
             </section>
 
-            <section>
+            <section className="report-section">
               <h5 className="text-sm font-black text-[#800020] uppercase mb-4 border-l-4 border-[#800020] pl-3">Grade Distribution</h5>
               <table className="w-full text-sm border-collapse">
                 <thead>
@@ -3479,7 +3518,7 @@ export default function ScholarshipDashboard({
               </table>
             </section>
 
-            <section>
+            <section className="report-section">
               <h5 className="text-sm font-black text-[#800020] uppercase mb-4 border-l-4 border-[#800020] pl-3">School Distribution</h5>
               <table className="w-full text-sm border-collapse">
                 <thead>
@@ -3501,7 +3540,7 @@ export default function ScholarshipDashboard({
               </table>
             </section>
 
-            <section>
+            <section className="report-section">
               <h5 className="text-sm font-black text-[#800020] uppercase mb-4 border-l-4 border-[#800020] pl-3">Location Analytics (Barangay)</h5>
               <table className="w-full text-sm border-collapse">
                 <thead>
@@ -3690,15 +3729,15 @@ export default function ScholarshipDashboard({
               </h2>
               <div className="flex items-center gap-2">
                 <span className="bg-[#800020] text-white px-3 py-1 rounded-lg text-xs font-black font-mono shadow-sm tracking-widest">APPLICANT ID: {a.applicant_no || 'N/A'}</span>
-                {isPending && <span className="text-[10px] font-bold text-[#800020] uppercase bg-[#800020]/10 px-2 py-0.5 rounded">Awaiting Review</span>}
+                {/* Removed 'Awaiting Review' label as per requirements */}
               </div>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 mt-2">
             <span className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase ${isPending ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
               {isPending ? 'Pending Review' : 'Active Student'}
             </span>
-            <div className="flex gap-2">
+            <div className="flex gap-2 mb-4">
               <button
                 type="button"
                 onClick={() => handleSendSchoolVerification(a)}

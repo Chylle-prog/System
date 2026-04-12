@@ -842,9 +842,9 @@ export default function Dash() {
 
             {activeTab === 'account-reports' && (
               <div className="flex flex-col h-full space-y-4">
-                <div className="flex-shrink-0 flex justify-between items-center bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex-wrap gap-4">
+                <div className="flex-shrink-0 flex justify-between items-center bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex-wrap gap-4 mb-2">
                   <h2 className="text-xl font-black text-gray-900 uppercase">Account Distribution</h2>
-                  <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-3 flex-wrap mb-2">
                     <div className="relative">
                       <FaSearch className="absolute left-3 top-3 text-gray-300 text-xs" />
                       <input value={accReportFilter.search} onChange={(event) => setAccReportFilter({ ...accReportFilter, search: event.target.value })} placeholder="Search accounts..." className="pl-8 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]" />
@@ -910,9 +910,9 @@ export default function Dash() {
 
             {activeTab === 'activity-reports' && (
               <div className="flex flex-col h-full space-y-4">
-                <div className="flex-shrink-0 bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex justify-between items-center flex-wrap gap-4">
+                <div className="flex-shrink-0 bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex justify-between items-center flex-wrap gap-4 mb-2">
                   <h2 className="text-xl font-black text-gray-900 uppercase">Audit Intelligence</h2>
-                  <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-3 flex-wrap mb-2">
                     <div className="relative">
                       <FaSearch className="absolute left-3 top-3 text-gray-300 text-xs" />
                       <input value={actReportFilter.search} onChange={(event) => setActReportFilter({ ...actReportFilter, search: event.target.value })} placeholder="Search logs..." className="pl-8 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]" />

@@ -128,6 +128,11 @@
     page-break-after: auto !important;
   }
 
+  section, .report-section {
+    page-break-inside: avoid !important;
+    margin-bottom: 30px !important;
+  }
+
   thead {
     display: table-header-group !important;
     background-color: #f8f9fa !important;
@@ -135,10 +140,10 @@
 
   th,
   td {
-    border: 1px solid #dee2e6 !important;
-    padding: 12px 8px !important;
+    border: 1px solid #e5e7eb !important;
+    padding: 10px 8px !important;
     text-align: left !important;
-    color: #212529 !important;
+    color: #1a1a1a !important;
     font-size: 10pt !important;
   }
 
@@ -146,6 +151,12 @@
     font-weight: 800 !important;
     text-transform: uppercase !important;
     letter-spacing: 0.05em !important;
+    background-color: #f9fafb !important;
+  }
+
+  /* Zebra striping for readability */
+  tr:nth-child(even) {
+    background-color: #f9fafb !important;
   }
 
   /* Keep charts visible but ensure they don't break layout */
