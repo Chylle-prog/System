@@ -26,9 +26,8 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 cv2.setNumThreads(1) # Crucial: prevents OpenCV from spawning ghost threads that kill RAM
 
-# Global OCR Concurrency Control: Set to 3 to allow parallel multi-part verification (e.g., ID Front/Back + Indigency)
-# Global OCR Concurrency Control: Set to 5 to allow parallel multi-part verification and background pre-scans
-OCR_SEMAPHORE = eventlet.semaphore.Semaphore(5)
+# Global OCR Concurrency Control: Increased to 7 to handle more parallel document verifications
+OCR_SEMAPHORE = eventlet.semaphore.Semaphore(7)
 
 
 # ─── Environment hints for threading & memory ──────────────────────────────────
@@ -217,12 +216,13 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     if len(text1.strip()) > 20:
         return text1.strip()
     
-    # Fallback to standard engine (OEM 3) only if LSTM fails
-    text_fallback = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 3')
-    if text_fallback.strip():
-        # If fallback gets significantly more text, prefer it
-        if len(text_fallback.strip()) > len(text1.strip()):
-            text1 = text_fallback
+    # Fallback to standard engine (OEM 3) only if LSTM fails and we are not in fast mode
+    if not skip_pass2:
+        text_fallback = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 3')
+        if text_fallback.strip():
+            # If fallback gets significantly more text, prefer it
+            if len(text_fallback.strip()) > len(text1.strip()):
+                text1 = text_fallback
         
     if len(text1.strip()) > 20:
         return text1.strip()
