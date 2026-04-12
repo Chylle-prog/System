@@ -2459,6 +2459,7 @@ def forgot_password():
         user_email_table = get_user_email_table(cursor)
         applicant_email_table = get_applicant_email_table(cursor)
         
+
         # Check if email exists as a USER account ONLY (user_no must be set, applicant_no must be NULL)
         cursor.execute(
             f'''
@@ -2497,7 +2498,7 @@ def forgot_password():
             # No user account found - check if it's an applicant-only or non-existent
             cursor.execute(
                 f'''
-                SELECT e.applicant_no
+                SELECT e.applicant_no, e.is_verified
                 FROM {applicant_email_table} e
                 WHERE e.email_address ILIKE %s
                 LIMIT 1
@@ -2508,7 +2509,14 @@ def forgot_password():
             
             if existing_email:
                 # Email exists but only as applicant (user_no is NULL)
-                print(f"[FORGOT PASSWORD] Email {normalized_email} is registered as applicant only, not user account")
+                # If not verified, treat as non-existent for password reset
+                if not existing_email.get('is_verified', False):
+                    print(f"[FORGOT PASSWORD] Email {normalized_email} is applicant but not verified. Blocking reset.")
+                    cursor.close()
+                    conn.close()
+                    return jsonify({'message': 'Account does not exist', 'success': False}), 404
+                else:
+                    print(f"[FORGOT PASSWORD] Email {normalized_email} is applicant and verified, but not a user account.")
             else:
                 # Email doesn't exist in system at all
                 print(f"[FORGOT PASSWORD] No account found for email: {normalized_email}")
