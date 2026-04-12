@@ -3,6 +3,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { authAPI, applicantAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { GoogleLogin } from '@react-oauth/google';
+import lipaBg from '../assets/lipa.jpg';
+
 
 
 const Login = () => {
@@ -391,7 +393,7 @@ const Login = () => {
 
         body {
           font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-          background: linear-gradient(145deg, #f3f7fc 0%, #fefaf8 100%);
+          background: url(${lipaBg}) center/cover no-repeat fixed;
           color: #121826;
           line-height: 1.5;
           min-height: 100vh;
@@ -497,13 +499,13 @@ const Login = () => {
         }
 
         .auth-card {
-          max-width: 480px;
+          max-width: 420px;
           width: 100%;
           background: rgba(255, 255, 255, 0.75);
           backdrop-filter: blur(20px);
           -webkit-backdrop-filter: blur(20px);
           border-radius: 48px;
-          padding: 2.8rem 3rem 3.2rem;
+          padding: 2rem 2.5rem 2.8rem;
           box-shadow: var(--shadow-lg);
           border: 1px solid rgba(255, 255, 255, 0.7);
           transition: var(--transition);
@@ -674,7 +676,7 @@ const Login = () => {
 
         .auth-header h2 {
           font-weight: 800;
-          font-size: 2.3rem;
+          font-size: 2rem;
           letter-spacing: -0.02em;
           background: var(--primary-gradient);
           -webkit-background-clip: text;

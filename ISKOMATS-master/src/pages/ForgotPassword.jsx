@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { authAPI } from '../services/api';
+import lipaBg from '../assets/lipa.jpg';
 
 const ForgotPassword = () => {
   const navigate = useNavigate();
@@ -98,7 +99,7 @@ const ForgotPassword = () => {
 
         body {
           font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-          background: linear-gradient(145deg, #f3f7fc 0%, #fefaf8 100%);
+          background: url(${lipaBg}) center/cover no-repeat fixed;
           color: #121826;
           line-height: 1.5;
           min-height: 100vh;
@@ -182,13 +183,13 @@ const ForgotPassword = () => {
         }
 
         .auth-card {
-          max-width: 480px;
+          max-width: 420px;
           width: 100%;
           background: rgba(255, 255, 255, 0.75);
           backdrop-filter: blur(20px);
           -webkit-backdrop-filter: blur(20px);
           border-radius: 48px;
-          padding: 2.8rem 3rem 3.2rem;
+          padding: 2.22rem 2.8rem 2.8rem;
           box-shadow: var(--shadow-lg);
           border: 1px solid rgba(255, 255, 255, 0.7);
           transition: var(--transition);
