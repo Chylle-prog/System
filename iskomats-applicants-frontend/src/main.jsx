@@ -1,0 +1,1 @@
+// Placeholder for main.jsx. The real file will be copied from the applicant codebase.
