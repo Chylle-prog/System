@@ -48,6 +48,43 @@ from services.notification_service import create_notification, fetch_google_acce
 from services.google_auth_service import verify_google_token
 from concurrent.futures import ThreadPoolExecutor
 
+# --- SCHEMA MIGRATION ---
+def ensure_applicant_verification_columns():
+    try:
+        conn = get_db_startup()
+        cur = conn.cursor()
+        applicant_email_table = get_applicant_email_table(cur)
+        
+        # Check if columns exist
+        cur.execute(f"""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = %s AND column_name IN ('is_verified', 'verification_code')
+        """, (applicant_email_table,))
+        existing = {row['column_name'] if isinstance(row, dict) else row[0] for row in cur.fetchall()}
+        
+        if 'is_verified' not in existing:
+            print(f"[MIGRATION] Adding is_verified to {applicant_email_table}")
+            cur.execute(f"ALTER TABLE {applicant_email_table} ADD COLUMN is_verified BOOLEAN DEFAULT FALSE")
+            # For existing users, assume they are verified since they were promoted
+            cur.execute(f"UPDATE {applicant_email_table} SET is_verified = TRUE")
+        
+        if 'verification_code' not in existing:
+            print(f"[MIGRATION] Adding verification_code to {applicant_email_table}")
+            cur.execute(f"ALTER TABLE {applicant_email_table} ADD COLUMN verification_code VARCHAR(100)")
+            
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"[MIGRATION ERROR] Failed to ensure applicant verification columns: {e}")
+
+# Run migration
+try:
+    ensure_applicant_verification_columns()
+except Exception:
+    pass
+
 
 student_api_bp = Blueprint('student_api', __name__, url_prefix='/api/student')
 bcrypt = Bcrypt()
@@ -1410,7 +1447,7 @@ def student_login():
         # Only allow applicant logins - must have applicant_no
         cur.execute(
             f"""
-            SELECT app_em_no, applicant_no, password_hash, is_locked
+            SELECT app_em_no, applicant_no, password_hash, is_locked, is_verified
             FROM {applicant_email_table}
             WHERE email_address ILIKE %s AND applicant_no IS NOT NULL
             """,
@@ -1434,6 +1471,23 @@ def student_login():
 
         if not bcrypt.check_password_hash(user['password_hash'], password):
             return jsonify({'message': 'Incorrect password'}), 401
+
+        if not user.get('is_verified', True):
+            # Regenerate verification code if they are in permanent table but not verified
+            verification_code = generate_verification_code()
+            cur.execute(f"UPDATE {applicant_email_table} SET verification_code = %s WHERE app_em_no = %s", (verification_code, user['app_em_no']))
+            conn.commit()
+            
+            try:
+                send_verification_email(email, verification_code)
+            except Exception as e:
+                print(f"[EMAIL ERROR] Failed to resend verification email during login: {e}")
+
+            return jsonify({
+                'message': 'Email not verified. A new verification code has been sent to your email.', 
+                'requires_verification': True,
+                'email': email
+            }), 401
 
         if user.get('is_locked'):
             return jsonify({'message': 'Account has been suspended. Please contact the administrator.', 'suspended': True}), 403
@@ -1472,11 +1526,35 @@ def student_register():
         cur = conn.cursor()
         applicant_email_table = get_applicant_email_table(cur)
         
-        # 1. Check if email ALREADY exists as an APPLICANT (applicant_no is not NULL)
-        # Admin emails (user_no only) are allowed to register as applicant
-        cur.execute(f'SELECT app_em_no FROM {applicant_email_table} WHERE email_address ILIKE %s AND applicant_no IS NOT NULL LIMIT 1', (email,))
-        if cur.fetchone():
-            return jsonify({'message': 'Email already registered as applicant and verified. Please sign in.'}), 400
+        # 1. Check if email ALREADY exists as an APPLICANT
+        cur.execute(f'SELECT app_em_no, is_verified FROM {applicant_email_table} WHERE email_address ILIKE %s AND applicant_no IS NOT NULL LIMIT 1', (email,))
+        existing_user = cur.fetchone()
+        
+        if existing_user:
+            if existing_user.get('is_verified', True):
+                return jsonify({'message': 'Email already registered as applicant and verified. Please sign in.'}), 400
+            else:
+                # Handle unverified existing account: Update and resend code
+                verification_code = generate_verification_code()
+                password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
+                cur.execute(
+                    f"UPDATE {applicant_email_table} SET password_hash = %s, verification_code = %s WHERE app_em_no = %s",
+                    (password_hash, verification_code, existing_user['app_em_no'])
+                )
+                conn.commit()
+                
+                try:
+                    send_verification_email(email, verification_code)
+                except Exception as e:
+                    print(f"[EMAIL ERROR] Failed to resend verification email during re-registration: {e}")
+                    return jsonify({'message': f'Failed to send verification email: {str(e)}'}), 500
+                    
+                return jsonify({
+                    'message': 'Account already exists but was not verified. A new verification code has been sent.',
+                    'is_applicant': True,
+                    'requires_verification': True,
+                    'email': email
+                }), 201
 
         # 2. Generate verification code
         verification_code = generate_verification_code()
@@ -1537,6 +1615,19 @@ def student_verify_email():
             verification_code=token if not email else None,
         )
 
+        # 1b. If not in pending, check if they are an unverified permanent user
+        if not pending and email:
+            cur.execute(
+                f"SELECT app_em_no as pr_no, email_address, password_hash, verification_code FROM {applicant_email_table} WHERE email_address ILIKE %s AND is_verified = FALSE",
+                (email,)
+            )
+            pending = cur.fetchone()
+            if pending and pending.get('verification_code') != token:
+                pending = None
+            elif pending:
+                # Mock pr_no for compatibility with the cleanup logic below
+                pending['is_permanent_unverified'] = True
+
         if pending_expired:
             conn.commit()
             return jsonify({'message': 'This session has expired', 'session_expired': True}), 410
@@ -1552,30 +1643,39 @@ def student_verify_email():
         if pending['verification_code'] != token:
             return jsonify({'message': 'Incorrect verification code'}), 400
 
-        # 2. Promote to permanent tables
-        # Insert a blank applicant profile. Profile setup fills the identity fields after verification.
-        cur.execute(
-            """
-            INSERT INTO applicants (first_name, middle_name, last_name)
-            VALUES (%s, %s, %s)
-            RETURNING applicant_no
-            """,
-            ('', None, ''),
-        )
-        applicant_no = cur.fetchone()['applicant_no']
+        if not pending.get('is_permanent_unverified'):
+            # 2. Promote to permanent tables
+            # Insert a blank applicant profile. Profile setup fills the identity fields after verification.
+            cur.execute(
+                """
+                INSERT INTO applicants (first_name, middle_name, last_name)
+                VALUES (%s, %s, %s)
+                RETURNING applicant_no
+                """,
+                ('', None, ''),
+            )
+            applicant_no = cur.fetchone()['applicant_no']
 
-        # Insert into applicant auth table
-        cur.execute(
-            f"""
-            INSERT INTO {applicant_email_table} (email_address, applicant_no, password_hash)
-            VALUES (%s, %s, %s)
-            """,
-            (pending['email_address'], applicant_no, pending['password_hash']),
-        )
+            # Insert into applicant auth table
+            cur.execute(
+                f"""
+                INSERT INTO {applicant_email_table} (email_address, applicant_no, password_hash, is_verified)
+                VALUES (%s, %s, %s, TRUE)
+                """,
+                (pending['email_address'], applicant_no, pending['password_hash']),
+            )
 
-        # 3. Cleanup pending registration
-        cur.execute('DELETE FROM pending_registrations WHERE pr_no = %s', (pending['pr_no'],))
-        
+            # 3. Cleanup pending registration
+            cur.execute('DELETE FROM pending_registrations WHERE pr_no = %s', (pending['pr_no'],))
+        else:
+            # Already in permanent table, just mark as verified
+            cur.execute(f"SELECT applicant_no FROM {applicant_email_table} WHERE email_address ILIKE %s", (email,))
+            applicant_no = cur.fetchone()['applicant_no']
+            cur.execute(
+                f"UPDATE {applicant_email_table} SET is_verified = TRUE, verification_code = NULL WHERE email_address ILIKE %s",
+                (email,)
+            )
+
         conn.commit()
 
         # 4. Generate session token
@@ -1674,14 +1774,25 @@ def student_check_email():
         applicant_email_table = get_applicant_email_table(cur)
         user_email_table = get_user_email_table(cur)
         
-        cur.execute(f'SELECT applicant_no FROM {applicant_email_table} WHERE email_address ILIKE %s LIMIT 1', (email,))
+        cur.execute(f'SELECT applicant_no, is_verified FROM {applicant_email_table} WHERE email_address ILIKE %s LIMIT 1', (email,))
         applicant_result = cur.fetchone()
         if applicant_result:
+            is_verified = applicant_result.get('is_verified', True)
+            if not is_verified:
+                return jsonify({
+                    'exists': True,
+                    'account_type': 'applicant',
+                    'available': True, # Allow re-registration for unverified accounts
+                    'is_verified': False,
+                    'message': 'Email exists but is not verified. You can re-register to receive a new code.'
+                })
+            
             return jsonify({
                 'exists': True,
                 'account_type': 'applicant',
                 'available': False,
-                'message': 'Email already registered as applicant'
+                'is_verified': True,
+                'message': 'Email already registered and verified'
             })
 
         cur.execute(f'SELECT user_no FROM {user_email_table} WHERE email_address ILIKE %s LIMIT 1', (email,))
@@ -1760,8 +1871,8 @@ def student_google_login():
             # Create email/auth record
             cur.execute(
                 f"""
-                INSERT INTO {applicant_email_table} (applicant_no, email_address)
-                VALUES (%s, %s)
+                INSERT INTO {applicant_email_table} (applicant_no, email_address, is_verified)
+                VALUES (%s, %s, TRUE)
                 RETURNING app_em_no
                 """,
                 (applicant_no, email),
