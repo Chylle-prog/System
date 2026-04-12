@@ -761,67 +761,72 @@ def verify_video_content(video_bytes, keywords, expected_address=None, sample_po
 def extract_school_year_from_text(text):
     if not text: return None
     
+    # 1. Broad Character Hygiene for Year-like digits
+    # OCR often mistakes digits for similar-looking characters:
+    # O/o -> 0, I/l/| -> 1, Z/z -> 2, S/s -> 5, B -> 8, G -> 6/9
+    hygiene_map = {
+        'O': '0', 'o': '0',
+        'I': '1', 'l': '1', '|': '1',
+        'Z': '2', 'z': '2',
+        'S': '5', 's': '5',
+        'B': '8',
+        'G': '6'
+    }
+    
+    def hygienic_year_match(m):
+        year_str = m.group(0)
+        # Only apply hygiene to characters that appear within what looks like a year
+        # e.g. "2O25" -> "2025"
+        result = ""
+        for char in year_str:
+            if char in hygiene_map:
+                result += hygiene_map[char]
+            else:
+                result += char
+        return result
 
-    # Character hygiene for common OCR slips in years (O->0, S->5, G->6/9, B->8)
-    clean_text = text.replace('O', '0').replace('o', '0')
-    clean_text = re.sub(r'(?<=202)[SBG]', lambda m: {'S':'5', 'B':'8', 'G':'6'}.get(m.group(0), m.group(0)), clean_text)
+    # Fix common year corruptions like "2O25", "202S", "202B"
+    clean_text = re.sub(r'\b[2][0OI][2OI][0-9SszBG]\b', hygienic_year_match, text)
+    # Fix ranges like "2024-2O25"
+    clean_text = re.sub(r'\b20\d[0-9SszBG]\s*[/\\\-–]\s*20\d[0-9SszBG]\b', hygienic_year_match, clean_text)
 
+    # 2. Label Normalization
     # Normalize SY/S.Y. to 'school year' for easier matching
-    clean_text = re.sub(r'\bS\.?Y\.?\b', 'school year', clean_text, flags=re.IGNORECASE)
-    clean_text = re.sub(r'\bA\.?Y\.?\b', 'academic year', clean_text, flags=re.IGNORECASE)
-
-    # Flatten whitespace so line breaks between labels and values do not block matching.
+    clean_text = re.sub(r'\bS\.?Y\.?\s*[:\-\/]?\b', 'school year ', clean_text, flags=re.IGNORECASE)
+    clean_text = re.sub(r'\bA\.?Y\.?\s*[:\-\/]?\b', 'academic year ', clean_text, flags=re.IGNORECASE)
+    clean_text = re.sub(r'\bVALID\s*UNTIL\s*[:\-\/]?\b', 'valid until ', clean_text, flags=re.IGNORECASE)
+    
+    # Flatten whitespace
     compact_text = re.sub(r'\s+', ' ', clean_text).strip()
 
-    # Normalize common shorthand label variants so grade sheets like
-    # "SY/Sem 2026 1st Semester" are treated as a school-year marker.
-    compact_text = re.sub(r'\bschool year\s*[/\\-]?\s*sem(?:ester)?\b', 'school year sem', compact_text, flags=re.IGNORECASE)
-    compact_text = re.sub(r'\bacademic year\s*[/\\-]?\s*sem(?:ester)?\b', 'academic year sem', compact_text, flags=re.IGNORECASE)
+    # 3. Pattern Matching
+    # Priority A: Year Range (2024-2025) - Highest confidence
+    # Look for ranges anywhere, preferring ones close to keywords
+    ranges = re.findall(r'\b(20\d{2}\s*[/\\\-–]\s*20\d{2})\b', compact_text)
+    if ranges:
+        # If multiple, check if one is near a keyword
+        keyword_pat = r'(?:school\s*year|academic\s*year|valid\s*until|v\.?u\.?)'
+        for r in ranges:
+            if re.search(f'{keyword_pat}.{{0,50}}{re.escape(r)}', compact_text, re.IGNORECASE):
+                return r.strip()
+        return ranges[0].strip()
 
-    # Join lines with 'VALID UNTIL' and 'school year' if split
-    compact_text = re.sub(r'(VALID UNTIL)\s*\n*\s*(school year)', r'\1 \2', compact_text, flags=re.IGNORECASE)
-
-    # Priority 1: Year range or single year preceded by a school-year keyword
-    # e.g. "School Year Sem 2025-2026", "S.Y. 2025-2026", "A.Y. 2025-2026", "VALID UNTIL 2025-2026", "VALID UNTIL SY 2025-2026"
+    # Priority B: Keywords followed by a year, allowing for intermediate words/digits
+    # Handles "Valid Until: 2nd Sem 2025", "SY 2025", "Valid Until Dec 2025"
+    # We use a non-greedy wildcard to skip over month/semester info
     keyword_match = re.search(
-        r'(?:school\s*year(?:\s*sem(?:ester)?)?|school\s*year\s*/\s*sem(?:ester)?|academic\s*year|valid\s*until|v\.?u\.?)[^0-9]{0,20}(20\d{2}(?:\s*[/\\\-–]\s*20\d{2})?)',
+        r'(?:school\s*year|academic\s*year|valid\s*until|v\.?u\.?|exp\.?\s*date).{0,40}?(20\d{2})',
         compact_text, re.IGNORECASE
     )
     if keyword_match:
         return keyword_match.group(1).strip()
 
-    # Priority 1b: Capture a year range appearing later on the same line as a school-year label.
-    label_line_match = re.search(
-        r'(?:school\s*year|academic\s*year|valid\s*until|v\.?u\.?)[^\n]{0,40}?(20\d{2}(?:\s*[/\\\-–]\s*20\d{2})?)',
-        clean_text,
-        re.IGNORECASE,
-    )
-    if label_line_match:
-        return label_line_match.group(1).strip()
+    # Priority C: First plausible standalone year (2024-2030)
+    standalone_years = re.findall(r'\b(202[4-9]|203[0-1])\b', compact_text)
+    if standalone_years:
+        return standalone_years[0]
 
-    # Priority 1c: Fallback for 'SY 2025-2026' or 'S.Y. 2025-2026' not caught above
-    sy_match = re.search(r'SY\s*[/\\\-–]?\s*(20\d{2}\s*[/\\\-–]\s*20\d{2})', text, re.IGNORECASE)
-    if sy_match:
-        return sy_match.group(1).strip()
-
-    # Priority 1c: Semester shorthand with year on the same line, such as
-    # "SY/Sem 2026 1st Semester" or "Sem 1 2026".
-    semester_year_match = re.search(
-        r'(?:school\s*year\s*sem|semester|sem)\s*[:\-]?\s*(20\d{2}(?:\s*[/\\\-–]\s*20\d{2})?)',
-        compact_text,
-        re.IGNORECASE,
-    )
-    if semester_year_match:
-        return semester_year_match.group(1).strip()
-
-    # Priority 2: Any year RANGE (e.g. "2025 - 2026", "2025/2026") anywhere in the text
-    range_match = re.search(r'20\d{2}\s*[/\\\-–]\s*20\d{2}', compact_text)
-    if range_match:
-        return range_match.group(0)
-
-    # Priority 3: First standalone year in a plausible range (e.g. 2020-2029)
-    match = re.search(r'20[23]\d', compact_text)
-    return match.group(0) if match else None
+    return None
 
 def extract_school_year(image_bytes):
     text = _run_tesseract(image_bytes, fast_mode=True)

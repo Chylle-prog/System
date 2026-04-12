@@ -611,7 +611,7 @@ const Portal = () => {
         openAnnouncement(ann);
       }
     } else if (notif.type === 'scholarship') {
-      setPortalSection('menu');
+      setPortalSection('resources');
     } else if (notif.type === 'result') {
       setPortalSection('applications');
     } else {

@@ -2291,6 +2291,18 @@ def get_applicant_document(field_name):
         # Handle decryption for signature if needed
         if field_name == 'signature_image_data':
             value = decode_signature(value)
+        # Handle both binary data (BLOBs) and URL strings (from Storage)
+        if isinstance(value, str):
+            # If it's already a URL or Data URI, return it directly or wrapped
+            if value.startswith('http') or value.startswith('data:'):
+                return jsonify({
+                    'fieldName': field_name,
+                    'data': value
+                })
+            # Fallback for plain strings
+            value = value.encode('utf-8')
+        elif hasattr(value, 'tobytes'):
+            value = value.tobytes()
         else:
             value = bytes(value)
             
@@ -2298,14 +2310,21 @@ def get_applicant_document(field_name):
         mime_type = 'image/jpeg'
         if field_name == 'signature_image_data':
             mime_type = 'image/png'
+        elif field_name == 'grades_doc' or field_name == 'enrollment_certificate_doc':
+            # It might be a PDF, but most are images. JPEG is a safe default for binary,
+            # but we could refine this if we had a mime-type sniffer here.
+            pass
             
         # Optimization: Return as Base64 string so frontend can easily use it in data URI
-        # But we only do it for ONE image at a time
-        encoded = base64.b64encode(value).decode('utf-8')
-        return jsonify({
-            'fieldName': field_name,
-            'data': f"data:{mime_type};base64,{encoded}"
-        })
+        try:
+            encoded = base64.b64encode(value).decode('utf-8')
+            return jsonify({
+                'fieldName': field_name,
+                'data': f"data:{mime_type};base64,{encoded}"
+            })
+        except Exception as e:
+            print(f"[RECOVERY] Failed to encode document {field_name}: {e}", flush=True)
+            return jsonify({'message': 'Error processing document data'}), 500
     finally:
         if 'conn' in locals():
             conn.close()
