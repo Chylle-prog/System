@@ -7,6 +7,14 @@ from urllib import parse, request as urllib_request, error as urllib_error
 from services.db_service import get_db
 from services.email_table_service import get_applicant_email_table
 
+_socketio = None
+
+def init_socketio(socketio_instance):
+    """Initialize the global socketio instance for this service."""
+    global _socketio
+    _socketio = socketio_instance
+    print("[NOTIF SERVICE] SocketIO instance initialized.")
+
 def fetch_google_access_token():
     """Exchange the configured refresh token for a Gmail API access token."""
     GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '').strip()
@@ -113,6 +121,23 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
                 conn.rollback()
             raise
         
+        # 2. Emit SocketIO event if initialized
+        if _socketio:
+            try:
+                # We emit to a room named after the applicant_no
+                # The student portal should join this room on login
+                room = f"applicant_{user_no}"
+                _socketio.emit('new_notification', {
+                    'id': notif_id,
+                    'title': title,
+                    'message': message,
+                    'type': notif_type,
+                    'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                }, room=room)
+                print(f"[NOTIF SOCKET] Broadcasted to room {room}")
+            except Exception as socket_err:
+                print(f"[NOTIF SOCKET ERROR] Failed to emit: {socket_err}")
+
         if not send_email:
             conn.commit()
             conn.close()

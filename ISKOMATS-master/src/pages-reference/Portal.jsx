@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { notificationAPI, API_ORIGIN } from '../services/api';
+import { io } from 'socket.io-client';
 
 const Portal = () => {
   const navigate = useNavigate();
@@ -23,6 +25,13 @@ const Portal = () => {
   const [pendingCancel, setPendingCancel] = useState(null); // { scholarshipName }
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [statusInfo, setStatusInfo] = useState({ title: '', message: '', isError: false });
+  
+  // Real Notification States
+  const [notifications, setNotifications] = useState([]);
+  const [showToast, setShowToast] = useState(false);
+  const [activeToast, setActiveToast] = useState(null);
+  const socketRef = useRef(null);
+  const seenToastsRef = useRef(new Set()); // Track IDs of toasts shown this session
   
   const messageDropdownRef = useRef(null);
   const notificationDropdownRef = useRef(null);
@@ -74,36 +83,7 @@ const Portal = () => {
     ]
   });
 
-  // Notification data structure
-  const [notifications, setNotifications] = useState([
-    {
-      id: 1,
-      title: 'Deadline Extended',
-      message: 'Mayor Eric B. Africa Scholarship: Hard copy submission extended to Mar 27.',
-      time: '2 hours ago',
-      read: false,
-      icon: 'fa-calendar-alt',
-      scholarship: 'Mayor Eric B. Africa Scholarship'
-    },
-    {
-      id: 2,
-      title: 'Interview Schedule',
-      message: 'Governor Vilma\'s Scholarship: Initial interviews start Mar 10. Check your email.',
-      time: 'Yesterday',
-      read: false,
-      icon: 'fa-users',
-      scholarship: 'Governor Vilma\'s Scholarship'
-    },
-    {
-      id: 3,
-      title: 'Document Reminder',
-      message: 'CHED Tulong Dunong: Upload latest COR to avoid delays.',
-      time: '3 days ago',
-      read: false,
-      icon: 'fa-file-alt',
-      scholarship: 'CHED Tulong Dunong'
-    },
-  ]);
+  // Hardcoded data removed - now fetched from API
 
   useEffect(() => {
     // Add Font Awesome link
@@ -157,14 +137,77 @@ const Portal = () => {
 
     document.addEventListener('click', handleClickOutside);
 
+    // 1. Fetch real notifications
+    const fetchNotifications = async () => {
+      try {
+        const response = await notificationAPI.getAll();
+        setNotifications(response || []);
+        
+        // Mark all as "seen in terms of toast" purely to avoid re-toasting old unread ones on first load
+        if (response && response.length > 0) {
+          response.forEach(n => seenToastsRef.current.add(n.id));
+        }
+      } catch (err) {
+        console.error('Failed to fetch notifications:', err);
+      }
+    };
+    fetchNotifications();
+
+    // 2. Setup SocketIO for real-time alerts
+    const applicantNo = localStorage.getItem('applicantNo');
+    const token = localStorage.getItem('authToken');
+
+    if (applicantNo && token) {
+      const socket = io(API_ORIGIN, {
+        transports: ['websocket', 'polling'],
+        reconnection: true
+      });
+      socketRef.current = socket;
+
+      socket.on('connect', () => {
+        console.log('[SOCKET] Connected to notification server');
+        socket.emit('login', { token });
+      });
+
+      socket.on('new_notification', (notif) => {
+        console.log('[SOCKET] New notification received:', notif);
+        
+        // Add to list efficiently
+        setNotifications(prev => {
+          // Check if already in list to avoid duplicates (could happen on reconnection/overlap)
+          if (prev.find(n => n.id === notif.id)) return prev;
+          return [notif, ...prev];
+        });
+
+        // Show Toast if not seen before
+        if (!seenToastsRef.current.has(notif.id)) {
+          setActiveToast(notif);
+          setShowToast(true);
+          seenToastsRef.current.add(notif.id);
+          
+          // Auto hide toast after 6 seconds
+          setTimeout(() => {
+            setShowToast(false);
+          }, 6000);
+        }
+      });
+
+      socket.on('disconnect', () => {
+        console.log('[SOCKET] Disconnected');
+      });
+    }
+
     return () => {
       document.head.removeChild(fontAwesomeLink);
       document.head.removeChild(googleFontsLink);
       document.head.removeChild(googleFontsDisplay);
       document.head.removeChild(googleFontsSheet);
       document.removeEventListener('click', handleClickOutside);
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
     };
-  }, [navigate]);
+  }, [navigate, currentUser]);
 
   const logout = () => {
     localStorage.removeItem('currentUser');
@@ -323,14 +366,24 @@ const Portal = () => {
     return events[day] || null;
   };
 
-  const markAllNotificationsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  const markAllNotificationsRead = async () => {
+    try {
+      await notificationAPI.markAllAsRead();
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    } catch (err) {
+      console.error('Failed to mark all as read:', err);
+    }
   };
 
-  const markNotificationAsRead = (notifId) => {
-    setNotifications(prev => prev.map(n => 
-      n.id === notifId ? { ...n, read: true } : n
-    ));
+  const markNotificationAsRead = async (notifId) => {
+    try {
+      await notificationAPI.markAsRead(notifId);
+      setNotifications(prev => prev.map(n => 
+        n.id === notifId ? { ...n, read: true } : n
+      ));
+    } catch (err) {
+      console.error('Failed to mark notification as read:', err);
+    }
   };
 
   const cancelApplication = (scholarshipName) => {
@@ -374,8 +427,40 @@ const Portal = () => {
   const totalUnreadMessages = scholarships.reduce((sum, s) => sum + s.unread, 0);
   const totalUnreadNotifications = notifications.filter(n => !n.read).length;
 
+  const getNotificationIcon = (type) => {
+    const icons = {
+      'message': 'fa-comment-alt',
+      'announcement': 'fa-bullhorn',
+      'scholarship': 'fa-graduation-cap',
+      'result': 'fa-file-signature'
+    };
+    return icons[type] || 'fa-bell';
+  };
+
   return (
     <>
+      {/* Notification Toast */}
+      {activeToast && (
+        <div className={`notification-toast ${showToast ? 'show' : ''}`} onClick={() => {
+          setShowNotificationDropdown(true);
+          setShowToast(false);
+        }}>
+          <div className="toast-icon">
+            <i className={`fas ${getNotificationIcon(activeToast.type)}`}></i>
+          </div>
+          <div className="toast-content">
+            <div className="toast-title">{activeToast.title}</div>
+            <div className="toast-message">{activeToast.message}</div>
+          </div>
+          <div className="toast-close" onClick={(e) => {
+            e.stopPropagation();
+            setShowToast(false);
+          }}>
+            <i className="fas fa-times"></i>
+          </div>
+        </div>
+      )}
+
       <style>{`
         * {
           margin: 0;
@@ -412,6 +497,79 @@ const Portal = () => {
           --shadow-lg: 0 20px 40px -12px rgba(0, 40, 80, 0.2);
           --shadow-lg: 0 20px 40px -12px rgba(0, 40, 80, 0.2);
           --border-light: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .notification-toast {
+          position: fixed;
+          bottom: 30px;
+          right: 30px;
+          background: rgba(255, 255, 255, 0.9);
+          backdrop-filter: blur(12px);
+          border-left: 5px solid var(--primary);
+          padding: 1.25rem 1.5rem;
+          border-radius: 16px;
+          box-shadow: 
+            0 20px 25px -5px rgba(0, 0, 0, 0.1), 
+            0 10px 10px -5px rgba(0, 0, 0, 0.04),
+            0 0 1px 1px rgba(0, 0, 0, 0.02);
+          display: flex;
+          align-items: center;
+          gap: 1.25rem;
+          z-index: 10000;
+          max-width: 420px;
+          transform: translateX(120%);
+          transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+          cursor: pointer;
+        }
+
+        .notification-toast.show {
+          transform: translateX(0);
+        }
+
+        .toast-icon {
+          background: var(--accent-soft);
+          color: var(--primary);
+          width: 45px;
+          height: 45px;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 1.2rem;
+          flex-shrink: 0;
+        }
+
+        .toast-content {
+          flex: 1;
+        }
+
+        .toast-title {
+          font-weight: 700;
+          font-size: 0.95rem;
+          color: var(--text-dark);
+          margin-bottom: 0.15rem;
+        }
+
+        .toast-message {
+          font-size: 0.85rem;
+          color: var(--text-soft);
+          line-height: 1.4;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+
+        .toast-close {
+          color: var(--gray-3);
+          cursor: pointer;
+          font-size: 1rem;
+          padding: 0.2rem;
+          transition: color 0.2s;
+        }
+
+        .toast-close:hover {
+          color: var(--danger);
         }
 
         .loading-overlay {
@@ -1520,7 +1678,7 @@ const Portal = () => {
                     onClick={() => markNotificationAsRead(notif.id)}
                   >
                     <div className="notification-icon">
-                      <i className={`fas ${notif.icon}`}></i>
+                      <i className={`fas ${getNotificationIcon(notif.type)}`}></i>
                     </div>
                     <div className="notification-content">
                       <div className="notification-title">{notif.title}</div>

@@ -61,7 +61,7 @@ def on_blueprint_init(state):
             print(f"[BACKEND] Admin schema migration skipped or failed: {e}")
 
 from project_config import get_db, get_db_startup
-from services.notification_service import create_notification
+from services.notification_service import create_notification, init_socketio as init_notification_socketio
 
 # ─── SCHEMA & AUDIT CACHE ───
 _SCHEMA_INITIALIZED = False
@@ -1221,12 +1221,13 @@ def send_announcement_emails(
         
         # Get applicants based on send_to_all flag
         if send_to_all:
-            # Send to ALL applicants in the system
+            # Send to ALL verified students in the system
+            # We join with applicants to get names if they exist
             cur.execute(f"""
-                SELECT DISTINCT a.applicant_no, a.first_name, a.last_name, COALESCE(e.email_address, a.email) AS email_address
-                FROM applicants a
-                LEFT JOIN {applicant_email_table} e ON a.applicant_no = e.applicant_no
-                WHERE COALESCE(e.email_address, a.email) IS NOT NULL
+                SELECT DISTINCT e.applicant_no, a.first_name, a.last_name, e.email_address
+                FROM {applicant_email_table} e
+                LEFT JOIN applicants a ON e.applicant_no = a.applicant_no
+                WHERE e.is_verified = TRUE AND e.email_address IS NOT NULL
             """)
         else:
             # Send only to applicants who applied to this provider's scholarships
@@ -1318,10 +1319,12 @@ def notify_all_applicants(title, message, notif_type='scholarship'):
     try:
         conn = get_db()
         cur = conn.cursor()
+        applicant_email_table = get_applicant_email_table(cur)
         cur.execute(
-            """
-            SELECT DISTINCT a.applicant_no
-            FROM applicants a
+            f"""
+            SELECT DISTINCT applicant_no
+            FROM {applicant_email_table}
+            WHERE is_verified = TRUE AND applicant_no IS NOT NULL
             """
         )
         applicants = cur.fetchall()
@@ -1363,10 +1366,12 @@ def notify_announcement_applicants(
         cur = conn.cursor()
 
         if send_to_all_applicants:
+            applicant_email_table = get_applicant_email_table(cur)
             cur.execute(
-                """
-                SELECT DISTINCT a.applicant_no
-                FROM applicants a
+                f"""
+                SELECT DISTINCT applicant_no
+                FROM {applicant_email_table}
+                WHERE is_verified = TRUE AND applicant_no IS NOT NULL
                 """
             )
         else:
@@ -1742,6 +1747,9 @@ def init_socketio(socketio):
     global _socketio_instance
     _socketio_instance = socketio
     
+    # Initialize notification service with socketio for background alerts
+    init_notification_socketio(socketio)
+    
     # Run once on initialization
     import eventlet
     print("[STARTUP] Spawning chat room initialization in background...")
@@ -1849,6 +1857,12 @@ def init_socketio(socketio):
             
             for room in rooms:
                 join_room(room)
+            
+            # Personal Notification Room for students
+            if user_role == 'student':
+                personal_room = f"applicant_{user_id}"
+                join_room(personal_room)
+                print(f"DEBUG Socket: Student joined notification room '{personal_room}'")
             
             # Attach provider names to rooms for the frontend
             rooms_with_names = []
