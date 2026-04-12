@@ -1,11 +1,12 @@
 import os
 import time
+import threading
 from pathlib import Path
 
 import psycopg2
+from psycopg2 import pool
 from dotenv import load_dotenv
 from psycopg2.extras import RealDictCursor
-
 try:
     from supabase import create_client
 except ImportError:
@@ -19,6 +20,31 @@ if ENV_PATH.exists():
     # Only load from .env if the variable isn't already set (prevents overriding Render variables)
     load_dotenv(ENV_PATH, override=False)
 
+# ─── CONNECTION POOLING ───────────────────────────────────────────────────────
+_CONNECTION_POOL = None
+_POOL_LOCK = threading.Lock()
+
+def _init_pool():
+    global _CONNECTION_POOL
+    with _POOL_LOCK:
+        if _CONNECTION_POOL is not None:
+            return
+        
+        print("[DB INITIALIZE] Creating ThreadedConnectionPool...", flush=True)
+        kwargs = get_db_connection_kwargs()
+        
+        # Adjust pool size based on environment
+        min_conn = int(os.environ.get('DB_POOL_MIN', '2'))
+        max_conn = int(os.environ.get('DB_POOL_MAX', '10'))
+        
+        try:
+            _CONNECTION_POOL = pool.ThreadedConnectionPool(
+                min_conn, max_conn, **kwargs
+            )
+            print(f"[DB INITIALIZE] Pool created with {min_conn}-{max_conn} connections.", flush=True)
+        except Exception as e:
+            print(f"[DB ERROR] Failed to initialize connection pool: {e}", flush=True)
+            raise
 
 def get_db_connection_kwargs():
     schema = os.environ.get('DB_SCHEMA', 'public').strip() or 'public'
@@ -47,32 +73,53 @@ def get_db_connection_kwargs():
 
 
 def get_db(cursor_factory=RealDictCursor, fast_startup=False):
-    connection_kwargs = get_db_connection_kwargs()
-    # fast_startup=True: fewer retries + shorter delay for startup/migration checks.
-    # fast_startup=False (default): longer retries for live request resilience.
+    # For startup/migrations, we prefer a fresh connection that fails fast
     if fast_startup:
-        max_attempts = int(os.environ.get('DB_STARTUP_RETRIES', '3'))
-        retry_delay_base = float(os.environ.get('DB_STARTUP_RETRY_DELAY', '0.5'))
-        # Drastically reduce connect_timeout to avoid 10s DNS hangs during startup
+        connection_kwargs = get_db_connection_kwargs()
         connection_kwargs['connect_timeout'] = 2
-    else:
-        max_attempts = int(os.environ.get('DB_CONNECT_RETRIES', '10'))
-        retry_delay_base = float(os.environ.get('DB_CONNECT_RETRY_DELAY', '2.0'))
-    last_error = None
+        return psycopg2.connect(cursor_factory=cursor_factory, **connection_kwargs)
 
-    for attempt in range(1, max_attempts + 1):
-        try:
-            if cursor_factory is None:
-                return psycopg2.connect(**connection_kwargs)
-            return psycopg2.connect(cursor_factory=cursor_factory, **connection_kwargs)
-        except psycopg2.OperationalError as exc:
-            last_error = exc
-            if attempt == max_attempts:
-                break
-            print(f"[DB WARN] Database connection failed (attempt {attempt}/{max_attempts}): {exc}. Retrying...")
-            time.sleep(retry_delay_base)
+    # For standard requests, use the pool
+    if _CONNECTION_POOL is None:
+        _init_pool()
+    
+    conn = _CONNECTION_POOL.getconn()
+    
+    # We'll use a wrapper to ensure the connection is returned to the pool on close
+    class PooledConnectionProxy:
+        def __init__(self, connection, cursor_factory):
+            self._conn = connection
+            self._cursor_factory = cursor_factory
+            self._returned = False
 
-    raise last_error
+        def __getattr__(self, name):
+            if name == 'autocommit':
+                return self._conn.autocommit
+            return getattr(self._conn, name)
+            
+        def __setattr__(self, name, value):
+            if name == 'autocommit':
+                self._conn.autocommit = value
+            else:
+                super().__setattr__(name, value)
+
+        def cursor(self, *args, **kwargs):
+            if 'cursor_factory' not in kwargs and self._cursor_factory:
+                kwargs['cursor_factory'] = self._cursor_factory
+            return self._conn.cursor(*args, **kwargs)
+
+        def close(self):
+            if not self._returned:
+                _CONNECTION_POOL.putconn(self._conn)
+                self._returned = True
+
+        def commit(self):
+            return self._conn.commit()
+
+        def rollback(self):
+            return self._conn.rollback()
+
+    return PooledConnectionProxy(conn, cursor_factory)
 
 
 def get_db_startup(cursor_factory=RealDictCursor):
@@ -83,11 +130,11 @@ def get_db_startup(cursor_factory=RealDictCursor):
 def get_db_display_config():
     connection_kwargs = get_db_connection_kwargs()
     return {
-        'host': connection_kwargs['host'],
-        'port': connection_kwargs['port'],
-        'dbname': connection_kwargs['dbname'],
+        'host': connection_kwargs['host'] or 'N/A',
+        'port': connection_kwargs['port'] or '5432',
+        'dbname': connection_kwargs['dbname'] or 'N/A',
         'schema': os.environ.get('DB_SCHEMA', 'public').strip() or 'public',
-        'sslmode': connection_kwargs['sslmode'],
+        'sslmode': connection_kwargs['sslmode'] or 'require',
     }
 
 
@@ -109,4 +156,4 @@ def get_supabase_client():
     if create_client is None:
         raise RuntimeError('supabase package is not installed. Add it to requirements.txt before using storage features.')
 
-    return create_client(url, service_role_key)
+    return create_client(url, service_role_key)
