@@ -594,8 +594,19 @@ const Portal = () => {
     // 2. Navigate based on type
     setShowNotificationDropdown(false);
     
+    const notifTitle = (notif.title || '').toLowerCase();
+    const notifType = (notif.type || '').toLowerCase();
+    
+    // Check if it's a new or updated scholarship
+    const isScholarshipUpdate = 
+      notifType === 'scholarship' || 
+      notifType === 'scholarship_update' ||
+      (notifTitle.includes('scholarship') && (notifTitle.includes('new') || notifTitle.includes('update') || notifTitle.includes('posted')));
+
     if (notif.type === 'message') {
       setPortalSection('community');
+    } else if (isScholarshipUpdate) {
+      setPortalSection('resources');
     } else if (notif.type === 'announcement') {
       setPortalSection('community');
       // Find the specific announcement to open it
@@ -610,8 +621,6 @@ const Portal = () => {
       if (ann) {
         openAnnouncement(ann);
       }
-    } else if (notif.type === 'scholarship') {
-      setPortalSection('resources');
     } else if (notif.type === 'result') {
       setPortalSection('applications');
     } else {

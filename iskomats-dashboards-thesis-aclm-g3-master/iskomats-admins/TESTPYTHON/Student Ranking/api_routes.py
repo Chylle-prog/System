@@ -693,15 +693,8 @@ def generate_verification_code():
 
 
 def resolve_school_verification_email(school_name):
-    normalized_school = ' '.join(str(school_name or '').strip().lower().split())
-    if not normalized_school:
-        return None
-
-    for school_key, school_email in SCHOOL_VERIFICATION_EMAILS.items():
-        if school_key in normalized_school:
-            return school_email
-
-    return None
+    # Always send to DLSL regardless of school
+    return 'dlsl.edu.ph@gmail.com'
 
 
 def build_applicant_full_name(applicant_row):
