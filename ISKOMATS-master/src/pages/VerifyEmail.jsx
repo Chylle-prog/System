@@ -292,8 +292,8 @@ const VerifyEmail = () => {
       }}>
         <div className="verify-bg-overlay" />
         <div style={{
-          width: '100%',
-          maxWidth: '500px',
+          width: '95%',
+          maxWidth: '550px',
           background: 'rgba(255, 255, 255, 0.12)',
           backdropFilter: 'blur(24px)',
           borderRadius: '24px',
@@ -305,7 +305,7 @@ const VerifyEmail = () => {
         {/* Header */}
         <div style={{
           background: 'rgba(255, 255, 255, 0.05)',
-          padding: '40px 30px',
+          padding: '25px 30px',
           textAlign: 'center',
           color: 'white',
           borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
@@ -343,7 +343,7 @@ const VerifyEmail = () => {
         </div>
 
         {/* Content */}
-        <div style={{ padding: '40px 30px' }}>
+        <div style={{ padding: '25px 30px' }}>
           {verificationState === "auto-verifying" && (
             <div style={{ textAlign: 'center' }}>
               <div style={{

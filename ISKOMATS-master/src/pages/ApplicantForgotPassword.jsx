@@ -200,13 +200,13 @@ const ApplicantForgotPassword = () => {
         }
 
         .auth-card {
-          max-width: 480px;
-          width: 100%;
+          max-width: 550px;
+          width: 95%;
           background: rgba(255, 255, 255, 0.12);
           backdrop-filter: blur(24px);
           -webkit-backdrop-filter: blur(24px);
-          border-radius: 48px;
-          padding: 2.8rem 3rem 3.2rem;
+          border-radius: 40px;
+          padding: 2rem 3rem 2.5rem;
           box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5);
           border: 1px solid rgba(255, 255, 255, 0.3);
           transition: var(--transition);
@@ -231,7 +231,7 @@ const ApplicantForgotPassword = () => {
         }
 
         .auth-header {
-          margin-bottom: 2rem;
+          margin-bottom: 1.5rem;
           text-align: center;
         }
 

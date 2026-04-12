@@ -43,11 +43,10 @@ try:
 except Exception:
     pass
 
+
 # ─── OCR Result Caching System (Optimization #2) ─────────────────────────────
 _OCR_CACHE = OrderedDict()
 _OCR_CACHE_SIZE_LIMIT = 200
-# Preload Tesseract at startup for faster first OCR
-_init_tesseract()
 _CACHE_METRICS = {'hits': 0, 'misses': 0}
 _FACE_MODEL_LOCK = eventlet.semaphore.Semaphore(1)
 _FACE_DETECTOR = None
@@ -55,6 +54,15 @@ _FACE_RECOGNIZER = None
 _FACE_MODEL_INIT_ERROR = None
 _FACE_MATCH_THRESHOLD = 0.50 # Unified threshold
 _FACE_DETECTION_THRESHOLD = 0.35
+
+# Preload Tesseract at startup for faster first OCR (after definition)
+def _preload_tesseract():
+    try:
+        _init_tesseract()
+    except Exception as e:
+        print(f"[OCR] Tesseract preload failed: {e}", flush=True)
+
+_preload_tesseract()
 
 def _hash_image(image_bytes, suffix=b"_v2"):
     """Generate MD5 hash of image bytes for caching."""

@@ -3675,6 +3675,11 @@ export default function ScholarshipDashboard({
                    <FaUsers className="text-2xl" />
                  </div>
                )}
+               {/* School ID No. display under profile picture */}
+               <div className="mt-2 text-center">
+                 <span className="block text-[10px] font-black text-gray-400 uppercase">School ID No.</span>
+                 <span className="block font-bold text-gray-800">{a.school_id_no || a.schoolId || 'N/A'}</span>
+               </div>
             </div>
             <div>
               <h2 className="text-2xl font-black text-[#800020] uppercase tracking-tight flex items-center gap-2 mb-1">

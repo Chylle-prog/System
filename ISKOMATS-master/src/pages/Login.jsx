@@ -517,14 +517,14 @@ const Login = () => {
         }
 
         .auth-card {
-          max-width: 420px;
-          width: 100%;
+          max-width: 500px;
+          width: 95%;
           background: rgba(255, 255, 255, 0.12);
           backdrop-filter: blur(24px);
           -webkit-backdrop-filter: blur(24px);
-          border-radius: 48px;
-          padding: 2rem 2.5rem 2.8rem;
-          box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
+          border-radius: 40px;
+          padding: 1.5rem 2.5rem 2rem;
+          box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5);
           border: 1px solid rgba(255, 255, 255, 0.3);
           transition: var(--transition);
           animation: cardFloat 0.8s ease-out;
@@ -688,7 +688,7 @@ const Login = () => {
 
         .auth-header {
           text-align: center;
-          margin-bottom: 2.2rem;
+          margin-bottom: 1.2rem;
         }
 
         .auth-header h2 {
@@ -706,7 +706,7 @@ const Login = () => {
         }
 
         .form-group {
-          margin-bottom: 1.5rem;
+          margin-bottom: 1.2rem;
         }
 
         .form-group label {
@@ -736,7 +736,7 @@ const Login = () => {
 
         .input-wrapper input {
           width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
+          padding: 0.8rem 1.2rem 0.8rem 2.8rem;
           border: 1px solid rgba(255, 255, 255, 0.2);
           border-radius: 30px;
           font-size: 0.95rem;
@@ -759,7 +759,7 @@ const Login = () => {
 
         .submit-btn {
           width: 100%;
-          padding: 1rem;
+          padding: 0.8rem;
           background: var(--primary-gradient);
           color: white;
           border: none;
@@ -770,7 +770,7 @@ const Login = () => {
           transition: var(--transition);
           box-shadow: 0 12px 24px -12px rgba(79, 13, 0, 0.5);
           background-size: 200% auto;
-          margin-top: 0.8rem;
+          margin-top: 0.5rem;
         }
 
         .submit-btn:hover {
@@ -916,13 +916,13 @@ const Login = () => {
         }
 
         .social-signup {
-          margin-top: 1.5rem;
+          margin-top: 1rem;
         }
 
         .divider {
           display: flex;
           align-items: center;
-          margin: 1.5rem 0 1rem 0;
+          margin: 1rem 0 0.75rem 0;
           position: relative;
         }
 

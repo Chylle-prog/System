@@ -210,14 +210,14 @@ const ResetPassword = () => {
         }
 
         .auth-card {
-          max-width: 420px;
-          width: 100%;
+          max-width: 550px;
+          width: 95%;
           background: rgba(255, 255, 255, 0.12);
           backdrop-filter: blur(24px);
           -webkit-backdrop-filter: blur(24px);
-          border-radius: 48px;
-          padding: 2.22rem 2.8rem 2.8rem;
-          box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5);
+          border-radius: 40px;
+          padding: 2rem 3rem 2.5rem;
+          box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6);
           border: 1px solid rgba(255, 255, 255, 0.3);
           transition: var(--transition);
           animation: cardFloat 0.8s ease-out;
@@ -241,7 +241,7 @@ const ResetPassword = () => {
         }
 
         .auth-header {
-          margin-bottom: 2rem;
+          margin-bottom: 1.5rem;
           text-align: center;
         }
 
