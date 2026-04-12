@@ -762,12 +762,7 @@ export default function ScholarshipDashboard({
       return;
     }
 
-    const actionLabel = requestedStatus === 'Accepted' ? 'Approving Applicant' : 'Declining Applicant';
-    const actionMsg = requestedStatus === 'Accepted' 
-      ? `Processing approval for ${applicant.name}. Notifying via ${applicant.email || 'email'} and updating records.` 
-      : `Processing decline for ${applicant.name}. Sending notification and updating records.`;
-      
-    showActionOverlay(actionLabel, actionMsg);
+    // Removed showActionOverlay here to avoid blocking the UI
     markApplicantProcessing(applicant, requestedStatus);
     onStart?.();
 
@@ -784,18 +779,10 @@ export default function ScholarshipDashboard({
           timestamp: new Date().toISOString(),
         });
 
-        // Show a brief success state in the overlay
-        showActionOverlay(
-          requestedStatus === 'Accepted' ? 'Approval Complete' : 'Decline Complete',
-          `The applicant has been successfully ${requestedStatus.toLowerCase()}.`
-        );
-        
         await Promise.all([loadApplicants(), loadScholarships(false)]);
-        setTimeout(() => hideActionOverlay(), 800);
       } catch (error) {
         console.error(`Failed to update applicant status to ${requestedStatus.toLowerCase()}:`, error);
         await Promise.all([loadApplicants(), loadScholarships(false)]);
-        hideActionOverlay();
         alert(getRequestErrorMessage(error, failureMessage));
       } finally {
         markApplicantProcessing(applicant, null);
@@ -2628,6 +2615,7 @@ export default function ScholarshipDashboard({
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{a.applicant_no}</span>
                           <div className="font-semibold">{a.name}</div>
+                          {processingState && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
                         </div>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusColors[a._listType]}`}>{statusLabels[a._listType]}</span>
                       </td>
@@ -2637,15 +2625,9 @@ export default function ScholarshipDashboard({
                       <td className="px-4 py-3 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-between gap-3">
-                          <button type="button" onClick={() => viewApplicantFn(a._listIdx, a._listType)} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
+                          <button type="button" onClick={() => viewApplicantFn(a._listIdx, a._listType)} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors" disabled={!!processingState}>
                             View
                           </button>
-                          {processingState && a._listType === 'all' && (
-                            <span className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#800020]">
-                              <FaSpinner className="animate-spin text-xs" />
-                              {processingState.requestedStatus === 'Accepted' ? 'Approving' : 'Rejecting'}
-                            </span>
-                          )}
                         </div>
                       </td>
                     </tr>
@@ -2657,7 +2639,10 @@ export default function ScholarshipDashboard({
                   const idx = a._listIdx;
                   return (
                     <tr key={`accepted-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
-                      <td className="px-4 py-3">{a.name}</td>
+                      <td className="px-4 py-3 flex items-center gap-2">
+                        {a.name}
+                        {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
+                      </td>
                       <td className="px-4 py-3">{a.grade}</td>
                       <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       <td className="px-4 py-3 text-xs">{a.school}</td>
@@ -2682,7 +2667,10 @@ export default function ScholarshipDashboard({
                   const idx = a._listIdx;
                   return (
                     <tr key={`declined-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
-                      <td className="px-4 py-3">{a.name}</td>
+                      <td className="px-4 py-3 flex items-center gap-2">
+                        {a.name}
+                        {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
+                      </td>
                       <td className="px-4 py-3">{a.grade}</td>
                       <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       <td className="px-4 py-3 text-xs">{a.school}</td>
@@ -3623,7 +3611,10 @@ export default function ScholarshipDashboard({
       <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 max-w-5xl mx-auto my-4 overflow-y-auto max-h-[90vh]">
         <div className="flex items-center justify-between mb-8 pb-4 border-b-2 border-[#800020]">
           <div className="flex items-center gap-4">
-            <h2 className="text-2xl font-black text-[#800020] uppercase tracking-tight">Applicant Dossier</h2>
+            <h2 className="text-2xl font-black text-[#800020] uppercase tracking-tight flex items-center gap-2">
+              Applicant Dossier
+              {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-sm" />}
+            </h2>
             <span className="bg-[#800020]/10 text-[#800020] px-3 py-1 rounded-lg text-sm font-black font-mono">ID #{a.applicant_no}</span>
           </div>
           <div className="flex gap-2">
