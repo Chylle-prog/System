@@ -2033,9 +2033,9 @@ def student_reset_password():
             conn.close()
             return jsonify({'message': 'No matching account found. The link might be for a different user.'}), 404
 
-        # Update password
+        # Update password and verify account
         cur.execute(
-            f"UPDATE {applicant_email_table} SET password_hash = %s WHERE applicant_no = %s AND TRIM(email_address) ILIKE %s",
+            f"UPDATE {applicant_email_table} SET password_hash = %s, is_verified = TRUE, verification_code = NULL WHERE applicant_no = %s AND TRIM(email_address) ILIKE %s",
             (hashed_password, user_no, email)
         )
         conn.commit()
