@@ -658,8 +658,7 @@ def _preprocess_frame_for_ocr(frame):
     """Enhance a video frame for better OCR accuracy (handles compression artifacts)."""
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     enhanced = _CLAHE.apply(gray)
-    # REPLACED: fastNlMeansDenoising with GaussianBlur (100x faster, usually sufficient for high-contrast text)
-    enhanced = cv2.GaussianBlur(enhanced, (3, 3), 0)
+    # Removing blur to keep edges sharp for better OCR on small document text
     return cv2.normalize(enhanced, None, 0, 255, cv2.NORM_MINMAX)
 
 
@@ -669,8 +668,9 @@ def _ocr_video_frame(processed_frame, allow_alt_pass=True):
         # Pass 1: Global/Mixed Layout
         text = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config='--psm 3 --oem 1')
 
-        # Only run fallback pass if Pass 1 was extremely poor (< 6 chars)
-        if allow_alt_pass and len(text.strip()) < 6:
+        # Only run fallback pass if Pass 1 was relatively poor (< 12 chars)
+        # Documents usually have headers; if we only got a few chars, we likely missed them.
+        if allow_alt_pass and len(text.strip()) < 12:
             text_alt = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config='--psm 6 --oem 1')
             if len(text_alt.strip()) > len(text.strip()):
                 text = text_alt

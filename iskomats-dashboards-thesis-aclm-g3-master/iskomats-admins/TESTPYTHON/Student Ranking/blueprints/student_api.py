@@ -3041,42 +3041,42 @@ def ocr_check():
                 academic_year_keywords = build_academic_year_keywords(expected_academic_year)
 
                 video_keywords_map = {
-                    'Indigency': ['Indigency', 'Certificate', 'Barangay'],
-                    'Enrollment': ['Enrollment', 'Certificate', 'COE', 'Registered'],
-                    'Grades': ['Grades', 'Grade', 'Transcript', 'Record', 'Evaluation', 'Rating', 'Units', 'Credit', 'Sem', 'GPA', 'Report', 'Card', 'Academic'],
-                    'SchoolID': name_keywords or ['Student', 'Name'],
+                    'Indigency': ['Indigency', 'Certificate', 'Barangay', 'Indigent', 'Residency', 'Clearance'],
+                    'Enrollment': ['Enrollment', 'Enrolment', 'Certificate', 'COE', 'COR', 'Registered', 'Registration', 'Reg', 'Matriculation', 'Assessment', 'Billing', 'Semester', 'Sem'],
+                    'Grades': ['Grades', 'Grade', 'Transcript', 'Record', 'Evaluation', 'Rating', 'Units', 'Credit', 'Sem', 'GPA', 'Report', 'Card', 'Academic', 'TOR', 'Checklist'],
+                    'SchoolID': name_keywords or ['Student', 'Name', 'Identity', 'Student#'],
                     'SchoolIDBack': academic_year_keywords or ['School Year', 'Academic Year', 'A.Y.', 'S.Y.']
                 }
                 video_scan_options = {
                     'Indigency': {
                         'sample_positions': [0.5],
-                        'max_width': 420,
-                        'allow_alt_pass': False,
-                        'fallback_text_length': 0,
+                        'max_width': 540,
+                        'allow_alt_pass': True,
+                        'fallback_text_length': 12,
                     },
                     'Enrollment': {
                         'sample_positions': [0.5],
-                        'max_width': 360,
-                        'allow_alt_pass': False,
-                        'fallback_text_length': 8,
+                        'max_width': 540,
+                        'allow_alt_pass': True,
+                        'fallback_text_length': 12,
                     },
                     'Grades': {
                         'sample_positions': [0.5],
-                        'max_width': 420,
-                        'allow_alt_pass': False,
-                        'fallback_text_length': 8,
+                        'max_width': 540,
+                        'allow_alt_pass': True,
+                        'fallback_text_length': 12,
                     },
                     'SchoolID': {
                         'sample_positions': [0.35, 0.65],
-                        'max_width': 480,
-                        'allow_alt_pass': False,
-                        'fallback_text_length': 12,
+                        'max_width': 540,
+                        'allow_alt_pass': True,
+                        'fallback_text_length': 15,
                     },
                     'SchoolIDBack': {
                         'sample_positions': [0.35, 0.65],
-                        'max_width': 480,
+                        'max_width': 540,
                         'allow_alt_pass': True,
-                        'fallback_text_length': 8,
+                        'fallback_text_length': 10,
                     },
                 }
                 # Define keywords for each document type
