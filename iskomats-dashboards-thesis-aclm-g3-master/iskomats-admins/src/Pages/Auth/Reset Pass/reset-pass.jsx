@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { FaLock, FaEye, FaEyeSlash, FaCheckCircle, FaArrowLeft, FaShieldAlt } from "react-icons/fa";
 import { authAPI } from '../../../services/api';
+import authBg from "../../../assets/lipa.jpg";
 
 const ResetPass = () => {
   const navigate = useNavigate();
@@ -123,15 +124,16 @@ const ResetPass = () => {
   const passwordValidation = validatePassword(formData.newPassword);
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 pt-20 bg-gradient-to-br from-red-900 via-red-800 to-red-950 relative overflow-hidden">
-      {/* Background */}
-      <div className="absolute inset-0 opacity-30 pointer-events-none"
+    <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 relative overflow-hidden bg-black">
+      <div
+        className="absolute inset-0 z-0"
         style={{
-          backgroundImage:
-            "linear-gradient(rgba(255,255,255,.15) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.15) 1px, transparent 1px)",
-          backgroundSize: "60px 60px",
+          backgroundImage: `url(${authBg})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
         }}
       />
+      <div className="absolute inset-0 z-0 bg-gradient-to-b from-black/70 via-black/50 to-black/80" />
 
       {/* Card */}
       <div className="relative w-full max-w-md">

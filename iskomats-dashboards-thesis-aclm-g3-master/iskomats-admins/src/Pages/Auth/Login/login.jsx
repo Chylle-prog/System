@@ -9,7 +9,7 @@ import {
 } from "react-icons/fa";
 import { authAPI } from "../../../services/api";
 import { PROVIDER_DASHBOARD_ROUTE, isProviderDashboardRole } from "../../Dash/provider-dashboard-config";
-import authBg from "../../../assets/ad1.jpg";
+import authBg from "../../../assets/lipa.jpg";
 import logo from "../../../assets/logo.png";
 
 const Login = () => {

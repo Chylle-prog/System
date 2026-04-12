@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FaEnvelope, FaPaperPlane, FaCheckCircle } from "react-icons/fa";
 import { authAPI } from '../../../services/api';
-import authBg from "../../../assets/ad1.jpg";
+import authBg from "../../../assets/lipa.jpg";
 import logo from "../../../assets/logo.png";
 
 const ForgetPass = () => {

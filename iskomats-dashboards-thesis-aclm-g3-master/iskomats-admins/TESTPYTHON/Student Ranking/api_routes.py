@@ -3470,20 +3470,16 @@ def get_applicants(current_user_id, pro_no, role, program):
                 if a.get('grades_vid_url'):
                     a['gradesFiles'].extend(get_applicant_media_metadata(app_no, 'grades_vid_url', True, a.get('grades_vid_url'), "Grades Video"))
                 
-                # Combine all ID images into idFiles (Optimized: use URLs)
+                # Only include ID Front and Back images in idFiles (ID (Front & Back) field)
                 id_files = []
-                if a.get('has_schoolID_photo'):
-                    id_files.extend(get_applicant_media_metadata(app_no, 'schoolID_photo', True, None, "School ID"))
                 if a.get('has_id_img_front'):
                     id_files.extend(get_applicant_media_metadata(app_no, 'id_img_front', True, None, "ID Front"))
                 if a.get('has_id_img_back'):
                     id_files.extend(get_applicant_media_metadata(app_no, 'id_img_back', True, None, "ID Back"))
-                if a.get('has_id_pic'):
-                    id_files.extend(get_applicant_media_metadata(app_no, 'id_pic', True, None, "ID Photo"))
-                if a.get('has_profile_picture'):
-                    id_files.extend(get_applicant_media_metadata(app_no, 'profile_picture', True, None, "Profile Picture"))
-                
                 a['idFiles'] = id_files
+
+                # Fill in ID# with school_id_no
+                a['idNumber'] = a.get('school_id_no') or a.get('schoolId')
                 result.append(a)
             except Exception as row_error:
                 app_identifier = None

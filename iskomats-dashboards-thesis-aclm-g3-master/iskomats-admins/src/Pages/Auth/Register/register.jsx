@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { FaUser, FaLock, FaEnvelope, FaEye, FaEyeSlash, FaUserPlus, FaChevronDown } from "react-icons/fa";
 import { authAPI, scholarshipAPI } from "../../../services/api";
-import authBg from "../../../assets/ad1.jpg";
+import authBg from "../../../assets/lipa.jpg";
 import logo from "../../../assets/logo.png";
 
 const FALLBACK_PROVIDERS = [
@@ -152,24 +152,24 @@ const Register = () => {
       />
       <div className="absolute inset-0 z-0 bg-gradient-to-b from-black/70 via-black/50 to-black/80" />
 
-      <div className="w-full max-w-3xl relative z-10">
+      <div className="w-full max-w-2xl relative z-10">
         <div className="bg-white/10 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/30 overflow-hidden">
           <div className="flex flex-col lg:flex-row">
 
-            <div className="bg-gradient-to-r from-[#800020] to-[#650018] p-6 lg:p-7 text-center lg:w-2/5 flex flex-col justify-center items-center border-r border-white/10">
-              <div className="w-20 h-20 sm:w-24 sm:h-24 bg-white/10 backdrop-blur-md rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl border border-white/20 p-2">
+            <div className="bg-gradient-to-r from-[#800020] to-[#650018] p-5 lg:p-6 text-center lg:w-1/3 flex flex-col justify-center items-center border-r border-white/10">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-2xl border border-white/20 p-2">
                 <img src={logo} alt="Iskomats Logo" className="w-full h-full object-contain" />
               </div>
 
-              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white mb-3">
+              <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-white mb-2">
                 Create Account
               </h1>
-              <p className="text-white/90 text-sm sm:text-base">
+              <p className="text-white/90 text-xs sm:text-sm">
                 Join Iskomats Scholarship Program
               </p>
             </div>
 
-            <div className="p-4 sm:p-5 lg:p-6 lg:w-3/5">
+            <div className="p-4 sm:p-5 lg:p-6 lg:w-2/3">
               {formData.error && (
                 <div className="bg-red-600 text-white p-3 rounded-xl mb-5 text-sm text-center">
                   {formData.error}
@@ -193,7 +193,7 @@ const Register = () => {
                         onChange={handleChange}
                         placeholder="Enter your first name"
                         required
-                        className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
+                        className="w-full pl-10 pr-4 py-2 rounded-xl bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
                       />
                     </div>
                   </div>
@@ -210,7 +210,7 @@ const Register = () => {
                         onChange={handleChange}
                         placeholder="Enter your last name"
                         required
-                        className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
+                        className="w-full pl-10 pr-4 py-2 rounded-xl bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
                       />
                     </div>
                   </div>
@@ -230,7 +230,7 @@ const Register = () => {
                       onChange={handleChange}
                       placeholder="Enter your email"
                       required
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
+                      className="w-full pl-10 pr-4 py-2 rounded-xl bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
                     />
                   </div>
                 </div>
@@ -275,7 +275,7 @@ const Register = () => {
                       onChange={handleChange}
                       placeholder="Enter your password"
                       required
-                      className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
+                      className="w-full pl-10 pr-10 py-2 rounded-xl bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
                     />
                     <button
                       type="button"
@@ -301,7 +301,7 @@ const Register = () => {
                       onChange={handleChange}
                       placeholder="Confirm your password"
                       required
-                      className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
+                      className="w-full pl-10 pr-10 py-2 rounded-xl bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
                     />
                     <button
                       type="button"
