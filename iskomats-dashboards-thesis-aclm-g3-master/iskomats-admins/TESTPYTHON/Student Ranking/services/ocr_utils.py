@@ -505,7 +505,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
         name_v, addr_v, found_kw, score = _perform_text_matching(cached_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, None, is_indigency)
         if name_v and addr_v:
             print(f"[OCR CACHE HIT] Reusing previous results for {image_hash[:8]}...", flush=True)
-            return True, f"Verified (cached)", cached_text, 1.0
+            return True, f"Verified (cached)", cached_text, {'name_ok': True, 'addr_ok': True, 'cached': True}
     
     # --- OPTIMIZATION #3: Image quality assessment ---
     try:
@@ -529,7 +529,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             scale = target_w / w
             img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
     except Exception as e:
-        return False, f"Preprocessing error: {str(e)}", "", 0.0
+        return False, f"Preprocessing error: {str(e)}", "", {'name_ok': False, 'addr_ok': False, 'error': str(e)}
 
     best_text = ""
     best_ratio = 0.0
@@ -567,10 +567,10 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     if best_ratio >= 0.3:
         prefix = "Indigency: " if is_indigency else ""
         _cache_set(image_hash, (best_text, best_ratio, "partial_match"))
-        return False, f"{prefix}Identity mismatch ({best_ratio:.0%})", best_text, best_ratio
+        return False, f"{prefix}Identity mismatch ({best_ratio:.0%})", best_text, details
 
     _cache_set(image_hash, (best_text, best_ratio, "failed"))
-    return False, "Identity verification mismatch", best_text, 0.0
+    return False, "Identity verification mismatch", best_text, details
 
 
 def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=False, prefer_fast_layout=False):

@@ -2066,12 +2066,27 @@ def student_reset_password():
 
 @student_api_bp.route('/scholarships', methods=['GET'])
 @student_api_bp.route('/scholarships/all', methods=['GET'])
+
+# --- Optimized Scholarships Endpoint ---
+@student_api_bp.route('/scholarships', methods=['GET'])
 def get_all_scholarships():
+    start = time.time()
+    limit = int(request.args.get('limit', 50))
+    offset = int(request.args.get('offset', 0))
+    cache_key = f'scholarships:{limit}:{offset}'
+    if cache:
+        cached = cache.get(cache_key)
+        if cached:
+            print(f"[CACHE] /scholarships hit in {time.time() - start:.3f}s")
+            return jsonify(cached)
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute('SELECT * FROM scholarships WHERE COALESCE(is_removed, FALSE) = FALSE ORDER BY scholarship_name')
+        cur.execute('SELECT req_no, scholarship_name, deadline FROM scholarships WHERE COALESCE(is_removed, FALSE) = FALSE ORDER BY scholarship_name LIMIT %s OFFSET %s', (limit, offset))
         rows = cur.fetchall()
+        if cache:
+            cache.set(cache_key, rows, timeout=60)
+        print(f"[PERF] /scholarships took {time.time() - start:.3f}s (limit={limit}, offset={offset})")
         return jsonify(rows)
     except Exception as exc:
         return jsonify({'message': str(exc)}), 500
@@ -3355,6 +3370,11 @@ def ocr_check():
 
                 elif doc_type == 'Indigency':
                     # Use provided metadata from verify_id_with_ocr
+                    # Safely handle 'meta' if it's not a dict (e.g. on certain legacy error paths)
+                    if not isinstance(meta, dict):
+                        print(f"[OCR WARN] meta is not a dict for Indigency ({type(meta)}), using fallback", flush=True)
+                        meta = {}
+
                     name_ok = meta.get('name_ok', False)
                     addr_ok = meta.get('addr_ok', True)
                     
