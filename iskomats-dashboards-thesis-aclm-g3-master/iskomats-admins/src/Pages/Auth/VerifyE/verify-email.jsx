@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { FaEnvelope, FaCheckCircle, FaExclamationCircle } from "react-icons/fa";
 import { authAPI } from "../../../services/api";
+import lipaBg from "../../../assets/lipa.jpg";
 
 const VerifyEmail = () => {
   const navigate = useNavigate();
@@ -102,9 +103,18 @@ const VerifyEmail = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 pt-20 bg-gradient-to-br from-red-900 via-red-800 to-red-950 relative overflow-hidden">
-      {/* Background */}
-      <div className="absolute inset-0 opacity-30 pointer-events-none"
+    <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 pt-20 relative overflow-hidden"
+      style={{
+        backgroundImage: `url(${lipaBg})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        backgroundAttachment: 'fixed'
+      }}
+    >
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]"></div>
+      {/* Background Overlay */}
+      <div className="absolute inset-0 opacity-10 pointer-events-none"
         style={{
           backgroundImage:
             "linear-gradient(rgba(255,255,255,.15) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.15) 1px, transparent 1px)",

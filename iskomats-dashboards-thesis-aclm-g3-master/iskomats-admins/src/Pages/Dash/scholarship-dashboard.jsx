@@ -4268,7 +4268,7 @@ export default function ScholarshipDashboard({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setRecommendationModal(false)}>
           <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-6 border-b pb-4">
-              <h2 className="text-xl font-bold text-[#800020]">AI Recommended Applicants</h2>
+              <h2 className="text-xl font-bold text-[#800020]">Recommended Applicants</h2>
               <div className="flex items-center gap-3 bg-rose-50 px-4 py-2 rounded-xl border border-rose-100">
                 <span className="text-xs font-black text-[#800020] uppercase tracking-wider">Number of Recommendations:</span>
                 <input

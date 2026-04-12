@@ -564,8 +564,12 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
             return "", f"Image quality issue: {quality_reason}"
 
         h, w = img.shape[:2]
-        if w > max_width:
-            scale = max_width / w
+        # ID backs often have very small stickers (Year stickers)
+        # 600px is often too small for Tesseract to read 8pt/10pt text clearly.
+        effective_max_width = 800 if is_id_back else max_width
+        
+        if w > effective_max_width:
+            scale = effective_max_width / w
             img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
     except Exception as e:
         return "", f"Preprocessing error: {str(e)}"
@@ -780,8 +784,8 @@ def extract_school_year_from_text(text):
         return res
 
     # Normalize delimiters: replace weird hyphens/dots/underscores between digits with a standard dash
-    # e.g. "2024.2025" or "2024_2025" -> "2024-2025"
-    text = re.sub(r'(20\d{2})[\s\.\,_\~\|]+(20\d{2})', r'\1-\2', text)
+    # e.g. "2024.2025", "2024/2025" or "2024_2025" -> "2024-2025"
+    text = re.sub(r'(20\d{2})[\s\.\,_\~\/\|]+(20\d{2})', r'\1-\2', text)
     
     # Fix corruptions in chunks that look like years (4 chars starting with something like 2)
     # We look for 4-char sequences that resemble 20XX
@@ -794,7 +798,8 @@ def extract_school_year_from_text(text):
         return chunk
 
     # Pass 1: Fix standalone 4-char year-like strings
-    clean_text = re.sub(r'[2ZSI][0OQo][2ZSI][0-9SszBGeGQ]', fix_year_chunk, text)
+    # Pattern: Digit-like, then 0-like, then Digit-like, then any digit-like
+    clean_text = re.sub(r'[2ZSI][0OQo][2ZSI][0-9SszBGeGQ\d]', fix_year_chunk, text)
     
     # 2. Label Normalization
     clean_text = re.sub(r'\bS\.?Y\.?\s*[:\-\/]?\s*', 'school year ', clean_text, flags=re.IGNORECASE)
