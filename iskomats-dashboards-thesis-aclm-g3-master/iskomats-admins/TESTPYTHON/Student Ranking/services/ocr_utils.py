@@ -26,8 +26,8 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 cv2.setNumThreads(1) # Crucial: prevents OpenCV from spawning ghost threads that kill RAM
 
-# Global OCR Concurrency Control: Increased to 7 to handle more parallel document verifications
-OCR_SEMAPHORE = eventlet.semaphore.Semaphore(7)
+# Global OCR Concurrency Control: Increased to 12 to handle more parallel document verifications
+OCR_SEMAPHORE = eventlet.semaphore.Semaphore(12)
 
 
 # ─── Environment hints for threading & memory ──────────────────────────────────
@@ -206,14 +206,14 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     
     # Pass 1: Raw Grayscale (Best for modern LSTM Tesseract, handles white-on-black perfectly)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
-    # Use eventlet.tpool to prevent Tesseract (blocking C call) from freezing the green thread pool
-    # OPTIMIZATION: Use OEM 1 (LSTM-only) for Pass 1 - significantly faster
-    # than the legacy engine (OEM 0/3) for standard high-contrast text.
+    
+    t1 = time.time()
     text1 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 1')
+    t1_end = time.time()
     
     # Check if first pass was sufficient (lenient 20-char check)
-    # IDs often have very few characters (Name + ID#), 20 is a safe early exit.
     if len(text1.strip()) > 20:
+        print(f"[OCR PERF] Pass1 ({psm}): {t1_end - t1:.3f}s", flush=True)
         return text1.strip()
     
     # Fallback to standard engine (OEM 3) only if LSTM fails and we are not in fast mode
@@ -536,11 +536,11 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     print(f"[OCR] Running PSM3 verification...", flush=True)
     
     with OCR_SEMAPHORE:
-        # PSM3 is typically best for mixed text layouts (IDs, documents)
-        # Removed parallel PSM11 - saves 15+ seconds, PSM3 alone is sufficient
         try:
+            t_start = time.time()
             best_text = _run_tesseract_on_image(img, 3)
-            print(f"[OCR] PSM3 completed", flush=True)
+            t_end = time.time()
+            print(f"[OCR PERF] Total ID OCR time: {t_end - t_start:.3f}s", flush=True)
         except Exception as e:
             print(f"[OCR] PSM3 error: {e}", flush=True)
             best_text = ""

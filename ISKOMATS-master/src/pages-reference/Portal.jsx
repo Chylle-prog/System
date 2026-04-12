@@ -86,29 +86,6 @@ const Portal = () => {
   // Hardcoded data removed - now fetched from API
 
   useEffect(() => {
-    // Add Font Awesome link
-    const fontAwesomeLink = document.createElement('link');
-    fontAwesomeLink.rel = 'stylesheet';
-    fontAwesomeLink.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css';
-    document.head.appendChild(fontAwesomeLink);
-
-    // Add Google Fonts link
-    const googleFontsLink = document.createElement('link');
-    googleFontsLink.rel = 'preconnect';
-    googleFontsLink.href = 'https://fonts.googleapis.com';
-    document.head.appendChild(googleFontsLink);
-
-    const googleFontsDisplay = document.createElement('link');
-    googleFontsDisplay.rel = 'preconnect';
-    googleFontsDisplay.href = 'https://fonts.gstatic.com';
-    googleFontsDisplay.crossOrigin = 'anonymous';
-    document.head.appendChild(googleFontsDisplay);
-
-    const googleFontsSheet = document.createElement('link');
-    googleFontsSheet.rel = 'stylesheet';
-    googleFontsSheet.href = 'https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap';
-    document.head.appendChild(googleFontsSheet);
-
     // Load user data
     const user = localStorage.getItem('currentUser');
     const profiles = JSON.parse(localStorage.getItem('userProfiles')) || {};
@@ -198,10 +175,6 @@ const Portal = () => {
     }
 
     return () => {
-      document.head.removeChild(fontAwesomeLink);
-      document.head.removeChild(googleFontsLink);
-      document.head.removeChild(googleFontsDisplay);
-      document.head.removeChild(googleFontsSheet);
       document.removeEventListener('click', handleClickOutside);
       if (socketRef.current) {
         socketRef.current.disconnect();
@@ -497,9 +470,148 @@ const Portal = () => {
           --shadow-lg: 0 20px 40px -12px rgba(0, 40, 80, 0.2);
           --shadow-lg: 0 20px 40px -12px rgba(0, 40, 80, 0.2);
           --border-light: 1px solid rgba(0, 0, 0, 0.05);
+          --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
         }
 
-        .notification-toast {
+        .content-section {
+          padding: 2.5rem;
+          max-width: 1200px;
+          margin: 0 auto;
+        }
+
+        .back-button {
+          background: var(--accent-soft);
+          color: var(--primary);
+          border: none;
+          padding: 0.75rem 1.5rem;
+          border-radius: 12px;
+          font-weight: 700;
+          font-size: 0.9rem;
+          cursor: pointer;
+          margin-bottom: 2rem;
+          transition: all 0.3s ease;
+          display: flex;
+          align-items: center;
+          gap: 0.6rem;
+        }
+
+        .back-button:hover {
+          background: var(--primary);
+          color: white;
+          transform: translateX(-5px);
+        }
+
+        .section-header {
+          margin-bottom: 3rem;
+        }
+
+        .section-header h3 {
+          color: var(--text-dark);
+          font-size: 2.2rem;
+          font-weight: 800;
+          letter-spacing: -0.02em;
+          margin-bottom: 0.5rem;
+        }
+
+        .section-header p {
+          color: var(--text-soft);
+          font-size: 1.1rem;
+        }
+
+        .scholarship-list {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+          gap: 2rem;
+        }
+
+        .scholarship-card {
+          background: white;
+          border-radius: 20px;
+          padding: 2rem;
+          box-shadow: var(--card-shadow);
+          border: 1px solid rgba(0, 0, 0, 0.03);
+          transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+          position: relative;
+          overflow: hidden;
+        }
+
+        .scholarship-card:hover {
+          transform: translateY(-10px);
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
+          border-color: var(--accent-light);
+        }
+
+        .scholarship-card::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 6px;
+          background: linear-gradient(90deg, var(--primary), var(--accent-light));
+          opacity: 0.8;
+        }
+
+        .scholarship-card h4 {
+          font-size: 1.25rem;
+          font-weight: 800;
+          color: var(--text-dark);
+          margin-bottom: 1.5rem;
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          line-height: 1.3;
+        }
+
+        .scholarship-card h4 i {
+          background: var(--accent-soft);
+          width: 40px;
+          height: 40px;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 1.1rem;
+          flex-shrink: 0;
+        }
+
+        .requirements-list h5 {
+          font-size: 0.9rem;
+          text-transform: uppercase;
+          letter-spacing: 0.1em;
+          color: var(--primary);
+          margin-bottom: 1rem;
+          font-weight: 700;
+        }
+
+        .requirements-list ul {
+          list-style: none;
+          padding: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+        }
+
+        .requirements-list li {
+          font-size: 0.95rem;
+          color: var(--text-dark);
+          padding-left: 1.5rem;
+          position: relative;
+          line-height: 1.5;
+        }
+
+        .requirements-list li::before {
+          content: '\f00c';
+          font-family: 'Font Awesome 5 Free';
+          font-weight: 900;
+          position: absolute;
+          left: 0;
+          color: var(--success);
+          font-size: 0.8rem;
+          top: 0.2rem;
+        }
+
+        .loading-overlay {
           position: fixed;
           bottom: 30px;
           right: 30px;
@@ -2016,66 +2128,73 @@ const Portal = () => {
           {activeSection === 'resources' && (
             <div className="content-section active">
               <button className="back-button" onClick={() => setActiveSection('menu')}>
-                <i className="fas fa-arrow-left"></i> Back
+                <i className="fas fa-arrow-left"></i> Back to Dashboard
               </button>
-              <h3 style={{color: 'var(--primary)', fontSize: '1.8rem', fontWeight: '700', marginBottom: '2rem'}}>
-                Resources & Guides
-              </h3>
+              
+              <div className="section-header">
+                <h3>Resources & Guides</h3>
+                <p>Everything you need to successfully apply for city scholarships.</p>
+              </div>
+
               <div className="scholarship-list">
                 <div className="scholarship-card">
-                  <h4><i className="fas fa-landmark" style={{marginRight: '10px', color: 'var(--primary)'}}></i>Mayor Eric B. Africa Scholarship</h4>
+                  <h4><i className="fas fa-landmark"></i> Mayor Eric B. Africa Scholarship</h4>
                   <div className="requirements-list">
-                    <h5>Requirements:</h5>
+                    <h5>Qualification Criteria</h5>
                     <ul>
                       <li>GPA of 3.5 and above</li>
                       <li>Monthly family income ≤ ₱60,000</li>
-                      <li>Resident of Lipa City</li>
-                      <li>Enrolled in any college/university within Lipa City</li>
+                      <li>Verified resident of Lipa City</li>
+                      <li>Enrolled in college/university within Lipa City</li>
                       <li>Good moral character certificate</li>
-                      <li>No pending disciplinary cases</li>
-                      <li>Birth certificate (NSO copy)</li>
-                      <li>Proof of residence (barangay certificate)</li>
-                      <li>Latest school transcript of records</li>
-                      <li>Parent's income tax return</li>
+                    </ul>
+                    <h5 style={{marginTop: '1.5rem'}}>Required Documents</h5>
+                    <ul>
+                      <li>Birth certificate (NSO/PSA copy)</li>
+                      <li>Proof of residence (Barangay Certificate)</li>
+                      <li>Latest school Transcript of Records</li>
+                      <li>Parent's Income Tax Return (ITR)</li>
                     </ul>
                   </div>
                 </div>
+
                 <div className="scholarship-card">
-                  <h4><i className="fas fa-users" style={{marginRight: '10px', color: 'var(--primary)'}}></i>Governor Vilma's Scholarship</h4>
+                  <h4><i className="fas fa-users"></i> Governor Vilma's Scholarship</h4>
                   <div className="requirements-list">
-                    <h5>Requirements:</h5>
+                    <h5>Qualification Criteria</h5>
                     <ul>
                       <li>GPA of 3.0 and above</li>
                       <li>Monthly family income ≤ ₱50,000</li>
                       <li>Resident of Batangas Province</li>
-                      <li>Enrolled in accredited college/university</li>
-                      <li>Letter of recommendation from school official</li>
-                      <li>Community service certificate (minimum 20 hours)</li>
-                      <li>Birth certificate (NSO copy)</li>
-                      <li>Barangay clearance</li>
-                      <li>Latest school grades</li>
-                      <li>Parent's certificate of employment</li>
-                      <li>2x2 ID picture (white background)</li>
+                      <li>Enrolled in accredited institution</li>
+                      <li>Minimum 20 hours community service</li>
+                    </ul>
+                    <h5 style={{marginTop: '1.5rem'}}>Required Documents</h5>
+                    <ul>
+                      <li>Birth certificate (NSO/PSA copy)</li>
+                      <li>Barangay Clearance</li>
+                      <li>Latest School Grades</li>
+                      <li>Parent's Certificate of Employment</li>
                     </ul>
                   </div>
                 </div>
+
                 <div className="scholarship-card">
-                  <h4><i className="fas fa-graduation-cap" style={{marginRight: '10px', color: 'var(--primary)'}}></i>CHED Tulong Dunong</h4>
+                  <h4><i className="fas fa-graduation-cap"></i> CHED Tulong Dunong</h4>
                   <div className="requirements-list">
-                    <h5>Requirements:</h5>
+                    <h5>Qualification Criteria</h5>
                     <ul>
                       <li>GPA of 2.5 and above</li>
                       <li>Monthly family income ≤ ₱120,000</li>
                       <li>Filipino citizen</li>
                       <li>Enrolled in CHED-recognized institution</li>
+                    </ul>
+                    <h5 style={{marginTop: '1.5rem'}}>Required Documents</h5>
+                    <ul>
                       <li>Certificate of Registration (COR)</li>
-                      <li>Billing statement from school</li>
+                      <li>School Billing Statement</li>
                       <li>Birth certificate (PSA copy)</li>
-                      <li>Parent's marriage certificate (if applicable)</li>
-                      <li>Latest income tax return</li>
-                      <li>Community tax certificate</li>
-                      <li>School ID and registration form</li>
-                      <li>Proof of enrollment (current semester)</li>
+                      <li>Latest Income Tax Return</li>
                     </ul>
                   </div>
                 </div>
