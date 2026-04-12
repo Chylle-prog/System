@@ -782,19 +782,17 @@ def extract_school_year_from_text(text):
     compact_text = re.sub(r'(VALID UNTIL)\s*\n*\s*(school year)', r'\1 \2', compact_text, flags=re.IGNORECASE)
 
     # Priority 1: Year range or single year preceded by a school-year keyword
-    # e.g. "School Year Sem 2025-2026", "S.Y. 2025-2026", "A.Y. 2025-2026", "VALID UNTIL 2025-2026"
+    # e.g. "School Year Sem 2025-2026", "S.Y. 2025-2026", "A.Y. 2025-2026", "VALID UNTIL 2025-2026", "VALID UNTIL SY 2025-2026"
     keyword_match = re.search(
-
-        r'(?:school\s*year(?:\s*sem(?:ester)?)?|school\s*year\s*/\s*sem(?:ester)?|academic\s*year|valid\s*until|v\.?u\.?)\s*[:\-]?\s*(20\d{2}(?:\s*[/\\\-–]\s*20\d{2})?)',
+        r'(?:school\s*year(?:\s*sem(?:ester)?)?|school\s*year\s*/\s*sem(?:ester)?|academic\s*year|valid\s*until|v\.?u\.?)[^0-9]{0,20}(20\d{2}(?:\s*[/\\\-–]\s*20\d{2})?)',
         compact_text, re.IGNORECASE
     )
     if keyword_match:
         return keyword_match.group(1).strip()
 
     # Priority 1b: Capture a year range appearing later on the same line as a school-year label.
-
     label_line_match = re.search(
-        r'(?:school\s*year|academic\s*year)[^\n]{0,40}?(20\d{2}(?:\s*[/\\\-–]\s*20\d{2})?)',
+        r'(?:school\s*year|academic\s*year|valid\s*until|v\.?u\.?)[^\n]{0,40}?(20\d{2}(?:\s*[/\\\-–]\s*20\d{2})?)',
         clean_text,
         re.IGNORECASE,
     )
