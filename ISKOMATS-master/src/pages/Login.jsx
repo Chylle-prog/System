@@ -399,7 +399,7 @@ const Login = () => {
           left: 0;
           width: 100vw;
           height: 100vh;
-          background: rgba(30, 20, 20, 0.7);
+          background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.8));
           z-index: 0;
           pointer-events: none;
         }
@@ -519,13 +519,13 @@ const Login = () => {
         .auth-card {
           max-width: 420px;
           width: 100%;
-          background: rgba(255, 255, 255, 0.75);
-          backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
+          background: rgba(255, 255, 255, 0.12);
+          backdrop-filter: blur(24px);
+          -webkit-backdrop-filter: blur(24px);
           border-radius: 48px;
           padding: 2rem 2.5rem 2.8rem;
-          box-shadow: var(--shadow-lg);
-          border: 1px solid rgba(255, 255, 255, 0.7);
+          box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
+          border: 1px solid rgba(255, 255, 255, 0.3);
           transition: var(--transition);
           animation: cardFloat 0.8s ease-out;
           margin: 0 auto;
@@ -534,12 +534,13 @@ const Login = () => {
         .profile-card {
           max-width: 720px;
           width: 100%;
-          background: rgba(255, 255, 255, 0.75);
-          backdrop-filter: blur(20px);
+          background: rgba(255, 255, 255, 0.12);
+          backdrop-filter: blur(24px);
+          -webkit-backdrop-filter: blur(24px);
           border-radius: 56px;
           padding: 3rem 3.5rem;
-          box-shadow: var(--shadow-lg);
-          border: 1px solid rgba(255, 255, 255, 0.8);
+          box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5);
+          border: 1px solid rgba(255, 255, 255, 0.3);
           animation: cardFloat 0.7s ease-out;
           margin: 0 auto;
         }
@@ -547,10 +548,7 @@ const Login = () => {
         .profile-card h2 {
           font-size: 2.22rem;
           font-weight: 800;
-          background: var(--primary-gradient);
-          -webkit-background-clip: text;
-          background-clip: text;
-          color: transparent;
+          color: white;
           text-align: center;
           margin-bottom: 2.2rem;
         }
@@ -631,7 +629,7 @@ const Login = () => {
           font-size: 0.8rem;
           text-transform: uppercase;
           letter-spacing: 0.6px;
-          color: var(--primary-light);
+          color: rgba(255, 255, 255, 0.8);
           margin-bottom: 0.5rem;
         }
 
@@ -651,10 +649,11 @@ const Login = () => {
         .profile-input-wrapper input {
           width: 100%;
           padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 2px solid transparent;
+          border: 1px solid rgba(255, 255, 255, 0.3);
           border-radius: 18px;
           font-size: 0.95rem;
-          background: var(--gray-1);
+          background: rgba(255, 255, 255, 0.1);
+          color: white;
           transition: var(--transition);
         }
 
@@ -683,8 +682,8 @@ const Login = () => {
         }
 
         .auth-card:hover {
-          box-shadow: 0 40px 60px -20px rgba(79, 13, 0, 0.3);
-          background: rgba(255, 255, 255, 0.85);
+          box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6);
+          background: rgba(255, 255, 255, 0.15);
         }
 
         .auth-header {
@@ -696,15 +695,12 @@ const Login = () => {
           font-weight: 800;
           font-size: 2rem;
           letter-spacing: -0.02em;
-          background: var(--primary-gradient);
-          -webkit-background-clip: text;
-          background-clip: text;
-          color: transparent;
+          color: white;
           margin-bottom: 0.5rem;
         }
 
         .auth-header p {
-          color: var(--text-soft);
+          color: rgba(255, 255, 255, 0.8);
           font-size: 0.95rem;
           font-weight: 400;
         }
@@ -719,7 +715,7 @@ const Login = () => {
           font-size: 0.8rem;
           text-transform: uppercase;
           letter-spacing: 0.5px;
-          color: var(--primary-light);
+          color: rgba(255, 255, 255, 0.7);
           margin-bottom: 0.4rem;
         }
 
@@ -741,13 +737,13 @@ const Login = () => {
         .input-wrapper input {
           width: 100%;
           padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 2px solid transparent;
+          border: 1px solid rgba(255, 255, 255, 0.2);
           border-radius: 30px;
           font-size: 0.95rem;
-          background: var(--gray-1);
+          background: rgba(255, 255, 255, 0.08);
+          color: white;
           transition: var(--transition);
           font-family: 'Inter', sans-serif;
-          box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
         }
 
         .input-wrapper input:focus {
@@ -799,11 +795,11 @@ const Login = () => {
           text-align: center;
           margin-top: 2rem;
           font-size: 0.95rem;
-          color: var(--text-soft);
+          color: rgba(255, 255, 255, 0.8);
         }
 
         .toggle-auth a {
-          color: var(--primary);
+          color: white;
           font-weight: 700;
           cursor: pointer;
           text-decoration: none;
@@ -1219,7 +1215,7 @@ const Login = () => {
                   </div>
                 </div>
                <div className="forgot-password">
-                  <a href="#" onClick={handleForgotPassword} style={{ color: 'var(--primary)', textDecoration: 'none', fontSize: '0.9rem' }}>
+                  <a href="#" onClick={handleForgotPassword} style={{ color: 'rgba(255,255,255,0.7)', textDecoration: 'none', fontSize: '0.9rem' }}>
                     Forgot password?
                   </a>
                 </div>

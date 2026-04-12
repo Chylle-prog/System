@@ -57,23 +57,6 @@ const ApplicantForgotPassword = () => {
       
       // available: false means email exists (not available), available: true means email doesn't exist
       if (emailCheckResponse.available !== false) {
-        body.applicant-forgot-bg {
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-          background: url(${lipaBg}) center/cover no-repeat fixed !important;
-          color: #121826;
-          line-height: 1.5;
-          min-height: 100vh;
-        }
-        .applicant-forgot-bg-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100vw;
-          height: 100vh;
-          background: rgba(30, 20, 20, 0.7);
-          z-index: 0;
-          pointer-events: none;
-        }
         setFormData({
           ...formData,
           isLoading: false,
@@ -121,10 +104,22 @@ const ApplicantForgotPassword = () => {
 
         body {
           font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-          background: linear-gradient(145deg, #f3f7fc 0%, #fefaf8 100%);
-          color: #121826;
+          background: url(${lipaBg}) center/cover no-repeat fixed;
+          color: white;
           line-height: 1.5;
           min-height: 100vh;
+          position: relative;
+        }
+
+        body::before {
+          content: '';
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.8));
+          z-index: -1;
         }
 
         :root {
@@ -207,13 +202,13 @@ const ApplicantForgotPassword = () => {
         .auth-card {
           max-width: 480px;
           width: 100%;
-          background: rgba(255, 255, 255, 0.75);
-          backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
+          background: rgba(255, 255, 255, 0.12);
+          backdrop-filter: blur(24px);
+          -webkit-backdrop-filter: blur(24px);
           border-radius: 48px;
           padding: 2.8rem 3rem 3.2rem;
-          box-shadow: var(--shadow-lg);
-          border: 1px solid rgba(255, 255, 255, 0.7);
+          box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5);
+          border: 1px solid rgba(255, 255, 255, 0.3);
           transition: var(--transition);
           animation: cardFloat 0.8s ease-out;
           margin: 0 auto;
@@ -231,8 +226,8 @@ const ApplicantForgotPassword = () => {
         }
 
         .auth-card:hover {
-          box-shadow: 0 40px 60px -20px rgba(79, 13, 0, 0.3);
-          background: rgba(255, 255, 255, 0.85);
+          box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6);
+          background: rgba(255, 255, 255, 0.15);
         }
 
         .auth-header {
@@ -244,15 +239,12 @@ const ApplicantForgotPassword = () => {
           font-size: 1.8rem;
           font-weight: 800;
           margin-bottom: 0.5rem;
-          background: var(--primary-gradient);
-          -webkit-background-clip: text;
-          background-clip: text;
-          color: transparent;
+          color: white;
           letter-spacing: -0.03em;
         }
 
         .auth-header p {
-          color: var(--text-soft);
+          color: rgba(255, 255, 255, 0.8);
           font-size: 0.95rem;
           margin-bottom: 1.5rem;
         }
@@ -265,7 +257,7 @@ const ApplicantForgotPassword = () => {
           display: block;
           font-weight: 600;
           font-size: 0.85rem;
-          color: var(--text-dark);
+          color: rgba(255, 255, 255, 0.8);
           text-transform: uppercase;
           letter-spacing: 0.5px;
           margin-bottom: 0.5rem;
@@ -332,13 +324,13 @@ const ApplicantForgotPassword = () => {
         }
 
         .success-content h3 {
-          color: var(--text-dark);
+          color: white;
           font-size: 1.4rem;
           margin-bottom: 0.5rem;
         }
 
         .success-content p {
-          color: var(--text-soft);
+          color: rgba(255, 255, 255, 0.8);
           font-size: 0.9rem;
           margin-bottom: 1rem;
         }
@@ -408,18 +400,19 @@ const ApplicantForgotPassword = () => {
         .footer {
           margin-top: 1.5rem;
           text-align: center;
-          color: var(--text-soft);
+          color: rgba(255, 255, 255, 0.8);
           font-size: 0.9rem;
         }
 
         .footer button {
           background: none;
           border: none;
-          color: var(--primary);
+          color: white;
           cursor: pointer;
           font-weight: 700;
           margin-left: 0.5rem;
           transition: var(--transition);
+          text-decoration: underline;
         }
 
         .footer button:hover {

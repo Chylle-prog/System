@@ -230,7 +230,7 @@ const VerifyEmail = () => {
           left: 0;
           width: 100vw;
           height: 100vh;
-          background: rgba(30, 20, 20, 0.7);
+          background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.8));
           z-index: 0;
           pointer-events: none;
         }
@@ -294,18 +294,21 @@ const VerifyEmail = () => {
         <div style={{
           width: '100%',
           maxWidth: '500px',
-          backgroundColor: 'rgba(255,255,255,0.85)',
-          borderRadius: '12px',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
+          background: 'rgba(255, 255, 255, 0.12)',
+          backdropFilter: 'blur(24px)',
+          borderRadius: '24px',
+          boxShadow: '0 40px 80px rgba(0, 0, 0, 0.5)',
+          border: '1px solid rgba(255, 255, 255, 0.3)',
           overflow: 'hidden',
           zIndex: 1
         }}>
         {/* Header */}
         <div style={{
-          background: '#4F0D00',
+          background: 'rgba(255, 255, 255, 0.05)',
           padding: '40px 30px',
           textAlign: 'center',
-          color: 'white'
+          color: 'white',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
         }}>
           <div style={{
             width: '60px',
@@ -415,7 +418,7 @@ const VerifyEmail = () => {
                 <div style={{ marginBottom: '20px' }}>
                   <label style={{
                     display: 'block',
-                    color: '#4F0D00',
+                    color: 'rgba(255, 255, 255, 0.9)',
                     fontSize: '14px',
                     fontWeight: '600',
                     marginBottom: '8px'
@@ -426,26 +429,26 @@ const VerifyEmail = () => {
                     type="text"
                     value={formData.verificationCode}
                     onChange={handleChange}
-                    placeholder="Enter 6-digit code or token"
+                    placeholder="Enter code"
                     maxLength="50"
                     required
                     style={{
                       width: '100%',
                       padding: '12px 15px',
-                      border: '2px solid #ddd',
-                      borderRadius: '6px',
-                      fontSize: '16px',
-                      letterSpacing: '2px',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      border: '1px solid rgba(255, 255, 255, 0.3)',
+                      borderRadius: '12px',
+                      color: 'white',
+                      fontSize: '18px',
+                      letterSpacing: '4px',
                       textAlign: 'center',
                       boxSizing: 'border-box',
-                      transition: 'border-color 0.3s ease',
-                      fontFamily: 'monospace'
+                      transition: 'all 0.3s ease',
+                      fontFamily: 'Inter, sans-serif'
                     }}
-                    onFocus={(e) => e.target.style.borderColor = '#4F0D00'}
-                    onBlur={(e) => e.target.style.borderColor = '#ddd'}
                   />
                   <p style={{
-                    color: '#999',
+                    color: 'rgba(255, 255, 255, 0.6)',
                     fontSize: '12px',
                     marginTop: '8px',
                     margin: '8px 0 0'
@@ -507,9 +510,9 @@ const VerifyEmail = () => {
                     width: '100%',
                     padding: '12px 20px',
                     backgroundColor: 'transparent',
-                    color: '#4F0D00',
-                    border: '2px solid #4F0D00',
-                    borderRadius: '6px',
+                    color: 'white',
+                    border: '2px solid rgba(255, 255, 255, 0.5)',
+                    borderRadius: '8px',
                     fontSize: '14px',
                     fontWeight: 'bold',
                     cursor: formData.isLoading ? 'not-allowed' : 'pointer',
@@ -519,12 +522,14 @@ const VerifyEmail = () => {
                   }}
                   onMouseEnter={(e) => {
                     if (!formData.isLoading) {
-                      e.target.style.backgroundColor = '#fff1ec';
+                      e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                      e.target.style.borderColor = 'white';
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (!formData.isLoading) {
                       e.target.style.backgroundColor = 'transparent';
+                      e.target.style.borderColor = 'rgba(255, 255, 255, 0.5)';
                     }
                   }}
                 >
@@ -538,14 +543,14 @@ const VerifyEmail = () => {
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: '#4F0D00',
+                    color: 'rgba(255, 255, 255, 0.8)',
                     cursor: 'pointer',
                     fontSize: '14px',
                     textDecoration: 'underline',
                     transition: 'color 0.3s ease'
                   }}
-                  onMouseEnter={(e) => e.target.style.color = '#3d0a00'}
-                  onMouseLeave={(e) => e.target.style.color = '#4F0D00'}
+                  onMouseEnter={(e) => e.target.style.color = 'white'}
+                  onMouseLeave={(e) => e.target.style.color = 'rgba(255, 255, 255, 0.8)'}
                 >
                   Back to Login
                 </button>

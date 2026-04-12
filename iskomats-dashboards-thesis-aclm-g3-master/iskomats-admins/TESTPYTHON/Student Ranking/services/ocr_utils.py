@@ -45,7 +45,9 @@ except Exception:
 
 # ─── OCR Result Caching System (Optimization #2) ─────────────────────────────
 _OCR_CACHE = OrderedDict()
-_OCR_CACHE_SIZE_LIMIT = 100
+_OCR_CACHE_SIZE_LIMIT = 200
+# Preload Tesseract at startup for faster first OCR
+_init_tesseract()
 _CACHE_METRICS = {'hits': 0, 'misses': 0}
 _FACE_MODEL_LOCK = eventlet.semaphore.Semaphore(1)
 _FACE_DETECTOR = None

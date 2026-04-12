@@ -2660,7 +2660,7 @@ def submit_application():
                 from concurrent.futures import ThreadPoolExecutor
                 verification_tasks = {}
                 # Expand worker pool to allow true simultaneous background downloading and validation
-                with ThreadPoolExecutor(max_workers=3) as executor:
+                with ThreadPoolExecutor(max_workers=5) as executor:
                     # 1. OCR Identity Check
                     if id_front_bytes:
                         town_city = form_data.get('townCity') or applicant.get('town_city_municipality', '')
