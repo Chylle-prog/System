@@ -580,15 +580,14 @@ const Portal = () => {
     }
 
     // 1. Mark as read in DB if not already
+    // Optimistic update
     if (!notif.read) {
-      try {
-        await notificationAPI.markAsRead(notif.id);
-        setNotifications(prev => prev.map(n => 
-          n.id === notif.id ? { ...n, read: true } : n
-        ));
-      } catch (err) {
+      setNotifications(prev => prev.map(n => 
+        n.id === notif.id ? { ...n, read: true } : n
+      ));
+      notificationAPI.markAsRead(notif.id).catch(err => {
         console.error("Failed to mark notification as read:", err);
-      }
+      });
     }
 
     // 2. Navigate based on type
@@ -2301,11 +2300,15 @@ const Portal = () => {
                             color: 'white', 
                             borderRadius: '12px', 
                             padding: '0.2rem 0.6rem', 
-                            fontSize: '0.7rem', 
-                            fontWeight: '600',
-                            marginLeft: 'auto'
+                            fontSize: '0.75rem', 
+                            fontWeight: '800',
+                            marginLeft: 'auto',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            boxShadow: '0 2px 8px rgba(79,13,0,0.2)'
                           }}>
-                            {scholar.unread}
+                            <i className="fas fa-circle" style={{ fontSize: '0.4rem', color: '#ffcc80' }}></i> {scholar.unread}
                           </span>
                         )}
                       </div>
@@ -2360,7 +2363,10 @@ const Portal = () => {
                       <i className={`fas ${notif.icon}`}></i>
                     </div>
                     <div className="notification-content">
-                      <div className="notification-title">{notif.title}</div>
+                      <div className="notification-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        {notif.title}
+                        {!notif.read && <i className="fas fa-circle" style={{ color: 'var(--primary)', fontSize: '0.5rem' }}></i>}
+                      </div>
                       <div className="notification-message">{notif.message}</div>
                       <div className="notification-time">{notif.time}</div>
                     </div>
@@ -2688,7 +2694,29 @@ const Portal = () => {
                       <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.8rem'}}>
                         <div style={{flex: 1}}>
                           <h4 style={{margin: 0, color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px'}}>{ann.provider_name}</h4>
-                          {ann.ann_title && <h5 style={{margin: '0.3rem 0 0 0', color: 'var(--text-dark)', fontSize: '1.15rem', fontWeight: '800', lineHeight: '1.3'}}>{ann.ann_title}</h5>}
+                          {ann.ann_title && (
+                            <h5 style={{margin: '0.3rem 0 0 0', color: 'var(--text-dark)', fontSize: '1.15rem', fontWeight: '800', lineHeight: '1.3', display: 'flex', alignItems: 'center'}}>
+                              {ann.ann_title}
+                              {(() => {
+                                const createdDate = new Date(ann.time_added || 0);
+                                const diffDays = (new Date() - createdDate) / (1000 * 60 * 60 * 24);
+                                return diffDays <= 3 ? (
+                                  <span style={{
+                                    background: 'linear-gradient(90deg, #ff9800 60%, #ffcc80 100%)',
+                                    color: '#fff',
+                                    fontWeight: 900,
+                                    fontSize: '0.65rem',
+                                    borderRadius: '8px',
+                                    padding: '1px 8px',
+                                    marginLeft: '10px',
+                                    letterSpacing: '0.5px',
+                                    boxShadow: '0 2px 6px rgba(255,152,0,0.2)',
+                                    textTransform: 'uppercase'
+                                  }}>NEW</span>
+                                ) : null;
+                              })()}
+                            </h5>
+                          )}
                         </div>
                         <span style={{fontSize: '0.75rem', color: 'var(--text-soft)', background: 'var(--gray-2)', padding: '0.25rem 0.75rem', borderRadius: '20px', fontWeight: '600'}}>
                           <i className="far fa-clock" style={{marginRight: '5px'}}></i>
@@ -2983,6 +3011,24 @@ const Portal = () => {
                             style={{marginRight: '10px', color: 'var(--primary)'}}
                           ></i>
                           {res.scholarship_name}
+                          {(() => {
+                            const createdDate = new Date(res.dateCreated || res.date_created || 0);
+                            const diffDays = (new Date() - createdDate) / (1000 * 60 * 60 * 24);
+                            return diffDays <= 3 ? (
+                              <span style={{
+                                background: 'linear-gradient(90deg, #ff9800 60%, #ffcc80 100%)',
+                                color: '#fff',
+                                fontWeight: 900,
+                                fontSize: '0.65rem',
+                                borderRadius: '8px',
+                                padding: '1px 8px',
+                                marginLeft: '10px',
+                                letterSpacing: '0.5px',
+                                boxShadow: '0 2px 6px rgba(255,152,0,0.2)',
+                                textTransform: 'uppercase'
+                              }}>NEW</span>
+                            ) : null;
+                          })()}
                         </h4>
                         <div className="requirements-list">
                           <h5>Requirements:</h5>

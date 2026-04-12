@@ -2175,7 +2175,16 @@ export default function ScholarshipDashboard({
                             {ann.status}
                           </span>
                           <div className="flex flex-col">
-                            <h4 className="text-lg font-semibold text-[#800020]">{ann.title}</h4>
+                            <h4 className="text-lg font-semibold text-[#800020] flex items-center gap-2">
+                              {ann.title}
+                              {(() => {
+                                const createdDate = new Date(ann.time_added || ann.date || ann.dateCreated);
+                                const diffDays = (new Date() - createdDate) / (1000 * 60 * 60 * 24);
+                                return diffDays <= 3 ? (
+                                  <span className="px-2 py-0.5 rounded bg-yellow-400 text-yellow-900 text-[10px] font-black uppercase tracking-tighter shadow-sm animate-pulse">NEW</span>
+                                ) : null;
+                              })()}
+                            </h4>
                             <span className="text-[10px] text-gray-500 font-mono">ID: {ann.ann_no || ann.id || 'N/A'}</span>
                           </div>
                         </div>
