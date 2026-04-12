@@ -761,35 +761,50 @@ def verify_video_content(video_bytes, keywords, expected_address=None, sample_po
 def extract_school_year_from_text(text):
     if not text: return None
     
+
     # Character hygiene for common OCR slips in years (O->0, S->5, G->6/9, B->8)
     clean_text = text.replace('O', '0').replace('o', '0')
     clean_text = re.sub(r'(?<=202)[SBG]', lambda m: {'S':'5', 'B':'8', 'G':'6'}.get(m.group(0), m.group(0)), clean_text)
+
+    # Normalize SY/S.Y. to 'school year' for easier matching
+    clean_text = re.sub(r'\bS\.?Y\.?\b', 'school year', clean_text, flags=re.IGNORECASE)
+    clean_text = re.sub(r'\bA\.?Y\.?\b', 'academic year', clean_text, flags=re.IGNORECASE)
 
     # Flatten whitespace so line breaks between labels and values do not block matching.
     compact_text = re.sub(r'\s+', ' ', clean_text).strip()
 
     # Normalize common shorthand label variants so grade sheets like
     # "SY/Sem 2026 1st Semester" are treated as a school-year marker.
-    compact_text = re.sub(r'\bsy\s*[/\\-]?\s*sem(?:ester)?\b', 'school year sem', compact_text, flags=re.IGNORECASE)
-    compact_text = re.sub(r'\bs\.?y\.?\s*[/\\-]?\s*sem(?:ester)?\b', 'school year sem', compact_text, flags=re.IGNORECASE)
+    compact_text = re.sub(r'\bschool year\s*[/\\-]?\s*sem(?:ester)?\b', 'school year sem', compact_text, flags=re.IGNORECASE)
+    compact_text = re.sub(r'\bacademic year\s*[/\\-]?\s*sem(?:ester)?\b', 'academic year sem', compact_text, flags=re.IGNORECASE)
+
+    # Join lines with 'VALID UNTIL' and 'school year' if split
+    compact_text = re.sub(r'(VALID UNTIL)\s*\n*\s*(school year)', r'\1 \2', compact_text, flags=re.IGNORECASE)
 
     # Priority 1: Year range or single year preceded by a school-year keyword
     # e.g. "School Year Sem 2025-2026", "S.Y. 2025-2026", "A.Y. 2025-2026", "VALID UNTIL 2025-2026"
     keyword_match = re.search(
-        r'(?:school\s*year(?:\s*sem(?:ester)?)?|school\s*year\s*/\s*sem(?:ester)?|s\.?y\.?|a\.?y\.?|valid\s*until|v\.?u\.?)\s*[:\-]?\s*(20\d{2}(?:\s*[/\\\-–]\s*20\d{2})?)',
+
+        r'(?:school\s*year(?:\s*sem(?:ester)?)?|school\s*year\s*/\s*sem(?:ester)?|academic\s*year|valid\s*until|v\.?u\.?)\s*[:\-]?\s*(20\d{2}(?:\s*[/\\\-–]\s*20\d{2})?)',
         compact_text, re.IGNORECASE
     )
     if keyword_match:
         return keyword_match.group(1).strip()
 
     # Priority 1b: Capture a year range appearing later on the same line as a school-year label.
+
     label_line_match = re.search(
-        r'(?:school\s*year|s\.?y\.?|a\.?y\.?)[^\n]{0,40}?(20\d{2}(?:\s*[/\\\-–]\s*20\d{2})?)',
+        r'(?:school\s*year|academic\s*year)[^\n]{0,40}?(20\d{2}(?:\s*[/\\\-–]\s*20\d{2})?)',
         clean_text,
         re.IGNORECASE,
     )
     if label_line_match:
         return label_line_match.group(1).strip()
+
+    # Priority 1c: Fallback for 'SY 2025-2026' or 'S.Y. 2025-2026' not caught above
+    sy_match = re.search(r'SY\s*[/\\\-–]?\s*(20\d{2}\s*[/\\\-–]\s*20\d{2})', text, re.IGNORECASE)
+    if sy_match:
+        return sy_match.group(1).strip()
 
     # Priority 1c: Semester shorthand with year on the same line, such as
     # "SY/Sem 2026 1st Semester" or "Sem 1 2026".
