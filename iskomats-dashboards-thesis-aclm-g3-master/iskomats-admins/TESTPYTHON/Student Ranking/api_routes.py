@@ -1166,9 +1166,7 @@ ISKOMATS Admin
             cursor.close()
         if conn:
             conn.close()
-        raise
         
-    print("[SEND_PASSWORD_RESET_EMAIL] Email sent successfully!", flush=True)
 
 
 def send_announcement_emails(
