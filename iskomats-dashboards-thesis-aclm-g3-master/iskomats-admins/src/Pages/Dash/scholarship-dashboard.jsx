@@ -35,8 +35,8 @@ import {
   FaSpinner
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
-import { scholarshipAPI, announcementAPI, warmBackendConnection } from '../../services/api';
 import socketService from '../../services/socket';
+import iskomatsLogo from '../../assets/logo.png';
 
 Chart.register(...registerables);
 
@@ -2742,7 +2742,6 @@ export default function ScholarshipDashboard({
       const wb = XLSX.utils.book_new();
 
       const formatTracking = (list) => list.map(app => ({
-        'Scholarship': scholarshipLabel,
         'Student Name': app.name,
         'Grade': app.grade,
         'Financial Status': getFinancialStatusLabel(app.income || app.family?.grossIncome),
@@ -2752,9 +2751,20 @@ export default function ScholarshipDashboard({
         'Course': app.course
       }));
 
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatTracking(filterListToExport(applicants))), 'Pending Review');
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatTracking(filterListToExport(accepted))), 'Accepted Scholars');
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatTracking(filterListToExport(declined))), 'Declined - Cancelled');
+      const activeScholarship = trackScholarshipFilter !== 'all' 
+        ? data.scholarshipPosts.find(p => (p.reqNo || p.id) === trackScholarshipFilter)?.scholarshipName || scholarshipLabel
+        : scholarshipLabel;
+
+      const addHeaderToSheet = (list, sheetName) => {
+        const ws = XLSX.utils.aoa_to_sheet([[activeScholarship], [`Report: ${sheetName}`], [`Generated: ${new Date().toLocaleString()}`], []]);
+        XLSX.utils.sheet_add_json(ws, formatTracking(list), { origin: 'A5' });
+        // Style the title a bit (if possible with basic xlsx, otherwise just bolding is enough for some readers)
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      };
+
+      addHeaderToSheet(filterListToExport(applicants), 'Pending Review');
+      addHeaderToSheet(filterListToExport(accepted), 'Accepted Scholars');
+      addHeaderToSheet(filterListToExport(declined), 'Declined - Cancelled');
 
       XLSX.writeFile(wb, `${fileName}.xlsx`);
       return;
@@ -2762,7 +2772,6 @@ export default function ScholarshipDashboard({
 
     // Helper to format applicant data for Excel
     const formatApplicants = (list) => list.map(app => ({
-      'Scholarship': scholarshipLabel,
       'Student Name': app.name || `${app.firstName} ${app.lastName}`,
       'Grade': app.grade || 'N/A',
       'Financial Status': getFinancialStatusLabel(app.income || app.family?.grossIncome),
@@ -2771,10 +2780,16 @@ export default function ScholarshipDashboard({
       'Address': app.municipality || 'N/A'
     }));
 
+    const createSheetWithHeader = (list, title) => {
+      const ws = XLSX.utils.aoa_to_sheet([[scholarshipLabel], [title], [`Date: ${new Date().toLocaleDateString()}`], []]);
+      XLSX.utils.sheet_add_json(ws, formatApplicants(list), { origin: 'A5' });
+      return ws;
+    };
+
     // Create worksheets for Applicant Statuses
-    const acceptedWS = XLSX.utils.json_to_sheet(formatApplicants(filteredReportApplicants.accepted));
-    const declinedWS = XLSX.utils.json_to_sheet(formatApplicants(filteredReportApplicants.declined));
-    const pendingWS = XLSX.utils.json_to_sheet(formatApplicants(filteredReportApplicants.pending));
+    const acceptedWS = createSheetWithHeader(filteredReportApplicants.accepted, 'Accepted Scholars');
+    const declinedWS = createSheetWithHeader(filteredReportApplicants.declined, 'Declined Applicants');
+    const pendingWS = createSheetWithHeader(filteredReportApplicants.pending, 'Pending Applications');
 
     // Create worksheet for Location Stats
     const locationData = filteredHistoricalData.locationStats.map(item => ({
@@ -3377,8 +3392,8 @@ export default function ScholarshipDashboard({
         <div className="print-only mt-12 space-y-10">
           <div className="flex items-center justify-between border-b-2 border-gray-200 pb-6 mb-8">
             <div className="flex items-center gap-6">
-              <div className="w-20 h-20 rounded-2xl bg-[#800020] p-3 flex items-center justify-center shadow-lg">
-                <img src={logo} alt="iskoMats Logo" className="w-full h-full object-contain brightness-0 invert" />
+              <div className="w-20 h-20 rounded-2xl bg-white p-3 flex items-center justify-center shadow-lg border border-gray-100">
+                <img src={iskomatsLogo} alt="Iskomats Logo" className="w-full h-full object-contain" />
               </div>
               <div>
                 <h2 className="text-3xl font-black text-[#800020] tracking-tighter uppercase leading-none mb-1">iskoMats</h2>
