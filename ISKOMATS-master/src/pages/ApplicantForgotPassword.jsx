@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { authAPI } from '../services/api';
+import lipaBg from '../assets/lipa.jpg';
 
 const ApplicantForgotPassword = () => {
   const navigate = useNavigate();
@@ -56,6 +57,23 @@ const ApplicantForgotPassword = () => {
       
       // available: false means email exists (not available), available: true means email doesn't exist
       if (emailCheckResponse.available !== false) {
+        body.applicant-forgot-bg {
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+          background: url(${lipaBg}) center/cover no-repeat fixed !important;
+          color: #121826;
+          line-height: 1.5;
+          min-height: 100vh;
+        }
+        .applicant-forgot-bg-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100vw;
+          height: 100vh;
+          background: rgba(30, 20, 20, 0.7);
+          z-index: 0;
+          pointer-events: none;
+        }
         setFormData({
           ...formData,
           isLoading: false,

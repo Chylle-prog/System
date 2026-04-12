@@ -382,9 +382,27 @@ const Login = () => {
     navigate('/forgot-password');
   };
 
+  React.useEffect(() => {
+    document.body.classList.add('login-bg');
+    return () => document.body.classList.remove('login-bg');
+  }, []);
   return (
     <>
       <style>{`
+        body.login-bg {
+          background: url(${lipaBg}) center/cover no-repeat fixed !important;
+          min-height: 100vh;
+        }
+        .login-bg-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100vw;
+          height: 100vh;
+          background: rgba(30, 20, 20, 0.7);
+          z-index: 0;
+          pointer-events: none;
+        }
         * {
           margin: 0;
           padding: 0;
@@ -1127,6 +1145,7 @@ const Login = () => {
         }
       `}</style>
 
+      <div className="login-bg-overlay" />
       <nav className="navbar">
         <Link to="/" className="navbar-brand">
           <img src="/iskologo.png" alt="iskoMats" style={{ height: '56px', marginRight: '16px', verticalAlign: 'middle' }} />

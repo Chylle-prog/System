@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { authAPI, applicantAPI } from '../services/api';
 import { useAuth } from "../contexts/AuthContext";
+import lipaBg from '../assets/lipa.jpg';
 
 const VerifyEmail = () => {
   const navigate = useNavigate();
@@ -219,6 +220,20 @@ const VerifyEmail = () => {
   return (
     <>
       <style>{`
+        body.verify-bg {
+          background: url(${lipaBg}) center/cover no-repeat fixed !important;
+          min-height: 100vh;
+        }
+        .verify-bg-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100vw;
+          height: 100vh;
+          background: rgba(30, 20, 20, 0.7);
+          z-index: 0;
+          pointer-events: none;
+        }
         .loading-overlay {
           position: fixed;
           top: 0;
@@ -233,11 +248,9 @@ const VerifyEmail = () => {
           z-index: 9999;
           animation: fadeIn 0.3s ease;
         }
-
         .loading-overlay.active {
           display: flex;
         }
-
         .loading-modal {
           background: white;
           padding: 3.5rem;
@@ -248,7 +261,6 @@ const VerifyEmail = () => {
           width: 90%;
           border: 1px solid rgba(255, 255, 255, 0.2);
         }
-
         .loading-spinner {
           width: 60px;
           height: 60px;
@@ -258,12 +270,10 @@ const VerifyEmail = () => {
           margin: 0 auto 1.8rem;
           animation: spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
         }
-
         @keyframes spin {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
-
         @keyframes fadeIn {
           from { opacity: 0; }
           to { opacity: 1; }
@@ -275,18 +285,21 @@ const VerifyEmail = () => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#f5f5f5',
+        background: `url(${lipaBg}) center/cover no-repeat fixed`,
+        position: 'relative',
         padding: '20px',
         fontFamily: 'Inter, sans-serif'
       }}>
-      <div style={{
-        width: '100%',
-        maxWidth: '500px',
-        backgroundColor: 'white',
-        borderRadius: '12px',
-        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
-        overflow: 'hidden'
-      }}>
+        <div className="verify-bg-overlay" />
+        <div style={{
+          width: '100%',
+          maxWidth: '500px',
+          backgroundColor: 'rgba(255,255,255,0.85)',
+          borderRadius: '12px',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
+          overflow: 'hidden',
+          zIndex: 1
+        }}>
         {/* Header */}
         <div style={{
           background: '#4F0D00',

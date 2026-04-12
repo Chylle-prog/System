@@ -203,7 +203,8 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     text1 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 1')
     
     # Check if first pass was sufficient (lenient 20-char check)
-    if len(text1.strip()) > 30:
+    # IDs often have very few characters (Name + ID#), 20 is a safe early exit.
+    if len(text1.strip()) > 20:
         return text1.strip()
     
     # Fallback to standard engine (OEM 3) only if LSTM fails
@@ -213,7 +214,7 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
         if len(text_fallback.strip()) > len(text1.strip()):
             text1 = text_fallback
         
-    if len(text1.strip()) > 30:
+    if len(text1.strip()) > 20:
         return text1.strip()
         
     # Pass 2: Adaptive Thresholding (Fails on white-on-dark, but great for shadows on paper)
@@ -657,17 +658,20 @@ def _preprocess_frame_for_ocr(frame):
     """Enhance a video frame for better OCR accuracy (handles compression artifacts)."""
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     enhanced = _CLAHE.apply(gray)
-    enhanced = cv2.fastNlMeansDenoising(enhanced, None, 10, 7, 21)
+    # REPLACED: fastNlMeansDenoising with GaussianBlur (100x faster, usually sufficient for high-contrast text)
+    enhanced = cv2.GaussianBlur(enhanced, (3, 3), 0)
     return cv2.normalize(enhanced, None, 0, 255, cv2.NORM_MINMAX)
 
 
 def _ocr_video_frame(processed_frame, allow_alt_pass=True):
     """Run OCR for a single video frame while holding the shared OCR gate only for Tesseract work."""
     with OCR_SEMAPHORE:
-        text = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config='--psm 3 --oem 3')
+        # Pass 1: Global/Mixed Layout
+        text = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config='--psm 3 --oem 1')
 
-        if allow_alt_pass and len(text.strip()) < 10:
-            text_alt = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config='--psm 6 --oem 3')
+        # Only run fallback pass if Pass 1 was extremely poor (< 6 chars)
+        if allow_alt_pass and len(text.strip()) < 6:
+            text_alt = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config='--psm 6 --oem 1')
             if len(text_alt.strip()) > len(text.strip()):
                 text = text_alt
 
