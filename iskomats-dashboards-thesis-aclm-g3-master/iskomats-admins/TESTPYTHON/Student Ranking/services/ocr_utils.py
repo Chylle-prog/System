@@ -633,8 +633,13 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
 
             text = _run_tesseract_on_image(img, psm=primary_psm, skip_pass2=skip_pass2)
             
-            # Fast-layout documents skip the extra header pass to keep latency down.
-            if not is_id_back and len(text.strip()) < 150:
+            # Optimization: Skip header pass if keywords already found in primary text.
+            # This is specifically effective for Indigency documents where the header is often part of the main block.
+            needs_header = len(text.strip()) < 150
+            if is_indigency and any(k.lower() in text.lower() for k in ['indigency', 'barangay', 'certificate']):
+                needs_header = False
+
+            if not is_id_back and needs_header:
                 if not prefer_fast_layout:
                     header_height = max(int(img.shape[0] * 0.28), 1)
                     header_img = img[:header_height, :]
@@ -676,14 +681,17 @@ def _preprocess_frame_for_ocr(frame):
     return cv2.normalize(enhanced, None, 0, 255, cv2.NORM_MINMAX)
 
 
-def _ocr_video_frame(processed_frame, allow_alt_pass=True):
+def _ocr_video_frame(processed_frame, allow_alt_pass=True, keywords=None):
     """Run OCR for a single video frame while holding the shared OCR gate only for Tesseract work."""
     with OCR_SEMAPHORE:
         # Pass 1: Global/Mixed Layout
         text = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config='--psm 3 --oem 1')
 
+        # Smart Exit: If keywords provided and found, exit immediately for speed
+        if keywords and any(k.lower() in text.lower() for k in keywords):
+            return text
+
         # Only run fallback pass if Pass 1 was relatively poor (< 12 chars)
-        # Documents usually have headers; if we only got a few chars, we likely missed them.
         if allow_alt_pass and len(text.strip()) < 12:
             text_alt = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config='--psm 6 --oem 1')
             if len(text_alt.strip()) > len(text.strip()):
@@ -777,7 +785,7 @@ def verify_video_content(video_bytes, keywords, expected_address=None, sample_po
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=min(len(frames_to_ocr), 3)) as executor:
             # allow_alt_pass=True for thoroughness on documents
-            ocr_results = list(executor.map(lambda f: _ocr_video_frame(f, allow_alt_pass=allow_alt_pass), frames_to_ocr))
+            ocr_results = list(executor.map(lambda f: _ocr_video_frame(f, allow_alt_pass=allow_alt_pass, keywords=keywords), frames_to_ocr))
 
         all_ocr_text = " ".join(ocr_results)
         found_keywords = []
