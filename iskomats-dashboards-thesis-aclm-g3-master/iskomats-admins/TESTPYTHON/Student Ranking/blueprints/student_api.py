@@ -192,7 +192,7 @@ def format_academic_period(expected_year, expected_semester=None):
     return ' '.join(parts) if parts else 'current academic period'
 
 
-def student_name_matches_text(raw_text, first_name, middle_name, last_name):
+def student_name_matches_text(raw_text, first_name, middle_name, last_name, is_indigency=False):
     name_ok, _, _, match_ratio = _perform_text_matching(
         raw_text,
         first_name,
@@ -200,7 +200,9 @@ def student_name_matches_text(raw_text, first_name, middle_name, last_name):
         last_name,
         None,
         None,
-        False,
+        None,
+        None,
+        is_indigency
     )
     return name_ok, match_ratio
 
@@ -347,17 +349,17 @@ def gpa_matches_text(raw_text, expected_gpa):
     tolerance = 0.12 if expected_value <= 5 else 1.0
     for number in candidate_numbers:
         if abs(number - expected_value) <= tolerance:
-            return True, number
+            return True, number, candidate_numbers
 
         rounded_two_decimals = round(number, 2)
         if abs(rounded_two_decimals - expected_value) <= 0.02:
-            return True, rounded_two_decimals
+            return True, rounded_two_decimals, candidate_numbers
 
         truncated_two_decimals = int(number * 100) / 100
         if abs(truncated_two_decimals - expected_value) <= 0.02:
-            return True, truncated_two_decimals
+            return True, truncated_two_decimals, candidate_numbers
 
-    return False, None
+    return False, None, candidate_numbers
 
 
 def get_announcement_image_columns(cursor):
@@ -3282,11 +3284,11 @@ def ocr_check():
 
                 def run_ocr_check():
                     if doc_type == 'Enrollment':
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=800, prefer_fast_layout=True)
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1000, prefer_fast_layout=True)
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'Grades':
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=800, prefer_fast_layout=True)
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1000, prefer_fast_layout=True)
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'SchoolIDBack':
@@ -3341,7 +3343,8 @@ def ocr_check():
                     
                     year_ok = is_current_school_year(year_label, semester_str=semester_label, expected_year=expected_academic_year, expected_semester=expected_semester)
                     school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
-                    name_ok, name_ratio = student_name_matches_text(raw, first_name, middle_name, last_name)
+                    # For COE/Grades, we use lenient name matching (is_indigency=True) because these documents often omit middle names.
+                    name_ok, name_ratio = student_name_matches_text(raw, first_name, middle_name, last_name, is_indigency=True)
                     year_level_ok, _ = year_level_matches_text(raw, expected_year_level)
 
                     if doc_type == 'Enrollment':
