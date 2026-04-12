@@ -383,7 +383,11 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
         last_ok, last_ratio = check_name_part(target_last_name, is_middle=False)
         
         # All present names must pass for full verification
-        n_verified = first_ok and middle_ok and last_ok
+        # For Indigency, we allow middle name to be optional as certificates often omit it.
+        if is_indigency:
+            n_verified = first_ok and last_ok
+        else:
+            n_verified = first_ok and middle_ok and last_ok
         
         # 1.b ID Number Matching (If provided)
         if target_id_no and str(target_id_no).strip():

@@ -1790,9 +1790,6 @@ def init_socketio(socketio):
                 emit('error', {'msg': 'Invalid token payload'})
                 return
 
-            # Always ensure rooms are up to date for this user on login
-            initialize_auto_chat_rooms()
-            
             # Identify name and provider for chat
             conn = get_db()
             cursor = conn.cursor()
@@ -2157,7 +2154,7 @@ def login():
         
         # Query user from database based on email table joining with user and scholarship_providers
         cursor.execute(f'''
-            SELECT e.password_hash, e.user_no, e.is_locked, u.user_name, u.pro_no, p.provider_name
+            SELECT e.password_hash, e.user_no, e.is_locked, e.is_verified, u.user_name, u.pro_no, p.provider_name
             FROM {user_email_table} e
             LEFT JOIN users u ON e.user_no = u.user_no
             LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
@@ -2195,6 +2192,15 @@ def login():
                 status='failed',
             )
             return jsonify({'message': 'Account has been suspended. Please contact the administrator.', 'suspended': True}), 403
+        
+        # Check if account is verified
+        if not user.get('is_verified', True):
+            return jsonify({
+                'message': 'Email address not verified.',
+                'requires_verification': True,
+                'email': normalized_email,
+                'userId': make_account_identifier('admin', user['user_no'])
+            }), 403
         
         # Normalize role for frontend routing
         prov_name = provider_name
@@ -4414,6 +4420,7 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
     title = data.get('title')
     message = data.get('content')
     send_to_all_applicants = data.get('send_to_all_applicants', True)
+    should_notify = data.get('notify', False) # New flag to prevent duplicate notifications
     
     if not title or not message:
         return jsonify({'message': 'Title and content are required'}), 400
@@ -4521,16 +4528,17 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
             provider_no=resolved_provider_no
         )
 
-        run_background_task(
-            notify_announcement_applicants,
-            title,
-            message,
-            target_provider_no,
-            target_provider_name,
-            send_to_all_applicants,
-            True,
-            notification_title_prefix='Announcement Updated',
-        )
+        if should_notify:
+            run_background_task(
+                notify_announcement_applicants,
+                title,
+                message,
+                target_provider_no,
+                target_provider_name,
+                send_to_all_applicants,
+                True,
+                notification_title_prefix='Announcement Updated',
+            )
         
         return jsonify({'message': 'Announcement updated', 'ann_no': ann_no}), 200
     except Exception as e:
