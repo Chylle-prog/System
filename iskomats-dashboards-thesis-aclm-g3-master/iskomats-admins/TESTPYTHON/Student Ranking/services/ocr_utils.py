@@ -389,9 +389,9 @@ def course_matches_text(target_course, text):
                 if found_fuzzy: continue
         
         if (matches / len(meaningful_words)) >= 0.6:
-            return True
+            return True, t_course
             
-    return False
+    return False, None
 
 
 def student_id_no_matches_text(target_id, text):
@@ -414,7 +414,7 @@ def student_id_no_matches_text(target_id, text):
         return s
     
     t_id = normalize_id(target_id)
-    if not t_id: return True
+    if not t_id: return True, None
     
     # Search for "Student No" to isolate the actual number block if possible
     # This helps when the document has many numbers
