@@ -206,38 +206,29 @@ def gpa_matches_text(raw_text, expected_gpa):
     for pattern in gpa_patterns:
         for labeled_match in re.finditer(pattern, raw_text_str, re.IGNORECASE):
             try:
-                gpa_candidates.append(float(labeled_match.group(1)))
+                # Handle common OCR misreads within the captured value (e.g., 3.S481 instead of 3.5481)
+                clean_num = labeled_match.group(1).lower().replace('s', '5').replace('o', '0').replace('z', '2').replace('b', '8').replace('g', '9').replace('i', '1').replace('l', '1')
+                gpa_candidates.append(float(clean_num))
             except: continue
 
     # Priority 1: Numbers following a GPA label
     # Priority 2: Any number in the text that looks like a GPA (1.0 - 5.0 or 70 - 100)
     candidate_numbers = gpa_candidates + [num for num in raw_numbers if (1.0 <= num <= 5.0 or 70.0 <= num <= 100.0) and num not in gpa_candidates]
 
-    # Matching Logic: "At least the first 3 digits like 3.25 with flexibility at the last digit"
-    # We'll use a tolerance that allows the last digit of a 2nd decimal place to vary.
-    # 0.099 tolerance means 3.25 matches anything from 3.15 to 3.35? No.
-    # 0.099 tolerance for 3.25 means [3.151, 3.349].
-    # Actually, to be flexible at the "last digit" of a "3.25" (3 digits: 3, 2, 5),
-    # we want to ensure the "3.2" part is close or the value is very near.
-    
     # Standard tolerance for general matching
-    tolerance = 0.10 # Allows 3.25 to match 3.15 to 3.35
-    
     for number in candidate_numbers:
         diff = abs(number - expected_value)
         
         # Scenario A: Very close match (within 0.02) - Always pass
-        if diff <= 0.021:
+        if diff <= 0.025:
             return True, number, candidate_numbers
             
         # Scenario B: "Flexible last digit"
-        # If expected is 3.25, and number is 3.2x, diff will be <= 0.05
-        # If we allow the 2nd decimal to vary by up to 5 points:
-        if diff <= 0.06:
+        if diff <= 0.08:
             return True, number, candidate_numbers
             
-        # Scenario C: Larger tolerance (0.1) if it's explicitly labeled as GPA
-        if number in gpa_candidates and diff <= 0.11:
+        # Scenario C: Larger tolerance (0.12) if it's explicitly labeled as GPA
+        if number in gpa_candidates and diff <= 0.12:
             return True, number, candidate_numbers
 
     return False, None, candidate_numbers
@@ -2999,7 +2990,7 @@ def ocr_check():
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'Grades':
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=950, prefer_fast_layout=True, crop_percent=0.95)
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1024, prefer_fast_layout=True, crop_percent=0.95)
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'SchoolIDBack':
