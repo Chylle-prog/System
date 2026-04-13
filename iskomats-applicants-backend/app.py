@@ -43,8 +43,10 @@ def after_request(response):
 def options_handler():
     return '', 200
 
-# --- Health Check Endpoint ---
+# --- Health Check Endpoints ---
 @app.route('/_health', methods=['GET'])
+@app.route('/health', methods=['GET'])
+@app.route('/api/health', methods=['GET'])
 def health_check():
     return 'ok', 200
 
