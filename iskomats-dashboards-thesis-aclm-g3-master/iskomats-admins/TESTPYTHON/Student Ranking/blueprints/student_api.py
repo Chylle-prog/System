@@ -3030,6 +3030,11 @@ def ocr_check():
                     return {'doc': doc_type, 'verified': False, 'message': f"Video verification failed: {msg_video}", 'video_verified': False, 'video_message': msg_video}
                 
                 # Document-Specific Logic
+                # Pre-calculate common fields used across multiple document types
+                name_ok, name_ratio = student_name_matches_text(raw, first_name, middle_name, last_name, is_indigency=(doc_type in ['Enrollment', 'Grades', 'Indigency']))
+                school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
+                year_level_ok, _ = year_level_matches_text(expected_year_level, raw)
+                
                 if doc_type in ['Enrollment', 'Grades']:
                     year_label = extract_school_year_from_text(raw)
                     semester_label = extract_semester_from_text(raw)
@@ -3038,10 +3043,6 @@ def ocr_check():
                     
                     year_only_ok = academic_year_matches_expected(year_label, expected_academic_year)
                     semester_ok = (normalized_expected_semester == normalized_semester_label) if normalized_expected_semester else True
-                    
-                    name_ok, _ = student_name_matches_text(raw, first_name, middle_name, last_name, is_indigency=True)
-                    school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
-                    year_level_ok, _ = year_level_matches_text(expected_year_level, raw)
                     
                     if doc_type == 'Enrollment':
                         id_ok, _ = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
@@ -3064,7 +3065,6 @@ def ocr_check():
 
                 elif doc_type == 'SchoolID':
                     id_ok, _ = student_id_no_matches_text(expected_id_no, raw)
-                    name_ok, name_ratio = student_name_matches_text(raw, first_name, middle_name, last_name)
                     
                     checklist = [
                         f"Name: {'OK' if name_ok else 'X'}",
