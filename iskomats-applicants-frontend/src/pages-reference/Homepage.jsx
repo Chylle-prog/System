@@ -1,12 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import Navbar from './Navbar';
-import { useAuth } from '../contexts/AuthContext';
 import './HomePage.css';
 
 const HomePage = () => {
-  const { currentUser } = useAuth();
   const [activeModal, setActiveModal] = useState(null);
+  const [showPhonePopup, setShowPhonePopup] = useState(false);
   const [activeFAQ, setActiveFAQ] = useState(null);
   const [activeCategory, setActiveCategory] = useState('all');
 
@@ -181,7 +180,7 @@ const HomePage = () => {
         <div className="hero">
           <h1>Tulong Isko, Tulong Bayan!</h1>
           <p>Unlock your future with iskoMats – A centralized scholarship matching made simple and smart.</p>
-          <Link to={currentUser ? "/portal" : "/login"} className="cta-button">Apply Now →</Link>
+          <Link to="/login" className="cta-button">Apply Now →</Link>
           <div className="features">
             <div className="feature-card">
               <h3><span style={{fontSize: '1.2rem', marginRight: '0.5rem'}}>🎯</span> 90% match rate</h3>
@@ -337,6 +336,13 @@ const HomePage = () => {
                 <a href="https://mail.google.com/mail/?view=cm&fs=1&to=iskomats@gmail.com" target="_blank" className="contact-btn primary">
                   <i className="fas fa-paper-plane"></i> Send Email
                 </a>
+                <button 
+                  onClick={() => setShowPhonePopup(true)}
+                  className="contact-btn secondary"
+                  style={{cursor: 'pointer'}}
+                >
+                  <i className="fas fa-phone"></i> Call Now
+                </button>
               </div>
             </div>
           </div>
@@ -380,6 +386,96 @@ const HomePage = () => {
                   <i className="fas fa-paper-plane" style={{ marginRight: '8px' }}></i>Apply Now
                 </Link>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Phone Numbers Popup */}
+      {showPhonePopup && (
+        <div 
+          className="phone-popup-overlay" 
+          onClick={() => setShowPhonePopup(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+        >
+          <div 
+            className="phone-popup-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'white',
+              borderRadius: '16px',
+              padding: '2rem',
+              maxWidth: '400px',
+              width: '90%',
+              boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)',
+              position: 'relative'
+            }}
+          >
+            <button 
+              onClick={() => setShowPhonePopup(false)}
+              style={{
+                position: 'absolute',
+                top: '1rem',
+                right: '1rem',
+                background: 'none',
+                border: 'none',
+                fontSize: '1.5rem',
+                cursor: 'pointer',
+                color: 'var(--text-soft)',
+                padding: '0.5rem'
+              }}
+            >
+              <i className="fas fa-times"></i>
+            </button>
+            
+            <h3 style={{margin: '0 0 1.5rem 0', color: 'var(--primary)', fontSize: '1.3rem'}}>
+              <i className="fas fa-phone" style={{marginRight: '0.5rem'}}></i>
+              Scholarship Contact Numbers
+            </h3>
+            
+            <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+              <div style={{padding: '1rem', background: 'var(--gray-1)', borderRadius: '8px'}}>
+                <div style={{fontWeight: '600', color: 'var(--text-dark)', marginBottom: '0.5rem'}}>
+                  Mayor Eric B. Africa Scholarship
+                </div>
+                <div style={{color: 'var(--primary)', fontSize: '1.1rem'}}>
+                  +63 (2) 8765-4321
+                </div>
+              </div>
+              
+              <div style={{padding: '1rem', background: 'var(--gray-1)', borderRadius: '8px'}}>
+                <div style={{fontWeight: '600', color: 'var(--text-dark)', marginBottom: '0.5rem'}}>
+                  Governor Vilma's Scholarship
+                </div>
+                <div style={{color: 'var(--primary)', fontSize: '1.1rem'}}>
+                  +63 (2) 9876-5432
+                </div>
+              </div>
+              
+              <div style={{padding: '1rem', background: 'var(--gray-1)', borderRadius: '8px'}}>
+                <div style={{fontWeight: '600', color: 'var(--text-dark)', marginBottom: '0.5rem'}}>
+                  CHED Tulong Dunong
+                </div>
+                <div style={{color: 'var(--primary)', fontSize: '1.1rem'}}>
+                  +63 (2) 5432-1098
+                </div>
+              </div>
+            </div>
+            
+            <div style={{marginTop: '1.5rem', textAlign: 'center', fontSize: '0.9rem', color: 'var(--text-soft)'}}>
+              <i className="fas fa-clock" style={{marginRight: '0.5rem'}}></i>
+              Office Hours: Mon-Fri, 9AM-5PM PST
             </div>
           </div>
         </div>
