@@ -425,7 +425,7 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
             if is_indigency:
                 # For indigency: check all words but ignore generic terms like 'city' or 'municipality'
                 # This ensures we match the actual place name (e.g., "Lipa" instead of just "City")
-                ignore_words = ['city', 'municipality', 'town', 'province']
+                ignore_words = ['city', 'municipality', 'town', 'province', 'brgy', 'barangay']
                 a_words = [w.strip() for w in norm_target_addr.split() if len(w.strip()) >= 2 and w.strip() not in ignore_words]
                 
                 # If everything was filtered out, fallback to original words
@@ -438,7 +438,6 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
             for word in a_words:
                 if word in norm_txt: 
                     f_a_count += 1
-                    if is_indigency: break # Optimization: Early success for Indigency
                     continue
                 found_approx = False
                 for ocr_w in all_ocr_words:
@@ -448,12 +447,12 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
                     if difflib.SequenceMatcher(None, word, ocr_w).ratio() >= 0.7:
                         f_a_count += 1; found_approx = True; break
                 if found_approx:
-                    if is_indigency: break # Optimization: Early success for Indigency
                     continue
             
-            # Option A: For indigency, we only need at least one word to match (lenient)
+            # For Indigency, require at least 2 matching components (e.g., Barangay and City) if available.
             if is_indigency:
-                a_verified = f_a_count >= 1
+                required_matches = min(2, len(a_words))
+                a_verified = f_a_count >= required_matches
             else:
                 a_verified = (f_a_count / len(a_words) if a_words else 0) >= 0.5
 

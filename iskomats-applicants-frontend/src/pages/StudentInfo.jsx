@@ -774,7 +774,13 @@ const StudentInfo = () => {
       await performOcrVerification(
         docType, 
         docType === 'SchoolID' ? { front: base64, back: null } : base64, 
-        { schoolName: formData.schoolName, idNumber: formData.schoolIdNumber, yearLevel: formData.yearLevel }, 
+        { 
+          schoolName: formData.schoolName, 
+          idNumber: formData.schoolIdNumber, 
+          yearLevel: formData.yearLevel,
+          barangay: formData.barangay,
+          townCity: formData.townCityMunicipality
+        }, 
         null, 
         true
       );
@@ -814,7 +820,7 @@ const StudentInfo = () => {
         }, 80);
       }
 
-      const { townCity, schoolName, idNumber, yearLevel, gpa, course } = extraParams;
+      const { townCity, barangay, schoolName, idNumber, yearLevel, gpa, course } = extraParams;
       const { firstName, lastName, middleName } = formData;
       const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
 
@@ -831,7 +837,8 @@ const StudentInfo = () => {
         schoolName, idNumber, yearLevel, gpa, course,
         videoUrl,
         reqNo,
-        docType
+        docType,
+        barangay
       );
 
       if (!silent && pInterval) clearInterval(pInterval);
@@ -902,7 +909,7 @@ const StudentInfo = () => {
     setLoadingMessage({ title: 'Scanning Document', message: 'Verifying your Certificate of Indigency and Video Content...' });
     
     try {
-      const success = await performOcrVerification('Indigency', indigencyDoc, { townCity }, videoUrl);
+      const success = await performOcrVerification('Indigency', indigencyDoc, { townCity, barangay: formData.barangay }, videoUrl);
       if (success) {
         showPromptMessage('✅ Indigency verified successfully!');
       } else {

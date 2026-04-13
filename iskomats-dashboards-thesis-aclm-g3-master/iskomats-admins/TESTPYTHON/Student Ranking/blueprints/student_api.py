@@ -3099,6 +3099,7 @@ def ocr_check():
         if middle_name and len(middle_name) > 1:
             full_expected_name = f"{first_name} {middle_name} {last_name}"
         town_city = str(data.get('town_city') or data.get('townCity') or '').strip()
+        barangay = str(data.get('barangay') or '').strip()
         school_name = str(data.get('school_name') or data.get('schoolName') or '').strip()
         course = str(data.get('course') or '').strip()
         expected_gpa = str(data.get('gpa') or data.get('expectedGPA') or '').strip()
@@ -3144,6 +3145,7 @@ def ocr_check():
             'middle_name': middle_name,
             'last_name': last_name,
             'town_city': town_city,
+            'barangay': barangay,
             'school_name': school_name,
             'course': course,
             'expected_gpa': expected_gpa,
@@ -3282,7 +3284,8 @@ def ocr_check():
                 }
 
                 # ─── PARALLEL VERIFICATION (Part 1: Preparation) ───
-                target_address = town_city if doc_type == 'Indigency' else None
+                # Combine Barangay and City for Indigency verification
+                target_address = f"{barangay} {town_city}".strip() if doc_type == 'Indigency' else None
                 
                 # Pre-define results
                 video_res = [True, "Not provided"]
