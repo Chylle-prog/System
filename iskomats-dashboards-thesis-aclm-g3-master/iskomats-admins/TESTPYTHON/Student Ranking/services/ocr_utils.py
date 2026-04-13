@@ -589,7 +589,14 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
                 else:
                     a_verified = (f_a_count / len(a_words) if a_words else 0) >= 0.5 and f_a_count > 0
 
-    # 2.7 School Name Matching
+    # 2.7 Barangay/Location Detection (Feedback Only)
+    detected_brgy = []
+    if is_indigency:
+        # Search for words following "Barangay" or "Brgy"
+        brgy_matches = re.findall(r'(?:barangay|brgy)\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)', ocr_text, re.IGNORECASE)
+        detected_brgy = list(set([m.strip() for m in brgy_matches if len(m.strip()) > 2]))
+
+    # 2.8 School Name Matching
     school_ok = True
     if target_school_name:
         from services.school_utils import build_school_name_variants
@@ -635,7 +642,7 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
                         if kw in found_keywords:
                             break
     
-    return n_verified and school_ok, a_verified, found_keywords, m_ratio
+    return n_verified and school_ok, a_verified, found_keywords, m_ratio, {"detected_brgy": detected_brgy}
 
 
 

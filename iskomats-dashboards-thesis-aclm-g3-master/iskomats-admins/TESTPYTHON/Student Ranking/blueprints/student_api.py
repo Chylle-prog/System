@@ -3003,12 +3003,24 @@ def ocr_check():
                         name_ok, name_ratio = student_name_matches_text(raw_t, first_name, middle_name, last_name, is_indigency=True)
                         addr_ok = True
                         found_kw = []
+                        found_kw = []
+                        detected_brgys = []
                         if target_address:
-                            _, addr_ok, found_keywords, _ = _perform_text_matching(raw_t, None, None, None, target_address, is_indigency=True)
+                            _, addr_ok, found_keywords, _, detect_meta = _perform_text_matching(raw_t, None, None, None, target_address, is_indigency=True)
                             found_kw = found_keywords
-                        meta = {'name_ok': name_ok, 'addr_ok': addr_ok, 'name_ratio': name_ratio, 'keywords': found_kw}
+                            detected_brgys = detect_meta.get('detected_brgy', [])
+
+                        meta = {'name_ok': name_ok, 'addr_ok': addr_ok, 'name_ratio': name_ratio, 'keywords': found_kw, 'detected_brgy': detected_brgys}
                         v_t = name_ok and addr_ok
-                        return v_t, extraction_error or ('Verified' if v_t else 'Verification failed'), raw_t, meta
+                        
+                        msg = 'Verified' if v_t else 'Verification failed'
+                        if not addr_ok and target_address:
+                            brgy_str = ", ".join(detected_brgys) if detected_brgys else "None detected"
+                            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Addr: X (Found: {brgy_str})]"
+                        elif not v_t:
+                            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Addr: {'OK' if addr_ok else 'OK' if not target_address else 'X'}]"
+
+                        return v_t, extraction_error or msg, raw_t, meta
                     else:
                         return verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=expected_id_no if doc_type != 'Indigency' else None, expected_school_name=school_name)
 
