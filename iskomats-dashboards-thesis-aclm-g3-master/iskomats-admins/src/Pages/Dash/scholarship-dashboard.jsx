@@ -35,7 +35,7 @@ import {
   FaSpinner
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
-import { adminAPI, scholarshipAPI, announcementAPI as announcementService, warmBackendConnection } from '../../services/api';
+import { adminAPI, scholarshipAPI, announcementService, warmBackendConnection } from '../../services/api';
 import socketService from '../../services/socket';
 import iskomatsLogo from '../../assets/logo.png';
 

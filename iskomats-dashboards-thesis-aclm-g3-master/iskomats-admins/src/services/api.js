@@ -223,7 +223,7 @@ export const scholarshipAPI = {
 
 // ===== ANNOUNCEMENT ENDPOINTS =====
 
-export const announcementAPI = {
+export const announcementService = {
   getAll: () =>
     api.get('/admin/announcements'),
   
