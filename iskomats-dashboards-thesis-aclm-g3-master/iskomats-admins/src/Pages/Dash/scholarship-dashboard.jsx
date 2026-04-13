@@ -35,13 +35,13 @@ import {
   FaSpinner
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
-import { adminAPI, scholarshipAPI, warmBackendConnection } from '../../services/api';
+import { adminAPI, scholarshipAPI, announcementAPI as announcementService, warmBackendConnection } from '../../services/api';
 import socketService from '../../services/socket';
 import iskomatsLogo from '../../assets/logo.png';
 
 Chart.register(...registerables);
 
-const ACADEMIC_YEAR_PATTERN = /^\d{4}[\-–—]\d{4}$/;
+const ACADEMIC_YEAR_PATTERN = /^\d{4}[-–—]\d{4}$/;
 
 const autoAdjustColumnWidths = (data) => {
   if (!data || !data.length) return [];
@@ -862,7 +862,11 @@ export default function ScholarshipDashboard({
 
   const loadAnnouncements = async () => {
     try {
-      const response = await announcementAPI.getAll();
+      if (typeof announcementService === 'undefined') {
+        console.error('[ContentMain] announcementService is not defined in this scope.');
+        return;
+      }
+      const response = await announcementService.getAll();
       // Map backend field names to frontend field names
       const normalizedAnnouncements = (response.data || []).map(ann => ({
         id: ann.ann_no || ann.id,
@@ -1022,7 +1026,7 @@ export default function ScholarshipDashboard({
     } else if (type === 'announcement') {
       showActionOverlay('Deleting announcement', 'Please wait while the announcement is being removed.');
       try {
-        await announcementAPI.delete(id);
+        await announcementService.delete(id);
         if (editingPost && (editingPost.id || editingPost.ann_no) === id) {
           resetForm();
           setManageMode('list');
@@ -1081,10 +1085,10 @@ export default function ScholarshipDashboard({
       if (manageMode === 'edit' && editingPost) {
         // Update existing announcement
         // Note: Backend might need update to handle FormData in PUT
-        response = await announcementAPI.update(editingPost.id || editingPost.ann_no, fData);
+        response = await announcementService.update(editingPost.id || editingPost.ann_no, fData);
       } else {
         // Create new announcement
-        response = await announcementAPI.create(fData);
+        response = await announcementService.create(fData);
       }
 
       if (response.data.message || response.data.success) {
