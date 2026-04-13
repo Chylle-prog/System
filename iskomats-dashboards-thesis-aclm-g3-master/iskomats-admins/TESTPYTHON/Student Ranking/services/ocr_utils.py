@@ -26,8 +26,9 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 cv2.setNumThreads(1) # Crucial: prevents OpenCV from spawning ghost threads that kill RAM
 
-# Global OCR Concurrency Control: Adjusted to 6 for a balance of speed and stability.
-OCR_SEMAPHORE = eventlet.semaphore.Semaphore(6)
+# Global OCR Concurrency Control: Reduced to 4 to ensure each task has more CPU time,
+# reducing total latency per request on shared-CPU environments like Render.
+OCR_SEMAPHORE = eventlet.semaphore.Semaphore(4)
 
 
 # ─── Environment hints for threading & memory ──────────────────────────────────
@@ -205,15 +206,18 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     if img is None: return ""
     results = []
     
-    # Pass 1: Raw Grayscale (Best for modern LSTM Tesseract, handles white-on-black perfectly)
+    # Pass 1: Binarized Grayscale (Extremely fast for Tesseract to process)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
     
+    # Binarization (Otsu) often yields 20-30% faster results because Tesseract skips internal binarization
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    
     t1 = time.time()
-    text1 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 1')
+    text1 = eventlet.tpool.execute(pytesseract.image_to_string, binary, config=f'--psm {psm} --oem 1')
     t1_end = time.time()
     
-    # Check if first pass was sufficient (Lenient 12-char check for names/IDs)
-    if len(text1.strip()) > 12:
+    # Check if first pass was sufficient (Lenient 10-char check for ID-only or short forms)
+    if len(text1.strip()) > 10:
         print(f"[OCR PERF] Pass1 ({psm}) SUCCESS: {t1_end - t1:.3f}s", flush=True)
         return text1.strip()
     
