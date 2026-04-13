@@ -2784,7 +2784,7 @@ def ocr_check():
         # 1. Get applicant record from DB
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT applicant_no, first_name, middle_name, last_name, town_city_municipality FROM applicants WHERE applicant_no = %s", (request.user_no,))
+        cur.execute("SELECT applicant_no, first_name, middle_name, last_name, town_city_municipality, street_brgy FROM applicants WHERE applicant_no = %s", (request.user_no,))
         applicant = cur.fetchone()
         document_values = fetch_applicant_document_values(
             cur,
@@ -2824,9 +2824,9 @@ def ocr_check():
         enrollment_doc_param = enrollment_doc_file.read() if enrollment_doc_file else data.get('enrollment_doc') or data.get('enrollmentDoc')
         grades_doc_param = grades_doc_file.read() if grades_doc_file else data.get('grades_doc') or data.get('gradesDoc')
 
-        first_name = str(data.get('first_name') or data.get('firstName') or '').strip()
-        middle_name = str(data.get('middle_name') or data.get('middleName') or '').strip()
-        last_name = str(data.get('last_name') or data.get('lastName') or '').strip()
+        first_name = str(data.get('first_name') or data.get('firstName') or applicant.get('first_name') or '').strip()
+        middle_name = str(data.get('middle_name') or data.get('middleName') or applicant.get('middle_name') or '').strip()
+        last_name = str(data.get('last_name') or data.get('lastName') or applicant.get('last_name') or '').strip()
         
         # Construct full expected name for OCR matching
         # Include middle name only if it's more than a single character or placeholder
@@ -2834,7 +2834,7 @@ def ocr_check():
         if middle_name and len(middle_name) > 1:
             full_expected_name = f"{first_name} {middle_name} {last_name}"
         town_city = str(data.get('town_city') or data.get('townCity') or data.get('townCityMunicipality') or applicant.get('town_city_municipality', '')).strip()
-        barangay = str(data.get('barangay') or data.get('streetBarangay') or data.get('targetBarangay') or '').strip()
+        barangay = str(data.get('barangay') or data.get('streetBarangay') or data.get('targetBarangay') or data.get('street_brgy') or data.get('street_barangay') or applicant.get('street_brgy', '')).strip()
         
         print(f"[OCR-DEBUG] User={request.user_no} Doc={target_doc} Town={town_city} Brgy={barangay}", flush=True)
         school_name = str(data.get('school_name') or data.get('schoolName') or '').strip()
