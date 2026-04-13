@@ -3255,14 +3255,15 @@ const StudentInfo = () => {
                 </div>
                 <div className="form-group">
                   <label>Name of School <span style={{color: '#e74c3c'}}>*</span></label>
-                    <>
-                      <input type="text" name="schoolName" value={formData.schoolName} onChange={handleInputChange} placeholder="Type your school name" list="studentinfo-school-options" required={currentStep === 3} />
-                      <datalist id="studentinfo-school-options">
-                        {SCHOOLS.map((school) => (
-                          <option key={school} value={school}>{school}</option>
-                        ))}
-                      </datalist>
-                    </>
+                  <input
+                    type="text"
+                    name="schoolName"
+                    value={formData.schoolName}
+                    readOnly
+                    style={{ backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }}
+                    placeholder="School Name"
+                    required={currentStep === 3}
+                  />
                 </div>
               </div>
 
