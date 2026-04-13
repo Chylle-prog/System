@@ -42,7 +42,8 @@ from services.ocr_utils import (
     extract_semester_from_text,
     normalize_semester_label,
     _perform_text_matching,
-    extract_document_text
+    extract_document_text,
+    student_name_matches_text
 )
 from services.notification_service import create_notification, fetch_google_access_token
 from services.google_auth_service import verify_google_token
@@ -3201,8 +3202,8 @@ def ocr_check():
                 video_scan_options = {
                     'Indigency': {
                         'sample_positions': [0.5],
-                        'max_width': 540,
-                        'allow_alt_pass': True,
+                        'max_width': 450,
+                        'allow_alt_pass': False,
                         'fallback_text_length': 12,
                     },
                     'Enrollment': {
@@ -3297,6 +3298,23 @@ def ocr_check():
                         raw_t, extraction_error = extract_document_text(doc_bytes, is_id_back=True)
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read school ID back text'), raw_t, {}
+                    elif doc_type == 'Indigency':
+                        # Use 50% crop as names/addresses are always in the upper half of certificates
+                        # PSM 6 + Skip Pass 2 + lower res (800px) = High Speed
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=800, prefer_fast_layout=True, crop_percent=0.50)
+                        
+                        # Perform standard name/address matching on the extracted text
+                        name_ok, name_ratio = student_name_matches_text(raw_t, first_name, middle_name, last_name, is_indigency=True)
+                        addr_ok = True
+                        found_kw = []
+                        if target_address:
+                            # Re-use matching helper for address extraction
+                            _, addr_ok, found_keywords, _ = _perform_text_matching(raw_t, None, None, None, target_address, is_indigency=True)
+                            found_kw = found_keywords
+                        
+                        meta = {'name_ok': name_ok, 'addr_ok': addr_ok, 'name_ratio': name_ratio, 'keywords': found_kw}
+                        v_t = name_ok and addr_ok
+                        return v_t, extraction_error or ('Verified' if v_t else 'Verification failed'), raw_t, meta
                     else:
                         return verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=expected_id_no if doc_type != 'Indigency' else None)
 
