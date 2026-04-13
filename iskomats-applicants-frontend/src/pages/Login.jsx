@@ -656,3081 +656,966 @@ const Login = () => {
           color: white;
           transition: var(--transition);
         }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
+
         .profile-input-wrapper input:focus {
           outline: none;
           border-color: var(--primary);
           background: white;
-          color: var(--primary);
           box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
         }
-        .profile-input-wrapper input:focus::placeholder {
+
+        .profile-input-wrapper input:focus + i {
           color: var(--primary);
         }
 
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
 
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
+        @keyframes cardFloat {
+          0% {
+            opacity: 0;
+            transform: translateY(30px);
+          }
 
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
+          100% {
+            opacity: 1;
+            transform: translateY(0);
           }
         }
 
-        .profile-form-group {
+        .auth-card:hover {
+          box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6);
+          background: rgba(255, 255, 255, 0.15);
+        }
+
+        .auth-header {
+          text-align: center;
           margin-bottom: 1.2rem;
         }
 
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
+        .auth-header h2 {
+          font-weight: 800;
+          font-size: 2rem;
+          letter-spacing: -0.02em;
+          color: white;
           margin-bottom: 0.5rem;
         }
 
-        .profile-input-wrapper {
+        .auth-header p {
+          color: rgba(255, 255, 255, 0.8);
+          font-size: 0.95rem;
+          font-weight: 400;
+        }
+
+        .form-group {
+          margin-bottom: 1.2rem;
+        }
+
+        .form-group label {
+          display: block;
+          font-weight: 600;
+          font-size: 0.8rem;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          color: rgba(255, 255, 255, 0.7);
+          margin-bottom: 0.4rem;
+        }
+
+        .input-wrapper {
           position: relative;
           display: flex;
           align-items: center;
         }
 
-        .profile-input-wrapper i {
+        .input-wrapper i {
           position: absolute;
           left: 1.2rem;
           color: var(--gray-3);
           font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
           transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
+          pointer-events: none;
         }
 
-        .profile-input-wrapper select {
+        .input-wrapper input {
           width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
+          padding: 0.85rem 1.2rem 0.85rem 2.8rem;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 30px;
           font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
+          background: rgba(255, 255, 255, 0.4);
+          color: var(--text-dark);
           transition: var(--transition);
+          font-family: 'Inter', sans-serif;
+          font-weight: 500;
         }
-        .profile-input-wrapper select:focus {
+
+        .input-wrapper input::placeholder {
+          color: rgba(18, 24, 38, 0.5);
+        }
+
+        .input-wrapper input:focus {
           outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
+          border-color: white;
+          background: rgba(255, 255, 255, 0.6);
+          box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.1);
+          color: var(--text-dark);
         }
 
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
+        /* Prevent white-on-white text during Chrome autofill */
+        .input-wrapper input:-webkit-autofill,
+        .input-wrapper input:-webkit-autofill:hover,
+        .input-wrapper input:-webkit-autofill:focus {
+          -webkit-text-fill-color: var(--text-dark);
+          -webkit-box-shadow: 0 0 0px 1000px rgba(255, 255, 255, 0.5) inset;
+          transition: background-color 5000s ease-in-out 0s;
         }
 
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
+        .input-wrapper input:focus+i {
+          color: white;
+        }
+
+        .submit-btn {
+          width: 100%;
+          padding: 0.8rem;
+          background: var(--primary-gradient);
+          color: white;
+          border: none;
+          border-radius: 40px;
+          font-weight: 700;
+          font-size: 1.1rem;
+          cursor: pointer;
+          transition: var(--transition);
+          box-shadow: 0 12px 24px -12px rgba(79, 13, 0, 0.5);
+          background-size: 200% auto;
+          margin-top: 0.5rem;
+        }
+
+        .submit-btn:hover {
+          transform: translateY(-3px) scale(1.01);
+          box-shadow: 0 20px 30px -12px #4F0D00;
+          background-position: right center;
+        }
+
+        .submit-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+          transform: none;
+          box-shadow: 0 12px 24px -12px rgba(79, 13, 0, 0.3);
+        }
+
+        .submit-btn:disabled:hover {
+          transform: none;
+          box-shadow: 0 12px 24px -12px rgba(79, 13, 0, 0.3);
+        }
+
+        .toggle-auth {
+          text-align: center;
+          margin-top: 2rem;
+          font-size: 0.95rem;
+          color: rgba(255, 255, 255, 0.8);
+        }
+
+        .toggle-auth a {
+          color: white;
+          font-weight: 700;
+          cursor: pointer;
+          text-decoration: none;
+          border-bottom: 2px solid transparent;
+          transition: var(--transition);
+          padding-bottom: 1px;
+        }
+
+        .toggle-auth a:hover {
+          border-bottom-color: var(--primary);
+        }
+
+
+        .modal-overlay {
+          display: none;
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(20, 30, 40, 0.5);
+          backdrop-filter: blur(6px);
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+        }
+
+        .modal-overlay.active {
+          display: flex;
+          animation: modalFade 0.3s;
+        }
+
+        @keyframes modalFade {
+          from {
+            opacity: 0;
+          }
+
+          to {
+            opacity: 1;
           }
         }
 
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
+        .modal-content {
           background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
+          padding: 3rem 3.5rem;
+          border-radius: 64px;
+          max-width: 440px;
+          text-align: center;
+          box-shadow: var(--shadow-lg);
+          transform: scale(0.9);
+          animation: modalPop 0.3s forwards;
         }
 
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
+        @keyframes modalPop {
+          to {
+            transform: scale(1);
           }
         }
 
-        .profile-form-group {
-          margin-bottom: 1.2rem;
+        .modal-content h3 {
+          font-size: 2.2rem;
+          font-weight: 800;
+          color: var(--primary);
+          margin-bottom: 1rem;
         }
 
-        .profile-form-group label {
+        .modal-content p {
+          color: var(--text-soft);
+        }
+
+        .section {
+          display: none;
+          width: 100%;
+        }
+
+        .section.active {
           display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
         }
 
-        .profile-input-wrapper {
-          position: relative;
+        .error-message {
+          background: rgba(239, 68, 68, 0.1);
+          border: 1.5px solid rgba(239, 68, 68, 0.3);
+          border-radius: 20px;
+          padding: 1rem 1.5rem;
+          margin-bottom: 1.5rem;
           display: flex;
           align-items: center;
+          gap: 0.8rem;
+          color: #dc2626;
+          font-size: 0.9rem;
+          font-weight: 500;
+          animation: errorShake 0.5s ease-in-out;
         }
 
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
+        .error-message i {
+          font-size: 1.1rem;
+          color: #dc2626;
         }
 
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
+        @keyframes errorShake {
 
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
+          0%,
+          100% {
+            transform: translateX(0);
+          }
 
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
+          25% {
+            transform: translateX(-5px);
+          }
 
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
+          75% {
+            transform: translateX(5px);
           }
         }
 
-        .profile-form-group {
-          margin-bottom: 1.2rem;
+        .social-signup {
+          margin-top: 1rem;
         }
 
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
+        .divider {
           display: flex;
           align-items: center;
+          margin: 1rem 0 0.75rem 0;
+          position: relative;
         }
 
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
+        .divider::before,
+        .divider::after {
+          content: '';
+          flex: 1;
+          height: 1px;
+          background: var(--gray-2);
         }
 
-        .profile-input-wrapper input {
+        .divider span {
+          padding: 0 1rem;
+          color: var(--text-soft);
+          font-size: 0.85rem;
+          font-weight: 500;
+        }
+
+        .google-signup-btn {
           width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 0.875rem 1rem;
           background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
+          border: 1px solid var(--gray-2);
+          border-radius: 8px;
+          font-size: 0.95rem;
+          font-weight: 500;
+          color: var(--text-dark);
+          cursor: pointer;
+          transition: all 0.2s;
+          margin-top: 0.5rem;
         }
 
-        .profile-input-wrapper select {
+        .google-signup-btn:hover {
+          background: var(--gray-1);
+          border-color: var(--gray-3);
+          transform: translateY(-1px);
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .google-signup-btn:active {
+          transform: translateY(0);
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        .forgot-password {
+          text-align: center;
+          margin-top: 1rem;
+        }
+
+        .forgot-password a:hover {
+          text-decoration: underline !important;
+        }
+
+        .loading-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
           width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
+          height: 100%;
+          background: rgba(0, 0, 0, 0.75);
+          backdrop-filter: blur(10px);
+          display: none;
+          justify-content: center;
+          align-items: center;
+          z-index: 9999;
+          animation: fadeIn 0.3s ease;
         }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
+
+        .loading-overlay.active {
+          display: flex;
+        }
+
+        .loading-modal {
           background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
+          padding: 3.5rem;
+          border-radius: 40px;
+          text-align: center;
+          box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
+          max-width: 450px;
+          width: 90%;
+          border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
+        .loading-spinner {
+          width: 60px;
+          height: 60px;
+          border: 6px solid #ffe8e3;
+          border-top: 6px solid var(--primary);
+          border-radius: 50%;
+          margin: 0 auto 1.8rem;
+          animation: spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        @media (max-width: 768px) {
+          .navbar {
+            flex-direction: column;
+            padding: 1rem 5%;
+            gap: 1rem;
+          }
+          
+          .navbar-nav {
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1rem;
+          }
+          
+          .auth-wrapper {
+            padding: 2rem 5%;
+            flex-direction: column;
+          }
+          
+          .auth-card {
+            padding: 2rem 1.5rem;
+            max-width: 100%;
+          }
+
+          .profile-card {
+            padding: 2rem 1.5rem;
+            max-width: 100%;
+          }
+          
+          .auth-header h2 {
+            font-size: 1.8rem;
+          }
+          
+          .auth-header p {
+            font-size: 1rem;
+          }
+          
+          .form-group label {
+            font-size: 0.9rem;
+          }
+          
+          .form-group input,
+          .form-group select {
+            padding: 0.8rem 1rem;
+            font-size: 0.95rem;
+          }
+          
+          .submit-btn {
+            padding: 0.8rem;
+            font-size: 0.95rem;
+          }
+          
+          .toggle-btn {
+            padding: 0.6rem 1.5rem;
+            font-size: 0.9rem;
           }
         }
 
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
+        @media (max-width: 480px) {
+          .auth-wrapper {
+            padding: 1rem 3%;
+          }
+          
+          .auth-card {
+            padding: 1.5rem;
+            border-radius: 20px;
+          }
 
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
+          .profile-card {
+            padding: 1.5rem;
+            border-radius: 20px;
+          }
+          
+          .auth-header h2 {
+            font-size: 1.5rem;
+          }
+          
+          .auth-header p {
+            font-size: 0.9rem;
+          }
+          
+          .form-group input,
+          .form-group select {
+            padding: 0.7rem 0.9rem;
+            font-size: 0.9rem;
+          }
+          
+          .submit-btn {
+            padding: 0.7rem;
+            font-size: 0.9rem;
+          }
+          
+          .toggle-btn {
+            padding: 0.5rem 1.2rem;
+            font-size: 0.85rem;
+          }
+          
+          .profile-form .form-row {
+            flex-direction: column;
+            gap: 0;
+          }
+          
+          .photo-upload-area {
+            padding: 1.5rem;
+          }
+          
+          .photo-preview {
+            width: 120px;
+            height: 120px;
           }
         }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper select:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper select option {
-          color: #222;
-          background: #fff;
-        }
-
-        .profile-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .profile-form-group {
-          margin-bottom: 1.2rem;
-        }
-
-        .profile-form-group label {
-          display: block;
-          font-weight: 700;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-input-wrapper {
-          position: relative;
-          display: flex;
-          align-items: center;
-        }
-
-        .profile-input-wrapper i {
-          position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
-        }
-
-        .profile-input-wrapper input {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-          transition: var(--transition);
-        }
-        .profile-input-wrapper input::placeholder {
-          color: rgba(255,255,255,0.7);
-        }
-        .profile-input-wrapper input:focus {
-          outline: none;
-          border-color: var(--primary);
-          background: white;
-          color: var(--primary);
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
-        }
-        .profile-input-wrapper input:focus::placeholder {
-          color: var(--primary);
-        }
-
-        .profile-input-wrapper select {
-          width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
+      `}</style>
+
+      <div className="login-bg-overlay" />
+      <nav className="navbar">
+        <Link to="/" className="navbar-brand">
+          <img src="/iskologo.png" alt="iskoMats" style={{ height: '56px', marginRight: '16px', verticalAlign: 'middle' }} />
+          iskoMats
+        </Link>
+        <div className="navbar-nav">
+          <Link to="/">Home</Link>
+          <a href="/#about">About Us</a>
+          <a href="/#contact">Contact Info</a>
+        </div>
+      </nav>
+
+      <div className="auth-wrapper">
+        {/* Auth section */}
+        <section id="auth" className={`section ${!showProfile ? 'active' : ''}`}>
+          <div className="auth-card">
+            <div className="auth-header">
+              <h2>{isLogin ? 'Welcome, Iskolar!' : 'Join iskoMats'}</h2>
+              <p>{isLogin ? 'Sign in to continue your scholarship journey' : 'Create your account to get started'}</p>
+            </div>
+
+            {/* Login Error Message */}
+            {showError && (
+              <div className="error-message">
+                <i className="fas fa-exclamation-triangle"></i>
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            {/* Login form */}
+            {isLogin ? (
+              <form onSubmit={handleLogin}>
+                <div className="form-group">
+                  <label>Email</label>
+                  <div className="input-wrapper">
+                    <i className="far fa-envelope"></i>
+                    <input type="email" name="email" placeholder="name@university.edu.ph" required defaultValue={localStorage.getItem('currentUser') || ''} />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Password</label>
+                  <div className="input-wrapper">
+                    <i className="fas fa-lock"></i>
+                    <input type="password" name="password" placeholder="••••••••" required />
+                  </div>
+                </div>
+                <button type="submit" className="submit-btn" disabled={isLoginLoading}>
+                  {isLoginLoading ? (
+                    <>
+                      <i className="fas fa-spinner fa-spin" style={{marginRight: '8px'}}></i>Loading...
+                    </>
+                  ) : (
+                    <>Log in</>
+                  )}
+                </button>
+                {/* Social Login Options */}
+                <div className="social-signup">
+                  <div className="divider">
+                    <span>Or log in with</span>
+                  </div>
+                  <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
+                    <GoogleLogin
+                      onSuccess={handleGoogleSuccess}
+                      onError={handleGoogleError}
+                      theme="outline"
+                      size="large"
+                      width="100%"
+                      shape="pill"
+                      text="continue_with"
+                    />
+                  </div>
+                </div>
+               <div className="forgot-password">
+                  <a href="#" onClick={handleForgotPassword} style={{ color: 'rgba(255,255,255,0.7)', textDecoration: 'none', fontSize: '0.9rem' }}>
+                    Forgot password?
+                  </a>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleRegister}>
+                <div className="form-group">
+                  <label>Email</label>
+                  <div className="input-wrapper">
+                    <i className="far fa-envelope"></i>
+                    <input type="email" name="email" placeholder="name@university.edu.ph" required />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Password</label>
+                  <div className="input-wrapper">
+                    <i className="fas fa-lock"></i>
+                    <input type="password" name="password" placeholder="Min. 8 characters" required />
+                  </div>
+                  <small style={{ color: 'var(--text-soft)', fontSize: '0.85rem', marginTop: '0.25rem', display: 'block' }}>
+                    Password must be at least 8 characters long
+                  </small>
+                </div>
+                <div className="form-group">
+                  <label>Confirm password</label>
+                  <div className="input-wrapper">
+                    <i className="fas fa-lock"></i>
+                    <input type="password" name="confirmPassword" placeholder="••••••••" required />
+                  </div>
+                </div>
+                <button type="submit" className="submit-btn">Create account</button>
+
+                {/* Social Sign-up Options */}
+                <div className="social-signup">
+                  <div className="divider">
+                    <span>Or sign up with</span>
+                  </div>
+                  <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
+                    <GoogleLogin
+                      onSuccess={handleGoogleSuccess}
+                      onError={handleGoogleError}
+                      theme="outline"
+                      size="large"
+                      width="100%"
+                      shape="pill"
+                      text="signup_with"
+                    />
+                  </div>
+                </div>
+              </form>
+            )}
+
+            <div className="toggle-auth">
+              <span>
+                {isLogin ? "No account? " : "Already have an account? "}
+                <a onClick={toggleAuthForm}>
+                  {isLogin ? 'Register here' : 'Log in'}
+                </a>
+              </span>
+            </div>
+          </div>
+        </section>
+
+        {/* Profile section */}
+        <section id="profile" className={`section ${showProfile ? 'active' : ''}`}>
+          <div className="profile-card">
+            <h2>Complete your Profile!</h2>
+            
+            {showError && (
+              <div className="error-message">
+                <i className="fas fa-exclamation-triangle"></i>
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleProfileSubmit}>
+              <div className="profile-pic-container">
+                <div className="profile-pic-preview">
+                  {profilePicture ? (
+                    <img src={profilePicture} alt="Profile" />
+                  ) : (
+                    <i className="fas fa-camera"></i>
+                  )}
+                </div>
+                <label className="upload-photo-btn">
+                  <i className="fas fa-camera"></i>
+                  upload photo
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleProfilePictureUpload}
+                    hidden
+                  />
+                </label>
+              </div>
+
+              <div className="profile-grid">
+                <div className="profile-form-group">
+                  <label>First Name</label>
+                  <div className="profile-input-wrapper">
+                    <i className="far fa-user"></i>
+                    <input type="text" name="firstName" placeholder="Enter First Name" required />
+                  </div>
+                </div>
+                <div className="profile-form-group">
+                  <label>Middle Name</label>
+                  <div className="profile-input-wrapper">
+                    <input type="text" name="middleName" placeholder="Enter Middle Name" />
+                  </div>
+                </div>
+                <div className="profile-form-group">
+                  <label>Last Name</label>
+                  <div className="profile-input-wrapper">
+                    <input type="text" name="lastName" placeholder="Enter Last Name" required />
+                  </div>
+                </div>
+              </div>
+
+              <div className="profile-grid">
+                <div className="profile-form-group">
+                  <label>Birthdate</label>
+                  <div className="profile-input-wrapper">
+                    <i className="far fa-calendar-alt"></i>
+                    <input type="date" name="birthdate" required />
+                  </div>
+                </div>
+                <div className="profile-form-group">
+                  <label>Phone Number</label>
+                  <div className="profile-input-wrapper">
+                    <i className="fas fa-phone-alt"></i>
+                    <input type="tel" name="mobileNo" placeholder="+63 ..." required />
+                  </div>
+                </div>
+              </div>
+
+              <div className="profile-form-group">
+                <label>University / School</label>
+                <div className="profile-input-wrapper">
+                  <i className="fas fa-university"></i>
+                  <select name="school" required style={{ width: '100%', padding: '12px 12px 12px 42px', border: '1px solid #ddd', borderRadius: '8px', background: 'white' }}>
+                    <option value="">Select University / School</option>
+                    <option value="De La Salle Lipa">De La Salle Lipa</option>
+                    <option value="National University Lipa">National University Lipa</option>
+                    <option value="Batangas State University">Batangas State University</option>
+                    <option value="Kolehiyo ng Lungsod ng Lipa">Kolehiyo ng Lungsod ng Lipa</option>
+                    <option value="Philippine State College of Aeronautics">Philippine State College of Aeronautics</option>
+                    <option value="Lipa City Colleges">Lipa City Colleges</option>
+                    <option value="University of Batangas">University of Batangas</option>
+                    <option value="New Era University">New Era University</option>
+                    <option value="Batangas College of Arts and Sciences">Batangas College of Arts and Sciences</option>
+                    <option value="Royal British College">Royal British College</option>
+                    <option value="STI Academic Center">STI Academic Center</option>
+                    <option value="AMA Computer College">AMA Computer College</option>
+                    <option value="ICT-ED">ICT-ED</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="profile-form-group">
+                <label>Course / Program</label>
+                <div className="profile-input-wrapper">
+                  <i className="fas fa-graduation-cap"></i>
+                  <input type="text" name="course" placeholder="e.g. BS Computer Science" required />
+                </div>
+              </div>
+
+              <div className="profile-form-group">
+                <label>Street & Barangay</label>
+                <div className="profile-input-wrapper">
+                  <i className="fas fa-map-marker-alt"></i>
+                  <select name="streetBrgy" required style={{ width: '100%', padding: '12px 12px 12px 42px', border: '1px solid #ddd', borderRadius: '8px', background: 'white' }}>
+                    <option value="">Select Barangay</option>
+                    <option value="Adya">Adya</option>
+                    <option value="Anilao">Anilao</option>
+                    <option value="Anilao-Labac">Anilao-Labac</option>
+                    <option value="Antipolo del Norte">Antipolo del Norte</option>
+                    <option value="Antipolo del Sur">Antipolo del Sur</option>
+                    <option value="Bagong Pook">Bagong Pook</option>
+                    <option value="Balintawak">Balintawak</option>
+                    <option value="Banaybanay">Banaybanay</option>
+                    <option value="Bolbok">Bolbok</option>
+                    <option value="Bugtong na Pulo">Bugtong na Pulo</option>
+                    <option value="Bulacnin">Bulacnin</option>
+                    <option value="Bulaklakan">Bulaklakan</option>
+                    <option value="Calamias">Calamias</option>
+                    <option value="Cumba">Cumba</option>
+                    <option value="Dagatan">Dagatan</option>
+                    <option value="Duhatan">Duhatan</option>
+                    <option value="Halang">Halang</option>
+                    <option value="Inosloban">Inosloban</option>
+                    <option value="Kayumanggi">Kayumanggi</option>
+                    <option value="Latag">Latag</option>
+                    <option value="Lodlod">Lodlod</option>
+                    <option value="Lumbang">Lumbang</option>
+                    <option value="Mabini">Mabini</option>
+                    <option value="Malagonlong">Malagonlong</option>
+                    <option value="Malitlit">Malitlit</option>
+                    <option value="Marauoy">Marauoy</option>
+                    <option value="Mataas na Lupa">Mataas na Lupa</option>
+                    <option value="Munting Pulo">Munting Pulo</option>
+                    <option value="Pagolingin Bata">Pagolingin Bata</option>
+                    <option value="Pagolingin East">Pagolingin East</option>
+                    <option value="Pagolingin West">Pagolingin West</option>
+                    <option value="Pangao">Pangao</option>
+                    <option value="Pinagkawitan">Pinagkawitan</option>
+                    <option value="Pinagtongulan">Pinagtongulan</option>
+                    <option value="Plaridel">Plaridel</option>
+                    <option value="Poblacion Barangay 1">Poblacion Barangay 1</option>
+                    <option value="Poblacion Barangay 2">Poblacion Barangay 2</option>
+                    <option value="Poblacion Barangay 3">Poblacion Barangay 3</option>
+                    <option value="Poblacion Barangay 4">Poblacion Barangay 4</option>
+                    <option value="Poblacion Barangay 5">Poblacion Barangay 5</option>
+                    <option value="Poblacion Barangay 6">Poblacion Barangay 6</option>
+                    <option value="Poblacion Barangay 7">Poblacion Barangay 7</option>
+                    <option value="Poblacion Barangay 8">Poblacion Barangay 8</option>
+                    <option value="Poblacion Barangay 9">Poblacion Barangay 9</option>
+                    <option value="Poblacion Barangay 9-A">Poblacion Barangay 9-A</option>
+                    <option value="Poblacion Barangay 10">Poblacion Barangay 10</option>
+                    <option value="Poblacion Barangay 11">Poblacion Barangay 11</option>
+                    <option value="Poblacion Barangay 12">Poblacion Barangay 12</option>
+                    <option value="Pusil">Pusil</option>
+                    <option value="Quezon">Quezon</option>
+                    <option value="Rizal">Rizal</option>
+                    <option value="Sabang">Sabang</option>
+                    <option value="Sampaguita">Sampaguita</option>
+                    <option value="San Benito">San Benito</option>
+                    <option value="San Carlos">San Carlos</option>
+                    <option value="San Celestino">San Celestino</option>
+                    <option value="San Francisco">San Francisco</option>
+                    <option value="San Guillermo">San Guillermo</option>
+                    <option value="San Isidro">San Isidro</option>
+                    <option value="San Jose">San Jose</option>
+                    <option value="San Lucas">San Lucas</option>
+                    <option value="San Salvador">San Salvador</option>
+                    <option value="San Sebastian (Balagbag)">San Sebastian (Balagbag)</option>
+                    <option value="Santo Niño">Santo Niño</option>
+                    <option value="Santo Toribio">Santo Toribio</option>
+                    <option value="Sico">Sico</option>
+                    <option value="Talisay">Talisay</option>
+                    <option value="Tambo">Tambo</option>
+                    <option value="Tangob">Tangob</option>
+                    <option value="Tanguay">Tanguay</option>
+                    <option value="Tibig">Tibig</option>
+                    <option value="Tipacan">Tipacan</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="profile-grid">
+                <div className="profile-form-group">
+                  <label>Town / City</label>
+                  <div className="profile-input-wrapper">
+                    <input type="text" name="townCityMunicipality" value="Lipa City" readOnly style={{ backgroundColor: '#f1f1f1', cursor: 'not-allowed' }} />
+                  </div>
+                </div>
+                <div className="profile-form-group">
+                  <label>Province</label>
+                  <div className="profile-input-wrapper">
+                    <input type="text" name="province" value="Batangas" readOnly style={{ backgroundColor: '#f1f1f1', cursor: 'not-allowed' }} />
+                  </div>
+                </div>
+                <div className="profile-form-group">
+                  <label>Zip Code</label>
+                  <div className="profile-input-wrapper">
+                    <input type="text" name="zipCode" value="4217" readOnly style={{ backgroundColor: '#f1f1f1', cursor: 'not-allowed' }} />
+                  </div>
+                </div>
+              </div>
+
+              <button type="submit" className="submit-btn" style={{marginTop: '1.5rem'}}>
+                Finish Setup →
+              </button>
+            </form>
+          </div>
+        </section>
+
+      </div>
+
+      {/* Registration Success Modal */}
+      {showRegistrationModal && (
+        <div className={`modal-overlay active`}>
+          <div className="modal-content">
+            <h3>✅ Registration Submitted!</h3>
+            <p>Please complete your profile to finish registration.</p>
+            <button className="submit-btn" onClick={closeRegistrationModal}>Continue</button>
+          </div>
+        </div>
+      )}
+
+      {/* Success modal */}
+      {showSuccessModal && (
+        <div className={`modal-overlay active`}>
+          <div className="modal-content">
+            <h3>✅ Profile Complete!</h3>
+            <p>Redirecting to your portal...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Loading overlay */}
+      <div className={`loading-overlay ${showLoadingOverlay ? 'active' : ''}`}>
+        <div className="loading-modal">
+          <div className="loading-spinner"></div>
+          <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
+            {loadingMessage.title}
+          </h3>
+          <p style={{ color: 'var(--text-soft)', fontSize: '1rem' }}>
+            {loadingMessage.message}
+          </p>
+        </div>
+      </div>
+
+      {/* Email Already Registered Overlay */}
+      <div className={`loading-overlay ${showEmailAlreadyRegisteredOverlay ? 'active' : ''}`}>
+        <div className="loading-modal">
+          <div style={{ fontSize: '3rem', marginBottom: '1rem', color: 'var(--primary)' }}>⚠️</div>
+          <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
+            Email Already Registered
+          </h3>
+          <p style={{ color: 'var(--text-soft)', fontSize: '1rem', marginBottom: '1.5rem' }}>
+            This email address is already registered. Please use a different email or try logging in with this email.
+          </p>
+          <button
+            onClick={() => {
+              setShowEmailAlreadyRegisteredOverlay(false);
+              setIsLogin(true);
+            }}
+            style={{
+              background: 'var(--primary-gradient)',
+              color: 'white',
+              border: 'none',
+              padding: '0.75rem 1.5rem',
+              borderRadius: '8px',
+              fontSize: '1rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease'
+            }}
+            onMouseEnter={(e) => e.target.style.transform = 'translateY(-2px)'}
+            onMouseLeave={(e) => e.target.style.transform = 'translateY(0)'}
+          >
+            Go to Login
+          </button>
+        </div>
+      </div>
+
+      {/* Account Suspended Modal */}
+      {showSuspensionModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+          background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: '28px', padding: '2.5rem', maxWidth: '420px',
+            width: '90%', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
+          }}>
+            <div style={{
+              width: '72px', height: '72px', borderRadius: '50%',
+              background: '#fee2e2', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', margin: '0 auto 1.5rem', fontSize: '2rem', color: '#dc2626'
+            }}>
+              <i className="fas fa-ban"></i>
+            </div>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: '800', color: '#991b1b', marginBottom: '0.75rem' }}>
+              Account Suspended
+            </h2>
+            <p style={{ color: '#555', fontSize: '0.95rem', lineHeight: '1.6', marginBottom: '1.5rem' }}>
+              Your account has been suspended by the administrator.<br />
+              Please contact the Mayor's Scholarship Office for assistance.
+            </p>
+            <button
+              onClick={() => setShowSuspensionModal(false)}
+              style={{
+                background: '#991b1b', color: 'white', border: 'none', borderRadius: '40px',
+                padding: '0.75rem 2.5rem', fontWeight: '700', fontSize: '0.95rem', cursor: 'pointer'
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+export default Login;

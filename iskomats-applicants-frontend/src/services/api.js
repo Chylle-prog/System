@@ -1,3 +1,29 @@
+// Upload profile picture to Supabase Storage and return public URL
+export const uploadProfilePicture = async (file) => {
+  const applicantNo = sanitizeStorageSegment(localStorage.getItem('applicantNo'), 'unknown-applicant');
+  const currentUser = sanitizeStorageSegment(localStorage.getItem('currentUser'), 'unknown-user');
+  const ext = resolveVideoUploadExtension(file);
+  const contentType = file?.type || 'image/jpeg';
+  const objectPath = `profile_pictures/${applicantNo}-${currentUser}${ext}`;
+
+  const uploadResult = await supabase.storage
+    .from('profile_pictures')
+    .upload(objectPath, file, {
+      upsert: true,
+      contentType,
+      cacheControl: '60',
+    });
+
+  if (uploadResult.error) {
+    throw uploadResult.error;
+  }
+
+  const { data } = supabase.storage.from('profile_pictures').getPublicUrl(objectPath);
+  if (!data?.publicUrl) {
+    throw new Error('Profile picture upload succeeded but no public URL was returned.');
+  }
+  return data.publicUrl;
+};
 /**
  * API Service for ISKOMATS Scholarship System
  * Provides functions to communicate with the Flask backend

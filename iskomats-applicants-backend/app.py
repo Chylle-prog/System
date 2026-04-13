@@ -43,5 +43,10 @@ def after_request(response):
 def options_handler():
     return '', 200
 
+# --- Health Check Endpoint ---
+@app.route('/_health', methods=['GET'])
+def health_check():
+    return 'ok', 200
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
