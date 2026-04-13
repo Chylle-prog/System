@@ -13,55 +13,47 @@ app.config['CACHE_TYPE'] = 'SimpleCache'
 cache = Cache(app)
 
 # Setup CORS
-# Use a simple, reliable manual handler
-ALLOWED_ORIGIN = "https://iskomats-applicants.surge.sh"
+# Using Flask-CORS for standard handling, but we'll also use an after_request for safety
+CORS(app, 
+     resources={r"/api/*": {"origins": [
+         "https://iskomats-applicants.surge.sh",
+         "https://iskomats-admin.surge.sh",
+         "https://foregoing-giants.surge.sh",
+         "http://localhost:5173",
+         "http://localhost:3000"
+     ]}},
+     supports_credentials=True,
+     expose_headers=["Content-Type", "Authorization"],
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"])
 
 app.register_blueprint(student_api_bp, url_prefix='/api/student')
 
-# --- CORS Engine ---
-
-def apply_cors_headers(response):
-    origin = request.headers.get('Origin')
-    
-    # Always allow the primary applicant origin
-    # We also allow localhost for development
-    target_origin = None
-    if origin:
-        if "iskomats-applicants.surge.sh" in origin:
-            target_origin = origin
-        elif "localhost" in origin:
-            target_origin = origin
-        elif "foregoing-giants.surge.sh" in origin:
-            target_origin = origin
-
-    if target_origin:
-        response.headers['Access-Control-Allow-Origin'] = target_origin
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept, Origin'
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-        response.headers['Access-Control-Max-Age'] = '86400'
-        
-    # Always add Vary: Origin for CDN/Proxy compatibility
-    response.headers['Vary'] = 'Origin'
-    return response
-
-@app.before_request
-def handle_preflight():
-    if request.method == "OPTIONS":
-        # Create a simple 200 OK response for all preflights under /api
-        response = app.make_default_response("")
-        return apply_cors_headers(response), 200
+# --- CORS Safety Net ---
 
 @app.after_request
 def add_cors_headers(response):
-    # Ensure every response gets the headers if valid origin
-    return apply_cors_headers(response)
+    origin = request.headers.get('Origin')
+    if origin:
+        # If origin is one of our trusted patterns, ensure headers are present
+        if "surge.sh" in origin or "localhost" in origin:
+            response.headers['Access-Control-Allow-Origin'] = origin
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+            # Prevent duplication of headers if flask-cors already added them
+            if 'Access-Control-Allow-Methods' not in response.headers:
+                response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
+            if 'Access-Control-Allow-Headers' not in response.headers:
+                response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept, Origin'
+    
+    response.headers['Vary'] = 'Origin'
+    return response
 
-# Explicit OPTIONS handlers for student API routes
-@app.route('/api/student/<path:path>', methods=['OPTIONS'])
-def student_options_catchall(path):
+# Explicitly handle OPTIONS for ALL routes to ensure preflights never 404
+@app.route('/', defaults={'path': ''}, methods=['OPTIONS'])
+@app.route('/<path:path>', methods=['OPTIONS'])
+def global_options_handler(path):
     response = app.make_default_response("")
-    return apply_cors_headers(response), 200
+    return add_cors_headers(response), 200
 
 # --- Health Check Endpoints ---
 @app.route('/_health', methods=['GET'])
