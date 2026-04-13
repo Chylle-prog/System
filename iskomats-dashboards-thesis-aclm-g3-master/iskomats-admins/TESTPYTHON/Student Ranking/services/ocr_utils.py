@@ -353,7 +353,7 @@ def course_matches_text(target_course, text):
     
     # 1. Exact string match
     if t_course in norm_text:
-        return True
+        return True, t_course
         
     # 2. Abbreviation detection
     # Example: "Bachelor of Science in Computer Science" -> "BSCS"
@@ -369,7 +369,7 @@ def course_matches_text(target_course, text):
         
         for acr in [acronym1, acronym2]:
             if len(acr) >= 2 and re.search(rf'\b{re.escape(acr)}\b', norm_text):
-                return True
+                return True, acr
 
     # 3. Individual word matching (must match at least 60% of significant words)
     if meaningful_words:
