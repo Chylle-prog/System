@@ -121,25 +121,27 @@ const warmBackendConnection = async ({ force = false } = {}) => {
   }
 
   if (!backendWarmupPromise) {
-    // Try multiple possible health endpoints
+    // Try possible health endpoints sequentially to avoid console 404 vomit
     const healthEndpoints = [
       `${API_ORIGIN}/_health`,
       `${API_BASE_URL}/student/ping`,
-      `${API_ORIGIN}/health`,
-      `${API_BASE_URL}/health`,
     ];
     
-    backendWarmupPromise = Promise.any(
-      healthEndpoints.map(endpoint => 
-        fetch(endpoint, {
-          method: 'GET',
-          cache: 'no-store',
-        }).catch(() => Promise.reject())
-      )
-    ).catch(() => {
-      // If all health endpoints fail, continue anyway (backend might not have health endpoint)
-      return Promise.resolve();
-    });
+    backendWarmupPromise = (async () => {
+      for (const endpoint of healthEndpoints) {
+        try {
+          const res = await fetch(endpoint, {
+            method: 'GET',
+            cache: 'no-store',
+          });
+          if (res.ok) return; // Found a working one
+        } catch (e) {
+          // Continue to next
+        }
+      }
+      // If none worked, resolve anyway to not block the app
+      return;
+    })();
   }
 
   return backendWarmupPromise;

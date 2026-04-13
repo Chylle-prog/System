@@ -409,7 +409,7 @@ def student_id_no_matches_text(target_id, text):
     return False
 
 
-def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=None, target_last_name=None, target_address=None, target_id_no=None, target_year_level=None, keywords=None, is_indigency=False):
+def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=None, target_last_name=None, target_address=None, target_id_no=None, target_year_level=None, target_school_name=None, keywords=None, is_indigency=False):
     """
     Unified fuzzy matching logic for names, addresses, and keywords.
     Checks first name, middle name (full or initial), and last name individually if provided.
@@ -556,6 +556,30 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
             else:
                 a_verified = (f_a_count / len(a_words) if a_words else 0) >= 0.5
 
+    # 2.7 School Name Matching
+    school_ok = True
+    if target_school_name:
+        from services.school_utils import build_school_name_variants
+        variants = build_school_name_variants(target_school_name)
+        school_ok = False
+        norm_raw = normalize_for_ocr(ocr_text)
+        for var in variants:
+            if normalize_for_ocr(var) in norm_raw:
+                school_ok = True
+                break
+        
+        if not school_ok:
+            # Try fuzzy matching if exact fails
+            for var in variants:
+                var_norm = normalize_for_ocr(var)
+                if len(var_norm) < 4: continue
+                for word in all_ocr_words:
+                    if len(word) < 4: continue
+                    if difflib.SequenceMatcher(None, var_norm, word).ratio() >= 0.8:
+                        school_ok = True
+                        break
+                if school_ok: break
+
     # 3. Keyword Matching
     found_keywords = []
     if keywords:
@@ -566,22 +590,19 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
                 found_keywords.append(kw)
             else:
                 # Fuzzy match: allow partial/close matches for document keywords
-                # This handles OCR errors and variations in document text
                 kw_words = norm_kw.split()
                 if kw_words:
-                    # Check if any word from the keyword appears in the OCR text with fuzzy matching
                     for kw_word in kw_words:
                         if len(kw_word) < 2: continue
                         for ocr_word in all_ocr_words:
                             if len(ocr_word) < 2: continue
-                            # Use 0.7 threshold for fuzzy keyword matching (handles 'enrollment' vs 'enrolment', etc.)
                             if difflib.SequenceMatcher(None, kw_word, ocr_word).ratio() >= 0.7:
                                 found_keywords.append(kw)
                                 break
                         if kw in found_keywords:
                             break
     
-    return n_verified, a_verified, found_keywords, m_ratio
+    return n_verified and school_ok, a_verified, found_keywords, m_ratio
 
 
 def student_name_matches_text(ocr_text, first_name, middle_name, last_name, is_indigency=False):
@@ -599,7 +620,7 @@ def student_name_matches_text(ocr_text, first_name, middle_name, last_name, is_i
     return name_ok, ratio
 
 
-def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, expected_last_name, expected_address=None, expected_id_no=None, expected_year_level=None):
+def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, expected_last_name, expected_address=None, expected_id_no=None, expected_year_level=None, expected_school_name=None):
     """
     Optimized version with multiple improvements:
     1. Image quality pre-check (Optimization #3)
@@ -621,7 +642,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     cached_result = _cache_get(image_hash)
     if cached_result is not None:
         cached_text, cached_ratio, cached_message = cached_result
-        name_v, addr_v, found_kw, score = _perform_text_matching(cached_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, None, is_indigency)
+        name_v, addr_v, found_kw, score = _perform_text_matching(cached_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
         if name_v and addr_v:
             print(f"[OCR CACHE HIT] Reusing previous results for {image_hash[:8]}...", flush=True)
             return True, f"Verified (cached)", cached_text, {'name_ok': True, 'addr_ok': True, 'cached': True}
@@ -663,7 +684,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
                 fast_img = img[:h_crop, :]
                 fast_text = _run_tesseract_on_image(fast_img, psm=6, skip_pass2=True)
                 
-                name_v, addr_v, found_kw, ratio = _perform_text_matching(fast_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, None, is_indigency)
+                name_v, addr_v, found_kw, ratio = _perform_text_matching(fast_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
                 
                 # If we found everything in the top 50%, EXIT IMMEDIATELY
                 if name_v and addr_v:
@@ -696,7 +717,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             clear_heavy_memory()
     
     
-    name_v, addr_v, found_kw, best_ratio = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, None, is_indigency)
+    name_v, addr_v, found_kw, best_ratio = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
     details = {
         'name_ok': name_v,
         'addr_ok': addr_v,

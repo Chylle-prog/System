@@ -104,23 +104,6 @@ _verification_result_cache_lock = threading.Lock()
 _VERIFICATION_RESULT_CACHE_SIZE_LIMIT = 128
 _VERIFICATION_RESULT_CACHE_TTL_SECONDS = 300
 PENDING_REGISTRATION_EXPIRY_WINDOW = timedelta(hours=1)
-HARD_CODED_SCHOOL_NAMES = [
-    'DLSL/De La Salle Lipa',
-    'NU/National University Lipa',
-    'Batangas State University',
-    'Kolehiyo ng Lungsod ng Lipa',
-    'Philippine State College of Aeronautics',
-    'Lipa City Colleges',
-    'University of Batangas',
-    'New Era University',
-    'Batangas College of Arts and Sciences',
-    'Royal British College',
-    'STI Academic Center',
-    'AMA Computer College',
-    'ICT-ED'
-]
-
-
 def academic_year_matches_expected(found_year, expected_year):
     if not found_year or not expected_year:
         return False
@@ -1018,73 +1001,6 @@ def build_student_name_keywords(first_name, middle_name, last_name):
 
     return sorted((keyword for keyword in keywords if len(normalize_matching_text(keyword)) >= 2), key=len, reverse=True)
 
-
-def build_school_name_variants(school_name):
-    normalized_input = normalize_matching_text(school_name)
-    variants = set()
-
-    for entry in HARD_CODED_SCHOOL_NAMES:
-        aliases = [alias.strip() for alias in entry.split('/') if alias.strip()]
-        normalized_aliases = [normalize_matching_text(alias) for alias in aliases]
-        is_match = normalized_input and any(
-            normalized_input in alias or alias in normalized_input
-            for alias in normalized_aliases
-            if alias
-        )
-
-        if is_match:
-            variants.update(aliases)
-
-    if not variants and school_name:
-        variants.add(school_name.strip())
-
-    expanded = set()
-    for variant in variants:
-        cleaned = variant.strip()
-        if not cleaned:
-            continue
-
-        expanded.add(cleaned)
-        normalized = normalize_matching_text(cleaned)
-        if normalized:
-            expanded.add(normalized)
-
-        words = [word for word in re.split(r'[\s./-]+', cleaned) if word]
-        if len(words) > 1:
-            acronym = ''.join(word[0] for word in words if word[0].isalnum()).upper()
-            if len(acronym) >= 2:
-                expanded.add(acronym)
-
-    return sorted((variant for variant in expanded if len(normalize_matching_text(variant)) >= 2), key=len, reverse=True)
-
-
-def school_name_matches_text(raw_text, school_name):
-    variants = build_school_name_variants(school_name)
-    normalized_raw = normalize_matching_text(raw_text)
-    raw_words = set(normalized_raw.split())
-    ignore_words = {'de', 'la', 'ng', 'of', 'the', 'and', 'campus', 'office'}
-
-    for variant in variants:
-        normalized_variant = normalize_matching_text(variant)
-        if normalized_variant and normalized_variant in normalized_raw:
-            return True, variant, variants
-
-    _, _, found_keywords, _ = _perform_text_matching(
-        raw_text,
-        None,
-        None,
-        None,
-        None,
-        keywords=variants,
-        is_indigency=False
-    )
-    if found_keywords:
-        return True, found_keywords[0], variants
-
-    for variant in variants:
-        normalized_variant = normalize_matching_text(variant)
-        if not normalized_variant:
-            continue
 
         variant_words = [
             word for word in normalized_variant.split()
@@ -3351,7 +3267,7 @@ def ocr_check():
                         v_t = name_ok and addr_ok
                         return v_t, extraction_error or ('Verified' if v_t else 'Verification failed'), raw_t, meta
                     else:
-                        return verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=expected_id_no if doc_type != 'Indigency' else None)
+                        return verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=expected_id_no if doc_type != 'Indigency' else None, expected_school_name=school_name)
 
                 # ─── PARALLEL EXECUTION (Concurrency) ───
                 with ThreadPoolExecutor(max_workers=2) as executor:
