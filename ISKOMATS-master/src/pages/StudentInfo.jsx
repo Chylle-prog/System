@@ -3915,28 +3915,6 @@ const StudentInfo = () => {
                               }}>
                                 {signatureResults.message}
                               </div>
-
-                              {!feedbackStatus.signature && (
-                                <div style={{borderTop: '1px solid #f1f5f9', paddingTop: '12px', textAlign: 'center'}}>
-                                  <p style={{fontSize: '0.7rem', fontWeight: '700', color: '#64748b', marginBottom: '8px'}}>Is this match correct?</p>
-                                  <div style={{display: 'flex', gap: '10px', justifyContent: 'center'}}>
-                                    <button 
-                                      type="button" 
-                                      onClick={() => sendFeedback('signature', true)}
-                                      style={{background: '#f0fdf4', border: '1px solid #bcf0da', color: '#166534', padding: '4px 12px', borderRadius: '6px', fontSize: '0.65rem', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'}}
-                                    >
-                                      <i className="fas fa-thumbs-up"></i> Correct
-                                    </button>
-                                    <button 
-                                      type="button" 
-                                      onClick={() => sendFeedback('signature', false)}
-                                      style={{background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', padding: '4px 12px', borderRadius: '6px', fontSize: '0.65rem', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'}}
-                                    >
-                                      <i className="fas fa-thumbs-down"></i> Incorrect
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
                             </div>
                           )}
                         </div>

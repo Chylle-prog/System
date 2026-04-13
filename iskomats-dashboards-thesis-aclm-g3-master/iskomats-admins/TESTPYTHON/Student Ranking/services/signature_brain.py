@@ -246,22 +246,34 @@ def get_mean_profile_vector(student_id):
 def calculate_neural_match(drawing_img, student_id):
     """
     Matches a new drawing against the student's statistical neural history.
-    Returns similarity score (0.0 to 1.0).
+    Now also checks the BLACKLIST to penalize known 'Fake' patterns.
     """
     current_embedding = extract_signature_embedding(drawing_img)
     if current_embedding is None: 
-        print(f"[BRAIN] Current embedding is None", flush=True)
         return 0.0
     
+    # 1. Check Blacklist (Negative Learning)
+    # If this looks like a previously rejected scribble, penalize it.
+    blacklist_dir = os.path.join(os.getcwd(), 'knowledge', 'signature_profiles', 'blacklist', str(student_id))
+    if os.path.exists(blacklist_dir):
+        for file in os.listdir(blacklist_dir):
+            if not file.endswith('.png'): continue
+            b_img = cv2.imread(os.path.join(blacklist_dir, file))
+            if b_img is None: continue
+            b_embedding = extract_signature_embedding(b_img)
+            if b_embedding is not None:
+                sim = _cosine_similarity(current_embedding, b_embedding)
+                if sim > 0.90:  # Very high similarity to a KNOWN fake
+                    print(f"[BRAIN] Blacklist HIT ({sim:.4f}). Applying penalty.", flush=True)
+                    return -0.5  # Heavy penalty
+    
+    # 2. Check History (Positive Learning)
     mean_real_vector = get_mean_profile_vector(student_id)
     if mean_real_vector is None: 
-        print(f"[BRAIN] Mean profile is None", flush=True)
         return 0.0
     
-    # Calculate Cosine Similarity
     similarity = _cosine_similarity(current_embedding, mean_real_vector)
-    
-    print(f"[BRAIN] Cosine similarity: {similarity:.6f} (current norm: {np.linalg.norm(current_embedding):.6f}, mean norm: {np.linalg.norm(mean_real_vector):.6f})", flush=True)
+    print(f"[BRAIN] Profile similarity: {similarity:.6f}", flush=True)
     return float(similarity)
 
 

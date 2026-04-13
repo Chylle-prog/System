@@ -1602,11 +1602,18 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
         extracted_id_preview = extracted_id_signature  # Already display-ready via single-pass extraction
         matcher_reference_view = prepare_signature_match_view(extracted_id_signature)
         
-        # Neural matching - REFINED: Neural history disabled for main system to ensure strict ID matching
+        # Neural matching restored: System now benefits from patterns learned in the Bench
         try:
             direct_score = compare_signature_images(sig_img, extracted_id_signature)
-            score = direct_score
-            score_source = f"direct={direct_score:.2f}"
+            profile_score = calculate_neural_match(sig_img, student_id) if student_id else 0.0
+
+            if profile_score > 0.0:
+                # 80/20 weighted average incorporates learning without overriding the primary ID check
+                score = (direct_score * 0.8) + (profile_score * 0.2)
+                score_source = f"direct={direct_score:.2f}, profile={profile_score:.2f}"
+            else:
+                score = direct_score
+                score_source = f"direct={direct_score:.2f}"
         except Exception as e:
             print(f"[SIGNATURE] Error in neural matching: {e}", flush=True)
             return False, f"Matching error: {str(e)}", 0.0, preview_signature, extracted_id_preview, matcher_submitted_view, matcher_reference_view
