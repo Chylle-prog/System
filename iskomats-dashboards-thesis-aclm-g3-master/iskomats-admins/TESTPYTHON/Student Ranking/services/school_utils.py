@@ -72,12 +72,18 @@ def school_name_matches_text(raw_text, school_name, perform_text_matching_fn=Non
         if normalized_variant and normalized_variant in normalized_raw:
             return True, variant, variants
 
-    if perform_text_matching_fn:
-        _, _, found_keywords, _ = perform_text_matching_fn(
-            raw_text,
-            keywords=variants
-        )
-        if found_keywords:
-            return True, found_keywords[0], variants
+    # Final fuzzy fallback for institutional names that might be partially misread
+    # Use SequenceMatcher to find if any variant phrase exists in a similar form in the OCR text
+    for variant in variants:
+        norm_var = normalize_school_text(variant)
+        # Skip small words/acronyms for fuzzy matching to avoid false positives
+        if len(norm_var) < 5: continue
+        
+        # Sliding window comparison across normalized text
+        var_len = len(norm_var)
+        for i in range(len(normalized_raw) - var_len + 1):
+            chunk = normalized_raw[i:i+var_len]
+            if difflib.SequenceMatcher(None, norm_var, chunk).ratio() >= 0.8:
+                return True, variant, variants
 
     return False, None, variants

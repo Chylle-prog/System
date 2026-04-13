@@ -344,8 +344,8 @@ def gpa_matches_text(raw_text, expected_gpa):
             except: continue
 
     # Priority 1: Numbers following a GPA label
-    # Priority 2: Any number in the text that looks like a GPA (1.0 - 5.0)
-    candidate_numbers = gpa_candidates + [num for num in raw_numbers if 1.0 <= num <= 5.0 and num not in gpa_candidates]
+    # Priority 2: Any number in the text that looks like a GPA (1.0 - 5.0 or 70 - 100)
+    candidate_numbers = gpa_candidates + [num for num in raw_numbers if (1.0 <= num <= 5.0 or 70.0 <= num <= 100.0) and num not in gpa_candidates]
 
     # Matching Logic: "At least the first 3 digits like 3.25 with flexibility at the last digit"
     # We'll use a tolerance that allows the last digit of a 2nd decimal place to vary.
@@ -1002,26 +1002,6 @@ def build_student_name_keywords(first_name, middle_name, last_name):
     return sorted((keyword for keyword in keywords if len(normalize_matching_text(keyword)) >= 2), key=len, reverse=True)
 
 
-        variant_words = [
-            word for word in normalized_variant.split()
-            if len(word) >= 4 and word not in ignore_words
-        ]
-        if len(variant_words) < 2:
-            continue
-
-        matched_words = 0
-        for word in variant_words:
-            if word in raw_words:
-                matched_words += 1
-                continue
-
-            if any(word in raw_word or raw_word in word for raw_word in raw_words if len(raw_word) >= 3):
-                matched_words += 1
-
-        if matched_words >= 2:
-            return True, variant, variants
-
-    return False, None, variants
 
 @student_api_bp.route('/debug/env', methods=['GET'])
 def debug_env():
@@ -3335,9 +3315,8 @@ def ocr_check():
                         ]
                         
                         # Set primary verification status
-                        # Name and Academic Year are the most critical; other fields generate warnings if missing but don't fail immediately
-                        # to handle diverse school document formats better.
-                        v = name_ok and year_only_ok
+                        # Enforce all requested verifications for Enrollment
+                        v = name_ok and year_only_ok and school_ok and id_ok and course_ok and year_level_ok
 
                         if not v:
                             msg = f"Verification failed. Checklist: [{' | '.join(checklist)}]"
@@ -3365,8 +3344,8 @@ def ocr_check():
                         year_level_ok, _ = year_level_matches_text(expected_year_level, raw) if expected_year_level else (True, None)
 
                         # Set primary verification status
-                        # GPA is mandatory along with Name and Academic Year
-                        v = name_ok and year_only_ok and gpa_ok
+                        # GPA is mandatory along with Name, Academic Year, School and Year Level
+                        v = name_ok and year_only_ok and gpa_ok and school_ok and year_level_ok
 
                         # Build Check-list Message
                         checklist = [
@@ -3429,7 +3408,8 @@ def ocr_check():
                         f"ID Number: {'OK' if id_ok else 'X'}"
                     ]
                     
-                    v = name_ok and id_ok
+                    # School Name is now mandatory for ID as well
+                    v = name_ok and id_ok and school_ok
                     if v:
                         msg = f"Front ID verified successfully. Checklist: [{', '.join(checklist)}]"
                     else:

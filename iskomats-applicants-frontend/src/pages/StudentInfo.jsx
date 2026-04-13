@@ -137,7 +137,7 @@ const STEP_FIELDS = {
     'parentsGrossIncome', 'numberOfSiblings'
   ],
   3: [
-    'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course', 'gpa',
+    'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course', 'gpa', 'semester',
     'mayorCOE_photo', 'mayorGrades_photo'
   ],
   4: [
@@ -385,6 +385,11 @@ const StudentInfo = () => {
 
     if (fieldName === 'gpa') {
       invalidateVerificationState('Grades', 'GPA changed');
+      return;
+    }
+
+    if (fieldName === 'semester') {
+      invalidateVerificationState('Grades', 'semester changed');
     }
   };
   
@@ -919,7 +924,7 @@ const StudentInfo = () => {
     setLoadingMessage({ title: 'Scanning Document', message: 'Verifying your Certificate of Indigency and Video Content...' });
     
     try {
-      const success = await performOcrVerification('Indigency', indigencyDoc, { townCity }, videoUrl);
+      const success = await performOcrVerification('Indigency', indigencyDoc, { townCity: formData.barangay }, videoUrl);
       if (success) {
         showPromptMessage('✅ Indigency verified successfully!');
       } else {
@@ -988,15 +993,20 @@ const StudentInfo = () => {
       showPromptMessage('⚠️ Please record and upload the Grades video first.');
       return;
     }
-    if (!schoolName || !yearLevel || !gpa) {
-      showPromptMessage('⚠️ Please complete School Name, Year Level, and GPA first.');
+    if (!schoolName || !yearLevel || !gpa || !formData.semester) {
+      showPromptMessage('⚠️ Please complete School Name, Year Level, GPA, and Semester first.');
       return;
     }
 
     setLoadingMessage({ title: 'Scanning Grades', message: 'Verifying your Grades document and Video Content...' });
     
     try {
-      const success = await performOcrVerification('Grades', gradesDoc, { schoolName, yearLevel, gpa }, videoUrl);
+      const success = await performOcrVerification('Grades', gradesDoc, { 
+        schoolName: formData.schoolName, 
+        yearLevel: formData.yearLevel, 
+        gpa: formData.gpa,
+        semester: formData.semester 
+      }, videoUrl);
       if (success) {
         showPromptMessage('✅ Grades verified successfully!');
       } else {
@@ -2987,18 +2997,42 @@ const StudentInfo = () => {
               <div className="form-row">
                 <div className="form-group">
                   <label>Town / City / Municipality <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="townCityMunicipality" value={formData.townCityMunicipality} onChange={handleInputChange} placeholder="Lipa City" required />
+                  <input 
+                    type="text" 
+                    name="townCityMunicipality" 
+                    value={formData.townCityMunicipality} 
+                    readOnly 
+                    style={{ backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }} 
+                    placeholder="Lipa City" 
+                    required 
+                  />
                 </div>
                 <div className="form-group">
                   <label>Province <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="province" value={formData.province} onChange={handleInputChange} placeholder="Batangas" required />
+                  <input 
+                    type="text" 
+                    name="province" 
+                    value={formData.province} 
+                    readOnly 
+                    style={{ backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }} 
+                    placeholder="Batangas" 
+                    required 
+                  />
                 </div>
               </div>
 
               <div className="form-row">
                 <div className="form-group">
                   <label>Zip Code <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="zipCode" value={formData.zipCode} onChange={handleInputChange} placeholder="4217" required />
+                  <input 
+                    type="text" 
+                    name="zipCode" 
+                    value={formData.zipCode} 
+                    readOnly 
+                    style={{ backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }} 
+                    placeholder="4217" 
+                    required 
+                  />
                 </div>
                 <div className="form-group">
                   <label>Mobile Number <span style={{color: '#e74c3c'}}>*</span></label>
@@ -3102,7 +3136,7 @@ const StudentInfo = () => {
                         }}
                       >
                         <i className={`fas ${ocrVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-bolt'}`}></i>
-                        {ocrVerified === 'verifying' ? 'AI Analyzing...' : (ocrVerified === 'success' ? 'Identity Verified' : 'Instant Scan & Validate')}
+                        {ocrVerified === 'verifying' ? 'Analyzing...' : (ocrVerified === 'success' ? 'Identity Verified' : 'Instant Scan & Validate')}
                       </button>
 
                       {ocrVerified === 'verifying' && (
@@ -3296,6 +3330,17 @@ const StudentInfo = () => {
                   <input type="text" name="course" value={formData.course} onChange={handleInputChange} placeholder="B.S. Information Technology" required={currentStep === 3} />
                 </div>
                 <div className="form-group">
+                  <label>Current Semester <span style={{color: '#e74c3c'}}>*</span></label>
+                  <select name="semester" value={formData.semester} onChange={handleInputChange} required={currentStep === 3}>
+                    <option value="">Select Semester</option>
+                    <option value="1st Semester">1st Semester</option>
+                    <option value="2nd Semester">2nd Semester</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
                   <label>General Weighted Average / GPA <span style={{color: '#e74c3c'}}>*</span></label>
                   <input type="number" name="gpa" value={formData.gpa} onChange={handleInputChange} placeholder="85 or 1.75" step="0.01" required={currentStep === 3} />
                 </div>
@@ -3481,7 +3526,7 @@ const StudentInfo = () => {
                     }}
                   >
                     <i className={`fas ${idVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-bolt-lightning'}`}></i>
-                    {idVerified === 'verifying' ? 'AI Analyzing Front & Back ID...' : (idVerified === 'success' ? 'Identity Verified Successfully' : 'Start Front & Back ID Scan')}
+                    {idVerified === 'verifying' ? 'Analyzing Front & Back ID...' : (idVerified === 'success' ? 'Identity Verified Successfully' : 'Start Front & Back ID Scan')}
                   </button>
 
                   {idVerified === 'verifying' && (
