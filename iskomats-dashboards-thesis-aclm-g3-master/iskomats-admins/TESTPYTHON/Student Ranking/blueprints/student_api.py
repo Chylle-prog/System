@@ -2940,6 +2940,13 @@ def ocr_check():
         )
         if document_values:
             applicant.update(document_values)
+            
+        # 2. Close connection early - Avoid keeping it idle during long-running OCR
+        # We have all the data we need in memory (applicant dict and request parameters)
+        cur.close()
+        conn.close()
+        # Remove conn from locals so finally block doesn't try to close it again
+        del conn
 
         # Optimization: Target prefetch to ONLY relevant videos for the specific scan
         urls_to_prefetch = []

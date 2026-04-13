@@ -83,8 +83,40 @@ def get_db(cursor_factory=RealDictCursor, fast_startup=False):
     if _CONNECTION_POOL is None:
         _init_pool()
     
-    conn = _CONNECTION_POOL.getconn()
-    
+    # Try up to 3 times to get a live connection
+    conn = None
+    for attempt in range(3):
+        try:
+            conn = _CONNECTION_POOL.getconn()
+            # Simple liveness check
+            with conn.cursor() as test_cur:
+                test_cur.execute("SELECT 1")
+            # If we get here, the connection is alive
+            break
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+            print(f"[DB ERROR] Got broken connection from pool: {e}. Attempting to refresh...", flush=True)
+            if conn:
+                try:
+                    _CONNECTION_POOL.putconn(conn, close=True) # Force close the broken connection
+                except:
+                    pass
+            conn = None
+            if attempt == 2:
+                # Last attempt failed, raise it
+                raise
+        except Exception as e:
+            print(f"[DB ERROR] Unexpected error gathering connection: {e}", flush=True)
+            if conn:
+                try:
+                    _CONNECTION_POOL.putconn(conn)
+                except:
+                    pass
+            conn = None
+            raise
+
+    if not conn:
+        raise psycopg2.OperationalError("Could not obtain a live database connection after 3 attempts.")
+
     # We'll use a wrapper to ensure the connection is returned to the pool on close
     class PooledConnectionProxy:
         def __init__(self, connection, cursor_factory):
@@ -110,7 +142,17 @@ def get_db(cursor_factory=RealDictCursor, fast_startup=False):
 
         def close(self):
             if not self._returned:
-                _CONNECTION_POOL.putconn(self._conn)
+                try:
+                    # check if connection is still alive before returning it to the pool
+                    # if closed or broken, we should tell the pool to close it permanently
+                    is_closed = (self._conn.closed != 0)
+                    _CONNECTION_POOL.putconn(self._conn, close=is_closed)
+                except:
+                    # Fallback to standard putconn if liveness check fails
+                    try:
+                        _CONNECTION_POOL.putconn(self._conn)
+                    except:
+                        pass
                 self._returned = True
 
         def commit(self):
@@ -156,4 +198,4 @@ def get_supabase_client():
     if create_client is None:
         raise RuntimeError('supabase package is not installed. Add it to requirements.txt before using storage features.')
 
-    return create_client(url, service_role_key)
+    return create_client(url, service_role_key)

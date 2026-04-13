@@ -756,6 +756,7 @@ export default function ScholarshipDashboard({
     });
   };
 
+  // --- Optimistic UI for applicant status changes ---
   const beginApplicantStatusRequest = ({
     applicant,
     requestedStatus,
@@ -776,9 +777,27 @@ export default function ScholarshipDashboard({
       return;
     }
 
-    // Removed showActionOverlay here to avoid blocking the UI
+    // Optimistically update UI
     markApplicantProcessing(applicant, requestedStatus);
     onStart?.();
+
+    // Remove from current list and add to new status list immediately
+    setData(prev => {
+      let newApplicants = prev.applicants.filter(a => getApplicantIdentityKey(a) !== applicantKey);
+      let newAccepted = prev.accepted;
+      let newDeclined = prev.declined;
+      if (requestedStatus === 'Accepted') {
+        newAccepted = [...prev.accepted, { ...applicant, status: 'Accepted' }];
+      } else if (requestedStatus === 'Declined') {
+        newDeclined = [...prev.declined, { ...applicant, status: 'Declined' }];
+      }
+      return {
+        ...prev,
+        applicants: newApplicants,
+        accepted: newAccepted,
+        declined: newDeclined,
+      };
+    });
 
     void (async () => {
       try {
@@ -792,11 +811,23 @@ export default function ScholarshipDashboard({
           adminName: userName,
           timestamp: new Date().toISOString(),
         });
-
-        await Promise.all([loadApplicants(), loadScholarships(false)]);
+        // Optionally reload in background to sync
+        loadApplicants();
+        loadScholarships(false);
       } catch (error) {
-        console.error(`Failed to update applicant status to ${requestedStatus.toLowerCase()}:`, error);
-        await Promise.all([loadApplicants(), loadScholarships(false)]);
+        // Revert UI on error
+        setData(prev => {
+          // Move applicant back to applicants list
+          let revertedApplicants = [...prev.applicants, { ...applicant, status: 'Pending' }];
+          let revertedAccepted = prev.accepted.filter(a => getApplicantIdentityKey(a) !== applicantKey);
+          let revertedDeclined = prev.declined.filter(a => getApplicantIdentityKey(a) !== applicantKey);
+          return {
+            ...prev,
+            applicants: revertedApplicants,
+            accepted: revertedAccepted,
+            declined: revertedDeclined,
+          };
+        });
         alert(getRequestErrorMessage(error, failureMessage));
       } finally {
         markApplicantProcessing(applicant, null);

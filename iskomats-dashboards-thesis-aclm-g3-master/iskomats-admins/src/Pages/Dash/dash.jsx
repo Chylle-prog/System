@@ -161,6 +161,10 @@ export default function Dash() {
   const [providers, setProviders] = useState([]);
   const [statistics, setStatistics] = useState(emptyStatistics);
   const [isLoading, setIsLoading] = useState(true);
+  const [accountsLoading, setAccountsLoading] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [logsLoading, setLogsLoading] = useState(true);
+  const [providersLoading, setProvidersLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [processingId, setProcessingId] = useState(null); // Track which account is being processed
   const [pageError, setPageError] = useState('');
@@ -191,12 +195,56 @@ export default function Dash() {
     }
     setPageError('');
 
-    const [accountsResult, statisticsResult, logsResult, providersResult] = await Promise.allSettled([
+    setAccountsLoading(true);
+    setStatsLoading(true);
+    setLogsLoading(true);
+    setProvidersLoading(true);
+    
+    adminAPI.getAllAccounts().then((result) => {
+      const nextAccounts = (result.data.accounts || []).map(normalizeAccount);
+      setAccounts(nextAccounts);
+      setAccountsLoading(false);
+    }).catch(() => {
+      setAccounts([]);
+      setAccountsLoading(false);
+      setPageError((prev) => prev + ' Accounts failed.');
+    });
+
+    adminAPI.getDashboardStats().then((result) => {
+      setStatistics(result.data.statistics || emptyStatistics);
+      setStatsLoading(false);
+    }).catch(() => {
+      setStatistics(emptyStatistics);
+      setStatsLoading(false);
+      setPageError((prev) => prev + ' Statistics failed.');
+    });
+
+    adminAPI.getActivityLogs().then((result) => {
+      const nextLogs = (result.data.logs || []).map(normalizeLog);
+      setActivities(nextLogs);
+      setLogsLoading(false);
+    }).catch(() => {
+      setActivities([]);
+      setLogsLoading(false);
+      setPageError((prev) => prev + ' Activity logs failed.');
+    });
+
+    scholarshipAPI.getProviders().then((result) => {
+      setProviders(result.data || []);
+      setProvidersLoading(false);
+    }).catch(() => {
+      setProviders([]);
+      setProvidersLoading(false);
+      setPageError((prev) => prev + ' Providers failed.');
+    });
+
+    // Hide global loader when all are done
+    Promise.allSettled([
       adminAPI.getAllAccounts(),
       adminAPI.getDashboardStats(),
       adminAPI.getActivityLogs(),
       scholarshipAPI.getProviders(),
-    ]);
+    ]).then(() => setIsLoading(false));
 
     const errors = [];
 
@@ -238,25 +286,26 @@ export default function Dash() {
   };
 
   useEffect(() => {
-    loadDashboardData();
-
-    // System-wide synchronization: Listen for account changes from other sources
+    loadDashboardData();    
     const token = localStorage.getItem('authToken');
     if (token) {
       socketService.connect(token);
-      
       const unsubAccount = socketService.subscribe('account_change', (data) => {
         console.log('[SYNC] Account change detected live:', data);
-        // Silently refresh data to ensure reflection in real-time
         loadDashboardData(false);
       });
-
       return () => {
         unsubAccount();
         socketService.disconnect();
       };
     }
   }, []);
+  // --- Section Loading Indicators ---
+  // Example usage in render:
+  // {accountsLoading ? <div>Loading accounts...</div> : <AccountsTable accounts={accounts} />}
+  // {statsLoading ? <div>Loading statistics...</div> : <StatisticsPanel statistics={statistics} />}
+  // {logsLoading ? <div>Loading logs...</div> : <LogsTable logs={activities} />}
+  // {providersLoading ? <div>Loading providers...</div> : <ProvidersPanel providers={providers} />}
 
   const filteredManagedAccounts = useMemo(() => {
     const search = accountSearch.trim().toLowerCase();

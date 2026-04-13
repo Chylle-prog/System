@@ -51,19 +51,17 @@ const Login = () => {
     setFormData({ ...formData, isLoading: true, error: "" });
 
     try {
-      // Call backend API for login
+      // Show loading spinner during slow login
       const response = await authAPI.login(formData.email, formData.password);
       localStorage.removeItem('accountSuspended');
-      
-      // Save authentication data to localStorage
+      // ...existing code...
       localStorage.setItem('authToken', response.data.token);
       localStorage.setItem('isLoggedIn', 'true');
       localStorage.setItem('userRole', response.data.userRole);
       localStorage.setItem('userEmail', formData.email);
       localStorage.setItem('userName', response.data.userName);
       localStorage.setItem('userFirstName', response.data.userFirstName);
-      
-      // Navigate based on user role
+      // ...existing code...
       const role = response.data.userRole;
       switch (role) {
         case 'admin':
@@ -78,6 +76,10 @@ const Login = () => {
           navigate('/dash');
           break;
       }
+    } catch (err) {
+      setFormData(prev => ({ ...prev, isLoading: false, error: err?.response?.data?.message || 'Login failed. Please try again.' }));
+    }
+  };
     } catch (error) {
       let errorMessage = "Login failed. Please check if your email exists, the role is correct, and the password is correct.";
       
@@ -160,43 +162,44 @@ const Login = () => {
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div>
                   <label className="text-white text-sm font-semibold">
-                    Email Address
-                  </label>
-                  <div className="relative mt-2">
-                    <FaEnvelope className="absolute left-4 top-1/2 -translate-y-1/2 text-red-300" />
-                    <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleChange}
-                      placeholder="Enter your email"
-                      required
-                      className="w-full pl-12 pr-4 py-2.5 rounded-xl bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-white text-sm font-semibold">
-                    Password
-                  </label>
-                  <div className="relative mt-2">
-                    <FaLock className="absolute left-4 top-1/2 -translate-y-1/2 text-red-300" />
-                    <input
-                      type={formData.showPassword ? "text" : "password"}
-                      name="password"
-                      value={formData.password}
-                      onChange={handleChange}
-                      placeholder="Enter your password"
-                      required
-                      className="w-full pl-12 pr-12 py-3 rounded-xl bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-white"
-                    />
-                    <button
-                      type="button"
-                      onClick={togglePassword}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-red-300"
-                    >
-                      {formData.showPassword ? <FaEyeSlash /> : <FaEye />}
+                    return (
+                      <div className="login-container" style={{ backgroundImage: `url(${authBg})` }}>
+                        <form className="login-form" onSubmit={handleSubmit}>
+                          <img src={logo} alt="Logo" className="login-logo" />
+                          <h2>Admin Login</h2>
+                          {formData.error && <div className="error-message">{formData.error}</div>}
+                          <div className="input-group">
+                            <FaEnvelope className="input-icon" />
+                            <input
+                              type="email"
+                              name="email"
+                              placeholder="Email"
+                              value={formData.email}
+                              onChange={handleChange}
+                              required
+                            />
+                          </div>
+                          <div className="input-group">
+                            <FaLock className="input-icon" />
+                            <input
+                              type={formData.showPassword ? "text" : "password"}
+                              name="password"
+                              placeholder="Password"
+                              value={formData.password}
+                              onChange={handleChange}
+                              required
+                            />
+                            <span className="toggle-password" onClick={togglePassword}>
+                              {formData.showPassword ? <FaEyeSlash /> : <FaEye />}
+                            </span>
+                          </div>
+                          <button type="submit" className="login-btn" disabled={formData.isLoading}>
+                            {formData.isLoading ? <span className="fa-spin"><FaSignInAlt /></span> : <FaSignInAlt />} Sign In
+                          </button>
+                          {formData.isLoading && <div className="loading-message">Signing in, please wait...</div>}
+                        </form>
+                      </div>
+                    );
                     </button>
                   </div>
                 </div>
