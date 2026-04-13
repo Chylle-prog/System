@@ -3058,10 +3058,13 @@ const Portal = () => {
                             </ul>
                           ) : (
                             <ul>
-                              {res.gpa && <li>Minimum GPA: {res.gpa}</li>}
+                              {res.gpa && <li>Minimum GPA Requirement: {res.gpa}</li>}
                               {res.parent_finance && <li>Monthly family income ≤ ₱{Number(res.parent_finance).toLocaleString()}</li>}
                               {res.location && <li>Resident of {res.location}</li>}
-                              <li>Please check the official provider website for more details.</li>
+                              <li>Proof of Enrollment (Certificate of Enrollment)</li>
+                              <li>Transcript of Records or Latest Grade Report</li>
+                              <li>Barangay Certificate of Indigency</li>
+                              <li>Valid Student ID (Front and Back images)</li>
                             </ul>
                           )}
                         </div>

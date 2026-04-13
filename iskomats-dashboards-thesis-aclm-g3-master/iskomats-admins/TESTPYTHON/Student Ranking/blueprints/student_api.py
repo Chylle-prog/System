@@ -2109,7 +2109,7 @@ def get_all_scholarships():
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute('SELECT req_no, scholarship_name, deadline FROM scholarships WHERE COALESCE(is_removed, FALSE) = FALSE ORDER BY scholarship_name LIMIT %s OFFSET %s', (limit, offset))
+        cur.execute('SELECT req_no, scholarship_name, deadline, requirements, gpa, parent_finance, location, "desc" as description, semester, year FROM scholarships WHERE COALESCE(is_removed, FALSE) = FALSE ORDER BY scholarship_name LIMIT %s OFFSET %s', (limit, offset))
         rows = cur.fetchall()
         print(f"[PERF] /scholarships took {time.time() - start:.3f}s (limit={limit}, offset={offset})")
         return jsonify(rows)
