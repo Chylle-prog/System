@@ -419,13 +419,13 @@ def student_id_no_matches_text(target_id, text):
     # Search for "Student No" to isolate the actual number block if possible
     # This helps when the document has many numbers
     id_patterns = [
-        r'student\s*(?:no|number|id|#)[:\.\s-]+([a-z0-9\s-]{4,20})',
-        r'id\s*(?:no|number|#)[:\.\s-]+([a-z0-9\s-]{4,20})'
+        r'(?:student|id|no\.?)[^a-z0-9]{0,5}([a-z0-9\s-]{4,28})',
+        r'identification[^a-z0-9]{0,5}([a-z0-9\s-]{4,28})',
+        r'\b(?:id|no)\b.*?(\d{5,15})'
     ]
     
     for pat in id_patterns:
-        match = re.search(pat, text, re.IGNORECASE)
-        if match:
+        for match in re.finditer(pat, text, re.IGNORECASE):
             captured = normalize_id(match.group(1))
             if t_id in captured:
                 return True, target_id
@@ -824,10 +824,12 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
             scale = effective_max_width / w
             img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
 
-        # Specialized preprocessing for ID backs (Sharpening to help small text)
         if is_id_back:
-            # Subtle sharpening
+            # Subtle sharpening for ID backs
             img = cv2.filter2D(img, -1, np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]]))
+        
+        # Apply CLAHE to improve contrast in shaded documents (like photographed papers)
+        img = _CLAHE.apply(img)
     except Exception as e:
         return "", f"Preprocessing error: {str(e)}"
 
