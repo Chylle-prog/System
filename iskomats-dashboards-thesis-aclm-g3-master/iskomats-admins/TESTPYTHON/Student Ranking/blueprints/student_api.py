@@ -2963,12 +2963,7 @@ def ocr_check():
         if document_values:
             applicant.update(document_values)
             
-        # 2. Close connection early - Avoid keeping it idle during long-running OCR
-        # We have all the data we need in memory (applicant dict and request parameters)
-        cur.close()
-        conn.close()
-        # Remove conn from locals so finally block doesn't try to close it again
-        del conn
+        # 2. Preparation (Don't close connection yet, we might need it for scholarship check)
 
         # Optimization: Target prefetch to ONLY relevant videos for the specific scan
         urls_to_prefetch = []
@@ -3242,6 +3237,12 @@ def ocr_check():
                         allow_alt_pass=scan_options['allow_alt_pass'],
                         fallback_text_length=scan_options['fallback_text_length']
                     )
+                
+                # Close connection before starting parallel threads (important for pooling)
+                try:
+                    cur.close()
+                    conn.close()
+                except: pass
 
                 def run_ocr_check():
                     if doc_type == 'Enrollment':

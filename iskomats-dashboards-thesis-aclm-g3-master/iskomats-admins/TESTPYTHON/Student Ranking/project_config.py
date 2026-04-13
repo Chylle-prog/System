@@ -34,8 +34,8 @@ def _init_pool():
         kwargs = get_db_connection_kwargs()
         
         # Adjust pool size based on environment
-        min_conn = int(os.environ.get('DB_POOL_MIN', '2'))
-        max_conn = int(os.environ.get('DB_POOL_MAX', '10'))
+        min_conn = int(os.environ.get('DB_POOL_MIN', '5'))
+        max_conn = int(os.environ.get('DB_POOL_MAX', '50'))
         
         try:
             _CONNECTION_POOL = pool.ThreadedConnectionPool(
@@ -88,10 +88,11 @@ def get_db(cursor_factory=RealDictCursor, fast_startup=False):
     for attempt in range(3):
         try:
             conn = _CONNECTION_POOL.getconn()
-            # Simple liveness check
-            with conn.cursor() as test_cur:
-                test_cur.execute("SELECT 1")
-            # If we get here, the connection is alive
+            # Only perform a full liveness check if the connection is clearly dead
+            # Psycopg2 connections have a .closed attribute (0 = open)
+            if conn.closed != 0:
+                raise psycopg2.InterfaceError("Connection obtained from pool is already closed.")
+            # If we get here, the connection is likely alive
             break
         except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
             print(f"[DB ERROR] Got broken connection from pool: {e}. Attempting to refresh...", flush=True)

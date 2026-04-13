@@ -2419,16 +2419,8 @@ def register():
         cursor.close()
         conn.close()
 
-        # 5. Send verification email
-        try:
-            print(f"[VERIFICATION EMAIL] Attempting to send verification code to {normalized_email}")
-            send_verification_email(normalized_email, verification_code)
-            print(f"[VERIFICATION EMAIL] Successfully sent verification code to {normalized_email}")
-        except Exception as e:
-            print(f"[VERIFICATION EMAIL ERROR] Failed to send verification email to {normalized_email}: {str(e)}", flush=True)
-            import traceback
-            traceback.print_exc()
-            # Don't fail registration if email fails to send, but log it
+        # 5. Send verification email (Offloaded to background to prevent UI lag)
+        run_background_task(send_verification_email, normalized_email, verification_code)
 
         record_admin_activity(
             actor_user_no=user_no,
@@ -2497,23 +2489,16 @@ def forgot_password():
 
         if user:
             # User account found - send password reset email
-            try:
-                reset_token = generate_password_reset_token(
-                    user['user_no'],
-                    user['email_address'],
-                    user['provider_name'],
-                    user['pro_no'],
-                )
-                reset_url = f"{FRONTEND_URL}/reset-password/{reset_token}"
-                print(f"[FORGOT PASSWORD] Attempting to send reset email to {user['email_address']}")
-                send_password_reset_email(user['email_address'], reset_url, user['provider_name'])
-                print(f"[FORGOT PASSWORD] Reset email sent successfully to {user['email_address']}")
-                return jsonify({'message': 'If an account exists with this email, a password reset link has been sent'}), 200
-            except Exception as email_error:
-                print(f"[FORGOT PASSWORD ERROR] Failed to send email to {user['email_address']}: {str(email_error)}", flush=True)
-                import traceback
-                traceback.print_exc()
-                raise  # Re-raise to return error to user
+            # User account found - send password reset email (Offloaded to background)
+            reset_token = generate_password_reset_token(
+                user['user_no'],
+                user['email_address'],
+                user['provider_name'],
+                user['pro_no'],
+            )
+            reset_url = f"{FRONTEND_URL}/reset-password/{reset_token}"
+            run_background_task(send_password_reset_email, user['email_address'], reset_url, user['provider_name'])
+            return jsonify({'message': 'If an account exists with this email, a password reset link has been sent'}), 200
         else:
             # No user account found - check if it's an applicant-only or non-existent
             cursor.execute(
@@ -3317,7 +3302,12 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
         if 'year' in scholarship_columns:
             group_by_columns.append('s.year')
 
-        query += '\n            GROUP BY ' + ', '.join(group_by_columns) + '\n            ORDER BY s.req_no DESC\n        '
+        # Add Pagination
+        limit = int(request.args.get('limit', 100))
+        offset = int(request.args.get('offset', 0))
+        
+        query += '\n            GROUP BY ' + ', '.join(group_by_columns) + '\n            ORDER BY s.req_no DESC LIMIT %s OFFSET %s\n        '
+        params.extend([limit, offset])
         
         cursor.execute(query, params)
         rows = cursor.fetchall()
@@ -3448,6 +3438,12 @@ def get_applicants(current_user_id, pro_no, role, program):
             query += ' AND (a.first_name ILIKE %s OR a.last_name ILIKE %s OR e.email_address ILIKE %s)'
             search_term = f"%{filters['search']}%"
             params.extend([search_term, search_term, search_term])
+        
+        # Add Pagination for SuperAdmin performance
+        limit = int(filters.get('limit', 500))
+        offset = int(filters.get('offset', 0))
+        query += ' ORDER BY s.status_updated DESC, a.applicant_no DESC LIMIT %s OFFSET %s'
+        params.extend([limit, offset])
         
         # Note: filters.get('status') ignored because table schema does not properly match it yet
         

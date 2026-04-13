@@ -155,54 +155,54 @@ const Login = () => {
               )}
 
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                  <label className="text-white text-sm font-semibold">
-                    return (
-                      <div className="login-container" style={{ backgroundImage: `url(${authBg})` }}>
-                        <form className="login-form" onSubmit={handleSubmit}>
-                          <img src={logo} alt="Logo" className="login-logo" />
-                          <h2>Admin Login</h2>
-                          {formData.error && <div className="error-message">{formData.error}</div>}
-                          <div className="input-group">
-                            <FaEnvelope className="input-icon" />
-                            <input
-                              type="email"
-                              name="email"
-                              placeholder="Email"
-                              value={formData.email}
-                              onChange={handleChange}
-                              required
-                            />
-                          </div>
-                          <div className="input-group">
-                            <FaLock className="input-icon" />
-                            <input
-                              type={formData.showPassword ? "text" : "password"}
-                              name="password"
-                              placeholder="Password"
-                              value={formData.password}
-                              onChange={handleChange}
-                              required
-                            />
-                            <span className="toggle-password" onClick={togglePassword}>
-                              {formData.showPassword ? <FaEyeSlash /> : <FaEye />}
-                            </span>
-                          </div>
-                          <button type="submit" className="login-btn" disabled={formData.isLoading}>
-                            {formData.isLoading ? <span className="fa-spin"><FaSignInAlt /></span> : <FaSignInAlt />} Sign In
-                          </button>
-                          {formData.isLoading && <div className="loading-message">Signing in, please wait...</div>}
-                        </form>
+                <div className="space-y-4">
+                  <div className="form-group">
+                    <label className="block text-white text-sm font-semibold mb-2">Email Address</label>
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-white/40 group-focus-within:text-white transition-colors">
+                        <FaEnvelope />
                       </div>
-                    );
-                    </button>
+                      <input
+                        type="email"
+                        name="email"
+                        value={formData.email}
+                        onChange={handleChange}
+                        className="w-full bg-white/5 border border-white/20 rounded-xl py-3 pl-11 pr-4 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#800020]/50 focus:border-[#800020] transition-all"
+                        placeholder="admin@iskomats.ph"
+                        required
+                      />
+                    </div>
                   </div>
-                </div>
 
-                <div className="flex flex-col sm:flex-row sm:justify-between gap-4 text-sm text-white/80">
-                  <a href="/forget-password" className="hover:underline hover:text-white transition-colors">
-                    Forgot password?
-                  </a>
+                  <div className="form-group">
+                    <div className="flex justify-between items-center mb-2">
+                      <label className="text-white text-sm font-semibold">Password</label>
+                      <a href="/forget-password" onClick={(e) => { e.preventDefault(); navigate('/forget-password'); }} className="text-xs text-white/60 hover:text-white hover:underline transition-colors">
+                        Forgot password?
+                      </a>
+                    </div>
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-white/40 group-focus-within:text-white transition-colors">
+                        <FaLock />
+                      </div>
+                      <input
+                        type={formData.showPassword ? "text" : "password"}
+                        name="password"
+                        value={formData.password}
+                        onChange={handleChange}
+                        className="w-full bg-white/5 border border-white/20 rounded-xl py-3 pl-11 pr-12 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#800020]/50 focus:border-[#800020] transition-all"
+                        placeholder="••••••••"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={togglePassword}
+                        className="absolute inset-y-0 right-0 pr-4 flex items-center text-white/40 hover:text-white transition-colors"
+                      >
+                        {formData.showPassword ? <FaEyeSlash /> : <FaEye />}
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <button
