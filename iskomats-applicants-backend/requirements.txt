@@ -2,4 +2,5 @@ flask
 psycopg2
 flask-caching
 python-dotenv
+flask-cors
 # Add other applicant-side dependencies as needed
