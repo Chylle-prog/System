@@ -222,7 +222,19 @@ def applicant_profile():
 
 @student_api_bp.route('/scholarships/all', methods=['GET'])
 def get_scholarships():
-    return jsonify({"scholarships": []})
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        # requirements column does not exist, using desc as description
+        cur.execute('SELECT req_no, scholarship_name, deadline, gpa, parent_finance, location, "desc" as description, semester, year FROM scholarships WHERE COALESCE(is_removed, FALSE) = FALSE ORDER BY scholarship_name')
+        rows = cur.fetchall()
+        return jsonify(rows)
+    except Exception as e:
+        print(f"[ERROR] get_scholarships failed: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if 'conn' in locals():
+            conn.close()
 
 @student_api_bp.route('/applications/my-applications', methods=['GET'])
 def get_my_applications():

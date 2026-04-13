@@ -7,12 +7,12 @@ DEFAULT_CORS_ORIGINS = (
     "http://localhost:3000,http://localhost:3000/,"
     "http://localhost:5174,http://localhost:5174/,"
     "http://localhost:5175,http://localhost:5175/,"
-    "https://cozy-kulfi-35f772.netlify.app,https://cozy-kulfi-35f772.netlify.app/,"
-    "https://stingy-body.surge.sh,https://stingy-body.surge.sh/,"
-    "https://foregoing-giants.surge.sh,https://foregoing-giants.surge.sh/,"
-    "https://iskomats-applicants.surge.sh,https://iskomats-applicants.surge.sh/,"
-    "https://iskomats-admin.surge.sh,https://iskomats-admin.surge.sh/,"
-    "https://system-kjbv.onrender.com,https://system-kjbv.onrender.com/"
+    "https://cozy-kulfi-35f772.netlify.app,"
+    "https://stingy-body.surge.sh,"
+    "https://foregoing-giants.surge.sh,"
+    "https://iskomats-applicants.surge.sh,"
+    "https://iskomats-admin.surge.sh,"
+    "https://system-kjbv.onrender.com"
 )
 
 
@@ -88,6 +88,11 @@ def is_origin_allowed(origin, exact_origins, regex_origins):
                 return True
         except Exception as e:
             print(f"[CORS] Error matching pattern {pattern}: {e}")
+
+    # GLOBAL OVERRIDE: Allow any surge.sh or netlify.app origin as a safety net
+    if normalized_origin.endswith('.surge.sh') or normalized_origin.endswith('.surge.sh/') or \
+       normalized_origin.endswith('.netlify.app') or normalized_origin.endswith('.netlify.app/'):
+        return True
 
     # Log only unique rejections to avoid flooding
     print(f"[CORS REJECT] '{origin}' (normalized: '{normalized_origin}') not found in allowed list. Exact: {len(exact_origins)}, Regex: {len(regex_origins)}", flush=True)

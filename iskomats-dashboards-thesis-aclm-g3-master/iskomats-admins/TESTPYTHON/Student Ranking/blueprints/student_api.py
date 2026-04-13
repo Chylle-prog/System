@@ -106,47 +106,37 @@ _VERIFICATION_RESULT_CACHE_SIZE_LIMIT = 128
 _VERIFICATION_RESULT_CACHE_TTL_SECONDS = 300
 PENDING_REGISTRATION_EXPIRY_WINDOW = timedelta(hours=1)
 def academic_year_matches_expected(found_year, expected_year):
-    if not found_year or not expected_year:
-        return False
+    """
+    Core AY matching logic:
+    1. If scholarship expects a range (2025-2026), check if applicant's year is same or in between.
+    2. If scholarship expects a single year (2026), compare it with the later year for the applicant.
+    """
+    if not expected_year: expected_year = "2025-2026"
+    if not found_year: return False
 
     found_years = [int(year) for year in re.findall(r'20\d{2}', str(found_year))]
     expected_years = [int(year) for year in re.findall(r'20\d{2}', str(expected_year))]
 
-    if not found_years or not expected_years:
-        return False
+    if not found_years or not expected_years: return False
 
-    min_expected = min(expected_years)
-    max_expected = max(expected_years)
-    return any(min_expected <= year <= max_expected for year in found_years)
-
+    # Case 1: Scholarship expects a range (e.g. 2025-2026)
+    if len(expected_years) >= 2:
+        min_exp, max_exp = min(expected_years), max(expected_years)
+        # Check if ANY of the student's found years are same or in between
+        # e.g., if student says 2025, and range is 2025-2026 -> OK
+        return any(min_exp <= y <= max_exp for y in found_years)
+    
+    # Case 2: Scholarship expects a single year (e.g. 2026)
+    else:
+        # Compare with the later year for the applicant
+        # e.g., if student says 2025-2026, latest is 2026. If target is 2026 -> OK.
+        latest_found = max(found_years)
+        target_year = expected_years[0]
+        return latest_found >= target_year
 
 def academic_year_matches_latest_expected(found_year, expected_year):
-    # Safety fallback: if no expectation is provided, default to current academic period (2025-2026)
-    if not expected_year:
-        expected_year = "2025-2026"
-        
-    if not found_year:
-        return False
-
-    found_years = [int(year) for year in re.findall(r'20\d{2}', str(found_year))]
-    expected_years = [int(year) for year in re.findall(r'20\d{2}', str(expected_year))]
-
-    if not found_years or not expected_years:
-        return False
-
-    latest_found = max(found_years)
-    latest_expected = max(expected_years)
-
-    # SUCCESS CASE 1: Exact match of the latest year (2026 == 2026)
-    if latest_found == latest_expected:
-        return True
-        
-    # SUCCESS CASE 2: Found ID is NEWER than expected (Student already has next year's sticker)
-    if latest_found > latest_expected:
-        return True
-
-    # SUCCESS CASE 3: Found year is within the expected range
-    return min(expected_years) <= latest_found <= latest_expected
+    # Use the harmonized logic
+    return academic_year_matches_expected(found_year, expected_year)
 
 
 def build_academic_year_keywords(expected_year):
@@ -2030,7 +2020,7 @@ def get_all_scholarships():
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute('SELECT req_no, scholarship_name, deadline, requirements, gpa, parent_finance, location, "desc" as description, semester, year FROM scholarships WHERE COALESCE(is_removed, FALSE) = FALSE ORDER BY scholarship_name LIMIT %s OFFSET %s', (limit, offset))
+        cur.execute('SELECT req_no, scholarship_name, deadline, gpa, parent_finance, location, "desc" as description, semester, year FROM scholarships WHERE COALESCE(is_removed, FALSE) = FALSE ORDER BY scholarship_name LIMIT %s OFFSET %s', (limit, offset))
         rows = cur.fetchall()
         print(f"[PERF] /scholarships took {time.time() - start:.3f}s (limit={limit}, offset={offset})")
         return jsonify(rows)
@@ -3339,33 +3329,32 @@ def ocr_check():
                         # Build Check-list Message
                         checklist = [
                             f"Name: {'OK' if name_ok else 'X'}", 
+                            f"ID No: {'OK' if id_ok else 'X'}",
                             f"School: {'OK' if school_ok else 'X'}",
                             f"Course: {'OK' if course_ok else 'X'}",
                             f"Year Level: {'OK' if year_level_ok else 'X'}",
-                            f"ID No: {'OK' if id_ok else 'X'}",
                             f"AY: {'OK' if year_only_ok else 'X'}"
                         ]
                         
                         # Set primary verification status
-                        # Enforce all requested verifications for Enrollment
-                        v = name_ok and year_only_ok and school_ok and id_ok and course_ok and year_level_ok
+                        # For Enrollment, Name, ID, School, and Course are the primary mandatory fields.
+                        # Year Level and AY are kept as warnings to handle document variations.
+                        v = name_ok and id_ok and school_ok and course_ok
 
                         if not v:
                             msg = f"Verification failed. Checklist: [{' | '.join(checklist)}]"
                             if not name_ok: msg += f" (Name ratio: {name_ratio:.2f})"
                         else:
                             detail_issues = []
-                            if not school_ok: detail_issues.append("School mismatch")
-                            if not course_ok: detail_issues.append("Course mismatch")
                             if not year_level_ok: detail_issues.append("Year level mismatch")
-                            if not id_ok: detail_issues.append("ID number mismatch")
+                            if not year_only_ok: detail_issues.append("AY mismatch")
                             if not semester_ok: detail_issues.append("Semester mismatch")
                             if not year_ok: detail_issues.append("Period mismatch")
 
                             if detail_issues:
                                 msg = f"Verified with warnings: {', '.join(detail_issues)} | Checklist: [{' | '.join(checklist)}]"
                             else:
-                                msg = f"Verified for A.Y. {year_label} | Checklist: [{' | '.join(checklist)}]"
+                                msg = f"Verified Successfully | Checklist: [{' | '.join(checklist)}]"
 
                         return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
 

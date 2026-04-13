@@ -26,9 +26,8 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 cv2.setNumThreads(1) # Crucial: prevents OpenCV from spawning ghost threads that kill RAM
 
-# Global OCR Concurrency Control: Reduced to 4 to ensure each task has more CPU time,
-# reducing total latency per request on shared-CPU environments like Render.
-OCR_SEMAPHORE = eventlet.semaphore.Semaphore(4)
+# Global OCR Concurrency Control: Limited to 1 for stability on Render's 512MB RAM limits.
+OCR_SEMAPHORE = eventlet.semaphore.Semaphore(1)
 
 
 # ─── Environment hints for threading & memory ──────────────────────────────────
@@ -206,18 +205,15 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     if img is None: return ""
     results = []
     
-    # Pass 1: Binarized Grayscale (Extremely fast for Tesseract to process)
+    # Pass 1: Raw Grayscale (Best for modern LSTM Tesseract, handles white-on-black perfectly)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
     
-    # Binarization (Otsu) often yields 20-30% faster results because Tesseract skips internal binarization
-    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    
     t1 = time.time()
-    text1 = eventlet.tpool.execute(pytesseract.image_to_string, binary, config=f'--psm {psm} --oem 1')
+    text1 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 1')
     t1_end = time.time()
     
-    # Check if first pass was sufficient (Lenient 10-char check for ID-only or short forms)
-    if len(text1.strip()) > 10:
+    # Check if first pass was sufficient (Lenient 12-char check for names/IDs)
+    if len(text1.strip()) > 12:
         print(f"[OCR PERF] Pass1 ({psm}) SUCCESS: {t1_end - t1:.3f}s", flush=True)
         return text1.strip()
     
@@ -420,16 +416,29 @@ def student_id_no_matches_text(target_id, text):
     t_id = normalize_id(target_id)
     if not t_id: return True
     
+    # Search for "Student No" to isolate the actual number block if possible
+    # This helps when the document has many numbers
+    id_patterns = [
+        r'student\s*(?:no|number|id|#)[:\.\s-]+([a-z0-9\s-]{4,20})',
+        r'id\s*(?:no|number|#)[:\.\s-]+([a-z0-9\s-]{4,20})'
+    ]
+    
+    for pat in id_patterns:
+        match = re.search(pat, text, re.IGNORECASE)
+        if match:
+            captured = normalize_id(match.group(1))
+            if t_id in captured:
+                return True
+    
     norm_text = normalize_id(text)
     
     if t_id in norm_text:
         return True
     
     # Check words individually if ID has non-digits (e.g., "ST2024-123")
-    if not target_id.isdigit():
-        for word in text.split():
-            if t_id in normalize_id(word):
-                return True
+    for word in text.split():
+        if t_id in normalize_id(word):
+            return True
         
     return False
         
@@ -1090,11 +1099,23 @@ def extract_school_year_from_text(text):
         return f"{range_match.group(1)}-{range_match.group(2)}"
 
     # Priority B: Keyword Proximity
-    # Handles "Valid Until: 2025", "SY 2026"
-    keyword_pat = r'(?:school\s*year|academic\s*year|valid\s*until|v\.?u\.?|exp\.?\s*date)'
-    keyword_year = re.search(f'{keyword_pat}.{{0,30}}?(20[2-3][0-9])', compact_text, re.IGNORECASE)
-    if keyword_year:
-        return keyword_year.group(1)
+    # Handles "Valid Until: 2025", "SY 2026", "School Year Sem 2025-2026"
+    # We grab all digits and common year separators following the keyword
+    keyword_pat = r'(?:school\s*year|academic\s*year|valid\s*until|v\.?u\.?|exp\.?\s*date|sem\b|sy\b|ay\b)'
+    keyword_match = re.search(f'{keyword_pat}.{{0,15}}?([0-9\\s\\-\\/\\.\\,\\~\\|]{{4,25}})', compact_text, re.IGNORECASE)
+    if keyword_match:
+        captured = keyword_match.group(1).strip()
+        # Clean the captured part to only keep digits and separators
+        cleaned_captured = re.sub(r'[^0-9\-\/]', '', captured)
+        if len(cleaned_captured) >= 4:
+            # If it's a range like 2024-2025, format it
+            rng = re.search(r'(20\d{2})[\s\-\/]+(20\d{2})', captured)
+            if rng:
+                return f"{rng.group(1)}-{rng.group(2)}"
+            # If it's just a single year
+            yr = re.search(r'20[2-3][0-9]', captured)
+            if yr:
+                return yr.group(0)
 
     # Priority C: Short Range (e.g., 2024-25)
     short_range = re.search(r'(20[2-3][0-9])[\s\-\/\\–—]+([2-3][0-9])\b', compact_text)
