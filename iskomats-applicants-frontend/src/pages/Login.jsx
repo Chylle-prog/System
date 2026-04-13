@@ -99,7 +99,7 @@ const Login = () => {
 
       localStorage.setItem('currentUser', email);
       localStorage.setItem('authToken', response.token);
-      localStorage.setItem('applicantNo', response.applicant_no);
+      localStorage.setItem('applicantNo', response.applicant_no || '');
       setShowError(false);
 
       // Navigate based on profile completion
@@ -349,7 +349,7 @@ const Login = () => {
 
       localStorage.setItem('currentUser', email);
       localStorage.setItem('authToken', response.token);
-      localStorage.setItem('applicantNo', response.applicant_no);
+      localStorage.setItem('applicantNo', response.applicant_no || '');
       setShowError(false);
 
       // 2. Navigate based on profile status

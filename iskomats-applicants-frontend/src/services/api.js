@@ -7,7 +7,7 @@ export const uploadProfilePicture = async (file) => {
   const objectPath = `profile_pictures/${applicantNo}-${currentUser}${ext}`;
 
   const uploadResult = await supabase.storage
-    .from('profile_pictures')
+    .from('iskomats-files')
     .upload(objectPath, file, {
       upsert: true,
       contentType,
@@ -18,7 +18,7 @@ export const uploadProfilePicture = async (file) => {
     throw uploadResult.error;
   }
 
-  const { data } = supabase.storage.from('profile_pictures').getPublicUrl(objectPath);
+  const { data } = supabase.storage.from('iskomats-files').getPublicUrl(objectPath);
   if (!data?.publicUrl) {
     throw new Error('Profile picture upload succeeded but no public URL was returned.');
   }
@@ -38,8 +38,12 @@ export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
 let backendWarmupPromise = null;
 
 const sanitizeStorageSegment = (value, fallback = 'anonymous') => {
-  const normalized = String(value || '')
-    .trim()
+  const valStr = String(value || '').trim();
+  if (!valStr || valStr === 'undefined' || valStr === 'null') {
+    return fallback;
+  }
+
+  const normalized = valStr
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, '-');
 
@@ -90,7 +94,7 @@ const uploadRequirementVideoDirect = async (fieldName, file) => {
   const objectPath = `videos/${folder}/${applicantNo}-${currentUser}/${fieldName}${ext}`;
 
   const uploadResult = await supabase.storage
-    .from('document_videos')
+    .from('iskomats-files')
     .upload(objectPath, file, {
       upsert: true,
       contentType,
@@ -101,7 +105,7 @@ const uploadRequirementVideoDirect = async (fieldName, file) => {
     throw uploadResult.error;
   }
 
-  const { data } = supabase.storage.from('document_videos').getPublicUrl(objectPath);
+  const { data } = supabase.storage.from('iskomats-files').getPublicUrl(objectPath);
   if (!data?.publicUrl) {
     throw new Error('Direct upload succeeded but no public URL was returned.');
   }
