@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { authAPI, applicantAPI } from '../services/api';
+import { authAPI, applicantAPI, uploadProfilePicture } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { GoogleLogin } from '@react-oauth/google';
 import lipaBg from '../assets/lipa.jpg';
@@ -19,6 +19,7 @@ const Login = () => {
   const [showEmailAlreadyRegisteredOverlay, setShowEmailAlreadyRegisteredOverlay] = useState(false);
   const [showSuspensionModal, setShowSuspensionModal] = useState(false);
   const [profilePicture, setProfilePicture] = useState(null);
+  const [rawProfilePictureFile, setRawProfilePictureFile] = useState(null);
   const [isLoginLoading, setIsLoginLoading] = useState(false);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
@@ -259,6 +260,18 @@ const Login = () => {
       const email = localStorage.getItem('currentUser');
 
       // Use the exact names expected by the backend field_mapping
+      let finalProfilePictureUrl = null;
+      if (rawProfilePictureFile) {
+        try {
+          setLoadingMessage({ title: 'Uploading Photo', message: 'Securing your profile picture...' });
+          finalProfilePictureUrl = await uploadProfilePicture(rawProfilePictureFile);
+        } catch (uploadError) {
+          console.error('[PROFILE-PIC] Failed to upload to storage:', uploadError);
+          // Fallback to dataURL if storage fails (though ideally we want storage)
+          finalProfilePictureUrl = profilePicture;
+        }
+      }
+
       const profilePayload = {
         firstName,
         middleName,
@@ -271,13 +284,10 @@ const Login = () => {
         townCity: townCityMunicipality,
         province,
         zipCode,
+        profile_picture: finalProfilePictureUrl
       };
       
-      if (profilePicture) profilePayload.profile_picture = profilePicture;
-
-      console.log('[LOGIN-PROFILE] Submitting profile data:', profilePayload);
-      const updateResult = await applicantAPI.updateProfile(profilePayload);
-      console.log('[LOGIN-PROFILE] Profile update response:', updateResult);
+      await applicantAPI.updateProfile(profilePayload);
 
       // Refresh global Auth state to ensure PrivateRoute recognizes the profile as complete
       if (email && fetchProfile) {
@@ -303,6 +313,7 @@ const Login = () => {
     const file = e.target.files[0];
     if (!file) return;
 
+    setRawProfilePictureFile(file);
     const reader = new FileReader();
     reader.onload = (ev) => {
       setProfilePicture(ev.target.result);
@@ -648,43 +659,36 @@ const Login = () => {
           font-size: 1rem;
         }
 
-        .profile-input-wrapper input,
-        .profile-input-wrapper select {
+        .profile-input-wrapper input {
+          border: none;
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.08);
+          color: white;
+          font-size: 1rem;
+          transition: all 0.3s ease;
           width: 100%;
-          padding: 0.85rem 1.2rem 0.85rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.2);
-          border-radius: 30px;
-          font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.4);
-          color: var(--text-dark);
-          transition: var(--transition);
-          font-family: 'Inter', sans-serif;
-          font-weight: 500;
+          backdrop-filter: blur(5px);
+          padding: 1rem 1.2rem 1rem 2.8rem;
         }
 
-        .profile-input-wrapper input::placeholder {
-          color: rgba(18, 24, 38, 0.5);
-        }
-
-        .profile-input-wrapper input:focus,
-        .profile-input-wrapper select:focus {
+        .profile-form-group .profile-input-wrapper input:focus,
+        .profile-form-group .profile-input-wrapper select:focus {
           outline: none;
-          border-color: white;
-          background: rgba(255, 255, 255, 0.6);
-          box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.1);
-          color: var(--text-dark);
+          background: rgba(255, 255, 255, 0.15);
+          box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
         }
 
-        .profile-input-wrapper input:focus + i,
-        .profile-input-wrapper select:focus + i {
+        .profile-form-group .profile-input-wrapper input::placeholder {
+          color: rgba(255, 255, 255, 0.4);
+        }
+        
+        .profile-form-group .profile-input-wrapper select option {
+          background: #1a1a1a;
           color: white;
         }
 
-        .profile-input-wrapper input:read-only {
-          background: rgba(255, 255, 255, 0.2) !important;
-          cursor: not-allowed;
-          opacity: 0.8;
-          color: rgba(18, 24, 38, 0.7);
+        .profile-input-wrapper input:focus + i {
+          color: var(--primary);
         }
 
 
@@ -1227,7 +1231,7 @@ const Login = () => {
                     <>
                       <i className="fas fa-spinner fa-spin" style={{marginRight: '8px'}}></i>Loading...
                     </>
-                  ) : (
+                   ) : (
                     <>Log in</>
                   )}
                 </button>
@@ -1373,7 +1377,7 @@ const Login = () => {
                 <label>University / School</label>
                 <div className="profile-input-wrapper">
                   <i className="fas fa-university"></i>
-                  <select name="school" required>
+                  <select name="school" required style={{ width: '100%', padding: '12px 12px 12px 42px', border: '1px solid #ddd', borderRadius: '8px', background: 'white' }}>
                     <option value="">Select University / School</option>
                     <option value="De La Salle Lipa">De La Salle Lipa</option>
                     <option value="National University Lipa">National University Lipa</option>
@@ -1404,7 +1408,7 @@ const Login = () => {
                 <label>Street & Barangay</label>
                 <div className="profile-input-wrapper">
                   <i className="fas fa-map-marker-alt"></i>
-                  <select name="streetBrgy" required>
+                  <select name="streetBrgy" required style={{ width: '100%', padding: '12px 12px 12px 42px', border: '1px solid #ddd', borderRadius: '8px', background: 'white' }}>
                     <option value="">Select Barangay</option>
                     <option value="Adya">Adya</option>
                     <option value="Anilao">Anilao</option>
@@ -1486,19 +1490,19 @@ const Login = () => {
                 <div className="profile-form-group">
                   <label>Town / City</label>
                   <div className="profile-input-wrapper">
-                    <input type="text" name="townCityMunicipality" value="Lipa City" readOnly />
+                    <input type="text" name="townCityMunicipality" value="Lipa City" readOnly style={{ backgroundColor: '#f1f1f1', cursor: 'not-allowed' }} />
                   </div>
                 </div>
                 <div className="profile-form-group">
                   <label>Province</label>
                   <div className="profile-input-wrapper">
-                    <input type="text" name="province" value="Batangas" readOnly />
+                    <input type="text" name="province" value="Batangas" readOnly style={{ backgroundColor: '#f1f1f1', cursor: 'not-allowed' }} />
                   </div>
                 </div>
                 <div className="profile-form-group">
                   <label>Zip Code</label>
                   <div className="profile-input-wrapper">
-                    <input type="text" name="zipCode" value="4217" readOnly />
+                    <input type="text" name="zipCode" value="4217" readOnly style={{ backgroundColor: '#f1f1f1', cursor: 'not-allowed' }} />
                   </div>
                 </div>
               </div>

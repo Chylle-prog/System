@@ -108,7 +108,6 @@ const Portal = () => {
 
   // Notification data structure
   const [dbAnnouncements, setDbAnnouncements] = useState([]);
-  const [readAnnouncements, setReadAnnouncements] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const portalLocked = Boolean(userProfile?.duplicate_applicant_exists);
   const portalLockMessage = userProfile?.portal_lock_message || 'You already exist in the system';
@@ -150,15 +149,6 @@ const Portal = () => {
     document.head.appendChild(googleFontsSheet);
 
     // Load user data
-    const savedRead = localStorage.getItem('readAnnouncements');
-    if (savedRead) {
-      try {
-        setReadAnnouncements(JSON.parse(savedRead));
-      } catch (err) {
-        console.error("Failed to parse read announcements:", err);
-      }
-    }
-
     const user = localStorage.getItem('currentUser');
     const profiles = JSON.parse(localStorage.getItem('userProfiles')) || {};
     
@@ -717,13 +707,6 @@ const Portal = () => {
        postedAt: date,
      });
      setShowAnnouncementModal(true);
-
-     // Mark as read when opened
-     if (id && id !== 'N/A' && !readAnnouncements.includes(id)) {
-       const newRead = [...readAnnouncements, id];
-       setReadAnnouncements(newRead);
-       localStorage.setItem('readAnnouncements', JSON.stringify(newRead));
-     }
    };
 
   const closeAnnouncementModal = () => {
@@ -2717,8 +2700,7 @@ const Portal = () => {
                               {(() => {
                                 const createdDate = new Date(ann.time_added || 0);
                                 const diffDays = (new Date() - createdDate) / (1000 * 60 * 60 * 24);
-                                const isRead = readAnnouncements.includes(ann.ann_no);
-                                return (diffDays <= 3 && !isRead) ? (
+                                return diffDays <= 3 ? (
                                   <span style={{
                                     background: 'linear-gradient(90deg, #ff9800 60%, #ffcc80 100%)',
                                     color: '#fff',
@@ -3058,13 +3040,10 @@ const Portal = () => {
                             </ul>
                           ) : (
                             <ul>
-                              {res.gpa && <li>Minimum GPA Requirement: {res.gpa}</li>}
+                              {res.gpa && <li>Minimum GPA: {res.gpa}</li>}
                               {res.parent_finance && <li>Monthly family income ≤ ₱{Number(res.parent_finance).toLocaleString()}</li>}
                               {res.location && <li>Resident of {res.location}</li>}
-                              <li>Proof of Enrollment (Certificate of Enrollment)</li>
-                              <li>Transcript of Records or Latest Grade Report</li>
-                              <li>Barangay Certificate of Indigency</li>
-                              <li>Valid Student ID (Front and Back images)</li>
+                              <li>Please check the official provider website for more details.</li>
                             </ul>
                           )}
                         </div>
