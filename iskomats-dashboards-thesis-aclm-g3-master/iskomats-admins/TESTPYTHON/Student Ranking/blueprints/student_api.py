@@ -3049,7 +3049,7 @@ def ocr_check():
                     
                     if doc_type == 'Enrollment':
                         id_ok, _ = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
-                        course_ok = course_matches_text(course, raw) if course else True
+                        course_ok, _ = course_matches_text(course, raw) if course else (True, None)
                         v = name_ok and id_ok and school_ok and course_ok
                         checklist = [f"Name: {'OK' if name_ok else 'X'}", f"ID: {'OK' if id_ok else 'X'}", f"School: {'OK' if school_ok else 'X'}", f"Course: {'OK' if course_ok else 'X'}"]
                         return {'doc': 'Enrollment', 'verified': v, 'message': f"Checklist: [{' | '.join(checklist)}]", 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
