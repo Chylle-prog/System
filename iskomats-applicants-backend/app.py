@@ -5,6 +5,7 @@ from flask import Flask
 from flask_caching import Cache
 from flask_cors import CORS
 import os
+from flask import request
 
 
 app = Flask(__name__)
@@ -26,11 +27,15 @@ CORS(app, origins=origins, supports_credentials=True)
 app.register_blueprint(student_api_bp, url_prefix='/api/student')
 
 # --- CORS Preflight Fix ---
+
+# Only set Access-Control-Allow-Origin if not already set by flask-cors
 @app.after_request
 def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin', ','.join(origins))
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    origin = request.headers.get('Origin')
+    if origin and origin in origins:
+        response.headers['Access-Control-Allow-Origin'] = origin
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
+    response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
     return response
 
 # Explicit OPTIONS handler for Google Auth endpoint
