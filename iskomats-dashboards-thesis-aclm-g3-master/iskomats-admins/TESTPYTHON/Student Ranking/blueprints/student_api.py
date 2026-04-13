@@ -47,6 +47,7 @@ from services.ocr_utils import (
     course_matches_text,
     student_id_no_matches_text
 )
+from services.school_utils import build_school_name_variants, school_name_matches_text
 from services.notification_service import create_notification, fetch_google_access_token
 from services.google_auth_service import verify_google_token
 from concurrent.futures import ThreadPoolExecutor
