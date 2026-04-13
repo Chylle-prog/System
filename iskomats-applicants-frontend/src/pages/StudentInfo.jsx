@@ -899,6 +899,8 @@ const StudentInfo = () => {
     }
   };
 
+  // --- Indigency Verification Optimization ---
+  const lastIndigencyScanRef = useRef({ doc: null, vid: null });
   const handleIndigencyScan = async () => {
     const indigencyDoc = getVerificationDocumentSource(
       photos.mayorIndigency_photo,
@@ -907,6 +909,16 @@ const StudentInfo = () => {
     );
     const townCity = formData.townCityMunicipality || '';
     const videoUrl = formData.mayorIndigency_video || documentVideos.mayorIndigency_video;
+
+    // Skip if nothing changed (doc/video)
+    const last = lastIndigencyScanRef.current;
+    if (
+      last.doc === indigencyDoc &&
+      last.vid === videoUrl &&
+      ocrVerified === 'success'
+    ) {
+      return;
+    }
 
     if (!indigencyDoc) {
       showPromptMessage('⚠️ Please upload or capture your Certificate of Indigency first.');
@@ -922,8 +934,10 @@ const StudentInfo = () => {
     }
 
     setLoadingMessage({ title: 'Scanning Document', message: 'Verifying your Certificate of Indigency and Video Content...' });
-    
+    lastIndigencyScanRef.current = { doc: indigencyDoc, vid: videoUrl };
+
     try {
+      // Only check video presence, not full video OCR (backend already optimized)
       const success = await performOcrVerification('Indigency', indigencyDoc, { townCity: formData.barangay }, videoUrl);
       if (success) {
         showPromptMessage('✅ Indigency verified successfully!');
