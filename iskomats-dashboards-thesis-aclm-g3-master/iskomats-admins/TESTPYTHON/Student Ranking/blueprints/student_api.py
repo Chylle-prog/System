@@ -2959,7 +2959,7 @@ def ocr_check():
                     
                     # Optimized scan options
                     scan_options = {
-                        'Indigency': {'sample_positions': [0.5], 'max_width': 450, 'allow_alt_pass': False, 'fallback_text_length': 12},
+                        'Indigency': {'sample_positions': [0.5], 'max_width': 450, 'allow_alt_pass': False, 'fallback_text_length': 8},
                         'Enrollment': {'sample_positions': [0.5], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 12},
                         'Grades': {'sample_positions': [0.5], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 12},
                         'SchoolID': {'sample_positions': [0.35, 0.65], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 15},
@@ -3002,7 +3002,10 @@ def ocr_check():
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read school ID back text'), raw_t, {}
                     elif doc_type == 'Indigency':
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=800, prefer_fast_layout=True, crop_percent=0.50)
+                        # STEP 1 Optimization: Certificates are simple. Use lower res (650) and tighter crop (35%)
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=650, prefer_fast_layout=True, crop_percent=0.35)
+                        if not raw_t:
+                             raw_t, extraction_error = extract_document_text(doc_bytes, max_width=800, prefer_fast_layout=True, crop_percent=0.60) # Fallback
                         name_ok, name_ratio = student_name_matches_text(raw_t, first_name, middle_name, last_name, is_indigency=True)
                         addr_ok = True
                         found_kw = []
