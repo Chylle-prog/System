@@ -1,33 +1,74 @@
-# Applicant-only email_table_service
-# Cleaned and migrated for applicant backend
-# This file contains only the necessary functions and classes for handling applicant emails.
-# Additional comments and documentation can be added here as needed.
-# Ensure that all functions are optimized for performance and clarity.
-# Any deprecated methods have been removed or replaced with updated implementations.
-# This code is intended for use in the applicant backend only.
-# Please refer to the documentation for further details on usage and integration.
-# ...existing code migrated and cleaned for applicant use only...
-# Add your new functions and classes below this line.
+USER_EMAIL_TABLE_CANDIDATES = ('user_email', 'user_emails')
+APPLICANT_EMAIL_TABLE_CANDIDATES = ('applicant_email', 'applicant_emails')
 
-def send_applicant_email(applicant_email, subject, body):
-	"""Send an email to the applicant."""
-	# Implementation for sending email
-	pass
+_RESOLVED_AUTH_TABLES = {}
 
-def format_email_content(applicant_name, application_status):
-	"""Format the email content for the applicant."""
-	# Implementation for formatting email content
-	pass
 
-class ApplicantEmailService:
-	"""Service for handling applicant email operations."""
+def resolve_auth_table(cursor, account_kind):
+    if account_kind not in ('user', 'applicant'):
+        raise ValueError(f'Unsupported account kind: {account_kind}')
 
-	def __init__(self):
-		# Initialization code
-		pass
+    cached = _RESOLVED_AUTH_TABLES.get(account_kind)
+    if cached:
+        return cached
 
-	def notify_applicant(self, applicant_email, applicant_name, application_status):
-		"""Notify the applicant about their application status."""
-		email_content = format_email_content(applicant_name, application_status)
-		send_applicant_email(applicant_email, "Application Status Update", email_content)
-# Copied: email_table_service.py (applicant only)
+    candidates = (
+        USER_EMAIL_TABLE_CANDIDATES
+        if account_kind == 'user'
+        else APPLICANT_EMAIL_TABLE_CANDIDATES
+    )
+
+    for candidate in candidates:
+        cursor.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = ANY (current_schemas(FALSE))
+                  AND table_name = %s
+            ) AS exists
+            """,
+            (candidate,),
+        )
+        row = cursor.fetchone()
+        exists = row.get('exists') if hasattr(row, 'get') else row[0]
+        if exists:
+            _RESOLVED_AUTH_TABLES[account_kind] = candidate
+            return candidate
+
+    raise RuntimeError(
+        f"Could not find a table for '{account_kind}'. Tried: {', '.join(candidates)}"
+    )
+
+
+def get_user_email_table(cursor):
+    return resolve_auth_table(cursor, 'user')
+
+
+def get_applicant_email_table(cursor):
+    return resolve_auth_table(cursor, 'applicant')
+
+
+def make_account_identifier(account_type, email_id):
+    normalized = (account_type or '').strip().lower()
+    if normalized == 'admin':
+        return f'admin-{email_id}'
+    if normalized == 'applicant':
+        return f'applicant-{email_id}'
+    raise ValueError(f'Unsupported account type: {account_type}')
+
+
+def parse_account_identifier(account_id):
+    raw_value = str(account_id or '').strip()
+    if raw_value.startswith('admin-'):
+        suffix = raw_value[6:]
+        if suffix.isdigit():
+            return 'admin', int(suffix)
+    elif raw_value.startswith('applicant-'):
+        suffix = raw_value[10:]
+        if suffix.isdigit():
+            return 'applicant', int(suffix)
+    elif raw_value.isdigit():
+        return None, int(raw_value)
+
+    raise ValueError('Invalid account identifier')

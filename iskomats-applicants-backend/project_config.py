@@ -1,1 +1,159 @@
-# Copied: project_config.py (applicant only)
+import os
+import time
+import threading
+from pathlib import Path
+
+import psycopg2
+from psycopg2 import pool
+from dotenv import load_dotenv
+from psycopg2.extras import RealDictCursor
+try:
+    from supabase import create_client
+except ImportError:
+    create_client = None
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+ENV_PATH = PROJECT_ROOT / '.env'
+
+if ENV_PATH.exists():
+    # Only load from .env if the variable isn't already set (prevents overriding Render variables)
+    load_dotenv(ENV_PATH, override=False)
+
+# ─── CONNECTION POOLING ───────────────────────────────────────────────────────
+_CONNECTION_POOL = None
+_POOL_LOCK = threading.Lock()
+
+def _init_pool():
+    global _CONNECTION_POOL
+    with _POOL_LOCK:
+        if _CONNECTION_POOL is not None:
+            return
+        
+        print("[DB INITIALIZE] Creating ThreadedConnectionPool...", flush=True)
+        kwargs = get_db_connection_kwargs()
+        
+        # Adjust pool size based on environment
+        min_conn = int(os.environ.get('DB_POOL_MIN', '2'))
+        max_conn = int(os.environ.get('DB_POOL_MAX', '10'))
+        
+        try:
+            _CONNECTION_POOL = pool.ThreadedConnectionPool(
+                min_conn, max_conn, **kwargs
+            )
+            print(f"[DB INITIALIZE] Pool created with {min_conn}-{max_conn} connections.", flush=True)
+        except Exception as e:
+            print(f"[DB ERROR] Failed to initialize connection pool: {e}", flush=True)
+            raise
+
+def get_db_connection_kwargs():
+    schema = os.environ.get('DB_SCHEMA', 'public').strip() or 'public'
+    sslmode = os.environ.get('DB_SSLMODE', 'require').strip() or 'require'
+    connect_timeout = int(os.environ.get('DB_CONNECT_TIMEOUT', '10'))
+
+    connection_kwargs = {
+        'dbname': os.environ.get('DB_NAME'),
+        'user': os.environ.get('DB_USER'),
+        'password': os.environ.get('DB_PASSWORD'),
+        'host': os.environ.get('DB_HOST'),
+        'port': os.environ.get('DB_PORT', '5432'),
+        'sslmode': sslmode,
+        'connect_timeout': connect_timeout,
+        'application_name': os.environ.get('DB_APPLICATION_NAME', 'iskomats-applicants-backend'),
+        'keepalives': 1,
+        'keepalives_idle': int(os.environ.get('DB_KEEPALIVES_IDLE', '30')),
+        'keepalives_interval': int(os.environ.get('DB_KEEPALIVES_INTERVAL', '10')),
+        'keepalives_count': int(os.environ.get('DB_KEEPALIVES_COUNT', '5')),
+    }
+
+    if schema and schema != 'public':
+        connection_kwargs['options'] = f'-c search_path={schema}'
+
+    return connection_kwargs
+
+
+def get_db(cursor_factory=RealDictCursor, fast_startup=False):
+    # For startup/migrations, we prefer a fresh connection that fails fast
+    if fast_startup:
+        connection_kwargs = get_db_connection_kwargs()
+        connection_kwargs['connect_timeout'] = 2
+        return psycopg2.connect(cursor_factory=cursor_factory, **connection_kwargs)
+
+    # For standard requests, use the pool
+    if _CONNECTION_POOL is None:
+        _init_pool()
+    
+    conn = _CONNECTION_POOL.getconn()
+    
+    # We'll use a wrapper to ensure the connection is returned to the pool on close
+    class PooledConnectionProxy:
+        def __init__(self, connection, cursor_factory):
+            self._conn = connection
+            self._cursor_factory = cursor_factory
+            self._returned = False
+
+        def __getattr__(self, name):
+            if name == 'autocommit':
+                return self._conn.autocommit
+            return getattr(self._conn, name)
+            
+        def __setattr__(self, name, value):
+            if name == 'autocommit':
+                self._conn.autocommit = value
+            else:
+                super().__setattr__(name, value)
+
+        def cursor(self, *args, **kwargs):
+            if 'cursor_factory' not in kwargs and self._cursor_factory:
+                kwargs['cursor_factory'] = self._cursor_factory
+            return self._conn.cursor(*args, **kwargs)
+
+        def close(self):
+            if not self._returned:
+                _CONNECTION_POOL.putconn(self._conn)
+                self._returned = True
+
+        def commit(self):
+            return self._conn.commit()
+
+        def rollback(self):
+            return self._conn.rollback()
+
+    return PooledConnectionProxy(conn, cursor_factory)
+
+
+def get_db_startup(cursor_factory=RealDictCursor):
+    """Lightweight startup/migration DB connection — fails fast to avoid bloating deploy time."""
+    return get_db(cursor_factory=cursor_factory, fast_startup=True)
+
+
+def get_db_display_config():
+    connection_kwargs = get_db_connection_kwargs()
+    return {
+        'host': connection_kwargs['host'] or 'N/A',
+        'port': connection_kwargs['port'] or '5432',
+        'dbname': connection_kwargs['dbname'] or 'N/A',
+        'schema': os.environ.get('DB_SCHEMA', 'public').strip() or 'public',
+        'sslmode': connection_kwargs['sslmode'] or 'require',
+    }
+
+
+def use_storage():
+    return os.environ.get('STORE_FILES_IN', 'database').strip().lower() == 'storage'
+
+
+def get_storage_bucket(default='iskomats-files'):
+    return os.environ.get('SUPABASE_STORAGE_BUCKET', default).strip() or default
+
+
+def get_supabase_client():
+    url = os.environ.get('SUPABASE_URL', '').strip()
+    service_role_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '').strip()
+
+    if not url or not service_role_key:
+        return None
+
+    if create_client is None:
+        raise RuntimeError('supabase package is not installed. Add it to requirements.txt before using storage features.')
+
+    return create_client(url, service_role_key)
