@@ -352,11 +352,15 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
     m_ratio = 1.0
     
     if target_first_name or target_middle_name or target_last_name:
-        def check_name_part(name_part, is_middle=False):
+        def check_name_part(name_part, is_middle=False, strictness=0.85):
             if not name_part: return True, 1.0
             n_words = [w.strip() for w in normalize_for_ocr(name_part).split() if len(w.strip()) >= 2]
             if not n_words: n_words = [w.strip() for w in normalize_for_ocr(name_part).split() if w.strip()]
             f_count = 0
+            
+            # Dynamic threshold based on document type
+            effective_threshold = (0.75 if is_indigency else strictness)
+            
             for word in n_words:
                 # For middle names, also accept just the first letter (initial)
                 words_to_check = [word]
@@ -365,19 +369,40 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
                 
                 found = False
                 for check_word in words_to_check:
-                    if check_word in norm_txt: f_count += 1; found = True; break
+                    # Check for whole word match first (stricter than 'in')
+                    # This prevents "lan" from matching "lantafe"
+                    if len(check_word) <= 3:
+                        if re.search(rf'\b{re.escape(check_word)}\b', norm_txt):
+                            f_count += 1; found = True; break
+                    else:
+                        # For longer words, we allow substring BUT check if it's a "clean" sub-part
+                        # or a whole word
+                        if re.search(rf'\b{re.escape(check_word)}\b', norm_txt):
+                            f_count += 1; found = True; break
+                        elif check_word in norm_txt:
+                            # If it's a substring, check if it's at least 80% of the containing word 
+                            # to avoid "lan" matching "lantafe" or "ash" matching "ashbdjd"
+                            for ocr_w in all_ocr_words:
+                                if check_word in ocr_w:
+                                    # If the mismatch is too large, don't count it as a simple substring match
+                                    if len(ocr_w) <= len(check_word) + 2:
+                                        f_count += 1; found = True; break
+                            if found: break
+
                     found_approx = False
                     for ocr_w in all_ocr_words:
                         if len(ocr_w) < 2: continue
-                        # OPTIMIZATION: Skip comparison if length delta is > 50%
-                        if abs(len(ocr_w) - len(check_word)) > (len(check_word) // 2 + 1): continue
-                        if difflib.SequenceMatcher(None, check_word, ocr_w).ratio() >= (0.7 if is_indigency else 0.8):
+                        # Stricter length delta check
+                        len_delta = abs(len(ocr_w) - len(check_word))
+                        if len_delta > (len(check_word) // 3 + 1): continue
+                        
+                        if difflib.SequenceMatcher(None, check_word, ocr_w).ratio() >= effective_threshold:
                             f_count += 1; found_approx = True; break
                     if found_approx: found = True; break
             
             p_ratio = f_count / len(n_words) if n_words else 0
             # Require at least one word to match or a high ratio
-            return p_ratio >= (0.4 if is_indigency else 0.5), p_ratio
+            return p_ratio >= (0.5 if is_indigency else 0.6), p_ratio
 
         first_ok, first_ratio = check_name_part(target_first_name, is_middle=False)
         middle_ok, middle_ratio = check_name_part(target_middle_name, is_middle=True)
