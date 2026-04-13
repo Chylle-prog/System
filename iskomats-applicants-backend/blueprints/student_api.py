@@ -9,15 +9,21 @@ def ping():
 
 
 # --- Applicant Profile Endpoint ---
-@student_api_bp.route('/applicant/profile', methods=['GET'])
-def get_applicant_profile():
-    # Dummy profile data for testing
-    return {
-        "email": "test@applicant.com",
-        "first_name": "Test",
-        "last_name": "Applicant",
-        "status": "active"
-    }
+@student_api_bp.route('/applicant/profile', methods=['GET', 'PUT'])
+def applicant_profile():
+    if request.method == 'GET':
+        # Dummy profile data for testing
+        return {
+            "email": "test@applicant.com",
+            "first_name": "Test",
+            "last_name": "Applicant",
+            "status": "active"
+        }
+    elif request.method == 'PUT':
+        # Accept and echo back the updated profile data for testing
+        data = request.get_json()
+        # In a real app, save to DB here
+        return {"message": "Profile updated successfully", "data": data}
 
 # --- Applications Endpoint ---
 @student_api_bp.route('/applications/my-applications', methods=['GET'])
