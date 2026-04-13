@@ -283,7 +283,7 @@ def year_level_matches_text(target_year, text):
     Checks if a target year level (e.g., '1st Year', 'Grade 11', 'Year Level: 1') is mentioned in the text.
     Handles various formats and common OCR misreads like 'I' or 'l' for '1'.
     """
-    if not target_year: return True
+    if not target_year: return True, None
     
     t_year = str(target_year).lower().strip()
     # Normalize expected to just the digit/number if it's something like "1st Year" or "Grade 11"
@@ -345,7 +345,7 @@ def course_matches_text(target_course, text):
     Checks if the student's course/degree is mentioned in the text.
     Handles abbreviations (e.g., 'BSCS' vs 'Computer Science').
     """
-    if not target_course: return True
+    if not target_course: return True, None
     
     # Normalize
     t_course = target_course.lower().strip()
@@ -399,7 +399,7 @@ def student_id_no_matches_text(target_id, text):
     Checks if the student's ID number is present in the text.
     Cleans dashes and spaces for robust matching.
     """
-    if not target_id: return True
+    if not target_id: return True, None
     
     def normalize_id(s):
         # 1. Alphanumeric only
