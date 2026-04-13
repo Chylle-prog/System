@@ -3280,6 +3280,8 @@ def ocr_check():
                     if not found_kw:
                         return {'doc': doc_type, 'verified': False, 'message': f"Document type mismatch: Required '{doc_keywords[doc_type][0]}' not detected.", 'raw_text': raw}
 
+                school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
+
                 # 2. Document-Specific Logic (REUSING 'raw' text)
                 if doc_type in ['Enrollment', 'Grades']:
                     # Common Extractions
@@ -3294,7 +3296,6 @@ def ocr_check():
                         semester_ok = (normalized_expected_semester == normalized_semester_label)
                     
                     year_ok = is_current_school_year(year_label, semester_str=semester_label, expected_year=expected_academic_year, expected_semester=expected_semester)
-                    school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
                     # For COE/Grades, we use lenient name matching (is_indigency=True) because these documents often omit middle names.
                     name_ok, name_ratio = student_name_matches_text(raw, first_name, middle_name, last_name, is_indigency=True)
                     year_level_ok, _ = year_level_matches_text(raw, expected_year_level)
@@ -3406,7 +3407,8 @@ def ocr_check():
                     
                     checklist = [
                         f"Name: {'OK' if name_ok else 'X'}",
-                        f"ID Number: {'OK' if id_ok else 'X'}"
+                        f"ID Number: {'OK' if id_ok else 'X'}",
+                        f"School: {'OK' if school_ok else 'X'}"
                     ]
                     
                     # School Name is now mandatory for ID as well
@@ -3416,6 +3418,8 @@ def ocr_check():
                     else:
                         msg = f"Verification failed. Checklist: [{', '.join(checklist)}]"
                         if not name_ok: msg += f" (Name mismatch)"
+                        if not id_ok: msg += f" (ID mismatch)"
+                        if not school_ok: msg += f" (School mismatch)"
 
                     return {'doc': 'SchoolID', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
