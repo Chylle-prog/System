@@ -328,37 +328,66 @@ def course_matches_text(raw_text, expected_course):
 
 
 def gpa_matches_text(raw_text, expected_gpa):
+    # Normalize expected GPA
     match = re.search(r'\d+(?:\.\d+)?', str(expected_gpa or ''))
     if not match:
-        return True, None
+        return True, None, []
 
     expected_value = float(match.group(0))
     raw_text_str = str(raw_text or '')
-    raw_numbers = [float(number) for number in re.findall(r'\d+(?:\.\d+)?', raw_text_str)]
-    if not raw_numbers:
-        return False, None
-
-    gpa_candidates = []
-    for labeled_match in re.finditer(r'gpa\s*[:=]?\s*(\d+(?:\.\d+)?)', raw_text_str, re.IGNORECASE):
+    
+    # 1. Find all numbers in the text for absolute fallback
+    raw_numbers = []
+    for num_match in re.finditer(r'\d+\.\d+', raw_text_str):
         try:
-            gpa_candidates.append(float(labeled_match.group(1)))
-        except (TypeError, ValueError):
-            continue
+            raw_numbers.append(float(num_match.group(0)))
+        except: continue
 
-    candidate_numbers = gpa_candidates + [number for number in raw_numbers if number not in gpa_candidates]
+    # 2. Specifically look for GPA labels (more robust regex)
+    # Handles "GPA: 3.25", "G.P.A. 3.25", "GPA 3.25", etc.
+    gpa_candidates = []
+    gpa_patterns = [
+        r'g\s*\.?\s*p\s*\.?\s*a\s*\.?\s*[:=]?\s*(\d+(?:\.\d+)?)',
+        r'general\s+weighted\s+average\s*[:=]?\s*(\d+(?:\.\d+)?)',
+        r'gwa\s*[:=]?\s*(\d+(?:\.\d+)?)'
+    ]
+    
+    for pattern in gpa_patterns:
+        for labeled_match in re.finditer(pattern, raw_text_str, re.IGNORECASE):
+            try:
+                gpa_candidates.append(float(labeled_match.group(1)))
+            except: continue
 
-    tolerance = 0.12 if expected_value <= 5 else 1.0
+    # Priority 1: Numbers following a GPA label
+    # Priority 2: Any number in the text that looks like a GPA (1.0 - 5.0)
+    candidate_numbers = gpa_candidates + [num for num in raw_numbers if 1.0 <= num <= 5.0 and num not in gpa_candidates]
+
+    # Matching Logic: "At least the first 3 digits like 3.25 with flexibility at the last digit"
+    # We'll use a tolerance that allows the last digit of a 2nd decimal place to vary.
+    # 0.099 tolerance means 3.25 matches anything from 3.15 to 3.35? No.
+    # 0.099 tolerance for 3.25 means [3.151, 3.349].
+    # Actually, to be flexible at the "last digit" of a "3.25" (3 digits: 3, 2, 5),
+    # we want to ensure the "3.2" part is close or the value is very near.
+    
+    # Standard tolerance for general matching
+    tolerance = 0.10 # Allows 3.25 to match 3.15 to 3.35
+    
     for number in candidate_numbers:
-        if abs(number - expected_value) <= tolerance:
+        diff = abs(number - expected_value)
+        
+        # Scenario A: Very close match (within 0.02) - Always pass
+        if diff <= 0.021:
             return True, number, candidate_numbers
-
-        rounded_two_decimals = round(number, 2)
-        if abs(rounded_two_decimals - expected_value) <= 0.02:
-            return True, rounded_two_decimals, candidate_numbers
-
-        truncated_two_decimals = int(number * 100) / 100
-        if abs(truncated_two_decimals - expected_value) <= 0.02:
-            return True, truncated_two_decimals, candidate_numbers
+            
+        # Scenario B: "Flexible last digit"
+        # If expected is 3.25, and number is 3.2x, diff will be <= 0.05
+        # If we allow the 2nd decimal to vary by up to 5 points:
+        if diff <= 0.06:
+            return True, number, candidate_numbers
+            
+        # Scenario C: Larger tolerance (0.1) if it's explicitly labeled as GPA
+        if number in gpa_candidates and diff <= 0.11:
+            return True, number, candidate_numbers
 
     return False, None, candidate_numbers
 
@@ -3290,8 +3319,9 @@ def ocr_check():
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'Grades':
-                        # Use 60% crop to catch GPA labels at the bottom of the subject table
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1000, prefer_fast_layout=True, crop_percent=0.60)
+                        # Use 85% crop to ensure the GPA row (which is at the bottom of the table) is captured.
+                        # TORs/Grade slips can have many rows, so we need a larger sample area.
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1200, prefer_fast_layout=True, crop_percent=0.85)
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'SchoolIDBack':
