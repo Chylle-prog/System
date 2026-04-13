@@ -549,47 +549,45 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
             m_ratio = 1.0
 
     # 2. Address Matching
-    a_verified = True
-    if target_address:
+    a_verified = True if not target_address else False
+    if target_address and norm_txt.strip():
         norm_target_addr = normalize_for_ocr(target_address)
-        if norm_target_addr in norm_txt: 
+        if norm_target_addr and norm_target_addr in norm_txt: 
             a_verified = True
         else:
-            # For indigency, get last meaningful word (usually city/municipality) - less strict
-            # For others, check all address words
-            if is_indigency:
-                # For indigency: check all words but ignore generic terms like 'city' or 'municipality'
-                # This ensures we match the actual place name (e.g., "Lipa" instead of just "City")
-                ignore_words = ['city', 'municipality', 'town', 'province', 'brgy', 'barangay']
-                a_words = [w.strip() for w in norm_target_addr.split() if len(w.strip()) >= 2 and w.strip() not in ignore_words]
-                
-                # If everything was filtered out, fallback to original words
-                if not a_words:
-                    a_words = [w.strip() for w in norm_target_addr.split() if len(w.strip()) >= 2]
-            else:
+            # For indigency: check all words but ignore generic terms like 'city' or 'municipality'
+            # This ensures we match the actual place name (e.g., "Lipa" instead of just "City")
+            ignore_words = ['city', 'municipality', 'town', 'province', 'brgy', 'barangay']
+            a_words = [w.strip() for w in norm_target_addr.split() if len(w.strip()) >= 2 and w.strip() not in ignore_words]
+            
+            # If everything was filtered out, fallback to original words
+            if not a_words:
                 a_words = [w.strip() for w in norm_target_addr.split() if len(w.strip()) >= 2]
             
-            f_a_count = 0
-            for word in a_words:
-                if word in norm_txt: 
-                    f_a_count += 1
-                    continue
-                found_approx = False
-                for ocr_w in all_ocr_words:
-                    if len(ocr_w) < 2: continue
-                    # OPTIMIZATION: Skip comparison if length delta is > 50%
-                    if abs(len(ocr_w) - len(word)) > (len(word) // 2 + 1): continue
-                    if difflib.SequenceMatcher(None, word, ocr_w).ratio() >= 0.7:
-                        f_a_count += 1; found_approx = True; break
-                if found_approx:
-                    continue
-            
-            # For Indigency, require at least 2 matching components (e.g., Barangay and City) if available.
-            if is_indigency:
-                required_matches = min(2, len(a_words))
-                a_verified = f_a_count >= required_matches
+            if not a_words:
+                a_verified = False # Nothing to match against
             else:
-                a_verified = (f_a_count / len(a_words) if a_words else 0) >= 0.5
+                f_a_count = 0
+                for word in a_words:
+                    if word in norm_txt: 
+                        f_a_count += 1
+                        continue
+                    found_approx = False
+                    for ocr_w in all_ocr_words:
+                        if len(ocr_w) < 2: continue
+                        if abs(len(ocr_w) - len(word)) > (len(word) // 2 + 1): continue
+                        if difflib.SequenceMatcher(None, word, ocr_w).ratio() >= 0.75:
+                            f_a_count += 1; found_approx = True; break
+                    if found_approx:
+                        continue
+                
+                # For Indigency, require at least 1 match if input is short, or 2 if multiple words provided
+                # And MOST IMPORTANTLY: f_a_count must be > 0.
+                if is_indigency:
+                    required_matches = min(2, len(a_words))
+                    a_verified = (f_a_count >= required_matches and f_a_count > 0)
+                else:
+                    a_verified = (f_a_count / len(a_words) if a_words else 0) >= 0.5 and f_a_count > 0
 
     # 2.7 School Name Matching
     school_ok = True
