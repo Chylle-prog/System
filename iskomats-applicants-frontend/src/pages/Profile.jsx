@@ -595,7 +595,45 @@ const Profile = () => {
           outline: none;
           border-color: var(--accent);
           background: var(--white);
+          color: var(--text-dark);
           box-shadow: 0 0 0 4px rgba(79,13,0,0.08);
+        }
+
+        /* Profile input wrapper styling to match login section */
+        .profile-input-wrapper {
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+
+        .profile-input-wrapper i {
+          position: absolute;
+          left: 1.2rem;
+          color: var(--gray-3);
+          font-size: 1rem;
+        }
+
+        .profile-input-wrapper input, .profile-input-wrapper select {
+          width: 100%;
+          padding: 1rem 1.2rem 1rem 2.8rem;
+          border: 1px solid rgba(255, 255, 255, 0.3);
+          border-radius: 18px;
+          font-size: 0.95rem;
+          background: rgba(255, 255, 255, 0.1);
+          color: white;
+          transition: var(--transition);
+        }
+
+        .profile-input-wrapper input:focus, .profile-input-wrapper select:focus {
+          outline: none;
+          border-color: var(--primary);
+          background: white;
+          color: var(--text-dark);
+          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
+        }
+
+        .profile-input-wrapper input:focus + i, .profile-input-wrapper select:focus + i {
+          color: var(--primary);
         }
 
         .submit-btn {
