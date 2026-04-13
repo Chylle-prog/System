@@ -593,7 +593,7 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
     detected_brgy = []
     if is_indigency:
         # Search for words following "Barangay" or "Brgy"
-        brgy_matches = re.findall(r'(?:barangay|brgy)\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)', ocr_text, re.IGNORECASE)
+        brgy_matches = re.findall(r'(?:barangay|brgy)\.?\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)?)', ocr_text, re.IGNORECASE)
         detected_brgy = list(set([m.strip() for m in brgy_matches if len(m.strip()) > 2]))
 
     # 2.8 School Name Matching

@@ -2835,6 +2835,8 @@ def ocr_check():
             full_expected_name = f"{first_name} {middle_name} {last_name}"
         town_city = str(data.get('town_city') or data.get('townCity') or '').strip()
         barangay = str(data.get('barangay') or '').strip()
+        
+        print(f"[OCR-DEBUG] User={request.user_no} Doc={target_doc} Town={town_city} Brgy={barangay}", flush=True)
         school_name = str(data.get('school_name') or data.get('schoolName') or '').strip()
         course = str(data.get('course') or '').strip()
         expected_gpa = str(data.get('gpa') or data.get('expectedGPA') or '').strip()
@@ -3014,11 +3016,13 @@ def ocr_check():
                         v_t = name_ok and addr_ok
                         
                         msg = 'Verified' if v_t else 'Verification failed'
-                        if not addr_ok and target_address:
+                        if target_address:
                             brgy_str = ", ".join(detected_brgys) if detected_brgys else "None detected"
-                            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Addr: X (Found: {brgy_str})]"
+                            # Always show the comparison if address was specified
+                            status_addr = 'OK' if addr_ok else 'X'
+                            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Addr: {status_addr} (Target: {target_address}, Found: {brgy_str})]"
                         elif not v_t:
-                            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Addr: {'OK' if addr_ok else 'OK' if not target_address else 'X'}]"
+                            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Addr: OK]"
 
                         return v_t, extraction_error or msg, raw_t, meta
                     else:
