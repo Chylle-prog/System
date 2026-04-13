@@ -3089,7 +3089,7 @@ const StudentInfo = () => {
                         }}
                       >
                         <i className={`fas ${ocrVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-bolt'}`}></i>
-                        {ocrVerified === 'verifying' ? 'AI Analyzing...' : (ocrVerified === 'success' ? 'Identity Verified' : 'Instant Scan & Validate')}
+                        {ocrVerified === 'verifying' ? 'Analyzing...' : (ocrVerified === 'success' ? 'Identity Verified' : 'Instant Scan & Validate')}
                       </button>
 
                       {ocrVerified === 'verifying' && (
@@ -3467,7 +3467,7 @@ const StudentInfo = () => {
                     }}
                   >
                     <i className={`fas ${idVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-bolt-lightning'}`}></i>
-                    {idVerified === 'verifying' ? 'AI Analyzing Front & Back ID...' : (idVerified === 'success' ? 'Identity Verified Successfully' : 'Start Front & Back ID Scan')}
+                    {idVerified === 'verifying' ? 'Analyzing Front & Back ID...' : (idVerified === 'success' ? 'Identity Verified Successfully' : 'Start Front & Back ID Scan')}
                   </button>
 
                   {idVerified === 'verifying' && (

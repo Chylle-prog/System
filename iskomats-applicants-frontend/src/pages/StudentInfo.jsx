@@ -3929,7 +3929,7 @@ const StudentInfo = () => {
                               boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
                             }}>
                               <h5 style={{margin: '0 0 10px 0', fontSize: '0.85rem', fontWeight: '800', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px'}}>
-                                <i className="fas fa-microchip" style={{color: 'var(--primary)'}}></i> HANDWRITING MATCH ANALYSIS
+                                <i className="fas fa-signature" style={{color: 'var(--primary)'}}></i> AUTHENTICITY ANALYSIS
                               </h5>
                               
                               <div style={{
