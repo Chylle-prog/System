@@ -836,7 +836,8 @@ const StudentInfo = () => {
         }, 80);
       }
 
-      const { townCity, barangay, schoolName, idNumber, yearLevel, gpa, course } = extraParams;
+      let { townCity, barangay, schoolName, idNumber, yearLevel, gpa, course } = extraParams;
+      const targetBarangay = barangay || formData.barangay || formData.streetBarangay || '';
       const { firstName, lastName, middleName } = formData;
       const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
 
@@ -854,7 +855,7 @@ const StudentInfo = () => {
         videoUrl,
         reqNo,
         docType,
-        barangay
+        targetBarangay
       );
 
       if (!silent && pInterval) clearInterval(pInterval);

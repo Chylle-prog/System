@@ -3003,26 +3003,22 @@ def ocr_check():
                         # Restored capture range: many certificates place name/address in the middle-bottom.
                         raw_t, extraction_error = extract_document_text(doc_bytes, max_width=850, prefer_fast_layout=True, crop_percent=0.85)
                         name_ok, name_ratio = student_name_matches_text(raw_t, first_name, middle_name, last_name, is_indigency=True)
-                        addr_ok = True
-                        found_kw = []
-                        found_kw = []
-                        detected_brgys = []
-                        if target_address:
-                            _, addr_ok, found_keywords, _, detect_meta = _perform_text_matching(raw_t, None, None, None, target_address, is_indigency=True)
-                            found_kw = found_keywords
-                            detected_brgys = detect_meta.get('detected_brgy', [])
+                        # Perform matching to detect Barangays even if target_address is empty for feedback
+                        _, addr_ok, found_keywords, _, detect_meta = _perform_text_matching(raw_t, None, None, None, target_address, is_indigency=True)
+                        found_kw = found_keywords
+                        detected_brgys = detect_meta.get('detected_brgy', [])
+                        
+                        # In Indigency, address is mandatory for a 'verified' result
+                        if not target_address:
+                            addr_ok = False
 
                         meta = {'name_ok': name_ok, 'addr_ok': addr_ok, 'name_ratio': name_ratio, 'keywords': found_kw, 'detected_brgy': detected_brgys}
                         v_t = name_ok and addr_ok
                         
                         msg = 'Verified' if v_t else 'Verification failed'
-                        if target_address:
-                            brgy_str = ", ".join(detected_brgys) if detected_brgys else "None detected"
-                            # Always show the comparison if address was specified
-                            status_addr = 'OK' if addr_ok else 'X'
-                            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Addr: {status_addr} (Target: {target_address}, Found: {brgy_str})]"
-                        elif not v_t:
-                            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Addr: OK]"
+                        brgy_str = ", ".join(detected_brgys) if detected_brgys else "None detected"
+                        status_addr = 'OK' if addr_ok else 'X'
+                        msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Addr: {status_addr} (Target: {target_address or 'Missing'}, Found: {brgy_str})]"
 
                         return v_t, extraction_error or msg, raw_t, meta
                     else:
@@ -3078,7 +3074,7 @@ def ocr_check():
                     brgy_str = ", ".join(meta.get('detected_brgy', [])) if meta.get('detected_brgy') else "None detected"
                     status_addr = 'OK' if addr_ok else 'X'
                     # Use a consistent format that includes the discovered data
-                    detail_msg = f"Name: {'OK' if name_ok else 'X'}, Addr: {status_addr} (Target: {target_address}, Found: {brgy_str})"
+                    detail_msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Addr: {status_addr} (Target: {target_address or 'Missing'}, Found: {brgy_str})]"
                     
                     return {'doc': 'Indigency', 'verified': v, 'message': detail_msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
