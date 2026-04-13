@@ -1581,7 +1581,8 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
             print(f"[SIGNATURE] Error in neural matching: {e}", flush=True)
             return False, f"Matching error: {str(e)}", 0.0, preview_signature, extracted_id_preview, matcher_submitted_view, matcher_reference_view
         
-        threshold = 0.52
+        # Adjusted strictness (0.65 -> 0.60) based on user feedback
+        threshold = 0.60
         is_verified = score >= threshold
         status = (
             f"Signature match successful ({score_source})"

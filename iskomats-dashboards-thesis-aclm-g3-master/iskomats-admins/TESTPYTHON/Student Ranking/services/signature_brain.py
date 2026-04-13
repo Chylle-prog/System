@@ -46,16 +46,17 @@ def _extract_ink_crop(img_np):
     enhanced = clahe.apply(gray)
     
     # Adaptive threshold - smaller block preserves thin strokes
+    # Aggressive threshold (C=14) filters out more background noise/texture from physical IDs
     binary = cv2.adaptiveThreshold(
         enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-        cv2.THRESH_BINARY_INV, 15, 10
+        cv2.THRESH_BINARY_INV, 15, 14
     )
     
-    # ONLY close small gaps (2-3 pixels), not large ones
+    # Close tiny gaps but don't dilate significantly
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=1)
     
-    # Remove tiny noise dots
+    # Remove isolated noise dots
     binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=1)
     
     # Find contours and filter - DON'T fill holes aggressively
