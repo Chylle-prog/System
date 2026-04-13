@@ -3002,10 +3002,8 @@ def ocr_check():
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read school ID back text'), raw_t, {}
                     elif doc_type == 'Indigency':
-                        # STEP 1 Optimization: Certificates are simple. Use lower res (650) and tighter crop (35%)
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=650, prefer_fast_layout=True, crop_percent=0.35)
-                        if not raw_t:
-                             raw_t, extraction_error = extract_document_text(doc_bytes, max_width=800, prefer_fast_layout=True, crop_percent=0.60) # Fallback
+                        # Restored capture range: many certificates place name/address in the middle-bottom.
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=850, prefer_fast_layout=True, crop_percent=0.85)
                         name_ok, name_ratio = student_name_matches_text(raw_t, first_name, middle_name, last_name, is_indigency=True)
                         addr_ok = True
                         found_kw = []
