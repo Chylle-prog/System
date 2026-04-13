@@ -5,6 +5,8 @@ services:
     plan: free
     rootDir: "iskomats-dashboards-thesis-aclm-g3-master/iskomats-admins/TESTPYTHON/Student Ranking"
     envVars:
+      - key: PORT
+        value: 10000
       - key: FRONTEND_URL
         value: https://iskomats-admin.surge.sh
       - key: STUDENT_FRONTEND_URL

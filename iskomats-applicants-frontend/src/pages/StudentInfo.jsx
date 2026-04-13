@@ -910,6 +910,7 @@ const StudentInfo = () => {
       userProfile?.indigency_doc
     );
     const townCity = formData.townCityMunicipality || '';
+    const barangay = formData.barangay || '';
     const videoUrl = formData.mayorIndigency_video || documentVideos.mayorIndigency_video;
 
     // Skip if nothing changed (doc/video)
@@ -932,6 +933,10 @@ const StudentInfo = () => {
     }
     if (!townCity) {
       showPromptMessage('⚠️ Please fill in your Town/City first.');
+      return;
+    }
+    if (!barangay) {
+      showPromptMessage('⚠️ Please select your Barangay first in the dropdown.');
       return;
     }
 
@@ -3008,6 +3013,7 @@ const StudentInfo = () => {
                 <div className="form-group">
                   <label>Barangay <span style={{color: '#e74c3c'}}>*</span></label>
                   <select 
+                    id="barangay-select"
                     name="barangay" 
                     value={formData.barangay} 
                     onChange={handleInputChange} 
@@ -3025,6 +3031,7 @@ const StudentInfo = () => {
                 <div className="form-group">
                   <label>Town / City / Municipality <span style={{color: '#e74c3c'}}>*</span></label>
                   <input 
+                    id="town-city-input"
                     type="text" 
                     name="townCityMunicipality" 
                     value={formData.townCityMunicipality} 

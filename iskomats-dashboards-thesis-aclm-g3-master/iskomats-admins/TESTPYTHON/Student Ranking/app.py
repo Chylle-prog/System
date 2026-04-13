@@ -303,9 +303,21 @@ def api_health():
 
 if __name__ == '__main__':
     try:
-        port = int(os.environ.get('PORT', '5003'))
+        # Debug environment
+        for env_key in ['PORT', 'RENDER', 'RENDER_SERVICE_NAME', 'RENDER_INSTANCE_ID']:
+            if env_key in os.environ:
+                print(f"[DEBUG] {env_key}={os.environ[env_key]}", flush=True)
+                
+        port_env = os.environ.get('PORT')
+        if not port_env:
+            print("[WARNING] PORT environment variable not found. Defaulting to 10000.", flush=True)
+        else:
+            print(f"[INFO] PORT environment variable found: {port_env}", flush=True)
+            
+        port = int(os.environ.get('PORT', '10000'))
+        host = os.environ.get('HOST', '0.0.0.0')
         print(f"\n{'='*60}", flush=True)
-        print(f"[STARTUP] Starting ISKOMATS Backend on port {port}", flush=True)
+        print(f"[STARTUP] Starting ISKOMATS Backend on {host}:{port}", flush=True)
         print(f"[STARTUP] Startup time: {time.time() - STARTUP_TIME:.2f}s", flush=True)
         print(f"[STARTUP] Environment: {os.environ.get('ENVIRONMENT', 'development')}", flush=True)
         print(f"[STARTUP] CORS Origins configured: {len(exact_allowed_origins)} exact + {len(preview_origin_patterns)} patterns", flush=True)
@@ -313,12 +325,12 @@ if __name__ == '__main__':
         print(f"{'='*60}\n", flush=True)
         
         APP_READY = True
-        print("[STARTUP] App initialization complete. Accepting requests.", flush=True)
+        print(f"[STARTUP] App initialization complete. Listening on {host}:{port}", flush=True)
         
         socketio.run(app, 
                     debug=False, 
                     port=port, 
-                    host='0.0.0.0',
+                    host=host,
                     allow_unsafe_werkzeug=True)
     except Exception as startup_error:
         APP_STARTUP_ERROR = str(startup_error)

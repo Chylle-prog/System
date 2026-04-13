@@ -2833,8 +2833,8 @@ def ocr_check():
         full_expected_name = f"{first_name} {last_name}"
         if middle_name and len(middle_name) > 1:
             full_expected_name = f"{first_name} {middle_name} {last_name}"
-        town_city = str(data.get('town_city') or data.get('townCity') or '').strip()
-        barangay = str(data.get('barangay') or '').strip()
+        town_city = str(data.get('town_city') or data.get('townCity') or data.get('townCityMunicipality') or applicant.get('town_city_municipality', '')).strip()
+        barangay = str(data.get('barangay') or data.get('streetBarangay') or data.get('targetBarangay') or '').strip()
         
         print(f"[OCR-DEBUG] User={request.user_no} Doc={target_doc} Town={town_city} Brgy={barangay}", flush=True)
         school_name = str(data.get('school_name') or data.get('schoolName') or '').strip()

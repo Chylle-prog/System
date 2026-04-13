@@ -831,7 +831,8 @@ const StudentInfo = () => {
         }, 80);
       }
 
-      const { townCity, schoolName, idNumber, yearLevel, gpa, course } = extraParams;
+      const { townCity, barangay, schoolName, idNumber, yearLevel, gpa, course } = extraParams;
+      const targetBarangay = barangay || formData.barangay || '';
       const { firstName, lastName, middleName } = formData;
       const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
 
@@ -848,7 +849,8 @@ const StudentInfo = () => {
         schoolName, idNumber, yearLevel, gpa, course,
         videoUrl,
         reqNo,
-        docType
+        docType,
+        targetBarangay
       );
 
       if (!silent && pInterval) clearInterval(pInterval);
@@ -901,6 +903,7 @@ const StudentInfo = () => {
       userProfile?.indigency_doc
     );
     const townCity = formData.townCityMunicipality || '';
+    const barangay = formData.barangay || '';
     const videoUrl = formData.mayorIndigency_video || documentVideos.mayorIndigency_video;
 
     if (!indigencyDoc) {
@@ -915,11 +918,15 @@ const StudentInfo = () => {
       showPromptMessage('⚠️ Please fill in your Town/City first.');
       return;
     }
+    if (!barangay) {
+      showPromptMessage('⚠️ Please select your Barangay first in the dropdown.');
+      return;
+    }
 
     setLoadingMessage({ title: 'Scanning Document', message: 'Verifying your Certificate of Indigency and Video Content...' });
     
     try {
-      const success = await performOcrVerification('Indigency', indigencyDoc, { townCity }, videoUrl);
+      const success = await performOcrVerification('Indigency', indigencyDoc, { townCity, barangay }, videoUrl);
       if (success) {
         showPromptMessage('✅ Indigency verified successfully!');
       } else {
@@ -2958,6 +2965,7 @@ const StudentInfo = () => {
                 <div className="form-group">
                   <label>Barangay <span style={{color: '#e74c3c'}}>*</span></label>
                   <select 
+                    id="barangay-select"
                     name="barangay" 
                     value={formData.barangay} 
                     onChange={handleInputChange} 
@@ -2974,7 +2982,15 @@ const StudentInfo = () => {
               <div className="form-row">
                 <div className="form-group">
                   <label>Town / City / Municipality <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="townCityMunicipality" value={formData.townCityMunicipality} onChange={handleInputChange} placeholder="Lipa City" required />
+                  <input 
+                    id="town-city-input"
+                    type="text" 
+                    name="townCityMunicipality" 
+                    value={formData.townCityMunicipality} 
+                    onChange={handleInputChange} 
+                    placeholder="Lipa City" 
+                    required 
+                  />
                 </div>
                 <div className="form-group">
                   <label>Province <span style={{color: '#e74c3c'}}>*</span></label>
