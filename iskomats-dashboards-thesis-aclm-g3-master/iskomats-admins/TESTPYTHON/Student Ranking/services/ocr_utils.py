@@ -212,8 +212,8 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     text1 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 1')
     t1_end = time.time()
     
-    # Check if first pass was sufficient (Lenient 12-char check for names/IDs)
-    if len(text1.strip()) > 12:
+    # Check if first pass was sufficient (Lenient 8-char check for ID/keywords)
+    if len(text1.strip()) > 8:
         print(f"[OCR PERF] Pass1 ({psm}) SUCCESS: {t1_end - t1:.3f}s", flush=True)
         return text1.strip()
     
@@ -225,7 +225,7 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
             if len(text_fallback.strip()) > len(text1.strip()):
                 text1 = text_fallback
         
-    if len(text1.strip()) > 20:
+    if len(text1.strip()) > 8:
         return text1.strip()
         
     # Pass 2: Adaptive Thresholding (Fails on white-on-dark, but great for shadows on paper)
@@ -419,8 +419,9 @@ def student_id_no_matches_text(target_id, text):
     # Search for "Student No" to isolate the actual number block if possible
     # This helps when the document has many numbers
     id_patterns = [
-        r'student\s*(?:no|number|id|#)[:\.\s-]+([a-z0-9\s-]{4,20})',
-        r'id\s*(?:no|number|#)[:\.\s-]+([a-z0-9\s-]{4,20})'
+        r'(?:student\s*no|id\s*no|registration\s*no|lrn|learner|control\s*no|matriculation)[:\.\s-]+([a-z0-9\s-]{4,20})',
+        r'id\s*(?:no|number|#)[:\.\s-]+([a-z0-9\s-]{4,20})',
+        r'\b(?:no|#)[:\.\s-]*([a-z0-9\s-]{6,15})\b'
     ]
     
     for pat in id_patterns:

@@ -2990,11 +2990,11 @@ def ocr_check():
 
                 def run_ocr_check():
                     if doc_type == 'Enrollment':
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1000, prefer_fast_layout=True, crop_percent=0.85)
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=800, prefer_fast_layout=True, crop_percent=0.90)
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'Grades':
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1000, prefer_fast_layout=True, crop_percent=0.90)
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=800, prefer_fast_layout=True, crop_percent=0.95)
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'SchoolIDBack':
