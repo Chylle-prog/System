@@ -3074,7 +3074,13 @@ def ocr_check():
                     name_ok = meta.get('name_ok', False)
                     addr_ok = meta.get('addr_ok', True)
                     v = name_ok and addr_ok
-                    return {'doc': 'Indigency', 'verified': v, 'message': f"Name: {'OK' if name_ok else 'X'}, Addr: {'OK' if addr_ok else 'X'}", 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                    
+                    brgy_str = ", ".join(meta.get('detected_brgy', [])) if meta.get('detected_brgy') else "None detected"
+                    status_addr = 'OK' if addr_ok else 'X'
+                    # Use a consistent format that includes the discovered data
+                    detail_msg = f"Name: {'OK' if name_ok else 'X'}, Addr: {status_addr} (Target: {target_address}, Found: {brgy_str})"
+                    
+                    return {'doc': 'Indigency', 'verified': v, 'message': detail_msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'SchoolID':
                     id_ok, _ = student_id_no_matches_text(expected_id_no, raw)
