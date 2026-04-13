@@ -648,26 +648,43 @@ const Login = () => {
           font-size: 1rem;
         }
 
-        .profile-input-wrapper input {
+        .profile-input-wrapper input,
+        .profile-input-wrapper select {
           width: 100%;
-          padding: 1rem 1.2rem 1rem 2.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 18px;
+          padding: 0.85rem 1.2rem 0.85rem 2.8rem;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 30px;
           font-size: 0.95rem;
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
+          background: rgba(255, 255, 255, 0.4);
+          color: var(--text-dark);
           transition: var(--transition);
+          font-family: 'Inter', sans-serif;
+          font-weight: 500;
         }
 
-        .profile-input-wrapper input:focus {
+        .profile-input-wrapper input::placeholder {
+          color: rgba(18, 24, 38, 0.5);
+        }
+
+        .profile-input-wrapper input:focus,
+        .profile-input-wrapper select:focus {
           outline: none;
-          border-color: var(--primary);
-          background: white;
-          box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
+          border-color: white;
+          background: rgba(255, 255, 255, 0.6);
+          box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.1);
+          color: var(--text-dark);
         }
 
-        .profile-input-wrapper input:focus + i {
-          color: var(--primary);
+        .profile-input-wrapper input:focus + i,
+        .profile-input-wrapper select:focus + i {
+          color: white;
+        }
+
+        .profile-input-wrapper input:read-only {
+          background: rgba(255, 255, 255, 0.2) !important;
+          cursor: not-allowed;
+          opacity: 0.8;
+          color: rgba(18, 24, 38, 0.7);
         }
 
 
@@ -1221,11 +1238,12 @@ const Login = () => {
                   </div>
                   <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
                     <GoogleLogin
+                      key="login-google"
                       onSuccess={handleGoogleSuccess}
                       onError={handleGoogleError}
                       theme="outline"
                       size="large"
-                      width="100%"
+                      width="350"
                       shape="pill"
                       text="continue_with"
                     />
@@ -1272,11 +1290,12 @@ const Login = () => {
                   </div>
                   <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
                     <GoogleLogin
+                      key="register-google"
                       onSuccess={handleGoogleSuccess}
                       onError={handleGoogleError}
                       theme="outline"
                       size="large"
-                      width="100%"
+                      width="350"
                       shape="pill"
                       text="signup_with"
                     />
@@ -1372,7 +1391,7 @@ const Login = () => {
                 <label>University / School</label>
                 <div className="profile-input-wrapper">
                   <i className="fas fa-university"></i>
-                  <select name="school" required style={{ width: '100%', padding: '12px 12px 12px 42px', border: '1px solid #ddd', borderRadius: '8px', background: 'white' }}>
+                  <select name="school" required>
                     <option value="">Select University / School</option>
                     <option value="De La Salle Lipa">De La Salle Lipa</option>
                     <option value="National University Lipa">National University Lipa</option>
@@ -1403,7 +1422,7 @@ const Login = () => {
                 <label>Street & Barangay</label>
                 <div className="profile-input-wrapper">
                   <i className="fas fa-map-marker-alt"></i>
-                  <select name="streetBrgy" required style={{ width: '100%', padding: '12px 12px 12px 42px', border: '1px solid #ddd', borderRadius: '8px', background: 'white' }}>
+                  <select name="streetBrgy" required>
                     <option value="">Select Barangay</option>
                     <option value="Adya">Adya</option>
                     <option value="Anilao">Anilao</option>
@@ -1485,19 +1504,19 @@ const Login = () => {
                 <div className="profile-form-group">
                   <label>Town / City</label>
                   <div className="profile-input-wrapper">
-                    <input type="text" name="townCityMunicipality" value="Lipa City" readOnly style={{ backgroundColor: '#f1f1f1', cursor: 'not-allowed' }} />
+                    <input type="text" name="townCityMunicipality" value="Lipa City" readOnly />
                   </div>
                 </div>
                 <div className="profile-form-group">
                   <label>Province</label>
                   <div className="profile-input-wrapper">
-                    <input type="text" name="province" value="Batangas" readOnly style={{ backgroundColor: '#f1f1f1', cursor: 'not-allowed' }} />
+                    <input type="text" name="province" value="Batangas" readOnly />
                   </div>
                 </div>
                 <div className="profile-form-group">
                   <label>Zip Code</label>
                   <div className="profile-input-wrapper">
-                    <input type="text" name="zipCode" value="4217" readOnly style={{ backgroundColor: '#f1f1f1', cursor: 'not-allowed' }} />
+                    <input type="text" name="zipCode" value="4217" readOnly />
                   </div>
                 </div>
               </div>
