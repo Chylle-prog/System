@@ -2934,7 +2934,7 @@ def ocr_check():
                 vid_url = vid_url_map.get(doc_type)
                 
                 # ─── PARALLEL VERIFICATION (Part 1: Preparation) ───
-                target_address = f"{barangay} {town_city}".strip() if doc_type == 'Indigency' else None
+                target_address = barangay if doc_type == 'Indigency' else None
                 
                 # Pre-define results
                 video_res = [True, "Not provided"]
