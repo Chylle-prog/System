@@ -542,7 +542,21 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     with OCR_SEMAPHORE:
         try:
             t_start = time.time()
-            # Certificate documents (Indigency) are usually uniform blocks. PSM6 is faster than PSM3.
+            # Indigency Fast-Path: Scan ONLY the top 50% first (where name/address usually are)
+            if is_indigency:
+                h_crop = img.shape[0] // 2
+                fast_img = img[:h_crop, :]
+                fast_text = _run_tesseract_on_image(fast_img, psm=6, skip_pass2=True)
+                
+                name_v, addr_v, found_kw, ratio = _perform_text_matching(fast_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, None, is_indigency)
+                
+                # If we found everything in the top 50%, EXIT IMMEDIATELY
+                if name_v and addr_v:
+                    print(f"[OCR PERF] Indigency Fast-Path Success (50% crop)", flush=True)
+                    details = {'name_ok': True, 'addr_ok': True, 'name_ratio': ratio, 'keywords': found_kw, 'fast_path': True}
+                    return True, "Verified", fast_text, details
+            
+            # Normal Path / Full Scan Fallback
             primary_psm = 6 if is_indigency else 3
             best_text = _run_tesseract_on_image(img, primary_psm)
             
@@ -592,7 +606,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     return False, "Identity verification mismatch", best_text, details
 
 
-def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=False, prefer_fast_layout=False):
+def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=False, prefer_fast_layout=False, crop_percent=None):
     """
     Fast OCR text extraction for non-identity documents like COE and grades.
     Added is_id_back flag for ultra-fast extraction (skips header bands).
@@ -621,6 +635,12 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
             return "", f"Image quality issue: {quality_reason}"
 
         h, w = img.shape[:2]
+        # Partial Scanning: Skip scanning the bottom of large documents (footers/notes) if requested
+        if crop_percent and 0.1 < crop_percent < 1.0:
+            h_crop = int(h * crop_percent)
+            img = img[:h_crop, :]
+            h, w = img.shape[:2]
+
         # ID backs often have very small stickers (Year stickers)
         effective_max_width = 1200 if is_id_back else max_width
         
