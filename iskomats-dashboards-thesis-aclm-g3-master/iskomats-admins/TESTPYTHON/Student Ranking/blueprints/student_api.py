@@ -1897,12 +1897,34 @@ def student_forgot_password():
             if not user.get('password_hash'):
                 return jsonify({'message': 'This account uses Google authentication. Please sign in using the "Sign in with Google" button instead.'}), 400
             
+            # 3. Generate Link - Dynamic based on request origin
+            # Priority: Origin header -> Referer header -> Config/Fallback
+            req_origin = request.headers.get('Origin')
+            if not req_origin and request.headers.get('Referer'):
+                try:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(request.headers.get('Referer'))
+                    req_origin = f"{parsed.scheme}://{parsed.netloc}"
+                except:
+                    pass
+            
+            frontend_base_url = (req_origin or STUDENT_FRONTEND_URL).rstrip('/')
             reset_token = generate_password_reset_token(user['applicant_no'], user['email_address'])
-            reset_url = f"{STUDENT_FRONTEND_URL}/reset-password?token={reset_token}"
+            reset_url = f"{frontend_base_url}/reset-password?token={reset_token}"
+            
+            print(f"[PASSWORD RESET] Request from origin: {req_origin or 'Unknown'}", flush=True)
+            print(f"[PASSWORD RESET] Generated URL: {reset_url}", flush=True)
             print(f"[PASSWORD RESET] Sending reset email to {user['email_address']}", flush=True)
-            print(f"[PASSWORD RESET] Using portal URL: {STUDENT_FRONTEND_URL}", flush=True)
-            send_password_reset_email(user['email_address'], reset_url)
-            return jsonify({'message': 'A reset link has been sent to your email.'}), 200
+            
+            try:
+                send_password_reset_email(user['email_address'], reset_url)
+                return jsonify({'message': 'A reset link has been sent to your email.'}), 200
+            except Exception as email_err:
+                print(f"[PASSWORD RESET ERROR] Gmail API failure: {str(email_err)}", flush=True)
+                return jsonify({
+                    'message': 'Failed to send email. There might be a temporary issue with our email service.',
+                    'debug_link': reset_url if os.environ.get('FLASK_ENV') == 'development' else None
+                }), 500
         else:
             print(f"[PASSWORD RESET] No applicant account found for email: {email}")
             return jsonify({'message': 'Email not found in our records.'}), 404

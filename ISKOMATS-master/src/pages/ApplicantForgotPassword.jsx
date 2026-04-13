@@ -13,7 +13,7 @@ const ApplicantForgotPassword = () => {
     isSubmitted: false
   });
 
-  const APPLICANT_PORTAL_URL = "https://foregoing-giants.surge.sh";
+  const APPLICANT_PORTAL_URL = window.location.origin;
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -118,8 +118,18 @@ const ApplicantForgotPassword = () => {
           left: 0;
           width: 100%;
           height: 100%;
-          background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.8));
+          background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(79, 13, 0, 0.4), rgba(0, 0, 0, 0.9));
           z-index: -1;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+          from { transform: translateY(30px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
 
         :root {
@@ -208,10 +218,24 @@ const ApplicantForgotPassword = () => {
           border-radius: 40px;
           padding: 2rem 3rem 2.5rem;
           box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5);
-          border: 1px solid rgba(255, 255, 255, 0.3);
+          border: 1px solid rgba(255, 255, 255, 0.25);
           transition: var(--transition);
-          animation: cardFloat 0.8s ease-out;
+          animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1);
           margin: 0 auto;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .auth-card::before {
+          content: '';
+          position: absolute;
+          top: -50%;
+          left: -50%;
+          width: 200%;
+          height: 200%;
+          background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%);
+          pointer-events: none;
+          z-index: 0;
         }
 
         @keyframes cardFloat {
@@ -231,8 +255,10 @@ const ApplicantForgotPassword = () => {
         }
 
         .auth-header {
-          margin-bottom: 1.5rem;
+          margin-bottom: 2rem;
           text-align: center;
+          position: relative;
+          z-index: 1;
         }
 
         .auth-header h2 {
@@ -532,8 +558,9 @@ const ApplicantForgotPassword = () => {
                   Please check your email and follow the instructions to reset your password. 
                   If you don't receive the email within a few minutes, please check your spam folder.
                 </p>
-                <p style={{ color: 'var(--text-soft)', fontSize: '0.8rem', backgroundColor: 'rgba(79, 13, 0, 0.03)', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem' }}>
-                  <i className="fas fa-lock"></i> Make sure the reset link opens on this website: <strong>{APPLICANT_PORTAL_URL}</strong>
+                <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem', backgroundColor: 'rgba(255, 255, 255, 0.05)', padding: '1rem', borderRadius: '16px', marginBottom: '1.5rem', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  <i className="fas fa-shield-alt" style={{ marginRight: '8px' }}></i> Make sure the reset link opens on this website: <br/>
+                  <strong style={{ color: 'white', display: 'block', marginTop: '4px' }}>{APPLICANT_PORTAL_URL}</strong>
                 </p>
               </div>
 
