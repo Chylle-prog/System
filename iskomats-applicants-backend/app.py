@@ -19,7 +19,7 @@ if not any(origins):
         "https://iskomats-applicants.surge.sh",
         # add other allowed origins here if needed
     ]
-CORS(app, origins=origins)
+CORS(app, origins=origins, supports_credentials=True)
 
 
 app.register_blueprint(student_api_bp, url_prefix='/api/student')
