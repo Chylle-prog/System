@@ -3,4 +3,7 @@ psycopg2
 flask-caching
 python-dotenv
 flask-cors
+# For Google OAuth and JWT
+PyJWT
+google-auth
 # Add other applicant-side dependencies as needed

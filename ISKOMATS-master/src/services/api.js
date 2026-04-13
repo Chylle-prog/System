@@ -687,6 +687,17 @@ export const applicantAPI = {
       throw err;
     }
   },
+  /**
+   * Send feedback about signature verification result
+   * @param {boolean} isCorrect - whether the user agrees with the match
+   * @returns {Promise}
+   */
+  sendSignatureFeedback: async (isCorrect) => {
+    return makeRequest('/student/verification/signature-feedback', {
+      method: 'POST',
+      body: JSON.stringify({ is_correct: isCorrect }),
+    });
+  },
 };
 
 

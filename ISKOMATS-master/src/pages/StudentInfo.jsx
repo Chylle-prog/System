@@ -283,6 +283,8 @@ const StudentInfo = () => {
   const [drawnSignature, setDrawnSignature] = useState(null);
   const [signatureVerified, setSignatureVerified] = useState(null);
   const [signatureStatus, setSignatureStatus] = useState('');
+  const [signatureResults, setSignatureResults] = useState(null);
+  const [feedbackStatus, setFeedbackStatus] = useState({});
   const [hasOtherAssistance, setHasOtherAssistance] = useState('');
   const [scholarshipName, setScholarshipName] = useState('Scholarship Application');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -744,6 +746,7 @@ const StudentInfo = () => {
       
       clearInterval(pInterval);
       setScanProgress(100);
+      setSignatureResults(result);
 
       if (result.verified) {
         setSignatureVerified('success');
@@ -756,6 +759,20 @@ const StudentInfo = () => {
       console.error('Signature Verification Error:', err);
       setSignatureVerified('failed');
       setSignatureStatus(`Technical Issue: ${err.message}`);
+    }
+  };
+
+  const sendFeedback = async (type, isCorrect) => {
+    if (feedbackStatus[type]) return;
+    
+    try {
+      if (type === 'signature') {
+        await applicantAPI.sendSignatureFeedback(isCorrect);
+        setFeedbackStatus(prev => ({ ...prev, signature: true }));
+        showPromptMessage('✅ Thank you for your feedback!');
+      }
+    } catch (err) {
+      console.warn('Feedback error:', err);
     }
   };
 
@@ -3831,17 +3848,95 @@ const StudentInfo = () => {
                             {signatureVerified === 'verifying' ? 'Matching...' : (signatureVerified === 'success' ? 'Verified!' : 'Verify Handwriting')}
                           </button>
                           
-                          {signatureStatus && (
+                          {signatureResults && (
                             <div style={{
-                              marginTop: '8px',
-                              fontSize: '0.65rem',
-                              padding: '4px 8px',
-                              borderRadius: '4px',
-                              background: signatureVerified === 'success' ? '#ecfdf5' : '#fef2f2',
-                              color: signatureVerified === 'success' ? '#059669' : '#dc2626',
-                              fontWeight: '600'
+                              marginTop: '20px',
+                              background: '#f8fafc',
+                              border: '1px solid #e2e8f0',
+                              borderRadius: '16px',
+                              padding: '1.2rem',
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
                             }}>
-                              {signatureStatus}
+                              <h5 style={{margin: '0 0 10px 0', fontSize: '0.85rem', fontWeight: '800', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px'}}>
+                                <i className="fas fa-microchip" style={{color: 'var(--primary)'}}></i> HANDWRITING MATCH ANALYSIS
+                              </h5>
+                              
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                marginBottom: '15px'
+                              }}>
+                                <div style={{
+                                  background: signatureResults.verified ? '#10b981' : '#ef4444',
+                                  color: 'white',
+                                  fontSize: '0.65rem',
+                                  fontWeight: '900',
+                                  padding: '4px 10px',
+                                  borderRadius: '20px',
+                                  letterSpacing: '0.5px'
+                                }}>
+                                  {signatureResults.verified ? 'VERIFIED' : 'MISMATCH'}
+                                </div>
+                                <div style={{fontSize: '0.75rem', fontWeight: '700', color: '#64748b'}}>
+                                  Confidence Score: {(signatureResults.confidence * 100).toFixed(1)}%
+                                </div>
+                              </div>
+
+                              <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: '1fr 1fr',
+                                gap: '12px',
+                                marginBottom: '15px'
+                              }}>
+                                <div style={{textAlign: 'center'}}>
+                                  <span style={{fontSize: '0.6rem', color: '#94a3b8', display: 'block', marginBottom: '4px', fontWeight: '700'}}>ORIGINAL (ID)</span>
+                                  <div style={{background: 'white', border: '1px solid #f1f5f9', borderRadius: '8px', padding: '6px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                                    <img src={signatureResults.extracted_signature} alt="ID Signature" style={{maxWidth: '100%', maxHeight: '100%', objectFit: 'contain'}} />
+                                  </div>
+                                </div>
+                                <div style={{textAlign: 'center'}}>
+                                  <span style={{fontSize: '0.6rem', color: '#94a3b8', display: 'block', marginBottom: '4px', fontWeight: '700'}}>LIVE CAPTURE</span>
+                                  <div style={{background: 'white', border: '1px solid #f1f5f9', borderRadius: '8px', padding: '6px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                                    <img src={signatureResults.processed_submitted} alt="Live Signature" style={{maxWidth: '100%', maxHeight: '100%', objectFit: 'contain'}} />
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div style={{
+                                background: 'white',
+                                padding: '10px',
+                                borderRadius: '10px',
+                                borderLeft: `3px solid ${signatureResults.verified ? '#10b981' : '#ef4444'}`,
+                                fontSize: '0.7rem',
+                                color: '#475569',
+                                lineHeight: '1.4',
+                                marginBottom: '15px'
+                              }}>
+                                {signatureResults.message}
+                              </div>
+
+                              {!feedbackStatus.signature && (
+                                <div style={{borderTop: '1px solid #f1f5f9', paddingTop: '12px', textAlign: 'center'}}>
+                                  <p style={{fontSize: '0.7rem', fontWeight: '700', color: '#64748b', marginBottom: '8px'}}>Is this match correct?</p>
+                                  <div style={{display: 'flex', gap: '10px', justifyContent: 'center'}}>
+                                    <button 
+                                      type="button" 
+                                      onClick={() => sendFeedback('signature', true)}
+                                      style={{background: '#f0fdf4', border: '1px solid #bcf0da', color: '#166534', padding: '4px 12px', borderRadius: '6px', fontSize: '0.65rem', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'}}
+                                    >
+                                      <i className="fas fa-thumbs-up"></i> Correct
+                                    </button>
+                                    <button 
+                                      type="button" 
+                                      onClick={() => sendFeedback('signature', false)}
+                                      style={{background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', padding: '4px 12px', borderRadius: '6px', fontSize: '0.65rem', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'}}
+                                    >
+                                      <i className="fas fa-thumbs-down"></i> Incorrect
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
