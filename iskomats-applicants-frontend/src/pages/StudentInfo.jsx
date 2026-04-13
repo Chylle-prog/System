@@ -1666,7 +1666,7 @@ const StudentInfo = () => {
   const [hasInteracted, setHasInteracted] = useState(false);
 
   useEffect(() => {
-    // ─── AUTO-SCAN LOGIC ───
+    // ─── AUTO-SCAN LOGIC (PARALLELIZED COE/GRADES) ───
     if (isAnyScanning || isSavingStep || !hasInteracted) return;
 
     const autoTrigger = async () => {
@@ -1678,9 +1678,10 @@ const StudentInfo = () => {
           handleIndigencyScan();
         }
       }
-      
+
       // Step 3: School ID, COE, Grades
       if (currentStep === 3) {
+        // School ID (sequential, as required)
         if (idVerified === null) {
           const front = getVerificationDocumentSource(schoolIdPhotos.front, userProfile?.id_img_front);
           const back = getVerificationDocumentSource(schoolIdPhotos.back, userProfile?.id_img_back);
@@ -1690,18 +1691,25 @@ const StudentInfo = () => {
             handleIdScan();
           }
         }
-        if (coeVerified === null && idVerified === 'success') {
-          const doc = getVerificationDocumentSource(photos.mayorCOE_photo, formData.mayorCOE_photo, userProfile?.enrollment_certificate_doc);
-          const vid = formData.mayorCOE_video || documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url;
-          if (doc && vid && typeof vid === 'string' && vid.startsWith('http')) {
-            handleCOEScan();
+
+        // COE and Grades: parallelize after ID is verified
+        if (idVerified === 'success') {
+          // COE
+          if (coeVerified === null) {
+            const doc = getVerificationDocumentSource(photos.mayorCOE_photo, formData.mayorCOE_photo, userProfile?.enrollment_certificate_doc);
+            const vid = formData.mayorCOE_video || documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url;
+            // Only trigger if not already verified and not already running
+            if (doc && vid && typeof vid === 'string' && vid.startsWith('http')) {
+              handleCOEScan();
+            }
           }
-        }
-        if (gradesVerified === null && coeVerified === 'success') {
-          const doc = getVerificationDocumentSource(photos.mayorGrades_photo, formData.mayorGrades_photo, userProfile?.grades_doc);
-          const vid = formData.mayorGrades_video || documentVideos.mayorGrades_video || userProfile?.grades_vid_url;
-          if (doc && vid && typeof vid === 'string' && vid.startsWith('http')) {
-            handleGradesScan();
+          // Grades
+          if (gradesVerified === null) {
+            const doc = getVerificationDocumentSource(photos.mayorGrades_photo, formData.mayorGrades_photo, userProfile?.grades_doc);
+            const vid = formData.mayorGrades_video || documentVideos.mayorGrades_video || userProfile?.grades_vid_url;
+            if (doc && vid && typeof vid === 'string' && vid.startsWith('http')) {
+              handleGradesScan();
+            }
           }
         }
       }
