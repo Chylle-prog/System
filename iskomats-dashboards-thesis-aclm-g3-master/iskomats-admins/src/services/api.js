@@ -6,7 +6,7 @@ import { clearAdminSession } from '../utils/admin-session';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 60000, // Increased to 60s for cold starts and heavy queries
+  timeout: 120000, // Increased to 120s for heavy image uploads and cold starts
 });
 
 const RETRYABLE_METHODS = new Set(['get', 'head', 'options']);

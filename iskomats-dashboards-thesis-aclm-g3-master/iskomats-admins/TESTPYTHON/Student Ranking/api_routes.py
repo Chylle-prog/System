@@ -4453,69 +4453,63 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
             WHERE ann_no = %s
         """, (title, message, ann_no))
 
-        # Handle images (support both JSON base64 and Multipart files)
-        image_attachments = []
+        # Optimized image update: Avoid downloading and re-uploading binary blobs
+        # 1. Map existing images to their primary keys
+        cur.execute(
+            f"SELECT {primary_key_column} FROM announcement_images WHERE {foreign_key_column} = %s ORDER BY {primary_key_column}",
+            (ann_no,)
+        )
+        existing_ids = [row[primary_key_column] for row in cur.fetchall()]
         
-        # 1. Retain existing images that weren't deleted
+        # 2. Build instructions for the new sequence (either raw bytes or an existing ID)
+        new_sequence = []
+        
+        # Process existing URLs and base64 from JSON
         if 'announcementImages' in data and isinstance(data['announcementImages'], list):
-            cur.execute(
-                f"SELECT {primary_key_column}, img FROM announcement_images WHERE {foreign_key_column} = %s ORDER BY {primary_key_column}",
-                (ann_no,)
-            )
-            existing_rows = cur.fetchall()
-            
             for image_val in data['announcementImages']:
                 url = image_val.get('url') if isinstance(image_val, dict) else image_val
-                
                 if not isinstance(url, str):
                     continue
                 
                 if url.startswith('data:'):
-                    # New base64 image
                     img_bytes = base64_to_bytes(url)
                     if img_bytes:
-                        image_attachments.append(img_bytes)
+                        new_sequence.append(img_bytes)
                 elif '/announcement-image/' in url:
-                    # Existing image URL - we keep it
                     try:
-                        # Extract the image identifier if needed, or just find it in existing rows
-                        # For simplicity, we assume if it's an existing URL, we don't want to change that specific row
-                        # but the current logic REPLACES all images. So we must re-collect the bytes.
-                        idx_str = url.split('/')[-1]
+                        # Extract the index from the URL (last part of the path)
+                        # Remove query params if any
+                        clean_url = url.split('?')[0]
+                        idx_str = clean_url.split('/')[-1]
                         idx = int(idx_str)
-                        if 0 <= idx < len(existing_rows):
-                            image_attachments.append(existing_rows[idx]['img'])
+                        if 0 <= idx < len(existing_ids):
+                            new_sequence.append(existing_ids[idx])
                     except:
                         pass
         
-        # 2. New Multipart File Uploads
+        # 3. Process new Multipart File Uploads
         if request.files:
             for file_key in sorted(request.files.keys()):
                 if file_key.startswith('image_'):
                     file = request.files[file_key]
                     if file:
-                        image_attachments.append(file.read())
+                        new_sequence.append(file.read())
 
-        # Sync image table
+        # 4. Sync image table using a temporary staging table to avoid DB round-trips for blobs
+        cur.execute("CREATE TEMP TABLE temp_ann_imgs (img bytea)")
+        for item in new_sequence:
+            if isinstance(item, bytes):
+                # New image - encrypt and insert
+                final_data = _fernet.encrypt(item) if _fernet else item
+                cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (final_data,))
+            else:
+                # Existing image - copy directly within the database
+                cur.execute(f"INSERT INTO temp_ann_imgs (img) SELECT img FROM announcement_images WHERE {primary_key_column} = %s", (item,))
+        
+        # Replace the original image set
         cur.execute(f"DELETE FROM announcement_images WHERE {foreign_key_column} = %s", (ann_no,))
-        for img_data in image_attachments:
-            # Check if already encrypted (from DB) or new (raw bytes)
-            # This is a bit tricky, but Fernet usually has a specific header
-            # For simplicity, we assume if it's from the DB it's already bytes/encrypted
-            # and if it's new (raw bytes), we encrypt it.
-            # But let's just always re-encrypt raw bytes and keep DB data as is.
-            is_encrypted = False
-            if isinstance(img_data, bytes) and len(img_data) > 30 and img_data.startswith(b'gAAAA'):
-                is_encrypted = True
-            
-            final_data = img_data
-            if not is_encrypted and _fernet:
-                final_data = _fernet.encrypt(img_data)
-                
-            cur.execute(
-                f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
-                (ann_no, final_data)
-            )
+        cur.execute(f"INSERT INTO announcement_images ({foreign_key_column}, img) SELECT %s, img FROM temp_ann_imgs", (ann_no,))
+        cur.execute("DROP TABLE temp_ann_imgs")
 
         conn.commit()
         
