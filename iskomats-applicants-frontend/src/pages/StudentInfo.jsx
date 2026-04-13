@@ -1017,6 +1017,8 @@ const StudentInfo = () => {
     }
   };
 
+  // --- School ID Verification Optimization ---
+  const lastIdScanRef = useRef({ front: null, back: null, frontVid: null, backVid: null });
   const handleIdScan = async () => {
     const idFront = getVerificationDocumentSource(
       schoolIdPhotos.front,
@@ -1028,6 +1030,18 @@ const StudentInfo = () => {
     );
     const frontVideoUrl = formData.schoolIdFront_video || documentVideos.schoolIdFront_video;
     const backVideoUrl = formData.schoolIdBack_video || documentVideos.schoolIdBack_video;
+
+    // Skip if nothing changed (images/videos)
+    const last = lastIdScanRef.current;
+    if (
+      last.front === idFront &&
+      last.back === idBack &&
+      last.frontVid === frontVideoUrl &&
+      last.backVid === backVideoUrl &&
+      idVerified === 'success'
+    ) {
+      return;
+    }
 
     if (!idFront || !idBack) {
       showPromptMessage('⚠️ Please upload both front and back of your School ID first.');
@@ -1047,8 +1061,10 @@ const StudentInfo = () => {
     }
 
     setLoadingMessage({ title: 'Scanning School ID', message: 'Verifying your School ID images and Video Content...' });
-    
+    lastIdScanRef.current = { front: idFront, back: idBack, frontVid: frontVideoUrl, backVid: backVideoUrl };
+
     try {
+      // Only check video presence, not full video OCR (backend already optimized)
       const success = await performOcrVerification(
         'SchoolID',
         { front: idFront, back: idBack },
