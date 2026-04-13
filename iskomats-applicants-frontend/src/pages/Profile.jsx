@@ -1071,80 +1071,98 @@ const Profile = () => {
               <form onSubmit={handleProfileSubmit}>
                 <div className="form-group">
                   <label>First name</label>
-                  <input
-                    type="text"
-                    name="firstName"
-                    value={formData.firstName}
-                    onChange={handleInputChange}
-                    placeholder="e.g., Maria"
-                    required
-                  />
+                  <div className="profile-input-wrapper">
+                    <i className="fas fa-user"></i>
+                    <input
+                      type="text"
+                      name="firstName"
+                      value={formData.firstName}
+                      onChange={handleInputChange}
+                      placeholder="e.g., Maria"
+                      required
+                    />
+                  </div>
                 </div>
                 <div className="form-group">
                   <label>Middle name</label>
-                  <input
-                    type="text"
-                    name="middleName"
-                    value={formData.middleName}
-                    onChange={handleInputChange}
-                    placeholder="e.g., Dela Cruz"
-                  />
+                  <div className="profile-input-wrapper">
+                    <i className="fas fa-user"></i>
+                    <input
+                      type="text"
+                      name="middleName"
+                      value={formData.middleName}
+                      onChange={handleInputChange}
+                      placeholder="e.g., Dela Cruz"
+                    />
+                  </div>
                 </div>
                 <div className="form-group">
                   <label>Last name</label>
-                  <input
-                    type="text"
-                    name="lastName"
-                    value={formData.lastName}
-                    onChange={handleInputChange}
-                    placeholder="e.g., Santos"
-                    required
-                  />
+                  <div className="profile-input-wrapper">
+                    <i className="fas fa-user"></i>
+                    <input
+                      type="text"
+                      name="lastName"
+                      value={formData.lastName}
+                      onChange={handleInputChange}
+                      placeholder="e.g., Santos"
+                      required
+                    />
+                  </div>
                 </div>
                 <div className="form-group">
                   <label>Birthdate</label>
-                  <input
-                    type="date"
-                    name="birthdate"
-                    value={formData.birthdate}
-                    onChange={handleInputChange}
-                    required
-                  />
+                  <div className="profile-input-wrapper">
+                    <i className="fas fa-calendar"></i>
+                    <input
+                      type="date"
+                      name="birthdate"
+                      value={formData.birthdate}
+                      onChange={handleInputChange}
+                      required
+                    />
+                  </div>
                 </div>
                 <div className="form-group">
                   <label>University / School</label>
-                  <select
-                    name="school"
-                    value={formData.school}
-                    onChange={handleInputChange}
-                    required
-                  >
-                    <option value="">Select School</option>
-                    <option value="DLSL/De La Salle Lipa">DLSL/De La Salle Lipa</option>
-                    <option value="NU/National University Lipa">NU/National University Lipa</option>
-                    <option value="Batangas State University">Batangas State University</option>
-                    <option value="Kolehiyo ng Lungsod ng Lipa">Kolehiyo ng Lungsod ng Lipa</option>
-                    <option value="Philippine State College of Aeronautics">Philippine State College of Aeronautics</option>
-                    <option value="Lipa City Colleges">Lipa City Colleges</option>
-                    <option value="University of Batangas">University of Batangas</option>
-                    <option value="New Era University">New Era University</option>
-                    <option value="Batangas College of Arts and Sciences">Batangas College of Arts and Sciences</option>
-                    <option value="Royal British College">Royal British College</option>
-                    <option value="STI Academic Center">STI Academic Center</option>
-                    <option value="AMA Computer College">AMA Computer College</option>
-                    <option value="ICT-ED">ICT-ED</option>
-                  </select>
+                  <div className="profile-input-wrapper">
+                    <i className="fas fa-university"></i>
+                    <select
+                      name="school"
+                      value={formData.school}
+                      onChange={handleInputChange}
+                      required
+                    >
+                      <option value="">Select School</option>
+                      <option value="DLSL/De La Salle Lipa">DLSL/De La Salle Lipa</option>
+                      <option value="NU/National University Lipa">NU/National University Lipa</option>
+                      <option value="Batangas State University">Batangas State University</option>
+                      <option value="Kolehiyo ng Lungsod ng Lipa">Kolehiyo ng Lungsod ng Lipa</option>
+                      <option value="Philippine State College of Aeronautics">Philippine State College of Aeronautics</option>
+                      <option value="Lipa City Colleges">Lipa City Colleges</option>
+                      <option value="University of Batangas">University of Batangas</option>
+                      <option value="New Era University">New Era University</option>
+                      <option value="Batangas College of Arts and Sciences">Batangas College of Arts and Sciences</option>
+                      <option value="Royal British College">Royal British College</option>
+                      <option value="STI Academic Center">STI Academic Center</option>
+                      <option value="AMA Computer College">AMA Computer College</option>
+                      <option value="ICT-ED">ICT-ED</option>
+                    </select>
+                  </div>
                 </div>
                 <div className="form-group">
                   <label>Phone number</label>
-                  <input
-                    type="tel"
-                    name="mobileNo"
-                    value={formData.mobileNo}
-                    onChange={handleInputChange}
-                    placeholder="+63 ..."
-                    required
-                  />
+                  <div className="profile-input-wrapper">
+                    <i className="fas fa-phone"></i>
+                    <input
+                      type="tel"
+                      name="mobileNo"
+                      value={formData.mobileNo}
+                      onChange={handleInputChange}
+                      placeholder="+63 ..."
+                      required
+                    />
+                  </div>
                 </div>
                 <div className="form-group">
                   <label>Street / Barangay</label>
