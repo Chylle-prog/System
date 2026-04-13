@@ -170,6 +170,7 @@ const Profile = () => {
     try {
       setLoadingMessage({ title: 'Updating Profile', message: 'Saving your changes to the database...' });
       setShowLoadingOverlay(true);
+      
       const profileData = {
         firstName: formData.firstName,
         middleName: formData.middleName,
@@ -184,8 +185,11 @@ const Profile = () => {
         profile_picture: formData.profile_picture
       };
 
+      console.log('[PROFILE] Submitting profile data:', profileData);
+
       // Update profile via API
       const updatedData = await applicantAPI.updateProfile(profileData);
+      console.log('[PROFILE] Profile update response:', updatedData);
 
       // Create a local merged profile to update UI immediately
       const locallyUpdatedProfile = {
@@ -225,8 +229,33 @@ const Profile = () => {
         }
       }, 2000);
     } catch (err) {
-      setError(err.message || 'Failed to update profile');
-      console.error('Error updating profile:', err);
+      console.error('[PROFILE] Error updating profile:', err);
+      console.error('[PROFILE] Error details:', {
+        message: err.message,
+        stack: err.stack,
+        status: err.status,
+        name: err.name
+      });
+      
+      // More user-friendly error messages
+      let userMessage = 'Failed to update profile';
+      if (err.message.includes('Network Error')) {
+        userMessage = 'Network connection failed. Please check your internet connection and try again.';
+      } else if (err.message.includes('401') || err.message.includes('Unauthorized')) {
+        userMessage = 'Your session has expired. Please log in again.';
+        // Clear auth data and redirect to login
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('currentUser');
+        setTimeout(() => navigate('/login'), 2000);
+      } else if (err.message.includes('403') || err.message.includes('suspended')) {
+        userMessage = 'Your account has been suspended. Please contact support.';
+      } else if (err.message.includes('404')) {
+        userMessage = 'Profile service not found. Please try again later.';
+      } else if (err.message) {
+        userMessage = err.message;
+      }
+      
+      setError(userMessage);
       setShowLoadingOverlay(false);
     }
   };

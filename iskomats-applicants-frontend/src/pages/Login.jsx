@@ -275,7 +275,9 @@ const Login = () => {
       
       if (profilePicture) profilePayload.profile_picture = profilePicture;
 
-      await applicantAPI.updateProfile(profilePayload);
+      console.log('[LOGIN-PROFILE] Submitting profile data:', profilePayload);
+      const updateResult = await applicantAPI.updateProfile(profilePayload);
+      console.log('[LOGIN-PROFILE] Profile update response:', updateResult);
 
       // Refresh global Auth state to ensure PrivateRoute recognizes the profile as complete
       if (email && fetchProfile) {

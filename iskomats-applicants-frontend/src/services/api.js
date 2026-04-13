@@ -32,7 +32,7 @@ export const uploadProfilePicture = async (file) => {
 import { supabase } from '../supabaseClient';
 
 // API Base URL - change this if backend is on different server
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://applicant-site-backend.onrender.com/api';
 export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
 let backendWarmupPromise = null;
 
@@ -120,10 +120,25 @@ const warmBackendConnection = async ({ force = false } = {}) => {
   }
 
   if (!backendWarmupPromise) {
-    backendWarmupPromise = fetch(`${API_ORIGIN}/_health`, {
-      method: 'GET',
-      cache: 'no-store',
-    }).catch(() => undefined);
+    // Try multiple possible health endpoints
+    const healthEndpoints = [
+      `${API_ORIGIN}/health`,
+      `${API_ORIGIN}/_health`,
+      `${API_BASE_URL}/health`,
+      `${API_BASE_URL}/auth/health`,
+    ];
+    
+    backendWarmupPromise = Promise.any(
+      healthEndpoints.map(endpoint => 
+        fetch(endpoint, {
+          method: 'GET',
+          cache: 'no-store',
+        }).catch(() => Promise.reject())
+      )
+    ).catch(() => {
+      // If all health endpoints fail, continue anyway (backend might not have health endpoint)
+      return Promise.resolve();
+    });
   }
 
   return backendWarmupPromise;
