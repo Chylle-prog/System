@@ -317,11 +317,11 @@ def year_level_matches_text(target_year, text):
     # Pattern A: Standard labels
     # Handles: "Year Level: 1", "Level: 1", "Year: 1"
     if re.search(rf'\b(?:year\s*)?level\s*[:\-.;]?\s*{number_pattern}{suffix_pattern}\b', norm_text, re.IGNORECASE):
-        return True
+        return True, expected_level
     
     # Pattern B: Standalone with Year/Yr
     if re.search(rf'\b{number_pattern}{suffix_pattern}?\s*(?:year|yr\.?)\b', norm_text, re.IGNORECASE):
-        return True
+        return True, expected_level
 
     # Pattern C: Word-based mapped variations
     variations = []
@@ -331,13 +331,13 @@ def year_level_matches_text(target_year, text):
     elif expected_level == '4': variations.extend(['4th', 'fourth', 'yr 4', 'year 4', 'senior'])
     
     for v in variations:
-        if v in norm_text: return True
+        if v in norm_text: return True, expected_level
     
     # Final fallback: Look for "Year" or "Level" followed by the target number within a small window
-    if re.search(rf'\b(?:year|level)\b.{0,15}?{d_pattern}\b', norm_text, re.IGNORECASE | re.DOTALL):
-        return True
+    if re.search(rf'\b(?:year|level)\b.{0,15}?{number_pattern}\b', norm_text, re.IGNORECASE | re.DOTALL):
+        return True, expected_level
 
-    return False
+    return False, None
 
 
 def course_matches_text(target_course, text):
@@ -428,19 +428,19 @@ def student_id_no_matches_text(target_id, text):
         if match:
             captured = normalize_id(match.group(1))
             if t_id in captured:
-                return True
+                return True, target_id
     
     norm_text = normalize_id(text)
     
     if t_id in norm_text:
-        return True
+        return True, target_id
     
     # Check words individually if ID has non-digits (e.g., "ST2024-123")
     for word in text.split():
         if t_id in normalize_id(word):
-            return True
+            return True, target_id
         
-    return False
+    return False, None
         
     return False
         

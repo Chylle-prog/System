@@ -45,7 +45,8 @@ from services.ocr_utils import (
     extract_document_text,
     student_name_matches_text,
     course_matches_text,
-    student_id_no_matches_text
+    student_id_no_matches_text,
+    year_level_matches_text
 )
 from services.school_utils import build_school_name_variants, school_name_matches_text
 from services.notification_service import create_notification, fetch_google_access_token
@@ -169,138 +170,7 @@ def format_academic_period(expected_year, expected_semester=None):
     return ' '.join(parts) if parts else 'current academic period'
 
 
-def student_name_matches_text(raw_text, first_name, middle_name, last_name, is_indigency=False):
-    name_ok, _, _, match_ratio = _perform_text_matching(
-        raw_text,
-        first_name,
-        middle_name,
-        last_name,
-        None,
-        None,
-        None,
-        None,
-        is_indigency=is_indigency
-    )
-    return name_ok, match_ratio
 
-
-def normalize_alphanumeric(value):
-    return re.sub(r'[^a-z0-9]+', '', str(value or '').lower())
-
-
-def id_number_matches_text(raw_text, expected_id_number):
-    normalized_expected = normalize_alphanumeric(expected_id_number)
-    if not normalized_expected:
-        return True, None
-
-    normalized_raw = normalize_alphanumeric(raw_text)
-    if normalized_expected in normalized_raw:
-        return True, expected_id_number
-
-    raw_tokens = [normalize_alphanumeric(token) for token in re.findall(r'[A-Za-z0-9-]+', str(raw_text or ''))]
-    raw_tokens = [token for token in raw_tokens if len(token) >= max(4, len(normalized_expected) - 2)]
-    for token in raw_tokens:
-        if not token:
-            continue
-        if token == normalized_expected:
-            return True, token
-
-    return False, None
-
-
-def parse_expected_year_level(value):
-    match = re.search(r'\b([1-9])(?:st|nd|rd|th)?\b', str(value or '').lower())
-    return match.group(1) if match else None
-
-
-def year_level_matches_text(raw_text, expected_year_level):
-    expected_level = parse_expected_year_level(expected_year_level)
-    if not expected_level:
-        return True, None
-
-    level_word_map = {
-        '1': ['first', 'freshman', 'freshmen', 'freshie'],
-        '2': ['second', 'sophomore'],
-        '3': ['third', 'junior'],
-        '4': ['fourth', 'senior'],
-        '5': ['fifth'],
-        '6': ['sixth'],
-    }
-    
-    # Common OCR misreads for suffixes like 'st', 'nd', 'rd', 'th'
-    # Handling L/I misreads specifically for '1st' -> 'ist', 'lst'
-    suffix_map = {
-        '1': [r'st', r'ist', r'lst', r'Is\b'], 
-        '2': [r'nd', r'md'], 
-        '3': [r'rd', r'kd'],
-        '4': [r'th']
-    }
-    
-    suffixes = suffix_map.get(expected_level, [r'st|nd|rd|th'])
-    suffix_pattern = f"(?:{'|'.join(suffixes)})"
-    
-    level_words = level_word_map.get(expected_level, [expected_level])
-    level_words_pattern = f"(?:{'|'.join(level_words)})"
-
-    patterns = [
-        # Standard: 1st Year, 1st Yr, 1stYear
-        rf'\b{expected_level}{suffix_pattern}(?:\s*(?:year|yr\.?)?)?\b',
-        # Labels: Year Level: 1, Level: 1, Year: 1
-        rf'\b(?:year\s*)?level\s*[:\-]?\s*(?:{expected_level}{suffix_pattern}|{expected_level})\b',
-        rf'\byear\s*[:\-]?\s*(?:{expected_level}{suffix_pattern}|{expected_level})\b',
-        rf'\byr\.?\s*(?:{expected_level}{suffix_pattern}|{expected_level})\b',
-        # Word-based: First Year, Freshman
-        rf'\b{level_words_pattern}(?:\s*(?:year|yr\.?)?)?\b',
-        # Numerical standalone with context (e.g. "Year 1")
-        rf'\byear\s+{expected_level}\b',
-    ]
-    
-    lowered_text = str(raw_text or '').lower()
-
-    for pattern in patterns:
-        if re.search(pattern, lowered_text, re.IGNORECASE):
-            return True, expected_level
-
-    # Ultra-lenient fallback for 1st Year specifically (highest error rate)
-    if expected_level == '1':
-        if re.search(r'\b[Il][s\d]t\b', lowered_text): # Matches 'Ist', 'lst', '1st'
-            return True, '1'
-
-    return False, None
-
-
-def course_matches_text(raw_text, expected_course):
-    if not expected_course:
-        return True, None
-
-    normalized_raw = normalize_matching_text(raw_text)
-    normalized_course = normalize_matching_text(expected_course)
-    if normalized_course and normalized_course in normalized_raw:
-        return True, expected_course
-
-    stop_words = {'bachelor', 'science', 'arts', 'in', 'of', 'the', 'program', 'course'}
-    course_words = [
-        word for word in normalized_course.split()
-        if len(word) >= 3 and word not in stop_words
-    ]
-    raw_words = set(normalized_raw.split())
-    if course_words:
-        matched_words = 0
-        for word in course_words:
-            if word in raw_words or any(word in raw_word or raw_word in word for raw_word in raw_words if len(raw_word) >= 3):
-                matched_words += 1
-
-        required_matches = 1 if len(course_words) == 1 else min(2, len(course_words))
-        if matched_words >= required_matches:
-            return True, expected_course
-
-    acronym_words = [word for word in normalized_course.split() if word and word not in stop_words]
-    acronym = ''.join(word[0] for word in acronym_words if word[0].isalnum()).lower()
-    normalized_raw_compact = normalize_alphanumeric(raw_text)
-    if len(acronym) >= 3 and acronym in normalized_raw_compact:
-        return True, acronym.upper()
-
-    return False, None
 
 
 def gpa_matches_text(raw_text, expected_gpa):
@@ -1331,6 +1201,7 @@ def mark_notification_read(notif_id):
             WHERE notif_id = %s AND user_no = %s
         """, (notif_id, request.user_no))
         conn.commit()
+        cur.close()
         conn.close()
         return jsonify({'message': 'Success'}), 200
     except Exception as e:
@@ -1349,6 +1220,7 @@ def mark_all_notifications_read():
             WHERE user_no = %s
         """, (request.user_no,))
         conn.commit()
+        cur.close()
         conn.close()
         return jsonify({'message': 'Success'}), 200
     except Exception as e:
@@ -2634,22 +2506,7 @@ def submit_application():
         )
         if document_values:
             applicant.update(document_values)
-
-        prefetch_video_urls([
-            form_data.get('mayorIndigency_video'),
-            form_data.get('mayorGrades_video'),
-            form_data.get('mayorCOE_video'),
-            form_data.get('schoolIdFront_video'),
-            form_data.get('schoolIdBack_video'),
-            form_data.get('face_video'),
-            applicant.get('indigency_vid_url'),
-            applicant.get('grades_vid_url'),
-            applicant.get('enrollment_certificate_vid_url'),
-            applicant.get('schoolid_front_vid_url'),
-            applicant.get('schoolid_back_vid_url'),
-            applicant.get('id_vid_url'),
-        ])
-
+        
         # In this system, req_no (passed from frontend) is the primary scholarship identifier
         scholarship_id = req_no
         
@@ -2955,30 +2812,6 @@ def ocr_check():
             
         # 2. Preparation (Don't close connection yet, we might need it for scholarship check)
 
-        # Optimization: Target prefetch to ONLY relevant videos for the specific scan
-        urls_to_prefetch = []
-        if not target_doc:
-            urls_to_prefetch = [
-                data.get('video_url'),
-                data.get('video_url_back'),
-                data.get('face_video'),
-                applicant.get('id_vid_url')
-            ]
-        elif target_doc == 'SchoolID':
-            urls_to_prefetch = [data.get('video_url') or data.get('face_video'), applicant.get('id_vid_url')]
-        elif target_doc == 'SchoolIDBack':
-            urls_to_prefetch = [data.get('video_url_back'), applicant.get('schoolid_back_vid_url')]
-        elif target_doc == 'Indigency':
-            urls_to_prefetch = [data.get('mayorIndigency_video'), applicant.get('indigency_vid_url')]
-        elif target_doc == 'Enrollment':
-            urls_to_prefetch = [data.get('mayorCOE_video'), applicant.get('enrollment_certificate_vid_url')]
-        elif target_doc == 'Grades':
-            urls_to_prefetch = [data.get('mayorGrades_video'), applicant.get('grades_vid_url')]
-        
-        # Prefetch URLs moved lower and deduplicated for performance.
-
-        # Prefetch URLs moved lower and deduplicated for performance.
-
         if not applicant:
             return jsonify({'verified': False, 'message': 'Applicant profile not found'}), 404
 
@@ -2994,13 +2827,6 @@ def ocr_check():
         indigency_doc_param = indigency_doc_file.read() if indigency_doc_file else data.get('indigency_doc') or data.get('indigencyDoc')
         enrollment_doc_param = enrollment_doc_file.read() if enrollment_doc_file else data.get('enrollment_doc') or data.get('enrollmentDoc')
         grades_doc_param = grades_doc_file.read() if grades_doc_file else data.get('grades_doc') or data.get('gradesDoc')
-
-        # Diagnostic Logging for 'No documents provided' issue
-        print(f"[OCR DEBUG] Request for user {request.user_no}", flush=True)
-        print(f"[OCR DEBUG] target_doc: {target_doc}", flush=True)
-        print(f"[OCR DEBUG] request.files keys: {list(request.files.keys())}", flush=True)
-        print(f"[OCR DEBUG] data keys: {list(data.keys())}", flush=True)
-        print(f"[OCR DEBUG] grades_doc_param length: {len(grades_doc_param) if grades_doc_param else 'None'}", flush=True)
 
         first_name = str(data.get('first_name') or data.get('firstName') or '').strip()
         middle_name = str(data.get('middle_name') or data.get('middleName') or '').strip()
@@ -3084,13 +2910,6 @@ def ocr_check():
             print(f"[OCR CACHE HIT] Reusing cached verification for user={request.user_no}, target={target_doc or 'all'}", flush=True)
             return jsonify(cached_verification)
 
-        def get_bytes(param, db_val):
-            if isinstance(param, bytes):
-                return param
-            return decode_base64(param) or db_bytes(db_val)
-        
-        # Now uses global fetch_video_bytes_from_url
-
         # ── Worker Function for Parallel Processing ──
         def process_doc(doc_type, doc_param, db_val):
             try:
@@ -3117,87 +2936,8 @@ def ocr_check():
                     'Grades': frontend_video_front_url or applicant.get('grades_vid_url')
                 }
                 vid_url = vid_url_map.get(doc_type)
-                name_keywords = build_student_name_keywords(first_name, middle_name, last_name)
-                school_variants = build_school_name_variants(school_name)
-                parsed_year_level = parse_expected_year_level(expected_year_level)
-                year_level_keywords = []
-                if parsed_year_level:
-                    year_level_keywords.append(parsed_year_level)
-                    year_level_keywords.append(f'{parsed_year_level} year')
-                    year_level_keywords.append(f'{parsed_year_level}yr')
-                    ordinal_map = {
-                        '1': ['1st', 'first', 'freshman'],
-                        '2': ['2nd', 'second', 'sophomore'],
-                        '3': ['3rd', 'third', 'junior'],
-                        '4': ['4th', 'fourth', 'senior'],
-                        '5': ['5th', 'fifth'],
-                        '6': ['6th', 'sixth'],
-                    }
-                    year_level_keywords.extend(ordinal_map.get(parsed_year_level, []))
-                academic_year_keywords = build_academic_year_keywords(expected_academic_year)
-
-                video_keywords_map = {
-                    'Indigency': ['Indigency', 'Certificate', 'Barangay', 'Indigent', 'Residency', 'Clearance'],
-                    'Enrollment': ['Enrollment', 'Enrolment', 'Certificate', 'COE', 'COR', 'Registered', 'Registration', 'Reg', 'Matriculation', 'Assessment', 'Billing', 'Semester', 'Sem'],
-                    'Grades': ['Grades', 'Grade', 'Transcript', 'Record', 'Evaluation', 'Rating', 'Units', 'Credit', 'Sem', 'GPA', 'Report', 'Card', 'Academic', 'TOR', 'Checklist'],
-                    'SchoolID': name_keywords or ['Student', 'Name', 'Identity', 'Student#'],
-                    'SchoolIDBack': academic_year_keywords or ['School Year', 'Academic Year', 'A.Y.', 'S.Y.']
-                }
-                video_scan_options = {
-                    'Indigency': {
-                        'sample_positions': [0.5],
-                        'max_width': 450,
-                        'allow_alt_pass': False,
-                        'fallback_text_length': 12,
-                    },
-                    'Enrollment': {
-                        'sample_positions': [0.5],
-                        'max_width': 540,
-                        'allow_alt_pass': True,
-                        'fallback_text_length': 12,
-                    },
-                    'Grades': {
-                        'sample_positions': [0.5],
-                        'max_width': 540,
-                        'allow_alt_pass': True,
-                        'fallback_text_length': 12,
-                    },
-                    'SchoolID': {
-                        'sample_positions': [0.35, 0.65],
-                        'max_width': 540,
-                        'allow_alt_pass': True,
-                        'fallback_text_length': 15,
-                    },
-                    'SchoolIDBack': {
-                        'sample_positions': [0.35, 0.65],
-                        'max_width': 540,
-                        'allow_alt_pass': True,
-                        'fallback_text_length': 10,
-                    },
-                }
-                # Define keywords for each document type
-                # Indigency can be detected as 'Certificate' + other indicators
-                doc_keywords = {
-                    'Indigency': ['Indigency', 'Certificate', 'Indigent', 'Pauper', 'Barangay'],
-                    'Enrollment': ['Enrollment', 'Enrolment', 'Certificate', 'Registration', 'Registered', 'Course', 'Semester', 'College', 'Enrolled', 'COE'],
-                    'Grades': [
-                        # Common headers on Philippine TORs
-                        'Grades', 'Grade', 'Transcript', 'Records', 'Report',
-                        # Unit/credit fields always present on any TOR
-                        'Units', 'Unit', 'Credit', 'Subject',
-                        # Grading period terms
-                        'Prelim', 'Midterm', 'Finals', 'Final',
-                        # Other common column headers
-                        'Subject', 'Course', 'Rating', 'Evaluation', 'GPA',
-                        # Filipino-context terms
-                        'Semestral', 'Semester', 'Academic', 'College', 'Registrar'
-                    ],
-                    'SchoolID': name_keywords or ['Student', 'Name'],
-                    'SchoolIDBack': academic_year_keywords or ['School Year', 'Academic Year', 'A.Y.', 'S.Y.']
-                }
-
+                
                 # ─── PARALLEL VERIFICATION (Part 1: Preparation) ───
-                # Combine Barangay and City for Indigency verification
                 target_address = f"{barangay} {town_city}".strip() if doc_type == 'Indigency' else None
                 
                 # Pre-define results
@@ -3217,15 +2957,29 @@ def ocr_check():
                     if not vid_bytes:
                         return False, f"Video file unreachable ({fetch_err})"
                     
-                    scan_options = video_scan_options.get(doc_type, video_scan_options['Enrollment'])
+                    # Optimized scan options
+                    scan_options = {
+                        'Indigency': {'sample_positions': [0.5], 'max_width': 450, 'allow_alt_pass': False, 'fallback_text_length': 12},
+                        'Enrollment': {'sample_positions': [0.5], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 12},
+                        'Grades': {'sample_positions': [0.5], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 12},
+                        'SchoolID': {'sample_positions': [0.35, 0.65], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 15},
+                        'SchoolIDBack': {'sample_positions': [0.35, 0.65], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 10},
+                    }
+                    scan_opt = scan_options.get(doc_type, scan_options['Enrollment'])
+                    
+                    video_keywords_map = {
+                        'Indigency': ['Indigency', 'Certificate', 'Barangay', 'Indigent', 'Residency', 'Clearance'],
+                        'Enrollment': ['Enrollment', 'Enrolment', 'Certificate', 'COE', 'COR', 'Registered', 'Registration', 'Reg', 'Matriculation', 'Assessment', 'Billing', 'Semester', 'Sem'],
+                        'Grades': ['Grades', 'Grade', 'Transcript', 'Record', 'Evaluation', 'Rating', 'Units', 'Credit', 'Sem', 'GPA', 'Report', 'Card', 'Academic', 'TOR', 'Checklist'],
+                    }
                     return verify_video_content(
                         video_bytes=vid_bytes,
                         keywords=video_keywords_map.get(doc_type),
-                        expected_address=None, # Only Indigency uses address in document OCR, not video usually here
-                        sample_positions=scan_options['sample_positions'],
-                        max_width=scan_options['max_width'],
-                        allow_alt_pass=scan_options['allow_alt_pass'],
-                        fallback_text_length=scan_options['fallback_text_length']
+                        expected_address=None,
+                        sample_positions=scan_opt['sample_positions'],
+                        max_width=scan_opt['max_width'],
+                        allow_alt_pass=scan_opt['allow_alt_pass'],
+                        fallback_text_length=scan_opt['fallback_text_length']
                     )
                 
                 # Close connection before starting parallel threads (important for pooling)
@@ -3236,14 +2990,11 @@ def ocr_check():
 
                 def run_ocr_check():
                     if doc_type == 'Enrollment':
-                        # Use 85% crop to catch ID numbers or course labels that might be at the bottom
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1000, prefer_fast_layout=True, crop_percent=0.85)
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=800, prefer_fast_layout=True, crop_percent=0.85)
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'Grades':
-                        # Use 85% crop to ensure the GPA row (which is at the bottom of the table) is captured.
-                        # TORs/Grade slips can have many rows, so we need a larger sample area.
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1200, prefer_fast_layout=True, crop_percent=0.85)
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=950, prefer_fast_layout=True, crop_percent=0.85)
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'SchoolIDBack':
@@ -3251,19 +3002,13 @@ def ocr_check():
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read school ID back text'), raw_t, {}
                     elif doc_type == 'Indigency':
-                        # Use 50% crop as names/addresses are always in the upper half of certificates
-                        # PSM 6 + Skip Pass 2 + lower res (800px) = High Speed
                         raw_t, extraction_error = extract_document_text(doc_bytes, max_width=800, prefer_fast_layout=True, crop_percent=0.50)
-                        
-                        # Perform standard name/address matching on the extracted text
                         name_ok, name_ratio = student_name_matches_text(raw_t, first_name, middle_name, last_name, is_indigency=True)
                         addr_ok = True
                         found_kw = []
                         if target_address:
-                            # Re-use matching helper for address extraction
                             _, addr_ok, found_keywords, _ = _perform_text_matching(raw_t, None, None, None, target_address, is_indigency=True)
                             found_kw = found_keywords
-                        
                         meta = {'name_ok': name_ok, 'addr_ok': addr_ok, 'name_ratio': name_ratio, 'keywords': found_kw}
                         v_t = name_ok and addr_ok
                         return v_t, extraction_error or ('Verified' if v_t else 'Verification failed'), raw_t, meta
@@ -3277,151 +3022,48 @@ def ocr_check():
                     
                     video_res = video_future.result()
                     v_video, msg_video = video_res[0], video_res[1]
-                    
-                    # If video fails early, we can technically stop, but it's simpler to wait for both
                     ocr_data = ocr_future.result()
                     v, msg, raw, meta = ocr_data[0], ocr_data[1], ocr_data[2], ocr_data[3]
 
                 # ─── COMBINED RESULT ───
                 if not v_video:
                     return {'doc': doc_type, 'verified': False, 'message': f"Video verification failed: {msg_video}", 'video_verified': False, 'video_message': msg_video}
-                raw_lower = raw.lower() if raw else ""
                 
-                # Early return only if extraction failed completely or it's a simple document type
-                # For high-priority docs with checklists (ID, COE, Grades), we proceed to specific logic 
-                # even if 'v' (basic identity check) failed, so we can build the checklist.
-                if not v and doc_type not in ['SchoolID', 'SchoolIDBack', 'Enrollment', 'Grades', 'Indigency']:
-                    return {'doc': doc_type, 'verified': False, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
-                
-                # Double-check keywords for mandatory document types
-                is_complex_doc = doc_type in ['Enrollment', 'Grades', 'Indigency']
-                if doc_type in doc_keywords and is_complex_doc:
-                    _, _, found_kw, _ = _perform_text_matching(raw, None, None, None, None, keywords=doc_keywords[doc_type], is_indigency=True)
-                    if not found_kw:
-                        return {'doc': doc_type, 'verified': False, 'message': f"Document type mismatch: Required '{doc_keywords[doc_type][0]}' not detected.", 'raw_text': raw}
-
-                school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
-
-                # 2. Document-Specific Logic (REUSING 'raw' text)
+                # Document-Specific Logic
                 if doc_type in ['Enrollment', 'Grades']:
-                    # Common Extractions
                     year_label = extract_school_year_from_text(raw)
                     semester_label = extract_semester_from_text(raw)
                     normalized_expected_semester = normalize_semester_label(expected_semester)
                     normalized_semester_label = normalize_semester_label(semester_label)
                     
                     year_only_ok = academic_year_matches_expected(year_label, expected_academic_year)
-                    semester_ok = True
-                    if normalized_expected_semester and normalized_semester_label:
-                        semester_ok = (normalized_expected_semester == normalized_semester_label)
+                    semester_ok = (normalized_expected_semester == normalized_semester_label) if normalized_expected_semester else True
                     
-                    year_ok = is_current_school_year(year_label, semester_str=semester_label, expected_year=expected_academic_year, expected_semester=expected_semester)
-                    # For COE/Grades, we use lenient name matching (is_indigency=True) because these documents often omit middle names.
-                    name_ok, name_ratio = student_name_matches_text(raw, first_name, middle_name, last_name, is_indigency=True)
-                    year_level_ok, _ = year_level_matches_text(raw, expected_year_level)
-
+                    name_ok, _ = student_name_matches_text(raw, first_name, middle_name, last_name, is_indigency=True)
+                    school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
+                    year_level_ok, _ = year_level_matches_text(expected_year_level, raw)
+                    
                     if doc_type == 'Enrollment':
-                        # Perform all mandatory checks
-                        id_ok = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else True
+                        id_ok, _ = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
                         course_ok = course_matches_text(course, raw) if course else True
-                        year_level_ok, _ = year_level_matches_text(expected_year_level, raw) if expected_year_level else (True, None)
-
-                        # Build Check-list Message
-                        checklist = [
-                            f"Name: {'OK' if name_ok else 'X'}", 
-                            f"ID No: {'OK' if id_ok else 'X'}",
-                            f"School: {'OK' if school_ok else 'X'}",
-                            f"Course: {'OK' if course_ok else 'X'}",
-                            f"Year Level: {'OK' if year_level_ok else 'X'}",
-                            f"AY: {'OK' if year_only_ok else 'X'}"
-                        ]
-                        
-                        # Set primary verification status
-                        # For Enrollment, Name, ID, School, and Course are the primary mandatory fields.
-                        # Year Level and AY are kept as warnings to handle document variations.
                         v = name_ok and id_ok and school_ok and course_ok
-
-                        if not v:
-                            msg = f"Verification failed. Checklist: [{' | '.join(checklist)}]"
-                            if not name_ok: msg += f" (Name ratio: {name_ratio:.2f})"
-                        else:
-                            detail_issues = []
-                            if not year_level_ok: detail_issues.append("Year level mismatch")
-                            if not year_only_ok: detail_issues.append("AY mismatch")
-                            if not semester_ok: detail_issues.append("Semester mismatch")
-                            if not year_ok: detail_issues.append("Period mismatch")
-
-                            if detail_issues:
-                                msg = f"Verified with warnings: {', '.join(detail_issues)} | Checklist: [{' | '.join(checklist)}]"
-                            else:
-                                msg = f"Verified Successfully | Checklist: [{' | '.join(checklist)}]"
-
-                        return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
+                        checklist = [f"Name: {'OK' if name_ok else 'X'}", f"ID: {'OK' if id_ok else 'X'}", f"School: {'OK' if school_ok else 'X'}", f"Course: {'OK' if course_ok else 'X'}"]
+                        return {'doc': 'Enrollment', 'verified': v, 'message': f"Checklist: [{' | '.join(checklist)}]", 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                     elif doc_type == 'Grades':
-                        # Perform all mandatory checks
                         gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
-                        semester_ok_final = semester_ok if expected_semester else True
-                        year_level_ok, _ = year_level_matches_text(expected_year_level, raw) if expected_year_level else (True, None)
-
-                        # Set primary verification status
-                        # GPA is mandatory along with Name, Academic Year, School and Year Level
                         v = name_ok and year_only_ok and gpa_ok and school_ok and year_level_ok
-
-                        # Build Check-list Message
-                        checklist = [
-                            f"Name: {'OK' if name_ok else 'X'}",
-                            f"School: {'OK' if school_ok else 'X'}",
-                            f"Year Level: {'OK' if year_level_ok else 'X'}",
-                            f"Sem: {'OK' if semester_ok_final else 'X'}",
-                            f"AY: {'OK' if year_only_ok else 'X'}",
-                            f"GPA: {'OK' if gpa_ok else 'X'}"
-                        ]
-
-                        if not v:
-                            msg = f"Verification failed. Checklist: [{' | '.join(checklist)}]"
-                            if not name_ok: msg += f" (Name ratio: {name_ratio:.2f})"
-                        else:
-                            detail_issues = []
-                            if not school_ok: detail_issues.append("School mismatch")
-                            if not year_level_ok: detail_issues.append("Year level mismatch")
-                            if not semester_ok_final: detail_issues.append("Semester mismatch")
-                            if not year_ok: detail_issues.append("Period mismatch")
-
-                            if detail_issues:
-                                msg = f"Verified with warnings: {', '.join(detail_issues)} | Checklist: [{' | '.join(checklist)}]"
-                            else:
-                                msg = f"Verified for A.Y. {year_label} | Checklist: [{' | '.join(checklist)}]"
-
-                        return {'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video, 'gpa_verified': gpa_ok}
+                        checklist = [f"Name: {'OK' if name_ok else 'X'}", f"School: {'OK' if school_ok else 'X'}", f"GPA: {'OK' if gpa_ok else 'X'}"]
+                        return {'doc': 'Grades', 'verified': v, 'message': f"Checklist: [{' | '.join(checklist)}]", 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'Indigency':
-                    # Use provided metadata from verify_id_with_ocr
-                    # Safely handle 'meta' if it's not a dict (e.g. on certain legacy error paths)
-                    if not isinstance(meta, dict):
-                        print(f"[OCR WARN] meta is not a dict for Indigency ({type(meta)}), using fallback", flush=True)
-                        meta = {}
-
                     name_ok = meta.get('name_ok', False)
                     addr_ok = meta.get('addr_ok', True)
-                    
-                    checklist = [f"Name: {'OK' if name_ok else 'X'}"]
-                    if target_address:
-                        checklist.append(f"Address: {'OK' if addr_ok else 'X'}")
-                        v = name_ok and addr_ok
-                    else:
-                        v = name_ok
-                        
-                    msg = f"Checklist results: [{', '.join(checklist)}]"
-                    if not v:
-                         msg = f"Verification failed. Checklist: [{', '.join(checklist)}]"
-                    
-                    return {'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                    v = name_ok and addr_ok
+                    return {'doc': 'Indigency', 'verified': v, 'message': f"Name: {'OK' if name_ok else 'X'}, Addr: {'OK' if addr_ok else 'X'}", 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'SchoolID':
-                    # For physical ID cards, we check Name and ID Number
-                    # Use both general ID verification and specific ID number check
-                    id_ok, _ = id_number_matches_text(raw, expected_id_no)
+                    id_ok, _ = student_id_no_matches_text(expected_id_no, raw)
                     name_ok, name_ratio = student_name_matches_text(raw, first_name, middle_name, last_name)
                     
                     checklist = [
