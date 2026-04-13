@@ -7,6 +7,60 @@ student_api_bp = Blueprint('student_api', __name__)
 def ping():
     return {'message': 'pong'}
 
+
+# --- Applicant Profile Endpoint ---
+@student_api_bp.route('/applicant/profile', methods=['GET'])
+def get_applicant_profile():
+    # Dummy profile data for testing
+    return {
+        "email": "test@applicant.com",
+        "first_name": "Test",
+        "last_name": "Applicant",
+        "status": "active"
+    }
+
+# --- Applications Endpoint ---
+@student_api_bp.route('/applications/my-applications', methods=['GET'])
+def get_my_applications():
+    # Dummy applications data for testing
+    return {
+        "applications": [
+            {"id": 1, "scholarship": "Scholarship A", "status": "pending"},
+            {"id": 2, "scholarship": "Scholarship B", "status": "approved"}
+        ]
+    }
+
+# --- Announcements Endpoint ---
+@student_api_bp.route('/announcements', methods=['GET'])
+def get_announcements():
+    # Dummy announcements data for testing
+    return {
+        "announcements": [
+            {"id": 1, "title": "Welcome!", "content": "Welcome to the portal."}
+        ]
+    }
+
+# --- Notifications Endpoint ---
+@student_api_bp.route('/notifications', methods=['GET'])
+def get_notifications():
+    # Dummy notifications data for testing
+    return {
+        "notifications": [
+            {"id": 1, "message": "Your application is being processed."}
+        ]
+    }
+
+# --- Scholarships Endpoint ---
+@student_api_bp.route('/scholarships/all', methods=['GET'])
+def get_scholarships():
+    # Dummy scholarships data for testing
+    return {
+        "scholarships": [
+            {"id": 1, "name": "Scholarship A"},
+            {"id": 2, "name": "Scholarship B"}
+        ]
+    }
+
 # Placeholder POST handler for Google OAuth
 
 from flask import request, jsonify
