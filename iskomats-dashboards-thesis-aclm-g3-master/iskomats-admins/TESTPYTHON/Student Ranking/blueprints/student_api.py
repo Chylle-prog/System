@@ -43,7 +43,9 @@ from services.ocr_utils import (
     normalize_semester_label,
     _perform_text_matching,
     extract_document_text,
-    student_name_matches_text
+    student_name_matches_text,
+    course_matches_text,
+    student_id_no_matches_text
 )
 from services.notification_service import create_notification, fetch_google_access_token
 from services.google_auth_service import verify_google_token
@@ -3317,8 +3319,8 @@ def ocr_check():
 
                 def run_ocr_check():
                     if doc_type == 'Enrollment':
-                        # Use 65% crop to catch 'ENROLLED' stamps that appear mid-page
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1000, prefer_fast_layout=True, crop_percent=0.65)
+                        # Use 85% crop to catch ID numbers or course labels that might be at the bottom
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1000, prefer_fast_layout=True, crop_percent=0.85)
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'Grades':
@@ -3401,8 +3403,24 @@ def ocr_check():
                     year_level_ok, _ = year_level_matches_text(raw, expected_year_level)
 
                     if doc_type == 'Enrollment':
+                        # Perform all mandatory checks
+                        id_ok = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else True
+                        course_ok = course_matches_text(course, raw) if course else True
+                        year_level_ok, _ = year_level_matches_text(expected_year_level, raw) if expected_year_level else (True, None)
+
                         # Build Check-list Message
-                        checklist = [f"Name: {'OK' if name_ok else 'X'}", f"Year: {'OK' if year_only_ok else 'X'}"]
+                        checklist = [
+                            f"Name: {'OK' if name_ok else 'X'}", 
+                            f"School: {'OK' if school_ok else 'X'}",
+                            f"Course: {'OK' if course_ok else 'X'}",
+                            f"Year Level: {'OK' if year_level_ok else 'X'}",
+                            f"ID No: {'OK' if id_ok else 'X'}",
+                            f"AY: {'OK' if year_only_ok else 'X'}"
+                        ]
+                        
+                        # Set primary verification status
+                        # Name and Academic Year are the most critical; other fields generate warnings if missing but don't fail immediately
+                        # to handle diverse school document formats better.
                         v = name_ok and year_only_ok
 
                         if not v:
@@ -3410,9 +3428,12 @@ def ocr_check():
                             if not name_ok: msg += f" (Name ratio: {name_ratio:.2f})"
                         else:
                             detail_issues = []
+                            if not school_ok: detail_issues.append("School mismatch")
+                            if not course_ok: detail_issues.append("Course mismatch")
+                            if not year_level_ok: detail_issues.append("Year level mismatch")
+                            if not id_ok: detail_issues.append("ID number mismatch")
                             if not semester_ok: detail_issues.append("Semester mismatch")
                             if not year_ok: detail_issues.append("Period mismatch")
-                            if not school_ok: detail_issues.append(f"School mismatch")
 
                             if detail_issues:
                                 msg = f"Verified with warnings: {', '.join(detail_issues)} | Checklist: [{' | '.join(checklist)}]"
@@ -3422,30 +3443,41 @@ def ocr_check():
                         return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
 
                     elif doc_type == 'Grades':
-                        # GPA Specific check
+                        # Perform all mandatory checks
                         gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
+                        semester_ok_final = semester_ok if expected_semester else True
+                        year_level_ok, _ = year_level_matches_text(expected_year_level, raw) if expected_year_level else (True, None)
+
+                        # Set primary verification status
+                        # GPA is mandatory along with Name and Academic Year
                         v = name_ok and year_only_ok and gpa_ok
 
+                        # Build Check-list Message
                         checklist = [
                             f"Name: {'OK' if name_ok else 'X'}",
-                            f"Year: {'OK' if year_only_ok else 'X'}",
+                            f"School: {'OK' if school_ok else 'X'}",
+                            f"Year Level: {'OK' if year_level_ok else 'X'}",
+                            f"Sem: {'OK' if semester_ok_final else 'X'}",
+                            f"AY: {'OK' if year_only_ok else 'X'}",
                             f"GPA: {'OK' if gpa_ok else 'X'}"
                         ]
 
                         if not v:
-                            msg = f"Verification failed. Checklist: [{', '.join(checklist)}]"
-                            if not name_ok: msg += " (Name mismatch)"
-                            elif not gpa_ok: msg += " (GPA mismatch)"
+                            msg = f"Verification failed. Checklist: [{' | '.join(checklist)}]"
+                            if not name_ok: msg += f" (Name ratio: {name_ratio:.2f})"
                         else:
                             detail_issues = []
-                            if not semester_ok: detail_issues.append("Semester mismatch")
-                            if not year_ok: detail_issues.append("Period mismatch")
                             if not school_ok: detail_issues.append("School mismatch")
+                            if not year_level_ok: detail_issues.append("Year level mismatch")
+                            if not semester_ok_final: detail_issues.append("Semester mismatch")
+                            if not year_ok: detail_issues.append("Period mismatch")
 
-                            msg = f"Verified Grade Report. Checklist: [{', '.join(checklist)}]"
-                            if detail_issues: msg = f"Verified with warnings: {', '.join(detail_issues)}. Checklist: [{', '.join(checklist)}]"
+                            if detail_issues:
+                                msg = f"Verified with warnings: {', '.join(detail_issues)} | Checklist: [{' | '.join(checklist)}]"
+                            else:
+                                msg = f"Verified for A.Y. {year_label} | Checklist: [{' | '.join(checklist)}]"
 
-                        return {'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video}
+                        return {'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw, 'school_year': year_label, 'video_verified': v_video, 'video_message': msg_video, 'gpa_verified': gpa_ok}
 
                 elif doc_type == 'Indigency':
                     # Use provided metadata from verify_id_with_ocr

@@ -328,6 +328,81 @@ def year_level_matches_text(target_year, text):
     # Final fallback: Look for "Year" or "Level" followed by the target number within a small window
     if re.search(rf'\b(?:year|level)\b.{0,15}?{d_pattern}\b', norm_text, re.IGNORECASE | re.DOTALL):
         return True
+
+    return False
+
+
+def course_matches_text(target_course, text):
+    """
+    Checks if the student's course/degree is mentioned in the text.
+    Handles abbreviations (e.g., 'BSCS' vs 'Computer Science').
+    """
+    if not target_course: return True
+    
+    # Normalize
+    t_course = target_course.lower().strip()
+    norm_text = text.lower()
+    
+    # 1. Exact string match
+    if t_course in norm_text:
+        return True
+        
+    # 2. Abbreviation detection
+    # Example: "Bachelor of Science in Computer Science" -> "BSCS"
+    words = [w.strip() for w in re.split(r'[^a-zA-Z0-9]', target_course) if w.strip()]
+    meaningful_words = [w for w in words if w.lower() not in {'of', 'in', 'and', 'the', 'for', 'science', 'arts'}]
+    
+    if len(words) >= 2:
+        # Create common acronyms
+        # All words acronym: BSCS
+        acronym1 = "".join(w[0].lower() for w in words)
+        # Meaningful words acronym: CS
+        acronym2 = "".join(w[0].lower() for w in meaningful_words) if meaningful_words else ""
+        
+        for acr in [acronym1, acronym2]:
+            if len(acr) >= 2 and re.search(rf'\b{re.escape(acr)}\b', norm_text):
+                return True
+
+    # 3. Individual word matching (must match at least 60% of significant words)
+    if meaningful_words:
+        matches = 0
+        for w in meaningful_words:
+            if w.lower() in norm_text:
+                matches += 1
+            else:
+                # Fuzzy match each word
+                found_fuzzy = False
+                for ocr_w in norm_text.split():
+                    if len(ocr_w) >= 3 and len(w) >= 3:
+                        if difflib.SequenceMatcher(None, w.lower(), ocr_w).ratio() >= 0.85:
+                            matches += 1
+                            found_fuzzy = True
+                            break
+                if found_fuzzy: continue
+        
+        if (matches / len(meaningful_words)) >= 0.6:
+            return True
+            
+    return False
+
+
+def student_id_no_matches_text(target_id, text):
+    """
+    Checks if the student's ID number is present in the text.
+    Cleans dashes and spaces for robust matching.
+    """
+    if not target_id: return True
+    
+    t_id = "".join(filter(str.isalnum, str(target_id))).lower()
+    if not t_id: return True
+    
+    norm_text = text.lower()
+    clean_ocr = "".join(filter(str.isalnum, norm_text))
+    
+    if t_id in clean_ocr:
+        return True
+        
+    return False
         
     return False
         
