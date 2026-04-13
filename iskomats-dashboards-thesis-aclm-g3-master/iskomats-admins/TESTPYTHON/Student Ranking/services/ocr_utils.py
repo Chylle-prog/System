@@ -668,7 +668,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     cached_result = _cache_get(image_hash)
     if cached_result is not None and isinstance(cached_result, (list, tuple)) and len(cached_result) == 3:
         cached_text, cached_ratio, cached_message = cached_result
-        name_v, addr_v, found_kw, score = _perform_text_matching(cached_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
+        name_v, addr_v, found_kw, score, _ = _perform_text_matching(cached_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
         if name_v and addr_v:
             print(f"[OCR CACHE HIT] Reusing previous results for {image_hash[:8]}...", flush=True)
             return True, f"Verified (cached)", cached_text, {'name_ok': True, 'addr_ok': True, 'cached': True}
@@ -710,7 +710,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
                 fast_img = img[:h_crop, :]
                 fast_text = _run_tesseract_on_image(fast_img, psm=6, skip_pass2=True)
                 
-                name_v, addr_v, found_kw, ratio = _perform_text_matching(fast_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
+                name_v, addr_v, found_kw, ratio, _ = _perform_text_matching(fast_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
                 
                 # If we found everything in the top 50%, EXIT IMMEDIATELY
                 if name_v and addr_v:
@@ -743,7 +743,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             clear_heavy_memory()
     
     
-    name_v, addr_v, found_kw, best_ratio = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
+    name_v, addr_v, found_kw, best_ratio, _ = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
     details = {
         'name_ok': name_v,
         'addr_ok': addr_v,
@@ -772,7 +772,7 @@ def student_name_matches_text(ocr_text, first_name, middle_name, last_name, is_i
     Stand-alone helper to check if a specific name is in the OCR text.
     Returns: (bool, match_ratio)
     """
-    name_ok, _, _, match_ratio = _perform_text_matching(ocr_text, first_name, middle_name, last_name, is_indigency=is_indigency)
+    name_ok, _, _, match_ratio, _ = _perform_text_matching(ocr_text, first_name, middle_name, last_name, is_indigency=is_indigency)
     return name_ok, match_ratio
 
 
@@ -997,7 +997,7 @@ def verify_video_content(video_bytes, keywords, expected_address=None, sample_po
         addr_ok = False
         
         # Check against keywords
-        _, addr_ok, found_keywords, _ = _perform_text_matching(
+        _, addr_ok, found_keywords, _, _ = _perform_text_matching(
             all_ocr_text, None, None, None, None, 
             keywords=keywords, is_indigency=is_address_verification
         )
