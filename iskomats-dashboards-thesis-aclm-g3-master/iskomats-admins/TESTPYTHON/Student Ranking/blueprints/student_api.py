@@ -189,7 +189,7 @@ def student_name_matches_text(raw_text, first_name, middle_name, last_name, is_i
         None,
         None,
         None,
-        is_indigency
+        is_indigency=is_indigency
     )
     return name_ok, match_ratio
 
