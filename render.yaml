@@ -8,7 +8,7 @@ services:
       - key: FRONTEND_URL
         value: https://iskomats-admin.surge.sh
       - key: STUDENT_FRONTEND_URL
-        value: https://foregoing-giants.surge.sh
+        value: https://iskomats-applicants.surge.sh
       - key: ADMIN_FRONTEND_URL
         value: https://iskomats-admin.surge.sh
     # Docker automatically runs the Dockerfile in the rootDir
