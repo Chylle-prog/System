@@ -184,9 +184,12 @@ def gpa_matches_text(raw_text, expected_gpa):
     
     # 1. Find all numbers in the text for absolute fallback
     raw_numbers = []
-    for num_match in re.finditer(r'\d+\.\d+', raw_text_str):
+    for num_match in re.finditer(r'\b\d+(?:\.\d+)?\b', raw_text_str):
         try:
-            raw_numbers.append(float(num_match.group(0)))
+            val = float(num_match.group(0))
+            # Only keep realistic GPA/Grade numbers to avoid noise
+            if 1.0 <= val <= 5.0 or 70.0 <= val <= 100.0:
+                raw_numbers.append(val)
         except: continue
 
     # 2. Specifically look for GPA labels (more robust regex)
@@ -195,7 +198,9 @@ def gpa_matches_text(raw_text, expected_gpa):
     gpa_patterns = [
         r'g\s*\.?\s*p\s*\.?\s*a\s*\.?\s*[:=]?\s*(\d+(?:\.\d+)?)',
         r'general\s+weighted\s+average\s*[:=]?\s*(\d+(?:\.\d+)?)',
-        r'gwa\s*[:=]?\s*(\d+(?:\.\d+)?)'
+        r'gwa\s*[:=]?\s*(\d+(?:\.\d+)?)',
+        r'(?:final|semestral|total|gen)\s+(?:grade|average|avg)\s*[:=]?\s*(\d+(?:\.\d+)?)',
+        r'\b(?:avg|average|grade)\s*[:=]?\s*(\d+(?:\.\d+)?)'
     ]
     
     for pattern in gpa_patterns:
@@ -2994,7 +2999,7 @@ def ocr_check():
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'Grades':
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=800, prefer_fast_layout=True, crop_percent=0.95)
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=950, prefer_fast_layout=True, crop_percent=0.95)
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'SchoolIDBack':
