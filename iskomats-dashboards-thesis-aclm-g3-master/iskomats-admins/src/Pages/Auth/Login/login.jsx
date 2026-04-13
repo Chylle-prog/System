@@ -76,13 +76,9 @@ const Login = () => {
           navigate('/dash');
           break;
       }
-    } catch (err) {
-      setFormData(prev => ({ ...prev, isLoading: false, error: err?.response?.data?.message || 'Login failed. Please try again.' }));
-    }
-  };
+
     } catch (error) {
       let errorMessage = "Login failed. Please check if your email exists, the role is correct, and the password is correct.";
-      
       if (error.response) {
         if (error.response.status === 404) {
           errorMessage = "Email doesn't exist.";
@@ -114,7 +110,6 @@ const Login = () => {
           errorMessage = error.response.data.message;
         }
       }
-
       setFormData({
         ...formData,
         error: errorMessage,
