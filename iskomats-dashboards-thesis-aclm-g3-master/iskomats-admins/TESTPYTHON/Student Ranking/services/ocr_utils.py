@@ -419,13 +419,13 @@ def student_id_no_matches_text(target_id, text):
     # Search for "Student No" to isolate the actual number block if possible
     # This helps when the document has many numbers
     id_patterns = [
-        r'(?:student|id|no\.?)[^a-z0-9]{0,5}([a-z0-9\s-]{4,28})',
-        r'identification[^a-z0-9]{0,5}([a-z0-9\s-]{4,28})',
-        r'\b(?:id|no)\b.*?(\d{5,15})'
+        r'student\s*(?:no|number|id|#)[:\.\s-]+([a-z0-9\s-]{4,20})',
+        r'id\s*(?:no|number|#)[:\.\s-]+([a-z0-9\s-]{4,20})'
     ]
     
     for pat in id_patterns:
-        for match in re.finditer(pat, text, re.IGNORECASE):
+        match = re.search(pat, text, re.IGNORECASE)
+        if match:
             captured = normalize_id(match.group(1))
             if t_id in captured:
                 return True, target_id
@@ -441,10 +441,6 @@ def student_id_no_matches_text(target_id, text):
             return True, target_id
         
     return False, None
-        
-    return False
-        
-    return False
 
 
 def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=None, target_last_name=None, target_address=None, target_id_no=None, target_year_level=None, target_school_name=None, keywords=None, is_indigency=False):
@@ -643,20 +639,6 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
     return n_verified and school_ok, a_verified, found_keywords, m_ratio
 
 
-def student_name_matches_text(ocr_text, first_name, middle_name, last_name, is_indigency=False):
-    """
-    Standalone wrapper for name matching used by document verification.
-    Returns: (name_ok, match_ratio)
-    """
-    name_ok, _, _, ratio = _perform_text_matching(
-        ocr_text, 
-        target_first_name=first_name, 
-        target_middle_name=middle_name, 
-        target_last_name=last_name, 
-        is_indigency=is_indigency
-    )
-    return name_ok, ratio
-
 
 def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, expected_last_name, expected_address=None, expected_id_no=None, expected_year_level=None, expected_school_name=None):
     """
@@ -779,6 +761,14 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     _cache_set(image_hash, (best_text, best_ratio, "failed"))
     return False, "Identity verification mismatch", best_text, details
 
+def student_name_matches_text(ocr_text, first_name, middle_name, last_name, is_indigency=False):
+    """
+    Stand-alone helper to check if a specific name is in the OCR text.
+    Returns: (bool, match_ratio)
+    """
+    name_ok, _, _, match_ratio = _perform_text_matching(ocr_text, first_name, middle_name, last_name, is_indigency=is_indigency)
+    return name_ok, match_ratio
+
 
 def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=False, prefer_fast_layout=False, crop_percent=None):
     """
@@ -827,9 +817,6 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
         if is_id_back:
             # Subtle sharpening for ID backs
             img = cv2.filter2D(img, -1, np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]]))
-        
-        # Apply CLAHE to improve contrast in shaded documents (like photographed papers)
-        img = _CLAHE.apply(img)
     except Exception as e:
         return "", f"Preprocessing error: {str(e)}"
 
