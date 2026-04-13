@@ -1602,23 +1602,17 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
         extracted_id_preview = extracted_id_signature  # Already display-ready via single-pass extraction
         matcher_reference_view = prepare_signature_match_view(extracted_id_signature)
         
-        # Neural matching
+        # Neural matching - REFINED: Neural history disabled for main system to ensure strict ID matching
         try:
             direct_score = compare_signature_images(sig_img, extracted_id_signature)
-            profile_score = calculate_neural_match(sig_img, student_id) if student_id else 0.0
-
-            if profile_score > 0.0:
-                score = (direct_score * 0.8) + (profile_score * 0.2)
-                score_source = f"direct={direct_score:.2f}, profile={profile_score:.2f}"
-            else:
-                score = direct_score
-                score_source = f"direct={direct_score:.2f}"
+            score = direct_score
+            score_source = f"direct={direct_score:.2f}"
         except Exception as e:
             print(f"[SIGNATURE] Error in neural matching: {e}", flush=True)
             return False, f"Matching error: {str(e)}", 0.0, preview_signature, extracted_id_preview, matcher_submitted_view, matcher_reference_view
         
-        # Adjusted strictness (0.65 -> 0.60) based on user feedback
-        threshold = 0.60
+        # Increased strictness (0.60 -> 0.75) to prevent random scribbles from matching.
+        threshold = 0.75
         is_verified = score >= threshold
         status = (
             f"Signature match successful ({score_source})"
@@ -1631,9 +1625,9 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
         print(f"[SIGNATURE] Wrapper error: {e}", flush=True)
         return False, str(e), 0.0, None, None, None, None
 
-def save_signature_profile(student_id, drawing_data):
+def save_signature_profile(student_id, drawing_data, profile_type='real'):
     """
-    Saves a drawing sample to the student's Neural History for adaptive learning.
+    Saves a drawing sample to the student's Neural History or Blacklist.
     """
     try:
         if not drawing_data: return False
@@ -1642,8 +1636,10 @@ def save_signature_profile(student_id, drawing_data):
         if isinstance(drawing_data, str):
             if ',' in drawing_data: drawing_data = drawing_data.split(',')[1]
             drawing_data = base64.b64decode(drawing_data)
-            
-        history_dir = os.path.join(os.getcwd(), 'knowledge', 'signature_profiles', 'history', str(student_id))
+        
+        # Determine subdirectory based on type
+        sub_dir = 'history' if profile_type == 'real' else 'blacklist'
+        history_dir = os.path.join(os.getcwd(), 'knowledge', 'signature_profiles', sub_dir, str(student_id))
         os.makedirs(history_dir, exist_ok=True)
         
         # Save with high-res timestamp
@@ -1651,7 +1647,7 @@ def save_signature_profile(student_id, drawing_data):
         with open(file_path, 'wb') as f:
             f.write(drawing_data)
             
-        print(f"[SIGNATURE] Saved training sample for student {student_id}", flush=True)
+        print(f"[SIGNATURE] Saved {profile_type} training sample for student {student_id}", flush=True)
         return True
     except Exception as e:
         print(f"[SIGNATURE] Save error: {e}", flush=True)

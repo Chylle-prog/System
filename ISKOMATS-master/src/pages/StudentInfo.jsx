@@ -3806,9 +3806,9 @@ const StudentInfo = () => {
                         <i className="fas fa-pen-nib"></i> Sign Application
                       </button>
                     ) : showSignaturePad ? (
-                      <div style={{width: '100%', maxWidth: '300px', margin: '0 auto'}}>
+                      <div style={{width: '100%', maxWidth: '420px', margin: '0 auto'}}>
                         <div style={{border: '1.5px solid #eee', borderRadius: '12px', background: '#fcfcfc', marginBottom: '1rem'}}>
-                          <SignaturePad ref={sigPad} canvasProps={{width: 300, height: 120, className: 'sigCanvas'}} />
+                          <SignaturePad ref={sigPad} canvasProps={{width: 400, height: 120, className: 'sigCanvas'}} />
                         </div>
                         <div style={{display: 'flex', gap: '8px', justifyContent: 'center'}}>
                           <button type="button" onClick={clearSignature} className="back-to-form-btn" style={{padding: '0.4rem 1rem', fontSize: '0.8rem'}}>Clear</button>

@@ -3991,16 +3991,26 @@ def signature_feedback():
         if not signature_bytes:
             return jsonify({'success': False, 'message': 'Invalid signature image.'}), 400
         
-        # Now passing feedback_type ('real' or 'fake')
-        success = save_signature_profile(student_id, signature_bytes, profile_type=feedback_type)
+        # RL Logic: Translate user choice + system result into truth
+        was_verified = data.get('was_verified', False)
+        user_choice = data.get('decision', 'agree') # 'agree' or 'disagree'
         
-        msg = f"Local signature profile updated. The system has now 'learned' this signature."
-        if feedback_type == 'fake':
-            msg = "Signature blacklisted. The system will now automatically penalize this specific drawing."
+        # Map to final profile type
+        if user_choice == 'agree':
+            profile_type = 'real' if was_verified else 'fake'
+        else:
+            profile_type = 'fake' if was_verified else 'real'
+            
+        success = save_signature_profile(student_id, signature_bytes, profile_type=profile_type)
+        
+        if user_choice == 'agree':
+            msg = f"System logic reinforced. Result confirmed as {profile_type}."
+        else:
+            msg = f"System logic corrected. Drawing re-classified as {profile_type}."
             
         return jsonify({
             'success': success,
-            'message': msg if success else f'Failed to save {feedback_type} profile.'
+            'message': msg if success else f'Failed to update {profile_type} profile.'
         })
     except Exception as e:
         print(f"[SIGNATURE-FEEDBACK] Error: {str(e)}", flush=True)

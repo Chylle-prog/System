@@ -342,21 +342,50 @@
             }
         }
 
+        async function handleSignatureFeedback(decision) {
+            if (!lastResults) return;
+            setLoading(true);
+            try {
+                const apiUrl = persistApiUrl(document.getElementById('api-url').value);
+                const res = await fetch(`${apiUrl}/student/verification/signature-feedback`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + document.getElementById('api-token').value
+                    },
+                    body: JSON.stringify({
+                        signature_image: lastSignatureImage,
+                        decision: decision,
+                        was_verified: lastResults.verified || false
+                    })
+                });
+                const data = await res.json();
+                alert(data.message);
+            } catch (err) {
+                alert('Feedback error: ' + err.message);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        let lastResults = null;
+        let lastSignatureImage = null;
+
         async function runSignatureTest() {
             setLoading(true);
             try {
                 const apiUrl = persistApiUrl(document.getElementById('api-url').value);
                 const canvas = document.getElementById('signature-canvas');
-                const signatureData = canvas.toDataURL('image/png');
+                lastSignatureImage = canvas.toDataURL('image/png');
                 
-                if (signatureData === 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==') {
+                if (lastSignatureImage === 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==') {
                     alert('Please draw a signature first');
                     setLoading(false);
                     return;
                 }
 
                 const params = {
-                    signature_image: signatureData,
+                    signature_image: lastSignatureImage,
                     id_back_image: await toBase64('file-id-back')
                 };
 
@@ -370,8 +399,8 @@
                     body: JSON.stringify(params)
                 });
 
-                const data = await res.json();
-                renderSignatureResults(data);
+                lastResults = await res.json();
+                renderSignatureResults(lastResults);
             } catch (err) {
                 renderError(getRequestErrorPayload(err, persistApiUrl(document.getElementById('api-url').value) + '/student/verification/signature-match'));
             } finally {
@@ -395,7 +424,12 @@
                     <div class="h-2 w-full bg-slate-700 rounded-full overflow-hidden mb-4">
                         <div class="h-full bg-indigo-500 transition-all duration-1000" style="width: ${Math.min(confidence, 100)}%"></div>
                     </div>
-                    <p class="text-slate-400 text-sm">${data.message}</p>
+                    <p class="text-slate-400 text-sm mb-6">${data.message}</p>
+                    
+                    <div class="grid grid-cols-2 gap-3 mt-4">
+                        <button onclick="handleSignatureFeedback('agree')" class="py-2 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all">Agree with Result</button>
+                        <button onclick="handleSignatureFeedback('disagree')" class="py-2 px-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition-all">Disagree with Result</button>
+                    </div>
                 </div>
             `;
 

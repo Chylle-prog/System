@@ -146,7 +146,8 @@ const App = () => {
         },
         body: JSON.stringify({
           signature_image: lastSignatureImage,
-          type: type
+          decision: type, // 'agree' or 'disagree'
+          was_verified: results?.data?.verified || false
         })
       });
 
@@ -378,18 +379,18 @@ const App = () => {
           </p>
           <div className="flex gap-3">
             <button
-              onClick={() => handleSignatureFeedback('real')}
+              onClick={() => handleSignatureFeedback('agree')}
               disabled={loading}
               className="flex-1 py-2 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
             >
-              Mark as Correct (Real)
+              Agree with Result
             </button>
             <button
-              onClick={() => handleSignatureFeedback('fake')}
+              onClick={() => handleSignatureFeedback('disagree')}
               disabled={loading}
-              className="flex-1 py-2 px-4 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+              className="flex-1 py-2 px-4 bg-rose-700 hover:bg-rose-600 text-white rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
             >
-              Mark as Fake
+              Disagree with Result
             </button>
           </div>
           <p className="text-[10px] text-slate-400 mt-2 text-center">
