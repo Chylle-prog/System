@@ -660,7 +660,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     # --- OPTIMIZATION #2: Check OCR cache first ---
     image_hash = _hash_image(image_bytes)
     cached_result = _cache_get(image_hash)
-    if cached_result is not None:
+    if cached_result is not None and isinstance(cached_result, (list, tuple)) and len(cached_result) == 3:
         cached_text, cached_ratio, cached_message = cached_result
         name_v, addr_v, found_kw, score = _perform_text_matching(cached_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
         if name_v and addr_v:
@@ -783,7 +783,7 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
     cache_suffix = f"_doc_text_v3_{max_width}_{is_id_back}_{prefer_fast_layout}".encode()
     cache_key = _hash_image(image_bytes, suffix=cache_suffix)
     cached_result = _cache_get(cache_key)
-    if cached_result is not None:
+    if cached_result is not None and isinstance(cached_result, (list, tuple)) and len(cached_result) == 2:
         return cached_result
 
     try:
@@ -915,7 +915,7 @@ def verify_video_content(video_bytes, keywords, expected_address=None, sample_po
     hash_suffix = f"_video_{sample_positions}_{max_width}_{allow_alt_pass}_{fallback_text_length}".encode()
     vid_hash = _hash_image(video_bytes, suffix=hash_suffix)
     cached_res = _cache_get(vid_hash)
-    if cached_res is not None:
+    if cached_res is not None and isinstance(cached_res, (list, tuple)) and len(cached_res) == 2:
         print(f"[VIDEO CACHE] Reusing extremely fast cached result for {vid_hash[:8]}...", flush=True)
         return cached_res
 
