@@ -6,4 +6,5 @@ flask-cors
 # For Google OAuth and JWT
 PyJWT
 google-auth
+requests
 # Add other applicant-side dependencies as needed
