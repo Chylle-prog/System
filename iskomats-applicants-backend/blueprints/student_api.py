@@ -2,6 +2,53 @@ from flask import Blueprint
 
 student_api_bp = Blueprint('student_api', __name__)
 
+# --- Authentication Endpoints ---
+
+@student_api_bp.route('/auth/login', methods=['POST'])
+def login():
+    data = request.get_json() or {}
+    email = data.get('email')
+    password = data.get('password')
+    
+    # Placeholder login logic - allow any login for now or implement real check
+    # In a real app, you would verify against the DB here
+    
+    # Generate a dummy token
+    jwt_secret = os.environ.get('JWT_SECRET', 'replace-this-in-production')
+    payload = {
+        'email': email,
+        'iat': datetime.utcnow(),
+        'exp': datetime.utcnow() + timedelta(days=7),
+    }
+    token = jwt.encode(payload, jwt_secret, algorithm='HS256')
+    
+    return jsonify({
+        "token": token,
+        "email": email,
+        "status": "ok",
+        "applicant_no": "APP-DUMMY-123"
+    })
+
+@student_api_bp.route('/auth/check-email', methods=['POST'])
+def check_email():
+    data = request.get_json() or {}
+    email = data.get('email')
+    return jsonify({
+        "available": True,
+        "exists": False,
+        "message": "Email is available"
+    })
+
+@student_api_bp.route('/auth/register', methods=['POST'])
+def register():
+    data = request.get_json() or {}
+    email = data.get('email')
+    # Save to DB here
+    return jsonify({
+        "status": "ok",
+        "message": "Registration successful"
+    })
+
 # Example applicant-only endpoint
 @student_api_bp.route('/ping')
 def ping():

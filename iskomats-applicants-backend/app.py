@@ -14,34 +14,50 @@ cache = Cache(app)
 
 # Setup CORS
 origins = os.environ.get("CORS_ORIGINS", "").split(",")
-if not any(origins):
-    # fallback to default if env var is empty
+origins = [o.strip() for o in origins if o.strip()]
+if not origins:
     origins = [
         "https://iskomats-applicants.surge.sh",
-        # add other allowed origins here if needed
+        "https://iskomats-applicants.surge.sh/",
+        "http://localhost:5173",
+        "http://localhost:3000",
     ]
+
 CORS(app, origins=origins, supports_credentials=True)
-
-
 
 app.register_blueprint(student_api_bp, url_prefix='/api/student')
 
 # --- CORS Preflight Fix ---
 
-# Only set Access-Control-Allow-Origin if not already set by flask-cors
+@app.before_request
+def handle_preflight():
+    if request.method == "OPTIONS":
+        response = app.make_default_response("")
+        return apply_cors_headers(response), 200
+
 @app.after_request
-def after_request(response):
+def add_cors_headers(response):
+    return apply_cors_headers(response)
+
+def apply_cors_headers(response):
     origin = request.headers.get('Origin')
-    if origin and origin in origins:
-        response.headers['Access-Control-Allow-Origin'] = origin
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
-    response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
+    response.headers['Vary'] = 'Origin'
+    if origin:
+        # Check if origin is in our allowed list or matches surge.sh
+        is_allowed = origin in origins or origin.endswith('.surge.sh') or origin.endswith('.surge.sh/')
+        if is_allowed:
+            response.headers['Access-Control-Allow-Origin'] = origin
+            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept'
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+            response.headers['Access-Control-Max-Age'] = '86400'
     return response
 
-# Explicit OPTIONS handler for Google Auth endpoint
-@app.route('/api/student/auth/google', methods=['OPTIONS'])
-def options_handler():
-    return '', 200
+# Explicit OPTIONS handler for student API routes
+@app.route('/api/student/<path:path>', methods=['OPTIONS'])
+def student_options_handler(path):
+    response = app.make_default_response("")
+    return apply_cors_headers(response), 200
 
 # --- Health Check Endpoints ---
 @app.route('/_health', methods=['GET'])
