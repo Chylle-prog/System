@@ -13,7 +13,7 @@ const ApplicantForgotPassword = () => {
     isSubmitted: false
   });
 
-  const APPLICANT_PORTAL_URL = "https://foregoing-giants.surge.sh";
+  const APPLICANT_PORTAL_URL = window.location.origin;
 
   const handleChange = (e) => {
     const { name, value } = e.target;

@@ -1358,59 +1358,43 @@ const StudentInfo = () => {
         });
 
         // --- LAZY LOADING OPTIMIZATION ---
-        // Instead of loading all heavy blobs at once (which causes 502 OOM on Render),
-        // we fetch them one-by-one in the background.
+        // Fetch heavy blobs in parallel to reduce "resource still loading" time
         const fetchHeavyBlobs = async (prof) => {
           const blobFields = [
-            'profile_picture',
-            'id_img_front',
-            'id_img_back',
-            'enrollment_certificate_doc',
-            'grades_doc',
-            'indigency_doc',
-            'id_pic',
-            'signature_image_data'
+            'profile_picture', 'id_img_front', 'id_img_back', 
+            'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 
+            'id_pic', 'signature_image_data'
           ];
           
-          for (const field of blobFields) {
+          const fetchField = async (field) => {
             if (prof[field] && (String(prof[field]).includes('/document/') || String(prof[field]).startsWith('data:'))) {
               try {
                 const result = await applicantAPI.getDocument(field);
                 if (result && result.data) {
                   const b64 = result.data;
-                  
-                  // Update specialized previews and formData with correct mappings
                   if (field === 'profile_picture') {
                     setIdPicturePreview(b64);
                     setFormData(prev => ({ ...prev, profile_picture: b64 }));
-                  }
-                  else if (field === 'id_img_front') {
+                  } else if (field === 'id_img_front') {
                     setSchoolIdPhotos(p => ({...p, front: b64}));
                     setFormData(prev => ({ ...prev, schoolIdFront: b64 }));
-                  }
-                  else if (field === 'id_img_back') {
+                  } else if (field === 'id_img_back') {
                     setSchoolIdPhotos(p => ({...p, back: b64}));
                     setFormData(prev => ({ ...prev, schoolIdBack: b64 }));
-                  }
-                  else if (field === 'enrollment_certificate_doc') {
+                  } else if (field === 'enrollment_certificate_doc') {
                     setPhotos(p => ({...p, mayorCOE_photo: b64}));
                     setFormData(prev => ({ ...prev, mayorCOE_photo: b64 }));
-                  }
-                  else if (field === 'grades_doc') {
+                  } else if (field === 'grades_doc') {
                     setPhotos(p => ({...p, mayorGrades_photo: b64}));
                     setFormData(prev => ({ ...prev, mayorGrades_photo: b64 }));
-                  }
-                  else if (field === 'indigency_doc') {
+                  } else if (field === 'indigency_doc') {
                     setPhotos(p => ({...p, mayorIndigency_photo: b64}));
                     setFormData(prev => ({ ...prev, mayorIndigency_photo: b64 }));
-                  }
-                  else if (field === 'id_pic') {
+                  } else if (field === 'id_pic') {
                     setPhotos(p => ({...p, face_photo: b64, mayorValidID_photo: b64}));
                     setFormData(prev => ({ ...prev, face_photo: b64, mayorValidID_photo: b64 }));
-                  }
-                  else if (field === 'signature_image_data') {
+                  } else if (field === 'signature_image_data') {
                     setSignaturePreview(b64);
-                    // Important: Signature field in form is 'applicantSignatureName'
                     setFormData(prev => ({ ...prev, applicantSignatureName: b64 }));
                   }
                 }
@@ -1418,7 +1402,10 @@ const StudentInfo = () => {
                 console.warn(`Lazy-load failed for ${field}:`, e);
               }
             }
-          }
+          };
+
+          // Fetch all in parallel
+          await Promise.all(blobFields.map(field => fetchField(field)));
         };
 
         // Start background loading of images

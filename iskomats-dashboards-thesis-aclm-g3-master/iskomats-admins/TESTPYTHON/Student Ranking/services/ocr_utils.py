@@ -212,9 +212,9 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     text1 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 1')
     t1_end = time.time()
     
-    # Check if first pass was sufficient (lenient 20-char check)
-    if len(text1.strip()) > 20:
-        print(f"[OCR PERF] Pass1 ({psm}): {t1_end - t1:.3f}s", flush=True)
+    # Check if first pass was sufficient (Lenient 12-char check for names/IDs)
+    if len(text1.strip()) > 12:
+        print(f"[OCR PERF] Pass1 ({psm}) SUCCESS: {t1_end - t1:.3f}s", flush=True)
         return text1.strip()
     
     # Fallback to standard engine (OEM 3) only if LSTM fails and we are not in fast mode
@@ -286,33 +286,41 @@ def year_level_matches_text(target_year, text):
     if not target_year: return True
     
     t_year = str(target_year).lower().strip()
-    # Normalize expected to just the digit if it's something like "1st Year"
-    match_digit = re.search(r'\b([1-9])(?:st|nd|rd|th)?\b', t_year)
-    expected_level = match_digit.group(1) if match_digit else t_year
+    # Normalize expected to just the digit/number if it's something like "1st Year" or "Grade 11"
+    match_number = re.search(r'\b(\d{1,2})(?:st|nd|rd|th)?\b', t_year)
+    expected_level = match_number.group(1) if match_number else t_year
     
     norm_text = text.lower()
     
     # Common OCR misreads for specific digits
     digit_misreads = {
+        '0': r'[0OQoD]',
         '1': r'[1Il|!i]',
         '2': r'[2Zz]',
         '3': r'[3]',
         '4': r'[4A]',
         '5': r'[5SsS\$]',
         '6': r'[6G]',
+        '7': r'[7]',
+        '8': r'[8B]',
+        '9': r'[9gq]'
     }
     
     # Suffixes
     suffix_pattern = r'(?:st|nd|rd|th|ist|lst|Is\b|si)?'
-    d_pattern = digit_misreads.get(expected_level, expected_level)
+    # Build regex pattern for the number (handling two-digit numbers like 10, 11, 12)
+    def get_char_pattern(digit):
+        return digit_misreads.get(digit, re.escape(digit))
+    
+    number_pattern = "".join(get_char_pattern(d) for d in expected_level)
     
     # Pattern A: Standard labels
     # Handles: "Year Level: 1", "Level: 1", "Year: 1"
-    if re.search(rf'\b(?:year\s*)?level\s*[:\-.;]?\s*{d_pattern}{suffix_pattern}\b', norm_text, re.IGNORECASE):
+    if re.search(rf'\b(?:year\s*)?level\s*[:\-.;]?\s*{number_pattern}{suffix_pattern}\b', norm_text, re.IGNORECASE):
         return True
     
     # Pattern B: Standalone with Year/Yr
-    if re.search(rf'\b{d_pattern}{suffix_pattern}?\s*(?:year|yr\.?)\b', norm_text, re.IGNORECASE):
+    if re.search(rf'\b{number_pattern}{suffix_pattern}?\s*(?:year|yr\.?)\b', norm_text, re.IGNORECASE):
         return True
 
     # Pattern C: Word-based mapped variations
@@ -393,14 +401,31 @@ def student_id_no_matches_text(target_id, text):
     """
     if not target_id: return True
     
-    t_id = "".join(filter(str.isalnum, str(target_id))).lower()
+    def normalize_id(s):
+        # 1. Alphanumeric only
+        s = "".join(filter(str.isalnum, str(s))).lower()
+        # 2. Homoglyph substitution (handle common OCR jitters)
+        s = s.replace('o', '0').replace('q', '0').replace('d', '0') # 0
+        s = s.replace('i', '1').replace('l', '1').replace('|', '1').replace('!', '1') # 1
+        s = s.replace('z', '2') # 2
+        s = s.replace('s', '5') # 5
+        s = s.replace('g', '6').replace('b', '6') # 6
+        s = s.replace('q', '9') # 9
+        return s
+    
+    t_id = normalize_id(target_id)
     if not t_id: return True
     
-    norm_text = text.lower()
-    clean_ocr = "".join(filter(str.isalnum, norm_text))
+    norm_text = normalize_id(text)
     
-    if t_id in clean_ocr:
+    if t_id in norm_text:
         return True
+    
+    # Check words individually if ID has non-digits (e.g., "ST2024-123")
+    if not target_id.isdigit():
+        for word in text.split():
+            if t_id in normalize_id(word):
+                return True
         
     return False
         
@@ -777,8 +802,10 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
             img = img[:h_crop, :]
             h, w = img.shape[:2]
 
-        # ID backs often have very small stickers (Year stickers)
-        effective_max_width = 1200 if is_id_back else max_width
+        # Optimization: Standardize width to 850px for non-identity documents
+        # This is a sweet spot for TORs/COEs to maintain readability while being fast.
+        effective_max_width = 850 if is_id_back else max_width
+        if is_id_back: effective_max_width = 950 # ID backs need more detail for small stickers
         
         if w > effective_max_width:
             scale = effective_max_width / w
@@ -786,9 +813,8 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
 
         # Specialized preprocessing for ID backs (Sharpening to help small text)
         if is_id_back:
-            # Unsharp mask to enhance edges of small fonts
-            gaussian = cv2.GaussianBlur(img, (0, 0), 3.0)
-            img = cv2.addWeighted(img, 1.5, gaussian, -0.5, 0)
+            # Subtle sharpening
+            img = cv2.filter2D(img, -1, np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]]))
     except Exception as e:
         return "", f"Preprocessing error: {str(e)}"
 
