@@ -836,7 +836,7 @@ const StudentInfo = () => {
         }, 80);
       }
 
-      const { townCity, schoolName, idNumber, yearLevel, gpa, course } = extraParams;
+      const { townCity, barangay, schoolName, idNumber, yearLevel, gpa, course } = extraParams;
       const { firstName, lastName, middleName } = formData;
       const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
 
@@ -853,7 +853,8 @@ const StudentInfo = () => {
         schoolName, idNumber, yearLevel, gpa, course,
         videoUrl,
         reqNo,
-        docType
+        docType,
+        barangay
       );
 
       if (!silent && pInterval) clearInterval(pInterval);
@@ -938,7 +939,7 @@ const StudentInfo = () => {
 
     try {
       // Only check video presence, not full video OCR (backend already optimized)
-      const success = await performOcrVerification('Indigency', indigencyDoc, { townCity: formData.barangay }, videoUrl);
+      const success = await performOcrVerification('Indigency', indigencyDoc, { townCity: formData.townCityMunicipality, barangay: formData.barangay }, videoUrl);
       if (success) {
         showPromptMessage('✅ Indigency verified successfully!');
       } else {
