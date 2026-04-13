@@ -122,10 +122,10 @@ const warmBackendConnection = async ({ force = false } = {}) => {
   if (!backendWarmupPromise) {
     // Try multiple possible health endpoints
     const healthEndpoints = [
-      `${API_ORIGIN}/health`,
       `${API_ORIGIN}/_health`,
+      `${API_BASE_URL}/student/ping`,
+      `${API_ORIGIN}/health`,
       `${API_BASE_URL}/health`,
-      `${API_BASE_URL}/auth/health`,
     ];
     
     backendWarmupPromise = Promise.any(

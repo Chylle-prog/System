@@ -1231,25 +1231,7 @@ const Login = () => {
                     <>Log in</>
                   )}
                 </button>
-                {/* Social Login Options */}
-                <div className="social-signup">
-                  <div className="divider">
-                    <span>Or log in with</span>
-                  </div>
-                  <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
-                    <GoogleLogin
-                      key="login-google"
-                      onSuccess={handleGoogleSuccess}
-                      onError={handleGoogleError}
-                      theme="outline"
-                      size="large"
-                      width="350"
-                      shape="pill"
-                      text="continue_with"
-                    />
-                  </div>
-                </div>
-               <div className="forgot-password">
+                <div className="forgot-password">
                   <a href="#" onClick={handleForgotPassword} style={{ color: 'rgba(255,255,255,0.7)', textDecoration: 'none', fontSize: '0.9rem' }}>
                     Forgot password?
                   </a>
@@ -1282,27 +1264,27 @@ const Login = () => {
                   </div>
                 </div>
                 <button type="submit" className="submit-btn">Create account</button>
-
-                {/* Social Sign-up Options */}
-                <div className="social-signup">
-                  <div className="divider">
-                    <span>Or sign up with</span>
-                  </div>
-                  <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
-                    <GoogleLogin
-                      key="register-google"
-                      onSuccess={handleGoogleSuccess}
-                      onError={handleGoogleError}
-                      theme="outline"
-                      size="large"
-                      width="350"
-                      shape="pill"
-                      text="signup_with"
-                    />
-                  </div>
-                </div>
               </form>
             )}
+
+            {/* Shared Social Login Options */}
+            <div className="social-signup">
+              <div className="divider">
+                <span>Or {isLogin ? 'log in' : 'sign up'} with</span>
+              </div>
+              <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
+                <GoogleLogin
+                  key="shared-google-login"
+                  onSuccess={handleGoogleSuccess}
+                  onError={handleGoogleError}
+                  theme="outline"
+                  size="large"
+                  width="350"
+                  shape="pill"
+                  text={isLogin ? "continue_with" : "signup_with"}
+                />
+              </div>
+            </div>
 
             <div className="toggle-auth">
               <span>
