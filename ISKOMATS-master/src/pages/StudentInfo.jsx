@@ -3918,6 +3918,48 @@ const StudentInfo = () => {
                               }}>
                                 {signatureResults.message}
                               </div>
+
+                              {/* Neural Fingerprint (Verifier Bench View) */}
+                              {signatureResults.matcher_submitted && signatureResults.matcher_reference && (
+                                <div style={{
+                                  marginTop: '15px',
+                                  padding: '12px',
+                                  background: '#0f172a',
+                                  borderRadius: '12px',
+                                  border: '1px solid #334155'
+                                }}>
+                                  <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    marginBottom: '8px'
+                                  }}>
+                                    <span style={{fontSize: '0.6rem', color: '#94a3b8', fontWeight: '800', letterSpacing: '0.5px'}}>
+                                      <i className="fas fa-brain" style={{marginRight: '5px', color: '#38bdf8'}}></i>
+                                      NEURAL FINGERPRINT (VERIFIER BENCH)
+                                    </span>
+                                    <span style={{fontSize: '0.55rem', color: '#64748b', fontWeight: '600'}}>224x224 NORMALIZED</span>
+                                  </div>
+                                  <div style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: '1fr 1fr',
+                                    gap: '10px'
+                                  }}>
+                                    <div style={{textAlign: 'center'}}>
+                                      <div style={{background: '#1e293b', border: '1px solid #334155', borderRadius: '6px', padding: '4px', height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden'}}>
+                                        <img src={signatureResults.matcher_reference} alt="Neural Ref" style={{maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', filter: 'brightness(1.1) contrast(1.1)'}} />
+                                      </div>
+                                      <span style={{fontSize: '0.5rem', color: '#64748b', display: 'block', marginTop: '4px', fontWeight: '700'}}>AI REF</span>
+                                    </div>
+                                    <div style={{textAlign: 'center'}}>
+                                      <div style={{background: '#1e293b', border: '1px solid #334155', borderRadius: '6px', padding: '4px', height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden'}}>
+                                        <img src={signatureResults.matcher_submitted} alt="Neural Sub" style={{maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', filter: 'brightness(1.1) contrast(1.1)'}} />
+                                      </div>
+                                      <span style={{fontSize: '0.5rem', color: '#64748b', display: 'block', marginTop: '4px', fontWeight: '700'}}>AI LIVE</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
