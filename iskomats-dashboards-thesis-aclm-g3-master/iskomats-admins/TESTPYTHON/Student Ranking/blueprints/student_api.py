@@ -1087,21 +1087,7 @@ def generate_verification_code():
     import random
     return str(random.randint(100000, 999999))
 
-
 # send_verification_email removed in favor of services.notification_service version
-    
-    try:
-        with urllib_request.urlopen(email_request, timeout=30) as response:
-            return json.loads(response.read().decode('utf-8'))
-    except urllib_error.HTTPError as e:
-        # Most likely Gmail API rejected the access token (expired or revoked)
-        if e.code == 401:
-            raise RuntimeError("Gmail API rejected the access token. Your Google Refresh Token may have expired or been revoked.")
-        raise RuntimeError(f"Gmail API error {e.code}: {e.reason}")
-    except Exception as e:
-        raise RuntimeError(f"Failed to communicate with Gmail API: {str(e)}")
-
-
 
 
 @student_api_bp.route('/notifications', methods=['GET'])
