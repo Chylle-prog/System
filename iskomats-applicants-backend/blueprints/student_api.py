@@ -25,19 +25,29 @@ def ensure_applicant_verification_columns():
         cur.execute(f"""
             SELECT column_name
             FROM information_schema.columns
-            WHERE table_name = %s AND column_name IN ('is_verified', 'verification_code', 'is_locked')
+            WHERE table_name = %s AND column_name IN ('is_verified', 'verification_code', 'is_locked', 'first_name', 'last_name', 'middle_name', 'profile_picture')
         """, (applicant_email_table,))
         existing = {row['column_name'] if isinstance(row, dict) else row[0] for row in cur.fetchall()}
-        
+
         if 'is_verified' not in existing:
             cur.execute(f"ALTER TABLE {applicant_email_table} ADD COLUMN is_verified BOOLEAN DEFAULT FALSE")
             cur.execute(f"UPDATE {applicant_email_table} SET is_verified = TRUE")
-        
+
         if 'verification_code' not in existing:
             cur.execute(f"ALTER TABLE {applicant_email_table} ADD COLUMN verification_code VARCHAR(100)")
-            
+
         if 'is_locked' not in existing:
             cur.execute(f"ALTER TABLE {applicant_email_table} ADD COLUMN is_locked BOOLEAN DEFAULT FALSE")
+
+        # Add profile columns if missing
+        if 'first_name' not in existing:
+            cur.execute(f"ALTER TABLE {applicant_email_table} ADD COLUMN first_name VARCHAR(100)")
+        if 'last_name' not in existing:
+            cur.execute(f"ALTER TABLE {applicant_email_table} ADD COLUMN last_name VARCHAR(100)")
+        if 'middle_name' not in existing:
+            cur.execute(f"ALTER TABLE {applicant_email_table} ADD COLUMN middle_name VARCHAR(100)")
+        if 'profile_picture' not in existing:
+            cur.execute(f"ALTER TABLE {applicant_email_table} ADD COLUMN profile_picture TEXT")
             
         conn.commit()
         cur.close()
@@ -66,7 +76,7 @@ def login():
         
         cur.execute(
             f"""
-            SELECT app_em_no, applicant_no, password_hash, is_locked, is_verified
+            SELECT app_em_no, applicant_no, password_hash, is_locked, is_verified, first_name, last_name, middle_name, profile_picture
             FROM {applicant_email_table}
             WHERE email_address ILIKE %s AND applicant_no IS NOT NULL
             """,
@@ -98,6 +108,10 @@ def login():
             'email': email,
             'applicant_no': user['applicant_no'],
             'is_applicant': True,
+            'first_name': user.get('first_name'),
+            'last_name': user.get('last_name'),
+            'middle_name': user.get('middle_name'),
+            'profile_picture': user.get('profile_picture'),
         })
     except Exception as exc:
         return jsonify({'message': f'Server Error: {str(exc)}'}), 500
@@ -142,22 +156,33 @@ def register():
         conn = get_db()
         cur = conn.cursor()
         applicant_email_table = get_applicant_email_table(cur)
-        
+
         # Check if already exists
         cur.execute(f"SELECT 1 FROM {applicant_email_table} WHERE email_address ILIKE %s", (email,))
         if cur.fetchone():
             return jsonify({'message': 'Email already registered'}), 400
-            
+
         password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
-        
-        # Simple registration for mockup/sync purposes
-        # In the full system, this would involve verification codes
+
+        # Accept profile fields if provided
+        first_name = data.get('first_name', None)
+        last_name = data.get('last_name', None)
+        middle_name = data.get('middle_name', None)
+        profile_picture = data.get('profile_picture', None)
+
         cur.execute(
-            f"INSERT INTO {applicant_email_table} (email_address, password_hash, is_verified) VALUES (%s, %s, %s) RETURNING app_em_no",
-            (email, password_hash, True)
+            f"INSERT INTO {applicant_email_table} (email_address, password_hash, is_verified, first_name, last_name, middle_name, profile_picture) VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING app_em_no",
+            (email, password_hash, True, first_name, last_name, middle_name, profile_picture)
         )
         conn.commit()
-        
+
+        # Send registration email
+        try:
+            from services.email_service import send_registration_email
+            send_registration_email(email, first_name)
+        except Exception as e:
+            print(f"[EMAIL ERROR] Could not send registration email: {e}")
+
         return jsonify({"status": "ok", "message": "Registration successful. You can now log in."})
     except Exception as exc:
         return jsonify({'message': str(exc)}), 500
@@ -215,10 +240,54 @@ def google_auth():
 
 # --- Placeholder Routes for common portal features ---
 
+from flask import g
+import jwt
+def get_jwt_identity():
+    auth_header = request.headers.get('Authorization', None)
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return None
+    token = auth_header.split(' ')[1]
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+        return payload.get('user_no')
+    except Exception:
+        return None
+
 @student_api_bp.route('/applicant/profile', methods=['GET', 'PUT'])
 def applicant_profile():
-    # In a real app, this would use the JWT token to identify the user
-    return jsonify({"message": "Profile integration pending migrations"})
+    user_no = get_jwt_identity()
+    if not user_no:
+        return jsonify({'message': 'Unauthorized'}), 401
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        applicant_email_table = get_applicant_email_table(cur)
+
+        if request.method == 'GET':
+            cur.execute(f"SELECT email_address, first_name, last_name, middle_name, profile_picture FROM {applicant_email_table} WHERE applicant_no = %s", (user_no,))
+            profile = cur.fetchone()
+            if not profile:
+                return jsonify({'message': 'Profile not found'}), 404
+            return jsonify(profile)
+
+        elif request.method == 'PUT':
+            data = request.get_json() or {}
+            first_name = data.get('first_name')
+            last_name = data.get('last_name')
+            middle_name = data.get('middle_name')
+            profile_picture = data.get('profile_picture')
+            cur.execute(
+                f"UPDATE {applicant_email_table} SET first_name=%s, last_name=%s, middle_name=%s, profile_picture=%s WHERE applicant_no=%s",
+                (first_name, last_name, middle_name, profile_picture, user_no)
+            )
+            conn.commit()
+            return jsonify({'status': 'ok', 'message': 'Profile updated'})
+    except Exception as exc:
+        return jsonify({'message': str(exc)}), 500
+    finally:
+        if 'conn' in locals():
+            conn.close()
 
 @student_api_bp.route('/scholarships/all', methods=['GET'])
 def get_scholarships():

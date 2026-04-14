@@ -48,17 +48,30 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (email, password) => {
-    const accounts = getUserAccounts();
-    if (accounts[email] && accounts[email].password === password) {
+    try {
+      const response = await require('../services/api').authAPI.login(email, password);
       setCurrentUser(email);
       setCurrentUserState(email);
-      
-      // Fetch profile immediately on login
-      await fetchProfile(email);
-      
+      localStorage.setItem('currentUser', email);
+      localStorage.setItem('authToken', response.token);
+      localStorage.setItem('applicantNo', response.applicant_no || '');
+      // Store profile data from backend response
+      const profile = {
+        first_name: response.first_name,
+        last_name: response.last_name,
+        middle_name: response.middle_name,
+        profile_picture: response.profile_picture,
+        email: response.email,
+        applicant_no: response.applicant_no
+      };
+      setUserProfile(profile);
+      if (profile.first_name) {
+        localStorage.setItem('userFirstName', profile.first_name);
+      }
       return { success: true, user: email };
+    } catch (err) {
+      return { success: false, error: err.message || 'Invalid credentials' };
     }
-    return { success: false, error: 'Invalid credentials' };
   };
 
   const register = (email, password) => {
