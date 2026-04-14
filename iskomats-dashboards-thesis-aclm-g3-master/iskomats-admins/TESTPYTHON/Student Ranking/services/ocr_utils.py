@@ -442,26 +442,29 @@ def student_id_no_matches_text(target_id, text):
         if t_id in norm_word:
             return True, target_id
             
-    # Fuzzy match fallback for minor OCR transpositions (e.g., 's' instead of '1')
-    if len(t_id) >= 6:
-        # Check against all alphanumeric normalized words
-        for word in text.split():
-            clean_word = "".join(filter(str.isalnum, str(word))).lower()
-            if len(clean_word) >= 6 and abs(len(clean_word) - len(t_id)) <= 2:
-                # If similarity is very high (allow 3 wrong chars for a 10 char ID => 0.7 ratio)
-                if difflib.SequenceMatcher(None, t_id, clean_word).ratio() >= 0.70:
-                    return True, target_id
-                    
-        # Ultimate fallback: strip all spaces from text to check if ID got arbitrarily split
+    # User requested strictness: ID must not tolerate wrong DIGIT substitutions (e.g. 123456789 vs 123456788).
+    # Instead of difflib which allows any char, we use a strict regex that ONLY tolerates common OCR homoglyphs.
+    def build_homoglyph_regex(s):
+        s = "".join(filter(str.isalnum, str(s))).lower()
+        mapping = {
+            '0': '[0oqhd]',
+            '1': '[1ils]',
+            '2': '[2z]',
+            '5': '[5s]',
+            '6': '[6gb]',
+            '8': '[8b]',
+            '9': '[9gq]'
+        }
+        return "".join([mapping.get(c, re.escape(c)) for c in s])
+
+    clean_target_id = "".join(filter(str.isalnum, str(target_id))).lower()
+    if len(clean_target_id) >= 6:
+        pattern = build_homoglyph_regex(clean_target_id)
         full_clean_text = "".join(filter(str.isalnum, str(text))).lower()
-        if len(full_clean_text) >= len(t_id):
-            # Check substrings of length t_id + 2
-            sub_len = len(t_id) + 2
-            for i in range(len(full_clean_text) - len(t_id) + 1):
-                sub = full_clean_text[i:i+sub_len]
-                if difflib.SequenceMatcher(None, t_id, sub[:len(t_id)]).ratio() >= 0.80:
-                    return True, target_id
-                    
+        # Search the entire concatenated alphanumeric string to ignore rogue spaces added by OCR
+        if re.search(pattern, full_clean_text):
+            return True, target_id
+            
     return False, None
 
 
