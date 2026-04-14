@@ -492,10 +492,12 @@ def student_id_no_matches_text(target_id, text):
         s = "".join(filter(str.isalnum, str(s))).lower()
         mapping = {
             '0': '[0oqhd]',
-            '1': '[1ils]',
-            '2': '[2z]',
-            '5': '[5s]',
-            '6': '[6gb]',
+            '1': '[1ils5]', # Added 5 as 1 and 5 can look similar in some matriculation fonts
+            '2': '[2zsa7]',
+            '4': '[4a]',
+            '5': '[5s1]', # Added 1
+            '6': '[6gb5]',
+            '7': '[71l]',
             '8': '[8b]',
             '9': '[9gq]'
         }

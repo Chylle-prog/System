@@ -2951,6 +2951,7 @@ def ocr_check():
                     print(f"[OCR-DIAG] Extracted Text (first 200 chars): {raw_preview}", flush=True)
                     print(f"[OCR-YEAR] Doc={doc_type} extracted_year='{year_label}' expected_year='{expected_academic_year}' extracted_sem='{semester_label}' expected_sem='{expected_semester}'", flush=True)
                     print(f"[OCR-NAME] First='{first_name}' (OK={name_details.get('first_ok')}) Middle='{middle_name}' (OK={name_details.get('middle_ok')}) Last='{last_name}' (OK={name_details.get('last_ok')})", flush=True)
+                    print(f"[OCR-ID-DIAG] Expected='{expected_id_no}'", flush=True)
                     
                     # Year check: only enforce if we have an expected year to compare against
                     if expected_academic_year:
@@ -2961,6 +2962,7 @@ def ocr_check():
                     
                     if doc_type == 'Enrollment':
                         id_ok, _ = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
+                        print(f"[OCR-ID-DIAG] Result id_ok={id_ok}", flush=True)
                         course_ok, _ = course_matches_text(course, raw) if course else (True, None)
                         
                         # Requirements for Enrollment (COR/COE): Name, ID, School, Course, Year, Semester
