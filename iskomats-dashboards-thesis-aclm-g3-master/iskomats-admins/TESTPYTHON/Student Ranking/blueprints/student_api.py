@@ -2747,6 +2747,9 @@ def ocr_check():
         expected_year_level = str(data.get('year_level') or data.get('yearLevel') or '').strip()
         expected_academic_year = str(data.get('expected_year') or data.get('expectedYear') or '').strip()
         expected_id_no = str(data.get('id_number') or data.get('idNumber') or '').strip()
+        
+        print(f"[OCR-DEBUG-EXPECTED] First='{first_name}' Middle='{middle_name}' Last='{last_name}' ID='{expected_id_no}'", flush=True)
+
 
         # Apply scholarship-defined overrides if they were fetched from DB
         if 'expected_academic_year_from_sch' in locals():
@@ -2972,7 +2975,10 @@ def ocr_check():
                             f"Course: {'OK' if course_ok else 'X'}"
                         ]
                         checklist = [c for c in checklist if c is not None]
-                        return {'doc': 'Enrollment', 'verified': v, 'message': f"Checklist: [{' | '.join(checklist)}]", 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                        msg = f"Checklist: [{' | '.join(checklist)}]"
+                        if not v:
+                            msg += f" (Checked vs F:'{first_name}' M:'{middle_name}' L:'{last_name}' ID:'{expected_id_no}')"
+                        return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                     elif doc_type == 'Grades':
                          gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)

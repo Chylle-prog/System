@@ -438,8 +438,19 @@ def student_id_no_matches_text(target_id, text):
     
     # Check words individually if ID has non-digits (e.g., "ST2024-123")
     for word in text.split():
-        if t_id in normalize_id(word):
+        norm_word = normalize_id(word)
+        if t_id in norm_word:
             return True, target_id
+            
+    # Fuzzy match fallback for minor OCR transpositions (e.g., 's' instead of '1')
+    if len(t_id) >= 6:
+        # Check against all alphanumeric normalized words
+        for word in text.split():
+            clean_word = "".join(filter(str.isalnum, str(word))).lower()
+            if len(clean_word) >= 6 and abs(len(clean_word) - len(t_id)) <= 2:
+                # If similarity is very high (allow 2 wrong chars for a 10 char ID => 0.8 ratio)
+                if difflib.SequenceMatcher(None, t_id, clean_word).ratio() >= 0.80:
+                    return True, target_id
         
     return False, None
 
@@ -469,8 +480,8 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
             if not n_words: n_words = [w.strip() for w in normalize_for_ocr(name_part).split() if w.strip()]
             f_count = 0
             
-            # Dynamic threshold based on document type - increased for better precision
-            effective_threshold = (0.80 if is_indigency else 0.90)
+            # Dynamic threshold based on document type
+            effective_threshold = (0.80 if is_indigency else 0.85)
             
             for word in n_words:
                 # For middle names, also accept just the first letter (initial)
@@ -507,8 +518,8 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
                     if found_approx: found = True; break
             
             p_ratio = f_count / len(n_words) if n_words else 0
-            # Higher bar for verification success: 0.7 for Indigency, 0.85 for others
-            return p_ratio >= (0.7 if is_indigency else 0.85), p_ratio
+            # Higher bar for verification success: 0.7 for Indigency, 0.80 for others (reduced from 0.85 to allow 1 typo in 8 letter word)
+            return p_ratio >= (0.7 if is_indigency else 0.80), p_ratio
 
         first_ok, first_ratio = check_name_part(target_first_name, is_middle=False)
         middle_ok, middle_ratio = check_name_part(target_middle_name, is_middle=True)
