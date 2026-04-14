@@ -451,8 +451,9 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
     Also handles ID number and year level validation.
     Returns: (name_ok, addr_ok, keywords_found, match_ratio, meta)
     """
+    meta = {}
     if not ocr_text.strip(): 
-        return False, False, [], 0.0
+        return False, False, [], 0.0, meta
         
     norm_txt = normalize_for_ocr(ocr_text)
     all_ocr_words = norm_txt.split()
@@ -652,7 +653,8 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
                         if kw in found_keywords:
                             break
     
-    return n_verified and school_ok, a_verified, found_keywords, m_ratio, {"detected_brgy": detected_brgy}
+    meta['detected_brgy'] = detected_brgy
+    return n_verified and school_ok, a_verified, found_keywords, m_ratio, meta
 
 
 
