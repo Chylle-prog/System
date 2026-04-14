@@ -711,10 +711,9 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             print(f"[QUALITY REJECT] {quality_reason}", flush=True)
             return False, f"Image quality issue: {quality_reason}", "", 0.0
         
-        # Resize image - IDs are usually high-contrast, can use lower res (640px)
-        # Indigency/Certificates can use 700px, TORs keep 750px if needed.
+        # Handle resizing dynamically. Avoid crushing large A4 sheets (Enrollment/Grades).
         h, w = img.shape[:2]
-        target_w = 640 if not is_indigency else 700
+        target_w = _MAX_OCR_WIDTH 
         if w > target_w:
             scale = target_w / w
             img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
@@ -1160,10 +1159,10 @@ def extract_school_year(image_bytes):
 def extract_semester_from_text(text):
     if not text: return None
     semester_patterns = [
-        r'(1st|2nd|first|second|1|2|I|II)\s*(?:sem|semester|grading)\b',
-        r'\b(?:sem|semester|grading)\s*[:\-]?\s*(1st|2nd|first|second|1|2|I|II)\b',
-        r'\b(First|Second)\s+Semester\b',
-        r'\b(1|2)\s*-\s*Sem\b'
+        r'(1st|2nd|first|second|1|2|I|II|and|lst|ist)\s*(?:sem|semester|grading|sern|sun)\b',
+        r'\b(?:sem|semester|grading|sern|sun)\s*[:\-]?\s*(1st|2nd|first|second|1|2|I|II|and|lst|ist)\b',
+        r'\b(First|Second|and)\s+Semester\b',
+        r'\b(1|2|and|lst|ist)\s*-\s*(?:Sem|Sern)\b'
     ]
     for pattern in semester_patterns:
         match = re.search(pattern, text, re.IGNORECASE)
@@ -1179,9 +1178,9 @@ def normalize_semester_label(value):
     if not semester_value:
         return None
 
-    if '1' in semester_value or 'first' in semester_value:
+    if '1' in semester_value or 'first' in semester_value or 'lst' in semester_value or 'ist' in semester_value:
         return "1st"
-    if '2' in semester_value or 'second' in semester_value:
+    if '2' in semester_value or 'second' in semester_value or 'and' in semester_value:
         return "2nd"
     return None
 
