@@ -2963,6 +2963,7 @@ def ocr_check():
                         
                         checklist = [
                             f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
+                            f"Middle Name: {'OK' if name_details.get('middle_ok') else 'X'}" if middle_name else None,
                             f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
                             f"ID: {'OK' if id_ok else 'X'}",
                             f"School: {'OK' if school_ok else 'X'}",
@@ -2970,23 +2971,26 @@ def ocr_check():
                             f"Sem: {'OK' if semester_ok else 'X'}",
                             f"Course: {'OK' if course_ok else 'X'}"
                         ]
+                        checklist = [c for c in checklist if c is not None]
                         return {'doc': 'Enrollment', 'verified': v, 'message': f"Checklist: [{' | '.join(checklist)}]", 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                     elif doc_type == 'Grades':
-                        gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
-                        
-                        # Grades should match the school and student identity
-                        v = name_ok and year_only_ok and gpa_ok and school_ok and year_level_ok and semester_ok
-                        
-                        checklist = [
-                            f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
-                            f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
-                            f"School: {'OK' if school_ok else 'X'}",
-                            f"GPA: {'OK' if gpa_ok else 'X'}",
-                            f"Year: {'OK' if year_only_ok else 'X'}",
-                            f"Sem: {'OK' if semester_ok else 'X'}"
-                        ]
-                        return {'doc': 'Grades', 'verified': v, 'message': f"Checklist: [{' | '.join(checklist)}]", 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                         gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
+                         
+                         # Grades should match the school and student identity
+                         v = name_ok and year_only_ok and gpa_ok and school_ok and year_level_ok and semester_ok
+                         
+                         checklist = [
+                             f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
+                             f"Middle Name: {'OK' if name_details.get('middle_ok') else 'X'}" if middle_name else None,
+                             f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
+                             f"School: {'OK' if school_ok else 'X'}",
+                             f"GPA: {'OK' if gpa_ok else 'X'}",
+                             f"Year: {'OK' if year_only_ok else 'X'}",
+                             f"Sem: {'OK' if semester_ok else 'X'}"
+                         ]
+                         checklist = [c for c in checklist if c is not None]
+                         return {'doc': 'Grades', 'verified': v, 'message': f"Checklist: [{' | '.join(checklist)}]", 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'Indigency':
                     name_ok = meta.get('name_ok', False)
@@ -3005,10 +3009,12 @@ def ocr_check():
                     
                     checklist = [
                         f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
+                        f"Middle Name: {'OK' if name_details.get('middle_ok') else 'X'}" if middle_name else None,
                         f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
                         f"ID Number: {'OK' if id_ok else 'X'}",
                         f"School: {'OK' if school_ok else 'X'}"
                     ]
+                    checklist = [c for c in checklist if c is not None]
                     
                     # School Name is now mandatory for ID as well
                     v = name_ok and id_ok and school_ok
