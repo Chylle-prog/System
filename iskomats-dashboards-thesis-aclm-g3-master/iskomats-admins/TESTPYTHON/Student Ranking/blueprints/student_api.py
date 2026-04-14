@@ -3063,24 +3063,34 @@ def ocr_check():
                     if doc_type == 'Enrollment':
                         id_ok, _ = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
                         course_ok, _ = course_matches_text(course, raw) if course else (True, None)
-                        v = name_ok and id_ok and school_ok and course_ok
+                        
+                        # Strictly require Year and Semester for Enrollment (COR/COE)
+                        v = name_ok and id_ok and school_ok and course_ok and year_only_ok and semester_ok
+                        
                         checklist = [
                             f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
                             f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
                             f"ID: {'OK' if id_ok else 'X'}",
                             f"School: {'OK' if school_ok else 'X'}",
+                            f"Year: {'OK' if year_only_ok else 'X'}",
+                            f"Sem: {'OK' if semester_ok else 'X'}",
                             f"Course: {'OK' if course_ok else 'X'}"
                         ]
                         return {'doc': 'Enrollment', 'verified': v, 'message': f"Checklist: [{' | '.join(checklist)}]", 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                     elif doc_type == 'Grades':
                         gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
-                        v = name_ok and year_only_ok and gpa_ok and school_ok and year_level_ok
+                        
+                        # Grades should match the school and student identity
+                        v = name_ok and year_only_ok and gpa_ok and school_ok and year_level_ok and semester_ok
+                        
                         checklist = [
                             f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
                             f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
                             f"School: {'OK' if school_ok else 'X'}",
-                            f"GPA: {'OK' if gpa_ok else 'X'}"
+                            f"GPA: {'OK' if gpa_ok else 'X'}",
+                            f"Year: {'OK' if year_only_ok else 'X'}",
+                            f"Sem: {'OK' if semester_ok else 'X'}"
                         ]
                         return {'doc': 'Grades', 'verified': v, 'message': f"Checklist: [{' | '.join(checklist)}]", 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
