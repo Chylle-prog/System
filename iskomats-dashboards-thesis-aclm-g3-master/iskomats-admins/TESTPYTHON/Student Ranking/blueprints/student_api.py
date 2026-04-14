@@ -2944,7 +2944,14 @@ def ocr_check():
                     normalized_expected_semester = normalize_semester_label(expected_semester)
                     normalized_semester_label = normalize_semester_label(semester_label)
                     
-                    year_only_ok = academic_year_matches_expected(year_label, expected_academic_year)
+                    print(f"[OCR-YEAR] Doc={doc_type} extracted_year='{year_label}' expected_year='{expected_academic_year}' extracted_sem='{semester_label}' expected_sem='{expected_semester}'", flush=True)
+                    
+                    # Year check: only enforce if we have an expected year to compare against
+                    if expected_academic_year:
+                        year_only_ok = academic_year_matches_expected(year_label, expected_academic_year)
+                    else:
+                        # No expected year set — skip this check
+                        year_only_ok = True
                     semester_ok = (normalized_expected_semester == normalized_semester_label) if normalized_expected_semester else True
                     
                     if doc_type == 'Enrollment':
