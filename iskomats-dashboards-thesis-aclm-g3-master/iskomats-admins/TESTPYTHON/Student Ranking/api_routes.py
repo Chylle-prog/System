@@ -2059,11 +2059,11 @@ def login():
             user = cursor.fetchone()
             
             if not user or user['user_no'] is None:
-            record_admin_activity(
-                action='Login Failed',
-                status='failed',
-            )
-            return jsonify({'message': "Email not found"}), 404
+                record_admin_activity(
+                    action='Login Failed',
+                    status='failed',
+                )
+                return jsonify({'message': "Email not found"}), 404
 
         provider_name = (user['provider_name'] or '').strip() or 'All'
         user_name = user['user_name'] or provider_name or normalized_email
@@ -2227,27 +2227,25 @@ def get_providers():
             
             result = []
             for row in rows:
-            if not row:
-                continue
-
-            if isinstance(row, dict):
-                provider_no = row.get('pro_no')
-                provider_name = row.get('provider_name')
-            else:
-                if len(row) < 2:
+                if not row:
                     continue
-                provider_no = row[0]
-                provider_name = row[1]
 
-            if provider_name:
-                result.append({
-                    'pro_no': provider_no,
-                    'provider_name': provider_name
-                })
+                if isinstance(row, dict):
+                    provider_no = row.get('pro_no')
+                    provider_name = row.get('provider_name')
+                else:
+                    if len(row) < 2:
+                        continue
+                    provider_no = row[0]
+                    provider_name = row[1]
+
+                if provider_name:
+                    result.append({
+                        'pro_no': provider_no,
+                        'provider_name': provider_name
+                    })
             
-        cursor.close()
-        conn.close()
-        return jsonify(result), 200
+            return jsonify(result), 200
     except Exception as e:
         print(f"[AUTH] Error fetching providers: {str(e)}")
         return jsonify({'message': f'Error fetching providers: {str(e)}'}), 500
@@ -3903,7 +3901,7 @@ def get_announcement_image(image_id):
     try:
         conn = get_db()
         cursor = conn.cursor()
-        primary_key_column, _ = get_announcement_image_columns(cursor)
+        primary_key_column, _ = get_entity_image_columns(cursor, entity='announcement')
         
         # Get image from database
         cursor.execute(f"SELECT img FROM announcement_images WHERE {primary_key_column} = %s", (image_id,))
