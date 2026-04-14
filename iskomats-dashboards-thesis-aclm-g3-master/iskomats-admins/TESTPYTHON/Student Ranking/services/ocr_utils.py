@@ -139,8 +139,8 @@ def decode_base64(data):
     return data
 
 # ─── Image preprocessing & quality assessment (Optimization #3) ──────────────
-_MAX_OCR_WIDTH = 600       # Optimized from 750 for faster cloud processing
-_MAX_VIDEO_OCR_WIDTH = 420 # Optimized for keyword detection speed
+_MAX_OCR_WIDTH = 1200       # Increased from 600 because shrinking full A4 pages destroys text legibility
+_MAX_VIDEO_OCR_WIDTH = 600 # Optimized for keyword detection speed
 _MAX_FACE_WIDTH = 512  # Increased from 224 to help detector catch small faces on ID cards
 
 # Module-level CLAHE instance (reused across all OCR calls instead of recreating each time)
@@ -212,21 +212,12 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     text1 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 1')
     t1_end = time.time()
     
-    # Check if first pass was sufficient (Lenient 8-char check for ID/keywords)
-    if len(text1.strip()) > 8:
+    # Pass in fast mode only conditionally
+    if skip_pass2 and len(text1.strip()) > 8:
         print(f"[OCR PERF] Pass1 ({psm}) SUCCESS: {t1_end - t1:.3f}s", flush=True)
         return text1.strip()
-    
-    # Fallback to standard engine (OEM 3) only if LSTM fails and we are not in fast mode
-    if not skip_pass2:
-        text_fallback = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 3')
-        if text_fallback.strip():
-            # If fallback gets significantly more text, prefer it
-            if len(text_fallback.strip()) > len(text1.strip()):
-                text1 = text_fallback
         
-    if len(text1.strip()) > 8:
-        return text1.strip()
+    results.append(text1.strip())
         
     # Pass 2: Adaptive Thresholding (Fails on white-on-dark, but great for shadows on paper)
     if not skip_pass2:
@@ -248,6 +239,15 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
                 if txt.strip(): results.append(txt.strip())
             except Exception as e:
                 print(f"[OCR] Strategy error: {e}", flush=True)
+                
+    # PSM 11 Fallback: Sparse text detection. Great for grabbing text that PSM 3 skips due to column layouts.
+    if not skip_pass2:
+        try:
+            txt11 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config='--psm 11 --oem 1')
+            if txt11.strip() and txt11.strip() not in results:
+                results.append(txt11.strip())
+        except:
+            pass
                 
     return "\n".join(results)
 
@@ -448,10 +448,20 @@ def student_id_no_matches_text(target_id, text):
         for word in text.split():
             clean_word = "".join(filter(str.isalnum, str(word))).lower()
             if len(clean_word) >= 6 and abs(len(clean_word) - len(t_id)) <= 2:
-                # If similarity is very high (allow 2 wrong chars for a 10 char ID => 0.8 ratio)
-                if difflib.SequenceMatcher(None, t_id, clean_word).ratio() >= 0.80:
+                # If similarity is very high (allow 3 wrong chars for a 10 char ID => 0.7 ratio)
+                if difflib.SequenceMatcher(None, t_id, clean_word).ratio() >= 0.70:
                     return True, target_id
-        
+                    
+        # Ultimate fallback: strip all spaces from text to check if ID got arbitrarily split
+        full_clean_text = "".join(filter(str.isalnum, str(text))).lower()
+        if len(full_clean_text) >= len(t_id):
+            # Check substrings of length t_id + 2
+            sub_len = len(t_id) + 2
+            for i in range(len(full_clean_text) - len(t_id) + 1):
+                sub = full_clean_text[i:i+sub_len]
+                if difflib.SequenceMatcher(None, t_id, sub[:len(t_id)]).ratio() >= 0.80:
+                    return True, target_id
+                    
     return False, None
 
 
@@ -480,8 +490,8 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
             if not n_words: n_words = [w.strip() for w in normalize_for_ocr(name_part).split() if w.strip()]
             f_count = 0
             
-            # Dynamic threshold based on document type (reduced to 0.80 to tolerate minor character differences)
-            effective_threshold = 0.80
+            # Dynamic threshold based on document type (reduced to 0.75 to tolerate severe character drops)
+            effective_threshold = 0.75
             
             for word in n_words:
                 # For middle names, also accept just the first letter (initial)
