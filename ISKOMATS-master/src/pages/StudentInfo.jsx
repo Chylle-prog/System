@@ -45,7 +45,7 @@ const SCHOOLS = [
 const normalizeSelectValue = (value, options) => {
   if (!value) return '';
   const normalized = String(value).trim().toLowerCase();
-  
+
   // 1. Check exact match (ignoring case)
   const exactMatch = options.find(opt => opt.toLowerCase() === normalized);
   if (exactMatch) return exactMatch;
@@ -57,7 +57,7 @@ const normalizeSelectValue = (value, options) => {
   // 3. Check if any option is contained in the normalized value (De La Salle Lipa -> DLSL/De La Salle Lipa)
   const valueContainsOption = options.find(opt => normalized.includes(opt.toLowerCase()));
   if (valueContainsOption) return valueContainsOption;
-  
+
   return '';
 };
 
@@ -306,7 +306,7 @@ const StudentInfo = () => {
   const [currentStream, setCurrentStream] = useState(null);
   const [cameraPermissionStatus, setCameraPermissionStatus] = useState('');
   const [ocrError, setOcrError] = useState('');
-  const [ocrVerified, setOcrVerified] = useState(null); 
+  const [ocrVerified, setOcrVerified] = useState(null);
   const [ocrStatus, setOcrStatus] = useState('');
   const [lightboxSrc, setLightboxSrc] = useState(null);
   const [photos, setPhotos] = useState({
@@ -387,28 +387,28 @@ const StudentInfo = () => {
       invalidateVerificationState('Grades', 'GPA changed');
     }
   };
-  
+
   const handleVideoUpload = (fieldName, blob) => {
     if (!blob) return;
-    
+
     // Immediate local preview
     const localUrl = URL.createObjectURL(blob);
     setDocumentVideos(prev => ({ ...prev, [fieldName]: localUrl }));
-    
+
     // Reset verification on video change
     if (fieldName === 'mayorIndigency_video') { setOcrVerified(null); setOcrStatus(''); }
     else if (fieldName === 'mayorCOE_video') { setCoeVerified(null); setCoeStatus(''); }
     else if (fieldName === 'mayorGrades_video') { setGradesVerified(null); setGradesStatus(''); }
     else if (fieldName === 'schoolIdFront_video' || fieldName === 'schoolIdBack_video') { setIdVerified(null); setIdStatus(''); }
     else if (fieldName === 'face_video') { setFaceVerified(null); }
-    
+
     // Start background upload
     const uploadPromise = applicantAPI.uploadRequirementVideo(fieldName, blob)
       .then(result => {
         const publicUrl = result.publicUrl;
         setFormData(prev => ({ ...prev, [fieldName]: publicUrl }));
         setDocumentVideos(prev => ({ ...prev, [fieldName]: publicUrl }));
-        
+
         // Remove from uploading state
         setUploadingFields(prev => {
           const next = { ...prev };
@@ -420,13 +420,13 @@ const StudentInfo = () => {
         applicantAPI.updateProfile({ [fieldName]: publicUrl }).catch(err => {
           console.warn(`Could not sync ${fieldName} to profile:`, err.message);
         });
-        
+
         console.log(`Video uploaded successfully for ${fieldName}:`, publicUrl);
       })
       .catch(err => {
         console.error(`Failed to upload video for ${fieldName}:`, err);
         alert(`Video upload failed: ${err.message}. Please try again.`);
-        
+
         setUploadingFields(prev => {
           const next = { ...prev };
           delete next[fieldName];
@@ -440,8 +440,8 @@ const StudentInfo = () => {
 
   const [extraSignaturePhoto, setExtraSignaturePhoto] = useState(null);
   const [isFaceMatching, setIsFaceMatching] = useState(false);
-  const [faceMatchResult, setFaceMatchResult] = useState(null); 
-  const [faceVerified, setFaceVerified] = useState(null); 
+  const [faceMatchResult, setFaceMatchResult] = useState(null);
+  const [faceVerified, setFaceVerified] = useState(null);
 
   const [documentVideos, setDocumentVideos] = useState({
     mayorIndigency_video: null,
@@ -454,11 +454,11 @@ const StudentInfo = () => {
 
   const [uploadingFields, setUploadingFields] = useState({}); // { fieldName: Promise }
 
-  const [coeVerified, setCoeVerified] = useState(null); 
+  const [coeVerified, setCoeVerified] = useState(null);
   const [coeStatus, setCoeStatus] = useState('');
-  const [gradesVerified, setGradesVerified] = useState(null); 
+  const [gradesVerified, setGradesVerified] = useState(null);
   const [gradesStatus, setGradesStatus] = useState('');
-  const [idVerified, setIdVerified] = useState(null); 
+  const [idVerified, setIdVerified] = useState(null);
   const [idStatus, setIdStatus] = useState('');
   const [scanProgress, setScanProgress] = useState(0); // 0-100 progress for scanning animations
 
@@ -522,22 +522,22 @@ const StudentInfo = () => {
   };
 
 
-  const renderDocumentMediaPicker = ({ 
+  const renderDocumentMediaPicker = ({
     photoId, photoName, photoLabel, photoValue, onPhotoChange,
     videoId, videoName, videoValue, onVideoChange,
-    isUploadingVideo = false 
+    isUploadingVideo = false
   }) => {
     const photoStatus = getImagePickerStatus(photoValue);
     const hasVideo = videoValue && (typeof videoValue === 'string' ? videoValue.length > 0 : true);
 
     return (
-      <div style={{marginBottom: '1rem'}}>
-        <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155', marginBottom: '10px'}}>Upload Media Check</label>
-        
-        <div style={{display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '0.8rem'}}>
+      <div style={{ marginBottom: '1rem' }}>
+        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155', marginBottom: '10px' }}>Upload Media Check</label>
+
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '0.8rem' }}>
           {/* PHOTO PICKER */}
-          <div style={{flex: '1', minWidth: '160px'}}>
-            <input id={photoId} type="file" name={photoName} accept="image/*" onChange={onPhotoChange} style={{display: 'none'}} />
+          <div style={{ flex: '1', minWidth: '160px' }}>
+            <input id={photoId} type="file" name={photoName} accept="image/*" onChange={onPhotoChange} style={{ display: 'none' }} />
             <label
               htmlFor={photoId}
               style={{
@@ -558,23 +558,23 @@ const StudentInfo = () => {
                 transition: 'all 0.2s ease'
               }}
             >
-              <i className="fas fa-image" style={{color: 'var(--primary)'}}></i>
+              <i className="fas fa-image" style={{ color: 'var(--primary)' }}></i>
               {photoValue ? 'Replace Image' : 'Add Image'}
             </label>
           </div>
 
           {/* VIDEO PICKER */}
           {(videoId && onVideoChange) && (
-            <div style={{flex: '1', minWidth: '160px'}}>
-              <input 
-                id={videoId} 
-                type="file" 
-                accept="video/*" 
+            <div style={{ flex: '1', minWidth: '160px' }}>
+              <input
+                id={videoId}
+                type="file"
+                accept="video/*"
                 onChange={(e) => {
                   const file = e.target.files[0];
                   if (file) onVideoChange(videoName, file);
-                }} 
-                style={{display: 'none'}} 
+                }}
+                style={{ display: 'none' }}
               />
               <label
                 htmlFor={isUploadingVideo ? undefined : videoId}
@@ -597,7 +597,7 @@ const StudentInfo = () => {
                   opacity: isUploadingVideo ? 0.7 : 1
                 }}
               >
-                <i className={isUploadingVideo ? "fas fa-spinner fa-spin" : "fas fa-video"} style={{color: 'var(--primary)'}}></i>
+                <i className={isUploadingVideo ? "fas fa-spinner fa-spin" : "fas fa-video"} style={{ color: 'var(--primary)' }}></i>
                 {isUploadingVideo ? 'Uploading...' : (hasVideo ? 'Replace Video' : 'Add Video')}
               </label>
             </div>
@@ -605,7 +605,7 @@ const StudentInfo = () => {
         </div>
 
         {/* COMBINED STATUS */}
-        <div style={{display: 'flex', gap: '8px'}}>
+        <div style={{ display: 'flex', gap: '8px' }}>
           <div style={{
             flex: 1,
             padding: '0.6rem 0.8rem',
@@ -659,7 +659,7 @@ const StudentInfo = () => {
     yearLevel: '',
     emailAddress: '',
     gpa: '',
-    
+
     fatherStatus: '',
     fatherName: '',
     fatherOccupation: '',
@@ -673,7 +673,7 @@ const StudentInfo = () => {
     parentsGrossIncome: '',
     numberOfSiblings: '',
     course: '',
-    
+
     mayorCOE_photo: null,
     mayorGrades_photo: null,
     mayorIndigency_photo: null,
@@ -682,7 +682,7 @@ const StudentInfo = () => {
     schoolIdBack: null,
     schoolIdFront_video: null,
     schoolIdBack_video: null,
-    
+
     privacyConsent: false,
     dataCertifyConsent: false,
     applicantSignatureName: '',
@@ -743,7 +743,7 @@ const StudentInfo = () => {
       }, 100);
 
       const result = await applicantAPI.verifySignatureAgainstIdBack(currentSignature, idBack);
-      
+
       clearInterval(pInterval);
       setScanProgress(100);
       setSignatureResults(result);
@@ -764,7 +764,7 @@ const StudentInfo = () => {
 
   const sendFeedback = async (type, isCorrect) => {
     if (feedbackStatus[type]) return;
-    
+
     try {
       if (type === 'signature') {
         await applicantAPI.sendSignatureFeedback(isCorrect);
@@ -778,7 +778,7 @@ const StudentInfo = () => {
 
   const preScanDocument = async (docType, base64) => {
     // Only pre-scan if we have content and it's not already verified
-    const isAlreadyVerified = 
+    const isAlreadyVerified =
       (docType === 'Indigency' && ocrVerified === 'success') ||
       (docType === 'Enrollment' && coeVerified === 'success') ||
       (docType === 'Grades' && gradesVerified === 'success') ||
@@ -789,10 +789,10 @@ const StudentInfo = () => {
     try {
       // Trigger a silent OCR check in background to warm up server cache
       await performOcrVerification(
-        docType, 
-        docType === 'SchoolID' ? { front: base64, back: null } : base64, 
-        { schoolName: formData.schoolName, idNumber: formData.schoolIdNumber, yearLevel: formData.yearLevel }, 
-        null, 
+        docType,
+        docType === 'SchoolID' ? { front: base64, back: null } : base64,
+        { schoolName: formData.schoolName, idNumber: formData.schoolIdNumber, yearLevel: formData.yearLevel },
+        null,
         true
       );
     } catch (e) {
@@ -809,7 +809,7 @@ const StudentInfo = () => {
         else if (docType === 'Grades') { setGradesStatus(status); }
         else if (docType === 'SchoolID') { setIdStatus(status); }
       };
-      
+
       const setVerified = (v) => {
         if (silent) return;
         if (docType === 'Indigency') { setOcrVerified(v); }
@@ -839,12 +839,12 @@ const StudentInfo = () => {
       const result = await applicantAPI.ocrCheck(
         docType === 'SchoolID' ? docParam.front : null,
         docType === 'SchoolID' ? docParam.back : null,
-        docType === 'Indigency' ? docParam : null, 
-        townCity, 
-        docType === 'Enrollment' ? docParam : null, 
+        docType === 'Indigency' ? docParam : null,
+        townCity,
+        docType === 'Enrollment' ? docParam : null,
         docType === 'Grades' ? docParam : null,
-        firstName, 
-        lastName, 
+        firstName,
+        lastName,
         middleName,
         schoolName, idNumber, yearLevel, gpa, course,
         videoUrl,
@@ -855,16 +855,16 @@ const StudentInfo = () => {
 
       if (!silent && pInterval) clearInterval(pInterval);
       if (!silent) setScanProgress(100);
-      
+
       if (result.verified) {
         setVerified('success');
         setStatus(result.message || 'Verification successful!');
         return true;
       } else {
-        const isTechnical = result.message?.includes('temporarily unavailable') || 
-                           result.message?.includes('Low memory mode') ||
-                           result.message?.includes('OCR service');
-        
+        const isTechnical = result.message?.includes('temporarily unavailable') ||
+          result.message?.includes('Low memory mode') ||
+          result.message?.includes('OCR service');
+
         if (isTechnical) {
           setVerified('technical_unavailable');
           setStatus(result.message || 'OCR service temporarily unavailable');
@@ -924,7 +924,7 @@ const StudentInfo = () => {
     }
 
     setLoadingMessage({ title: 'Scanning Document', message: 'Verifying your Certificate of Indigency and Video Content...' });
-    
+
     try {
       const success = await performOcrVerification('Indigency', indigencyDoc, { townCity, barangay }, videoUrl);
       if (success) {
@@ -963,7 +963,7 @@ const StudentInfo = () => {
     }
 
     setLoadingMessage({ title: 'Scanning COE', message: 'Verifying your Certificate of Enrollment and Video Content...' });
-    
+
     try {
       const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, idNumber, yearLevel, course }, videoUrl);
       if (success) {
@@ -1001,7 +1001,7 @@ const StudentInfo = () => {
     }
 
     setLoadingMessage({ title: 'Scanning Grades', message: 'Verifying your Grades document and Video Content...' });
-    
+
     try {
       const success = await performOcrVerification('Grades', gradesDoc, { schoolName, yearLevel, gpa }, videoUrl);
       if (success) {
@@ -1044,13 +1044,13 @@ const StudentInfo = () => {
     }
 
     setLoadingMessage({ title: 'Scanning School ID', message: 'Verifying your School ID images and Video Content...' });
-    
+
     try {
       const success = await performOcrVerification(
         'SchoolID',
         { front: idFront, back: idBack },
-        { 
-          schoolName: formData.schoolName, 
+        {
+          schoolName: formData.schoolName,
           idNumber: formData.schoolIdNumber,
           yearLevel: formData.yearLevel
         },
@@ -1097,7 +1097,7 @@ const StudentInfo = () => {
     }
 
     // 2. Special handling for files and previews based on the current step
-    
+
     // STEP 1: Profile and Residency
     if (stepNumber === 1) {
       if (idPicturePreview) {
@@ -1222,7 +1222,7 @@ const StudentInfo = () => {
             canvas.height = height;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, width, height);
-            
+
             const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
             resolve(compressedBase64);
           };
@@ -1231,10 +1231,10 @@ const StudentInfo = () => {
         reader.onerror = reject;
       });
     };
-    window.compressImage = compressImage; 
+    window.compressImage = compressImage;
 
     const user = localStorage.getItem('currentUser');
-    
+
     if (!user) {
       navigate('/login');
       return;
@@ -1282,13 +1282,13 @@ const StudentInfo = () => {
     } catch {
       savedDraft = null;
     }
-    
+
     setCurrentStep(1);
     if (scholarship) {
       setScholarshipName(scholarship);
     }
 
-  const loadProfile = async () => {
+    const loadProfile = async () => {
       try {
         setLoadingMessage({ title: 'Loading Profile', message: 'Retrieving your information to pre-fill the application...' });
         setIsInitialLoading(true);
@@ -1297,7 +1297,7 @@ const StudentInfo = () => {
 
         const profileFullName = [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(' ');
         const searchFullName = scholarshipSearchProfile?.fullName || '';
-        
+
         let targetFirstName = profile.first_name || '';
         let targetMiddleName = profile.middle_name || '';
         let targetLastName = profile.last_name || '';
@@ -1305,10 +1305,10 @@ const StudentInfo = () => {
         // Only override profile parts if the search name was explicitly changed in the search form.
         // This prevents splitFullName from mangling multi-word first names (e.g., "Alex Kyle").
         if (searchFullName && searchFullName.trim().toLowerCase() !== profileFullName.trim().toLowerCase()) {
-           const parts = splitFullName(searchFullName);
-           targetFirstName = parts.firstName || targetFirstName;
-           targetMiddleName = parts.middleName || targetMiddleName;
-           targetLastName = parts.lastName || targetLastName;
+          const parts = splitFullName(searchFullName);
+          targetFirstName = parts.firstName || targetFirstName;
+          targetMiddleName = parts.middleName || targetMiddleName;
+          targetLastName = parts.lastName || targetLastName;
         }
 
         const updates = {
@@ -1368,11 +1368,11 @@ const StudentInfo = () => {
         // Fetch heavy blobs in parallel to reduce "resource still loading" time
         const fetchHeavyBlobs = async (prof) => {
           const blobFields = [
-            'profile_picture', 'id_img_front', 'id_img_back', 
-            'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 
+            'profile_picture', 'id_img_front', 'id_img_back',
+            'enrollment_certificate_doc', 'grades_doc', 'indigency_doc',
             'id_pic', 'signature_image_data'
           ];
-          
+
           const fetchField = async (field) => {
             if (prof[field] && (String(prof[field]).includes('/document/') || String(prof[field]).startsWith('data:'))) {
               try {
@@ -1383,22 +1383,22 @@ const StudentInfo = () => {
                     setIdPicturePreview(b64);
                     setFormData(prev => ({ ...prev, profile_picture: b64 }));
                   } else if (field === 'id_img_front') {
-                    setSchoolIdPhotos(p => ({...p, front: b64}));
+                    setSchoolIdPhotos(p => ({ ...p, front: b64 }));
                     setFormData(prev => ({ ...prev, schoolIdFront: b64 }));
                   } else if (field === 'id_img_back') {
-                    setSchoolIdPhotos(p => ({...p, back: b64}));
+                    setSchoolIdPhotos(p => ({ ...p, back: b64 }));
                     setFormData(prev => ({ ...prev, schoolIdBack: b64 }));
                   } else if (field === 'enrollment_certificate_doc') {
-                    setPhotos(p => ({...p, mayorCOE_photo: b64}));
+                    setPhotos(p => ({ ...p, mayorCOE_photo: b64 }));
                     setFormData(prev => ({ ...prev, mayorCOE_photo: b64 }));
                   } else if (field === 'grades_doc') {
-                    setPhotos(p => ({...p, mayorGrades_photo: b64}));
+                    setPhotos(p => ({ ...p, mayorGrades_photo: b64 }));
                     setFormData(prev => ({ ...prev, mayorGrades_photo: b64 }));
                   } else if (field === 'indigency_doc') {
-                    setPhotos(p => ({...p, mayorIndigency_photo: b64}));
+                    setPhotos(p => ({ ...p, mayorIndigency_photo: b64 }));
                     setFormData(prev => ({ ...prev, mayorIndigency_photo: b64 }));
                   } else if (field === 'id_pic') {
-                    setPhotos(p => ({...p, face_photo: b64, mayorValidID_photo: b64}));
+                    setPhotos(p => ({ ...p, face_photo: b64, mayorValidID_photo: b64 }));
                     setFormData(prev => ({ ...prev, face_photo: b64, mayorValidID_photo: b64 }));
                   } else if (field === 'signature_image_data') {
                     setSignaturePreview(b64);
@@ -1417,7 +1417,7 @@ const StudentInfo = () => {
 
         // Start background loading of images
         fetchHeavyBlobs(profile);
-        
+
         if (profile.has_other_assistance) {
           setHasOtherAssistance('Yes');
         } else if (profile.has_other_assistance === false) {
@@ -1440,7 +1440,7 @@ const StudentInfo = () => {
             setFormData(prev => ({ ...prev, [stateField]: profile[dbField] }));
           }
         });
-        
+
         if (Object.keys(loadedVideos).length > 0) {
           setDocumentVideos(prev => ({ ...prev, ...loadedVideos }));
         }
@@ -1469,7 +1469,7 @@ const StudentInfo = () => {
       document.head.removeChild(googleFontsLink);
       document.head.removeChild(googleFontsDisplay);
       document.head.removeChild(googleFontsSheet);
-      
+
       if (currentStream) {
         currentStream.getTracks().forEach(track => track.stop());
       }
@@ -1535,9 +1535,9 @@ const StudentInfo = () => {
       console.error('Camera error:', err);
       setCameraInitializing(false);
       setCameraReady(false);
-      setCameraError({ 
-        message: err.name === 'NotAllowedError' ? 'Camera permission denied' : 'Camera access failed', 
-        details: err.message 
+      setCameraError({
+        message: err.name === 'NotAllowedError' ? 'Camera permission denied' : 'Camera access failed',
+        details: err.message
       });
     }
   };
@@ -1576,7 +1576,7 @@ const StudentInfo = () => {
     setPhotos(prev => ({ ...prev, face_photo: dataUrl }));
     setFaceVerificationPreview(dataUrl);
     setFaceVerified(null);
-    
+
     closeCamera();
   };
 
@@ -1591,7 +1591,7 @@ const StudentInfo = () => {
     if (file && window.compressImage) {
       window.compressImage(file).then(compressedBase64 => {
         setPhotos(prev => ({ ...prev, [type]: compressedBase64 }));
-        
+
         if (type === 'face_photo') {
           setFaceVerificationPreview(compressedBase64);
           setFaceVerified(null);
@@ -1605,7 +1605,7 @@ const StudentInfo = () => {
           setGradesVerified(null);
           setGradesStatus('');
         }
-        
+
         if (type !== 'face_photo') {
           applicantAPI.updateProfile({ [type]: compressedBase64 }).catch(console.error);
         }
@@ -1616,7 +1616,7 @@ const StudentInfo = () => {
 
   const removePhoto = (type) => {
     setPhotos(prev => ({ ...prev, [type]: null }));
-    
+
     if (type === 'face_photo') {
       setFaceVerificationPreview(null);
       setFaceVerified(null);
@@ -1662,7 +1662,7 @@ const StudentInfo = () => {
           handleIndigencyScan();
         }
       }
-      
+
       // Step 3: School ID, COE, Grades
       if (currentStep === 3) {
         if (idVerified === null) {
@@ -1704,7 +1704,7 @@ const StudentInfo = () => {
   const handleInputChange = (e) => {
     if (isAnyScanning || isSavingStep) return;
     const { name, value, type, checked, files } = e.target;
-    
+
     // Prevent modification of locked name fields (except in Step 1 where editing is allowed)
     if (lockedNameFields[name] && currentStep !== 1) {
       return;
@@ -1722,17 +1722,17 @@ const StudentInfo = () => {
         // Create local preview immediately
         const localUrl = URL.createObjectURL(file);
         setPhotos(prev => ({ ...prev, [name]: localUrl }));
-        
+
         if (file.type.startsWith('image/') && window.compressImage) {
           window.compressImage(file).then(compressedBase64 => {
             setFormData(prev => ({ ...prev, [name]: compressedBase64 }));
             setPhotos(prev => ({ ...prev, [name]: compressedBase64 })); // Update with compressed version
-            
+
             // Reset verification on photo change
             if (name === 'mayorIndigency_photo') { setOcrVerified(null); setOcrStatus(''); preScanDocument('Indigency', compressedBase64); }
             else if (name === 'mayorCOE_photo') { setCoeVerified(null); setCoeStatus(''); preScanDocument('Enrollment', compressedBase64); }
             else if (name === 'mayorGrades_photo') { setGradesVerified(null); setGradesStatus(''); preScanDocument('Grades', compressedBase64); }
-            
+
             applicantAPI.updateProfile({ [name]: compressedBase64 }).catch(console.error);
           });
         } else {
@@ -1767,10 +1767,10 @@ const StudentInfo = () => {
   const handleIdPictureUpload = (e) => {
     const file = e.target.files[0];
     if (file && window.compressImage) {
-      window.compressImage(file, 400).then(compressedBase64 => { 
+      window.compressImage(file, 400).then(compressedBase64 => {
         setIdPicturePreview(compressedBase64);
         setFormData(prev => ({ ...prev, profile_picture: compressedBase64 }));
-        
+
         applicantAPI.updateProfile({ profile_picture: compressedBase64 }).catch(console.error);
       });
     }
@@ -1783,14 +1783,14 @@ const StudentInfo = () => {
         setSchoolIdPhotos(prev => ({ ...prev, [side]: compressedBase64 }));
         setIdVerified(null);
         setIdStatus('');
-        setFormData(prev => ({ 
-          ...prev, 
+        setFormData(prev => ({
+          ...prev,
           [`schoolId${side.charAt(0).toUpperCase() + side.slice(1)}`]: compressedBase64
         }));
         const photoKey = side === 'front' ? 'id_front' : 'id_back';
         setPhotos(prev => ({ ...prev, [photoKey]: compressedBase64 }));
-        
-        applicantAPI.updateProfile({ 
+
+        applicantAPI.updateProfile({
           [photoKey]: compressedBase64
         }).catch(console.error);
 
@@ -1814,7 +1814,7 @@ const StudentInfo = () => {
     if (file && window.compressImage) {
       window.compressImage(file).then(compressedBase64 => {
         setSignaturePreview(compressedBase64);
-        
+
         applicantAPI.updateProfile({ signature_data: compressedBase64 }).catch(console.error);
       });
     }
@@ -1870,10 +1870,10 @@ const StudentInfo = () => {
     if (pendingUploads.length > 0) {
       setLoadingMessage({ title: 'Completing Uploads', message: 'Finalizing your video uploads. Please wait a moment...' });
       setIsSavingStep(true);
-      try { await Promise.all(pendingUploads); } catch(err) { console.error("Delayed wait failed:", err); }
+      try { await Promise.all(pendingUploads); } catch (err) { console.error("Delayed wait failed:", err); }
       setIsSavingStep(false);
     }
-    
+
     const stepContainer = document.querySelector('.step-container.active');
     if (!stepContainer) return;
 
@@ -1969,7 +1969,7 @@ const StudentInfo = () => {
     try {
       setLoadingMessage({ title: `Saving Step ${currentStep}`, message: 'Updating your application progress...' });
       setIsSavingStep(true);
-      
+
       if (currentStep === 1) {
         console.log('[Step 1] Transitioning to Step 2. Manual verification check already passed.');
       }
@@ -2001,7 +2001,7 @@ const StudentInfo = () => {
     if (pendingUploads.length > 0) {
       setLoadingMessage({ title: 'Completing Uploads', message: 'Finalizing your video uploads before submission...' });
       setIsSavingStep(true);
-      try { await Promise.all(pendingUploads); } catch(err) { console.error("Delayed wait failed:", err); }
+      try { await Promise.all(pendingUploads); } catch (err) { console.error("Delayed wait failed:", err); }
       setIsSavingStep(false);
     }
 
@@ -2091,7 +2091,7 @@ const StudentInfo = () => {
     if (!reqNo || isNaN(parseInt(reqNo))) {
       reqNo = searchParams.get('scholarship_id');
     }
-    
+
     if (!reqNo || isNaN(parseInt(reqNo))) {
       showPromptMessage('⚠️ Scholarship ID missing or invalid.');
       return;
@@ -2101,19 +2101,19 @@ const StudentInfo = () => {
     setIsSubmitting(true);
 
     try {
-      const skipVerification = true; 
+      const skipVerification = true;
 
       console.log(`Submitting application (faceVerified: ${faceVerified})...`);
 
       await saveCurrentStepProgress(4);
 
       const submissionData = new FormData();
-      
+
       const fullAddress = formData.barangay || formData.streetBarangay || '';
       submissionData.append('streetBarangay', fullAddress);
 
       const imageKeys = [
-        'profile_picture', 'id_front', 'id_back', 'face_photo', 
+        'profile_picture', 'id_front', 'id_back', 'face_photo',
         'mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo',
         'applicantSignatureName', 'signature_data', 'barangay', 'streetBarangay'
       ];
@@ -2126,15 +2126,15 @@ const StudentInfo = () => {
 
       if (photos.profile_picture) submissionData.append('profile_picture', photos.profile_picture);
       if (photos.id_front || schoolIdPhotos.front) submissionData.append('id_front', photos.id_front || schoolIdPhotos.front);
-      if (photos.id_back  || schoolIdPhotos.back)  submissionData.append('id_back',  photos.id_back  || schoolIdPhotos.back);
+      if (photos.id_back || schoolIdPhotos.back) submissionData.append('id_back', photos.id_back || schoolIdPhotos.back);
       if (photos.face_photo) submissionData.append('face_photo', photos.face_photo);
-      
+
       if (drawnSignature) {
         submissionData.append('signature_data', drawnSignature);
       } else if (signaturePreview) {
         submissionData.append('signature_data', signaturePreview);
       }
-      
+
       const docKeys = ['mayorCOE', 'mayorGrades', 'mayorIndigency'];
       docKeys.forEach(key => {
         const fileKey = `${key}_photo`;
@@ -2148,18 +2148,18 @@ const StudentInfo = () => {
         const videoVal = documentVideos[videoKey];
         if (videoVal) {
           if (typeof videoVal === 'string' && videoVal.startsWith('http')) {
-             submissionData.append(videoKey, videoVal); 
+            submissionData.append(videoKey, videoVal);
           } else {
-             submissionData.append(videoKey, videoVal, `${videoKey}.webm`); 
+            submissionData.append(videoKey, videoVal, `${videoKey}.webm`);
           }
         }
       });
 
       if (documentVideos.face_video) {
         if (typeof documentVideos.face_video === 'string' && documentVideos.face_video.startsWith('http')) {
-           submissionData.append('face_video', documentVideos.face_video);
+          submissionData.append('face_video', documentVideos.face_video);
         } else {
-           submissionData.append('face_video', documentVideos.face_video, 'face_video.webm');
+          submissionData.append('face_video', documentVideos.face_video, 'face_video.webm');
         }
       }
 
@@ -2826,7 +2826,7 @@ const StudentInfo = () => {
             localStorage.removeItem('currentUser');
             navigate('/login');
           }}>
-            <i className="fas fa-sign-out-alt" style={{marginRight: '6px'}}></i>Logout
+            <i className="fas fa-sign-out-alt" style={{ marginRight: '6px' }}></i>Logout
           </button>
         </div>
       </nav>
@@ -2835,13 +2835,13 @@ const StudentInfo = () => {
       <div className="form-container">
         <div className="form-card">
           <div className="section-header">
-            <img src="/iskologo.png" alt="Logo" style={{height: '50px', marginBottom: '1rem', filter: 'grayscale(1) contrast(1.2)'}} />
+            <img src="/iskologo.png" alt="Logo" style={{ height: '50px', marginBottom: '1rem', filter: 'grayscale(1) contrast(1.2)' }} />
             <h2>{scholarshipName}</h2>
             <p>Step {currentStep} of 4: {
               currentStep === 1 ? 'Personal Information' :
-              currentStep === 2 ? 'Family Background' :
-              currentStep === 3 ? 'Educational Information' :
-              'Certification & Verification'
+                currentStep === 2 ? 'Family Background' :
+                  currentStep === 3 ? 'Educational Information' :
+                    'Certification & Verification'
             }</p>
           </div>
 
@@ -2851,413 +2851,413 @@ const StudentInfo = () => {
             gap: '1rem',
             marginBottom: '1.75rem'
           }}>
-            <div style={{background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '18px', padding: '1rem 1.1rem'}}>
-              <div style={{fontSize: '0.72rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#9a3412', marginBottom: '0.4rem'}}>Profile Snapshot</div>
-              <div style={{fontSize: '1rem', fontWeight: '700', color: '#431407'}}>{[formData.firstName, formData.middleName, formData.lastName].filter(Boolean).join(' ') || currentUser}</div>
-              <div style={{fontSize: '0.82rem', color: '#7c2d12', marginTop: '0.35rem'}}>{formData.schoolName || 'School not set yet'}</div>
+            <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '18px', padding: '1rem 1.1rem' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#9a3412', marginBottom: '0.4rem' }}>Profile Snapshot</div>
+              <div style={{ fontSize: '1rem', fontWeight: '700', color: '#431407' }}>{[formData.firstName, formData.middleName, formData.lastName].filter(Boolean).join(' ') || currentUser}</div>
+              <div style={{ fontSize: '0.82rem', color: '#7c2d12', marginTop: '0.35rem' }}>{formData.schoolName || 'School not set yet'}</div>
             </div>
-            <div style={{background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '18px', padding: '1rem 1.1rem'}}>
-              <div style={{fontSize: '0.72rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#1d4ed8', marginBottom: '0.4rem'}}>Find Scholarship Data</div>
-              <div style={{fontSize: '0.92rem', color: '#1e3a8a'}}>GPA: <strong>{scholarshipSearchSnapshot.gpa || 'Not provided'}</strong></div>
-              <div style={{fontSize: '0.82rem', color: '#1e40af', marginTop: '0.35rem'}}>Income: <strong>{formatCurrencyPreview(scholarshipSearchSnapshot.income)}</strong></div>
+            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '18px', padding: '1rem 1.1rem' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#1d4ed8', marginBottom: '0.4rem' }}>Find Scholarship Data</div>
+              <div style={{ fontSize: '0.92rem', color: '#1e3a8a' }}>GPA: <strong>{scholarshipSearchSnapshot.gpa || 'Not provided'}</strong></div>
+              <div style={{ fontSize: '0.82rem', color: '#1e40af', marginTop: '0.35rem' }}>Income: <strong>{formatCurrencyPreview(scholarshipSearchSnapshot.income)}</strong></div>
             </div>
           </div>
 
           <div className="step-indicator">
-            <div className="progress-bar" style={{width: `${((currentStep - 1) / 3) * 100}%`}}></div>
+            <div className="progress-bar" style={{ width: `${((currentStep - 1) / 3) * 100}%` }}></div>
             {[1, 2, 3, 4].map(step => (
               <div key={step} className={`step-item ${currentStep === step ? 'active' : ''} ${currentStep > step ? 'completed' : ''}`}>
                 <div className="step-circle">{currentStep > step ? <i className="fas fa-check"></i> : step}</div>
                 <div className="step-label">{
                   step === 1 ? 'Personal' :
-                  step === 2 ? 'Family' :
-                  step === 3 ? 'Education' :
-                  'Verify'
+                    step === 2 ? 'Family' :
+                      step === 3 ? 'Education' :
+                        'Verify'
                 }</div>
               </div>
             ))}
           </div>
 
           <form onSubmit={handleApplicationSubmit} noValidate>
-            <fieldset disabled={isAnyScanning || isSavingStep} style={{border: 'none', padding: 0, margin: 0}}>
+            <fieldset disabled={isAnyScanning || isSavingStep} style={{ border: 'none', padding: 0, margin: 0 }}>
 
-            {/* Step 1: Personal Information */}
-            <div className={`step-container ${currentStep === 1 ? 'active' : ''}`}>
-              <h3 style={{marginBottom: '1.5rem', fontSize: '1.2rem', color: 'var(--primary)', fontWeight: '700', borderBottom: '2px solid var(--accent-soft)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center'}}>
-                <i className="fas fa-user" style={{marginRight: '12px', fontSize: '1.1rem'}}></i>1. Personal Information
-              </h3>
+              {/* Step 1: Personal Information */}
+              <div className={`step-container ${currentStep === 1 ? 'active' : ''}`}>
+                <h3 style={{ marginBottom: '1.5rem', fontSize: '1.2rem', color: 'var(--primary)', fontWeight: '700', borderBottom: '2px solid var(--accent-soft)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center' }}>
+                  <i className="fas fa-user" style={{ marginRight: '12px', fontSize: '1.1rem' }}></i>1. Personal Information
+                </h3>
 
-              {/* 2x2 ID Picture */}
-              <div style={{marginBottom: '2rem', textAlign: 'center'}}>
-                <label style={{display: 'block', fontSize: '0.85rem', marginBottom: '0.5rem', color: '#444', fontWeight: '600'}}>
-                  2x2 ID Picture <span style={{color: '#e74c3c'}}>*</span>
-                </label>
-                <div style={{border: '2px dashed #ccc', borderRadius: '12px', height: '130px', width: '130px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden'}}>
-                  <input 
-                    type="file" 
-                    name="profile_picture" 
-                    accept="image/*" 
-                    onChange={handleIdPictureUpload} 
-                    style={{position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2'}} 
-                  />
-                  <div style={{textAlign: 'center', color: '#999', fontSize: '0.85rem', pointerEvents: 'none'}}>
-                    {idPicturePreview ? (
-                      <img src={idPicturePreview} style={{width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px'}} alt="ID Preview" />
-                    ) : (
+                {/* 2x2 ID Picture */}
+                <div style={{ marginBottom: '2rem', textAlign: 'center' }}>
+                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.5rem', color: '#444', fontWeight: '600' }}>
+                    2x2 ID Picture <span style={{ color: '#e74c3c' }}>*</span>
+                  </label>
+                  <div style={{ border: '2px dashed #ccc', borderRadius: '12px', height: '130px', width: '130px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', position: 'relative', overflow: 'hidden' }}>
+                    <input
+                      type="file"
+                      name="profile_picture"
+                      accept="image/*"
+                      onChange={handleIdPictureUpload}
+                      style={{ position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2' }}
+                    />
+                    <div style={{ textAlign: 'center', color: '#999', fontSize: '0.85rem', pointerEvents: 'none' }}>
+                      {idPicturePreview ? (
+                        <img src={idPicturePreview} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }} alt="ID Preview" />
+                      ) : (
+                        <>
+                          <i className="fas fa-camera" style={{ fontSize: '2rem', marginBottom: '0.5rem', display: 'block' }}></i>
+                          <span>Upload 2x2 ID Picture</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Last Name <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <input type="text" name="lastName" value={formData.lastName} onChange={handleInputChange} placeholder="Dela Cruz" required />
+                  </div>
+                  <div className="form-group">
+                    <label>First Name <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <input type="text" name="firstName" value={formData.firstName} onChange={handleInputChange} placeholder="Juan" required />
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Middle Name <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <input type="text" name="middleName" value={formData.middleName} onChange={handleInputChange} placeholder="Santos" required />
+                  </div>
+                  <div className="form-group">
+                    <label>Maiden Name (for married women)</label>
+                    <input type="text" name="maidenName" value={formData.maidenName} onChange={handleInputChange} placeholder="Maiden Name" />
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Date of Birth <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <input type="date" name="dateOfBirth" value={formData.dateOfBirth} onChange={handleInputChange} required />
+                  </div>
+                  <div className="form-group">
+                    <label>Place of Birth <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <input type="text" name="placeOfBirth" value={formData.placeOfBirth} onChange={handleInputChange} placeholder="City/Municipality" required />
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Sex <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <select name="sex" value={formData.sex} onChange={handleInputChange} required>
+                      <option value="">Select Sex</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Citizenship <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <input type="text" name="citizenship" value={formData.citizenship} onChange={handleInputChange} placeholder="Filipino" required />
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Barangay <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <select
+                      id="barangay-select"
+                      name="barangay"
+                      value={formData.barangay}
+                      onChange={handleInputChange}
+                      required={currentStep === 1}
+                    >
+                      <option value="">Select Barangay</option>
+                      {BARANGAYS.map(brgy => (
+                        <option key={brgy} value={brgy}>{brgy}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Town / City / Municipality <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <input
+                      id="town-city-input"
+                      type="text"
+                      name="townCityMunicipality"
+                      value={formData.townCityMunicipality}
+                      onChange={handleInputChange}
+                      placeholder="Lipa City"
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Province <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <input type="text" name="province" value={formData.province} onChange={handleInputChange} placeholder="Batangas" required />
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Zip Code <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <input type="text" name="zipCode" value={formData.zipCode} onChange={handleInputChange} placeholder="4217" required />
+                  </div>
+                  <div className="form-group">
+                    <label>Mobile Number <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <input type="tel" name="mobileNumber" value={formData.mobileNumber} onChange={handleInputChange} placeholder="09XXXXXXXXX" required />
+                  </div>
+                </div>
+
+                {/* Documentary Requirement: Indigency */}
+                <div className="requirement-card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
+                    <div>
+                      <h4 style={{ fontSize: '1.15rem', color: '#1a202c', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ width: '36px', height: '36px', background: 'var(--accent-soft)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <i className="fas fa-home" style={{ color: 'var(--primary)', fontSize: '1.1rem' }}></i>
+                        </div>
+                        Certificate of Indigency <span style={{ color: '#e74c3c' }}>*</span>
+                      </h4>
+                      <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '6px', marginLeft: '46px' }}>Verify residency eligibility via Barangay Indigency document</p>
+                    </div>
+                    {(photos.mayorIndigency_photo || formData.mayorIndigency_photo) && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0' }}>
+                        <i className="fas fa-check-circle"></i> Upload Ready
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="preview-box" style={{ background: '#fff', borderStyle: 'solid' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155' }}>Document Media Check</label>
+                      <div style={{ fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca' }}>PHOTO + VIDEO</div>
+                    </div>
+
+                    {renderDocumentMediaPicker({
+                      photoId: 'photo_mayorIndigency_photo',
+                      photoName: 'mayorIndigency_photo',
+                      photoValue: photos.mayorIndigency_photo || userProfile?.indigency_doc,
+                      onPhotoChange: handleInputChange,
+                      videoId: 'video_mayorIndigency_video',
+                      videoName: 'mayorIndigency_video',
+                      videoValue: documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url,
+                      onVideoChange: handleVideoUpload,
+                      isUploadingVideo: Boolean(uploadingFields['mayorIndigency_video'])
+                    })}
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
+                      <div className="scanning-container">
+                        <div className="image-container" style={{ height: '240px' }} onClick={() => (photos.mayorIndigency_photo || userProfile?.indigency_doc) && setLightboxSrc(photos.mayorIndigency_photo || userProfile?.indigency_doc)}>
+                          {(photos.mayorIndigency_photo || userProfile?.indigency_doc) ? (
+                            <>
+                              <img src={photos.mayorIndigency_photo || userProfile?.indigency_doc} style={{ objectFit: 'contain', background: '#000' }} alt="Indigency Preview" />
+                              <div style={{ position: 'absolute', bottom: '12px', right: '12px', background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '6px 10px', borderRadius: '10px', fontSize: '0.7rem', backdropFilter: 'blur(4px)' }}>
+                                <i className="fas fa-expand-alt" style={{ marginRight: '6px' }}></i> Tap to view
+                              </div>
+                            </>
+                          ) : (
+                            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
+                              <i className="fas fa-image" style={{ fontSize: '2rem', marginBottom: '8px' }}></i>
+                              <span style={{ fontSize: '0.7rem' }}>No Photo</span>
+                            </div>
+                          )}
+                          {ocrVerified === 'verifying' && <div className="scanning-laser"></div>}
+                        </div>
+                      </div>
+
+                      <VideoRecorder
+                        label="Verification Video"
+                        onRecordComplete={(blob) => handleVideoUpload('mayorIndigency_video', blob)}
+                        initialVideoUrl={documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url}
+                        isUploading={Boolean(uploadingFields['mayorIndigency_video'])}
+                        disabled={isAnyScanning || isSavingStep}
+                        hideButton={true}
+                        containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                      />
+                    </div>
+
+                    {(photos.mayorIndigency_photo || userProfile?.indigency_doc) && (
                       <>
-                        <i className="fas fa-camera" style={{fontSize: '2rem', marginBottom: '0.5rem', display: 'block'}}></i>
-                        <span>Upload 2x2 ID Picture</span>
+                        <button
+                          type="button"
+                          onClick={handleIndigencyScan}
+                          disabled={isSavingStep || ocrVerified === 'verifying' || isAnyVideoUploading}
+                          style={{
+                            width: '100%',
+                            padding: '0.9rem',
+                            borderRadius: '16px',
+                            background: ocrVerified === 'success' ? '#10b981' : (ocrVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
+                            color: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '10px',
+                            fontSize: '0.95rem',
+                            fontWeight: '800',
+                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                            boxShadow: ocrVerified === 'success' ? '0 10px 20px -5px rgba(16, 185, 129, 0.3)' : '0 10px 20px -5px rgba(79, 13, 0, 0.3)',
+                            textTransform: 'uppercase',
+                            letterSpacing: '1px',
+                            marginTop: '1rem'
+                          }}
+                        >
+                          <i className={`fas ${ocrVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-bolt'}`}></i>
+                          {ocrVerified === 'verifying' ? 'Analyzing...' : (ocrVerified === 'success' ? 'Identity Verified' : 'Instant Scan & Validate')}
+                        </button>
+
+                        {ocrVerified === 'verifying' && (
+                          <div style={{ width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0', marginTop: '1rem' }}>
+                            <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
+                          </div>
+                        )}
+
+                        {ocrStatus && (
+                          <div className={`validation-status-card ${ocrVerified === 'success' ? 'success' : (ocrVerified === 'failed' ? 'failed' : 'processing')}`} style={{ marginTop: '1rem' }}>
+                            <div className={`status-icon ${ocrVerified === 'success' ? 'success' : (ocrVerified === 'failed' ? 'failed' : 'processing')}`}>
+                              <i className={`fas ${ocrVerified === 'success' ? 'fa-check' : (ocrVerified === 'failed' ? 'fa-circle-xmark' : 'fa-magnifying-glass')}`}></i>
+                            </div>
+                            <div>
+                              <p style={{ fontSize: '0.85rem', fontWeight: '700', margin: '0 0 4px 0' }}>Verification Feedback</p>
+                              <p style={{ fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.5' }}>{ocrStatus}</p>
+                            </div>
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
                 </div>
-              </div>
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Last Name <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="lastName" value={formData.lastName} onChange={handleInputChange} placeholder="Dela Cruz" required />
-                </div>
-                <div className="form-group">
-                  <label>First Name <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="firstName" value={formData.firstName} onChange={handleInputChange} placeholder="Juan" required />
-                </div>
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Middle Name <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="middleName" value={formData.middleName} onChange={handleInputChange} placeholder="Santos" required />
-                </div>
-                <div className="form-group">
-                  <label>Maiden Name (for married women)</label>
-                  <input type="text" name="maidenName" value={formData.maidenName} onChange={handleInputChange} placeholder="Maiden Name" />
-                </div>
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Date of Birth <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="date" name="dateOfBirth" value={formData.dateOfBirth} onChange={handleInputChange} required />
-                </div>
-                <div className="form-group">
-                  <label>Place of Birth <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="placeOfBirth" value={formData.placeOfBirth} onChange={handleInputChange} placeholder="City/Municipality" required />
-                </div>
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Sex <span style={{color: '#e74c3c'}}>*</span></label>
-                  <select name="sex" value={formData.sex} onChange={handleInputChange} required>
-                    <option value="">Select Sex</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label>Citizenship <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="citizenship" value={formData.citizenship} onChange={handleInputChange} placeholder="Filipino" required />
-                </div>
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Barangay <span style={{color: '#e74c3c'}}>*</span></label>
-                  <select 
-                    id="barangay-select"
-                    name="barangay" 
-                    value={formData.barangay} 
-                    onChange={handleInputChange} 
-                    required={currentStep === 1}
+                <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    className="submit-btn"
+                    onClick={handleNextStep}
+                    disabled={isSavingStep || ocrVerified === 'verifying' || !isStep1DocumentsVerified}
+                    style={{ width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px' }}
                   >
-                    <option value="">Select Barangay</option>
-                    {BARANGAYS.map(brgy => (
-                      <option key={brgy} value={brgy}>{brgy}</option>
-                    ))}
-                  </select>
+                    Next: Family Background <i className="fas fa-arrow-right" style={{ marginLeft: '8px' }}></i>
+                  </button>
                 </div>
               </div>
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Town / City / Municipality <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input 
-                    id="town-city-input"
-                    type="text" 
-                    name="townCityMunicipality" 
-                    value={formData.townCityMunicipality} 
-                    onChange={handleInputChange} 
-                    placeholder="Lipa City" 
-                    required 
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Province <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="province" value={formData.province} onChange={handleInputChange} placeholder="Batangas" required />
-                </div>
-              </div>
+              {/* Step 2: Family Background */}
+              <div className={`step-container ${currentStep === 2 ? 'active' : ''}`}>
+                <h3 style={{ marginBottom: '1.5rem', fontSize: '1.2rem', color: 'var(--primary)', fontWeight: '700', borderBottom: '2px solid var(--accent-soft)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center' }}>
+                  <i className="fas fa-users" style={{ marginRight: '12px', fontSize: '1.1rem' }}></i>2. Family Background
+                </h3>
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Zip Code <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="zipCode" value={formData.zipCode} onChange={handleInputChange} placeholder="4217" required />
-                </div>
-                <div className="form-group">
-                  <label>Mobile Number <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="tel" name="mobileNumber" value={formData.mobileNumber} onChange={handleInputChange} placeholder="09XXXXXXXXX" required />
-                </div>
-              </div>
-
-              {/* Documentary Requirement: Indigency */}
-              <div className="requirement-card">
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
-                  <div>
-                    <h4 style={{fontSize: '1.15rem', color: '#1a202c', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px'}}>
-                      <div style={{width: '36px', height: '36px', background: 'var(--accent-soft)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                        <i className="fas fa-home" style={{color: 'var(--primary)', fontSize: '1.1rem'}}></i>
-                      </div>
-                      Certificate of Indigency <span style={{color: '#e74c3c'}}>*</span>
-                    </h4>
-                    <p style={{fontSize: '0.85rem', color: '#64748b', marginTop: '6px', marginLeft: '46px'}}>Verify residency eligibility via Barangay Indigency document</p>
-                  </div>
-                  {(photos.mayorIndigency_photo || formData.mayorIndigency_photo) && (
-                    <div style={{display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0'}}>
-                      <i className="fas fa-check-circle"></i> Upload Ready
+                {/* Father Information */}
+                <div style={{ marginBottom: '2rem' }}>
+                  <h4 style={{ fontSize: '1rem', color: '#333', fontWeight: '600', marginBottom: '1rem', borderLeft: '3px solid var(--primary)', paddingLeft: '10px' }}>
+                    Father's Information
+                  </h4>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Status <span style={{ color: '#e74c3c' }}>*</span></label>
+                      <select name="fatherStatus" value={formData.fatherStatus} onChange={handleInputChange} required={currentStep === 2}>
+                        <option value="">Select Status</option>
+                        <option value="Living">Living</option>
+                        <option value="Deceased">Deceased</option>
+                      </select>
                     </div>
-                  )}
+                    <div className="form-group">
+                      <label>Name <span style={{ color: '#e74c3c' }}>*</span></label>
+                      <input type="text" name="fatherName" value={formData.fatherName} onChange={handleInputChange} placeholder="Full Name" required={currentStep === 2} />
+                    </div>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Occupation <span style={{ color: '#e74c3c' }}>*</span></label>
+                      <input type="text" name="fatherOccupation" value={formData.fatherOccupation} onChange={handleInputChange} placeholder="Occupation" required={currentStep === 2} />
+                    </div>
+                    <div className="form-group">
+                      <label>Phone Number <span style={{ color: '#e74c3c' }}>*</span></label>
+                      <input type="tel" name="fatherPhoneNumber" value={formData.fatherPhoneNumber} onChange={handleInputChange} placeholder="09XXXXXXXXX" required={currentStep === 2} />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="preview-box" style={{background: '#fff', borderStyle: 'solid'}}>
-                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
-                    <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155'}}>Document Media Check</label>
-                    <div style={{fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca'}}>PHOTO + VIDEO</div>
-                  </div>
-
-                  {renderDocumentMediaPicker({
-                    photoId: 'photo_mayorIndigency_photo',
-                    photoName: 'mayorIndigency_photo',
-                    photoValue: photos.mayorIndigency_photo || userProfile?.indigency_doc,
-                    onPhotoChange: handleInputChange,
-                    videoId: 'video_mayorIndigency_video',
-                    videoName: 'mayorIndigency_video',
-                    videoValue: documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url,
-                    onVideoChange: handleVideoUpload,
-                    isUploadingVideo: Boolean(uploadingFields['mayorIndigency_video'])
-                  })}
-
-                  <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
-                    <div className="scanning-container">
-                      <div className="image-container" style={{height: '240px'}} onClick={() => (photos.mayorIndigency_photo || userProfile?.indigency_doc) && setLightboxSrc(photos.mayorIndigency_photo || userProfile?.indigency_doc)}>
-                        {(photos.mayorIndigency_photo || userProfile?.indigency_doc) ? (
-                          <>
-                            <img src={photos.mayorIndigency_photo || userProfile?.indigency_doc} style={{objectFit: 'contain', background: '#000'}} alt="Indigency Preview" />
-                            <div style={{position: 'absolute', bottom: '12px', right: '12px', background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '6px 10px', borderRadius: '10px', fontSize: '0.7rem', backdropFilter: 'blur(4px)'}}>
-                              <i className="fas fa-expand-alt" style={{marginRight: '6px'}}></i> Tap to view
-                            </div>
-                          </>
-                        ) : (
-                          <div style={{height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc'}}>
-                            <i className="fas fa-image" style={{fontSize: '2rem', marginBottom: '8px'}}></i>
-                            <span style={{fontSize: '0.7rem'}}>No Photo</span>
-                          </div>
-                        )}
-                        {ocrVerified === 'verifying' && <div className="scanning-laser"></div>}
-                      </div>
+                {/* Mother Information */}
+                <div style={{ marginBottom: '2rem' }}>
+                  <h4 style={{ fontSize: '1rem', color: '#333', fontWeight: '600', marginBottom: '1rem', borderLeft: '3px solid var(--primary)', paddingLeft: '10px' }}>
+                    Mother's Information
+                  </h4>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Status <span style={{ color: '#e74c3c' }}>*</span></label>
+                      <select name="motherStatus" value={formData.motherStatus} onChange={handleInputChange} required={currentStep === 2}>
+                        <option value="">Select Status</option>
+                        <option value="Living">Living</option>
+                        <option value="Deceased">Deceased</option>
+                      </select>
                     </div>
+                    <div className="form-group">
+                      <label>Name <span style={{ color: '#e74c3c' }}>*</span></label>
+                      <input type="text" name="motherName" value={formData.motherName} onChange={handleInputChange} placeholder="Full Name" required={currentStep === 2} />
+                    </div>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Occupation <span style={{ color: '#e74c3c' }}>*</span></label>
+                      <input type="text" name="motherOccupation" value={formData.motherOccupation} onChange={handleInputChange} placeholder="Occupation" required={currentStep === 2} />
+                    </div>
+                    <div className="form-group">
+                      <label>Phone Number <span style={{ color: '#e74c3c' }}>*</span></label>
+                      <input type="tel" name="motherPhoneNumber" value={formData.motherPhoneNumber} onChange={handleInputChange} placeholder="09XXXXXXXXX" required={currentStep === 2} />
+                    </div>
+                  </div>
+                </div>
 
-                    <VideoRecorder 
-                      label="Verification Video" 
-                      onRecordComplete={(blob) => handleVideoUpload('mayorIndigency_video', blob)} 
-                      initialVideoUrl={documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url}
-                      isUploading={Boolean(uploadingFields['mayorIndigency_video'])}
-                      disabled={isAnyScanning || isSavingStep}
-                      hideButton={true}
-                      containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Number of Siblings <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <input type="number" name="numberOfSiblings" value={formData.numberOfSiblings} onChange={handleInputChange} placeholder="0" required={currentStep === 2} />
+                  </div>
+                  <div className="form-group">
+                    <label>Parents' Gross Income <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <input type="number" name="parentsGrossIncome" value={formData.parentsGrossIncome} onChange={handleInputChange} placeholder="30000" min="0" required={currentStep === 2} />
+                  </div>
+                </div>
+
+
+                <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'space-between' }}>
+                  <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
+                    <i className="fas fa-arrow-left" style={{ marginRight: '8px' }}></i> Back: Personal Info
+                  </button>
+                  <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep} style={{ width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px' }}>
+                    Next: Educational Info <i className="fas fa-arrow-right" style={{ marginLeft: '8px' }}></i>
+                  </button>
+                </div>
+              </div>
+
+              {/* Step 3: Educational Information */}
+              <div className={`step-container ${currentStep === 3 ? 'active' : ''}`}>
+                <h3 style={{ marginBottom: '1.5rem', fontSize: '1.2rem', color: 'var(--primary)', fontWeight: '700', borderBottom: '2px solid var(--accent-soft)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center' }}>
+                  <i className="fas fa-graduation-cap" style={{ marginRight: '12px', fontSize: '1.1rem' }}></i>3. Educational Information
+                </h3>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Full Name</label>
+                    <input
+                      type="text"
+                      value={[formData.firstName, formData.middleName, formData.lastName].filter(Boolean).join(' ')}
+                      readOnly
+                      style={{ backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }}
                     />
                   </div>
-
-                  {(photos.mayorIndigency_photo || userProfile?.indigency_doc) && (
-                    <>
-                      <button 
-                        type="button" 
-                        onClick={handleIndigencyScan}
-                        disabled={isSavingStep || ocrVerified === 'verifying' || isAnyVideoUploading}
-                        style={{
-                          width: '100%',
-                          padding: '0.9rem',
-                          borderRadius: '16px',
-                          background: ocrVerified === 'success' ? '#10b981' : (ocrVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
-                          color: 'white',
-                          border: 'none',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '10px',
-                          fontSize: '0.95rem',
-                          fontWeight: '800',
-                          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                          boxShadow: ocrVerified === 'success' ? '0 10px 20px -5px rgba(16, 185, 129, 0.3)' : '0 10px 20px -5px rgba(79, 13, 0, 0.3)',
-                          textTransform: 'uppercase',
-                          letterSpacing: '1px',
-                          marginTop: '1rem'
-                        }}
-                      >
-                        <i className={`fas ${ocrVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-bolt'}`}></i>
-                        {ocrVerified === 'verifying' ? 'Analyzing...' : (ocrVerified === 'success' ? 'Identity Verified' : 'Instant Scan & Validate')}
-                      </button>
-
-                      {ocrVerified === 'verifying' && (
-                        <div style={{width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0', marginTop: '1rem'}}>
-                          <div style={{position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px'}}></div>
-                        </div>
-                      )}
-
-                      {ocrStatus && (
-                        <div className={`validation-status-card ${ocrVerified === 'success' ? 'success' : (ocrVerified === 'failed' ? 'failed' : 'processing')}`} style={{marginTop: '1rem'}}>
-                          <div className={`status-icon ${ocrVerified === 'success' ? 'success' : (ocrVerified === 'failed' ? 'failed' : 'processing')}`}>
-                            <i className={`fas ${ocrVerified === 'success' ? 'fa-check' : (ocrVerified === 'failed' ? 'fa-circle-xmark' : 'fa-magnifying-glass')}`}></i>
-                          </div>
-                          <div>
-                            <p style={{fontSize: '0.85rem', fontWeight: '700', margin: '0 0 4px 0'}}>Verification Feedback</p>
-                            <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.5'}}>{ocrStatus}</p>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
                 </div>
-              </div>
 
-              <div style={{marginTop: '2rem', display: 'flex', justifyContent: 'flex-end'}}>
-                <button 
-                  type="button" 
-                  className="submit-btn" 
-                  onClick={handleNextStep} 
-                  disabled={isSavingStep || ocrVerified === 'verifying' || !isStep1DocumentsVerified} 
-                  style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}
-                >
-                  Next: Family Background <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
-                </button>
-              </div>
-            </div>
-
-            {/* Step 2: Family Background */}
-            <div className={`step-container ${currentStep === 2 ? 'active' : ''}`}>
-              <h3 style={{marginBottom: '1.5rem', fontSize: '1.2rem', color: 'var(--primary)', fontWeight: '700', borderBottom: '2px solid var(--accent-soft)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center'}}>
-                <i className="fas fa-users" style={{marginRight: '12px', fontSize: '1.1rem'}}></i>2. Family Background
-              </h3>
-
-              {/* Father Information */}
-              <div style={{marginBottom: '2rem'}}>
-                <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '600', marginBottom: '1rem', borderLeft: '3px solid var(--primary)', paddingLeft: '10px'}}>
-                  Father's Information
-                </h4>
                 <div className="form-row">
                   <div className="form-group">
-                    <label>Status <span style={{color: '#e74c3c'}}>*</span></label>
-                    <select name="fatherStatus" value={formData.fatherStatus} onChange={handleInputChange} required={currentStep === 2}>
-                      <option value="">Select Status</option>
-                      <option value="Living">Living</option>
-                      <option value="Deceased">Deceased</option>
-                    </select>
+                    <label>School ID Number <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <input type="text" name="schoolIdNumber" value={formData.schoolIdNumber} onChange={handleInputChange} placeholder="ID Number" required={currentStep === 3} />
                   </div>
                   <div className="form-group">
-                    <label>Name <span style={{color: '#e74c3c'}}>*</span></label>
-                    <input type="text" name="fatherName" value={formData.fatherName} onChange={handleInputChange} placeholder="Full Name" required={currentStep === 2} />
-                  </div>
-                </div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Occupation <span style={{color: '#e74c3c'}}>*</span></label>
-                    <input type="text" name="fatherOccupation" value={formData.fatherOccupation} onChange={handleInputChange} placeholder="Occupation" required={currentStep === 2} />
-                  </div>
-                  <div className="form-group">
-                    <label>Phone Number <span style={{color: '#e74c3c'}}>*</span></label>
-                    <input type="tel" name="fatherPhoneNumber" value={formData.fatherPhoneNumber} onChange={handleInputChange} placeholder="09XXXXXXXXX" required={currentStep === 2} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Mother Information */}
-              <div style={{marginBottom: '2rem'}}>
-                <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '600', marginBottom: '1rem', borderLeft: '3px solid var(--primary)', paddingLeft: '10px'}}>
-                  Mother's Information
-                </h4>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Status <span style={{color: '#e74c3c'}}>*</span></label>
-                    <select name="motherStatus" value={formData.motherStatus} onChange={handleInputChange} required={currentStep === 2}>
-                      <option value="">Select Status</option>
-                      <option value="Living">Living</option>
-                      <option value="Deceased">Deceased</option>
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label>Name <span style={{color: '#e74c3c'}}>*</span></label>
-                    <input type="text" name="motherName" value={formData.motherName} onChange={handleInputChange} placeholder="Full Name" required={currentStep === 2} />
-                  </div>
-                </div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Occupation <span style={{color: '#e74c3c'}}>*</span></label>
-                    <input type="text" name="motherOccupation" value={formData.motherOccupation} onChange={handleInputChange} placeholder="Occupation" required={currentStep === 2} />
-                  </div>
-                  <div className="form-group">
-                    <label>Phone Number <span style={{color: '#e74c3c'}}>*</span></label>
-                    <input type="tel" name="motherPhoneNumber" value={formData.motherPhoneNumber} onChange={handleInputChange} placeholder="09XXXXXXXXX" required={currentStep === 2} />
-                  </div>
-                </div>
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Number of Siblings <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="number" name="numberOfSiblings" value={formData.numberOfSiblings} onChange={handleInputChange} placeholder="0" required={currentStep === 2} />
-                </div>
-                <div className="form-group">
-                  <label>Parents' Gross Income <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="number" name="parentsGrossIncome" value={formData.parentsGrossIncome} onChange={handleInputChange} placeholder="30000" min="0" required={currentStep === 2} />
-                </div>
-              </div>
-
-
-              <div style={{marginTop: '2rem', display: 'flex', justifyContent: 'space-between'}}>
-                <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
-                  <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> Back: Personal Info
-                </button>
-                <button type="button" className="submit-btn" onClick={handleNextStep} disabled={isSavingStep} style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}>
-                  Next: Educational Info <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
-                </button>
-              </div>
-            </div>
-
-            {/* Step 3: Educational Information */}
-            <div className={`step-container ${currentStep === 3 ? 'active' : ''}`}>
-              <h3 style={{marginBottom: '1.5rem', fontSize: '1.2rem', color: 'var(--primary)', fontWeight: '700', borderBottom: '2px solid var(--accent-soft)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center'}}>
-                <i className="fas fa-graduation-cap" style={{marginRight: '12px', fontSize: '1.1rem'}}></i>3. Educational Information
-              </h3>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Full Name</label>
-                  <input
-                    type="text"
-                    value={[formData.firstName, formData.middleName, formData.lastName].filter(Boolean).join(' ')}
-                    readOnly
-                    style={{ backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }}
-                  />
-                </div>
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label>School ID Number <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="schoolIdNumber" value={formData.schoolIdNumber} onChange={handleInputChange} placeholder="ID Number" required={currentStep === 3} />
-                </div>
-                <div className="form-group">
-                  <label>Name of School <span style={{color: '#e74c3c'}}>*</span></label>
+                    <label>Name of School <span style={{ color: '#e74c3c' }}>*</span></label>
                     <>
                       <input type="text" name="schoolName" value={formData.schoolName} onChange={handleInputChange} placeholder="Type your school name" list="studentinfo-school-options" required={currentStep === 3} />
                       <datalist id="studentinfo-school-options">
@@ -3266,939 +3266,939 @@ const StudentInfo = () => {
                         ))}
                       </datalist>
                     </>
+                  </div>
                 </div>
-              </div>
 
-              <div className="form-group">
-                <label>School Address <span style={{color: '#e74c3c'}}>*</span></label>
-                <input type="text" name="schoolAddress" value={formData.schoolAddress} onChange={handleInputChange} placeholder="Complete School Address" required={currentStep === 3} />
-              </div>
-
-              <div className="form-row">
                 <div className="form-group">
-                  <label>School Sector <span style={{color: '#e74c3c'}}>*</span></label>
-                  <select name="schoolSector" value={formData.schoolSector} onChange={handleInputChange} required={currentStep === 3}>
-                    <option value="">Select Sector</option>
-                    <option value="Public">Public</option>
-                    <option value="Private">Private</option>
-                  </select>
+                  <label>School Address <span style={{ color: '#e74c3c' }}>*</span></label>
+                  <input type="text" name="schoolAddress" value={formData.schoolAddress} onChange={handleInputChange} placeholder="Complete School Address" required={currentStep === 3} />
                 </div>
-                <div className="form-group">
-                  <label>Year Level <span style={{color: '#e74c3c'}}>*</span></label>
-                  <select name="yearLevel" value={formData.yearLevel} onChange={handleInputChange} required={currentStep === 3}>
-                    <option value="">Select Year</option>
-                    {[1, 2, 3, 4, 5].map(yr => <option key={yr} value={`${yr}${yr === 1 ? 'st' : yr === 2 ? 'nd' : yr === 3 ? 'rd' : 'th'} Year`}>{yr}{yr === 1 ? 'st' : yr === 2 ? 'nd' : yr === 3 ? 'rd' : 'th'} Year</option>)}
-                  </select>
-                </div>
-              </div>
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Course/Program <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="text" name="course" value={formData.course} onChange={handleInputChange} placeholder="B.S. Information Technology" required={currentStep === 3} />
-                </div>
-                <div className="form-group">
-                  <label>General Weighted Average / GPA <span style={{color: '#e74c3c'}}>*</span></label>
-                  <input type="number" name="gpa" value={formData.gpa} onChange={handleInputChange} placeholder="85 or 1.75" step="0.01" required={currentStep === 3} />
-                </div>
-              </div>
-
-              <div style={{
-                marginBottom: '1.5rem',
-                padding: '1rem 1.1rem',
-                borderRadius: '18px',
-                background: 'linear-gradient(135deg, #fff7ed, #ffffff)',
-                border: '1px solid #fed7aa',
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                gap: '0.85rem'
-              }}>
-                {[
-                  '1. Upload front and back ID photos.',
-                  '2. Record a clear front and back ID video.',
-                  '3. Run the ID scan to unlock COE and Grades.',
-                  '4. Re-scan if name, ID number, year, or location changes.'
-                ].map((item) => (
-                  <div key={item} style={{display: 'flex', gap: '10px', alignItems: 'flex-start'}}>
-                    <i className="fas fa-circle-check" style={{color: 'var(--primary)', marginTop: '3px'}}></i>
-                    <span style={{fontSize: '0.78rem', color: '#7c2d12', lineHeight: '1.45', fontWeight: '700'}}>{item}</span>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>School Sector <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <select name="schoolSector" value={formData.schoolSector} onChange={handleInputChange} required={currentStep === 3}>
+                      <option value="">Select Sector</option>
+                      <option value="Public">Public</option>
+                      <option value="Private">Private</option>
+                    </select>
                   </div>
-                ))}
-              </div>
-
-              <div className="requirement-card">
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
-                  <div>
-                    <div className="step-subtitle">
-                      Identity Verification (ID) <span style={{color: '#e74c3c'}}>*</span>
-                    </div>
-                    <p style={{fontSize: '0.85rem', color: '#64748b', marginTop: '6px'}}>Current academic year ID for identity verification</p>
-                  </div>
-                  {(schoolIdPhotos.front || schoolIdPhotos.back) && (
-                    <div style={{display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0'}}>
-                      <i className="fas fa-check-circle"></i> Upload Ready
-                    </div>
-                  )}
-                </div>
-
-                <div className="media-grid">
-                  {/* FRONT SIDE SECTION */}
-                  <div className="preview-box" style={{background: '#fff', borderStyle: 'solid'}}>
-                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', paddingBottom: '0.8rem', borderBottom: '1px solid #f1f5f9'}}>
-                      <h5 style={{margin: 0, fontSize: '0.95rem', fontWeight: '800', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px'}}>
-                        <i className="fas fa-id-card"></i> Front ID
-                      </h5>
-                      <div style={{fontSize: '0.65rem', color: '#3b82f6', fontWeight: '800', background: '#eff6ff', padding: '3px 8px', borderRadius: '6px', border: '1px solid #bfdbfe'}}>REQUIRED</div>
-                    </div>
-
-                    {renderDocumentMediaPicker({
-                      photoLabel: 'Front ID',
-                      photoId: 'school_id_front_photo',
-                      photoValue: schoolIdPhotos.front || userProfile?.id_img_front,
-                      onPhotoChange: (e) => handleSchoolIdPhotoUpload('front', e),
-                      videoId: 'video_schoolIdFront_video',
-                      videoName: 'schoolIdFront_video',
-                      videoValue: documentVideos.schoolIdFront_video || userProfile?.schoolid_front_vid_url,
-                      onVideoChange: handleVideoUpload,
-                      isUploadingVideo: Boolean(uploadingFields['schoolIdFront_video'])
-                    })}
-
-                    <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
-                      {/* Front Photo Preview */}
-                      <div className="scanning-container">
-                        <div className="image-container" style={{height: '240px'}} onClick={() => setLightboxSrc(schoolIdPhotos.front || userProfile?.id_img_front)}>
-                          { (schoolIdPhotos.front || userProfile?.id_img_front) ? (
-                            <img src={schoolIdPhotos.front || userProfile?.id_img_front} alt="Front ID" />
-                          ) : (
-                            <div style={{height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc'}}>
-                              <i className="fas fa-image" style={{fontSize: '2rem', marginBottom: '8px'}}></i>
-                              <span style={{fontSize: '0.7rem'}}>No Photo</span>
-                            </div>
-                          )}
-                          {idVerified === 'verifying' && <div className="scanning-laser"></div>}
-                        </div>
-                      </div>
-
-                      {/* Front Video Preview */}
-                      <VideoRecorder 
-                        label="Front Check Video" 
-                        onRecordComplete={(blob) => handleVideoUpload('schoolIdFront_video', blob)} 
-                        initialVideoUrl={documentVideos.schoolIdFront_video || userProfile?.schoolid_front_vid_url}
-                        isUploading={Boolean(uploadingFields['schoolIdFront_video'])}
-                        disabled={isAnyScanning || isSavingStep}
-                        hideButton={true}
-                        containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
-                      />
-                    </div>
-
-                    <div style={{padding: '12px', background: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px'}}>
-                      <i className="fas fa-user-check" style={{color: '#2563eb', fontSize: '1rem', marginTop: '2px'}}></i>
-                      <p style={{fontSize: '0.72rem', color: '#1e3a8a', margin: 0, lineHeight: '1.4'}}>
-                        <b>Front side:</b> Keep your name area visible. This helps us confirm the student identity matches your profile.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* BACK SIDE SECTION */}
-                  <div className="preview-box" style={{background: '#fff', borderStyle: 'solid'}}>
-                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', paddingBottom: '0.8rem', borderBottom: '1px solid #f1f5f9'}}>
-                      <h5 style={{margin: 0, fontSize: '0.95rem', fontWeight: '800', color: '#9a3412', display: 'flex', alignItems: 'center', gap: '8px'}}>
-                        <i className="fas fa-id-card"></i> Back ID
-                      </h5>
-                      <div style={{fontSize: '0.65rem', color: '#d97706', fontWeight: '800', background: '#fffbeb', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fef3c7'}}>REQUIRED</div>
-                    </div>
-
-                    {renderDocumentMediaPicker({
-                      photoId: 'school_id_back_photo',
-                      photoValue: schoolIdPhotos.back || userProfile?.id_img_back,
-                      onPhotoChange: (e) => handleSchoolIdPhotoUpload('back', e),
-                      videoId: 'video_schoolIdBack_video',
-                      videoName: 'schoolIdBack_video',
-                      videoValue: documentVideos.schoolIdBack_video || userProfile?.schoolid_back_vid_url,
-                      onVideoChange: handleVideoUpload,
-                      isUploadingVideo: Boolean(uploadingFields['schoolIdBack_video'])
-                    })}
-
-                    <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
-                      {/* Back Photo Preview */}
-                      <div className="scanning-container">
-                        <div className="image-container" style={{height: '240px'}} onClick={() => setLightboxSrc(schoolIdPhotos.back || userProfile?.id_img_back)}>
-                          { (schoolIdPhotos.back || userProfile?.id_img_back) ? (
-                            <img src={schoolIdPhotos.back || userProfile?.id_img_back} alt="Back ID" />
-                          ) : (
-                            <div style={{height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc'}}>
-                              <i className="fas fa-image" style={{fontSize: '2rem', marginBottom: '8px'}}></i>
-                              <span style={{fontSize: '0.7rem'}}>No Photo</span>
-                            </div>
-                          )}
-                          {idVerified === 'verifying' && <div className="scanning-laser"></div>}
-                        </div>
-                      </div>
-
-                      {/* Back Video Preview */}
-                      <VideoRecorder 
-                        label="Back Check Video" 
-                        onRecordComplete={(blob) => handleVideoUpload('schoolIdBack_video', blob)} 
-                        initialVideoUrl={documentVideos.schoolIdBack_video || userProfile?.schoolid_back_vid_url}
-                        isUploading={Boolean(uploadingFields['schoolIdBack_video'])}
-                        disabled={isAnyScanning || isSavingStep}
-                        hideButton={true}
-                        containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
-                      />
-                    </div>
-
-                    <div style={{padding: '12px', background: '#fffbeb', borderRadius: '14px', border: '1px solid #fef3c7', display: 'flex', gap: '10px'}}>
-                      <i className="fas fa-school" style={{color: '#d97706', fontSize: '1rem', marginTop: '2px'}}></i>
-                      <p style={{fontSize: '0.72rem', color: '#92400e', margin: 0, lineHeight: '1.4'}}>
-                        <b>Back side:</b> Keep the year level or current validity details readable so we can confirm the ID is for your present school year.
-                      </p>
-                    </div>
+                  <div className="form-group">
+                    <label>Year Level <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <select name="yearLevel" value={formData.yearLevel} onChange={handleInputChange} required={currentStep === 3}>
+                      <option value="">Select Year</option>
+                      {[1, 2, 3, 4, 5].map(yr => <option key={yr} value={`${yr}${yr === 1 ? 'st' : yr === 2 ? 'nd' : yr === 3 ? 'rd' : 'th'} Year`}>{yr}{yr === 1 ? 'st' : yr === 2 ? 'nd' : yr === 3 ? 'rd' : 'th'} Year</option>)}
+                    </select>
                   </div>
                 </div>
 
-                {/* ID Action Footer (Button & Status) */}
-                <div style={{marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px dashed #e2e8f0'}}>
-                  <button 
-                    type="button" 
-                    onClick={handleIdScan}
-                    disabled={isSavingStep || idVerified === 'verifying' || isAnyVideoUploading || (!schoolIdPhotos.front && !userProfile?.id_img_front)}
-                    style={{
-                      width: '100%',
-                      padding: '1rem',
-                      borderRadius: '18px',
-                      background: idVerified === 'success' ? '#10b981' : (idVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
-                      color: 'white',
-                      border: 'none',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '12px',
-                      fontSize: '1rem',
-                      fontWeight: '800',
-                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                      boxShadow: idVerified === 'success' ? '0 10px 25px -5px rgba(16, 185, 129, 0.3)' : '0 10px 25px -5px rgba(79, 13, 0, 0.3)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px'
-                    }}
-                  >
-                    <i className={`fas ${idVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-bolt-lightning'}`}></i>
-                    {idVerified === 'verifying' ? 'Analyzing Front & Back ID...' : (idVerified === 'success' ? 'Identity Verified Successfully' : 'Start Front & Back ID Scan')}
-                  </button>
-
-                  {idVerified === 'verifying' && (
-                    <div style={{width: '100%', height: '8px', background: '#f1f5f9', borderRadius: '10px', marginTop: '1rem', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0'}}>
-                      <div style={{position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px'}}></div>
-                    </div>
-                  )}
-
-                  {idStatus && (
-                    <div className={`validation-status-card ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`} style={{marginTop: '1.2rem'}}>
-                      <div className={`status-icon ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`}>
-                        <i className={`fas ${idVerified === 'success' ? 'fa-check' : (idVerified === 'failed' ? 'fa-circle-xmark' : 'fa-magnifying-glass')}`}></i>
-                      </div>
-                      <div>
-                        <p style={{fontSize: '0.85rem', fontWeight: '800', margin: '0 0 4px 0'}}>Verification Engine Result</p>
-                        <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.5'}}>{idStatus}</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Documentary Requirements: COE and Grades */}
-              {idVerified === 'success' ? (
-                <div style={{marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.2rem'}}>
-                <div className="requirement-card">
-                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
-                    <div>
-                      <h4 style={{fontSize: '1.15rem', color: '#1a202c', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px'}}>
-                        <div style={{width: '36px', height: '36px', background: 'var(--accent-soft)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                          <i className="fas fa-file-signature" style={{color: 'var(--primary)', fontSize: '1.1rem'}}></i>
-                        </div>
-                        Certificate of Enrollment <span style={{color: '#e74c3c'}}>*</span>
-                      </h4>
-                      <p style={{fontSize: '0.85rem', color: '#64748b', marginTop: '6px', marginLeft: '46px'}}>Current semester registration form or COE</p>
-                    </div>
-                    {(photos.mayorCOE_photo || formData.mayorCOE_photo) && (
-                      <div style={{display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0'}}>
-                        <i className="fas fa-check-circle"></i> Upload Ready
-                      </div>
-                    )}
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Course/Program <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <input type="text" name="course" value={formData.course} onChange={handleInputChange} placeholder="B.S. Information Technology" required={currentStep === 3} />
                   </div>
-
-                  <div className="preview-box" style={{background: '#fff', borderStyle: 'solid'}}>
-                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
-                      <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155'}}>COE Media Check</label>
-                      <div style={{fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca'}}>PHOTO + VIDEO</div>
-                    </div>
-
-                    {renderDocumentMediaPicker({
-                      photoId: 'photo_mayorCOE_photo',
-                      photoName: 'mayorCOE_photo',
-                      photoValue: photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc,
-                      onPhotoChange: handleInputChange,
-                      videoId: 'video_mayorCOE_video',
-                      videoName: 'mayorCOE_video',
-                      videoValue: documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url,
-                      onVideoChange: handleVideoUpload,
-                      isUploadingVideo: Boolean(uploadingFields['mayorCOE_video'])
-                    })}
-
-                    <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
-                      <div className="scanning-container">
-                        <div className="image-container" style={{height: '240px'}} onClick={() => (photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && setLightboxSrc(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc)}>
-                          {(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) ? (
-                            <img src={photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc} style={{objectFit: 'contain', background: '#000'}} alt="COE Preview" />
-                          ) : (
-                            <div style={{height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc'}}>
-                              <i className="fas fa-image" style={{fontSize: '2rem', marginBottom: '8px'}}></i>
-                              <span style={{fontSize: '0.7rem'}}>No Photo</span>
-                            </div>
-                          )}
-                          {coeVerified === 'verifying' && <div className="scanning-laser"></div>}
-                        </div>
-                      </div>
-
-                      <VideoRecorder 
-                        label="COE Verification Video" 
-                        onRecordComplete={(blob) => handleVideoUpload('mayorCOE_video', blob)} 
-                        initialVideoUrl={documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url}
-                        isUploading={Boolean(uploadingFields['mayorCOE_video'])}
-                        disabled={isAnyScanning || isSavingStep}
-                        hideButton={true}
-                        containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
-                      />
-                    </div>
-
-                    {(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && (
-                      <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
-                        <button 
-                          type="button" 
-                          onClick={handleCOEScan}
-                          disabled={isSavingStep || coeVerified === 'verifying' || isAnyVideoUploading}
-                          style={{
-                            width: '100%',
-                            padding: '0.85rem',
-                            borderRadius: '14px',
-                            background: coeVerified === 'success' ? '#10b981' : (coeVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
-                            color: 'white',
-                            border: 'none',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '10px',
-                            fontSize: '0.9rem',
-                            fontWeight: '800',
-                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                            boxShadow: coeVerified === 'success' ? '0 10px 15px -5px rgba(16, 185, 129, 0.2)' : '0 10px 15px -5px rgba(79, 13, 0, 0.2)',
-                            textTransform: 'uppercase'
-                          }}
-                        >
-                          <i className={`fas ${coeVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-magnifying-glass'}`}></i>
-                          {coeVerified === 'verifying' ? 'Reviewing...' : (coeVerified === 'success' ? 'COE Verified' : 'Rapid COE Scan')}
-                        </button>
-
-                        {coeVerified === 'verifying' && (
-                          <div style={{width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0'}}>
-                            <div style={{position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px'}}></div>
-                          </div>
-                        )}
-                        
-                        {coeStatus && (
-                          <div className={`validation-status-card ${coeVerified === 'success' ? 'success' : (coeVerified === 'failed' ? 'failed' : 'processing')}`}>
-                            <div className={`status-icon ${coeVerified === 'success' ? 'success' : (coeVerified === 'failed' ? 'failed' : 'processing')}`}>
-                              <i className={`fas ${coeVerified === 'success' ? 'fa-check' : (coeVerified === 'failed' ? 'fa-circle-xmark' : 'fa-info-circle')}`}></i>
-                            </div>
-                            <div>
-                              <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.4'}}>{coeStatus}</p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                  <div className="form-group">
+                    <label>General Weighted Average / GPA <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <input type="number" name="gpa" value={formData.gpa} onChange={handleInputChange} placeholder="85 or 1.75" step="0.01" required={currentStep === 3} />
                   </div>
                 </div>
 
-                <div className="requirement-card">
-                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
-                    <div>
-                      <h4 style={{fontSize: '1.15rem', color: '#1a202c', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px'}}>
-                        <div style={{width: '36px', height: '36px', background: 'var(--accent-soft)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                          <i className="fas fa-star" style={{color: 'var(--primary)', fontSize: '1.1rem'}}></i>
-                        </div>
-                        Academic Grades <span style={{color: '#e74c3c'}}>*</span>
-                      </h4>
-                      <p style={{fontSize: '0.85rem', color: '#64748b', marginTop: '6px', marginLeft: '46px'}}>Previous semester report card or transcript</p>
-                    </div>
-                    {(photos.mayorGrades_photo || formData.mayorGrades_photo) && (
-                      <div style={{display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0'}}>
-                        <i className="fas fa-check-circle"></i> Upload Ready
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="preview-box" style={{background: '#fff', borderStyle: 'solid'}}>
-                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
-                      <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155'}}>Academic Media Check</label>
-                      <div style={{fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca'}}>PHOTO + VIDEO</div>
-                    </div>
-
-                    {renderDocumentMediaPicker({
-                      photoId: 'photo_mayorGrades_photo',
-                      photoName: 'mayorGrades_photo',
-                      photoValue: photos.mayorGrades_photo || userProfile?.grades_doc,
-                      onPhotoChange: handleInputChange,
-                      videoId: 'video_mayorGrades_video',
-                      videoName: 'mayorGrades_video',
-                      videoValue: documentVideos.mayorGrades_video || userProfile?.grades_vid_url,
-                      onVideoChange: handleVideoUpload,
-                      isUploadingVideo: Boolean(uploadingFields['mayorGrades_video'])
-                    })}
-
-                    <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
-                      <div className="scanning-container">
-                        <div className="image-container" style={{height: '240px'}} onClick={() => (photos.mayorGrades_photo || userProfile?.grades_doc) && setLightboxSrc(photos.mayorGrades_photo || userProfile?.grades_doc)}>
-                          {(photos.mayorGrades_photo || userProfile?.grades_doc) ? (
-                            <img src={photos.mayorGrades_photo || userProfile?.grades_doc} style={{objectFit: 'contain', background: '#000'}} alt="Grades Preview" />
-                          ) : (
-                            <div style={{height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc'}}>
-                              <i className="fas fa-image" style={{fontSize: '2rem', marginBottom: '8px'}}></i>
-                              <span style={{fontSize: '0.7rem'}}>No Photo</span>
-                            </div>
-                          )}
-                          {gradesVerified === 'verifying' && <div className="scanning-laser"></div>}
-                        </div>
-                      </div>
-
-                      <VideoRecorder 
-                        label="Grades Verification Video" 
-                        onRecordComplete={(blob) => handleVideoUpload('mayorGrades_video', blob)} 
-                        initialVideoUrl={documentVideos.mayorGrades_video || userProfile?.grades_vid_url}
-                        isUploading={Boolean(uploadingFields['mayorGrades_video'])}
-                        disabled={isAnyScanning || isSavingStep}
-                        hideButton={true}
-                        containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
-                      />
-                    </div>
-
-                    {(photos.mayorGrades_photo || userProfile?.grades_doc) && (
-                      <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
-                        <button 
-                          type="button" 
-                          onClick={handleGradesScan}
-                          disabled={isSavingStep || gradesVerified === 'verifying' || isAnyVideoUploading}
-                          style={{
-                            width: '100%',
-                            padding: '0.85rem',
-                            borderRadius: '14px',
-                            background: gradesVerified === 'success' ? '#10b981' : (gradesVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
-                            color: 'white',
-                            border: 'none',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '10px',
-                            fontSize: '0.9rem',
-                            fontWeight: '800',
-                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                            boxShadow: gradesVerified === 'success' ? '0 10px 15px -5px rgba(16, 185, 129, 0.2)' : '0 10px 15px -5px rgba(79, 13, 0, 0.2)',
-                            textTransform: 'uppercase'
-                          }}
-                        >
-                          <i className={`fas ${gradesVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-clipboard-check'}`}></i>
-                          {gradesVerified === 'verifying' ? 'Analyzing...' : (gradesVerified === 'success' ? 'Grades Verified' : 'Rapid Grades Scan')}
-                        </button>
-
-                        {gradesVerified === 'verifying' && (
-                          <div style={{width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0'}}>
-                            <div style={{position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px'}}></div>
-                          </div>
-                        )}
-                        
-                        {gradesStatus && (
-                          <div className={`validation-status-card ${gradesVerified === 'success' ? 'success' : (gradesVerified === 'failed' ? 'failed' : 'processing')}`}>
-                            <div className={`status-icon ${gradesVerified === 'success' ? 'success' : (gradesVerified === 'failed' ? 'failed' : 'processing')}`}>
-                              <i className={`fas ${gradesVerified === 'success' ? 'fa-check' : (gradesVerified === 'failed' ? 'fa-circle-xmark' : 'fa-info-circle')}`}></i>
-                            </div>
-                            <div>
-                              <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.4'}}>{gradesStatus}</p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                </div>
-              ) : (
                 <div style={{
-                  marginTop: '1.5rem', 
-                  padding: '2.5rem 1.5rem', 
-                  background: '#f8fafc', 
-                  borderRadius: '28px', 
-                  border: '1.5px dashed #e2e8f0',
-                  textAlign: 'center',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '12px',
-                  animation: 'fadeIn 0.5s ease'
+                  marginBottom: '1.5rem',
+                  padding: '1rem 1.1rem',
+                  borderRadius: '18px',
+                  background: 'linear-gradient(135deg, #fff7ed, #ffffff)',
+                  border: '1px solid #fed7aa',
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  gap: '0.85rem'
                 }}>
-                  <div style={{width: '64px', height: '64px', background: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px rgba(0,0,0,0.04)', marginBottom: '4px'}}>
-                    <i className="fas fa-file-shield" style={{color: '#94a3b8', fontSize: '1.4rem'}}></i>
-                  </div>
-                  <h4 style={{fontSize: '1.1rem', color: '#334155', fontWeight: '800', margin: 0}}>Document Uploads Locked</h4>
-                  <p style={{fontSize: '0.85rem', color: '#64748b', maxWidth: '320px', margin: 0, lineHeight: '1.5'}}>
-                    Please complete the <b>Updated School ID verification</b> above first. Once verified, the COE and Academic Grades sections will automatically appear.
-                  </p>
-                </div>
-              )}
-
-              <div style={{marginTop: '2rem', display: 'flex', justifyContent: 'space-between'}}>
-                <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
-                  <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> Back: Family Background
-                </button>
-                <button 
-                  type="button" 
-                  className="submit-btn" 
-                  onClick={handleNextStep} 
-                  disabled={isSavingStep || coeVerified === 'verifying' || gradesVerified === 'verifying' || idVerified === 'verifying' || !isStep3DocumentsVerified}
-                  style={{width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px'}}
-                >
-                  Next: Certification & Verification <i className="fas fa-arrow-right" style={{marginLeft: '8px'}}></i>
-                </button>
-              </div>
-            </div>
-
-            {/* Step 4: Certification and Verification */}
-            <div className={`step-container ${currentStep === 4 ? 'active' : ''}`}>
-              <h3 style={{marginBottom: '1.5rem', fontSize: '1.2rem', color: 'var(--primary)', fontWeight: '700', borderBottom: '2px solid var(--accent-soft)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center'}}>
-                <i className="fas fa-check-double" style={{marginRight: '12px', fontSize: '1.1rem'}}></i>4. Certification & Verification
-              </h3>
-
-              <div style={{background: '#f8f9fa', padding: '1.5rem', borderRadius: '16px', marginBottom: '2rem', border: '1px solid #e9ecef'}}>
-                <h4 style={{fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '1rem'}}>Privacy Consent & Certification</h4>
-                <div style={{fontSize: '0.85rem', color: '#555', lineHeight: '1.6', maxHeight: '150px', overflowY: 'auto', paddingRight: '10px', marginBottom: '1rem'}}>
-                  I hereby certify that all information provided in this application is true and correct to the best of my knowledge and belief. I understand that any false statement or simulation of information shall be a ground for the reproduction or cancellation of my scholarship. I also authorize the scholarship committee to verify the information provided herein.
-                </div>
-                <label style={{display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#333', cursor: 'pointer', fontWeight: '600'}}>
-                  <input type="checkbox" name="privacyConsent" checked={formData.privacyConsent} onChange={handleInputChange} style={{width: '18px', height: '18px'}} required={currentStep === 4} />
-                  I agree to the terms and conditions
-                </label>
-                <label style={{display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#333', cursor: 'pointer', fontWeight: '600', marginTop: '10px'}}>
-                  <input type="checkbox" name="dataCertifyConsent" checked={formData.dataCertifyConsent} onChange={handleInputChange} style={{width: '18px', height: '18px'}} required={currentStep === 4} />
-                  I certify that the information provided is correct
-                </label>
-              </div>
-
-              {/* Signature Section */}
-              <div style={{marginBottom: '2rem'}}>
-                <label style={{display: 'block', fontSize: '1rem', fontWeight: '800', color: '#1e293b', marginBottom: '1.2rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
-                  Signature & Identity Verification <span style={{color: '#e74c3c'}}>*</span>
-                </label>
-                
-                <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem', marginBottom: '3rem'}}>
-                  {/* Reference Back ID Column (Matched against handwriting) */}
-                  <div style={{background: '#fff', padding: '1.2rem', borderRadius: '24px', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.04)'}}>
-                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
-                      <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#475569', letterSpacing: '0.05em'}}>REFERENCE SOURCE</label>
-                      <div style={{fontSize: '0.65rem', color: '#8b5cf6', fontWeight: '800', background: '#f5f3ff', padding: '4px 10px', borderRadius: '8px', border: '1px solid #ddd6fe'}}>BACK ID</div>
+                  {[
+                    '1. Upload front and back ID photos.',
+                    '2. Record a clear front and back ID video.',
+                    '3. Run the ID scan to unlock COE and Grades.',
+                    '4. Re-scan if name, ID number, year, or location changes.'
+                  ].map((item) => (
+                    <div key={item} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <i className="fas fa-circle-check" style={{ color: 'var(--primary)', marginTop: '3px' }}></i>
+                      <span style={{ fontSize: '0.78rem', color: '#7c2d12', lineHeight: '1.45', fontWeight: '700' }}>{item}</span>
                     </div>
-                    <div style={{height: '240px', border: '2.5px dashed #e2e8f0', borderRadius: '18px', overflow: 'hidden', background: '#f8fafc', position: 'relative', transition: 'all 0.3s ease'}}>
-                      {(schoolIdPhotos.back || userProfile?.id_img_back) ? (
-                        <img src={schoolIdPhotos.back || userProfile?.id_img_back} style={{width: '100%', height: '100%', objectFit: 'contain'}} alt="Back ID Reference" />
-                      ) : (
-                        <div style={{height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', textAlign: 'center', padding: '1.5rem'}}>
-                          <div style={{width: '60px', height: '60px', background: '#f1f5f9', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '15px'}}>
-                            <i className="fas fa-id-card" style={{fontSize: '1.8rem', color: '#cbd5e1'}}></i>
+                  ))}
+                </div>
+
+                <div className="requirement-card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
+                    <div>
+                      <div className="step-subtitle">
+                        Identity Verification (ID) <span style={{ color: '#e74c3c' }}>*</span>
+                      </div>
+                      <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '6px' }}>Current academic year ID for identity verification</p>
+                    </div>
+                    {(schoolIdPhotos.front || schoolIdPhotos.back) && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0' }}>
+                        <i className="fas fa-check-circle"></i> Upload Ready
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="media-grid">
+                    {/* FRONT SIDE SECTION */}
+                    <div className="preview-box" style={{ background: '#fff', borderStyle: 'solid' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', paddingBottom: '0.8rem', borderBottom: '1px solid #f1f5f9' }}>
+                        <h5 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '800', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <i className="fas fa-id-card"></i> Front ID
+                        </h5>
+                        <div style={{ fontSize: '0.65rem', color: '#3b82f6', fontWeight: '800', background: '#eff6ff', padding: '3px 8px', borderRadius: '6px', border: '1px solid #bfdbfe' }}>REQUIRED</div>
+                      </div>
+
+                      {renderDocumentMediaPicker({
+                        photoLabel: 'Front ID',
+                        photoId: 'school_id_front_photo',
+                        photoValue: schoolIdPhotos.front || userProfile?.id_img_front,
+                        onPhotoChange: (e) => handleSchoolIdPhotoUpload('front', e),
+                        videoId: 'video_schoolIdFront_video',
+                        videoName: 'schoolIdFront_video',
+                        videoValue: documentVideos.schoolIdFront_video || userProfile?.schoolid_front_vid_url,
+                        onVideoChange: handleVideoUpload,
+                        isUploadingVideo: Boolean(uploadingFields['schoolIdFront_video'])
+                      })}
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
+                        {/* Front Photo Preview */}
+                        <div className="scanning-container">
+                          <div className="image-container" style={{ height: '240px' }} onClick={() => setLightboxSrc(schoolIdPhotos.front || userProfile?.id_img_front)}>
+                            {(schoolIdPhotos.front || userProfile?.id_img_front) ? (
+                              <img src={schoolIdPhotos.front || userProfile?.id_img_front} alt="Front ID" />
+                            ) : (
+                              <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
+                                <i className="fas fa-image" style={{ fontSize: '2rem', marginBottom: '8px' }}></i>
+                                <span style={{ fontSize: '0.7rem' }}>No Photo</span>
+                              </div>
+                            )}
+                            {idVerified === 'verifying' && <div className="scanning-laser"></div>}
                           </div>
-                          <p style={{fontSize: '0.8rem', fontWeight: '700', margin: 0, color: '#64748b'}}>Back ID Not Visible</p>
-                          <p style={{fontSize: '0.65rem', color: '#94a3b8', marginTop: '8px'}}>Please upload the back of your ID in Step 3 to enable handwriting verification.</p>
                         </div>
-                      )}
+
+                        {/* Front Video Preview */}
+                        <VideoRecorder
+                          label="Front Check Video"
+                          onRecordComplete={(blob) => handleVideoUpload('schoolIdFront_video', blob)}
+                          initialVideoUrl={documentVideos.schoolIdFront_video || userProfile?.schoolid_front_vid_url}
+                          isUploading={Boolean(uploadingFields['schoolIdFront_video'])}
+                          disabled={isAnyScanning || isSavingStep}
+                          hideButton={true}
+                          containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                        />
+                      </div>
+
+                      <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px' }}>
+                        <i className="fas fa-user-check" style={{ color: '#2563eb', fontSize: '1rem', marginTop: '2px' }}></i>
+                        <p style={{ fontSize: '0.72rem', color: '#1e3a8a', margin: 0, lineHeight: '1.4' }}>
+                          <b>Front side:</b> Keep your name area visible. This helps us confirm the student identity matches your profile.
+                        </p>
+                      </div>
                     </div>
-                    <p style={{fontSize: '0.72rem', color: '#64748b', marginTop: '1.2rem', fontStyle: 'italic', textAlign: 'center', lineHeight: '1.4'}}>
-                      We will match your live signature against the <b>official specimen</b> on this ID.
-                    </p>
+
+                    {/* BACK SIDE SECTION */}
+                    <div className="preview-box" style={{ background: '#fff', borderStyle: 'solid' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', paddingBottom: '0.8rem', borderBottom: '1px solid #f1f5f9' }}>
+                        <h5 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '800', color: '#9a3412', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <i className="fas fa-id-card"></i> Back ID
+                        </h5>
+                        <div style={{ fontSize: '0.65rem', color: '#d97706', fontWeight: '800', background: '#fffbeb', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fef3c7' }}>REQUIRED</div>
+                      </div>
+
+                      {renderDocumentMediaPicker({
+                        photoId: 'school_id_back_photo',
+                        photoValue: schoolIdPhotos.back || userProfile?.id_img_back,
+                        onPhotoChange: (e) => handleSchoolIdPhotoUpload('back', e),
+                        videoId: 'video_schoolIdBack_video',
+                        videoName: 'schoolIdBack_video',
+                        videoValue: documentVideos.schoolIdBack_video || userProfile?.schoolid_back_vid_url,
+                        onVideoChange: handleVideoUpload,
+                        isUploadingVideo: Boolean(uploadingFields['schoolIdBack_video'])
+                      })}
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
+                        {/* Back Photo Preview */}
+                        <div className="scanning-container">
+                          <div className="image-container" style={{ height: '240px' }} onClick={() => setLightboxSrc(schoolIdPhotos.back || userProfile?.id_img_back)}>
+                            {(schoolIdPhotos.back || userProfile?.id_img_back) ? (
+                              <img src={schoolIdPhotos.back || userProfile?.id_img_back} alt="Back ID" />
+                            ) : (
+                              <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
+                                <i className="fas fa-image" style={{ fontSize: '2rem', marginBottom: '8px' }}></i>
+                                <span style={{ fontSize: '0.7rem' }}>No Photo</span>
+                              </div>
+                            )}
+                            {idVerified === 'verifying' && <div className="scanning-laser"></div>}
+                          </div>
+                        </div>
+
+                        {/* Back Video Preview */}
+                        <VideoRecorder
+                          label="Back Check Video"
+                          onRecordComplete={(blob) => handleVideoUpload('schoolIdBack_video', blob)}
+                          initialVideoUrl={documentVideos.schoolIdBack_video || userProfile?.schoolid_back_vid_url}
+                          isUploading={Boolean(uploadingFields['schoolIdBack_video'])}
+                          disabled={isAnyScanning || isSavingStep}
+                          hideButton={true}
+                          containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                        />
+                      </div>
+
+                      <div style={{ padding: '12px', background: '#fffbeb', borderRadius: '14px', border: '1px solid #fef3c7', display: 'flex', gap: '10px' }}>
+                        <i className="fas fa-school" style={{ color: '#d97706', fontSize: '1rem', marginTop: '2px' }}></i>
+                        <p style={{ fontSize: '0.72rem', color: '#92400e', margin: 0, lineHeight: '1.4' }}>
+                          <b>Back side:</b> Keep the year level or current validity details readable so we can confirm the ID is for your present school year.
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Signature Pad Column */}
-                  <div style={{background: '#fff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '1.5rem', display: 'flex', flexDirection: 'column', boxShadow: '0 4px 20px rgba(0,0,0,0.04)'}}>
-                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
-                      <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#475569', letterSpacing: '0.05em'}}>LIVE CAPTURE</label>
-                      <div style={{fontSize: '0.65rem', color: 'var(--primary)', fontWeight: '800', background: 'var(--accent-soft)', padding: '4px 10px', borderRadius: '8px', border: '1px solid #ffedd5'}}>HANDWRITING</div>
-                    </div>
-                    
-                    <div style={{flex: 1, display: 'flex', flexDirection: 'column'}}>
-                      {!showSignaturePad && !formData.applicantSignatureName ? (
-                        <div style={{flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px dashed #f1f5f9', borderRadius: '18px', background: '#fcfcfc', minHeight: '200px'}}>
-                          <button type="button" onClick={() => setShowSignaturePad(true)} className="photo-option-btn" style={{padding: '1rem 2rem', borderRadius: '14px', background: 'white', border: '1.5px solid #e2e8f0', color: '#475569'}}>
-                            <i className="fas fa-pen-nib" style={{marginRight: '10px', color: 'var(--primary)'}}></i> Draw Signature
-                          </button>
+                  {/* ID Action Footer (Button & Status) */}
+                  <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px dashed #e2e8f0' }}>
+                    <button
+                      type="button"
+                      onClick={handleIdScan}
+                      disabled={isSavingStep || idVerified === 'verifying' || isAnyVideoUploading || (!schoolIdPhotos.front && !userProfile?.id_img_front)}
+                      style={{
+                        width: '100%',
+                        padding: '1rem',
+                        borderRadius: '18px',
+                        background: idVerified === 'success' ? '#10b981' : (idVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
+                        color: 'white',
+                        border: 'none',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '12px',
+                        fontSize: '1rem',
+                        fontWeight: '800',
+                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                        boxShadow: idVerified === 'success' ? '0 10px 25px -5px rgba(16, 185, 129, 0.3)' : '0 10px 25px -5px rgba(79, 13, 0, 0.3)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}
+                    >
+                      <i className={`fas ${idVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-bolt-lightning'}`}></i>
+                      {idVerified === 'verifying' ? 'Analyzing Front & Back ID...' : (idVerified === 'success' ? 'Identity Verified Successfully' : 'Start Front & Back ID Scan')}
+                    </button>
+
+                    {idVerified === 'verifying' && (
+                      <div style={{ width: '100%', height: '8px', background: '#f1f5f9', borderRadius: '10px', marginTop: '1rem', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                        <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
+                      </div>
+                    )}
+
+                    {idStatus && (
+                      <div className={`validation-status-card ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`} style={{ marginTop: '1.2rem' }}>
+                        <div className={`status-icon ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`}>
+                          <i className={`fas ${idVerified === 'success' ? 'fa-check' : (idVerified === 'failed' ? 'fa-circle-xmark' : 'fa-magnifying-glass')}`}></i>
                         </div>
-                      ) : showSignaturePad ? (
-                        <div style={{width: '100%', flex: 1}}>
-                          <div style={{border: '1.5px solid #e2e8f0', borderRadius: '18px', background: '#fff', marginBottom: '1rem', overflow: 'hidden', position: 'relative', boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.03)'}}>
-                            <SignaturePad 
-                              ref={sigPad} 
-                              width={500}
-                              height={250}
-                              penColor="#1e293b"
-                            />
-                            <div style={{position: 'absolute', bottom: '15px', right: '20px', pointerEvents: 'none'}}>
-                              <span style={{fontSize: '0.6rem', color: '#e2e8f0', fontWeight: '900', letterSpacing: '3px'}}>ESIGNATURE BOX</span>
+                        <div>
+                          <p style={{ fontSize: '0.85rem', fontWeight: '800', margin: '0 0 4px 0' }}>Verification Engine Result</p>
+                          <p style={{ fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.5' }}>{idStatus}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Documentary Requirements: COE and Grades */}
+                {idVerified === 'success' ? (
+                  <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+                    <div className="requirement-card">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
+                        <div>
+                          <h4 style={{ fontSize: '1.15rem', color: '#1a202c', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{ width: '36px', height: '36px', background: 'var(--accent-soft)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <i className="fas fa-file-signature" style={{ color: 'var(--primary)', fontSize: '1.1rem' }}></i>
+                            </div>
+                            Certificate of Enrollment <span style={{ color: '#e74c3c' }}>*</span>
+                          </h4>
+                          <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '6px', marginLeft: '46px' }}>Current semester registration form or COE</p>
+                        </div>
+                        {(photos.mayorCOE_photo || formData.mayorCOE_photo) && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0' }}>
+                            <i className="fas fa-check-circle"></i> Upload Ready
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="preview-box" style={{ background: '#fff', borderStyle: 'solid' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155' }}>COE Media Check</label>
+                          <div style={{ fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca' }}>PHOTO + VIDEO</div>
+                        </div>
+
+                        {renderDocumentMediaPicker({
+                          photoId: 'photo_mayorCOE_photo',
+                          photoName: 'mayorCOE_photo',
+                          photoValue: photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc,
+                          onPhotoChange: handleInputChange,
+                          videoId: 'video_mayorCOE_video',
+                          videoName: 'mayorCOE_video',
+                          videoValue: documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url,
+                          onVideoChange: handleVideoUpload,
+                          isUploadingVideo: Boolean(uploadingFields['mayorCOE_video'])
+                        })}
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
+                          <div className="scanning-container">
+                            <div className="image-container" style={{ height: '240px' }} onClick={() => (photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && setLightboxSrc(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc)}>
+                              {(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) ? (
+                                <img src={photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc} style={{ objectFit: 'contain', background: '#000' }} alt="COE Preview" />
+                              ) : (
+                                <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
+                                  <i className="fas fa-image" style={{ fontSize: '2rem', marginBottom: '8px' }}></i>
+                                  <span style={{ fontSize: '0.7rem' }}>No Photo</span>
+                                </div>
+                              )}
+                              {coeVerified === 'verifying' && <div className="scanning-laser"></div>}
                             </div>
                           </div>
-                          <div style={{display: 'flex', gap: '10px', justifyContent: 'center'}}>
-                            <button type="button" onClick={clearSignature} className="back-to-form-btn" style={{padding: '0.65rem 1.4rem', fontSize: '0.85rem', borderRadius: '12px', flex: 1, fontWeight: '700'}}>Clear All</button>
-                            <button type="button" onClick={saveSignature} className="submit-btn" style={{width: 'auto', padding: '0.65rem 1.6rem', height: 'auto', fontSize: '0.85rem', borderRadius: '12px', flex: 1, fontWeight: '700'}}>Confirm Specimen</button>
-                          </div>
+
+                          <VideoRecorder
+                            label="COE Verification Video"
+                            onRecordComplete={(blob) => handleVideoUpload('mayorCOE_video', blob)}
+                            initialVideoUrl={documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url}
+                            isUploading={Boolean(uploadingFields['mayorCOE_video'])}
+                            disabled={isAnyScanning || isSavingStep}
+                            hideButton={true}
+                            containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                          />
                         </div>
-                      ) : (
-                        <div style={{flex: 1, display: 'flex', flexDirection: 'column'}}>
-                          <div className="signature-preview-box" style={{flex: 1, background: '#fff', borderRadius: '18px', minHeight: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #f1f5f9', position: 'relative', overflow: 'hidden'}}>
-                            <img src={formData.applicantSignatureName} alt="Signature" style={{maxHeight: '100px', maxWidth: '90%', objectFit: 'contain'}} />
-                            <button 
-                              type="button" 
-                              onClick={() => setShowSignaturePad(true)} 
-                              style={{
-                                position: 'absolute', 
-                                top: '12px', 
-                                right: '12px', 
-                                background: 'white', 
-                                color: '#64748b', 
-                                border: '1px solid #e2e8f0', 
-                                borderRadius: '50%', 
-                                width: '32px', 
-                                height: '32px', 
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                boxShadow: '0 4px 8px rgba(0,0,0,0.06)',
-                                transition: 'all 0.2s ease'
-                              }}
-                              className="hover-pop"
-                            >
-                              <i className="fas fa-undo"></i>
-                            </button>
-                          </div>
-                          
-                          <div style={{marginTop: '1.2rem'}}>
-                            <button 
-                              type="button" 
-                              onClick={handleSignatureScan}
-                              disabled={signatureVerified === 'verifying' || !(schoolIdPhotos.back || userProfile?.id_img_back)}
+
+                        {(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <button
+                              type="button"
+                              onClick={handleCOEScan}
+                              disabled={isSavingStep || coeVerified === 'verifying' || isAnyVideoUploading}
                               style={{
                                 width: '100%',
                                 padding: '0.85rem',
                                 borderRadius: '14px',
-                                background: signatureVerified === 'success' ? '#10b981' : (signatureVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
+                                background: coeVerified === 'success' ? '#10b981' : (coeVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
                                 color: 'white',
                                 border: 'none',
                                 cursor: 'pointer',
-                                fontSize: '0.9rem',
-                                fontWeight: '800',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 gap: '10px',
+                                fontSize: '0.9rem',
+                                fontWeight: '800',
                                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.5px',
-                                boxShadow: signatureVerified === 'success' ? '0 8px 20px -5px rgba(16, 185, 129, 0.4)' : '0 8px 20px -5px rgba(79, 13, 0, 0.3)'
+                                boxShadow: coeVerified === 'success' ? '0 10px 15px -5px rgba(16, 185, 129, 0.2)' : '0 10px 15px -5px rgba(79, 13, 0, 0.2)',
+                                textTransform: 'uppercase'
                               }}
                             >
-                              <i className={`fas ${signatureVerified === 'verifying' ? 'fa-circle-notch fa-spin' : (signatureVerified === 'success' ? 'fa-check-circle' : 'fa-brain')}`}></i>
-                              {signatureVerified === 'verifying' ? 'AI Analyzing...' : (signatureVerified === 'success' ? 'Specimen Matched' : 'Neural Handwriting Check')}
+                              <i className={`fas ${coeVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-magnifying-glass'}`}></i>
+                              {coeVerified === 'verifying' ? 'Reviewing...' : (coeVerified === 'success' ? 'COE Verified' : 'Rapid COE Scan')}
                             </button>
+
+                            {coeVerified === 'verifying' && (
+                              <div style={{ width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                                <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
+                              </div>
+                            )}
+
+                            {coeStatus && (
+                              <div className={`validation-status-card ${coeVerified === 'success' ? 'success' : (coeVerified === 'failed' ? 'failed' : 'processing')}`}>
+                                <div className={`status-icon ${coeVerified === 'success' ? 'success' : (coeVerified === 'failed' ? 'failed' : 'processing')}`}>
+                                  <i className={`fas ${coeVerified === 'success' ? 'fa-check' : (coeVerified === 'failed' ? 'fa-circle-xmark' : 'fa-info-circle')}`}></i>
+                                </div>
+                                <div>
+                                  <p style={{ fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.4' }}>{coeStatus}</p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="requirement-card">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
+                        <div>
+                          <h4 style={{ fontSize: '1.15rem', color: '#1a202c', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{ width: '36px', height: '36px', background: 'var(--accent-soft)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <i className="fas fa-star" style={{ color: 'var(--primary)', fontSize: '1.1rem' }}></i>
+                            </div>
+                            Academic Grades <span style={{ color: '#e74c3c' }}>*</span>
+                          </h4>
+                          <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '6px', marginLeft: '46px' }}>Previous semester report card or transcript</p>
+                        </div>
+                        {(photos.mayorGrades_photo || formData.mayorGrades_photo) && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0' }}>
+                            <i className="fas fa-check-circle"></i> Upload Ready
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="preview-box" style={{ background: '#fff', borderStyle: 'solid' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155' }}>Academic Media Check</label>
+                          <div style={{ fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca' }}>PHOTO + VIDEO</div>
+                        </div>
+
+                        {renderDocumentMediaPicker({
+                          photoId: 'photo_mayorGrades_photo',
+                          photoName: 'mayorGrades_photo',
+                          photoValue: photos.mayorGrades_photo || userProfile?.grades_doc,
+                          onPhotoChange: handleInputChange,
+                          videoId: 'video_mayorGrades_video',
+                          videoName: 'mayorGrades_video',
+                          videoValue: documentVideos.mayorGrades_video || userProfile?.grades_vid_url,
+                          onVideoChange: handleVideoUpload,
+                          isUploadingVideo: Boolean(uploadingFields['mayorGrades_video'])
+                        })}
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
+                          <div className="scanning-container">
+                            <div className="image-container" style={{ height: '240px' }} onClick={() => (photos.mayorGrades_photo || userProfile?.grades_doc) && setLightboxSrc(photos.mayorGrades_photo || userProfile?.grades_doc)}>
+                              {(photos.mayorGrades_photo || userProfile?.grades_doc) ? (
+                                <img src={photos.mayorGrades_photo || userProfile?.grades_doc} style={{ objectFit: 'contain', background: '#000' }} alt="Grades Preview" />
+                              ) : (
+                                <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
+                                  <i className="fas fa-image" style={{ fontSize: '2rem', marginBottom: '8px' }}></i>
+                                  <span style={{ fontSize: '0.7rem' }}>No Photo</span>
+                                </div>
+                              )}
+                              {gradesVerified === 'verifying' && <div className="scanning-laser"></div>}
+                            </div>
+                          </div>
+
+                          <VideoRecorder
+                            label="Grades Verification Video"
+                            onRecordComplete={(blob) => handleVideoUpload('mayorGrades_video', blob)}
+                            initialVideoUrl={documentVideos.mayorGrades_video || userProfile?.grades_vid_url}
+                            isUploading={Boolean(uploadingFields['mayorGrades_video'])}
+                            disabled={isAnyScanning || isSavingStep}
+                            hideButton={true}
+                            containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                          />
+                        </div>
+
+                        {(photos.mayorGrades_photo || userProfile?.grades_doc) && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <button
+                              type="button"
+                              onClick={handleGradesScan}
+                              disabled={isSavingStep || gradesVerified === 'verifying' || isAnyVideoUploading}
+                              style={{
+                                width: '100%',
+                                padding: '0.85rem',
+                                borderRadius: '14px',
+                                background: gradesVerified === 'success' ? '#10b981' : (gradesVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
+                                color: 'white',
+                                border: 'none',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '10px',
+                                fontSize: '0.9rem',
+                                fontWeight: '800',
+                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                boxShadow: gradesVerified === 'success' ? '0 10px 15px -5px rgba(16, 185, 129, 0.2)' : '0 10px 15px -5px rgba(79, 13, 0, 0.2)',
+                                textTransform: 'uppercase'
+                              }}
+                            >
+                              <i className={`fas ${gradesVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-clipboard-check'}`}></i>
+                              {gradesVerified === 'verifying' ? 'Analyzing...' : (gradesVerified === 'success' ? 'Grades Verified' : 'Rapid Grades Scan')}
+                            </button>
+
+                            {gradesVerified === 'verifying' && (
+                              <div style={{ width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                                <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
+                              </div>
+                            )}
+
+                            {gradesStatus && (
+                              <div className={`validation-status-card ${gradesVerified === 'success' ? 'success' : (gradesVerified === 'failed' ? 'failed' : 'processing')}`}>
+                                <div className={`status-icon ${gradesVerified === 'success' ? 'success' : (gradesVerified === 'failed' ? 'failed' : 'processing')}`}>
+                                  <i className={`fas ${gradesVerified === 'success' ? 'fa-check' : (gradesVerified === 'failed' ? 'fa-circle-xmark' : 'fa-info-circle')}`}></i>
+                                </div>
+                                <div>
+                                  <p style={{ fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.4' }}>{gradesStatus}</p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{
+                    marginTop: '1.5rem',
+                    padding: '2.5rem 1.5rem',
+                    background: '#f8fafc',
+                    borderRadius: '28px',
+                    border: '1.5px dashed #e2e8f0',
+                    textAlign: 'center',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '12px',
+                    animation: 'fadeIn 0.5s ease'
+                  }}>
+                    <div style={{ width: '64px', height: '64px', background: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px rgba(0,0,0,0.04)', marginBottom: '4px' }}>
+                      <i className="fas fa-file-shield" style={{ color: '#94a3b8', fontSize: '1.4rem' }}></i>
+                    </div>
+                    <h4 style={{ fontSize: '1.1rem', color: '#334155', fontWeight: '800', margin: 0 }}>Document Uploads Locked</h4>
+                    <p style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '320px', margin: 0, lineHeight: '1.5' }}>
+                      Please complete the <b>Updated School ID verification</b> above first. Once verified, the COE and Academic Grades sections will automatically appear.
+                    </p>
+                  </div>
+                )}
+
+                <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'space-between' }}>
+                  <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
+                    <i className="fas fa-arrow-left" style={{ marginRight: '8px' }}></i> Back: Family Background
+                  </button>
+                  <button
+                    type="button"
+                    className="submit-btn"
+                    onClick={handleNextStep}
+                    disabled={isSavingStep || coeVerified === 'verifying' || gradesVerified === 'verifying' || idVerified === 'verifying' || !isStep3DocumentsVerified}
+                    style={{ width: 'auto', padding: '0.8rem 2.5rem', borderRadius: '40px' }}
+                  >
+                    Next: Certification & Verification <i className="fas fa-arrow-right" style={{ marginLeft: '8px' }}></i>
+                  </button>
+                </div>
+              </div>
+
+              {/* Step 4: Certification and Verification */}
+              <div className={`step-container ${currentStep === 4 ? 'active' : ''}`}>
+                <h3 style={{ marginBottom: '1.5rem', fontSize: '1.2rem', color: 'var(--primary)', fontWeight: '700', borderBottom: '2px solid var(--accent-soft)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center' }}>
+                  <i className="fas fa-check-double" style={{ marginRight: '12px', fontSize: '1.1rem' }}></i>4. Certification & Verification
+                </h3>
+
+                <div style={{ background: '#f8f9fa', padding: '1.5rem', borderRadius: '16px', marginBottom: '2rem', border: '1px solid #e9ecef' }}>
+                  <h4 style={{ fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '1rem' }}>Privacy Consent & Certification</h4>
+                  <div style={{ fontSize: '0.85rem', color: '#555', lineHeight: '1.6', maxHeight: '150px', overflowY: 'auto', paddingRight: '10px', marginBottom: '1rem' }}>
+                    I hereby certify that all information provided in this application is true and correct to the best of my knowledge and belief. I understand that any false statement or simulation of information shall be a ground for the reproduction or cancellation of my scholarship. I also authorize the scholarship committee to verify the information provided herein.
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#333', cursor: 'pointer', fontWeight: '600' }}>
+                    <input type="checkbox" name="privacyConsent" checked={formData.privacyConsent} onChange={handleInputChange} style={{ width: '18px', height: '18px' }} required={currentStep === 4} />
+                    I agree to the terms and conditions
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#333', cursor: 'pointer', fontWeight: '600', marginTop: '10px' }}>
+                    <input type="checkbox" name="dataCertifyConsent" checked={formData.dataCertifyConsent} onChange={handleInputChange} style={{ width: '18px', height: '18px' }} required={currentStep === 4} />
+                    I certify that the information provided is correct
+                  </label>
+                </div>
+
+                {/* Signature Section */}
+                <div style={{ marginBottom: '2rem' }}>
+                  <label style={{ display: 'block', fontSize: '1rem', fontWeight: '800', color: '#1e293b', marginBottom: '1.2rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px' }}>
+                    Signature & Identity Verification <span style={{ color: '#e74c3c' }}>*</span>
+                  </label>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem', marginBottom: '3rem' }}>
+                    {/* Reference Back ID Column (Matched against handwriting) */}
+                    <div style={{ background: '#fff', padding: '1.2rem', borderRadius: '24px', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.04)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#475569', letterSpacing: '0.05em' }}>REFERENCE SOURCE</label>
+                        <div style={{ fontSize: '0.65rem', color: '#8b5cf6', fontWeight: '800', background: '#f5f3ff', padding: '4px 10px', borderRadius: '8px', border: '1px solid #ddd6fe' }}>BACK ID</div>
+                      </div>
+                      <div style={{ height: '240px', border: '2.5px dashed #e2e8f0', borderRadius: '18px', overflow: 'hidden', background: '#f8fafc', position: 'relative', transition: 'all 0.3s ease' }}>
+                        {(schoolIdPhotos.back || userProfile?.id_img_back) ? (
+                          <img src={schoolIdPhotos.back || userProfile?.id_img_back} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="Back ID Reference" />
+                        ) : (
+                          <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', textAlign: 'center', padding: '1.5rem' }}>
+                            <div style={{ width: '60px', height: '60px', background: '#f1f5f9', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '15px' }}>
+                              <i className="fas fa-id-card" style={{ fontSize: '1.8rem', color: '#cbd5e1' }}></i>
+                            </div>
+                            <p style={{ fontSize: '0.8rem', fontWeight: '700', margin: 0, color: '#64748b' }}>Back ID Not Visible</p>
+                            <p style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: '8px' }}>Please upload the back of your ID in Step 3 to enable handwriting verification.</p>
+                          </div>
+                        )}
+                      </div>
+                      <p style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '1.2rem', fontStyle: 'italic', textAlign: 'center', lineHeight: '1.4' }}>
+                        We will match your live signature against the <b>official specimen</b> on this ID.
+                      </p>
+                    </div>
+
+                    {/* Signature Pad Column */}
+                    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '1.5rem', display: 'flex', flexDirection: 'column', boxShadow: '0 4px 20px rgba(0,0,0,0.04)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#475569', letterSpacing: '0.05em' }}>LIVE CAPTURE</label>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--primary)', fontWeight: '800', background: 'var(--accent-soft)', padding: '4px 10px', borderRadius: '8px', border: '1px solid #ffedd5' }}>HANDWRITING</div>
+                      </div>
+
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                        {!showSignaturePad && !formData.applicantSignatureName ? (
+                          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px dashed #f1f5f9', borderRadius: '18px', background: '#fcfcfc', minHeight: '200px' }}>
+                            <button type="button" onClick={() => setShowSignaturePad(true)} className="photo-option-btn" style={{ padding: '1rem 2rem', borderRadius: '14px', background: 'white', border: '1.5px solid #e2e8f0', color: '#475569' }}>
+                              <i className="fas fa-pen-nib" style={{ marginRight: '10px', color: 'var(--primary)' }}></i> Draw Signature
+                            </button>
+                          </div>
+                        ) : showSignaturePad ? (
+                          <div style={{ width: '100%', flex: 1 }}>
+                            <div style={{ border: '1.5px solid #e2e8f0', borderRadius: '18px', background: '#fff', marginBottom: '1rem', overflow: 'hidden', position: 'relative', boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.03)' }}>
+                              <SignaturePad
+                                ref={sigPad}
+                                width={500}
+                                height={250}
+                                penColor="#1e293b"
+                              />
+                              <div style={{ position: 'absolute', bottom: '15px', right: '20px', pointerEvents: 'none' }}>
+                                <span style={{ fontSize: '0.6rem', color: '#e2e8f0', fontWeight: '900', letterSpacing: '3px' }}>ESIGNATURE BOX</span>
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                              <button type="button" onClick={clearSignature} className="back-to-form-btn" style={{ padding: '0.65rem 1.4rem', fontSize: '0.85rem', borderRadius: '12px', flex: 1, fontWeight: '700' }}>Clear All</button>
+                              <button type="button" onClick={saveSignature} className="submit-btn" style={{ width: 'auto', padding: '0.65rem 1.6rem', height: 'auto', fontSize: '0.85rem', borderRadius: '12px', flex: 1, fontWeight: '700' }}>Confirm Specimen</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                            <div className="signature-preview-box" style={{ flex: 1, background: '#fff', borderRadius: '18px', minHeight: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #f1f5f9', position: 'relative', overflow: 'hidden' }}>
+                              <img src={formData.applicantSignatureName} alt="Signature" style={{ maxHeight: '100px', maxWidth: '90%', objectFit: 'contain' }} />
+                              <button
+                                type="button"
+                                onClick={() => setShowSignaturePad(true)}
+                                style={{
+                                  position: 'absolute',
+                                  top: '12px',
+                                  right: '12px',
+                                  background: 'white',
+                                  color: '#64748b',
+                                  border: '1px solid #e2e8f0',
+                                  borderRadius: '50%',
+                                  width: '32px',
+                                  height: '32px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  boxShadow: '0 4px 8px rgba(0,0,0,0.06)',
+                                  transition: 'all 0.2s ease'
+                                }}
+                                className="hover-pop"
+                              >
+                                <i className="fas fa-undo"></i>
+                              </button>
+                            </div>
+
+                            <div style={{ marginTop: '1.2rem' }}>
+                              <button
+                                type="button"
+                                onClick={handleSignatureScan}
+                                disabled={signatureVerified === 'verifying' || !(schoolIdPhotos.back || userProfile?.id_img_back)}
+                                style={{
+                                  width: '100%',
+                                  padding: '0.85rem',
+                                  borderRadius: '14px',
+                                  background: signatureVerified === 'success' ? '#10b981' : (signatureVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
+                                  color: 'white',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  fontSize: '0.9rem',
+                                  fontWeight: '800',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '10px',
+                                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.5px',
+                                  boxShadow: signatureVerified === 'success' ? '0 8px 20px -5px rgba(16, 185, 129, 0.4)' : '0 8px 20px -5px rgba(79, 13, 0, 0.3)'
+                                }}
+                              >
+                                <i className={`fas ${signatureVerified === 'verifying' ? 'fa-circle-notch fa-spin' : (signatureVerified === 'success' ? 'fa-check-circle' : 'fa-brain')}`}></i>
+                                {signatureVerified === 'verifying' ? 'Analyzing...' : (signatureVerified === 'success' ? 'Specimen Matched' : 'Neural Handwriting Check')}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {signatureResults && (
+                    <div style={{
+                      marginBottom: '3rem',
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '24px',
+                      padding: '2rem',
+                      boxShadow: '0 10px 30px rgba(0,0,0,0.03)'
+                    }}>
+                      <h5 style={{ margin: '0 0 1.5rem 0', fontSize: '0.85rem', fontWeight: '900', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                        <i className="fas fa-microchip" style={{ color: 'var(--primary)', fontSize: '1.1rem' }}></i> MATCH ANALYSIS REPORT
+                      </h5>
+
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        marginBottom: '2rem'
+                      }}>
+                        <div style={{
+                          background: signatureResults.verified ? '#10b981' : '#ef4444',
+                          color: 'white',
+                          fontSize: '0.7rem',
+                          fontWeight: '900',
+                          padding: '6px 14px',
+                          borderRadius: '30px',
+                          letterSpacing: '1px',
+                          boxShadow: `0 4px 12px ${signatureResults.verified ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.2)'}`
+                        }}>
+                          {signatureResults.verified ? 'SPECIMEN MATCH' : 'HANDWRITING MISMATCH'}
+                        </div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: '800', color: '#475569' }}>
+                          Neural Confidence: <span style={{ color: signatureResults.verified ? '#059669' : '#dc2626' }}>{(signatureResults.confidence * 100).toFixed(1)}%</span>
+                        </div>
+                      </div>
+
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                        gap: '1.5rem',
+                        marginBottom: '2rem'
+                      }}>
+                        <div style={{ textAlign: 'center' }}>
+                          <span style={{ fontSize: '0.65rem', color: '#94a3b8', display: 'block', marginBottom: '8px', fontWeight: '800', letterSpacing: '0.5px' }}>REFERENCE Specimen (ID)</span>
+                          <div style={{ background: 'white', border: '1px solid #f1f5f9', borderRadius: '14px', padding: '12px', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <img src={signatureResults.extracted_signature} alt="ID Signature" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'center' }}>
+                          <span style={{ fontSize: '0.65rem', color: '#94a3b8', display: 'block', marginBottom: '8px', fontWeight: '800', letterSpacing: '0.5px' }}>SUBMITTED Live Capture</span>
+                          <div style={{ background: 'white', border: '1px solid #f1f5f9', borderRadius: '14px', padding: '12px', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <img src={signatureResults.processed_submitted} alt="Live Signature" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{
+                        background: 'white',
+                        padding: '1.2rem',
+                        borderRadius: '16px',
+                        borderLeft: `5px solid ${signatureResults.verified ? '#10b981' : '#ef4444'}`,
+                        fontSize: '0.85rem',
+                        color: '#334155',
+                        lineHeight: '1.5',
+                        marginBottom: '2rem',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+                      }}>
+                        {signatureResults.message}
+                      </div>
+
+                      {/* Neural Fingerprint (Verifier Bench View) */}
+                      {signatureResults.matcher_submitted && signatureResults.matcher_reference && (
+                        <div style={{
+                          marginTop: '2rem',
+                          padding: '1.5rem',
+                          background: '#0f172a',
+                          borderRadius: '20px',
+                          border: '1px solid #1e293b',
+                          boxShadow: '0 15px 35px rgba(0,0,0,0.2)'
+                        }}>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '1.2rem'
+                          }}>
+                            <span style={{ fontSize: '0.7rem', color: '#38bdf8', fontWeight: '900', letterSpacing: '0.1em' }}>
+                              <i className="fas fa-brain" style={{ marginRight: '8px' }}></i>
+                              NEURAL FINGERPRINT (VERIFIER BENCH)
+                            </span>
+                            <span style={{ fontSize: '0.6rem', color: '#475569', fontWeight: '700' }}>224x224 NORMALIZED MAP</span>
+                          </div>
+                          <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: '1fr 1fr',
+                            gap: '1.5rem'
+                          }}>
+                            <div style={{ textAlign: 'center' }}>
+                              <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '12px', padding: '8px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                                <img src={signatureResults.matcher_reference} alt="Neural Ref" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', filter: 'brightness(1.2) contrast(1.2)' }} />
+                              </div>
+                              <span style={{ fontSize: '0.6rem', color: '#64748b', display: 'block', marginTop: '8px', fontWeight: '800' }}>TEMPLATE</span>
+                            </div>
+                            <div style={{ textAlign: 'center' }}>
+                              <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '12px', padding: '8px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                                <img src={signatureResults.matcher_submitted} alt="Neural Sub" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', filter: 'brightness(1.2) contrast(1.2)' }} />
+                              </div>
+                              <span style={{ fontSize: '0.6rem', color: '#64748b', display: 'block', marginTop: '8px', fontWeight: '800' }}>INPUT</span>
+                            </div>
                           </div>
                         </div>
                       )}
                     </div>
-                  </div>
+                  )}
                 </div>
 
-                {signatureResults && (
-                  <div style={{
-                    marginBottom: '3rem',
-                    background: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '24px',
-                    padding: '2rem',
-                    boxShadow: '0 10px 30px rgba(0,0,0,0.03)'
-                  }}>
-                    <h5 style={{margin: '0 0 1.5rem 0', fontSize: '0.85rem', fontWeight: '900', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px', letterSpacing: '0.1em', textTransform: 'uppercase'}}>
-                      <i className="fas fa-microchip" style={{color: 'var(--primary)', fontSize: '1.1rem'}}></i> MATCH ANALYSIS REPORT
-                    </h5>
-                    
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      marginBottom: '2rem'
-                    }}>
-                      <div style={{
-                        background: signatureResults.verified ? '#10b981' : '#ef4444',
-                        color: 'white',
-                        fontSize: '0.7rem',
-                        fontWeight: '900',
-                        padding: '6px 14px',
-                        borderRadius: '30px',
-                        letterSpacing: '1px',
-                        boxShadow: `0 4px 12px ${signatureResults.verified ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.2)'}`
-                      }}>
-                        {signatureResults.verified ? 'SPECIMEN MATCH' : 'HANDWRITING MISMATCH'}
-                      </div>
-                      <div style={{fontSize: '0.85rem', fontWeight: '800', color: '#475569'}}>
-                        Neural Confidence: <span style={{color: signatureResults.verified ? '#059669' : '#dc2626'}}>{(signatureResults.confidence * 100).toFixed(1)}%</span>
-                      </div>
-                    </div>
+                {/* Face Verification Section */}
+                <div style={{ marginBottom: '2rem', background: '#f8fafc', padding: '2rem', borderRadius: '30px', border: '1px solid #f1f5f9', boxShadow: '0 10px 40px rgba(0,0,0,0.02)' }}>
+                  <h4 style={{ fontSize: '1.1rem', color: '#1e293b', fontWeight: '800', marginBottom: '0.6rem', borderLeft: '5px solid var(--primary)', paddingLeft: '14px', letterSpacing: '-0.3px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    Final Face Identification <span style={{ color: '#e74c3c' }}>*</span>
+                  </h4>
+                  <p style={{ fontSize: '0.9rem', color: '#64748b', marginBottom: '2rem', paddingLeft: '19px' }}>Final biometric match between your live capture and ID profile photo.</p>
 
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                      gap: '1.5rem',
-                      marginBottom: '2rem'
-                    }}>
-                      <div style={{textAlign: 'center'}}>
-                        <span style={{fontSize: '0.65rem', color: '#94a3b8', display: 'block', marginBottom: '8px', fontWeight: '800', letterSpacing: '0.5px'}}>REFERENCE Specimen (ID)</span>
-                        <div style={{background: 'white', border: '1px solid #f1f5f9', borderRadius: '14px', padding: '12px', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                          <img src={signatureResults.extracted_signature} alt="ID Signature" style={{maxWidth: '100%', maxHeight: '100%', objectFit: 'contain'}} />
-                        </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2.5rem', alignItems: 'flex-start' }}>
+                    {/* Reference ID Column */}
+                    <div style={{ background: '#fff', padding: '1.5rem', borderRadius: '24px', border: '1px solid #eef2f6', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#475569', letterSpacing: '0.05em' }}>REFERENCE SOURCE</label>
+                        <div style={{ fontSize: '0.65rem', color: '#3b82f6', fontWeight: '800', background: '#eff6ff', padding: '4px 10px', borderRadius: '8px', border: '1px solid #dbeafe' }}>FRONT ID</div>
                       </div>
-                      <div style={{textAlign: 'center'}}>
-                        <span style={{fontSize: '0.65rem', color: '#94a3b8', display: 'block', marginBottom: '8px', fontWeight: '800', letterSpacing: '0.5px'}}>SUBMITTED Live Capture</span>
-                        <div style={{background: 'white', border: '1px solid #f1f5f9', borderRadius: '14px', padding: '12px', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                          <img src={signatureResults.processed_submitted} alt="Live Signature" style={{maxWidth: '100%', maxHeight: '100%', objectFit: 'contain'}} />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div style={{
-                      background: 'white',
-                      padding: '1.2rem',
-                      borderRadius: '16px',
-                      borderLeft: `5px solid ${signatureResults.verified ? '#10b981' : '#ef4444'}`,
-                      fontSize: '0.85rem',
-                      color: '#334155',
-                      lineHeight: '1.5',
-                      marginBottom: '2rem',
-                      boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
-                    }}>
-                      {signatureResults.message}
-                    </div>
-
-                    {/* Neural Fingerprint (Verifier Bench View) */}
-                    {signatureResults.matcher_submitted && signatureResults.matcher_reference && (
-                      <div style={{
-                        marginTop: '2rem',
-                        padding: '1.5rem',
-                        background: '#0f172a',
-                        borderRadius: '20px',
-                        border: '1px solid #1e293b',
-                        boxShadow: '0 15px 35px rgba(0,0,0,0.2)'
-                      }}>
-                        <div style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          marginBottom: '1.2rem'
-                        }}>
-                          <span style={{fontSize: '0.7rem', color: '#38bdf8', fontWeight: '900', letterSpacing: '0.1em'}}>
-                            <i className="fas fa-brain" style={{marginRight: '8px'}}></i>
-                            NEURAL FINGERPRINT (VERIFIER BENCH)
-                          </span>
-                          <span style={{fontSize: '0.6rem', color: '#475569', fontWeight: '700'}}>224x224 NORMALIZED MAP</span>
-                        </div>
-                        <div style={{
-                          display: 'grid',
-                          gridTemplateColumns: '1fr 1fr',
-                          gap: '1.5rem'
-                        }}>
-                          <div style={{textAlign: 'center'}}>
-                            <div style={{background: '#1e293b', border: '1px solid #334155', borderRadius: '12px', padding: '8px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden'}}>
-                              <img src={signatureResults.matcher_reference} alt="Neural Ref" style={{maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', filter: 'brightness(1.2) contrast(1.2)'}} />
-                            </div>
-                            <span style={{fontSize: '0.6rem', color: '#64748b', display: 'block', marginTop: '8px', fontWeight: '800'}}>AI TEMPLATE</span>
+                      <div style={{ height: '240px', border: '2.5px dashed #f1f5f9', borderRadius: '18px', overflow: 'hidden', background: '#fcfcfc', position: 'relative' }}>
+                        {(schoolIdPhotos.front || userProfile?.id_img_front) ? (
+                          <img src={schoolIdPhotos.front || userProfile?.id_img_front} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="Face Reference ID" />
+                        ) : (
+                          <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', textAlign: 'center', padding: '1.5rem' }}>
+                            <i className="fas fa-camera-rotate" style={{ fontSize: '2rem', marginBottom: '12px' }}></i>
+                            <p style={{ fontSize: '0.8rem', fontWeight: '700', margin: 0 }}>Front ID Missing</p>
                           </div>
-                          <div style={{textAlign: 'center'}}>
-                            <div style={{background: '#1e293b', border: '1px solid #334155', borderRadius: '12px', padding: '8px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden'}}>
-                              <img src={signatureResults.matcher_submitted} alt="Neural Sub" style={{maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', filter: 'brightness(1.2) contrast(1.2)'}} />
-                            </div>
-                            <span style={{fontSize: '0.6rem', color: '#64748b', display: 'block', marginTop: '8px', fontWeight: '800'}}>AI INPUT</span>
-                          </div>
+                        )}
+                      </div>
+                      <p style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '1.2rem', fontStyle: 'italic', textAlign: 'center' }}>AI will extract the facial features from this ID.</p>
+                    </div>
+
+                    {/* Media Picker and Preview Column */}
+                    <div style={{ background: '#fff', padding: '1.2rem', borderRadius: '20px', border: '1px solid #e1e8f0', boxShadow: '0 4px 15px rgba(0,0,0,0.03)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#1a202c' }}>LIVE CAPTURE</label>
+                        <div style={{ fontSize: '0.65rem', color: '#3b82f6', fontWeight: '800', background: '#eff6ff', padding: '3px 8px', borderRadius: '6px' }}>PHOTO</div>
+                      </div>
+
+                      {renderDocumentMediaPicker({
+                        photoId: 'photo_face_photo',
+                        photoName: 'face_photo',
+                        photoValue: photos.face_photo || userProfile?.profile_picture,
+                        onPhotoChange: handleInputChange
+                      })}
+
+                      <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
+                        <div style={{ border: '2px solid #fff', borderRadius: '15px', width: '220px', height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e1e8f0', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)' }}>
+                          {photos.face_photo ? (
+                            <>
+                              <img src={photos.face_photo} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Face Verification" />
+                              <button type="button" onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); }} style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><i className="fas fa-times"></i></button>
+                            </>
+                          ) : (
+                            <button type="button" onClick={openCamera} style={{ border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                              <i className="fas fa-camera" style={{ fontSize: '2rem' }}></i>
+                              <span style={{ fontSize: '0.8rem', fontWeight: '700' }}>Capture</span>
+                            </button>
+                          )}
                         </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ width: '100%', textAlign: 'center', marginTop: '1.5rem' }}>
+                    {photos.face_photo && (
+                      <div style={{ width: '100%', maxWidth: '300px', margin: '0 auto' }}>
+                        {!faceMatchResult ? (
+                          <button type="button" onClick={async () => {
+                            const idImg = schoolIdPhotos.front || userProfile?.id_img_front;
+                            if (!idImg) {
+                              showPromptMessage('⚠️ Please upload your School ID in Step 3 first.');
+                              return;
+                            }
+
+                            setIsFaceMatching(true);
+                            setLoadingMessage({ title: 'Matching Face', message: 'Comparing captured photo with your School ID...' });
+
+                            try {
+                              const faceImage = await normalizeVerificationImage(photos.face_photo);
+                              const normalizedIdImage = await normalizeVerificationImage(idImg);
+                              const result = await applicantAPI.verifyFaceAgainstId(faceImage, normalizedIdImage);
+                              setFaceMatchResult(result);
+                              if (result.verified) {
+                                showPromptMessage('✅ Face successfully matched with ID!');
+                              } else {
+                                showPromptMessage(`❌ Face Match Issue: ${result.message || 'Face does not match the ID.'}`);
+                              }
+                            } catch (err) {
+                              console.error('Match error:', err);
+                              // Do not auto-verify on technical errors for security
+                              showPromptMessage('ℹ️ Verification service issue. Please try again with a clearer photo.');
+                              setFaceMatchResult({ verified: false, technical_unavailable: true });
+                            } finally {
+                              setIsFaceMatching(false);
+                            }
+                          }} className="submit-btn" disabled={isFaceMatching} style={{ width: '100%', background: 'var(--primary)', borderRadius: '12px' }}>
+                            {isFaceMatching ? <><i className="fas fa-spinner fa-spin"></i> Matching...</> : <><i className="fas fa-user-check"></i> Verify Match with ID</>}
+                          </button>
+                        ) : (
+                          <div style={{
+                            padding: '1rem',
+                            borderRadius: '12px',
+                            background: faceMatchResult.verified ? '#f0fff4' : '#fff5f5',
+                            border: `1px solid ${faceMatchResult.verified ? '#c6f6d5' : '#fed7d7'}`,
+                            display: 'flex',
+                            alignItems: 'start',
+                            gap: '12px',
+                            textAlign: 'left'
+                          }}>
+                            <div style={{
+                              width: '24px',
+                              height: '24px',
+                              borderRadius: '50%',
+                              background: faceMatchResult.verified ? '#27ae60' : '#e74c3c',
+                              color: 'white',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '0.7rem',
+                              flexShrink: 0,
+                              marginTop: '2px'
+                            }}>
+                              <i className={`fas ${faceMatchResult.verified ? 'fa-user-check' : 'fa-user-times'}`}></i>
+                            </div>
+                            <div>
+                              <h5 style={{ margin: '0 0 2px 0', fontSize: '0.85rem', color: '#333', fontWeight: '700' }}>
+                                {faceMatchResult.verified ? 'Identity Verified' : 'Identity Mismatch'}
+                              </h5>
+                              <p style={{
+                                fontSize: '0.8rem',
+                                color: faceMatchResult.verified ? '#2f855a' : '#c53030',
+                                margin: 0,
+                                lineHeight: '1.4'
+                              }}>
+                                {faceMatchResult.verified ? (faceMatchResult.technical_unavailable ? 'Service issue (Manual Check needed)' : 'Facial identity verified!') : faceMatchResult.message || 'Face identity mismatch.'}
+                              </p>
+                              {!faceMatchResult.verified && (
+                                <button type="button" onClick={() => setFaceMatchResult(null)} style={{ background: 'none', border: 'none', color: '#c53030', cursor: 'pointer', textDecoration: 'underline', fontSize: '0.75rem', padding: 0, marginTop: '5px', fontWeight: '700' }}>Retry Capture</button>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
-              </div>
-
-               {/* Face Verification Section */}
-              <div style={{marginBottom: '2rem', background: '#f8fafc', padding: '2rem', borderRadius: '30px', border: '1px solid #f1f5f9', boxShadow: '0 10px 40px rgba(0,0,0,0.02)'}}>
-                <h4 style={{fontSize: '1.1rem', color: '#1e293b', fontWeight: '800', marginBottom: '0.6rem', borderLeft: '5px solid var(--primary)', paddingLeft: '14px', letterSpacing: '-0.3px', display: 'flex', alignItems: 'center', gap: '10px'}}>
-                  Final Face Identification <span style={{color: '#e74c3c'}}>*</span>
-                </h4>
-                <p style={{fontSize: '0.9rem', color: '#64748b', marginBottom: '2rem', paddingLeft: '19px'}}>Final biometric match between your live capture and ID profile photo.</p>
-                
-                <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2.5rem', alignItems: 'flex-start'}}>
-                  {/* Reference ID Column */}
-                  <div style={{background: '#fff', padding: '1.5rem', borderRadius: '24px', border: '1px solid #eef2f6', boxShadow: '0 4px 20px rgba(0,0,0,0.03)'}}>
-                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
-                      <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#475569', letterSpacing: '0.05em'}}>REFERENCE SOURCE</label>
-                      <div style={{fontSize: '0.65rem', color: '#3b82f6', fontWeight: '800', background: '#eff6ff', padding: '4px 10px', borderRadius: '8px', border: '1px solid #dbeafe'}}>FRONT ID</div>
-                    </div>
-                    <div style={{height: '240px', border: '2.5px dashed #f1f5f9', borderRadius: '18px', overflow: 'hidden', background: '#fcfcfc', position: 'relative'}}>
-                      {(schoolIdPhotos.front || userProfile?.id_img_front) ? (
-                        <img src={schoolIdPhotos.front || userProfile?.id_img_front} style={{width: '100%', height: '100%', objectFit: 'contain'}} alt="Face Reference ID" />
-                      ) : (
-                        <div style={{height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', textAlign: 'center', padding: '1.5rem'}}>
-                          <i className="fas fa-camera-rotate" style={{fontSize: '2rem', marginBottom: '12px'}}></i>
-                          <p style={{fontSize: '0.8rem', fontWeight: '700', margin: 0}}>Front ID Missing</p>
-                        </div>
-                      )}
-                    </div>
-                    <p style={{fontSize: '0.72rem', color: '#64748b', marginTop: '1.2rem', fontStyle: 'italic', textAlign: 'center'}}>AI will extract the facial features from this ID.</p>
-                  </div>
-
-                  {/* Media Picker and Preview Column */}
-                  <div style={{background: '#fff', padding: '1.2rem', borderRadius: '20px', border: '1px solid #e1e8f0', boxShadow: '0 4px 15px rgba(0,0,0,0.03)'}}>
-                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
-                      <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#1a202c'}}>LIVE CAPTURE</label>
-                      <div style={{fontSize: '0.65rem', color: '#3b82f6', fontWeight: '800', background: '#eff6ff', padding: '3px 8px', borderRadius: '6px'}}>PHOTO</div>
-                    </div>
-
-                    {renderDocumentMediaPicker({
-                      photoId: 'photo_face_photo',
-                      photoName: 'face_photo',
-                      photoValue: photos.face_photo || userProfile?.profile_picture,
-                      onPhotoChange: handleInputChange
-                    })}
-
-                    <div style={{marginTop: '1rem', display: 'flex', justifyContent: 'center'}}>
-                      <div style={{border: '2px solid #fff', borderRadius: '15px', width: '220px', height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e1e8f0', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)'}}>
-                      {photos.face_photo ? (
-                        <>
-                          <img src={photos.face_photo} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt="Face Verification" />
-                          <button type="button" onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); }} style={{position: 'absolute', top: '10px', right: '10px', background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'}}><i className="fas fa-times"></i></button>
-                        </>
-                      ) : (
-                        <button type="button" onClick={openCamera} style={{border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px'}}>
-                          <i className="fas fa-camera" style={{fontSize: '2rem'}}></i>
-                          <span style={{fontSize: '0.8rem', fontWeight: '700'}}>Capture</span>
-                        </button>
-                      )}
-                      </div>
-                    </div>
-                  </div>
                 </div>
 
-                <div style={{width: '100%', textAlign: 'center', marginTop: '1.5rem'}}>
-                  {photos.face_photo && (
-                    <div style={{width: '100%', maxWidth: '300px', margin: '0 auto'}}>
-                      {!faceMatchResult ? (
-                        <button type="button" onClick={async () => {
-                          const idImg = schoolIdPhotos.front || userProfile?.id_img_front;
-                          if (!idImg) {
-                            showPromptMessage('⚠️ Please upload your School ID in Step 3 first.');
-                            return;
-                          }
-                          
-                          setIsFaceMatching(true);
-                          setLoadingMessage({ title: 'Matching Face', message: 'Comparing captured photo with your School ID...' });
-                          
-                          try {
-                            const faceImage = await normalizeVerificationImage(photos.face_photo);
-                            const normalizedIdImage = await normalizeVerificationImage(idImg);
-                            const result = await applicantAPI.verifyFaceAgainstId(faceImage, normalizedIdImage);
-                            setFaceMatchResult(result);
-                            if (result.verified) {
-                              showPromptMessage('✅ Face successfully matched with ID!');
-                            } else {
-                              showPromptMessage(`❌ Face Match Issue: ${result.message || 'Face does not match the ID.'}`);
-                            }
-                          } catch (err) {
-                            console.error('Match error:', err);
-                            // Do not auto-verify on technical errors for security
-                            showPromptMessage('ℹ️ Verification service issue. Please try again with a clearer photo.');
-                            setFaceMatchResult({ verified: false, technical_unavailable: true });
-                          } finally {
-                            setIsFaceMatching(false);
-                          }
-                        }} className="submit-btn" disabled={isFaceMatching} style={{width: '100%', background: 'var(--primary)', borderRadius: '12px'}}>
-                          {isFaceMatching ? <><i className="fas fa-spinner fa-spin"></i> Matching...</> : <><i className="fas fa-user-check"></i> Verify Match with ID</>}
-                        </button>
-                      ) : (
-                        <div style={{
-                          padding: '1rem',
-                          borderRadius: '12px',
-                          background: faceMatchResult.verified ? '#f0fff4' : '#fff5f5',
-                          border: `1px solid ${faceMatchResult.verified ? '#c6f6d5' : '#fed7d7'}`,
-                          display: 'flex',
-                          alignItems: 'start',
-                          gap: '12px',
-                          textAlign: 'left'
-                        }}>
-                          <div style={{
-                            width: '24px',
-                            height: '24px',
-                            borderRadius: '50%',
-                            background: faceMatchResult.verified ? '#27ae60' : '#e74c3c',
-                            color: 'white',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '0.7rem',
-                            flexShrink: 0,
-                            marginTop: '2px'
-                          }}>
-                            <i className={`fas ${faceMatchResult.verified ? 'fa-user-check' : 'fa-user-times'}`}></i>
-                          </div>
-                          <div>
-                            <h5 style={{margin: '0 0 2px 0', fontSize: '0.85rem', color: '#333', fontWeight: '700'}}>
-                              {faceMatchResult.verified ? 'Identity Verified' : 'Identity Mismatch'}
-                            </h5>
-                            <p style={{
-                              fontSize: '0.8rem', 
-                              color: faceMatchResult.verified ? '#2f855a' : '#c53030',
-                              margin: 0,
-                              lineHeight: '1.4'
-                            }}>
-                              {faceMatchResult.verified ? (faceMatchResult.technical_unavailable ? 'Service issue (Manual Check needed)' : 'Facial identity verified!') : faceMatchResult.message || 'Face identity mismatch.'}
-                            </p>
-                            {!faceMatchResult.verified && (
-                              <button type="button" onClick={() => setFaceMatchResult(null)} style={{background: 'none', border: 'none', color: '#c53030', cursor: 'pointer', textDecoration: 'underline', fontSize: '0.75rem', padding: 0, marginTop: '5px', fontWeight: '700'}}>Retry Capture</button>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                <div style={{ marginTop: '3rem', display: 'flex', justifyContent: 'space-between' }}>
+                  <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
+                    <i className="fas fa-arrow-left" style={{ marginRight: '8px' }}></i> Back: Education
+                  </button>
+                  <button
+                    type="submit"
+                    className="submit-btn"
+                    disabled={isSubmitting || isSavingStep || !faceMatchResult?.verified}
+                    style={{ width: 'auto', padding: '0.8rem 3.5rem', borderRadius: '40px', background: 'var(--success)', border: 'none' }}
+                  >
+                    {isSubmitting ? (
+                      <><i className="fas fa-spinner fa-spin" style={{ marginRight: '10px' }}></i>Submitting...</>
+                    ) : (
+                      <><i className="fas fa-paper-plane" style={{ marginRight: '10px' }}></i>Submit Application</>
+                    )}
+                  </button>
                 </div>
               </div>
-
-              <div style={{marginTop: '3rem', display: 'flex', justifyContent: 'space-between'}}>
-                <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
-                  <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i> Back: Education
-                </button>
-                <button 
-                  type="submit" 
-                  className="submit-btn" 
-                  disabled={isSubmitting || isSavingStep || !faceMatchResult?.verified} 
-                  style={{width: 'auto', padding: '0.8rem 3.5rem', borderRadius: '40px', background: 'var(--success)', border: 'none'}}
-                >
-                  {isSubmitting ? (
-                    <><i className="fas fa-spinner fa-spin" style={{marginRight: '10px'}}></i>Submitting...</>
-                  ) : (
-                    <><i className="fas fa-paper-plane" style={{marginRight: '10px'}}></i>Submit Application</>
-                  )}
-                </button>
-              </div>
-            </div>
             </fieldset>
           </form>
         </div>
@@ -4222,7 +4222,7 @@ const StudentInfo = () => {
               <div className="dot"></div><div className="dot"></div><div className="dot"></div>
             </div>
           </div>
-          <button className="submit-btn" onClick={() => navigate('/portal')} style={{marginTop: '1.5rem', width: '100%'}}>
+          <button className="submit-btn" onClick={() => navigate('/portal')} style={{ marginTop: '1.5rem', width: '100%' }}>
             Return to Portal
           </button>
         </div>
@@ -4231,27 +4231,27 @@ const StudentInfo = () => {
       {/* Camera Modal Overlay */}
       <div className={`camera-modal-overlay ${showCameraModal ? 'active' : ''}`}>
         <div className="camera-modal-content">
-          <h3 style={{marginBottom: '1rem', color: 'var(--primary)'}}>Face Verification</h3>
-          <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1.5rem'}}>Position your face within the frame and click capture.</p>
-          <div style={{position: 'relative', width: '100%', background: '#000', borderRadius: '20px', overflow: 'hidden', marginBottom: '2rem'}}>
-            <video ref={videoRef} autoPlay playsInline muted style={{width: '100%', transform: usingFrontCamera ? 'scaleX(-1)' : 'none'}} />
+          <h3 style={{ marginBottom: '1rem', color: 'var(--primary)' }}>Face Verification</h3>
+          <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '1.5rem' }}>Position your face within the frame and click capture.</p>
+          <div style={{ position: 'relative', width: '100%', background: '#000', borderRadius: '20px', overflow: 'hidden', marginBottom: '2rem' }}>
+            <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', transform: usingFrontCamera ? 'scaleX(-1)' : 'none' }} />
             {cameraInitializing && (
-              <div style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)', color: 'white'}}>
-                <i className="fas fa-spinner fa-spin" style={{fontSize: '2rem'}}></i>
+              <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)', color: 'white' }}>
+                <i className="fas fa-spinner fa-spin" style={{ fontSize: '2rem' }}></i>
               </div>
             )}
             {cameraError && (
-              <div style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.8)', color: 'white', padding: '2rem'}}>
-                <i className="fas fa-exclamation-triangle" style={{fontSize: '2rem', marginBottom: '1rem', color: '#ffcc00'}}></i>
+              <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.8)', color: 'white', padding: '2rem' }}>
+                <i className="fas fa-exclamation-triangle" style={{ fontSize: '2rem', marginBottom: '1rem', color: '#ffcc00' }}></i>
                 <p>{cameraError.message}</p>
-                <button onClick={openCamera} className="submit-btn" style={{marginTop: '1rem', padding: '0.5rem 1.5rem', height: 'auto'}}>Retry</button>
+                <button onClick={openCamera} className="submit-btn" style={{ marginTop: '1rem', padding: '0.5rem 1.5rem', height: 'auto' }}>Retry</button>
               </div>
             )}
           </div>
-          <div style={{display: 'flex', gap: '15px', justifyContent: 'center'}}>
+          <div style={{ display: 'flex', gap: '15px', justifyContent: 'center' }}>
             <button type="button" onClick={closeCamera} className="back-to-form-btn">Cancel</button>
-            <button type="button" onClick={capturePhoto} className="submit-btn" disabled={!cameraReady} style={{width: 'auto', padding: '0.8rem 2rem', height: 'auto', borderRadius: '30px'}}>
-              <i className="fas fa-camera" style={{marginRight: '8px'}}></i> Capture
+            <button type="button" onClick={capturePhoto} className="submit-btn" disabled={!cameraReady} style={{ width: 'auto', padding: '0.8rem 2rem', height: 'auto', borderRadius: '30px' }}>
+              <i className="fas fa-camera" style={{ marginRight: '8px' }}></i> Capture
             </button>
           </div>
         </div>
@@ -4269,7 +4269,7 @@ const StudentInfo = () => {
           </p>
         </div>
       </div>
-      
+
       {/* Image Lightbox */}
       {lightboxSrc && (
         <div
