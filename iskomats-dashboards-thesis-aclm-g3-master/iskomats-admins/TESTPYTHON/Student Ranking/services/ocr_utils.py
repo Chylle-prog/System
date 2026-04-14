@@ -372,6 +372,37 @@ def course_matches_text(target_course, text):
         for acr in [acronym1, acronym2]:
             if len(acr) >= 2 and re.search(rf'\b{re.escape(acr)}\b', norm_text):
                 return True, acr
+                
+    # 2.5 Explicit Acronyms in Target Course
+    # If the user typed "BSIT" explicitly, we should trust that explicit uppercase acronym
+    target_words = re.split(r'[^a-zA-Z0-9]', target_course)
+    explicit_acronyms = [w.lower() for w in target_words if w.isupper() and len(w) >= 3]
+    clean_text = "".join(filter(str.isalnum, str(text))).lower()
+    for acr in explicit_acronyms:
+        # Check against pure alphanumeric text to ignore arbitrary spaces added by OCR
+        if acr in clean_text:
+            return True, acr
+
+    # 2.7 Specific Mappings (e.g., Information Technology -> IT)
+    mappings = {
+        "computer science": ["cs", "compsci"],
+        "information technology": ["it", "infotech"],
+        "business administration": ["ba", "busad"],
+        "civil engineering": ["ce", "civil"],
+        "mechanical engineering": ["me", "mech"],
+        "electrical engineering": ["ee", "elec"],
+        "nursing": ["bsn"],
+        "accountancy": ["bsa"],
+        "criminology": ["bscrim"]
+    }
+    for full, short_list in mappings.items():
+        if full in t_course:
+            for s in short_list:
+                if re.search(rf'\b{re.escape(s)}\b', norm_text):
+                    return True, s
+        for s in short_list:
+            if s in t_course and full in norm_text:
+                return True, full
 
     # 3. Individual word matching (must match at least 60% of significant words)
     if meaningful_words:
@@ -467,6 +498,15 @@ def student_id_no_matches_text(target_id, text):
         if re.search(pattern, full_clean_text):
             return True, target_id
             
+    # Check for off-by-one errors for better user feedback (don't verify, just log/return hint)
+    if len(clean_target_id) >= 8:
+        for word in text.split():
+            clean_word = "".join(filter(str.isalnum, str(word))).lower()
+            if len(clean_word) == len(clean_target_id):
+                diffs = sum(1 for a, b in zip(clean_target_id, clean_word) if a != b)
+                if diffs == 1:
+                    print(f"[ID HINT] ID is almost a match: Found '{clean_word}' vs target '{clean_target_id}'", flush=True)
+            
     return False, None
 
 
@@ -533,6 +573,19 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
                     if found_approx: found = True; break
             
             p_ratio = f_count / len(n_words) if n_words else 0
+            
+            # Ultimate Space-Stripped Fallback for Names
+            if p_ratio < (0.7 if is_indigency else 0.80):
+                clean_name_part = "".join(filter(str.isalnum, str(name_part))).lower()
+                clean_text = "".join(filter(str.isalnum, str(norm_txt)))
+                if len(clean_name_part) >= 4 and clean_name_part in clean_text:
+                    return True, 1.0
+                    
+                # For middle names, a single initial without spaces should also pass the stringent fallback
+                if is_middle and n_words and len(n_words[0]) == 1:
+                    if n_words[0] in all_ocr_words:
+                        return True, 1.0
+
             # Higher bar for verification success: 0.7 for Indigency, 0.80 for others
             return p_ratio >= (0.7 if is_indigency else 0.80), p_ratio
 

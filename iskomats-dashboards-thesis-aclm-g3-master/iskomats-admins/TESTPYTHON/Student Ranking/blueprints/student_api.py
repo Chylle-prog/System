@@ -2947,7 +2947,10 @@ def ocr_check():
                     normalized_expected_semester = normalize_semester_label(expected_semester)
                     normalized_semester_label = normalize_semester_label(semester_label)
                     
+                    raw_preview = raw[:200].replace('\n', ' ')
+                    print(f"[OCR-DIAG] Extracted Text (first 200 chars): {raw_preview}", flush=True)
                     print(f"[OCR-YEAR] Doc={doc_type} extracted_year='{year_label}' expected_year='{expected_academic_year}' extracted_sem='{semester_label}' expected_sem='{expected_semester}'", flush=True)
+                    print(f"[OCR-NAME] First='{first_name}' (OK={name_details.get('first_ok')}) Middle='{middle_name}' (OK={name_details.get('middle_ok')}) Last='{last_name}' (OK={name_details.get('last_ok')})", flush=True)
                     
                     # Year check: only enforce if we have an expected year to compare against
                     if expected_academic_year:
@@ -2970,6 +2973,7 @@ def ocr_check():
                             f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
                             f"ID: {'OK' if id_ok else 'X'}",
                             f"School: {'OK' if school_ok else 'X'}",
+                            f"Level: {'OK' if year_level_ok else 'X'}",
                             f"Year: {'OK' if year_only_ok else 'X'}",
                             f"Sem: {'OK' if semester_ok else 'X'}",
                             f"Course: {'OK' if course_ok else 'X'}"
@@ -2979,24 +2983,24 @@ def ocr_check():
                         if not v:
                             msg += f" (Checked vs F:'{first_name}' M:'{middle_name}' L:'{last_name}' ID:'{expected_id_no}')"
                         return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
-
                     elif doc_type == 'Grades':
-                         gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
-                         
-                         # Grades should match the school and student identity
-                         v = name_ok and year_only_ok and gpa_ok and school_ok and year_level_ok and semester_ok
-                         
-                         checklist = [
-                             f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
-                             f"Middle Name: {'OK' if name_details.get('middle_ok') else 'X'}" if middle_name else None,
-                             f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
-                             f"School: {'OK' if school_ok else 'X'}",
-                             f"GPA: {'OK' if gpa_ok else 'X'}",
-                             f"Year: {'OK' if year_only_ok else 'X'}",
-                             f"Sem: {'OK' if semester_ok else 'X'}"
-                         ]
-                         checklist = [c for c in checklist if c is not None]
-                         return {'doc': 'Grades', 'verified': v, 'message': f"Checklist: [{' | '.join(checklist)}]", 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                        gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
+                        
+                        # Grades should match the school and student identity
+                        v = name_ok and year_only_ok and gpa_ok and school_ok and year_level_ok and semester_ok
+                        
+                        checklist = [
+                            f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
+                            f"Middle Name: {'OK' if name_details.get('middle_ok') else 'X'}" if middle_name else None,
+                            f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
+                            f"School: {'OK' if school_ok else 'X'}",
+                            f"GPA: {'OK' if gpa_ok else 'X'}",
+                            f"Level: {'OK' if year_level_ok else 'X'}",
+                            f"Year: {'OK' if year_only_ok else 'X'}",
+                            f"Sem: {'OK' if semester_ok else 'X'}"
+                        ]
+                        checklist = [c for c in checklist if c is not None]
+                        return {'doc': 'Grades', 'verified': v, 'message': f"Checklist: [{' | '.join(checklist)}]", 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'Indigency':
                     name_ok = meta.get('name_ok', False)
