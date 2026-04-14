@@ -220,7 +220,9 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     results.append(text1.strip())
         
     # Pass 2: Adaptive Thresholding (Fails on white-on-dark, but great for shadows on paper)
-    if not skip_pass2:
+    needs_fallbacks = len(text1.strip()) < 8 and not skip_pass2
+    
+    if needs_fallbacks:
         try:
             gray_clahe = _CLAHE.apply(gray)
             binary = cv2.adaptiveThreshold(gray_clahe, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 10)
@@ -231,7 +233,7 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
             pass
     
     # If primary failed or multiple strategies requested, try fallbacks
-    if strategies:
+    if strategies and needs_fallbacks:
         for strat_fn in strategies:
             try:
                 processed = strat_fn(img)
