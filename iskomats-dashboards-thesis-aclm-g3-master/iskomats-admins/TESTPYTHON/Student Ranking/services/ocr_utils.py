@@ -449,7 +449,7 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
     Unified fuzzy matching logic for names, addresses, and keywords.
     Checks first name, middle name (full or initial), and last name individually if provided.
     Also handles ID number and year level validation.
-    Returns: (name_ok, addr_ok, keywords_found, match_ratio)
+    Returns: (name_ok, addr_ok, keywords_found, match_ratio, meta)
     """
     if not ocr_text.strip(): 
         return False, False, [], 0.0
@@ -524,6 +524,16 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
             n_verified = first_ok and last_ok
         else:
             n_verified = first_ok and middle_ok and last_ok
+            
+        # Store detailed results in meta for UI transparency
+        meta['name_details'] = {
+            'first_ok': first_ok,
+            'middle_ok': middle_ok,
+            'last_ok': last_ok,
+            'first_ratio': first_ratio,
+            'middle_ratio': middle_ratio,
+            'last_ratio': last_ratio
+        }
         
         # 1.b ID Number Matching (If provided)
         if target_id_no and str(target_id_no).strip():
@@ -771,10 +781,10 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
 def student_name_matches_text(ocr_text, first_name, middle_name, last_name, is_indigency=False):
     """
     Stand-alone helper to check if a specific name is in the OCR text.
-    Returns: (bool, match_ratio)
+    Returns: (bool, match_ratio, name_details)
     """
-    name_ok, _, _, match_ratio, _ = _perform_text_matching(ocr_text, first_name, middle_name, last_name, is_indigency=is_indigency)
-    return name_ok, match_ratio
+    name_ok, _, _, match_ratio, meta = _perform_text_matching(ocr_text, first_name, middle_name, last_name, is_indigency=is_indigency)
+    return name_ok, match_ratio, meta.get('name_details', {})
 
 
 def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=False, prefer_fast_layout=False, crop_percent=None):

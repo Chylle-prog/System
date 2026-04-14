@@ -3002,7 +3002,7 @@ def ocr_check():
                     elif doc_type == 'Indigency':
                         # Restored capture range: many certificates place name/address in the middle-bottom.
                         raw_t, extraction_error = extract_document_text(doc_bytes, max_width=850, prefer_fast_layout=True, crop_percent=0.85)
-                        name_ok, name_ratio = student_name_matches_text(raw_t, first_name, middle_name, last_name, is_indigency=True)
+                        name_ok, name_ratio, name_details = student_name_matches_text(raw_t, first_name, middle_name, last_name, is_indigency=True)
                         # Perform matching to detect Barangays even if target_address is empty for feedback
                         _, addr_ok, found_keywords, _, detect_meta = _perform_text_matching(raw_t, None, None, None, target_address, is_indigency=True)
                         found_kw = found_keywords
@@ -3018,7 +3018,9 @@ def ocr_check():
                         msg = 'Verified' if v_t else 'Verification failed'
                         brgy_str = ", ".join(detected_brgys) if detected_brgys else "None detected"
                         status_addr = 'OK' if addr_ok else 'X'
-                        msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Addr: {status_addr} (Target: {target_address or 'Missing'}, Found: {brgy_str})]"
+                        f_name_ok = name_details.get('first_ok', False)
+                        l_name_ok = name_details.get('last_ok', False)
+                        msg = f"Checklist: [First: {'OK' if f_name_ok else 'X'} | Last: {'OK' if l_name_ok else 'X'} | Addr: {status_addr} (Target: {target_address or 'Missing'}, Found: {brgy_str})]"
 
                         return v_t, extraction_error or msg, raw_t, meta
                     else:
@@ -3040,7 +3042,7 @@ def ocr_check():
                 
                 # Document-Specific Logic
                 # Pre-calculate common fields used across multiple document types
-                name_ok, name_ratio = student_name_matches_text(raw, first_name, middle_name, last_name, is_indigency=(doc_type in ['Enrollment', 'Grades', 'Indigency']))
+                name_ok, name_ratio, name_details = student_name_matches_text(raw, first_name, middle_name, last_name, is_indigency=(doc_type == 'Indigency'))
                 school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
                 year_level_ok, _ = year_level_matches_text(expected_year_level, raw)
                 
@@ -3057,13 +3059,24 @@ def ocr_check():
                         id_ok, _ = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
                         course_ok, _ = course_matches_text(course, raw) if course else (True, None)
                         v = name_ok and id_ok and school_ok and course_ok
-                        checklist = [f"Name: {'OK' if name_ok else 'X'}", f"ID: {'OK' if id_ok else 'X'}", f"School: {'OK' if school_ok else 'X'}", f"Course: {'OK' if course_ok else 'X'}"]
+                        checklist = [
+                            f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
+                            f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
+                            f"ID: {'OK' if id_ok else 'X'}",
+                            f"School: {'OK' if school_ok else 'X'}",
+                            f"Course: {'OK' if course_ok else 'X'}"
+                        ]
                         return {'doc': 'Enrollment', 'verified': v, 'message': f"Checklist: [{' | '.join(checklist)}]", 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                     elif doc_type == 'Grades':
                         gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
                         v = name_ok and year_only_ok and gpa_ok and school_ok and year_level_ok
-                        checklist = [f"Name: {'OK' if name_ok else 'X'}", f"School: {'OK' if school_ok else 'X'}", f"GPA: {'OK' if gpa_ok else 'X'}"]
+                        checklist = [
+                            f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
+                            f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
+                            f"School: {'OK' if school_ok else 'X'}",
+                            f"GPA: {'OK' if gpa_ok else 'X'}"
+                        ]
                         return {'doc': 'Grades', 'verified': v, 'message': f"Checklist: [{' | '.join(checklist)}]", 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'Indigency':
@@ -3082,7 +3095,8 @@ def ocr_check():
                     id_ok, _ = student_id_no_matches_text(expected_id_no, raw)
                     
                     checklist = [
-                        f"Name: {'OK' if name_ok else 'X'}",
+                        f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
+                        f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
                         f"ID Number: {'OK' if id_ok else 'X'}",
                         f"School: {'OK' if school_ok else 'X'}"
                     ]
