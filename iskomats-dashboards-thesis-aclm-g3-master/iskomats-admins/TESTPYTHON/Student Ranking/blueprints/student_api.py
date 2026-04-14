@@ -3007,24 +3007,29 @@ def ocr_check():
                         _, addr_ok, found_keywords, _, detect_meta = _perform_text_matching(raw_t, None, None, None, target_address, is_indigency=True)
                         found_kw = found_keywords
                         detected_brgys = detect_meta.get('detected_brgy', [])
-                        
                         # In Indigency, address is mandatory for a 'verified' result
                         if not target_address:
                             addr_ok = False
-
                         meta = {'name_ok': name_ok, 'addr_ok': addr_ok, 'name_ratio': name_ratio, 'keywords': found_kw, 'detected_brgy': detected_brgys}
                         v_t = name_ok and addr_ok
-                        
                         msg = 'Verified' if v_t else 'Verification failed'
                         brgy_str = ", ".join(detected_brgys) if detected_brgys else "None detected"
                         status_addr = 'OK' if addr_ok else 'X'
                         f_name_ok = name_details.get('first_ok', False)
                         l_name_ok = name_details.get('last_ok', False)
                         msg = f"Checklist: [First: {'OK' if f_name_ok else 'X'} | Last: {'OK' if l_name_ok else 'X'} | Addr: {status_addr} (Target: {target_address or 'Missing'}, Found: {brgy_str})]"
-
                         return v_t, extraction_error or msg, raw_t, meta
                     else:
-                        return verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=expected_id_no if doc_type != 'Indigency' else None, expected_school_name=school_name)
+                        # Always return a 4-tuple for unknown doc types
+                        result = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=expected_id_no if doc_type != 'Indigency' else None, expected_school_name=school_name)
+                        # If result is already a 4-tuple, return as is
+                        if isinstance(result, tuple) and len(result) == 4:
+                            return result
+                        # Otherwise, pad to 4-tuple
+                        elif isinstance(result, tuple) and len(result) == 3:
+                            return (*result, {})
+                        else:
+                            return False, 'Unknown error', '', {}
 
                 # ─── PARALLEL EXECUTION (Concurrency) ───
                 with ThreadPoolExecutor(max_workers=2) as executor:
