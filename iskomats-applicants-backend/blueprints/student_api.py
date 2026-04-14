@@ -25,11 +25,11 @@ def ensure_applicant_verification_columns():
         cur = conn.cursor()
 
 
-        # Ensure pending_registrations table exists
+        # Ensure pending_registrations table exists (with correct columns)
         cur.execute(f"""
             CREATE TABLE IF NOT EXISTS pending_registrations (
                 id SERIAL PRIMARY KEY,
-                email VARCHAR(255) UNIQUE NOT NULL,
+                email_address VARCHAR(255) UNIQUE NOT NULL,
                 password_hash VARCHAR(255) NOT NULL,
                 first_name VARCHAR(100),
                 last_name VARCHAR(100),
@@ -155,10 +155,10 @@ def complete_profile():
             email,
             pending['password_hash'],
             True,
-            first_name,
-            last_name,
-            middle_name,
-            profile_picture
+            pending['first_name'],
+            pending['last_name'],
+            pending['middle_name'],
+            pending['profile_picture']
         ))
 
         # 4. Delete from pending_registrations
