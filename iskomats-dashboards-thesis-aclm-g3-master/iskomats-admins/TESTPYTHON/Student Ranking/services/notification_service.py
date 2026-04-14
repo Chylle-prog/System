@@ -31,11 +31,6 @@ def fetch_google_access_token():
         if len(s) <= visible * 2: return s
         return f"{s[:visible]}...{s[-visible:]} ({len(s)} chars)"
 
-    # Diagnostic logging: reveal masked characters and lengths for troubleshooting
-    print(f"[NOTIF DEBUG] Authenticating with CID: {mask(GOOGLE_CLIENT_ID, 12)}")
-    # Be more careful with secret masking but show enough for the user to verify against console
-    print(f"[NOTIF DEBUG] Authenticating with Secret: {mask(GOOGLE_CLIENT_SECRET, 6)}")
-    
     if missing_settings:
         error_msg = f"Google Gmail API credentials are not configured. Missing: {', '.join(missing_settings)}"
         print(f"[NOTIF ERROR] {error_msg}")
@@ -68,15 +63,72 @@ def fetch_google_access_token():
             error_payload = json.loads(e.read().decode('utf-8'))
             error_reason = error_payload.get('error', 'unknown_error')
             error_desc = error_payload.get('error_description', 'No description provided')
-            diagnostic = f"Google OAuth rejected the request (error: {error_reason}, description: {error_desc}). Using CID: {mask(GOOGLE_CLIENT_ID, 12)}, Secret: {mask(GOOGLE_CLIENT_SECRET, 6)}"
+            
+            # Specific guidance for invalid_grant (expired/revoked token)
+            if error_reason == 'invalid_grant':
+                diagnostic = (
+                    "CRITICAL: Your Google Refresh Token has EXPIRED or been REVOKED. "
+                    "This usually happens 7 days after generation if your Google Cloud Project is in 'Testing' mode. "
+                    "ACTION REQUIRED: Please regenerate a new Refresh Token in the Google Cloud Console and update your GOOGLE_REFRESH_TOKEN environment variable."
+                )
+            else:
+                diagnostic = f"Google OAuth rejected the request (error: {error_reason}, description: {error_desc})."
+            
+            diagnostic += f" [CID: {mask(GOOGLE_CLIENT_ID, 12)}, Secret: {mask(GOOGLE_CLIENT_SECRET, 6)}]"
         except:
-            diagnostic = f"HTTP Error {e.code}: {e.reason}. Using CID: {mask(GOOGLE_CLIENT_ID, 12)}, Secret: {mask(GOOGLE_CLIENT_SECRET, 6)}"
+            diagnostic = f"HTTP Error {e.code}: {e.reason}. [CID: {mask(GOOGLE_CLIENT_ID, 12)}]"
         
         print(f"[NOTIF ERROR] Token exchange failed: {diagnostic}")
         raise RuntimeError(diagnostic)
     except Exception as e:
         print(f"[NOTIF ERROR] Token exchange failed: {e}")
         raise RuntimeError(f"Token exchange failed: {str(e)}")
+
+def send_verification_email(receiver_email, code, is_admin=False):
+    """Unified helper to send verification codes via Gmail API."""
+    GMAIL_SENDER_EMAIL = os.environ.get('GMAIL_SENDER_EMAIL', '').strip()
+    if not GMAIL_SENDER_EMAIL:
+        raise RuntimeError('GMAIL_SENDER_EMAIL is not configured.')
+
+    site_name = "ISKOMATS Admin" if is_admin else "ISKOMATS"
+    
+    body = f"""Hello,
+
+Thank you for registering with {site_name}. To complete your registration, please use the following verification code:
+
+{code}
+
+If you did not register for an account, please ignore this email.
+
+Best regards,
+The ISKOMATS Team
+"""
+    msg = MIMEText(body)
+    msg['Subject'] = f"Verify your {site_name} Account"
+    msg['From'] = GMAIL_SENDER_EMAIL
+    msg['To'] = receiver_email
+    
+    try:
+        access_token = fetch_google_access_token()
+        encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
+        
+        email_request = urllib_request.Request(
+            'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+            data=json.dumps({'raw': encoded_message}).encode('utf-8'),
+            headers={
+                'Authorization': f'Bearer {access_token}',
+                'Content-Type': 'application/json',
+            },
+            method='POST',
+        )
+        
+        with urllib_request.urlopen(email_request, timeout=30) as response:
+            print(f"[EMAIL SUCCESS] Sent verification to {receiver_email}")
+            return True
+    except Exception as e:
+        print(f"[EMAIL ERROR] Failed to send verification to {receiver_email}: {e}")
+        raise e
+
 
 def create_notification(user_no, title, message, notif_type='message', send_email=True):
     """Create an applicant notification and optionally send an email alert."""

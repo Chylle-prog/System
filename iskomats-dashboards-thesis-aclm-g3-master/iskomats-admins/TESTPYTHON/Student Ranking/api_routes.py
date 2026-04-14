@@ -61,7 +61,7 @@ def on_blueprint_init(state):
             print(f"[BACKEND] Admin schema migration skipped or failed: {e}")
 
 from project_config import get_db, get_db_startup
-from services.notification_service import create_notification, init_socketio as init_notification_socketio
+from services.notification_service import create_notification, init_socketio as init_notification_socketio, fetch_google_access_token, send_verification_email
 
 # ─── SCHEMA & AUDIT CACHE ───
 _SCHEMA_INITIALIZED = False
@@ -630,60 +630,7 @@ def decode_password_reset_token(token):
     return payload
 
 
-def fetch_google_access_token():
-    """Exchange the configured refresh token for a Gmail API access token."""
-    print("[FETCH_GOOGLE_ACCESS_TOKEN] Starting token exchange...", flush=True)
-    
-    missing_settings = []
-    if not GOOGLE_CLIENT_ID:
-        missing_settings.append('GOOGLE_CLIENT_ID')
-    if not GOOGLE_CLIENT_SECRET:
-        missing_settings.append('GOOGLE_CLIENT_SECRET')
-    if not GOOGLE_REFRESH_TOKEN:
-        missing_settings.append('GOOGLE_REFRESH_TOKEN')
-
-    if missing_settings:
-        print(f"[FETCH_GOOGLE_ACCESS_TOKEN] ERROR: Missing settings: {missing_settings}", flush=True)
-        raise RuntimeError(
-            f"Google Gmail API credentials are not configured. Missing: {', '.join(missing_settings)}"
-        )
-    
-    print("[FETCH_GOOGLE_ACCESS_TOKEN] All credentials present, exchanging refresh token...", flush=True)
-
-    token_request_body = parse.urlencode({
-        'client_id': GOOGLE_CLIENT_ID,
-        'client_secret': GOOGLE_CLIENT_SECRET,
-        'refresh_token': GOOGLE_REFRESH_TOKEN,
-        'grant_type': 'refresh_token',
-    }).encode('utf-8')
-
-    token_request = urllib_request.Request(
-        'https://oauth2.googleapis.com/token',
-        data=token_request_body,
-        headers={'Content-Type': 'application/x-www-form-urlencoded'},
-        method='POST',
-    )
-
-    try:
-        print("[FETCH_GOOGLE_ACCESS_TOKEN] Sending token exchange request to OAuth2...", flush=True)
-        with urllib_request.urlopen(token_request, timeout=30) as response:
-            payload = json.loads(response.read().decode('utf-8'))
-        print("[FETCH_GOOGLE_ACCESS_TOKEN] Token exchange response received", flush=True)
-    except urllib_error.HTTPError as exc:
-        response_body = exc.read().decode('utf-8', errors='replace')
-        print(f"[FETCH_GOOGLE_ACCESS_TOKEN] OAuth2 HTTP Error: {exc.code} - {response_body}", flush=True)
-        raise RuntimeError(f'Google token exchange failed: {response_body}') from exc
-    except OSError as exc:
-        print(f"[FETCH_GOOGLE_ACCESS_TOKEN] Network error: {str(exc)}", flush=True)
-        raise RuntimeError('Google token exchange failed because the network request could not be completed') from exc
-
-    access_token = payload.get('access_token')
-    if not access_token:
-        print(f"[FETCH_GOOGLE_ACCESS_TOKEN] ERROR: No access token in response: {payload}", flush=True)
-        raise RuntimeError('Google token exchange succeeded but no access token was returned')
-
-    print("[FETCH_GOOGLE_ACCESS_TOKEN] Access token obtained successfully", flush=True)
-    return access_token
+# fetch_google_access_token removed in favor of services.notification_service version
 
 
 def generate_verification_code():
@@ -854,58 +801,7 @@ def load_applicant_verification_context(cursor, applicant_no, scholarship_no):
     return cursor.fetchone()
 
 
-def send_verification_email(receiver_email, code):
-    """Send a verification email via the Gmail API."""
-    if not GMAIL_SENDER_EMAIL:
-        raise RuntimeError('Gmail sender email is not configured.')
-
-    body = f"""Hello,
-
-Thank you for registering with ISKOMATS Admin. To complete your registration, please use the following verification code:
-
-{code}
-
-This code will expire in {PASSWORD_RESET_EXPIRY_MINUTES} minutes.
-
-If you did not register for an account, please ignore this email.
-
-Best regards,
-The ISKOMATS Team
-"""
-    
-    # Create proper MIME email using MIMEText
-    msg = MIMEText(body)
-    msg['Subject'] = 'Verify your ISKOMATS Admin Account'
-    msg['From'] = GMAIL_SENDER_EMAIL
-    msg['To'] = receiver_email
-    
-    try:
-        access_token = fetch_google_access_token()
-    except Exception as e:
-        print(f"[GOOGLE AUTH ERROR] {e}")
-        raise RuntimeError(f"Authentication with Google failed: {e}")
-
-    encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
-    gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
-    
-    email_request = urllib_request.Request(
-        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
-        data=gmail_request_body,
-        headers={
-            'Authorization': f'Bearer {access_token}',
-            'Content-Type': 'application/json',
-        },
-        method='POST',
-    )
-    
-    try:
-        with urllib_request.urlopen(email_request, timeout=30) as response:
-            return json.loads(response.read().decode('utf-8'))
-    except urllib_error.HTTPError as exc:
-        response_body = exc.read().decode('utf-8', errors='replace')
-        raise RuntimeError(f'Gmail API send failed: {response_body}') from exc
-    except OSError as exc:
-        raise RuntimeError('Gmail API request failed because the network request could not be completed') from exc
+# send_verification_email removed in favor of services.notification_service version
 
 
 def send_password_reset_email(receiver_email, reset_url, provider_name=None):
@@ -2420,7 +2316,8 @@ def register():
         conn.close()
 
         # 5. Send verification email (Offloaded to background to prevent UI lag)
-        run_background_task(send_verification_email, normalized_email, verification_code)
+        # Using unified service with is_admin=True
+        run_background_task(send_verification_email, normalized_email, verification_code, True)
 
         record_admin_activity(
             actor_user_no=user_no,

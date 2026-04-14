@@ -5,6 +5,7 @@ import webbrowser
 import http.server
 import socketserver
 from urllib.parse import urlparse, parse_qs
+import os
 
 # Global variable to store intercepted auth code
 intercepted_code = None
@@ -31,14 +32,37 @@ def main():
     print("\n--- Google OAuth 2.0 Refresh Token Generator ---")
     print("This script will help you generate a fresh GOOGLE_REFRESH_TOKEN.")
     
+    # 1. Get Client Credentials
     client_id = input("\nEnter your GOOGLE_CLIENT_ID: ").strip()
     client_secret = input("Enter your GOOGLE_CLIENT_SECRET: ").strip()
-    
-    # Scopes and Redirect URI
     scopes = "https://www.googleapis.com/auth/gmail.send"
-    redirect_uri = "http://localhost:8080/"
     
-    # 1. Generate the authorization URL
+    # 2. Try to find an available port for the redirect listener
+    ports_to_try = [8080, 8081, 8888]
+    httpd = None
+    actual_port = None
+    
+    for port in ports_to_try:
+        try:
+            # Allow reuse of the address to prevent WinError 10048 (port already in use)
+            socketserver.TCPServer.allow_reuse_address = True
+            httpd = socketserver.TCPServer(("", port), AuthorizationHandler)
+            actual_port = port
+            break
+        except OSError:
+            continue
+            
+    if not httpd:
+        print("\n❌ Error: Could not bind to any of the ports (8080, 8081, 8888).")
+        print("Please close any programs that might be using these ports and try again.")
+        return
+
+    redirect_uri = f"http://localhost:{actual_port}/"
+    if actual_port != 8080:
+        print(f"\n⚠️  Port 8080 was busy. Using port {actual_port} instead.")
+        print(f"IMPORTANT: Ensure '{redirect_uri}' is added to your Google Redirect URIs!")
+
+    # 3. Generate the authorization URL
     auth_params = {
         'client_id': client_id,
         'redirect_uri': redirect_uri,
@@ -50,7 +74,7 @@ def main():
     
     auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(auth_params)
     
-    print("\n1. Visit the following URL in your browser and authorize the app:")
+    print(f"\n1. Visit the following URL in your browser and authorize the app:")
     print(f"\n{auth_url}\n")
     
     # Attempt to open browser automatically
@@ -59,16 +83,16 @@ def main():
     except:
         pass
         
-    print("2. Waiting for browser redirect to http://localhost:8080/...")
+    print(f"2. Waiting for browser redirect to {redirect_uri}...")
     
-    # 2. Start a temporary local server to intercept the code
-    with socketserver.TCPServer(("", 8080), AuthorizationHandler) as httpd:
+    # Run the server to intercept the code
+    with httpd:
         while intercepted_code is None:
             httpd.handle_request()
     
     print(f"\n✅ Authorization code intercepted: {intercepted_code[:10]}...")
     
-    # 3. Exchange authorization code for refresh token
+    # 4. Exchange authorization code for refresh token
     token_params = {
         'code': intercepted_code,
         'client_id': client_id,

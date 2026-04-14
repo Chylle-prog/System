@@ -49,7 +49,7 @@ from services.ocr_utils import (
     year_level_matches_text
 )
 from services.school_utils import build_school_name_variants, school_name_matches_text
-from services.notification_service import create_notification, fetch_google_access_token
+from services.notification_service import create_notification, fetch_google_access_token, send_verification_email
 from services.google_auth_service import verify_google_token
 from concurrent.futures import ThreadPoolExecutor
 
@@ -1090,48 +1090,7 @@ def generate_verification_code():
     return str(random.randint(100000, 999999))
 
 
-def send_verification_email(receiver_email, code):
-    """Send a verification email via the Gmail API."""
-    from urllib import request as urllib_request
-    from email.mime.text import MIMEText
-    import json
-    
-    if not GMAIL_SENDER_EMAIL:
-        raise RuntimeError('Gmail sender email is not configured.')
-
-    body = f"""Hello,
-
-Thank you for registering with ISKOMATS. To complete your registration, please use the following verification code:
-
-{code}
-
-If you did not register for an account, please ignore this email.
-
-Best regards,
-The ISKOMATS Team
-"""
-    msg = MIMEText(body)
-    msg['Subject'] = 'Verify your ISKOMATS Account'
-    msg['From'] = GMAIL_SENDER_EMAIL
-    msg['To'] = receiver_email
-
-    try:
-        access_token = fetch_google_access_token()
-    except Exception as e:
-        print(f"[GOOGLE AUTH ERROR] {e}", flush=True)
-        raise RuntimeError(f"Authentication with Google failed: {e}")
-
-    encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
-    
-    email_request = urllib_request.Request(
-        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
-        data=json.dumps({'raw': encoded_message}).encode('utf-8'),
-        headers={
-            'Authorization': f'Bearer {access_token}',
-            'Content-Type': 'application/json',
-        },
-        method='POST',
-    )
+# send_verification_email removed in favor of services.notification_service version
     
     try:
         with urllib_request.urlopen(email_request, timeout=30) as response:
