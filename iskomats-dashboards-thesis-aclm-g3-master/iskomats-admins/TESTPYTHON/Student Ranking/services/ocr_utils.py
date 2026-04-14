@@ -480,8 +480,8 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
             if not n_words: n_words = [w.strip() for w in normalize_for_ocr(name_part).split() if w.strip()]
             f_count = 0
             
-            # Dynamic threshold based on document type
-            effective_threshold = (0.80 if is_indigency else 0.85)
+            # Dynamic threshold based on document type (reduced to 0.80 to tolerate minor character differences)
+            effective_threshold = 0.80
             
             for word in n_words:
                 # For middle names, also accept just the first letter (initial)
@@ -518,7 +518,7 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
                     if found_approx: found = True; break
             
             p_ratio = f_count / len(n_words) if n_words else 0
-            # Higher bar for verification success: 0.7 for Indigency, 0.80 for others (reduced from 0.85 to allow 1 typo in 8 letter word)
+            # Higher bar for verification success: 0.7 for Indigency, 0.80 for others
             return p_ratio >= (0.7 if is_indigency else 0.80), p_ratio
 
         first_ok, first_ratio = check_name_part(target_first_name, is_middle=False)
@@ -541,16 +541,7 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
             'middle_ratio': middle_ratio,
             'last_ratio': last_ratio
         }
-        
-        # 1.b ID Number Matching (If provided)
-        if target_id_no and str(target_id_no).strip():
-            # Basic digit extraction from OCR to handle dashes/spaces in IDs
-            ocr_digits = "".join(filter(str.isdigit, norm_txt))
-            target_id_str = "".join(filter(str.isdigit, str(target_id_no)))
-            if target_id_str and target_id_str not in ocr_digits:
-                # If digits aren't found, try fuzzy match on the actual string
-                if str(target_id_no).lower() not in norm_txt:
-                    n_verified = False
+        # Note: ID Number Matching is handled externally by student_id_no_matches_text
         
         # 1.c Year Level Matching (If provided)
         if target_year_level and str(target_year_level).strip():
