@@ -15,12 +15,29 @@ bcrypt = Bcrypt()
 SECRET_KEY = get_secret_key()
 
 # --- SCHEMA MIGRATION ---
+import psycopg2
+
 def ensure_applicant_verification_columns():
     try:
         conn = get_db_startup()
         cur = conn.cursor()
+
+        # Ensure pending_registrations table exists
+        cur.execute(f"""
+            CREATE TABLE IF NOT EXISTS pending_registrations (
+                id SERIAL PRIMARY KEY,
+                email VARCHAR(255) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                first_name VARCHAR(100),
+                last_name VARCHAR(100),
+                middle_name VARCHAR(100),
+                profile_picture TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         applicant_email_table = get_applicant_email_table(cur)
-        
+
         # Check if columns exist
         cur.execute(f"""
             SELECT column_name
@@ -48,7 +65,7 @@ def ensure_applicant_verification_columns():
             cur.execute(f"ALTER TABLE {applicant_email_table} ADD COLUMN middle_name VARCHAR(100)")
         if 'profile_picture' not in existing:
             cur.execute(f"ALTER TABLE {applicant_email_table} ADD COLUMN profile_picture TEXT")
-            
+
         conn.commit()
         cur.close()
         conn.close()
@@ -157,10 +174,13 @@ def register():
         cur = conn.cursor()
         applicant_email_table = get_applicant_email_table(cur)
 
-        # Check if already exists
+        # Check if already exists in applicant_email or pending_registrations
         cur.execute(f"SELECT 1 FROM {applicant_email_table} WHERE email_address ILIKE %s", (email,))
         if cur.fetchone():
             return jsonify({'message': 'Email already registered'}), 400
+        cur.execute(f"SELECT 1 FROM pending_registrations WHERE email ILIKE %s", (email,))
+        if cur.fetchone():
+            return jsonify({'message': 'Registration already pending for this email'}), 400
 
         password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
 
@@ -171,8 +191,12 @@ def register():
         profile_picture = data.get('profile_picture', None)
 
         cur.execute(
-            f"INSERT INTO {applicant_email_table} (email_address, password_hash, is_verified, first_name, last_name, middle_name, profile_picture) VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING app_em_no",
-            (email, password_hash, True, first_name, last_name, middle_name, profile_picture)
+            """
+            INSERT INTO pending_registrations (email, password_hash, first_name, last_name, middle_name, profile_picture)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (email, password_hash, first_name, last_name, middle_name, profile_picture)
         )
         conn.commit()
 
@@ -183,7 +207,7 @@ def register():
         except Exception as e:
             print(f"[EMAIL ERROR] Could not send registration email: {e}")
 
-        return jsonify({"status": "ok", "message": "Registration successful. You can now log in."})
+        return jsonify({"status": "ok", "message": "Registration submitted. Please complete your profile to finish registration."})
     except Exception as exc:
         return jsonify({'message': str(exc)}), 500
     finally:
