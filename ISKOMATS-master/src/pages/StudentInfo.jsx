@@ -3847,10 +3847,6 @@ const StudentInfo = () => {
                               width={500}
                               height={250}
                               penColor="#1e293b"
-                              canvasProps={{
-                                className: 'sigCanvas',
-                                style: { width: '100%', height: '200px', cursor: 'crosshair', display: 'block' }
-                              }} 
                             />
                             <div style={{position: 'absolute', bottom: '15px', right: '20px', pointerEvents: 'none'}}>
                               <span style={{fontSize: '0.6rem', color: '#e2e8f0', fontWeight: '900', letterSpacing: '3px'}}>ESIGNATURE BOX</span>
