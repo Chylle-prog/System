@@ -404,6 +404,17 @@ def course_matches_text(target_course, text):
             if s in t_course and full in norm_text:
                 return True, full
 
+    # 4. Word Intersection Fallback (High Reliability for garbled/long names)
+    # If the document contains "Information" and "Technology" and "Bachelor", it's a match.
+    meaningful_target = [w for w in words if len(w) >= 3 and w not in {'and', 'the', 'for'}]
+    if len(meaningful_target) >= 2:
+        found_count = 0
+        for w in meaningful_target:
+            if w.lower() in clean_text:
+                found_count += 1
+        if found_count / len(meaningful_target) >= 0.75:
+            return True, f"Found {found_count} keywords"
+
     # 3. Individual word matching (must match at least 60% of significant words)
     if meaningful_words:
         matches = 0
@@ -585,6 +596,15 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
                 if is_middle and n_words and len(n_words[0]) == 1:
                     if n_words[0] in all_ocr_words:
                         return True, 1.0
+                        
+                # Ultimate Word-by-Word Alphanumeric Search
+                # If target is "Mikaela Ysabel", check if "mikaela" and "ysabel" exist anywhere in the alpha-blob
+                if len(n_words) >= 2:
+                    found_all = True
+                    for term in n_words:
+                        if len(term) >= 3 and term not in clean_text:
+                            found_all = False; break
+                    if found_all: return True, 1.0
 
             # Higher bar for verification success: 0.7 for Indigency, 0.80 for others
             return p_ratio >= (0.7 if is_indigency else 0.80), p_ratio

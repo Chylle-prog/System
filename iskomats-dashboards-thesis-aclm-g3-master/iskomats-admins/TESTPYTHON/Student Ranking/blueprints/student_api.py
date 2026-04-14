@@ -2956,7 +2956,6 @@ def ocr_check():
                     if expected_academic_year:
                         year_only_ok = academic_year_matches_expected(year_label, expected_academic_year)
                     else:
-                        # No expected year set — skip this check
                         year_only_ok = True
                     semester_ok = (normalized_expected_semester == normalized_semester_label) if normalized_expected_semester else True
                     
@@ -2964,7 +2963,7 @@ def ocr_check():
                         id_ok, _ = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
                         course_ok, _ = course_matches_text(course, raw) if course else (True, None)
                         
-                        # Strictly require Year and Semester for Enrollment (COR/COE)
+                        # Requirements for Enrollment (COR/COE): Name, ID, School, Course, Year, Semester
                         v = name_ok and id_ok and school_ok and course_ok and year_only_ok and semester_ok
                         
                         checklist = [
@@ -2973,7 +2972,6 @@ def ocr_check():
                             f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
                             f"ID: {'OK' if id_ok else 'X'}",
                             f"School: {'OK' if school_ok else 'X'}",
-                            f"Level: {'OK' if year_level_ok else 'X'}",
                             f"Year: {'OK' if year_only_ok else 'X'}",
                             f"Sem: {'OK' if semester_ok else 'X'}",
                             f"Course: {'OK' if course_ok else 'X'}"
@@ -2983,11 +2981,12 @@ def ocr_check():
                         if not v:
                             msg += f" (Checked vs F:'{first_name}' M:'{middle_name}' L:'{last_name}' ID:'{expected_id_no}')"
                         return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+
                     elif doc_type == 'Grades':
                         gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
                         
-                        # Grades should match the school and student identity
-                        v = name_ok and year_only_ok and gpa_ok and school_ok and year_level_ok and semester_ok
+                        # Requirements for Grades: Name, School, Year, Sem, GPA
+                        v = name_ok and year_only_ok and gpa_ok and school_ok and semester_ok
                         
                         checklist = [
                             f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
@@ -2995,7 +2994,6 @@ def ocr_check():
                             f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
                             f"School: {'OK' if school_ok else 'X'}",
                             f"GPA: {'OK' if gpa_ok else 'X'}",
-                            f"Level: {'OK' if year_level_ok else 'X'}",
                             f"Year: {'OK' if year_only_ok else 'X'}",
                             f"Sem: {'OK' if semester_ok else 'X'}"
                         ]
