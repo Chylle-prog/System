@@ -3795,230 +3795,278 @@ const StudentInfo = () => {
               </div>
 
               {/* Signature Section */}
-               <div style={{marginBottom: '2rem'}}>
-                <label style={{display: 'block', fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '1rem'}}>
-                  Signature & Additional Identification <span style={{color: '#e74c3c'}}>*</span>
+              <div style={{marginBottom: '2rem'}}>
+                <label style={{display: 'block', fontSize: '1rem', fontWeight: '800', color: '#1e293b', marginBottom: '1.2rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
+                  Signature & Identity Verification <span style={{color: '#e74c3c'}}>*</span>
                 </label>
                 
-                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem'}}>
-                  {/* Signature Column */}
-                  <div style={{background: '#fff', border: '1px solid var(--border)', borderRadius: '16px', padding: '1.5rem', textAlign: 'center'}}>
-                    <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#666', marginBottom: '1rem'}}>Drawer Signature</label>
-                    {!showSignaturePad && !formData.applicantSignatureName ? (
-                      <button type="button" onClick={() => setShowSignaturePad(true)} className="photo-option-btn" style={{margin: '0 auto'}}>
-                        <i className="fas fa-pen-nib"></i> Sign Application
-                      </button>
-                    ) : showSignaturePad ? (
-                      <div style={{width: '100%', maxWidth: '420px', margin: '0 auto'}}>
-                        <div style={{border: '1.5px solid #eee', borderRadius: '12px', background: '#fcfcfc', marginBottom: '1rem'}}>
-                          <SignaturePad ref={sigPad} canvasProps={{width: 400, height: 120, className: 'sigCanvas'}} />
-                        </div>
-                        <div style={{display: 'flex', gap: '8px', justifyContent: 'center'}}>
-                          <button type="button" onClick={clearSignature} className="back-to-form-btn" style={{padding: '0.4rem 1rem', fontSize: '0.8rem'}}>Clear</button>
-                          <button type="button" onClick={saveSignature} className="submit-btn" style={{width: 'auto', padding: '0.4rem 1.2rem', height: 'auto', fontSize: '0.8rem'}}>Save</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="signature-preview-box">
-                          <img src={formData.applicantSignatureName} alt="Signature" style={{maxHeight: '80px'}} />
-                          <button type="button" onClick={() => setShowSignaturePad(true)} style={{position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer'}}><i className="fas fa-undo"></i></button>
-                        </div>
-                        
-                        <div style={{marginTop: '1rem'}}>
-                          <button 
-                            type="button" 
-                            onClick={handleSignatureScan}
-                            disabled={signatureVerified === 'verifying' || !(schoolIdPhotos.back || userProfile?.id_img_back)}
-                            style={{
-                              width: '100%',
-                              padding: '0.6rem',
-                              borderRadius: '10px',
-                              background: signatureVerified === 'success' ? '#10b981' : (signatureVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
-                              color: 'white',
-                              border: 'none',
-                              cursor: 'pointer',
-                              fontSize: '0.8rem',
-                              fontWeight: '700',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '8px',
-                              transition: 'all 0.2s ease'
-                            }}
-                          >
-                            <i className={`fas ${signatureVerified === 'verifying' ? 'fa-spinner fa-spin' : (signatureVerified === 'success' ? 'fa-check-circle' : 'fa-signature')}`}></i>
-                            {signatureVerified === 'verifying' ? 'Matching...' : (signatureVerified === 'success' ? 'Verified!' : 'Verify Handwriting')}
-                          </button>
-                          
-                          {signatureResults && (
-                            <div style={{
-                              marginTop: '20px',
-                              background: '#f8fafc',
-                              border: '1px solid #e2e8f0',
-                              borderRadius: '16px',
-                              padding: '1.2rem',
-                              boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
-                            }}>
-                              <h5 style={{margin: '0 0 10px 0', fontSize: '0.85rem', fontWeight: '800', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px'}}>
-                                <i className="fas fa-microchip" style={{color: 'var(--primary)'}}></i> HANDWRITING MATCH ANALYSIS
-                              </h5>
-                              
-                              <div style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '10px',
-                                marginBottom: '15px'
-                              }}>
-                                <div style={{
-                                  background: signatureResults.verified ? '#10b981' : '#ef4444',
-                                  color: 'white',
-                                  fontSize: '0.65rem',
-                                  fontWeight: '900',
-                                  padding: '4px 10px',
-                                  borderRadius: '20px',
-                                  letterSpacing: '0.5px'
-                                }}>
-                                  {signatureResults.verified ? 'VERIFIED' : 'MISMATCH'}
-                                </div>
-                                <div style={{fontSize: '0.75rem', fontWeight: '700', color: '#64748b'}}>
-                                  Confidence Score: {(signatureResults.confidence * 100).toFixed(1)}%
-                                </div>
-                              </div>
-
-                              <div style={{
-                                display: 'grid',
-                                gridTemplateColumns: '1fr 1fr',
-                                gap: '12px',
-                                marginBottom: '15px'
-                              }}>
-                                <div style={{textAlign: 'center'}}>
-                                  <span style={{fontSize: '0.6rem', color: '#94a3b8', display: 'block', marginBottom: '4px', fontWeight: '700'}}>ORIGINAL (ID)</span>
-                                  <div style={{background: 'white', border: '1px solid #f1f5f9', borderRadius: '8px', padding: '6px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                                    <img src={signatureResults.extracted_signature} alt="ID Signature" style={{maxWidth: '100%', maxHeight: '100%', objectFit: 'contain'}} />
-                                  </div>
-                                </div>
-                                <div style={{textAlign: 'center'}}>
-                                  <span style={{fontSize: '0.6rem', color: '#94a3b8', display: 'block', marginBottom: '4px', fontWeight: '700'}}>LIVE CAPTURE</span>
-                                  <div style={{background: 'white', border: '1px solid #f1f5f9', borderRadius: '8px', padding: '6px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                                    <img src={signatureResults.processed_submitted} alt="Live Signature" style={{maxWidth: '100%', maxHeight: '100%', objectFit: 'contain'}} />
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div style={{
-                                background: 'white',
-                                padding: '10px',
-                                borderRadius: '10px',
-                                borderLeft: `3px solid ${signatureResults.verified ? '#10b981' : '#ef4444'}`,
-                                fontSize: '0.7rem',
-                                color: '#475569',
-                                lineHeight: '1.4',
-                                marginBottom: '15px'
-                              }}>
-                                {signatureResults.message}
-                              </div>
-
-                              {/* Neural Fingerprint (Verifier Bench View) */}
-                              {signatureResults.matcher_submitted && signatureResults.matcher_reference && (
-                                <div style={{
-                                  marginTop: '15px',
-                                  padding: '12px',
-                                  background: '#0f172a',
-                                  borderRadius: '12px',
-                                  border: '1px solid #334155'
-                                }}>
-                                  <div style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    marginBottom: '8px'
-                                  }}>
-                                    <span style={{fontSize: '0.6rem', color: '#94a3b8', fontWeight: '800', letterSpacing: '0.5px'}}>
-                                      <i className="fas fa-brain" style={{marginRight: '5px', color: '#38bdf8'}}></i>
-                                      NEURAL FINGERPRINT (VERIFIER BENCH)
-                                    </span>
-                                    <span style={{fontSize: '0.55rem', color: '#64748b', fontWeight: '600'}}>224x224 NORMALIZED</span>
-                                  </div>
-                                  <div style={{
-                                    display: 'grid',
-                                    gridTemplateColumns: '1fr 1fr',
-                                    gap: '10px'
-                                  }}>
-                                    <div style={{textAlign: 'center'}}>
-                                      <div style={{background: '#1e293b', border: '1px solid #334155', borderRadius: '6px', padding: '4px', height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden'}}>
-                                        <img src={signatureResults.matcher_reference} alt="Neural Ref" style={{maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', filter: 'brightness(1.1) contrast(1.1)'}} />
-                                      </div>
-                                      <span style={{fontSize: '0.5rem', color: '#64748b', display: 'block', marginTop: '4px', fontWeight: '700'}}>AI REF</span>
-                                    </div>
-                                    <div style={{textAlign: 'center'}}>
-                                      <div style={{background: '#1e293b', border: '1px solid #334155', borderRadius: '6px', padding: '4px', height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden'}}>
-                                        <img src={signatureResults.matcher_submitted} alt="Neural Sub" style={{maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', filter: 'brightness(1.1) contrast(1.1)'}} />
-                                      </div>
-                                      <span style={{fontSize: '0.5rem', color: '#64748b', display: 'block', marginTop: '4px', fontWeight: '700'}}>AI LIVE</span>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Extra Image Column (Not connected to DB) */}
-                  <div style={{background: '#f0f7ff', border: '1px solid #e1e8f0', borderRadius: '16px', padding: '1.5rem', textAlign: 'center'}}>
-                    <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#666', marginBottom: '0.5rem'}}>Additional Identification (Optional)</label>
-                    <p style={{fontSize: '0.7rem', color: '#888', marginBottom: '1rem'}}>Internal Record Only (Not stored in DB)</p>
-                    {renderDocumentMediaPicker({
-                      photoId: 'extra_identification_photo',
-                      photoName: 'extra_identification_photo',
-                      photoValue: extraSignaturePhoto,
-                      onPhotoChange: (e) => {
-                        const file = e.target.files[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = () => setExtraSignaturePhoto(reader.result);
-                          reader.readAsDataURL(file);
-                        }
-                      }
-                    })}
-                    {extraSignaturePhoto && (
-                      <div style={{marginTop: '10px', position: 'relative'}}>
-                        <img src={extraSignaturePhoto} alt="Extra Identification" style={{maxHeight: '70px', borderRadius: '8px', border: '1px solid #fff'}} />
-                        <button type="button" onClick={() => setExtraSignaturePhoto(null)} style={{position: 'absolute', top: '-5px', right: '5px', background: 'rgba(255,0,0,0.7)', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', fontSize: '10px'}}><i className="fas fa-times"></i></button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-               {/* Face Verification Section */}
-              <div style={{marginBottom: '2rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0'}}>
-                <h4 style={{fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px'}}>
-                  Final Identity Verification <span style={{color: '#e74c3c'}}>*</span>
-                </h4>
-                <p style={{fontSize: '0.85rem', color: '#666', marginBottom: '1.2rem', paddingLeft: '16px'}}>Match captured photo with your School ID</p>
-                
-                <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem', alignItems: 'flex-start'}}>
-                  {/* Reference ID Column */}
-                  <div style={{background: '#fff', padding: '1.2rem', borderRadius: '20px', border: '1px solid #e1e8f0', boxShadow: '0 4px 15px rgba(0,0,0,0.03)'}}>
-                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
-                      <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#1a202c'}}>REFERENCE SOURCE</label>
-                      <div style={{fontSize: '0.65rem', color: '#6366f1', fontWeight: '800', background: '#eef2ff', padding: '3px 8px', borderRadius: '6px'}}>FRONT ID</div>
+                <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem', marginBottom: '3rem'}}>
+                  {/* Reference Back ID Column (Matched against handwriting) */}
+                  <div style={{background: '#fff', padding: '1.2rem', borderRadius: '24px', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.04)'}}>
+                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
+                      <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#475569', letterSpacing: '0.05em'}}>REFERENCE SOURCE</label>
+                      <div style={{fontSize: '0.65rem', color: '#8b5cf6', fontWeight: '800', background: '#f5f3ff', padding: '4px 10px', borderRadius: '8px', border: '1px solid #ddd6fe'}}>BACK ID</div>
                     </div>
-                    <div style={{height: '240px', border: '2px dashed #cbd5e1', borderRadius: '15px', overflow: 'hidden', background: '#f8fafc', position: 'relative'}}>
-                      {(schoolIdPhotos.front || userProfile?.id_img_front) ? (
-                        <img src={schoolIdPhotos.front || userProfile?.id_img_front} style={{width: '100%', height: '100%', objectFit: 'contain'}} alt="Reference ID" />
+                    <div style={{height: '240px', border: '2.5px dashed #e2e8f0', borderRadius: '18px', overflow: 'hidden', background: '#f8fafc', position: 'relative', transition: 'all 0.3s ease'}}>
+                      {(schoolIdPhotos.back || userProfile?.id_img_back) ? (
+                        <img src={schoolIdPhotos.back || userProfile?.id_img_back} style={{width: '100%', height: '100%', objectFit: 'contain'}} alt="Back ID Reference" />
                       ) : (
-                        <div style={{height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', textAlign: 'center', padding: '1rem'}}>
-                          <i className="fas fa-id-card" style={{fontSize: '2rem', marginBottom: '10px'}}></i>
-                          <p style={{fontSize: '0.75rem', fontWeight: '600', margin: 0}}>ID Not Available<br/><span style={{fontSize: '0.65rem', fontWeight: 'normal'}}>Please upload in Step 3</span></p>
+                        <div style={{height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', textAlign: 'center', padding: '1.5rem'}}>
+                          <div style={{width: '60px', height: '60px', background: '#f1f5f9', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '15px'}}>
+                            <i className="fas fa-id-card" style={{fontSize: '1.8rem', color: '#cbd5e1'}}></i>
+                          </div>
+                          <p style={{fontSize: '0.8rem', fontWeight: '700', margin: 0, color: '#64748b'}}>Back ID Not Visible</p>
+                          <p style={{fontSize: '0.65rem', color: '#94a3b8', marginTop: '8px'}}>Please upload the back of your ID in Step 3 to enable handwriting verification.</p>
                         </div>
                       )}
                     </div>
-                    <p style={{fontSize: '0.7rem', color: '#64748b', marginTop: '1rem', fontStyle: 'italic', textAlign: 'center'}}>We will match your live photo against this ID face.</p>
+                    <p style={{fontSize: '0.72rem', color: '#64748b', marginTop: '1.2rem', fontStyle: 'italic', textAlign: 'center', lineHeight: '1.4'}}>
+                      We will match your live signature against the <b>official specimen</b> on this ID.
+                    </p>
+                  </div>
+
+                  {/* Signature Pad Column */}
+                  <div style={{background: '#fff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '1.5rem', display: 'flex', flexDirection: 'column', boxShadow: '0 4px 20px rgba(0,0,0,0.04)'}}>
+                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
+                      <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#475569', letterSpacing: '0.05em'}}>LIVE CAPTURE</label>
+                      <div style={{fontSize: '0.65rem', color: 'var(--primary)', fontWeight: '800', background: 'var(--accent-soft)', padding: '4px 10px', borderRadius: '8px', border: '1px solid #ffedd5'}}>HANDWRITING</div>
+                    </div>
+                    
+                    <div style={{flex: 1, display: 'flex', flexDirection: 'column'}}>
+                      {!showSignaturePad && !formData.applicantSignatureName ? (
+                        <div style={{flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px dashed #f1f5f9', borderRadius: '18px', background: '#fcfcfc', minHeight: '200px'}}>
+                          <button type="button" onClick={() => setShowSignaturePad(true)} className="photo-option-btn" style={{padding: '1rem 2rem', borderRadius: '14px', background: 'white', border: '1.5px solid #e2e8f0', color: '#475569'}}>
+                            <i className="fas fa-pen-nib" style={{marginRight: '10px', color: 'var(--primary)'}}></i> Draw Signature
+                          </button>
+                        </div>
+                      ) : showSignaturePad ? (
+                        <div style={{width: '100%', flex: 1}}>
+                          <div style={{border: '1.5px solid #e2e8f0', borderRadius: '18px', background: '#fff', marginBottom: '1rem', overflow: 'hidden', position: 'relative', boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.03)'}}>
+                            <SignaturePad 
+                              ref={sigPad} 
+                              width={500}
+                              height={250}
+                              penColor="#1e293b"
+                              canvasProps={{
+                                className: 'sigCanvas',
+                                style: { width: '100%', height: '200px', cursor: 'crosshair', display: 'block' }
+                              }} 
+                            />
+                            <div style={{position: 'absolute', bottom: '15px', right: '20px', pointerEvents: 'none'}}>
+                              <span style={{fontSize: '0.6rem', color: '#e2e8f0', fontWeight: '900', letterSpacing: '3px'}}>ESIGNATURE BOX</span>
+                            </div>
+                          </div>
+                          <div style={{display: 'flex', gap: '10px', justifyContent: 'center'}}>
+                            <button type="button" onClick={clearSignature} className="back-to-form-btn" style={{padding: '0.65rem 1.4rem', fontSize: '0.85rem', borderRadius: '12px', flex: 1, fontWeight: '700'}}>Clear All</button>
+                            <button type="button" onClick={saveSignature} className="submit-btn" style={{width: 'auto', padding: '0.65rem 1.6rem', height: 'auto', fontSize: '0.85rem', borderRadius: '12px', flex: 1, fontWeight: '700'}}>Confirm Specimen</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{flex: 1, display: 'flex', flexDirection: 'column'}}>
+                          <div className="signature-preview-box" style={{flex: 1, background: '#fff', borderRadius: '18px', minHeight: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #f1f5f9', position: 'relative', overflow: 'hidden'}}>
+                            <img src={formData.applicantSignatureName} alt="Signature" style={{maxHeight: '100px', maxWidth: '90%', objectFit: 'contain'}} />
+                            <button 
+                              type="button" 
+                              onClick={() => setShowSignaturePad(true)} 
+                              style={{
+                                position: 'absolute', 
+                                top: '12px', 
+                                right: '12px', 
+                                background: 'white', 
+                                color: '#64748b', 
+                                border: '1px solid #e2e8f0', 
+                                borderRadius: '50%', 
+                                width: '32px', 
+                                height: '32px', 
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: '0 4px 8px rgba(0,0,0,0.06)',
+                                transition: 'all 0.2s ease'
+                              }}
+                              className="hover-pop"
+                            >
+                              <i className="fas fa-undo"></i>
+                            </button>
+                          </div>
+                          
+                          <div style={{marginTop: '1.2rem'}}>
+                            <button 
+                              type="button" 
+                              onClick={handleSignatureScan}
+                              disabled={signatureVerified === 'verifying' || !(schoolIdPhotos.back || userProfile?.id_img_back)}
+                              style={{
+                                width: '100%',
+                                padding: '0.85rem',
+                                borderRadius: '14px',
+                                background: signatureVerified === 'success' ? '#10b981' : (signatureVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
+                                color: 'white',
+                                border: 'none',
+                                cursor: 'pointer',
+                                fontSize: '0.9rem',
+                                fontWeight: '800',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '10px',
+                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.5px',
+                                boxShadow: signatureVerified === 'success' ? '0 8px 20px -5px rgba(16, 185, 129, 0.4)' : '0 8px 20px -5px rgba(79, 13, 0, 0.3)'
+                              }}
+                            >
+                              <i className={`fas ${signatureVerified === 'verifying' ? 'fa-circle-notch fa-spin' : (signatureVerified === 'success' ? 'fa-check-circle' : 'fa-brain')}`}></i>
+                              {signatureVerified === 'verifying' ? 'AI Analyzing...' : (signatureVerified === 'success' ? 'Specimen Matched' : 'Neural Handwriting Check')}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {signatureResults && (
+                  <div style={{
+                    marginBottom: '3rem',
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '24px',
+                    padding: '2rem',
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.03)'
+                  }}>
+                    <h5 style={{margin: '0 0 1.5rem 0', fontSize: '0.85rem', fontWeight: '900', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px', letterSpacing: '0.1em', textTransform: 'uppercase'}}>
+                      <i className="fas fa-microchip" style={{color: 'var(--primary)', fontSize: '1.1rem'}}></i> MATCH ANALYSIS REPORT
+                    </h5>
+                    
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      marginBottom: '2rem'
+                    }}>
+                      <div style={{
+                        background: signatureResults.verified ? '#10b981' : '#ef4444',
+                        color: 'white',
+                        fontSize: '0.7rem',
+                        fontWeight: '900',
+                        padding: '6px 14px',
+                        borderRadius: '30px',
+                        letterSpacing: '1px',
+                        boxShadow: `0 4px 12px ${signatureResults.verified ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.2)'}`
+                      }}>
+                        {signatureResults.verified ? 'SPECIMEN MATCH' : 'HANDWRITING MISMATCH'}
+                      </div>
+                      <div style={{fontSize: '0.85rem', fontWeight: '800', color: '#475569'}}>
+                        Neural Confidence: <span style={{color: signatureResults.verified ? '#059669' : '#dc2626'}}>{(signatureResults.confidence * 100).toFixed(1)}%</span>
+                      </div>
+                    </div>
+
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                      gap: '1.5rem',
+                      marginBottom: '2rem'
+                    }}>
+                      <div style={{textAlign: 'center'}}>
+                        <span style={{fontSize: '0.65rem', color: '#94a3b8', display: 'block', marginBottom: '8px', fontWeight: '800', letterSpacing: '0.5px'}}>REFERENCE Specimen (ID)</span>
+                        <div style={{background: 'white', border: '1px solid #f1f5f9', borderRadius: '14px', padding: '12px', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                          <img src={signatureResults.extracted_signature} alt="ID Signature" style={{maxWidth: '100%', maxHeight: '100%', objectFit: 'contain'}} />
+                        </div>
+                      </div>
+                      <div style={{textAlign: 'center'}}>
+                        <span style={{fontSize: '0.65rem', color: '#94a3b8', display: 'block', marginBottom: '8px', fontWeight: '800', letterSpacing: '0.5px'}}>SUBMITTED Live Capture</span>
+                        <div style={{background: 'white', border: '1px solid #f1f5f9', borderRadius: '14px', padding: '12px', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                          <img src={signatureResults.processed_submitted} alt="Live Signature" style={{maxWidth: '100%', maxHeight: '100%', objectFit: 'contain'}} />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{
+                      background: 'white',
+                      padding: '1.2rem',
+                      borderRadius: '16px',
+                      borderLeft: `5px solid ${signatureResults.verified ? '#10b981' : '#ef4444'}`,
+                      fontSize: '0.85rem',
+                      color: '#334155',
+                      lineHeight: '1.5',
+                      marginBottom: '2rem',
+                      boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+                    }}>
+                      {signatureResults.message}
+                    </div>
+
+                    {/* Neural Fingerprint (Verifier Bench View) */}
+                    {signatureResults.matcher_submitted && signatureResults.matcher_reference && (
+                      <div style={{
+                        marginTop: '2rem',
+                        padding: '1.5rem',
+                        background: '#0f172a',
+                        borderRadius: '20px',
+                        border: '1px solid #1e293b',
+                        boxShadow: '0 15px 35px rgba(0,0,0,0.2)'
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          marginBottom: '1.2rem'
+                        }}>
+                          <span style={{fontSize: '0.7rem', color: '#38bdf8', fontWeight: '900', letterSpacing: '0.1em'}}>
+                            <i className="fas fa-brain" style={{marginRight: '8px'}}></i>
+                            NEURAL FINGERPRINT (VERIFIER BENCH)
+                          </span>
+                          <span style={{fontSize: '0.6rem', color: '#475569', fontWeight: '700'}}>224x224 NORMALIZED MAP</span>
+                        </div>
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr',
+                          gap: '1.5rem'
+                        }}>
+                          <div style={{textAlign: 'center'}}>
+                            <div style={{background: '#1e293b', border: '1px solid #334155', borderRadius: '12px', padding: '8px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden'}}>
+                              <img src={signatureResults.matcher_reference} alt="Neural Ref" style={{maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', filter: 'brightness(1.2) contrast(1.2)'}} />
+                            </div>
+                            <span style={{fontSize: '0.6rem', color: '#64748b', display: 'block', marginTop: '8px', fontWeight: '800'}}>AI TEMPLATE</span>
+                          </div>
+                          <div style={{textAlign: 'center'}}>
+                            <div style={{background: '#1e293b', border: '1px solid #334155', borderRadius: '12px', padding: '8px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden'}}>
+                              <img src={signatureResults.matcher_submitted} alt="Neural Sub" style={{maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', filter: 'brightness(1.2) contrast(1.2)'}} />
+                            </div>
+                            <span style={{fontSize: '0.6rem', color: '#64748b', display: 'block', marginTop: '8px', fontWeight: '800'}}>AI INPUT</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+               {/* Face Verification Section */}
+              <div style={{marginBottom: '2rem', background: '#f8fafc', padding: '2rem', borderRadius: '30px', border: '1px solid #f1f5f9', boxShadow: '0 10px 40px rgba(0,0,0,0.02)'}}>
+                <h4 style={{fontSize: '1.1rem', color: '#1e293b', fontWeight: '800', marginBottom: '0.6rem', borderLeft: '5px solid var(--primary)', paddingLeft: '14px', letterSpacing: '-0.3px', display: 'flex', alignItems: 'center', gap: '10px'}}>
+                  Final Face Identification <span style={{color: '#e74c3c'}}>*</span>
+                </h4>
+                <p style={{fontSize: '0.9rem', color: '#64748b', marginBottom: '2rem', paddingLeft: '19px'}}>Final biometric match between your live capture and ID profile photo.</p>
+                
+                <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2.5rem', alignItems: 'flex-start'}}>
+                  {/* Reference ID Column */}
+                  <div style={{background: '#fff', padding: '1.5rem', borderRadius: '24px', border: '1px solid #eef2f6', boxShadow: '0 4px 20px rgba(0,0,0,0.03)'}}>
+                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
+                      <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#475569', letterSpacing: '0.05em'}}>REFERENCE SOURCE</label>
+                      <div style={{fontSize: '0.65rem', color: '#3b82f6', fontWeight: '800', background: '#eff6ff', padding: '4px 10px', borderRadius: '8px', border: '1px solid #dbeafe'}}>FRONT ID</div>
+                    </div>
+                    <div style={{height: '240px', border: '2.5px dashed #f1f5f9', borderRadius: '18px', overflow: 'hidden', background: '#fcfcfc', position: 'relative'}}>
+                      {(schoolIdPhotos.front || userProfile?.id_img_front) ? (
+                        <img src={schoolIdPhotos.front || userProfile?.id_img_front} style={{width: '100%', height: '100%', objectFit: 'contain'}} alt="Face Reference ID" />
+                      ) : (
+                        <div style={{height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', textAlign: 'center', padding: '1.5rem'}}>
+                          <i className="fas fa-camera-rotate" style={{fontSize: '2rem', marginBottom: '12px'}}></i>
+                          <p style={{fontSize: '0.8rem', fontWeight: '700', margin: 0}}>Front ID Missing</p>
+                        </div>
+                      )}
+                    </div>
+                    <p style={{fontSize: '0.72rem', color: '#64748b', marginTop: '1.2rem', fontStyle: 'italic', textAlign: 'center'}}>AI will extract the facial features from this ID.</p>
                   </div>
 
                   {/* Media Picker and Preview Column */}
