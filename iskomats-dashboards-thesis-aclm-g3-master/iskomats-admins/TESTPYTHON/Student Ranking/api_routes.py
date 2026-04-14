@@ -2043,24 +2043,22 @@ def login():
         return jsonify({'message': 'Email and password are required'}), 400
     
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        user_email_table = get_user_email_table(cursor)
-        normalized_email = data['email'].strip()
-        
-        # Query user from database based on email table joining with user and scholarship_providers
-        cursor.execute(f'''
-            SELECT e.password_hash, e.user_no, e.is_locked, e.is_verified, u.user_name, u.pro_no, p.provider_name
-            FROM {user_email_table} e
-            LEFT JOIN users u ON e.user_no = u.user_no
-            LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
-            WHERE e.email_address ILIKE %s
-        ''', (normalized_email,))
-        user = cursor.fetchone()
-        cursor.close()
-        conn.close()
-        
-        if not user or user['user_no'] is None:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            user_email_table = get_user_email_table(cursor)
+            normalized_email = data['email'].strip()
+            
+            # Query user from database based on email table joining with user and scholarship_providers
+            cursor.execute(f'''
+                SELECT e.password_hash, e.user_no, e.is_locked, e.is_verified, u.user_name, u.pro_no, p.provider_name
+                FROM {user_email_table} e
+                LEFT JOIN users u ON e.user_no = u.user_no
+                LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
+                WHERE e.email_address ILIKE %s
+            ''', (normalized_email,))
+            user = cursor.fetchone()
+            
+            if not user or user['user_no'] is None:
             record_admin_activity(
                 action='Login Failed',
                 status='failed',
@@ -2158,20 +2156,18 @@ def check_email():
         account_type_to_check = 'admin'
     
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        user_email_table = get_user_email_table(cursor)
-        applicant_email_table = get_applicant_email_table(cursor)
-        
-        cursor.execute(f'SELECT user_no FROM {user_email_table} WHERE email_address ILIKE %s LIMIT 1', (data['email'],))
-        user_result = cursor.fetchone()
-        cursor.execute(f'SELECT applicant_no FROM {applicant_email_table} WHERE email_address ILIKE %s LIMIT 1', (data['email'],))
-        applicant_result = cursor.fetchone()
-        cursor.close()
-        conn.close()
-        
-        has_admin_account = user_result is not None
-        has_applicant_account = applicant_result is not None
+        with get_db() as conn:
+            cursor = conn.cursor()
+            user_email_table = get_user_email_table(cursor)
+            applicant_email_table = get_applicant_email_table(cursor)
+            
+            cursor.execute(f'SELECT user_no FROM {user_email_table} WHERE email_address ILIKE %s LIMIT 1', (data['email'],))
+            user_result = cursor.fetchone()
+            cursor.execute(f'SELECT applicant_no FROM {applicant_email_table} WHERE email_address ILIKE %s LIMIT 1', (data['email'],))
+            applicant_result = cursor.fetchone()
+            
+            has_admin_account = user_result is not None
+            has_applicant_account = applicant_result is not None
 
         if has_admin_account or has_applicant_account:
             # Check conflict based on what account type is being registered
@@ -2224,13 +2220,13 @@ def check_email():
 def get_providers():
     """Fetch all scholarship providers from the database"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT pro_no, provider_name FROM scholarship_providers ORDER BY provider_name ASC")
-        rows = cursor.fetchall()
-        
-        result = []
-        for row in rows:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT pro_no, provider_name FROM scholarship_providers ORDER BY provider_name ASC")
+            rows = cursor.fetchall()
+            
+            result = []
+            for row in rows:
             if not row:
                 continue
 
@@ -2269,51 +2265,47 @@ def register():
         return jsonify({'message': 'Missing required fields'}), 400
     
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        user_email_table = get_user_email_table(cursor)
+        with get_db() as conn:
+            cursor = conn.cursor()
+            user_email_table = get_user_email_table(cursor)
 
-        normalized_email = data['email'].strip()
-        # Only check if email exists as an ADMIN user (user_no is not NULL)
-        # Applicant emails (applicant_no only) are allowed to register as admin
-        cursor.execute(f"SELECT 1 FROM {user_email_table} WHERE email_address ILIKE %s AND user_no IS NOT NULL", (normalized_email,))
-        if cursor.fetchone():
-            cursor.close()
-            conn.close()
-            return jsonify({'message': 'Email already exists as admin account'}), 409
+            normalized_email = data['email'].strip()
+            # Only check if email exists as an ADMIN user (user_no is not NULL)
+            # Applicant emails (applicant_no only) are allowed to register as admin
+            cursor.execute(f"SELECT 1 FROM {user_email_table} WHERE email_address ILIKE %s AND user_no IS NOT NULL", (normalized_email,))
+            if cursor.fetchone():
+                return jsonify({'message': 'Email already exists as admin account'}), 409
 
-        password_hash = bcrypt.generate_password_hash(data['password']).decode('utf-8')
-        
-        # 1. Find or create scholarship provider
-        cursor.execute("SELECT pro_no FROM scholarship_providers WHERE provider_name ILIKE %s", (data['role'],))
-        provider = cursor.fetchone()
-        
-        if not provider:
-            cursor.execute("INSERT INTO scholarship_providers (provider_name) VALUES (%s) RETURNING pro_no", (data['role'],))
-            pro_no = cursor.fetchone()['pro_no']
-        else:
-            pro_no = provider['pro_no']
-        
-        # 2. Generate verification code
-        verification_code = generate_verification_code()
-        
-        # 3. Insert into users table
-        cursor.execute(
-            "INSERT INTO users (pro_no, user_name) VALUES (%s, %s) RETURNING user_no",
-            (pro_no, data['fullName'])
-        )
-        user_no = cursor.fetchone()['user_no']
-        
-        # 4. Insert into user auth table with verification code
-        cursor.execute(
-            f"INSERT INTO {user_email_table} (email_address, password_hash, user_no, verification_code, is_verified) VALUES (%s, %s, %s, %s, %s) RETURNING user_em_no",
-            (normalized_email, password_hash, user_no, verification_code, False)
-        )
-        user_em_no = cursor.fetchone()['user_em_no']
-        
-        conn.commit()
-        cursor.close()
-        conn.close()
+            password_hash = bcrypt.generate_password_hash(data['password']).decode('utf-8')
+            
+            # 1. Find or create scholarship provider
+            cursor.execute("SELECT pro_no FROM scholarship_providers WHERE provider_name ILIKE %s", (data['role'],))
+            provider = cursor.fetchone()
+            
+            if not provider:
+                cursor.execute("INSERT INTO scholarship_providers (provider_name) VALUES (%s) RETURNING pro_no", (data['role'],))
+                pro_no = cursor.fetchone()['pro_no']
+            else:
+                pro_no = provider['pro_no']
+            
+            # 2. Generate verification code
+            verification_code = generate_verification_code()
+            
+            # 3. Insert into users table
+            cursor.execute(
+                "INSERT INTO users (pro_no, user_name) VALUES (%s, %s) RETURNING user_no",
+                (pro_no, data['fullName'])
+            )
+            user_no = cursor.fetchone()['user_no']
+            
+            # 4. Insert into user auth table with verification code
+            cursor.execute(
+                f"INSERT INTO {user_email_table} (email_address, password_hash, user_no, verification_code, is_verified) VALUES (%s, %s, %s, %s, %s) RETURNING user_em_no",
+                (normalized_email, password_hash, user_no, verification_code, False)
+            )
+            user_em_no = cursor.fetchone()['user_em_no']
+            
+            conn.commit()
 
         # 5. Send verification email (Offloaded to background to prevent UI lag)
         # Using unified service with is_admin=True

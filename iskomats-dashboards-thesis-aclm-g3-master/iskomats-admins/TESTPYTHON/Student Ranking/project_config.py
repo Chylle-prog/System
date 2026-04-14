@@ -34,8 +34,9 @@ def _init_pool():
         kwargs = get_db_connection_kwargs()
         
         # Adjust pool size based on environment
-        min_conn = int(os.environ.get('DB_POOL_MIN', '5'))
-        max_conn = int(os.environ.get('DB_POOL_MAX', '50'))
+        # For managed DBs like Render (limit 20), we keep these very conservative
+        min_conn = int(os.environ.get('DB_POOL_MIN', '1'))
+        max_conn = int(os.environ.get('DB_POOL_MAX', '10'))
         
         try:
             _CONNECTION_POOL = pool.ThreadedConnectionPool(
@@ -88,22 +89,21 @@ def get_db(cursor_factory=RealDictCursor, fast_startup=False):
     for attempt in range(3):
         try:
             conn = _CONNECTION_POOL.getconn()
-            # Only perform a full liveness check if the connection is clearly dead
-            # Psycopg2 connections have a .closed attribute (0 = open)
             if conn.closed != 0:
                 raise psycopg2.InterfaceError("Connection obtained from pool is already closed.")
-            # If we get here, the connection is likely alive
             break
+        except pool.PoolError as e:
+            print(f"[DB CRITICAL] Pool exhausted! All {os.environ.get('DB_POOL_MAX', '10')} connections in use.", flush=True)
+            raise psycopg2.OperationalError("Database connection pool is full. Try again later.") from e
         except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
             print(f"[DB ERROR] Got broken connection from pool: {e}. Attempting to refresh...", flush=True)
             if conn:
                 try:
-                    _CONNECTION_POOL.putconn(conn, close=True) # Force close the broken connection
+                    _CONNECTION_POOL.putconn(conn, close=True) 
                 except:
                     pass
             conn = None
             if attempt == 2:
-                # Last attempt failed, raise it
                 raise
         except Exception as e:
             print(f"[DB ERROR] Unexpected error gathering connection: {e}", flush=True)
@@ -144,12 +144,9 @@ def get_db(cursor_factory=RealDictCursor, fast_startup=False):
         def close(self):
             if not self._returned:
                 try:
-                    # check if connection is still alive before returning it to the pool
-                    # if closed or broken, we should tell the pool to close it permanently
                     is_closed = (self._conn.closed != 0)
                     _CONNECTION_POOL.putconn(self._conn, close=is_closed)
                 except:
-                    # Fallback to standard putconn if liveness check fails
                     try:
                         _CONNECTION_POOL.putconn(self._conn)
                     except:
@@ -161,6 +158,13 @@ def get_db(cursor_factory=RealDictCursor, fast_startup=False):
 
         def rollback(self):
             return self._conn.rollback()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            # Crucial: Always return to pool even if exception occurs
+            self.close()
 
     return PooledConnectionProxy(conn, cursor_factory)
 

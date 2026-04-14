@@ -1027,15 +1027,13 @@ def token_required(route_handler):
 
             # Real-time suspension check
             try:
-                conn = get_db()
-                cur = conn.cursor()
-                applicant_email_table = get_applicant_email_table(cur)
-                cur.execute(f'SELECT is_locked FROM {applicant_email_table} WHERE applicant_no = %s', (applicant_no,))
-                lock_row = cur.fetchone()
-                cur.close()
-                conn.close()
-                if lock_row and lock_row.get('is_locked'):
-                    return jsonify({'message': 'Account has been suspended. Please contact the administrator.', 'suspended': True}), 403
+                with get_db() as conn:
+                    cur = conn.cursor()
+                    applicant_email_table = get_applicant_email_table(cur)
+                    cur.execute(f'SELECT is_locked FROM {applicant_email_table} WHERE applicant_no = %s', (applicant_no,))
+                    lock_row = cur.fetchone()
+                    if lock_row and lock_row.get('is_locked'):
+                        return jsonify({'message': 'Account has been suspended. Please contact the administrator.', 'suspended': True}), 403
             except Exception as lock_err:
                 print(f'[AUTH] Lock check error: {lock_err}', flush=True)
 
@@ -1110,36 +1108,35 @@ def generate_verification_code():
 @token_required
 def get_notifications():
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT notif_id as id, title, message, type, is_read as read, created_at
-            FROM notifications
-            WHERE user_no = %s
-            ORDER BY created_at DESC
-            LIMIT 50
-        """, (request.user_no,))
-        rows = cur.fetchall()
-        conn.close()
-        
-        # Format dates for frontend
-        for row in rows:
-            if row['created_at']:
-                row['time'] = row['created_at'].strftime('%Y-%m-%d %H:%M:%S')
-                # Add a relative time if possible, or just keep it simple
-            else:
-                row['time'] = 'Just now'
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT notif_id as id, title, message, type, is_read as read, created_at
+                FROM notifications
+                WHERE user_no = %s
+                ORDER BY created_at DESC
+                LIMIT 50
+            """, (request.user_no,))
+            rows = cur.fetchall()
             
-            # Map type to icon
-            type_icons = {
-                'message': 'fa-comment-alt',
-                'announcement': 'fa-bullhorn',
-                'scholarship': 'fa-graduation-cap',
-                'result': 'fa-file-signature'
-            }
-            row['icon'] = type_icons.get(row['type'], 'fa-bell')
-            
-        return jsonify(rows), 200
+            # Format dates for frontend
+            for row in rows:
+                if row['created_at']:
+                    row['time'] = row['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+                    # Add a relative time if possible, or just keep it simple
+                else:
+                    row['time'] = 'Just now'
+                
+                # Map type to icon
+                type_icons = {
+                    'message': 'fa-comment-alt',
+                    'announcement': 'fa-bullhorn',
+                    'scholarship': 'fa-graduation-cap',
+                    'result': 'fa-file-signature'
+                }
+                row['icon'] = type_icons.get(row['type'], 'fa-bell')
+                
+            return jsonify(rows), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 
@@ -1148,17 +1145,15 @@ def get_notifications():
 @token_required
 def mark_notification_read(notif_id):
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("""
-            UPDATE notifications 
-            SET is_read = TRUE 
-            WHERE notif_id = %s AND user_no = %s
-        """, (notif_id, request.user_no))
-        conn.commit()
-        cur.close()
-        conn.close()
-        return jsonify({'message': 'Success'}), 200
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE notifications 
+                SET is_read = TRUE 
+                WHERE notif_id = %s AND user_no = %s
+            """, (notif_id, request.user_no))
+            conn.commit()
+            return jsonify({'message': 'Success'}), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 
@@ -1167,17 +1162,15 @@ def mark_notification_read(notif_id):
 @token_required
 def mark_all_notifications_read():
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("""
-            UPDATE notifications 
-            SET is_read = TRUE 
-            WHERE user_no = %s
-        """, (request.user_no,))
-        conn.commit()
-        cur.close()
-        conn.close()
-        return jsonify({'message': 'Success'}), 200
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE notifications 
+                SET is_read = TRUE 
+                WHERE user_no = %s
+            """, (request.user_no,))
+            conn.commit()
+            return jsonify({'message': 'Success'}), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 
@@ -1189,56 +1182,56 @@ def student_login():
     password = data.get('password', '')
 
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        applicant_email_table = get_applicant_email_table(cur)
-        # Only allow applicant logins - must have applicant_no
-        cur.execute(
-            f"""
-            SELECT app_em_no, applicant_no, password_hash, is_locked, is_verified
-            FROM {applicant_email_table}
-            WHERE email_address ILIKE %s AND applicant_no IS NOT NULL
-            """,
-            (email,),
-        )
-        user = cur.fetchone()
+        with get_db() as conn:
+            cur = conn.cursor()
+            applicant_email_table = get_applicant_email_table(cur)
+            # Only allow applicant logins - must have applicant_no
+            cur.execute(
+                f"""
+                SELECT app_em_no, applicant_no, password_hash, is_locked, is_verified
+                FROM {applicant_email_table}
+                WHERE email_address ILIKE %s AND applicant_no IS NOT NULL
+                """,
+                (email,),
+            )
+            user = cur.fetchone()
 
-        # If email not found in permanent email table, check if it exists in pending registrations
-        if not user:
-            pending_reg, pending_expired = fetch_pending_registration(cur, email=email)
-            if pending_expired:
+            # If email not found in permanent email table, check if it exists in pending registrations
+            if not user:
+                pending_reg, pending_expired = fetch_pending_registration(cur, email=email)
+                if pending_expired:
+                    conn.commit()
+                    return jsonify({'message': 'This session has expired', 'session_expired': True}), 401
+                if pending_reg:
+                    return jsonify({'message': 'Email not verified. Please check your email and enter the verification code to complete registration.', 'requires_verification': True}), 401
+                else:
+                    return jsonify({'message': 'Email does not exist. Please register first.'}), 401
+
+            if not user.get('password_hash'):
+                return jsonify({'message': 'This email is linked to an existing Google account. Please use "Sign in with Google" to access your account.'}), 401
+
+            if not bcrypt.check_password_hash(user['password_hash'], password):
+                return jsonify({'message': 'Incorrect password'}), 401
+
+            if not user.get('is_verified', True):
+                # Regenerate verification code if they are in permanent table but not verified
+                verification_code = generate_verification_code()
+                cur.execute(f"UPDATE {applicant_email_table} SET verification_code = %s WHERE app_em_no = %s", (verification_code, user['app_em_no']))
                 conn.commit()
-                return jsonify({'message': 'This session has expired', 'session_expired': True}), 401
-            if pending_reg:
-                return jsonify({'message': 'Email not verified. Please check your email and enter the verification code to complete registration.', 'requires_verification': True}), 401
-            else:
-                return jsonify({'message': 'Email does not exist. Please register first.'}), 401
+                
+                try:
+                    send_verification_email(email, verification_code)
+                except Exception as e:
+                    print(f"[EMAIL ERROR] Failed to resend verification email during login: {e}")
 
-        if not user.get('password_hash'):
-            return jsonify({'message': 'This email is linked to an existing Google account. Please use "Sign in with Google" to access your account.'}), 401
+                return jsonify({
+                    'message': 'Email not verified. A new verification code has been sent to your email.', 
+                    'requires_verification': True,
+                    'email': email
+                }), 401
 
-        if not bcrypt.check_password_hash(user['password_hash'], password):
-            return jsonify({'message': 'Incorrect password'}), 401
-
-        if not user.get('is_verified', True):
-            # Regenerate verification code if they are in permanent table but not verified
-            verification_code = generate_verification_code()
-            cur.execute(f"UPDATE {applicant_email_table} SET verification_code = %s WHERE app_em_no = %s", (verification_code, user['app_em_no']))
-            conn.commit()
-            
-            try:
-                send_verification_email(email, verification_code)
-            except Exception as e:
-                print(f"[EMAIL ERROR] Failed to resend verification email during login: {e}")
-
-            return jsonify({
-                'message': 'Email not verified. A new verification code has been sent to your email.', 
-                'requires_verification': True,
-                'email': email
-            }), 401
-
-        if user.get('is_locked'):
-            return jsonify({'message': 'Account has been suspended. Please contact the administrator.', 'suspended': True}), 403
+            if user.get('is_locked'):
+                return jsonify({'message': 'Account has been suspended. Please contact the administrator.', 'suspended': True}), 403
  
         payload = {
             'exp': datetime.utcnow() + timedelta(days=7),
@@ -1255,9 +1248,6 @@ def student_login():
         })
     except Exception as exc:
         return jsonify({'message': f'Error: {str(exc)}'}), 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 
 @student_api_bp.route('/auth/register', methods=['POST'])
@@ -1270,59 +1260,59 @@ def student_register():
         return jsonify({'message': 'Missing required fields'}), 400
 
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        applicant_email_table = get_applicant_email_table(cur)
-        
-        # 1. Check if email ALREADY exists as an APPLICANT
-        cur.execute(f'SELECT app_em_no, is_verified FROM {applicant_email_table} WHERE email_address ILIKE %s AND applicant_no IS NOT NULL LIMIT 1', (email,))
-        existing_user = cur.fetchone()
-        
-        if existing_user:
-            if existing_user.get('is_verified', True):
-                return jsonify({'message': 'Email already registered as applicant and verified. Please sign in.'}), 400
-            else:
-                # Handle unverified existing account: Update and resend code
-                verification_code = generate_verification_code()
-                password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
-                cur.execute(
-                    f"UPDATE {applicant_email_table} SET password_hash = %s, verification_code = %s WHERE app_em_no = %s",
-                    (password_hash, verification_code, existing_user['app_em_no'])
-                )
-                conn.commit()
-                
-                try:
-                    send_verification_email(email, verification_code)
-                except Exception as e:
-                    print(f"[EMAIL ERROR] Failed to resend verification email during re-registration: {e}")
-                    return jsonify({'message': f'Failed to send verification email: {str(e)}'}), 500
+        with get_db() as conn:
+            cur = conn.cursor()
+            applicant_email_table = get_applicant_email_table(cur)
+            
+            # 1. Check if email ALREADY exists as an APPLICANT
+            cur.execute(f'SELECT app_em_no, is_verified FROM {applicant_email_table} WHERE email_address ILIKE %s AND applicant_no IS NOT NULL LIMIT 1', (email,))
+            existing_user = cur.fetchone()
+            
+            if existing_user:
+                if existing_user.get('is_verified', True):
+                    return jsonify({'message': 'Email already registered as applicant and verified. Please sign in.'}), 400
+                else:
+                    # Handle unverified existing account: Update and resend code
+                    verification_code = generate_verification_code()
+                    password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
+                    cur.execute(
+                        f"UPDATE {applicant_email_table} SET password_hash = %s, verification_code = %s WHERE app_em_no = %s",
+                        (password_hash, verification_code, existing_user['app_em_no'])
+                    )
+                    conn.commit()
                     
-                return jsonify({
-                    'message': 'Account already exists but was not verified. A new verification code has been sent.',
-                    'is_applicant': True,
-                    'requires_verification': True,
-                    'email': email
-                }), 201
+                    try:
+                        send_verification_email(email, verification_code)
+                    except Exception as e:
+                        print(f"[EMAIL ERROR] Failed to resend verification email during re-registration: {e}")
+                        return jsonify({'message': f'Failed to send verification email: {str(e)}'}), 500
+                        
+                    return jsonify({
+                        'message': 'Account already exists but was not verified. A new verification code has been sent.',
+                        'is_applicant': True,
+                        'requires_verification': True,
+                        'email': email
+                    }), 201
 
-        # 2. Generate verification code
-        verification_code = generate_verification_code()
-        password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
+            # 2. Generate verification code
+            verification_code = generate_verification_code()
+            password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
 
-        # 3. Store in pending_registrations table (Upsert allowed for re-registration)
-        cur.execute(
-            """
-            INSERT INTO pending_registrations (email_address, password_hash, verification_code)
-            VALUES (%s, %s, %s)
-            ON CONFLICT (email_address) DO UPDATE SET
-                password_hash = EXCLUDED.password_hash,
-                verification_code = EXCLUDED.verification_code,
-                created_at = NOW()
-            """,
-            (email, password_hash, verification_code),
-        )
-        conn.commit()
+            # 3. Store in pending_registrations table (Upsert allowed for re-registration)
+            cur.execute(
+                """
+                INSERT INTO pending_registrations (email_address, password_hash, verification_code)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (email_address) DO UPDATE SET
+                    password_hash = EXCLUDED.password_hash,
+                    verification_code = EXCLUDED.verification_code,
+                    created_at = NOW()
+                """,
+                (email, password_hash, verification_code),
+            )
+            conn.commit()
 
-        # 4. Send verification email
+        # 4. Send verification email (outside lock usually fine, but definitely after commit)
         try:
             send_verification_email(email, verification_code)
         except Exception as e:
@@ -1337,9 +1327,6 @@ def student_register():
         }), 201
     except Exception as exc:
         return jsonify({'message': f'Error: {str(exc)}'}), 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 
 @student_api_bp.route('/auth/verify-email', methods=['POST'])
@@ -1352,79 +1339,79 @@ def student_verify_email():
         return jsonify({'message': 'Verification code is required'}), 400
 
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        applicant_email_table = get_applicant_email_table(cur)
-        
-        # 1. Look up in pending_registrations
-        pending, pending_expired = fetch_pending_registration(
-            cur,
-            email=email if email else None,
-            verification_code=token if not email else None,
-        )
-
-        # 1b. If not in pending, check if they are an unverified permanent user
-        if not pending and email:
-            cur.execute(
-                f"SELECT app_em_no as pr_no, email_address, password_hash, verification_code FROM {applicant_email_table} WHERE email_address ILIKE %s AND is_verified = FALSE",
-                (email,)
+        with get_db() as conn:
+            cur = conn.cursor()
+            applicant_email_table = get_applicant_email_table(cur)
+            
+            # 1. Look up in pending_registrations
+            pending, pending_expired = fetch_pending_registration(
+                cur,
+                email=email if email else None,
+                verification_code=token if not email else None,
             )
-            pending = cur.fetchone()
-            if pending and pending.get('verification_code') != token:
-                pending = None
-            elif pending:
-                # Mock pr_no for compatibility with the cleanup logic below
-                pending['is_permanent_unverified'] = True
 
-        if pending_expired:
+            # 1b. If not in pending, check if they are an unverified permanent user
+            if not pending and email:
+                cur.execute(
+                    f"SELECT app_em_no as pr_no, email_address, password_hash, verification_code FROM {applicant_email_table} WHERE email_address ILIKE %s AND is_verified = FALSE",
+                    (email,)
+                )
+                pending = cur.fetchone()
+                if pending and pending.get('verification_code') != token:
+                    pending = None
+                elif pending:
+                    # Mock pr_no for compatibility with the cleanup logic below
+                    pending['is_permanent_unverified'] = True
+
+            if pending_expired:
+                conn.commit()
+                return jsonify({'message': 'This session has expired', 'session_expired': True}), 410
+
+            if not pending:
+                # Check if already verified as applicant
+                if email:
+                    cur.execute(f'SELECT app_em_no FROM {applicant_email_table} WHERE email_address ILIKE %s AND applicant_no IS NOT NULL', (email,))
+                    if cur.fetchone():
+                        return jsonify({'message': 'Email already verified. Please sign in.'}), 200
+                return jsonify({'message': 'Invalid verification code or link has expired'}), 400
+
+            if pending['verification_code'] != token:
+                return jsonify({'message': 'Incorrect verification code'}), 400
+
+            if not pending.get('is_permanent_unverified'):
+                # 2. Promote to permanent tables
+                # Insert a blank applicant profile. Profile setup fills the identity fields after verification.
+                cur.execute(
+                    """
+                    INSERT INTO applicants (first_name, middle_name, last_name)
+                    VALUES (%s, %s, %s)
+                    RETURNING applicant_no
+                    """,
+                    ('', None, ''),
+                )
+                applicant_no = cur.fetchone()['applicant_no']
+
+                # Insert into applicant auth table
+                cur.execute(
+                    f"""
+                    INSERT INTO {applicant_email_table} (email_address, applicant_no, password_hash, is_verified)
+                    VALUES (%s, %s, %s, TRUE)
+                    """,
+                    (pending['email_address'], applicant_no, pending['password_hash']),
+                )
+
+                # 3. Cleanup pending registration
+                cur.execute('DELETE FROM pending_registrations WHERE pr_no = %s', (pending['pr_no'],))
+            else:
+                # Already in permanent table, just mark as verified
+                cur.execute(f"SELECT applicant_no FROM {applicant_email_table} WHERE email_address ILIKE %s", (email,))
+                applicant_no = cur.fetchone()['applicant_no']
+                cur.execute(
+                    f"UPDATE {applicant_email_table} SET is_verified = TRUE, verification_code = NULL WHERE email_address ILIKE %s",
+                    (email,)
+                )
+
             conn.commit()
-            return jsonify({'message': 'This session has expired', 'session_expired': True}), 410
-
-        if not pending:
-            # Check if already verified as applicant
-            if email:
-                cur.execute(f'SELECT app_em_no FROM {applicant_email_table} WHERE email_address ILIKE %s AND applicant_no IS NOT NULL', (email,))
-                if cur.fetchone():
-                    return jsonify({'message': 'Email already verified. Please sign in.'}), 200
-            return jsonify({'message': 'Invalid verification code or link has expired'}), 400
-
-        if pending['verification_code'] != token:
-            return jsonify({'message': 'Incorrect verification code'}), 400
-
-        if not pending.get('is_permanent_unverified'):
-            # 2. Promote to permanent tables
-            # Insert a blank applicant profile. Profile setup fills the identity fields after verification.
-            cur.execute(
-                """
-                INSERT INTO applicants (first_name, middle_name, last_name)
-                VALUES (%s, %s, %s)
-                RETURNING applicant_no
-                """,
-                ('', None, ''),
-            )
-            applicant_no = cur.fetchone()['applicant_no']
-
-            # Insert into applicant auth table
-            cur.execute(
-                f"""
-                INSERT INTO {applicant_email_table} (email_address, applicant_no, password_hash, is_verified)
-                VALUES (%s, %s, %s, TRUE)
-                """,
-                (pending['email_address'], applicant_no, pending['password_hash']),
-            )
-
-            # 3. Cleanup pending registration
-            cur.execute('DELETE FROM pending_registrations WHERE pr_no = %s', (pending['pr_no'],))
-        else:
-            # Already in permanent table, just mark as verified
-            cur.execute(f"SELECT applicant_no FROM {applicant_email_table} WHERE email_address ILIKE %s", (email,))
-            applicant_no = cur.fetchone()['applicant_no']
-            cur.execute(
-                f"UPDATE {applicant_email_table} SET is_verified = TRUE, verification_code = NULL WHERE email_address ILIKE %s",
-                (email,)
-            )
-
-        conn.commit()
 
         # 4. Generate session token
         payload = {
@@ -1443,9 +1430,6 @@ def student_verify_email():
         }), 200
     except Exception as exc:
         return jsonify({'message': f'Error: {str(exc)}'}), 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 
 @student_api_bp.route('/auth/resend-verification-email', methods=['POST'])
@@ -1457,30 +1441,30 @@ def student_resend_verification_email():
         return jsonify({'message': 'Email is required'}), 400
 
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        applicant_email_table = get_applicant_email_table(cur)
-        
-        # 1. Check if email exists in permanent table (already verified)
-        cur.execute(f'SELECT app_em_no FROM {applicant_email_table} WHERE email_address ILIKE %s', (email,))
-        user = cur.fetchone()
-        if user:
-            return jsonify({'message': 'Email already verified. Please sign in.'}), 400
+        with get_db() as conn:
+            cur = conn.cursor()
+            applicant_email_table = get_applicant_email_table(cur)
+            
+            # 1. Check if email exists in permanent table (already verified)
+            cur.execute(f'SELECT app_em_no FROM {applicant_email_table} WHERE email_address ILIKE %s', (email,))
+            user = cur.fetchone()
+            if user:
+                return jsonify({'message': 'Email already verified. Please sign in.'}), 400
 
-        # 2. Check if email exists in pending registrations
-        pending, pending_expired = fetch_pending_registration(cur, email=email)
+            # 2. Check if email exists in pending registrations
+            pending, pending_expired = fetch_pending_registration(cur, email=email)
 
-        if pending_expired:
+            if pending_expired:
+                conn.commit()
+                return jsonify({'message': 'This session has expired', 'session_expired': True}), 410
+
+            if not pending:
+                return jsonify({'message': 'No pending registration found for this email. Please register first.'}), 404
+
+            # 3. Generate new code and update
+            new_code = generate_verification_code()
+            cur.execute('UPDATE pending_registrations SET verification_code = %s WHERE pr_no = %s', (new_code, pending['pr_no']))
             conn.commit()
-            return jsonify({'message': 'This session has expired', 'session_expired': True}), 410
-
-        if not pending:
-            return jsonify({'message': 'No pending registration found for this email. Please register first.'}), 404
-
-        # 3. Generate new code and update
-        new_code = generate_verification_code()
-        cur.execute('UPDATE pending_registrations SET verification_code = %s WHERE pr_no = %s', (new_code, pending['pr_no']))
-        conn.commit()
 
         # 4. Send email
         try:
@@ -1492,9 +1476,6 @@ def student_resend_verification_email():
         return jsonify({'message': 'Verification email resent successfully'}), 200
     except Exception as exc:
         return jsonify({'message': f'Error: {str(exc)}'}), 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 
 @student_api_bp.route('/auth/check-email', methods=['POST'])
@@ -1517,54 +1498,51 @@ def student_check_email():
     email = data.get('email', '').strip()
 
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        applicant_email_table = get_applicant_email_table(cur)
-        user_email_table = get_user_email_table(cur)
-        
-        cur.execute(f'SELECT applicant_no, is_verified FROM {applicant_email_table} WHERE email_address ILIKE %s LIMIT 1', (email,))
-        applicant_result = cur.fetchone()
-        if applicant_result:
-            is_verified = applicant_result.get('is_verified', True)
-            if not is_verified:
+        with get_db() as conn:
+            cur = conn.cursor()
+            applicant_email_table = get_applicant_email_table(cur)
+            user_email_table = get_user_email_table(cur)
+            
+            cur.execute(f'SELECT applicant_no, is_verified FROM {applicant_email_table} WHERE email_address ILIKE %s LIMIT 1', (email,))
+            applicant_result = cur.fetchone()
+            if applicant_result:
+                is_verified = applicant_result.get('is_verified', True)
+                if not is_verified:
+                    return jsonify({
+                        'exists': True,
+                        'account_type': 'applicant',
+                        'available': True, # Allow re-registration for unverified accounts
+                        'is_verified': False,
+                        'message': 'Email exists but is not verified. You can re-register to receive a new code.'
+                    })
+                
                 return jsonify({
                     'exists': True,
                     'account_type': 'applicant',
-                    'available': True, # Allow re-registration for unverified accounts
-                    'is_verified': False,
-                    'message': 'Email exists but is not verified. You can re-register to receive a new code.'
+                    'available': False,
+                    'is_verified': True,
+                    'message': 'Email already registered and verified'
                 })
-            
-            return jsonify({
-                'exists': True,
-                'account_type': 'applicant',
-                'available': False,
-                'is_verified': True,
-                'message': 'Email already registered and verified'
-            })
 
-        cur.execute(f'SELECT user_no FROM {user_email_table} WHERE email_address ILIKE %s LIMIT 1', (email,))
-        admin_result = cur.fetchone()
+            cur.execute(f'SELECT user_no FROM {user_email_table} WHERE email_address ILIKE %s LIMIT 1', (email,))
+            admin_result = cur.fetchone()
 
-        if admin_result:
-            return jsonify({
-                'exists': True,
-                'account_type': 'admin',
-                'available': True,
-                'message': 'Email available for applicant registration'
-            })
-        else:
-            return jsonify({
-                'exists': False,
-                'account_type': None,
-                'available': True,
-                'message': 'Email available'
-            })
+            if admin_result:
+                return jsonify({
+                    'exists': True,
+                    'account_type': 'admin',
+                    'available': True,
+                    'message': 'Email available for applicant registration'
+                })
+            else:
+                return jsonify({
+                    'exists': False,
+                    'account_type': None,
+                    'available': True,
+                    'message': 'Email available'
+                })
     except Exception as exc:
         return jsonify({'message': str(exc)}), 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 
 @student_api_bp.route('/auth/google', methods=['POST'])
@@ -1582,58 +1560,58 @@ def student_google_login():
         email = google_profile['email']
         
         # 2. Check if user exists
-        conn = get_db()
-        cur = conn.cursor()
-        applicant_email_table = get_applicant_email_table(cur)
-        cur.execute(
-            f"""
-            SELECT e.applicant_no, e.email_address, a.first_name, a.last_name
-            FROM {applicant_email_table} e
-            JOIN applicants a ON e.applicant_no = a.applicant_no
-            WHERE e.email_address ILIKE %s
-            LIMIT 1
-            """,
-            (email,),
-        )
-        user = cur.fetchone()
-        
-        # 3. Handle Existing vs. New user
-        if user:
-            conn.commit()
-            print(f"[GOOGLE AUTH] Existing user {email} synced and verified.", flush=True)
-
-        else:
-            # Create user if doesn't exist (Auto-register)
-            print(f"[GOOGLE AUTH] New user {email}, creating profile...", flush=True)
-            # Create applicant record first
-            cur.execute(
-                """
-                INSERT INTO applicants (first_name, middle_name, last_name)
-                VALUES (%s, %s, %s)
-                RETURNING applicant_no
-                """,
-                (google_profile['first_name'], '', google_profile['last_name']),
-            )
-            applicant_no = cur.fetchone()['applicant_no']
-            
-            # Create email/auth record
+        with get_db() as conn:
+            cur = conn.cursor()
+            applicant_email_table = get_applicant_email_table(cur)
             cur.execute(
                 f"""
-                INSERT INTO {applicant_email_table} (applicant_no, email_address, is_verified)
-                VALUES (%s, %s, TRUE)
-                RETURNING app_em_no
+                SELECT e.applicant_no, e.email_address, a.first_name, a.last_name
+                FROM {applicant_email_table} e
+                JOIN applicants a ON e.applicant_no = a.applicant_no
+                WHERE e.email_address ILIKE %s
+                LIMIT 1
                 """,
-                (applicant_no, email),
+                (email,),
             )
-            cur.fetchone()['app_em_no']
-            conn.commit()
+            user = cur.fetchone()
             
-            user = {
-                'applicant_no': applicant_no,
-                'email_address': email,
-                'first_name': google_profile['first_name'],
-                'last_name': google_profile['last_name']
-            }
+            # 3. Handle Existing vs. New user
+            if user:
+                conn.commit()
+                print(f"[GOOGLE AUTH] Existing user {email} synced and verified.", flush=True)
+
+            else:
+                # Create user if doesn't exist (Auto-register)
+                print(f"[GOOGLE AUTH] New user {email}, creating profile...", flush=True)
+                # Create applicant record first
+                cur.execute(
+                    """
+                    INSERT INTO applicants (first_name, middle_name, last_name)
+                    VALUES (%s, %s, %s)
+                    RETURNING applicant_no
+                    """,
+                    (google_profile['first_name'], '', google_profile['last_name']),
+                )
+                applicant_no = cur.fetchone()['applicant_no']
+                
+                # Create email/auth record
+                cur.execute(
+                    f"""
+                    INSERT INTO {applicant_email_table} (applicant_no, email_address, is_verified)
+                    VALUES (%s, %s, TRUE)
+                    RETURNING app_em_no
+                    """,
+                    (applicant_no, email),
+                )
+                cur.fetchone()['app_em_no']
+                conn.commit()
+                
+                user = {
+                    'applicant_no': applicant_no,
+                    'email_address': email,
+                    'first_name': google_profile['first_name'],
+                    'last_name': google_profile['last_name']
+                }
         
         # 4. Generate JWT
         token_payload = {
@@ -1654,9 +1632,6 @@ def student_google_login():
     except Exception as exc:
         traceback.print_exc()
         return jsonify({'message': f'Google authentication failed: {str(exc)}'}), 401
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 
 @student_api_bp.route('/auth/validate', methods=['GET'])
@@ -1675,82 +1650,79 @@ def student_forgot_password():
         return jsonify({'message': 'Email is required'}), 400
 
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        applicant_email_table = get_applicant_email_table(cur)
-        user_email_table = get_user_email_table(cur)
-        
-        # Check if email exists as an applicant
-        cur.execute(
-            f"""
-            SELECT e.applicant_no, e.email_address, a.first_name, a.last_name, e.password_hash
-            FROM {applicant_email_table} e
-            JOIN applicants a ON e.applicant_no = a.applicant_no
-            WHERE e.email_address ILIKE %s
-            LIMIT 1
-            """,
-            (email,),
-        )
-        user = cur.fetchone()
-        
-        # If not found as applicant, check if it exists as an admin user (to treat as not found)
-        if not user:
+        with get_db() as conn:
+            cur = conn.cursor()
+            applicant_email_table = get_applicant_email_table(cur)
+            user_email_table = get_user_email_table(cur)
+            
+            # Check if email exists as an applicant
             cur.execute(
                 f"""
-                SELECT e.user_no
-                FROM {user_email_table} e
-                JOIN users u ON e.user_no = u.user_no
+                SELECT e.applicant_no, e.email_address, a.first_name, a.last_name, e.password_hash
+                FROM {applicant_email_table} e
+                JOIN applicants a ON e.applicant_no = a.applicant_no
                 WHERE e.email_address ILIKE %s
                 LIMIT 1
                 """,
                 (email,),
             )
-            admin_user = cur.fetchone()
-            if admin_user:
-                print(f"[PASSWORD RESET] Email {email} is registered as admin user, not applicant")
-        
-        if user:
-            # Block reset for Google accounts
-            if not user.get('password_hash'):
-                return jsonify({'message': 'This account uses Google authentication. Please sign in using the "Sign in with Google" button instead.'}), 400
+            user = cur.fetchone()
             
-            # 3. Generate Link - Dynamic based on request origin
-            # Priority: Origin header -> Referer header -> Config/Fallback
-            req_origin = request.headers.get('Origin')
-            if not req_origin and request.headers.get('Referer'):
+            # If not found as applicant, check if it exists as an admin user (to treat as not found)
+            if not user:
+                cur.execute(
+                    f"""
+                    SELECT e.user_no
+                    FROM {user_email_table} e
+                    JOIN users u ON e.user_no = u.user_no
+                    WHERE e.email_address ILIKE %s
+                    LIMIT 1
+                    """,
+                    (email,),
+                )
+                admin_user = cur.fetchone()
+                if admin_user:
+                    print(f"[PASSWORD RESET] Email {email} is registered as admin user, not applicant")
+            
+            if user:
+                # Block reset for Google accounts
+                if not user.get('password_hash'):
+                    return jsonify({'message': 'This account uses Google authentication. Please sign in using the "Sign in with Google" button instead.'}), 400
+                
+                # 3. Generate Link - Dynamic based on request origin
+                # Priority: Origin header -> Referer header -> Config/Fallback
+                req_origin = request.headers.get('Origin')
+                if not req_origin and request.headers.get('Referer'):
+                    try:
+                        from urllib.parse import urlparse
+                        parsed = urlparse(request.headers.get('Referer'))
+                        req_origin = f"{parsed.scheme}://{parsed.netloc}"
+                    except:
+                        pass
+                
+                frontend_base_url = (req_origin or STUDENT_FRONTEND_URL).rstrip('/')
+                reset_token = generate_password_reset_token(user['applicant_no'], user['email_address'])
+                reset_url = f"{frontend_base_url}/reset-password?token={reset_token}"
+                
+                print(f"[PASSWORD RESET] Request from origin: {req_origin or 'Unknown'}", flush=True)
+                print(f"[PASSWORD RESET] Generated URL: {reset_url}", flush=True)
+                print(f"[PASSWORD RESET] Sending reset email to {user['email_address']}", flush=True)
+                
                 try:
-                    from urllib.parse import urlparse
-                    parsed = urlparse(request.headers.get('Referer'))
-                    req_origin = f"{parsed.scheme}://{parsed.netloc}"
-                except:
-                    pass
-            
-            frontend_base_url = (req_origin or STUDENT_FRONTEND_URL).rstrip('/')
-            reset_token = generate_password_reset_token(user['applicant_no'], user['email_address'])
-            reset_url = f"{frontend_base_url}/reset-password?token={reset_token}"
-            
-            print(f"[PASSWORD RESET] Request from origin: {req_origin or 'Unknown'}", flush=True)
-            print(f"[PASSWORD RESET] Generated URL: {reset_url}", flush=True)
-            print(f"[PASSWORD RESET] Sending reset email to {user['email_address']}", flush=True)
-            
-            try:
-                send_password_reset_email(user['email_address'], reset_url)
-                return jsonify({'message': 'A reset link has been sent to your email.'}), 200
-            except Exception as email_err:
-                print(f"[PASSWORD RESET ERROR] Gmail API failure: {str(email_err)}", flush=True)
-                return jsonify({
-                    'message': 'Failed to send email. There might be a temporary issue with our email service.',
-                    'debug_link': reset_url if os.environ.get('FLASK_ENV') == 'development' else None
-                }), 500
-        else:
-            print(f"[PASSWORD RESET] No applicant account found for email: {email}")
-            return jsonify({'message': 'Email not found in our records.'}), 404
+                    send_password_reset_email(user['email_address'], reset_url)
+                    return jsonify({'message': 'A reset link has been sent to your email.'}), 200
+                except Exception as email_err:
+                    print(f"[PASSWORD RESET ERROR] Gmail API failure: {str(email_err)}", flush=True)
+                    return jsonify({
+                        'message': 'Failed to send email. There might be a temporary issue with our email service.',
+                        'debug_link': reset_url if os.environ.get('FLASK_ENV') == 'development' else None
+                    }), 500
+            else:
+                print(f"[PASSWORD RESET] No applicant account found for email: {email}")
+                return jsonify({'message': 'Email not found in our records.'}), 404
     except Exception as exc:
         traceback.print_exc()
         return jsonify({'message': f'Failed to send reset email: {str(exc)}'}), 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 
 @student_api_bp.route('/auth/reset-password', methods=['POST'])
@@ -1782,44 +1754,35 @@ def student_reset_password():
 
         print(f"[AUTH] Resetting password for student #{user_no} ({email})", flush=True)
 
-        conn = get_db()
-        if not conn:
-            print("[AUTH ERROR] Database connection failed during password reset", flush=True)
-            return jsonify({'message': 'Database connection error'}), 500
+        with get_db() as conn:
+            cur = conn.cursor()
+            applicant_email_table = get_applicant_email_table(cur)
             
-        cur = conn.cursor()
-        applicant_email_table = get_applicant_email_table(cur)
-        
-        # Check if record exists first (for better error reporting)
-        # Use TRIM and ILIKE for robustness
-        cur.execute(f"SELECT applicant_no FROM {applicant_email_table} WHERE applicant_no = %s AND TRIM(email_address) ILIKE %s", (user_no, email))
-        if not cur.fetchone():
-            # Debug: Check if email exists AT ALL for this applicant_no
-            cur.execute(f"SELECT email_address FROM {applicant_email_table} WHERE applicant_no = %s", (user_no,))
-            actual_record = cur.fetchone()
-            actual_email = actual_record[0] if actual_record else "NOT FOUND"
-            print(f"[AUTH ERROR] No matching student record found. Input: applicant_no={user_no}, email='{email}'. DB Record Email: '{actual_email}'", flush=True)
-            cur.close()
-            conn.close()
-            return jsonify({'message': 'No matching account found. The link might be for a different user.'}), 404
+            # Check if record exists first (for better error reporting)
+            # Use TRIM and ILIKE for robustness
+            cur.execute(f"SELECT applicant_no FROM {applicant_email_table} WHERE applicant_no = %s AND TRIM(email_address) ILIKE %s", (user_no, email))
+            if not cur.fetchone():
+                # Debug: Check if email exists AT ALL for this applicant_no
+                cur.execute(f"SELECT email_address FROM {applicant_email_table} WHERE applicant_no = %s", (user_no,))
+                actual_record = cur.fetchone()
+                actual_email = actual_record[0] if actual_record else "NOT FOUND"
+                print(f"[AUTH ERROR] No matching student record found. Input: applicant_no={user_no}, email='{email}'. DB Record Email: '{actual_email}'", flush=True)
+                return jsonify({'message': 'No matching account found. The link might be for a different user.'}), 404
 
-        # Update password and verify account
-        cur.execute(
-            f"UPDATE {applicant_email_table} SET password_hash = %s, is_verified = TRUE, verification_code = NULL WHERE applicant_no = %s AND TRIM(email_address) ILIKE %s",
-            (hashed_password, user_no, email)
-        )
-        conn.commit()
-        
-        affected = cur.rowcount
-        print(f"[AUTH SUCCESS] Rows updated: {affected}", flush=True)
-        
-        cur.close()
-        conn.close()
-        
-        if affected == 0:
-            return jsonify({'message': 'Failed to update password. Student record not found or unauthorized.'}), 404
+            # Update password and verify account
+            cur.execute(
+                f"UPDATE {applicant_email_table} SET password_hash = %s, is_verified = TRUE, verification_code = NULL WHERE applicant_no = %s AND TRIM(email_address) ILIKE %s",
+                (hashed_password, user_no, email)
+            )
+            conn.commit()
+            
+            affected = cur.rowcount
+            print(f"[AUTH SUCCESS] Rows updated: {affected}", flush=True)
+            
+            if affected == 0:
+                return jsonify({'message': 'Failed to update password. Student record not found or unauthorized.'}), 404
 
-        return jsonify({'message': 'Password reset successful'})
+            return jsonify({'message': 'Password reset successful'})
     except jwt.ExpiredSignatureError:
         print("[AUTH ERROR] Password reset token expired", flush=True)
         return jsonify({'message': 'Reset link has expired'}), 400
@@ -1829,9 +1792,6 @@ def student_reset_password():
     except Exception as e:
         print(f"[AUTH ERROR] Password reset exception: {traceback.format_exc()}", flush=True)
         return jsonify({'message': f'An error occurred: {str(e)}'}), 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 
 @student_api_bp.route('/scholarships', methods=['GET'])
@@ -1845,34 +1805,28 @@ def get_all_scholarships():
     offset = int(request.args.get('offset', 0))
     # Optimization: Bypass invalid global 'cache' reference that causes 500
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute('SELECT req_no, scholarship_name, deadline, gpa, parent_finance, location, "desc" as description, semester, year FROM scholarships WHERE COALESCE(is_removed, FALSE) = FALSE ORDER BY scholarship_name LIMIT %s OFFSET %s', (limit, offset))
-        rows = cur.fetchall()
-        print(f"[PERF] /scholarships took {time.time() - start:.3f}s (limit={limit}, offset={offset})")
-        return jsonify(rows)
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute('SELECT req_no, scholarship_name, deadline, gpa, parent_finance, location, "desc" as description, semester, year FROM scholarships WHERE COALESCE(is_removed, FALSE) = FALSE ORDER BY scholarship_name LIMIT %s OFFSET %s', (limit, offset))
+            rows = cur.fetchall()
+            print(f"[PERF] /scholarships took {time.time() - start:.3f}s (limit={limit}, offset={offset})")
+            return jsonify(rows)
     except Exception as exc:
         return jsonify({'message': str(exc)}), 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 
 @student_api_bp.route('/scholarships/<int:req_no>', methods=['GET'])
 def get_scholarship_by_id(req_no):
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute('SELECT * FROM scholarships WHERE req_no = %s AND COALESCE(is_removed, FALSE) = FALSE', (req_no,))
-        row = cur.fetchone()
-        if not row:
-            return jsonify({'message': 'Scholarship not found'}), 404
-        return jsonify(row)
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute('SELECT * FROM scholarships WHERE req_no = %s AND COALESCE(is_removed, FALSE) = FALSE', (req_no,))
+            row = cur.fetchone()
+            if not row:
+                return jsonify({'message': 'Scholarship not found'}), 404
+            return jsonify(row)
     except Exception as exc:
         return jsonify({'message': str(exc)}), 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 
 @student_api_bp.route('/scholarships/rankings', methods=['POST'])
@@ -1895,47 +1849,47 @@ def get_rankings():
     address = address.lower().strip()
 
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        today = datetime.now().date()
-        
-        # ─── Optional Auth Check ──────────────────────────────────────
-        user_no = None
-        token = request.headers.get('Authorization')
-        if token:
-            try:
-                if token.startswith('Bearer '):
-                    token = token[7:]
-                decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-                user_no = decoded.get('user_no')
-            except Exception:
-                pass # Non-critical if token is invalid for just ranking
-        
-        restriction_scope = None
-        if user_no:
-            cur.execute(
-                """
-                SELECT applicant_no, first_name, middle_name, last_name, father_name, mother_name
-                FROM applicants
-                WHERE applicant_no = %s
-                """,
-                (user_no,),
-            )
-            applicant = cur.fetchone()
-            if applicant:
-                restriction_scope = get_identity_restriction_scope(cur, applicant, today=today)
-        
-        cur.execute("""
-            SELECT s.*, p.provider_name,
-                   COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS TRUE) AS accepted_count
-            FROM scholarships s
-            LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
-            LEFT JOIN applicant_status ast ON ast.scholarship_no = s.req_no
-            WHERE COALESCE(s.is_removed, FALSE) = FALSE
-            GROUP BY s.req_no, p.provider_name
-            ORDER BY s.scholarship_name ASC
-        """)
-        scholarships = cur.fetchall()
+        with get_db() as conn:
+            cur = conn.cursor()
+            today = datetime.now().date()
+            
+            # ─── Optional Auth Check ──────────────────────────────────────
+            user_no = None
+            token = request.headers.get('Authorization')
+            if token:
+                try:
+                    if token.startswith('Bearer '):
+                        token = token[7:]
+                    decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+                    user_no = decoded.get('user_no')
+                except Exception:
+                    pass # Non-critical if token is invalid for just ranking
+            
+            restriction_scope = None
+            if user_no:
+                cur.execute(
+                    """
+                    SELECT applicant_no, first_name, middle_name, last_name, father_name, mother_name
+                    FROM applicants
+                    WHERE applicant_no = %s
+                    """,
+                    (user_no,),
+                )
+                applicant = cur.fetchone()
+                if applicant:
+                    restriction_scope = get_identity_restriction_scope(cur, applicant, today=today)
+            
+            cur.execute("""
+                SELECT s.*, p.provider_name,
+                       COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS TRUE) AS accepted_count
+                FROM scholarships s
+                LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
+                LEFT JOIN applicant_status ast ON ast.scholarship_no = s.req_no
+                WHERE COALESCE(s.is_removed, FALSE) = FALSE
+                GROUP BY s.req_no, p.provider_name
+                ORDER BY s.scholarship_name ASC
+            """)
+            scholarships = cur.fetchall()
 
         ranked = []
         ineligible = []
@@ -2042,114 +1996,108 @@ def get_rankings():
         })
     except Exception as exc:
         return jsonify({'message': str(exc)}), 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 
 @student_api_bp.route('/applicant/profile', methods=['GET'])
 @token_required
 def get_profile():
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        
-        # Binary fields to optimize away from main SELECT
-        blob_fields = [
-            'profile_picture', 'signature_image_data', 'id_img_front', 'id_img_back', 
-            'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic'
-        ]
-        
-        # Map fields to has_ flags
-        flag_map = {
-            'profile_picture': 'has_profile_picture',
-            'signature_image_data': 'has_signature',
-            'id_img_front': 'has_id',
-            'id_img_back': 'has_id_back',
-            'enrollment_certificate_doc': 'has_mayorCOE_photo',
-            'grades_doc': 'has_mayorGrades_photo',
-            'indigency_doc': 'has_mayorIndigency_photo',
-            'id_pic': 'has_mayorValidID_photo'
-        }
+        with get_db() as conn:
+            cur = conn.cursor()
+            
+            # Binary fields to optimize away from main SELECT
+            blob_fields = [
+                'profile_picture', 'signature_image_data', 'id_img_front', 'id_img_back', 
+                'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic'
+            ]
+            
+            # Map fields to has_ flags
+            flag_map = {
+                'profile_picture': 'has_profile_picture',
+                'signature_image_data': 'has_signature',
+                'id_img_front': 'has_id',
+                'id_img_back': 'has_id_back',
+                'enrollment_certificate_doc': 'has_mayorCOE_photo',
+                'grades_doc': 'has_mayorGrades_photo',
+                'indigency_doc': 'has_mayorIndigency_photo',
+                'id_pic': 'has_mayorValidID_photo'
+            }
 
-        # 1. First, get all column names to build a safe SELECT query
-        # This prevents 502/OOM errors by NOT pulling massive binary data into Python memory
-        cur.execute("SELECT * FROM applicants LIMIT 0")
-        all_columns = [desc[0] for desc in cur.description]
-        
-        # Build SELECT list: normal columns + IS NOT NULL checks for blobs
-        select_parts = []
-        for col in all_columns:
-            if col in blob_fields:
-                flag_name = flag_map.get(col, f"has_{col}")
-                # Important: Double-quote column names for case-sensitivity in PostgreSQL
-                select_parts.append(f'("{col}" IS NOT NULL) as {flag_name}')
-            else:
-                select_parts.append(f'"{col}"')
-                
-        query = f"SELECT {', '.join(select_parts)} FROM applicants WHERE applicant_no = %s"
-        cur.execute(query, (request.user_no,))
-        applicant = cur.fetchone()
-        
-        if not applicant:
-            return jsonify({'message': 'Not found'}), 404
+            # 1. First, get all column names to build a safe SELECT query
+            # This prevents 502/OOM errors by NOT pulling massive binary data into Python memory
+            cur.execute("SELECT * FROM applicants LIMIT 0")
+            all_columns = [desc[0] for desc in cur.description]
+            
+            # Build SELECT list: normal columns + IS NOT NULL checks for blobs
+            select_parts = []
+            for col in all_columns:
+                if col in blob_fields:
+                    flag_name = flag_map.get(col, f"has_{col}")
+                    # Important: Double-quote column names for case-sensitivity in PostgreSQL
+                    select_parts.append(f'("{col}" IS NOT NULL) as {flag_name}')
+                else:
+                    select_parts.append(f'"{col}"')
+                    
+            query = f"SELECT {', '.join(select_parts)} FROM applicants WHERE applicant_no = %s"
+            cur.execute(query, (request.user_no,))
+            applicant = cur.fetchone()
+            
+            if not applicant:
+                return jsonify({'message': 'Not found'}), 404
 
-        duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, applicant)
-        applicant['duplicate_applicant_exists'] = any(applicant_no != request.user_no for applicant_no in duplicate_ids)
-        applicant['portal_lock_message'] = 'You already exist in the system' if applicant['duplicate_applicant_exists'] else None
+            duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, applicant)
+            applicant['duplicate_applicant_exists'] = any(applicant_no != request.user_no for applicant_no in duplicate_ids)
+            applicant['portal_lock_message'] = 'You already exist in the system' if applicant['duplicate_applicant_exists'] else None
 
-        media_document_fields = [
-            *blob_fields,
-            'id_vid_url',
-            'indigency_vid_url',
-            'grades_vid_url',
-            'enrollment_certificate_vid_url',
-            'schoolid_front_vid_url',
-            'schoolid_back_vid_url',
-        ]
-        document_values = fetch_applicant_document_values(cur, request.user_no, media_document_fields)
+            media_document_fields = [
+                *blob_fields,
+                'id_vid_url',
+                'indigency_vid_url',
+                'grades_vid_url',
+                'enrollment_certificate_vid_url',
+                'schoolid_front_vid_url',
+                'schoolid_back_vid_url',
+            ]
+            document_values = fetch_applicant_document_values(cur, request.user_no, media_document_fields)
 
-        # 2. Add lazy-load URLs for the frontend to fetch binary data on-demand
-        # This ensures the browser can still access the data without bloating the initial profile load
-        for key in blob_fields:
-            flag_name = flag_map.get(key, f"has_{key}")
-            if key != 'profile_picture':
-                applicant[flag_name] = document_values.get(key) is not None
-            if applicant.get(flag_name):
-                # Use absolute URL for raw bytes to avoid origin issues on Surge
-                applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
-            else:
-                applicant[key] = None
+            # 2. Add lazy-load URLs for the frontend to fetch binary data on-demand
+            # This ensures the browser can still access the data without bloating the initial profile load
+            for key in blob_fields:
+                flag_name = flag_map.get(key, f"has_{key}")
+                if key != 'profile_picture':
+                    applicant[flag_name] = document_values.get(key) is not None
+                if applicant.get(flag_name):
+                    # Use absolute URL for raw bytes to avoid origin issues on Surge
+                    applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
+                else:
+                    applicant[key] = None
 
-        for key in (
-            'id_vid_url',
-            'indigency_vid_url',
-            'grades_vid_url',
-            'enrollment_certificate_vid_url',
-            'schoolid_front_vid_url',
-            'schoolid_back_vid_url',
-        ):
-            applicant[key] = document_values.get(key) or applicant.get(key)
+            for key in (
+                'id_vid_url',
+                'indigency_vid_url',
+                'grades_vid_url',
+                'enrollment_certificate_vid_url',
+                'schoolid_front_vid_url',
+                'schoolid_back_vid_url',
+            ):
+                applicant[key] = document_values.get(key) or applicant.get(key)
 
-        # 3. Clean up other types
-        for key, value in list(applicant.items()):
-            if isinstance(value, (datetime)):
-                applicant[key] = value.isoformat()
-            elif key == 'birthdate' and value:
-                applicant[key] = str(value)
+            # 3. Clean up other types
+            for key, value in list(applicant.items()):
+                if isinstance(value, (datetime)):
+                    applicant[key] = value.isoformat()
+                elif key == 'birthdate' and value:
+                    applicant[key] = str(value)
 
-        # 4. Email verification status
-        applicant['email_verified'] = applicant.get('is_verified', False)
-        if applicant.get('google_id'):
-            applicant['email_verified'] = True
+            # 4. Email verification status
+            applicant['email_verified'] = applicant.get('is_verified', False)
+            if applicant.get('google_id'):
+                applicant['email_verified'] = True
 
-        return jsonify(applicant)
+            return jsonify(applicant)
     except Exception as exc:
         print(f"[PROFILE ERROR] {exc}", flush=True)
         return jsonify({'message': str(exc)}), 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 
 @student_api_bp.route('/applicant/document/<string:field_name>', methods=['GET'])
@@ -2168,55 +2116,55 @@ def get_applicant_document(field_name):
         return jsonify({'message': 'Invalid field name'}), 400
         
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        row = fetch_applicant_document_values(cur, request.user_no, [field_name])
-        
-        if not row or not row[field_name]:
-            return jsonify({'message': 'Document not found'}), 404
+        with get_db() as conn:
+            cur = conn.cursor()
+            row = fetch_applicant_document_values(cur, request.user_no, [field_name])
             
-        value = row[field_name]
-        
-        # Handle decryption for signature if needed
-        if field_name == 'signature_image_data':
-            value = decode_signature(value)
-        # Handle both binary data (BLOBs) and URL strings (from Storage)
-        if isinstance(value, str):
-            # If it's already a URL or Data URI, return it directly or wrapped
-            if value.startswith('http') or value.startswith('data:'):
+            if not row or not row[field_name]:
+                return jsonify({'message': 'Document not found'}), 404
+                
+            value = row[field_name]
+            
+            # Handle decryption for signature if needed
+            if field_name == 'signature_image_data':
+                value = decode_signature(value)
+            # Handle both binary data (BLOBs) and URL strings (from Storage)
+            if isinstance(value, str):
+                # If it's already a URL or Data URI, return it directly or wrapped
+                if value.startswith('http') or value.startswith('data:'):
+                    return jsonify({
+                        'fieldName': field_name,
+                        'data': value
+                    })
+                # Fallback for plain strings
+                value = value.encode('utf-8')
+            elif hasattr(value, 'tobytes'):
+                value = value.tobytes()
+            else:
+                value = bytes(value)
+                
+            # Determine mime type
+            mime_type = 'image/jpeg'
+            if field_name == 'signature_image_data':
+                mime_type = 'image/png'
+            elif field_name == 'grades_doc' or field_name == 'enrollment_certificate_doc':
+                # It might be a PDF, but most are images. JPEG is a safe default for binary,
+                # but we could refine this if we had a mime-type sniffer here.
+                pass
+                
+            # Optimization: Return as Base64 string so frontend can easily use it in data URI
+            try:
+                encoded = base64.b64encode(value).decode('utf-8')
                 return jsonify({
                     'fieldName': field_name,
-                    'data': value
+                    'data': f"data:{mime_type};base64,{encoded}"
                 })
-            # Fallback for plain strings
-            value = value.encode('utf-8')
-        elif hasattr(value, 'tobytes'):
-            value = value.tobytes()
-        else:
-            value = bytes(value)
-            
-        # Determine mime type
-        mime_type = 'image/jpeg'
-        if field_name == 'signature_image_data':
-            mime_type = 'image/png'
-        elif field_name == 'grades_doc' or field_name == 'enrollment_certificate_doc':
-            # It might be a PDF, but most are images. JPEG is a safe default for binary,
-            # but we could refine this if we had a mime-type sniffer here.
-            pass
-            
-        # Optimization: Return as Base64 string so frontend can easily use it in data URI
-        try:
-            encoded = base64.b64encode(value).decode('utf-8')
-            return jsonify({
-                'fieldName': field_name,
-                'data': f"data:{mime_type};base64,{encoded}"
-            })
-        except Exception as e:
-            print(f"[RECOVERY] Failed to encode document {field_name}: {e}", flush=True)
-            return jsonify({'message': 'Error processing document data'}), 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
+            except Exception as e:
+                print(f"[RECOVERY] Failed to encode document {field_name}: {e}", flush=True)
+                return jsonify({'message': 'Error processing document data'}), 500
+    except Exception as e:
+        print(f"[DOCUMENT] Error fetching {field_name}: {e}", flush=True)
+        return jsonify({'message': str(e)}), 500
 
 @student_api_bp.route('/applicant/document/raw/<string:field_name>', methods=['GET'])
 @token_required
@@ -2229,33 +2177,30 @@ def get_applicant_document_raw(field_name):
     if field_name not in allowed_fields:
         return "Invalid field", 400
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        row = fetch_applicant_document_values(cur, request.user_no, [field_name])
-        if not row or not row[field_name]:
-            return "Not found", 404
-        
-        value = row[field_name]
-        if field_name == 'signature_image_data':
-            value = decode_signature(value)
-        else:
-            value = bytes(value)
-
-        mime_type = 'image/jpeg'
-        if field_name == 'signature_image_data' or value.startswith(b'\x89PNG'):
-            mime_type = 'image/png'
+        with get_db() as conn:
+            cur = conn.cursor()
+            row = fetch_applicant_document_values(cur, request.user_no, [field_name])
+            if not row or not row[field_name]:
+                return "Not found", 404
             
-        from flask import make_response
-        response = make_response(value)
-        response.headers.set('Content-Type', mime_type)
-        response.headers.set('Cache-Control', 'public, max-age=3600')
-        return response
+            value = row[field_name]
+            if field_name == 'signature_image_data':
+                value = decode_signature(value)
+            else:
+                value = bytes(value)
+
+            mime_type = 'image/jpeg'
+            if field_name == 'signature_image_data' or value.startswith(b'\x89PNG'):
+                mime_type = 'image/png'
+                
+            from flask import make_response
+            response = make_response(value)
+            response.headers.set('Content-Type', mime_type)
+            response.headers.set('Cache-Control', 'public, max-age=3600')
+            return response
     except Exception as e:
         print(f"[DOCUMENT RAW] Error: {e}", flush=True)
         return str(e), 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 @student_api_bp.route('/applicant/profile', methods=['PUT'])
 @token_required
@@ -2264,138 +2209,135 @@ def update_profile():
     files_data = request.files
 
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        updates = []
-        params = []
-        document_updates = {}
-        has_profile_picture_column = applicant_has_column(cur, 'profile_picture')
+        with get_db() as conn:
+            cur = conn.cursor()
+            updates = []
+            params = []
+            document_updates = {}
+            has_profile_picture_column = applicant_has_column(cur, 'profile_picture')
 
-        def add_update(column_name, value):
-            updates.append(f'{column_name} = %s')
-            params.append(value)
+            def add_update(column_name, value):
+                updates.append(f'{column_name} = %s')
+                params.append(value)
 
-        def parse_parent_status(value):
-            if isinstance(value, bool):
-                return value
-            if isinstance(value, str):
-                normalized = value.strip().lower()
-                if normalized in {'living', 'true', '1', 'yes'}:
-                    return True
-                if normalized in {'deceased', 'false', '0', 'no'}:
-                    return False
-            return None
+            def parse_parent_status(value):
+                if isinstance(value, bool):
+                    return value
+                if isinstance(value, str):
+                    normalized = value.strip().lower()
+                    if normalized in {'living', 'true', '1', 'yes'}:
+                        return True
+                    if normalized in {'deceased', 'false', '0', 'no'}:
+                        return False
+                return None
 
-        field_mapping = {
-            'lastName': 'last_name', 'firstName': 'first_name', 'middleName': 'middle_name',
-            'maidenName': 'maiden_name', 'dateOfBirth': 'birthdate', 'placeOfBirth': 'birth_place',
-            'streetBarangay': 'street_brgy', 'townCity': 'town_city_municipality',
-            'townCityMunicipality': 'town_city_municipality',
-            'province': 'province', 'zipCode': 'zip_code', 'sex': 'sex',
-            'citizenship': 'citizenship', 'schoolIdNumber': 'school_id_no',
-            'schoolName': 'school', 'schoolAddress': 'school_address',
-            'schoolSector': 'school_sector', 'mobileNumber': 'mobile_no',
-            'yearLevel': 'year_lvl', 'fatherPhoneNumber': 'father_phone_no',
-            'motherPhoneNumber': 'mother_phone_no', 'fatherOccupation': 'father_occupation',
-            'motherOccupation': 'mother_occupation', 'parentsGrossIncome': 'financial_income_of_parents',
-            'gpa': 'overall_gpa', 'numberOfSiblings': 'sibling_no', 'course': 'course',
-        }
+            field_mapping = {
+                'lastName': 'last_name', 'firstName': 'first_name', 'middleName': 'middle_name',
+                'maidenName': 'maiden_name', 'dateOfBirth': 'birthdate', 'placeOfBirth': 'birth_place',
+                'streetBarangay': 'street_brgy', 'townCity': 'town_city_municipality',
+                'townCityMunicipality': 'town_city_municipality',
+                'province': 'province', 'zipCode': 'zip_code', 'sex': 'sex',
+                'citizenship': 'citizenship', 'schoolIdNumber': 'school_id_no',
+                'schoolName': 'school', 'schoolAddress': 'school_address',
+                'schoolSector': 'school_sector', 'mobileNumber': 'mobile_no',
+                'yearLevel': 'year_lvl', 'fatherPhoneNumber': 'father_phone_no',
+                'motherPhoneNumber': 'mother_phone_no', 'fatherOccupation': 'father_occupation',
+                'motherOccupation': 'mother_occupation', 'parentsGrossIncome': 'financial_income_of_parents',
+                'gpa': 'overall_gpa', 'numberOfSiblings': 'sibling_no', 'course': 'course',
+            }
 
-        document_field_mapping = {
-            'id_vid_url': 'id_vid_url',
-            'face_video': 'id_vid_url',
-            'mayorIndigency_video': 'indigency_vid_url',
-            'mayorGrades_video': 'grades_vid_url',
-            'mayorCOE_video': 'enrollment_certificate_vid_url',
-            'schoolIdFront_video': 'schoolid_front_vid_url',
-            'schoolIdBack_video': 'schoolid_back_vid_url',
-        }
+            document_field_mapping = {
+                'id_vid_url': 'id_vid_url',
+                'face_video': 'id_vid_url',
+                'mayorIndigency_video': 'indigency_vid_url',
+                'mayorGrades_video': 'grades_vid_url',
+                'mayorCOE_video': 'enrollment_certificate_vid_url',
+                'schoolIdFront_video': 'schoolid_front_vid_url',
+                'schoolIdBack_video': 'schoolid_back_vid_url',
+            }
 
-        for frontend_key, db_col in field_mapping.items():
-            if frontend_key in data:
-                value = data[frontend_key]
-                # school_id_no is an INTEGER column — coerce safely
-                if db_col == 'school_id_no':
-                    try:
-                        value = int(value) if value not in (None, '', 'null') else None
-                    except (ValueError, TypeError):
-                        value = None
-                add_update(db_col, value)
+            for frontend_key, db_col in field_mapping.items():
+                if frontend_key in data:
+                    value = data[frontend_key]
+                    # school_id_no is an INTEGER column — coerce safely
+                    if db_col == 'school_id_no':
+                        try:
+                            value = int(value) if value not in (None, '', 'null') else None
+                        except (ValueError, TypeError):
+                            value = None
+                    add_update(db_col, value)
 
-        for frontend_key, db_col in document_field_mapping.items():
-            if frontend_key in data:
-                document_updates[db_col] = data[frontend_key]
+            for frontend_key, db_col in document_field_mapping.items():
+                if frontend_key in data:
+                    document_updates[db_col] = data[frontend_key]
 
-        if 'fatherName' in data:
-            add_update('father_name', normalize_parent_full_name(data.get('fatherName')))
+            if 'fatherName' in data:
+                add_update('father_name', normalize_parent_full_name(data.get('fatherName')))
 
-        if 'motherName' in data:
-            add_update('mother_name', normalize_parent_full_name(data.get('motherName')))
+            if 'motherName' in data:
+                add_update('mother_name', normalize_parent_full_name(data.get('motherName')))
 
-        if 'fatherStatus' in data:
-            father_status = parse_parent_status(data.get('fatherStatus'))
-            if father_status is not None:
-                add_update('father_status', father_status)
+            if 'fatherStatus' in data:
+                father_status = parse_parent_status(data.get('fatherStatus'))
+                if father_status is not None:
+                    add_update('father_status', father_status)
 
-        if 'motherStatus' in data:
-            mother_status = parse_parent_status(data.get('motherStatus'))
-            if mother_status is not None:
-                add_update('mother_status', mother_status)
+            if 'motherStatus' in data:
+                mother_status = parse_parent_status(data.get('motherStatus'))
+                if mother_status is not None:
+                    add_update('mother_status', mother_status)
 
-        binary_fields = {
-            'profile_picture': 'profile_picture',
-            'id_front': 'id_img_front',
-            'id_back': 'id_img_back',
-            'mayorCOE_photo': 'enrollment_certificate_doc',
-            'enrollment_certificate_doc': 'enrollment_certificate_doc',
-            'mayorGrades_photo': 'grades_doc',
-            'grades_doc': 'grades_doc',
-            'mayorIndigency_photo': 'indigency_doc',
-            'indigency_doc': 'indigency_doc',
-            'mayorValidID_photo': 'id_pic',
-            'id_pic': 'id_pic',
-            'signature_data': 'signature_image_data',
-        }
+            binary_fields = {
+                'profile_picture': 'profile_picture',
+                'id_front': 'id_img_front',
+                'id_back': 'id_img_back',
+                'mayorCOE_photo': 'enrollment_certificate_doc',
+                'enrollment_certificate_doc': 'enrollment_certificate_doc',
+                'mayorGrades_photo': 'grades_doc',
+                'grades_doc': 'grades_doc',
+                'mayorIndigency_photo': 'indigency_doc',
+                'indigency_doc': 'indigency_doc',
+                'mayorValidID_photo': 'id_pic',
+                'id_pic': 'id_pic',
+                'signature_data': 'signature_image_data',
+            }
 
-        for field_key, db_col in binary_fields.items():
-            uploaded_file = files_data.get(field_key)
-            if uploaded_file:
-                blob_bytes = uploaded_file.read()
-                if field_key == 'signature_data' and blob_bytes and fernet:
-                    blob_bytes = fernet.encrypt(blob_bytes)
-                if db_col == 'profile_picture' and has_profile_picture_column:
-                    add_update(db_col, blob_bytes)
-                elif db_col != 'profile_picture':
-                    document_updates[db_col] = blob_bytes
-                continue
-
-            if field_key in data and data[field_key]:
-                blob_bytes = decode_base64(data[field_key])
-                if blob_bytes is not None:
+            for field_key, db_col in binary_fields.items():
+                uploaded_file = files_data.get(field_key)
+                if uploaded_file:
+                    blob_bytes = uploaded_file.read()
                     if field_key == 'signature_data' and blob_bytes and fernet:
                         blob_bytes = fernet.encrypt(blob_bytes)
                     if db_col == 'profile_picture' and has_profile_picture_column:
                         add_update(db_col, blob_bytes)
                     elif db_col != 'profile_picture':
                         document_updates[db_col] = blob_bytes
+                    continue
 
-        if not updates and not document_updates:
-            return jsonify({'message': 'No changes provided'}), 200
+                if field_key in data and data[field_key]:
+                    blob_bytes = decode_base64(data[field_key])
+                    if blob_bytes is not None:
+                        if field_key == 'signature_data' and blob_bytes and fernet:
+                            blob_bytes = fernet.encrypt(blob_bytes)
+                        if db_col == 'profile_picture' and has_profile_picture_column:
+                            add_update(db_col, blob_bytes)
+                        elif db_col != 'profile_picture':
+                            document_updates[db_col] = blob_bytes
 
-        if updates:
-            params.append(request.user_no)
-            sql = f"UPDATE applicants SET {', '.join(updates)} WHERE applicant_no = %s"
-            cur.execute(sql, tuple(params))
-        if document_updates:
-            persist_applicant_document_values(cur, request.user_no, document_updates)
-        conn.commit()
+            if not updates and not document_updates:
+                return jsonify({'message': 'No changes provided'}), 200
 
-        return jsonify({'message': 'Progress saved successfully'})
+            if updates:
+                params.append(request.user_no)
+                sql = f"UPDATE applicants SET {', '.join(updates)} WHERE applicant_no = %s"
+                cur.execute(sql, tuple(params))
+            if document_updates:
+                persist_applicant_document_values(cur, request.user_no, document_updates)
+            conn.commit()
+
+            return jsonify({'message': 'Progress saved successfully'})
     except Exception as exc:
         return jsonify({'message': str(exc)}), 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 
 @student_api_bp.route('/applications/submit', methods=['POST'])
@@ -2705,7 +2647,8 @@ def submit_application():
         traceback.print_exc()
         print(f"[SUBMIT] ❌ Error after {time.time() - start_time:.2f}s: {str(exc)}")
         if 'conn' in locals():
-            conn.rollback()
+            try: conn.rollback()
+            except: pass
         return jsonify({'message': f'Submission error: {str(exc)}'}), 500
     finally:
         if 'conn' in locals():
@@ -2741,34 +2684,50 @@ def ocr_check():
             print(f"[OCR-NORMALIZATION] Normalized '{target_doc_norm}' to '{target_doc}'", flush=True)
 
         # 1. Get applicant record from DB
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("SELECT applicant_no, first_name, middle_name, last_name, town_city_municipality, street_brgy FROM applicants WHERE applicant_no = %s", (request.user_no,))
-        applicant = cur.fetchone()
-        document_values = fetch_applicant_document_values(
-            cur,
-            request.user_no,
-            [
-                'id_img_front',
-                'id_img_back',
-                'indigency_doc',
-                'enrollment_certificate_doc',
-                'grades_doc',
-                'id_vid_url',
-                'schoolid_front_vid_url',
-                'schoolid_back_vid_url',
-                'indigency_vid_url',
-                'enrollment_certificate_vid_url',
-                'grades_vid_url',
-            ],
-        )
-        if document_values:
-            applicant.update(document_values)
-            
-        # 2. Preparation (Don't close connection yet, we might need it for scholarship check)
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT applicant_no, first_name, middle_name, last_name, town_city_municipality, street_brgy FROM applicants WHERE applicant_no = %s", (request.user_no,))
+            applicant = cur.fetchone()
+            document_values = fetch_applicant_document_values(
+                cur,
+                request.user_no,
+                [
+                    'id_img_front',
+                    'id_img_back',
+                    'indigency_doc',
+                    'enrollment_certificate_doc',
+                    'grades_doc',
+                    'id_vid_url',
+                    'schoolid_front_vid_url',
+                    'schoolid_back_vid_url',
+                    'indigency_vid_url',
+                    'enrollment_certificate_vid_url',
+                    'grades_vid_url',
+                ],
+            )
+            if document_values:
+                applicant.update(document_values)
 
-        if not applicant:
-            return jsonify({'verified': False, 'message': 'Applicant profile not found'}), 404
+            if not applicant:
+                return jsonify({'verified': False, 'message': 'Applicant profile not found'}), 404
+
+            # Fetch scholarship metadata while we still have the connection
+            expected_semester = None
+            scholarship_no = data.get('scholarship_no')
+            if scholarship_no:
+                try:
+                    cur.execute("SELECT year, semester FROM scholarships WHERE req_no = %s", (scholarship_no,))
+                    sch = cur.fetchone()
+                    if sch:
+                        if sch['year']:
+                            expected_academic_year_from_sch = sch['year']
+                            print(f"[OCR] Using scholarship-defined academic year: {expected_academic_year_from_sch}", flush=True)
+                        if sch['semester']:
+                            expected_semester = sch['semester']
+                            print(f"[OCR] Using scholarship-defined semester: {expected_semester}", flush=True)
+                except Exception as sch_err:
+                    print(f"[OCR ERROR] Failed to fetch scholarship year: {sch_err}", flush=True)
+        # Connection is now released back to pool — all remaining work is CPU-bound OCR
 
         # 2. Resolve parameters (multipart files prioritize over payload/JSON)
         id_front_file = request.files.get('id_front') or request.files.get('idFront')
@@ -2803,22 +2762,9 @@ def ocr_check():
         expected_academic_year = str(data.get('expected_year') or data.get('expectedYear') or '').strip()
         expected_id_no = str(data.get('id_number') or data.get('idNumber') or '').strip()
 
-        expected_semester = None
-        scholarship_no = data.get('scholarship_no')
-        target_doc = data.get('target_doc')  # New: Filter by specific document type
-        if scholarship_no:
-            try:
-                cur.execute("SELECT year, semester FROM scholarships WHERE req_no = %s", (scholarship_no,))
-                sch = cur.fetchone()
-                if sch:
-                    if sch['year']:
-                        expected_academic_year = sch['year']
-                        print(f"[OCR] Using scholarship-defined academic year: {expected_academic_year}", flush=True)
-                    if sch['semester']:
-                        expected_semester = sch['semester']
-                        print(f"[OCR] Using scholarship-defined semester: {expected_semester}", flush=True)
-            except Exception as sch_err:
-                print(f"[OCR ERROR] Failed to fetch scholarship year: {sch_err}", flush=True)
+        # Apply scholarship-defined overrides if they were fetched from DB
+        if 'expected_academic_year_from_sch' in locals():
+            expected_academic_year = expected_academic_year_from_sch
 
         # ─── SPEED OPTIMIZATION: Early Video Prefetching ───
         # Initiate parallel downloads of all relevant videos immediately
@@ -2939,11 +2885,7 @@ def ocr_check():
                         fallback_text_length=scan_opt['fallback_text_length']
                     )
                 
-                # Close connection before starting parallel threads (important for pooling)
-                try:
-                    cur.close()
-                    conn.close()
-                except: pass
+                # Connection already released back to pool by context manager above
 
                 def run_ocr_check():
                     if doc_type == 'Enrollment':
@@ -3176,9 +3118,6 @@ def ocr_check():
     except Exception as e:
         traceback.print_exc()
         return jsonify({'verified': False, 'message': f'Server error: {str(e)}'}), 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 
 @student_api_bp.route('/applications/<int:scholarship_no>', methods=['DELETE'])
@@ -3186,84 +3125,76 @@ def ocr_check():
 def cancel_application(scholarship_no):
     """Cancel (delete) the current user's application for a given scholarship."""
     try:
-        conn = get_db()
-        cur = conn.cursor()
+        with get_db() as conn:
+            cur = conn.cursor()
 
-        # Verify the application exists and belongs to this applicant
-        cur.execute(
-            """
-            SELECT 1 FROM applicant_status
-            WHERE scholarship_no = %s AND applicant_no = %s
-            """,
-            (scholarship_no, request.user_no),
-        )
-        if not cur.fetchone():
-            return jsonify({'message': 'Application not found or does not belong to you'}), 404
+            # Verify the application exists and belongs to this applicant
+            cur.execute(
+                """
+                SELECT 1 FROM applicant_status
+                WHERE scholarship_no = %s AND applicant_no = %s
+                """,
+                (scholarship_no, request.user_no),
+            )
+            if not cur.fetchone():
+                return jsonify({'message': 'Application not found or does not belong to you'}), 404
 
-        # Remove the application
-        cur.execute(
-            """
-            DELETE FROM applicant_status
-            WHERE scholarship_no = %s AND applicant_no = %s
-            """,
-            (scholarship_no, request.user_no),
-        )
-        
-        # We NO LONGER delete associated messages between applicant and provider 
-        # so that the cancellation notice can be read by the admin.
-        
-        conn.commit()
-        
-        conn.commit()
+            # Remove the application
+            cur.execute(
+                """
+                DELETE FROM applicant_status
+                WHERE scholarship_no = %s AND applicant_no = %s
+                """,
+                (scholarship_no, request.user_no),
+            )
+            
+            # We NO LONGER delete associated messages between applicant and provider 
+            # so that the cancellation notice can be read by the admin.
+            
+            conn.commit()
 
-        return jsonify({'message': 'Application cancelled successfully'})
+            return jsonify({'message': 'Application cancelled successfully'})
     except Exception as exc:
         traceback.print_exc()
         return jsonify({'message': f'Error cancelling application: {str(exc)}'}), 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 
 @student_api_bp.route('/applications/my-applications', methods=['GET'])
 @token_required
 def get_my_applications():
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT
-                s.scholarship_name as name,
-                s.req_no as scholarship_no,
-                s.req_no,
-                s.deadline,
-                s.pro_no,
-                CASE
-                    WHEN ast.is_accepted = TRUE THEN 'Approved'
-                    WHEN ast.is_accepted = FALSE THEN 'Rejected'
-                    ELSE 'Pending'
-                END as status,
-                ast.status_updated
-            FROM applicant_status ast
-            JOIN scholarships s ON ast.scholarship_no = s.req_no
-            WHERE ast.applicant_no = %s
-            """,
-            (request.user_no,),
-        )
-        rows = cur.fetchall()
-        for row in rows:
-            if row.get('deadline'):
-                row['deadline'] = str(row['deadline'])
-            if row.get('status_updated'):
-                row['status_updated'] = str(row['status_updated'])
-        return jsonify(rows)
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT
+                    s.scholarship_name as name,
+                    s.req_no as scholarship_no,
+                    s.req_no,
+                    s.deadline,
+                    s.pro_no,
+                    CASE
+                        WHEN ast.is_accepted = TRUE THEN 'Approved'
+                        WHEN ast.is_accepted = FALSE THEN 'Rejected'
+                        ELSE 'Pending'
+                    END as status,
+                    ast.status_updated
+                FROM applicant_status ast
+                JOIN scholarships s ON ast.scholarship_no = s.req_no
+                WHERE ast.applicant_no = %s
+                """,
+                (request.user_no,),
+            )
+            rows = cur.fetchall()
+            for row in rows:
+                if row.get('deadline'):
+                    row['deadline'] = str(row['deadline'])
+                if row.get('status_updated'):
+                    row['status_updated'] = str(row['status_updated'])
+            return jsonify(rows)
     except Exception as exc:
         traceback.print_exc()
         return jsonify({'message': str(exc)}), 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 
 @student_api_bp.route('/applications/<int:req_no>/status', methods=['POST'])
@@ -3273,218 +3204,212 @@ def update_application_status(req_no):
     status = data.get('status')
 
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        
-        # Get Provider Info for Automated Response
-        cur.execute("""
-            SELECT s.pro_no, sp.provider_name, s.scholarship_name 
-            FROM scholarships s 
-            JOIN scholarship_providers sp ON s.pro_no = sp.pro_no 
-            WHERE s.req_no = %s
-        """, (req_no,))
-        prov_row = cur.fetchone()
-        if not prov_row:
-            return jsonify({'message': 'Scholarship not found'}), 404
+        with get_db() as conn:
+            cur = conn.cursor()
             
-        pro_no = prov_row['pro_no']
-        pro_name = prov_row['provider_name']
-        sch_name = prov_row['scholarship_name']
-        
-        cur.execute(
-            """
-            UPDATE applicant_status
-            SET is_accepted = %s
-            WHERE scholarship_no = %s AND applicant_no = %s
-            """,
-            (status, req_no, applicant_no),
-        )
-
-        # If this application is being APPROVED, we automatically REJECT all other 
-        # applications for the same applicant as they can only hold one scholarship.
-        if status in [True, 1, 'true', 'True']:
-            # Find which scholarships are being auto-declined to notify the student
-            cur.execute(
-                """
-                SELECT s.scholarship_name, s.req_no, s.pro_no, sp.provider_name 
-                FROM applicant_status ast 
-                JOIN scholarships s ON ast.scholarship_no = s.req_no 
-                JOIN scholarship_providers sp ON s.pro_no = sp.pro_no
-                WHERE ast.applicant_no = %s 
-                AND ast.scholarship_no != %s 
-                AND (ast.is_accepted IS NULL OR ast.is_accepted = TRUE)
-                """,
-                (applicant_no, req_no)
-            )
-            declined_scholarships = cur.fetchall()
+            # Get Provider Info for Automated Response
+            cur.execute("""
+                SELECT s.pro_no, sp.provider_name, s.scholarship_name 
+                FROM scholarships s 
+                JOIN scholarship_providers sp ON s.pro_no = sp.pro_no 
+                WHERE s.req_no = %s
+            """, (req_no,))
+            prov_row = cur.fetchone()
+            if not prov_row:
+                return jsonify({'message': 'Scholarship not found'}), 404
+                
+            pro_no = prov_row['pro_no']
+            pro_name = prov_row['provider_name']
+            sch_name = prov_row['scholarship_name']
             
             cur.execute(
                 """
                 UPDATE applicant_status
-                SET is_accepted = FALSE
-                WHERE applicant_no = %s AND scholarship_no != %s
+                SET is_accepted = %s
+                WHERE scholarship_no = %s AND applicant_no = %s
                 """,
-                (applicant_no, req_no),
+                (status, req_no, applicant_no),
             )
-            for ds in declined_scholarships:
-                try:
-                    create_notification(
-                        user_no=applicant_no,
-                        title="Application Closed",
-                        message=f"Your application for {ds['scholarship_name']} has been closed because you were accepted into another scholarship. Students may only hold one active scholarship.",
-                        notif_type='result'
-                    )
-                    
-                    # Also send a chat message for the auto-declined scholarship
-                    cur.execute("""
-                        INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp)
-                        VALUES (%s, %s, %s, %s, %s, NOW())
-                    """, (
-                        applicant_no, 
-                        ds['pro_no'], 
-                        f"{applicant_no}+{ds['pro_no']}", 
-                        ds['provider_name'], 
-                        f"System: Your application for {ds['scholarship_name']} has been closed because you were accepted into another scholarship."
-                    ))
-                except: pass
 
-        # Trigger Notification for the applicant
-        is_acc = status in [True, 1, 'true', 'True']
-        status_label = "Accepted" if is_acc else "Rejected"
-        
-        try:
-            create_notification(
-                user_no=applicant_no,
-                title=f"Application Result: {status_label}",
-                message=f"Your application for {sch_name} has been {status_label.lower()}.",
-                notif_type='result'
-            )
-            
-            # Send the Automated Chat Message
-            if is_acc:
-                automessage = f"Congratulations! We are pleased to inform you that your application for {sch_name} has been {status_label.lower()}."
-            else:
-                automessage = f"Thank you for your interest in {sch_name}. We regret to inform you that your application has been {status_label.lower()}."
+            # If this application is being APPROVED, we automatically REJECT all other 
+            # applications for the same applicant as they can only hold one scholarship.
+            if status in [True, 1, 'true', 'True']:
+                # Find which scholarships are being auto-declined to notify the student
+                cur.execute(
+                    """
+                    SELECT s.scholarship_name, s.req_no, s.pro_no, sp.provider_name 
+                    FROM applicant_status ast 
+                    JOIN scholarships s ON ast.scholarship_no = s.req_no 
+                    JOIN scholarship_providers sp ON s.pro_no = sp.pro_no
+                    WHERE ast.applicant_no = %s 
+                    AND ast.scholarship_no != %s 
+                    AND (ast.is_accepted IS NULL OR ast.is_accepted = TRUE)
+                    """,
+                    (applicant_no, req_no)
+                )
+                declined_scholarships = cur.fetchall()
                 
-            cur.execute("""
-                INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp)
-                VALUES (%s, %s, %s, %s, %s, NOW())
-            """, (applicant_no, pro_no, f"{applicant_no}+{pro_no}", pro_name, automessage))
+                cur.execute(
+                    """
+                    UPDATE applicant_status
+                    SET is_accepted = FALSE
+                    WHERE applicant_no = %s AND scholarship_no != %s
+                    """,
+                    (applicant_no, req_no),
+                )
+                for ds in declined_scholarships:
+                    try:
+                        create_notification(
+                            user_no=applicant_no,
+                            title="Application Closed",
+                            message=f"Your application for {ds['scholarship_name']} has been closed because you were accepted into another scholarship. Students may only hold one active scholarship.",
+                            notif_type='result'
+                        )
+                        
+                        # Also send a chat message for the auto-declined scholarship
+                        cur.execute("""
+                            INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp)
+                            VALUES (%s, %s, %s, %s, %s, NOW())
+                        """, (
+                            applicant_no, 
+                            ds['pro_no'], 
+                            f"{applicant_no}+{ds['pro_no']}", 
+                            ds['provider_name'], 
+                            f"System: Your application for {ds['scholarship_name']} has been closed because you were accepted into another scholarship."
+                        ))
+                    except: pass
+
+            # Trigger Notification for the applicant
+            is_acc = status in [True, 1, 'true', 'True']
+            status_label = "Accepted" if is_acc else "Rejected"
             
-        except Exception as e:
-            print(f"[RESULT ERROR] Failed to send notification/chat: {e}")
+            try:
+                create_notification(
+                    user_no=applicant_no,
+                    title=f"Application Result: {status_label}",
+                    message=f"Your application for {sch_name} has been {status_label.lower()}.",
+                    notif_type='result'
+                )
+                
+                # Send the Automated Chat Message
+                if is_acc:
+                    automessage = f"Congratulations! We are pleased to inform you that your application for {sch_name} has been {status_label.lower()}."
+                else:
+                    automessage = f"Thank you for your interest in {sch_name}. We regret to inform you that your application has been {status_label.lower()}."
+                    
+                cur.execute("""
+                    INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp)
+                    VALUES (%s, %s, %s, %s, %s, NOW())
+                """, (applicant_no, pro_no, f"{applicant_no}+{pro_no}", pro_name, automessage))
+                
+            except Exception as e:
+                print(f"[RESULT ERROR] Failed to send notification/chat: {e}")
 
-        conn.commit()
+            conn.commit()
 
-        return jsonify({'message': 'Status updated'})
+            return jsonify({'message': 'Status updated'})
     except Exception as exc:
         return jsonify({'message': str(exc)}), 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 
 @student_api_bp.route('/announcements', methods=['GET'])
 def get_announcements():
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        try:
-            primary_key_column, foreign_key_column = get_announcement_image_columns(cur)
-        except Exception:
-            primary_key_column, foreign_key_column = None, None
+        with get_db() as conn:
+            cur = conn.cursor()
+            try:
+                primary_key_column, foreign_key_column = get_announcement_image_columns(cur)
+            except Exception:
+                primary_key_column, foreign_key_column = None, None
 
-        cur.execute(
-            """
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name = 'announcements'
-              AND column_name IN ('time_added', 'status_updated', 'ann_date', 'is_removed')
-            """
-        )
-        announcement_columns = {
-            row['column_name'] if isinstance(row, dict) else row[0]
-            for row in cur.fetchall()
-        }
+            cur.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'announcements'
+                  AND column_name IN ('time_added', 'status_updated', 'ann_date', 'is_removed')
+                """
+            )
+            announcement_columns = {
+                row['column_name'] if isinstance(row, dict) else row[0]
+                for row in cur.fetchall()
+            }
 
-        # Build the date expression based on what columns actually exist
-        if 'time_added' in announcement_columns:
-            date_col = 'a.time_added'
-            order_col = 'a.time_added DESC'
-        elif 'status_updated' in announcement_columns:
-            date_col = 'a.status_updated'
-            order_col = 'a.status_updated DESC'
-        elif 'ann_date' in announcement_columns:
-            date_col = 'a.ann_date'
-            order_col = 'a.ann_date DESC'
-        else:
-            date_col = 'NULL'
-            order_col = 'a.ann_no DESC'
-
-        where_clause = ''
-        if 'is_removed' in announcement_columns:
-            where_clause = 'WHERE COALESCE(a.is_removed, FALSE) = FALSE'
-
-        # Join announcements with scholarship_providers to get the name of the provider
-        if primary_key_column and foreign_key_column:
-            cur.execute(f"""
-                SELECT a.ann_no, a.ann_title, a.ann_message, {date_col} AS ann_date, {date_col} AS time_added, COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,
-                       ai.{primary_key_column} AS image_id
-                FROM announcements a
-                LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
-                LEFT JOIN announcement_images ai ON a.ann_no = ai.{foreign_key_column}
-                {where_clause}
-                ORDER BY {order_col}, ai.{primary_key_column}
-            """)
-        else:
-            cur.execute(f"""
-                SELECT a.ann_no, a.ann_title, a.ann_message, {date_col} AS ann_date, {date_col} AS time_added, COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,
-                       NULL AS image_id
-                FROM announcements a
-                LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
-                {where_clause}
-                ORDER BY {order_col}
-            """)
-
-        rows = cur.fetchall()
-
-        announcements = {}
-        for row in rows:
-            ann_no = row['ann_no']
-            ann_date = row.get('ann_date')
-            if ann_date and hasattr(ann_date, 'date'):
-                date_str = str(ann_date.date())
-            elif ann_date:
-                date_str = str(ann_date)
+            # Build the date expression based on what columns actually exist
+            if 'time_added' in announcement_columns:
+                date_col = 'a.time_added'
+                order_col = 'a.time_added DESC'
+            elif 'status_updated' in announcement_columns:
+                date_col = 'a.status_updated'
+                order_col = 'a.status_updated DESC'
+            elif 'ann_date' in announcement_columns:
+                date_col = 'a.ann_date'
+                order_col = 'a.ann_date DESC'
             else:
-                date_str = 'Recent'
-            if ann_no not in announcements:
-                announcements[ann_no] = {
-                    'ann_no': ann_no,
-                    'ann_title': row['ann_title'],
-                    'ann_message': row['ann_message'],
-                    'created_at': date_str,
-                    'time_added': row.get('time_added'),
-                    'provider_name': row['provider_name'],
-                    'announcementImages': []
-                }
+                date_col = 'NULL'
+                order_col = 'a.ann_no DESC'
 
-            if row.get('image_id') is not None:
-                announcements[ann_no]['announcementImages'].append(
-                    url_for(
-                        'admin_api.get_announcement_image_by_index',
-                        ann_no=ann_no,
-                        idx=len(announcements[ann_no]['announcementImages']),
-                        _external=True,
+            where_clause = ''
+            if 'is_removed' in announcement_columns:
+                where_clause = 'WHERE COALESCE(a.is_removed, FALSE) = FALSE'
+
+            # Join announcements with scholarship_providers to get the name of the provider
+            if primary_key_column and foreign_key_column:
+                cur.execute(f"""
+                    SELECT a.ann_no, a.ann_title, a.ann_message, {date_col} AS ann_date, {date_col} AS time_added, COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,
+                           ai.{primary_key_column} AS image_id
+                    FROM announcements a
+                    LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
+                    LEFT JOIN announcement_images ai ON a.ann_no = ai.{foreign_key_column}
+                    {where_clause}
+                    ORDER BY {order_col}, ai.{primary_key_column}
+                """)
+            else:
+                cur.execute(f"""
+                    SELECT a.ann_no, a.ann_title, a.ann_message, {date_col} AS ann_date, {date_col} AS time_added, COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,
+                           NULL AS image_id
+                    FROM announcements a
+                    LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
+                    {where_clause}
+                    ORDER BY {order_col}
+                """)
+
+            rows = cur.fetchall()
+
+            announcements = {}
+            for row in rows:
+                ann_no = row['ann_no']
+                ann_date = row.get('ann_date')
+                if ann_date and hasattr(ann_date, 'date'):
+                    date_str = str(ann_date.date())
+                elif ann_date:
+                    date_str = str(ann_date)
+                else:
+                    date_str = 'Recent'
+                if ann_no not in announcements:
+                    announcements[ann_no] = {
+                        'ann_no': ann_no,
+                        'ann_title': row['ann_title'],
+                        'ann_message': row['ann_message'],
+                        'created_at': date_str,
+                        'time_added': row.get('time_added'),
+                        'provider_name': row['provider_name'],
+                        'announcementImages': []
+                    }
+
+                if row.get('image_id') is not None:
+                    announcements[ann_no]['announcementImages'].append(
+                        url_for(
+                            'admin_api.get_announcement_image_by_index',
+                            ann_no=ann_no,
+                            idx=len(announcements[ann_no]['announcementImages']),
+                            _external=True,
+                        )
                     )
-                )
 
-        return jsonify(list(announcements.values()))
+            return jsonify(list(announcements.values()))
     except Exception as e:
         return jsonify({'message': f"Error fetching announcements: {str(e)}"}), 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 
 @student_api_bp.errorhandler(404)
@@ -3763,20 +3688,17 @@ def upload_video():
                     from services.db_service import get_db
                     from services.applicant_document_service import fetch_applicant_document_values
                     try:
-                        conn = get_db()
-                        cur = conn.cursor()
-                        row = fetch_applicant_document_values(cur, user_id, [col])
-                        if row and row[col]:
-                            old_url = row[col]
-                            if '/public/document_videos/' in old_url:
-                                old_path = old_url.split('/public/document_videos/')[1].strip()
-                                supa.storage.from_('document_videos').remove([old_path])
-                                print(f"[VIDEO-UPLOAD] Deleted previous video from storage: {old_path}", flush=True)
+                        with get_db() as conn:
+                            cur = conn.cursor()
+                            row = fetch_applicant_document_values(cur, user_id, [col])
+                            if row and row[col]:
+                                old_url = row[col]
+                                if '/public/document_videos/' in old_url:
+                                    old_path = old_url.split('/public/document_videos/')[1].strip()
+                                    supa.storage.from_('document_videos').remove([old_path])
+                                    print(f"[VIDEO-UPLOAD] Deleted previous video from storage: {old_path}", flush=True)
                     except Exception as e:
                         print(f"[VIDEO-UPLOAD] Error cleaning up old video: {e}", flush=True)
-                    finally:
-                        try: conn.close()
-                        except: pass
                 threading.Thread(target=_cleanup_old_video, args=(current_user_id, db_col, supabase), daemon=True).start()
             # ----------------------------------------
             # Direct stream upload bypasses heavy memory buffers
