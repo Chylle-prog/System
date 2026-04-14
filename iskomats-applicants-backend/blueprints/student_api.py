@@ -6,6 +6,8 @@ from flask_bcrypt import Bcrypt
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 
+from psycopg2.extras import RealDictCursor
+
 from services.db_service import get_db, get_db_startup
 from services.email_table_service import get_applicant_email_table, get_user_email_table
 from services.auth_service import get_secret_key
@@ -22,12 +24,44 @@ def ensure_applicant_verification_columns():
         conn = get_db_startup()
         cur = conn.cursor()
 
+
         # Ensure pending_registrations table exists
         cur.execute(f"""
             CREATE TABLE IF NOT EXISTS pending_registrations (
                 id SERIAL PRIMARY KEY,
                 email VARCHAR(255) UNIQUE NOT NULL,
                 password_hash VARCHAR(255) NOT NULL,
+                first_name VARCHAR(100),
+                last_name VARCHAR(100),
+                middle_name VARCHAR(100),
+                profile_picture TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Ensure applicants table exists
+        cur.execute(f"""
+            CREATE TABLE IF NOT EXISTS applicants (
+                applicant_no SERIAL PRIMARY KEY,
+                first_name VARCHAR(100),
+                last_name VARCHAR(100),
+                middle_name VARCHAR(100),
+                profile_picture TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Ensure applicant_email table exists
+        applicant_email_table = get_applicant_email_table(cur)
+        cur.execute(f"""
+            CREATE TABLE IF NOT EXISTS {applicant_email_table} (
+                app_em_no SERIAL PRIMARY KEY,
+                applicant_no INTEGER REFERENCES applicants(applicant_no),
+                email_address VARCHAR(255) UNIQUE NOT NULL,
+                password_hash VARCHAR(255),
+                is_verified BOOLEAN DEFAULT FALSE,
+                verification_code VARCHAR(100),
+                is_locked BOOLEAN DEFAULT FALSE,
                 first_name VARCHAR(100),
                 last_name VARCHAR(100),
                 middle_name VARCHAR(100),
@@ -79,6 +113,83 @@ except Exception:
     pass
 
 # --- Authentication Endpoints ---
+
+# --- Complete Profile Endpoint ---
+@student_api_bp.route('/auth/complete-profile', methods=['POST'])
+def complete_profile():
+    data = request.get_json() or {}
+    email = data.get('email', '').strip()
+    first_name = data.get('first_name')
+    last_name = data.get('last_name')
+    middle_name = data.get('middle_name')
+    profile_picture = data.get('profile_picture')
+
+    if not email or not first_name or not last_name:
+        return jsonify({'message': 'Missing required fields'}), 400
+
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        applicant_email_table = get_applicant_email_table(cur)
+
+        # 1. Get pending registration
+        cur.execute("SELECT * FROM pending_registrations WHERE email_address ILIKE %s", (email,))
+        pending = cur.fetchone()
+        if not pending:
+            return jsonify({'message': 'No pending registration found for this email'}), 404
+
+        # 2. Insert into applicants table
+        cur.execute("""
+            INSERT INTO applicants (first_name, last_name, middle_name, profile_picture)
+            VALUES (%s, %s, %s, %s)
+            RETURNING applicant_no
+        """, (first_name, last_name, middle_name, profile_picture))
+        applicant_no = cur.fetchone()['applicant_no']
+
+        # 3. Insert into applicant_email table
+        cur.execute(f"""
+            INSERT INTO {applicant_email_table} (applicant_no, email_address, password_hash, is_verified, first_name, last_name, middle_name, profile_picture)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            applicant_no,
+            email,
+            pending['password_hash'],
+            True,
+            first_name,
+            last_name,
+            middle_name,
+            profile_picture
+        ))
+
+        # 4. Delete from pending_registrations
+        cur.execute("DELETE FROM pending_registrations WHERE email_address ILIKE %s", (email,))
+        conn.commit()
+
+        # 5. Issue JWT
+        payload = {
+            'exp': datetime.utcnow() + timedelta(days=7),
+            'iat': datetime.utcnow(),
+            'user_no': applicant_no,
+        }
+        token = jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+
+        return jsonify({
+            'token': token,
+            'email': email,
+            'applicant_no': applicant_no,
+            'is_applicant': True,
+            'first_name': first_name,
+            'last_name': last_name,
+            'middle_name': middle_name,
+            'profile_picture': profile_picture,
+            'status': 'ok',
+            'message': 'Profile completed and account activated.'
+        })
+    except Exception as exc:
+        return jsonify({'message': f'Failed to complete profile: {str(exc)}'}), 500
+    finally:
+        if 'conn' in locals():
+            conn.close()
 
 @student_api_bp.route('/auth/login', methods=['POST'])
 def login():
@@ -178,7 +289,7 @@ def register():
         cur.execute(f"SELECT 1 FROM {applicant_email_table} WHERE email_address ILIKE %s", (email,))
         if cur.fetchone():
             return jsonify({'message': 'Email already registered'}), 400
-        cur.execute(f"SELECT 1 FROM pending_registrations WHERE email ILIKE %s", (email,))
+        cur.execute(f"SELECT 1 FROM pending_registrations WHERE email_address ILIKE %s", (email,))
         if cur.fetchone():
             return jsonify({'message': 'Registration already pending for this email'}), 400
 
@@ -192,7 +303,7 @@ def register():
 
         cur.execute(
             """
-            INSERT INTO pending_registrations (email, password_hash, first_name, last_name, middle_name, profile_picture)
+            INSERT INTO pending_registrations (email_address, password_hash, first_name, last_name, middle_name, profile_picture)
             VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
