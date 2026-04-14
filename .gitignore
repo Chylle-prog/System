@@ -29,6 +29,8 @@ obj/
 **/.env
 *.key
 *.pem
+client_secret.json
+**/client_secret.json
 
 # Editor-specific
 .vscode/
