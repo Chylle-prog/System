@@ -491,10 +491,12 @@ def student_id_no_matches_text(target_id, text):
     def build_homoglyph_regex(s):
         s = "".join(filter(str.isalnum, str(s))).lower()
         mapping = {
-            '0': '[0oqhd]',            '1': '[1ils5]', # Added 5 as 1 and 5 can look similar in some matriculation fonts
+            '0': '[0oqhd]',
+            '1': '[1ils5]',
             '2': '[2zsa7]',
+            '3': '[3]',
             '4': '[4a]',
-            '5': '[5s1]', # Added 1
+            '5': '[5s1]',
             '6': '[6gb5]',
             '7': '[71l]',
             '8': '[8b]',
@@ -509,6 +511,21 @@ def student_id_no_matches_text(target_id, text):
         # Search the entire concatenated alphanumeric string to ignore rogue spaces added by OCR
         if re.search(pattern, full_clean_text):
             return True, target_id
+    
+    # Bidirectional normalize: OCR 's' could be '1' or '5'. Try both interpretations.
+    def normalize_id_as_1(s):
+        s = "".join(filter(str.isalnum, str(s))).lower()
+        s = s.replace('o', '0').replace('q', '0').replace('d', '0').replace('h', '0')
+        s = s.replace('i', '1').replace('l', '1').replace('s', '1')
+        s = s.replace('z', '2')
+        s = s.replace('g', '6').replace('b', '6')
+        return s
+    
+    # Check with s→1 interpretation (catches ss00017172 → 1100017172 for target)
+    t_id_as_1 = normalize_id_as_1(target_id)
+    norm_text_as_1 = normalize_id_as_1(text)
+    if t_id_as_1 in norm_text_as_1:
+        return True, target_id
             
     # Check for off-by-one errors for better user feedback (don't verify, just log/return hint)
     if len(clean_target_id) >= 8:
