@@ -2961,18 +2961,20 @@ def ocr_check():
                     semester_ok = (normalized_expected_semester == normalized_semester_label) if normalized_expected_semester else True
                     
                     if doc_type == 'Enrollment':
-                        id_ok, _ = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
-                        print(f"[OCR-ID-DIAG] Result id_ok={id_ok}", flush=True)
+                        id_ok, found_id = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
+                        print(f"[OCR-ID-DIAG] Result id_ok={id_ok} Found='{found_id}'", flush=True)
                         course_ok, _ = course_matches_text(course, raw) if course else (True, None)
                         
                         # Requirements for Enrollment (COR/COE): Name, ID, School, Course, Year, Semester
                         v = name_ok and id_ok and school_ok and course_ok and year_only_ok and semester_ok
                         
+                        id_status = "OK" if id_ok else f"X (Found: {found_id if found_id else 'None'})"
+                        
                         checklist = [
                             f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
                             f"Middle Name: {'OK' if name_details.get('middle_ok') else 'X'}" if middle_name else None,
                             f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
-                            f"ID: {'OK' if id_ok else 'X'}",
+                            f"ID: {id_status}",
                             f"School: {'OK' if school_ok else 'X'}",
                             f"Year: {'OK' if year_only_ok else 'X'}",
                             f"Sem: {'OK' if semester_ok else 'X'}",

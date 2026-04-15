@@ -492,14 +492,14 @@ def student_id_no_matches_text(target_id, text):
         s = "".join(filter(str.isalnum, str(s))).lower()
         mapping = {
             '0': '[0oqhd]',
-            '1': '[1ils5]',
+            '1': '[1ils5j7/!|]', # Very broad 1 mapping
             '2': '[2zsa7]',
-            '3': '[3]',
+            '3': '[3e8]',
             '4': '[4a]',
             '5': '[5s1]',
             '6': '[6gb5]',
-            '7': '[71l]',
-            '8': '[8b]',
+            '7': '[71lty/]', # 7 often misread as y or /
+            '8': '[8b3]',
             '9': '[9gq]'
         }
         return "".join([mapping.get(c, re.escape(c)) for c in s])
@@ -526,6 +526,23 @@ def student_id_no_matches_text(target_id, text):
     norm_text_as_1 = normalize_id_as_1(text)
     if t_id_as_1 in norm_text_as_1:
         return True, target_id
+
+    # 4. Final Relaxed Fallback: Allow matching if 90% of digits match in sequence
+    # This handles cases where OCR skips a single digit in a long ID.
+    if len(clean_target_id) >= 8:
+        # Create a more relaxed pattern that allows for 1 missing or wrong char
+        for i in range(len(clean_target_id)):
+            # Create a variant where one digit is a wildcard
+            relaxed_parts = []
+            for j, c in enumerate(clean_target_id):
+                if i == j:
+                    relaxed_parts.append('[a-z0-9]?') # Allow 0 or 1 character of any kind
+                else:
+                    relaxed_parts.append(mapping.get(c, re.escape(c)))
+            relaxed_pattern = "".join(relaxed_parts)
+            if re.search(relaxed_pattern, full_clean_text):
+                print(f"[ID-RELAXED] Matched variant with wildcard at position {i}", flush=True)
+                return True, target_id
             
     # Check for off-by-one errors for better user feedback (don't verify, just log/return hint)
     if len(clean_target_id) >= 8:

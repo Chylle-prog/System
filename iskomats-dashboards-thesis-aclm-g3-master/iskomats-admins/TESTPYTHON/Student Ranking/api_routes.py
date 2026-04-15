@@ -142,15 +142,15 @@ def get_applicant_media_metadata(applicant_no, column_name, has_data, data_value
     is_video = column_name.endswith('_vid_url') if column_name else False
     media_type = 'video/mp4' if is_video else 'image/jpeg'
     
-    if is_video and data_value:
-        # For video URLs, use the URL directly from database
+    if data_value and isinstance(data_value, str) and data_value.startswith('http'):
+        # If we have a direct URL (from Supabase storage), use it directly for best performance
         return [{
             'src': data_value,
             'type': media_type,
             'name': f"{name}"
         }]
     elif not is_video:
-        # For binary image/document data, use lazy-loading endpoint
+        # For legacy binary data OR if we need a consistent interface, use lazy-loading endpoint
         return [{
             'src': url_for('admin_api.get_applicant_image', applicant_no=applicant_no, column_name=column_name, _external=True),
             'type': media_type,
@@ -4033,11 +4033,21 @@ def get_applicant_image(applicant_no, column_name):
         
         data = row[column_name]
         
+        # Handle Supabase Storage URLs (MIGRATION: BYTEA -> TEXT)
+        if isinstance(data, str) and data.startswith('http'):
+            from flask import redirect
+            print(f"[APPLICANT IMAGE] Redirecting to storage: {data}")
+            return redirect(data)
+            
         # Convert memoryview to bytes if needed
         if hasattr(data, 'tobytes'):
             data = data.tobytes()
         elif not isinstance(data, bytes):
-            data = bytes(data)
+            # If it's not bytes but we expect binary (and it's not a URL), attempt to treat it as such
+            try:
+                data = bytes(data)
+            except (TypeError, ValueError):
+                return jsonify({'message': 'Invalid data format in database'}), 500
             
         # Handle encryption for signature
         if column_name == 'signature_image_data':
