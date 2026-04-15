@@ -987,15 +987,25 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
 
             if not is_id_back and needs_header:
                 if not prefer_fast_layout:
-                    header_height = max(int(img.shape[0] * 0.28), 1)
-                    header_img = img[:header_height, :]
-                    header_text = _run_tesseract_on_image(header_img, psm=6, skip_pass2=True)
-
-                    if header_text.strip():
+                    # Academic documents often place Student IDs and Names in header columns.
+                    # We split the top 35% into half-width columns and scan each.
+                    h_total, w_total = img.shape[:2]
+                    header_h = int(h_total * 0.35)
+                    left_w = int(w_total * 0.55) # Slightly wider left to catch labels like "Student No:"
+                    
+                    left_col = img[:header_h, :left_w]
+                    right_col = img[:header_h, left_w:]
+                    
+                    print(f"[OCR-DOC] Running Column-Aware header sub-scans...", flush=True)
+                    left_text = _run_tesseract_on_image(left_col, psm=6, skip_pass2=True)
+                    right_text = _run_tesseract_on_image(right_col, psm=6, skip_pass2=True)
+                    
+                    combined_header = f"{left_text}\n{right_text}"
+                    if combined_header.strip():
                         normalized_text = normalize_for_ocr(text)
-                        normalized_header = normalize_for_ocr(header_text)
+                        normalized_header = normalize_for_ocr(combined_header)
                         if normalized_header and normalized_header not in normalized_text:
-                            text = f"{header_text.strip()}\n{text}".strip()
+                            text = f"{combined_header.strip()}\n{text}".strip()
             
             # ID backs often have very sparse text (stickers).
             # If PSM3 didn't get much, try PSM11 (Sparse) and PSM6 (Uniform)
