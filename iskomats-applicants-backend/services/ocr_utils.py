@@ -836,20 +836,26 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             primary_psm = 6 if is_indigency else 3
             best_text = _run_tesseract_on_image(img, primary_psm)
             
-            # Indigency Header-Skip Optimization: If keywords found, skip redundant header pass
-            needs_header = len(best_text.strip()) < 150
-            if is_indigency and any(k.lower() in best_text.lower() for k in ['indigency', 'barangay', 'certificate']):
-                needs_header = False
-                
-            if needs_header and not is_indigency: # Only do header pass for ID cards if they are sparse
-                header_height = max(int(img.shape[0] * 0.28), 1)
-                header_img = img[:header_height, :]
-                header_text = _run_tesseract_on_image(header_img, psm=6, skip_pass2=True)
-                if header_text.strip() and header_text.strip() not in best_text:
-                    best_text = f"{header_text.strip()}\n{best_text}".strip()
+            # --- COLUMN-AWARE HEADER SCANNING (Fix for Sample 1) ---
+            # Academic documents often skip Student IDs in column layouts.
+            # We split the top 35% into half-width columns and scan each.
+            h_total, w_total = img.shape[:2]
+            header_h = int(h_total * 0.35)
+            left_w = int(w_total * 0.55) # Slightly wider left to catch ID colons
+            
+            left_col = img[:header_h, :left_w]
+            right_col = img[:header_h, left_w:]
+            
+            print(f"[OCR] Running Column-Aware sub-scans...", flush=True)
+            left_text = _run_tesseract_on_image(left_col, psm=6, skip_pass2=True)
+            right_text = _run_tesseract_on_image(right_col, psm=6, skip_pass2=True)
+            
+            # Combine all text sources
+            all_source_texts = [best_text, left_text, right_text]
+            best_text = "\n---\n".join([t for t in all_source_texts if t.strip()])
 
             t_end = time.time()
-            print(f"[OCR PERF] Total ID OCR time: {t_end - t_start:.3f}s", flush=True)
+            print(f"[OCR PERF] Total ID OCR time (w/ Column-Split): {t_end - t_start:.3f}s", flush=True)
         except Exception as e:
             print(f"[OCR] PSM3 error: {e}", flush=True)
             best_text = ""
