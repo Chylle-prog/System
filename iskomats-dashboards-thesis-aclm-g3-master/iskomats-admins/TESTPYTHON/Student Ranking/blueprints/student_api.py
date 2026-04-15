@@ -3119,9 +3119,9 @@ def ocr_check():
                         
                         id_status = "OK" if id_ok else "X"
                         if not id_ok:
-                            # Show a snippet of the alphanumeric blob to help debug why the ID failed
+                            # Show a larger snippet of the alphanumeric blob
                             clean_blob = "".join(filter(str.isalnum, str(raw))).lower()
-                            blob_snippet = (clean_blob[:50] + "...") if len(clean_blob) > 50 else clean_blob
+                            blob_snippet = (clean_blob[:300] + "...") if len(clean_blob) > 300 else clean_blob
                             id_status = f"X (Found: {found_id if found_id else 'None'} | Blob: {blob_snippet})"
                         
                         checklist = [

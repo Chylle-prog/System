@@ -554,6 +554,9 @@ def student_id_no_matches_text(target_id, text):
                 if diffs == 1:
                     print(f"[ID HINT] ID is almost a match: Found '{clean_word}' vs target '{clean_target_id}'", flush=True)
             
+    # Final diagnostic before failure
+    full_clean_text = "".join(filter(str.isalnum, str(text))).lower()
+    print(f"[OCR-ID-FULL-BLOB] {full_clean_text}", flush=True)
     return False, None
 
 
