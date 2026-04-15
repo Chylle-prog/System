@@ -26,6 +26,7 @@ import cv2
 import numpy as np
 from services.auth_service import get_secret_key
 from services.db_service import get_db, get_db_startup
+from project_config import get_supabase_client
 from services.email_table_service import get_applicant_email_table, get_user_email_table
 from services.applicant_document_service import (
     APPLICANT_DOCUMENT_COLUMNS,
@@ -530,6 +531,68 @@ def is_trusted_storage_url(url):
     return parsed_url.netloc.lower().endswith('.supabase.co')
 
 
+def upload_image_to_storage(file_bytes, folder, file_name, content_type='image/jpeg', applicant_no=None, db_col=None):
+    """
+    Upload an image to the Supabase 'document_images' bucket and return its public URL.
+    Includes automatic cleanup of old files if applicant_no and db_col are provided.
+    """
+    if not file_bytes:
+        print("[STORAGE] No file bytes provided for upload.", flush=True)
+        return None
+        
+    supabase = get_supabase_client()
+    if not supabase:
+        print("[STORAGE ERROR] Supabase client not available. Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.", flush=True)
+        return None
+    
+    bucket = "document_images"
+    
+    # 1. CLEANUP OLD FILE (Non-blocking background thread)
+    if applicant_no and db_col:
+        def _cleanup_task(u_id, col):
+            try:
+                with get_db() as conn:
+                    cur = conn.cursor()
+                    row = fetch_applicant_document_values(cur, u_id, [col])
+                    if row and row.get(col):
+                        old_url = str(row[col])
+                        if '/public/document_images/' in old_url:
+                            # Extract path
+                            old_path = old_url.split('/public/document_images/')[1].strip()
+                            supabase.storage.from_(bucket).remove([old_path])
+                            print(f"[STORAGE] Cleaned up old file: {old_path}", flush=True)
+            except Exception as e:
+                print(f"[STORAGE] Cleanup error: {e}", flush=True)
+        
+        threading.Thread(target=_cleanup_task, args=(applicant_no, db_col), daemon=True).start()
+
+    # 2. UPLOAD NEW FILE
+    file_path = f"{folder}/{file_name}"
+    
+    try:
+        print(f"[STORAGE] Attempting upload to bucket '{bucket}': {file_path} ({len(file_bytes)} bytes)", flush=True)
+        res = supabase.storage.from_(bucket).upload(
+            file_path,
+            file_bytes,
+            file_options={
+                'content-type': content_type,
+                'upsert': 'true'
+            }
+        )
+        
+        # Check if upload was successful (handling various supabase-py version return types)
+        if hasattr(res, 'error') and res.error:
+            print(f"[STORAGE ERROR] Supabase returned error: {res.error}", flush=True)
+            return None
+            
+        public_url = supabase.storage.from_(bucket).get_public_url(file_path)
+        print(f"[STORAGE SUCCESS] Uploaded: {public_url}", flush=True)
+        return public_url
+    except Exception as e:
+        print(f"[STORAGE ERROR] Exception during upload: {str(e)}", flush=True)
+        return None
+
+
 def resolve_verification_image_bytes(image_data):
     if isinstance(image_data, memoryview):
         return image_data.tobytes()
@@ -864,9 +927,11 @@ def build_student_name_keywords(first_name, middle_name, last_name):
 def debug_env():
     """Temporary debug route to check server configuration."""
     return jsonify({
-        'GOOGLE_CLIENT_ID': os.environ.get('GOOGLE_CLIENT_ID'),
-        'GMAIL_SENDER_EMAIL': os.environ.get('GMAIL_SENDER_EMAIL'),
+        'GOOGLE_CLIENT_ID': GOOGLE_CLIENT_ID,
         'HAS_ENV_FILE': os.path.exists('.env'),
+        'SUPABASE_URL_SET': bool(os.environ.get('SUPABASE_URL')),
+        'SUPABASE_SERVICE_ROLE_SET': bool(os.environ.get('SUPABASE_SERVICE_ROLE_KEY')),
+        'STORE_FILES_IN': os.environ.get('STORE_FILES_IN', 'database'),
         'PROJECT_ROOT': str(os.getcwd())
     })
 
@@ -1062,8 +1127,24 @@ def decode_base64(data_uri):
 
 
 def db_bytes(value):
+    if value is None:
+        return None
     if isinstance(value, memoryview):
         return value.tobytes()
+    if isinstance(value, str):
+        normalized = value.strip()
+        if not normalized:
+            return None
+        # If it's a URL, download it
+        if normalized.startswith('http'):
+            print(f"[DB_BYTES] Resolving URL to bytes: {normalized[:60]}...", flush=True)
+            content, _err = fetch_video_bytes_from_url(normalized)
+            return content
+        # Otherwise, check if it's base64
+        try:
+            return decode_base64(normalized)
+        except:
+            return value.encode('utf-8')
     return value
 
 
@@ -2172,11 +2253,21 @@ def get_applicant_document_raw(field_name):
             value = row[field_name]
             if field_name == 'signature_image_data':
                 value = decode_signature(value)
-            else:
-                value = bytes(value)
+            
+            # Handle Supabase Storage URLs (MIGRATION: BYTEA -> TEXT)
+            if isinstance(value, str) and value.startswith('http'):
+                from flask import redirect
+                print(f"[DOCUMENT RAW] Redirecting to storage: {value}", flush=True)
+                return redirect(value)
+            
+            if not isinstance(value, bytes):
+                if hasattr(value, 'tobytes'):
+                    value = value.tobytes()
+                else:
+                    value = bytes(value)
 
             mime_type = 'image/jpeg'
-            if field_name == 'signature_image_data' or value.startswith(b'\x89PNG'):
+            if field_name == 'signature_image_data' or (len(value) > 4 and value.startswith(b'\x89PNG')):
                 mime_type = 'image/png'
                 
             from flask import make_response
@@ -2285,6 +2376,7 @@ def update_profile():
                 'indigency_doc': 'indigency_doc',
                 'mayorValidID_photo': 'id_pic',
                 'id_pic': 'id_pic',
+                'schoolID_photo': 'schoolID_photo',
                 'signature_data': 'signature_image_data',
             }
 
@@ -2308,7 +2400,35 @@ def update_profile():
                         if db_col == 'profile_picture' and has_profile_picture_column:
                             add_update(db_col, blob_bytes)
                         elif db_col != 'profile_picture':
-                            document_updates[db_col] = blob_bytes
+                            # STORAGE MIGRATION: These specific columns are now text/URLs
+                            storage_columns = {
+                                'indigency_doc': 'indigency',
+                                'grades_doc': 'grades',
+                                'enrollment_certificate_doc': 'coe',
+                                'id_img_front': 'id_front',
+                                'id_img_back': 'id_back',
+                                'id_pic': 'face_photo',
+                                'schoolID_photo': 'school_id'
+                            }
+                            
+                            if db_col in storage_columns:
+                                folder = storage_columns[db_col]
+                                timestamp = int(time.time())
+                                file_name = f"{request.user_no}_{db_col}_{timestamp}.jpg"
+                                
+                                # Detect mime if possible, default to jpeg
+                                mime = 'image/jpeg'
+                                if blob_bytes[:4] == b'\x89PNG': mime = 'image/png'
+                                
+                                print(f"[UPDATE PROFILE] Moving field {db_col} to storage...", flush=True)
+                                url = upload_image_to_storage(blob_bytes, folder, file_name, mime, applicant_no=request.user_no, db_col=db_col)
+                                if url:
+                                    document_updates[db_col] = url
+                                else:
+                                    print(f"[UPDATE PROFILE WARNING] Storage upload failed for {db_col}, falling back to bytes.", flush=True)
+                                    document_updates[db_col] = blob_bytes
+                            else:
+                                document_updates[db_col] = blob_bytes
 
             if not updates and not document_updates:
                 return jsonify({'message': 'No changes provided'}), 200
@@ -2437,12 +2557,13 @@ def submit_application():
         
         signature_bytes = decode_signature(form_data.get('signature_data')) or decode_signature(applicant.get('signature_image_data'))
 
-        doc_keys = ['mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo', 'mayorValidID_photo']
+        doc_keys = ['mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo', 'mayorValidID_photo', 'schoolID_photo']
         doc_column_map = {
             'mayorCOE_photo': 'enrollment_certificate_doc',
             'mayorGrades_photo': 'grades_doc',
             'mayorIndigency_photo': 'indigency_doc',
             'mayorValidID_photo': 'id_pic',
+            'schoolID_photo': 'schoolID_photo',
         }
 
         doc_bytes = {}
@@ -2602,7 +2723,35 @@ def submit_application():
                     updates.append(f'{column_name} = %s')
                     params.append(value)
                 elif column_name != 'profile_picture':
-                    document_updates[column_name] = value
+                    # STORAGE MIGRATION: These specific columns are now text/URLs
+                    storage_columns = {
+                        'indigency_doc': 'indigency',
+                        'grades_doc': 'grades',
+                        'enrollment_certificate_doc': 'coe',
+                        'id_img_front': 'id_front',
+                        'id_img_back': 'id_back',
+                        'id_pic': 'face_photo',
+                        'schoolID_photo': 'school_id'
+                    }
+                    
+                    if column_name in storage_columns and isinstance(value, (bytes, bytearray)):
+                        folder = storage_columns[column_name]
+                        timestamp = int(time.time())
+                        file_name = f"{current_user_id}_{column_name}_{timestamp}.jpg"
+                        
+                        # Detect mime if possible, default to jpeg
+                        mime = 'image/jpeg'
+                        if value[:4] == b'\x89PNG': mime = 'image/png'
+                        
+                        print(f"[SUBMIT] Moving field {column_name} to storage...", flush=True)
+                        url = upload_image_to_storage(value, folder, file_name, mime, applicant_no=current_user_id, db_col=column_name)
+                        if url:
+                            document_updates[column_name] = url
+                        else:
+                            print(f"[SUBMIT WARNING] Storage upload failed for {column_name}, falling back to bytes.", flush=True)
+                            document_updates[column_name] = value
+                    else:
+                        document_updates[column_name] = value
 
         if updates:
             sql = f"UPDATE applicants SET {', '.join(updates)} WHERE applicant_no = %s"
