@@ -3117,7 +3117,12 @@ def ocr_check():
                         # Requirements for Enrollment (COR/COE): Name, ID, School, Course, Year, Semester
                         v = name_ok and id_ok and school_ok and course_ok and year_only_ok and semester_ok
                         
-                        id_status = "OK" if id_ok else f"X (Found: {found_id if found_id else 'None'})"
+                        id_status = "OK" if id_ok else "X"
+                        if not id_ok:
+                            # Show a snippet of the alphanumeric blob to help debug why the ID failed
+                            clean_blob = "".join(filter(str.isalnum, str(raw))).lower()
+                            blob_snippet = (clean_blob[:50] + "...") if len(clean_blob) > 50 else clean_blob
+                            id_status = f"X (Found: {found_id if found_id else 'None'} | Blob: {blob_snippet})"
                         
                         checklist = [
                             f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
@@ -3166,27 +3171,27 @@ def ocr_check():
                     return {'doc': 'Indigency', 'verified': v, 'message': detail_msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'SchoolID':
-                    id_ok, _ = student_id_no_matches_text(expected_id_no, raw)
+                    id_ok, found_id = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
                     
+                    id_status = "OK" if id_ok else "X"
+                    if not id_ok:
+                        clean_blob = "".join(filter(str.isalnum, str(raw))).lower()
+                        blob_snippet = (clean_blob[:50] + "...") if len(clean_blob) > 50 else clean_blob
+                        id_status = f"X (Found: {found_id if found_id else 'None'} | Blob: {blob_snippet})"
+
                     checklist = [
                         f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
                         f"Middle Name: {'OK' if name_details.get('middle_ok') else 'X'}" if middle_name else None,
                         f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
-                        f"ID Number: {'OK' if id_ok else 'X'}",
+                        f"ID Number: {id_status}",
                         f"School: {'OK' if school_ok else 'X'}"
                     ]
                     checklist = [c for c in checklist if c is not None]
                     
                     # School Name is now mandatory for ID as well
                     v = name_ok and id_ok and school_ok
-                    if v:
-                        msg = f"Front ID verified successfully. Checklist: [{', '.join(checklist)}]"
-                    else:
-                        msg = f"Verification failed. Checklist: [{', '.join(checklist)}]"
-                        if not name_ok: msg += f" (Name mismatch)"
-                        if not id_ok: msg += f" (ID mismatch)"
-                        if not school_ok: msg += f" (School mismatch)"
-
+                    msg = f"{'Front ID verified successfully' if v else 'Verification failed'}. Checklist: [{' | '.join(checklist)}]"
+                    
                     return {'doc': 'SchoolID', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'SchoolIDBack':
