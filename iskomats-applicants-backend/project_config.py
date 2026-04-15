@@ -20,6 +20,30 @@ if ENV_PATH.exists():
     # Only load from .env if the variable isn't already set (prevents overriding Render variables)
     load_dotenv(ENV_PATH, override=False)
 
+# ─── PERFORMANCE PROFILES ───────────────────────────────────────────────────
+# Profiles for different Render instance types (Free vs Standard)
+APP_PERFORMANCE_MODE = os.environ.get('APP_PERFORMANCE_MODE', 'LOW').upper()
+
+PERFORMANCE_CONFIG = {
+    'LOW': {
+        'ocr_concurrency': 1,
+        'threads_per_process': 1,
+        'image_max_width': 1200,
+        'gc_frequency': 'always'
+    },
+    'HIGH': {
+        'ocr_concurrency': 2,
+        'threads_per_process': 2,
+        'image_max_width': 1600,
+        'gc_frequency': 'periodic'
+    }
+}
+
+def get_performance_config():
+    return PERFORMANCE_CONFIG.get(APP_PERFORMANCE_MODE, PERFORMANCE_CONFIG['LOW'])
+
+print(f"[RESOURCES] Performance Mode: {APP_PERFORMANCE_MODE}", flush=True)
+
 # ─── CONNECTION POOLING ───────────────────────────────────────────────────────
 _CONNECTION_POOL = None
 _POOL_LOCK = threading.Lock()

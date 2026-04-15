@@ -488,20 +488,21 @@ def student_id_no_matches_text(target_id, text):
             
     # User requested strictness: ID must not tolerate wrong DIGIT substitutions (e.g. 123456789 vs 123456788).
     # Instead of difflib which allows any char, we use a strict regex that ONLY tolerates common OCR homoglyphs.
+    mapping = {
+        '0': '[0oqhd]',
+        '1': '[1ils5j7/!|]', # Very broad 1 mapping
+        '2': '[2zsa7]',
+        '3': '[3e8]',
+        '4': '[4a]',
+        '5': '[5s1]',
+        '6': '[6gb5]',
+        '7': '[71lty/]', # 7 often misread as y or /
+        '8': '[8b3]',
+        '9': '[9gq]'
+    }
+
     def build_homoglyph_regex(s):
         s = "".join(filter(str.isalnum, str(s))).lower()
-        mapping = {
-            '0': '[0oqhd]',
-            '1': '[1ils5j7/!|]', # Very broad 1 mapping
-            '2': '[2zsa7]',
-            '3': '[3e8]',
-            '4': '[4a]',
-            '5': '[5s1]',
-            '6': '[6gb5]',
-            '7': '[71lty/]', # 7 often misread as y or /
-            '8': '[8b3]',
-            '9': '[9gq]'
-        }
         return "".join([mapping.get(c, re.escape(c)) for c in s])
 
     clean_target_id = "".join(filter(str.isalnum, str(target_id))).lower()
