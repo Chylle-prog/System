@@ -14,6 +14,10 @@ import time
 # Force unbuffered output for Render logs
 sys.stdout.reconfigure(line_buffering=True)
 
+# Performance Tuning: Limit Tesseract's internal threads so our Python parallelism works better
+os.environ['OMP_THREAD_LIMIT'] = '1'
+os.environ['TESSDATA_PREFIX'] = os.environ.get('TESSDATA_PREFIX', '/usr/share/tesseract-ocr/5/tessdata')
+
 STARTUP_TIME = time.time()
 print("[STARTUP] 1. eventlet monkey_patch complete. Loading modules...", flush=True)
 

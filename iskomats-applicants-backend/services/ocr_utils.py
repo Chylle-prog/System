@@ -849,24 +849,31 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
                     details = {'name_ok': True, 'addr_ok': True, 'name_ratio': ratio, 'keywords': found_kw, 'fast_path': True, 'detected_brgy': meta.get('detected_brgy', [])}
                     return True, "Verified", fast_text, details
             
-            # Normal Path / Full Scan Fallback
-            primary_psm = 6 if is_indigency else 3
-            best_text = _run_tesseract_on_image(img, primary_psm)
-            
-            # --- COLUMN-AWARE HEADER SCANNING (Fix for Sample 1) ---
-            # Academic documents often skip Student IDs in column layouts.
-            # We split the top 35% into half-width columns and scan each.
-            h_total, w_total = img.shape[:2]
-            header_h = int(h_total * 0.35)
-            left_w = int(w_total * 0.55) # Slightly wider left to catch ID colons
-            
-            left_col = img[:header_h, :left_w]
-            right_col = img[:header_h, left_w:]
-            
-            print(f"[OCR] Running Column-Aware sub-scans...", flush=True)
-            left_text = _run_tesseract_on_image(left_col, psm=6, skip_pass2=True)
-            right_text = _run_tesseract_on_image(right_col, psm=6, skip_pass2=True)
-            
+            # -- PARALLELIZE SUB-SCANS (Optimization #6) ---
+            # Instead of sequential scans, run best_text and columns together.
+            # Note: We use max_workers=3 and the global semaphore will handle throttling.
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=3) as sub_executor:
+                # 1. Start full image scan (usually PSM 3)
+                primary_psm = 6 if is_indigency else 3
+                best_future = sub_executor.submit(_run_tesseract_on_image, img, primary_psm)
+                
+                # 2. Start column sub-scans (Fix for Sample 1 layout)
+                h_total, w_total = img.shape[:2]
+                header_h = int(h_total * 0.35)
+                left_w = int(w_total * 0.55) # Slightly wider left to catch ID colons
+                
+                left_col = img[:header_h, :left_w]
+                right_col = img[:header_h, left_w:]
+                
+                left_future = sub_executor.submit(_run_tesseract_on_image, left_col, psm=6, skip_pass2=True)
+                right_future = sub_executor.submit(_run_tesseract_on_image, right_col, psm=6, skip_pass2=True)
+                
+                # Wait for all to finish
+                best_text = best_future.result()
+                left_text = left_future.result()
+                right_text = right_future.result()
+
             # Combine all text sources
             all_source_texts = [best_text, left_text, right_text]
             best_text = "\n---\n".join([t for t in all_source_texts if t.strip()])
