@@ -589,13 +589,25 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
                         f_count += 1; found = True; break
                     elif check_word in norm_txt:
                         # If it's a substring, check if it's a nearly identical word
-                        # to avoid "Taylor" matching "Tayloriaosgh..."
                         for ocr_w in all_ocr_words:
                             if check_word in ocr_w or ocr_w in check_word:
-                                # Strict length constraint: max 2 chars difference or 15% length
                                 len_diff = abs(len(ocr_w) - len(check_word))
                                 if len_diff <= 2 and len_diff <= (max(len(ocr_w), len(check_word)) * 0.2):
                                     f_count += 1; found = True; break
+                        if found: break
+                    
+                    # Target: Middle Name Initial Misread Tolerance (Specific to Middle Names)
+                    if is_middle and len(check_word) == 1:
+                        # Common misreads for initials
+                        misreads = []
+                        if check_word == 'o': misreads = ['0', '8', '@']
+                        elif check_word == 'i': misreads = ['1', 'l', '|', '/', '!']
+                        elif check_word == 'b': misreads = ['8']
+                        elif check_word == 's': misreads = ['5']
+                        
+                        for m in misreads:
+                            if re.search(rf'\b{re.escape(m)}\b', norm_txt):
+                                f_count += 1; found = True; break
                         if found: break
 
                     # Fuzzy match fallback
@@ -619,9 +631,14 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
                 if len(clean_name_part) >= 4 and clean_name_part in clean_text:
                     return True, 1.0
                     
-                # For middle names, a single initial without spaces should also pass the stringent fallback
-                if is_middle and n_words and len(n_words[0]) == 1:
-                    if n_words[0] in all_ocr_words:
+            # For middle names, allow initial-based fallback
+            if is_middle and n_words and p_ratio < (0.7 if is_indigency else 0.80):
+                initial = n_words[0][0]
+                if initial in all_ocr_words:
+                    return True, 1.0
+                # Misread tolerance in fallback too
+                for m in (['0', '8'] if initial == 'o' else (['1', 'l', '|'] if initial == 'i' else [])):
+                    if m in all_ocr_words:
                         return True, 1.0
 
             # Higher bar for verification success: 0.7 for Indigency, 0.80 for others
@@ -1026,21 +1043,25 @@ def _ocr_video_frame(processed_frame, allow_alt_pass=True, keywords=None):
     return text
 
 
-def verify_video_content(video_bytes, keywords, expected_address=None, sample_positions=None, max_width=None, allow_alt_pass=True, fallback_text_length=0):
+def verify_video_content(video_data, keywords, expected_address=None, sample_positions=None, max_width=None, allow_alt_pass=True, fallback_text_length=0):
     """
-    Captures frames from video bytes and scans for keywords and address using OCR.
+    Captures frames from video data (bytes OR URL) and scans for keywords and address using OCR.
+    Optimized to stream directly from URLs to avoid massive downloads.
     Optimized to sample 2 key frames for balanced speed/accuracy.
     
     For videos without address requirements (like COE, Grades), keyword matching is more lenient
     and accepts partial/fuzzy matches to handle OCR errors.
     """
-    if not video_bytes: return False, "No video data"
-    if not _check_tesseract(): return False, "OCR Engine not found"
+    # Speed Optimization: Stream from URL directly if possible
+    is_url = isinstance(video_data, str) and video_data.startswith('http')
     
     # --- SPEED OPTIMIZATION: Check Video Cache ---
-    # Instantly returns result if this specific video byte signature was already scanned
     hash_suffix = f"_video_{sample_positions}_{max_width}_{allow_alt_pass}_{fallback_text_length}".encode()
-    vid_hash = _hash_image(video_bytes, suffix=hash_suffix)
+    if is_url:
+        vid_hash = hashlib.md5(video_data.encode() + hash_suffix).hexdigest()
+    else:
+        vid_hash = _hash_image(video_data, suffix=hash_suffix)
+        
     cached_res = _cache_get(vid_hash)
     if cached_res is not None and isinstance(cached_res, (list, tuple)) and len(cached_res) == 2:
         print(f"[VIDEO CACHE] Reusing extremely fast cached result for {vid_hash[:8]}...", flush=True)
@@ -1049,15 +1070,20 @@ def verify_video_content(video_bytes, keywords, expected_address=None, sample_po
     # Determine if this is an address-based verification (indigency only)
     is_address_verification = expected_address is not None
     
-    # Save to temp file because VideoCapture needs a path
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
-        tmp.write(video_bytes)
-        tmp_path = tmp.name
+    tmp_path = None
+    if is_url:
+        tmp_path = video_data
+        print(f"[VIDEO STREAM] Streaming frames directly from URL to save bandwidth...", flush=True)
+    else:
+        # Save to temp file because VideoCapture needs a path
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
+            tmp.write(video_data)
+            tmp_path = tmp.name
         
     try:
         cap = cv2.VideoCapture(tmp_path)
         if not cap.isOpened():
-            return False, "Could not open video file"
+            return False, "Could not open video source"
         
         # Ensure frame count is perfectly accessible
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -1154,11 +1180,15 @@ def verify_video_content(video_bytes, keywords, expected_address=None, sample_po
         return False, f"Processing error: {str(e)}"
     finally:
         if 'cap' in locals() and cap is not None:
-            try: cap.release()
-            except: pass
-        if os.path.exists(tmp_path):
-            try: os.remove(tmp_path)
-            except: pass
+            try:
+                cap.release()
+            except:
+                pass
+        if 'tmp_path' in locals() and tmp_path and not is_url and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except:
+                pass
         clear_heavy_memory()
 
 def extract_school_year_from_text(text):
@@ -1208,11 +1238,17 @@ def extract_school_year_from_text(text):
     # 3. Targeted Pattern Matching (Priority Ordered)
     
     # Priority A: Year Range (e.g., 2025-2026)
-    # Flexible on delimiter and spacing
-    # We look for the pattern 20XX [dash/slash] 20XX
-    range_match = re.search(r'(20\d{2})[\s\-\/\\–—]+(20\d{2})', compact_text)
-    if range_match:
-        return f"{range_match.group(1)}-{range_match.group(2)}"
+    # Stricter matching: Usually preceded by labels or in a specific block
+    # Look for patterns with optional SY/Year/School labels nearby (within 30 chars)
+    year_patterns = [
+        r'(?:sy|s\.y\.|year|school\s+year|academic\s+year|school\s+year\s+sem)\s*[:=]?\s*(20\d{2})[-/\s]+(20\d{2})', # Labelled
+        r'\b(20\d{2})[-/\s]+(20\d{2})\b' # Raw fallback
+    ]
+    
+    for pattern in year_patterns:
+        match = re.search(pattern, compact_text, re.IGNORECASE)
+        if match:
+            return f"{match.group(1)}-{match.group(2)}"
 
     # Priority B: Keyword Proximity
     # Handles "Valid Until: 2025", "SY 2026", "School Year Sem 2025-2026"
@@ -1259,7 +1295,8 @@ def extract_semester_from_text(text):
         r'(1st|2nd|first|second|1|2|I|II|and|lst|ist)\s*(?:sem|semester|grading|sern|sun)\b',
         r'\b(?:sem|semester|grading|sern|sun)\s*[:\-]?\s*(1st|2nd|first|second|1|2|I|II|and|lst|ist)\b',
         r'\b(First|Second|and)\s+Semester\b',
-        r'\b(1|2|and|lst|ist)\s*-\s*(?:Sem|Sern)\b'
+        r'\b(1|2|and|lst|ist)\s*-\s*(?:Sem|Sern)\b',
+        r'(?:sem|semester|grading|sern|sun|school\s+year\s+sem).{0,20}?\b(1|2|I|II|1st|2nd)\b'
     ]
     for pattern in semester_patterns:
         match = re.search(pattern, text, re.IGNORECASE)

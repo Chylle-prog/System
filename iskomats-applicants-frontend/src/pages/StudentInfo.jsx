@@ -408,7 +408,9 @@ const StudentInfo = () => {
     else if (fieldName === 'face_video') { setFaceVerified(null); }
     
     // Start background upload
-    const uploadPromise = applicantAPI.uploadRequirementVideo(fieldName, blob)
+    const uploadPromise = applicantAPI.uploadRequirementVideo(fieldName, blob, (percent) => {
+      setUploadProgress(prev => ({ ...prev, [fieldName]: percent }));
+    })
       .then(result => {
         const publicUrl = result.publicUrl;
         setFormData(prev => ({ ...prev, [fieldName]: publicUrl }));
@@ -416,6 +418,12 @@ const StudentInfo = () => {
         
         // Remove from uploading state
         setUploadingFields(prev => {
+          const next = { ...prev };
+          delete next[fieldName];
+          return next;
+        });
+
+        setUploadProgress(prev => {
           const next = { ...prev };
           delete next[fieldName];
           return next;
@@ -458,6 +466,7 @@ const StudentInfo = () => {
   });
 
   const [uploadingFields, setUploadingFields] = useState({}); // { fieldName: Promise }
+  const [uploadProgress, setUploadProgress] = useState({});
 
   const [coeVerified, setCoeVerified] = useState(null); 
   const [coeStatus, setCoeStatus] = useState('');
@@ -472,6 +481,8 @@ const StudentInfo = () => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const sigPad = useRef(null);
+  const signatureContainerRef = useRef(null);
+  const [sigDimensions, setSigDimensions] = useState({ width: 750, height: 180 });
   const cameraTimeoutRef = useRef(null);
 
   const [showSignaturePad, setShowSignaturePad] = useState(false);
@@ -650,7 +661,11 @@ const StudentInfo = () => {
     firstName: '',
     middleName: '',
     maidenName: '',
+    dateOfBirth: '',
+    placeOfBirth: '',
     barangay: '',
+    streetBarangay: '',
+    townCity: 'Lipa City',
     townCityMunicipality: 'Lipa City',
     province: 'Batangas',
     zipCode: '4217',
@@ -664,6 +679,7 @@ const StudentInfo = () => {
     yearLevel: '',
     emailAddress: '',
     gpa: '',
+    semester: '',
     
     fatherStatus: '',
     fatherName: '',
@@ -682,11 +698,16 @@ const StudentInfo = () => {
     mayorCOE_photo: null,
     mayorGrades_photo: null,
     mayorIndigency_photo: null,
+    mayorValidID_photo: null,
 
     schoolIdFront: null,
     schoolIdBack: null,
     schoolIdFront_video: null,
     schoolIdBack_video: null,
+    mayorIndigency_video: null,
+    mayorGrades_video: null,
+    mayorCOE_video: null,
+    face_video: null,
     
     privacyConsent: false,
     dataCertifyConsent: false,
@@ -1526,6 +1547,8 @@ const StudentInfo = () => {
 
     persistDraft(currentUser);
   }, [currentUser, formData, hasOtherAssistance, currentStep, scholarshipName, searchParams]);
+
+
 
   const openCamera = async () => {
     setShowCameraModal(true);
@@ -3136,6 +3159,7 @@ const StudentInfo = () => {
                       onRecordComplete={(blob) => handleVideoUpload('mayorIndigency_video', blob)} 
                       initialVideoUrl={documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url}
                       isUploading={Boolean(uploadingFields['mayorIndigency_video'])}
+                      uploadProgress={uploadProgress['mayorIndigency_video']}
                       disabled={isAnyScanning || isSavingStep}
                       hideButton={true}
                       containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
@@ -3462,6 +3486,7 @@ const StudentInfo = () => {
                         onRecordComplete={(blob) => handleVideoUpload('schoolIdFront_video', blob)} 
                         initialVideoUrl={documentVideos.schoolIdFront_video || userProfile?.schoolid_front_vid_url}
                         isUploading={Boolean(uploadingFields['schoolIdFront_video'])}
+                        uploadProgress={uploadProgress['schoolIdFront_video']}
                         disabled={isAnyScanning || isSavingStep}
                         hideButton={true}
                         containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
@@ -3518,6 +3543,7 @@ const StudentInfo = () => {
                         onRecordComplete={(blob) => handleVideoUpload('schoolIdBack_video', blob)} 
                         initialVideoUrl={documentVideos.schoolIdBack_video || userProfile?.schoolid_back_vid_url}
                         isUploading={Boolean(uploadingFields['schoolIdBack_video'])}
+                        uploadProgress={uploadProgress['schoolIdBack_video']}
                         disabled={isAnyScanning || isSavingStep}
                         hideButton={true}
                         containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
@@ -3642,6 +3668,7 @@ const StudentInfo = () => {
                         onRecordComplete={(blob) => handleVideoUpload('mayorCOE_video', blob)} 
                         initialVideoUrl={documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url}
                         isUploading={Boolean(uploadingFields['mayorCOE_video'])}
+                        uploadProgress={uploadProgress['mayorCOE_video']}
                         disabled={isAnyScanning || isSavingStep}
                         hideButton={true}
                         containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
@@ -3754,6 +3781,7 @@ const StudentInfo = () => {
                         onRecordComplete={(blob) => handleVideoUpload('mayorGrades_video', blob)} 
                         initialVideoUrl={documentVideos.mayorGrades_video || userProfile?.grades_vid_url}
                         isUploading={Boolean(uploadingFields['mayorGrades_video'])}
+                        uploadProgress={uploadProgress['mayorGrades_video']}
                         disabled={isAnyScanning || isSavingStep}
                         hideButton={true}
                         containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
@@ -3877,18 +3905,24 @@ const StudentInfo = () => {
                   Signature & Additional Identification <span style={{color: '#e74c3c'}}>*</span>
                 </label>
                 
-                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem'}}>
+                <div style={{display: 'block'}}>
                   {/* Signature Column */}
-                  <div style={{background: '#fff', border: '1px solid var(--border)', borderRadius: '16px', padding: '1.5rem', textAlign: 'center'}}>
+                  <div style={{background: '#fff', border: '1px solid var(--border)', borderRadius: '16px', padding: '1.5rem', textAlign: 'center', width: '100%'}}>
                     <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#666', marginBottom: '1rem'}}>Drawer Signature</label>
                     {!showSignaturePad && !formData.applicantSignatureName ? (
                       <button type="button" onClick={() => setShowSignaturePad(true)} className="photo-option-btn" style={{margin: '0 auto'}}>
                         <i className="fas fa-pen-nib"></i> Sign Application
                       </button>
                     ) : showSignaturePad ? (
-                      <div style={{width: '100%', maxWidth: '420px', margin: '0 auto'}}>
-                        <div style={{border: '1.5px solid #eee', borderRadius: '12px', background: '#fcfcfc', marginBottom: '1rem'}}>
-                          <SignaturePad ref={sigPad} canvasProps={{width: 400, height: 120, className: 'sigCanvas'}} />
+                      <div style={{width: '100%', maxWidth: '800px', margin: '0 auto'}}>
+                        <div ref={signatureContainerRef} style={{border: '1.5px solid #eee', borderRadius: '12px', background: '#fcfcfc', marginBottom: '1rem', overflow: 'hidden', height: '180px'}}>
+                          <SignaturePad 
+                            ref={sigPad} 
+                            canvasProps={{
+                              className: 'sigCanvas',
+                              style: { width: '100%', height: '100%', display: 'block' }
+                            }} 
+                          />
                         </div>
                         <div style={{display: 'flex', gap: '8px', justifyContent: 'center'}}>
                           <button type="button" onClick={clearSignature} className="back-to-form-btn" style={{padding: '0.4rem 1rem', fontSize: '0.8rem'}}>Clear</button>
@@ -3896,9 +3930,9 @@ const StudentInfo = () => {
                         </div>
                       </div>
                     ) : (
-                      <>
-                        <div className="signature-preview-box">
-                          <img src={formData.applicantSignatureName} alt="Signature" style={{maxHeight: '80px'}} />
+                      <div style={{width: '100%', maxWidth: '800px', margin: '0 auto'}}>
+                        <div className="signature-preview-box" style={{maxWidth: '100%'}}>
+                          <img src={formData.applicantSignatureName} alt="Signature" style={{maxHeight: '120px'}} />
                           <button type="button" onClick={() => setShowSignaturePad(true)} style={{position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer'}}><i className="fas fa-undo"></i></button>
                         </div>
                         
@@ -3998,31 +4032,6 @@ const StudentInfo = () => {
                             </div>
                           )}
                         </div>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Extra Image Column (Not connected to DB) */}
-                  <div style={{background: '#f0f7ff', border: '1px solid #e1e8f0', borderRadius: '16px', padding: '1.5rem', textAlign: 'center'}}>
-                    <label style={{display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#666', marginBottom: '0.5rem'}}>Additional Identification (Optional)</label>
-                    <p style={{fontSize: '0.7rem', color: '#888', marginBottom: '1rem'}}>Internal Record Only (Not stored in DB)</p>
-                    {renderDocumentMediaPicker({
-                      photoId: 'extra_identification_photo',
-                      photoName: 'extra_identification_photo',
-                      photoValue: extraSignaturePhoto,
-                      onPhotoChange: (e) => {
-                        const file = e.target.files[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = () => setExtraSignaturePhoto(reader.result);
-                          reader.readAsDataURL(file);
-                        }
-                      }
-                    })}
-                    {extraSignaturePhoto && (
-                      <div style={{marginTop: '10px', position: 'relative'}}>
-                        <img src={extraSignaturePhoto} alt="Extra Identification" style={{maxHeight: '70px', borderRadius: '8px', border: '1px solid #fff'}} />
-                        <button type="button" onClick={() => setExtraSignaturePhoto(null)} style={{position: 'absolute', top: '-5px', right: '5px', background: 'rgba(255,0,0,0.7)', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', fontSize: '10px'}}><i className="fas fa-times"></i></button>
                       </div>
                     )}
                   </div>

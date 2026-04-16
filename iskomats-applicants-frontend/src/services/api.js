@@ -33,8 +33,8 @@ export const uploadProfilePicture = async (file) => {
 import { supabase } from '../supabaseClient';
 
 // API Base URL - change this if backend is on different server
-// const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://applicant-site-backend.onrender.com/api';
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:10000/api';
+// const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://iskomats-applicants-backend.onrender.com/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:10001/api';
 export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
 let backendWarmupPromise = null;
 
@@ -76,7 +76,7 @@ const shouldDirectUploadVideo = (file) => {
          mimeType.includes('video/webm');
 };
 
-const uploadRequirementVideoDirect = async (fieldName, file) => {
+const uploadRequirementVideoDirect = async (fieldName, file, onProgress) => {
   const folderMap = {
     mayorIndigency_video: 'indigency',
     mayorCOE_video: 'coe',
@@ -100,6 +100,7 @@ const uploadRequirementVideoDirect = async (fieldName, file) => {
       upsert: true,
       contentType,
       cacheControl: '60',
+      onUploadProgress: (p) => onProgress && onProgress(Math.round((p.loaded / (p.total || 1)) * 100))
     });
 
   if (uploadResult.error) {
@@ -700,7 +701,7 @@ export const applicantAPI = {
       if (shouldDirectUploadVideo(file)) {
         try {
           console.log('[VIDEO-UPLOAD] Using direct Supabase upload for faster transfer...');
-          response = await uploadRequirementVideoDirect(fieldName, file);
+          response = await uploadRequirementVideoDirect(fieldName, file, onProgress);
         } catch (directUploadError) {
           console.warn('[VIDEO-UPLOAD] Direct upload failed, falling back to backend:', directUploadError);
         }

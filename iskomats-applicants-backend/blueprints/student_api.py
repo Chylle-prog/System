@@ -26,6 +26,7 @@ import cv2
 import numpy as np
 from services.auth_service import get_secret_key
 from services.db_service import get_db, get_db_startup
+from project_config import get_supabase_client, get_storage_bucket, use_storage
 from services.email_table_service import get_applicant_email_table, get_user_email_table
 from services.applicant_document_service import (
     APPLICANT_DOCUMENT_COLUMNS,
@@ -529,6 +530,43 @@ def is_trusted_storage_url(url):
 
     return parsed_url.netloc.lower().endswith('.supabase.co')
 
+
+def upload_image_to_storage(applicant_no, column_name, image_bytes):
+    """
+    Uploads a document image to Supabase storage and returns the public URL.
+    Returns None if storage is disabled or upload fails.
+    """
+    if not image_bytes or not use_storage():
+        return None
+        
+    supabase = get_supabase_client()
+    if not supabase:
+        print(f"[STORAGE] Supabase client skipped for {column_name}", flush=True)
+        return None
+        
+    # Standardize bucket and path
+    bucket = get_storage_bucket('document_images')
+    # Generate a unique path to avoid collisions and caching issues
+    timestamp = int(time.time())
+    file_path = f"{applicant_no}/{column_name}_{timestamp}.jpg"
+    
+    try:
+        # Resolve bytes if it's a memoryview or other wrapper
+        raw_bytes = image_bytes if isinstance(image_bytes, (bytes, bytearray)) else bytes(image_bytes)
+        
+        # Upload to Supabase
+        supabase.storage.from_(bucket).upload(
+            file_path, 
+            raw_bytes,
+            file_options={"content-type": "image/jpeg", "upsert": "true"}
+        )
+        
+        # Get and return public URL
+        url_res = supabase.storage.from_(bucket).get_public_url(file_path)
+        return url_res
+    except Exception as e:
+        print(f"[STORAGE ERROR] {column_name}: {e}", flush=True)
+        return None
 
 def resolve_verification_image_bytes(image_data):
     if isinstance(image_data, memoryview):
@@ -1068,10 +1106,11 @@ def db_bytes(value):
 
 
 def decode_signature(value):
-    if isinstance(value, str):
-        decoded = decode_base64(value)
-    else:
-        decoded = db_bytes(value)
+    if not value:
+        return None
+        
+    # Standardize to bytes (handles URLs and Base64)
+    decoded = resolve_verification_image_bytes(value)
 
     if decoded and fernet:
         try:
@@ -2297,7 +2336,12 @@ def update_profile():
                     if db_col == 'profile_picture' and has_profile_picture_column:
                         add_update(db_col, blob_bytes)
                     elif db_col != 'profile_picture':
-                        document_updates[db_col] = blob_bytes
+                        # Try to upload to storage first if enabled
+                        storage_url = upload_image_to_storage(request.user_no, db_col, blob_bytes)
+                        if storage_url:
+                            document_updates[db_col] = storage_url
+                        else:
+                            document_updates[db_col] = blob_bytes
                     continue
 
                 if field_key in data and data[field_key]:
@@ -2308,7 +2352,12 @@ def update_profile():
                         if db_col == 'profile_picture' and has_profile_picture_column:
                             add_update(db_col, blob_bytes)
                         elif db_col != 'profile_picture':
-                            document_updates[db_col] = blob_bytes
+                            # Try to upload to storage first if enabled
+                            storage_url = upload_image_to_storage(request.user_no, db_col, blob_bytes)
+                            if storage_url:
+                                document_updates[db_col] = storage_url
+                            else:
+                                document_updates[db_col] = blob_bytes
 
             if not updates and not document_updates:
                 return jsonify({'message': 'No changes provided'}), 200
@@ -2602,7 +2651,12 @@ def submit_application():
                     updates.append(f'{column_name} = %s')
                     params.append(value)
                 elif column_name != 'profile_picture':
-                    document_updates[column_name] = value
+                    # Try to upload to storage first if enabled
+                    storage_url = upload_image_to_storage(current_user_id, column_name, value)
+                    if storage_url:
+                        document_updates[column_name] = storage_url
+                    else:
+                        document_updates[column_name] = value
 
         if updates:
             sql = f"UPDATE applicants SET {', '.join(updates)} WHERE applicant_no = %s"
@@ -2797,19 +2851,20 @@ def ocr_check():
             'school_front_video': str(data.get('schoolIdFront_video') or applicant.get('schoolid_front_vid_url') or '').strip(),
             'school_back_video': str(data.get('schoolIdBack_video') or applicant.get('schoolid_back_vid_url') or '').strip(),
         }, sort_keys=True)
-        cached_verification = _get_cached_verification_result(verification_cache_key)
-        if cached_verification is not None:
-            print(f"[OCR CACHE HIT] Reusing cached verification for user={request.user_no}, target={target_doc or 'all'}", flush=True)
-            return jsonify(cached_verification)
+        
+        # NOTE: High-level cache is disabled temporarily to ensure user tests are fresh
+        # while we fix the OCR logic issues.
+        # cached_verification = _get_cached_verification_result(verification_cache_key)
+        # if cached_verification is not None:
+        #     print(f"[OCR CACHE HIT] Reusing cached verification for user={request.user_no}, target={target_doc or 'all'}", flush=True)
+        #     return jsonify(cached_verification)
 
         # ── Worker Function for Parallel Processing ──
         def process_doc(doc_type, doc_param, db_val):
             try:
                 # Use standard doc bytes for provided parameters, fallback to DB only for Indigency/ID
-                if isinstance(doc_param, bytes):
-                    doc_bytes = doc_param
-                else:
-                    doc_bytes = decode_base64(doc_param) if doc_param else (db_bytes(db_val) if db_val else None)
+                # Support both newly uploaded base64 data and existing Supabase URLs
+                doc_bytes = resolve_verification_image_bytes(doc_param) if doc_param else (resolve_verification_image_bytes(db_val) if db_val else None)
                 
                 if not doc_bytes: 
                     return None
@@ -2845,10 +2900,6 @@ def ocr_check():
                     if doc_type in ['SchoolID', 'SchoolIDBack']:
                         return verify_video_reference(vid_url)
                     
-                    vid_bytes, fetch_err = fetch_video_bytes_from_url(vid_url)
-                    if not vid_bytes:
-                        return False, f"Video file unreachable ({fetch_err})"
-                    
                     # Optimized scan options
                     scan_options = {
                         'Indigency': {'sample_positions': [0.5], 'max_width': 450, 'allow_alt_pass': False, 'fallback_text_length': 8},
@@ -2858,16 +2909,18 @@ def ocr_check():
                         'SchoolIDBack': {'sample_positions': [0.35, 0.65], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 10},
                     }
                     scan_opt = scan_options.get(doc_type, scan_options['Enrollment'])
-                    
+
                     video_keywords_map = {
                         'Indigency': ['Indigency', 'Certificate', 'Barangay', 'Indigent', 'Residency', 'Clearance'],
                         'Enrollment': ['Enrollment', 'Enrolment', 'Certificate', 'COE', 'COR', 'Registered', 'Registration', 'Reg', 'Matriculation', 'Assessment', 'Billing', 'Semester', 'Sem'],
                         'Grades': ['Grades', 'Grade', 'Transcript', 'Record', 'Evaluation', 'Rating', 'Units', 'Credit', 'Sem', 'GPA', 'Report', 'Card', 'Academic', 'TOR', 'Checklist'],
                     }
+                    
+                    # Optimization: Pass URL directly to avoid redundant downloads
                     return verify_video_content(
-                        video_bytes=vid_bytes,
+                        video_data=vid_url,
                         keywords=video_keywords_map.get(doc_type),
-                        expected_address=None,
+                        expected_address=(barangay if doc_type == 'Indigency' else None),
                         sample_positions=scan_opt['sample_positions'],
                         max_width=scan_opt['max_width'],
                         allow_alt_pass=scan_opt['allow_alt_pass'],
@@ -2878,9 +2931,11 @@ def ocr_check():
 
                 def run_ocr_check():
                     if doc_type == 'Enrollment':
+                        # Use PSM 6 but keep width at 800 which was stable before
                         raw_t, extraction_error = extract_document_text(doc_bytes, max_width=800, prefer_fast_layout=True, crop_percent=0.90)
-                        v_t = bool(raw_t and raw_t.strip())
-                        return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
+                        # Stricter volume check: if a document has < 20 characters, it's likely not an enrollment form
+                        v_t = bool(raw_t and len(raw_t.strip()) > 20)
+                        return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text (low text density)'), raw_t, {}
                     elif doc_type == 'Grades':
                         raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1024, prefer_fast_layout=True, crop_percent=0.95)
                         v_t = bool(raw_t and raw_t.strip())
@@ -2927,8 +2982,15 @@ def ocr_check():
                     ocr_future = executor.submit(run_ocr_check)
                     
                     video_res = video_future.result()
+                    if not video_res or not isinstance(video_res, (list, tuple)):
+                        video_res = [False, "Video verification service unavailable"]
+                    
                     v_video, msg_video = video_res[0], video_res[1]
+                    
                     ocr_data = ocr_future.result()
+                    if not ocr_data or not isinstance(ocr_data, (list, tuple)):
+                        return {'doc': doc_type, 'verified': False, 'message': 'OCR processing failed or document unreachable'}
+                    
                     v, msg, raw, meta = ocr_data[0], ocr_data[1], ocr_data[2], ocr_data[3]
 
                 # ─── COMBINED RESULT ───
@@ -2952,20 +3014,29 @@ def ocr_check():
                     print(f"[OCR-YEAR] Doc={doc_type} extracted_year='{year_label}' expected_year='{expected_academic_year}' extracted_sem='{semester_label}' expected_sem='{expected_semester}'", flush=True)
                     print(f"[OCR-NAME] First='{first_name}' (OK={name_details.get('first_ok')}) Middle='{middle_name}' (OK={name_details.get('middle_ok')}) Last='{last_name}' (OK={name_details.get('last_ok')})", flush=True)
                     
-                    # Year check: only enforce if we have an expected year to compare against
-                    if expected_academic_year:
+                    # Year check: only pass if (v_is_true and (matches or no_expected_value))
+                    if not v:
+                        year_only_ok = False
+                    elif expected_academic_year:
                         year_only_ok = academic_year_matches_expected(year_label, expected_academic_year)
                     else:
-                        # No expected year set — skip this check
                         year_only_ok = True
-                    semester_ok = (normalized_expected_semester == normalized_semester_label) if normalized_expected_semester else True
+                        
+                    # Semester check: similar logic
+                    if not v:
+                        semester_ok = False
+                    elif normalized_expected_semester:
+                        semester_ok = (normalized_expected_semester == normalized_semester_label)
+                    else:
+                        semester_ok = True
                     
                     if doc_type == 'Enrollment':
                         id_ok, _ = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
                         course_ok, _ = course_matches_text(course, raw) if course else (True, None)
                         
-                        # Strictly require Year and Semester for Enrollment (COR/COE)
-                        v = name_ok and id_ok and school_ok and course_ok and year_only_ok and semester_ok
+                        # Strictly require ALL fields for Enrollment (COR/COE) to be OK
+                        # Including the text density check (v) to prevent blank images from passing
+                        v = v and name_ok and id_ok and school_ok and course_ok and year_only_ok and semester_ok and year_level_ok
                         
                         checklist = [
                             f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
@@ -2987,7 +3058,8 @@ def ocr_check():
                         gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
                         
                         # Grades should match the school and student identity
-                        v = name_ok and year_only_ok and gpa_ok and school_ok and year_level_ok and semester_ok
+                        # If the image is unreadable (v is False), everything fails
+                        v = v and name_ok and year_only_ok and gpa_ok and school_ok and year_level_ok and semester_ok
                         
                         checklist = [
                             f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
@@ -3026,7 +3098,7 @@ def ocr_check():
                     ]
                     checklist = [c for c in checklist if c is not None]
                     
-                    # School Name is now mandatory for ID as well
+                    # Strictly require name, id, and school to be OK
                     v = name_ok and id_ok and school_ok
                     if v:
                         msg = f"Front ID verified successfully. Checklist: [{', '.join(checklist)}]"
