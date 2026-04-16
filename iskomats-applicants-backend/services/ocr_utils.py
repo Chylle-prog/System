@@ -837,19 +837,29 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     with OCR_SEMAPHORE:
         try:
             t_start = time.time()
-            # Indigency Fast-Path: Scan ONLY the top 50% first (where name/address usually are)
+            # Indigency Turbo Path (Optimization #7): Parallel Dual-Zone Scanning
             if is_indigency:
-                h_crop = img.shape[0] // 2
-                fast_img = img[:h_crop, :]
-                fast_text = _run_tesseract_on_image(fast_img, psm=6, skip_pass2=True)
+                h_total = img.shape[0]
+                # Zone 1: Top 55% (Usually contains header and student name)
+                # Zone 2: Middle-to-Bottom 60% (Catch barangay and body text)
+                zone1 = img[:int(h_total * 0.55), :]
+                zone2 = img[int(h_total * 0.40):, :]  # Overlap at 40-55%
                 
-                name_v, addr_v, found_kw, ratio, meta = _perform_text_matching(fast_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
-                
-                # If we found everything in the top 50%, EXIT IMMEDIATELY
-                if name_v and addr_v:
-                    print(f"[OCR PERF] Indigency Fast-Path Success (50% crop)", flush=True)
-                    details = {'name_ok': True, 'addr_ok': True, 'name_ratio': ratio, 'keywords': found_kw, 'fast_path': True, 'detected_brgy': meta.get('detected_brgy', [])}
-                    return True, "Verified", fast_text, details
+                print(f"[OCR] Running Indigency Dual-Zone Parallel Fast-Path...", flush=True)
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=2) as fast_executor:
+                    f1 = fast_executor.submit(_run_tesseract_on_image, zone1, psm=6, skip_pass2=True)
+                    f2 = fast_executor.submit(_run_tesseract_on_image, zone2, psm=6, skip_pass2=True)
+                    
+                    t1, t2 = f1.result(), f2.result()
+                    
+                # Combine but check specifically
+                for fast_text in [t1, t2, f"{t1}\n{t2}"]:
+                    name_v, addr_v, found_kw, ratio, meta = _perform_text_matching(fast_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
+                    if name_v and addr_v:
+                        print(f"[OCR PERF] Indigency Dual-Zone Success!", flush=True)
+                        details = {'name_ok': True, 'addr_ok': True, 'name_ratio': ratio, 'keywords': found_kw, 'fast_path': True, 'detected_brgy': meta.get('detected_brgy', [])}
+                        return True, "Verified", fast_text, details
             
             # -- PARALLELIZE SUB-SCANS (Optimization #6) ---
             # Instead of sequential scans, run best_text and columns together.

@@ -2984,7 +2984,7 @@ def ocr_check():
                         v_t = bool(raw_t and len(raw_t.strip()) > 20)
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text (low text density)'), raw_t, {}
                     elif doc_type == 'Grades':
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1024, prefer_fast_layout=True, crop_percent=0.95)
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=850, prefer_fast_layout=True, crop_percent=0.95)
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'SchoolIDBack':
@@ -2993,7 +2993,7 @@ def ocr_check():
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read school ID back text'), raw_t, {}
                     elif doc_type == 'Indigency':
                         # Restored capture range: many certificates place name/address in the middle-bottom.
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=850, prefer_fast_layout=True, crop_percent=0.85)
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=800, prefer_fast_layout=True, crop_percent=0.85)
                         name_ok, name_ratio, name_details = student_name_matches_text(raw_t, first_name, middle_name, last_name, is_indigency=True)
                         # Perform matching to detect Barangays even if target_address is empty for feedback
                         _, addr_ok, found_keywords, _, detect_meta = _perform_text_matching(raw_t, None, None, None, target_address, is_indigency=True)
