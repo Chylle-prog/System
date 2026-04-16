@@ -2390,40 +2390,37 @@ def check_sibling_restriction():
     if not scholarship_id:
         return jsonify({'success': False, 'message': 'Missing scholarship ID'}), 400
 
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        # Fetch current student data to help with identity building
-        cur.execute("SELECT * FROM applicants WHERE applicant_no = %s", (request.user_no,))
-        applicant = cur.fetchone()
-        
-        if not applicant:
-            return jsonify({'success': False, 'message': 'Applicant not found'}), 404
+        with get_db() as conn:
+            cur = conn.cursor()
+            # Fetch current student data to help with identity building
+            cur.execute("SELECT * FROM applicants WHERE applicant_no = %s", (request.user_no,))
+            applicant = cur.fetchone()
+            
+            if not applicant:
+                return jsonify({'success': False, 'message': 'Applicant not found'}), 404
 
-        # Use the names provided in the form for the check (source_data)
-        # We translate frontend keys to backend keys if needed
-        source_data = {
-            'first_name': data.get('firstName'),
-            'last_name': data.get('lastName'),
-            'father_name': data.get('fatherName'),
-            'mother_name': data.get('motherName')
-        }
-        
-        restriction_scope = get_identity_restriction_scope(cur, applicant, source_data=source_data)
-        restriction = get_scholarship_restriction(restriction_scope, scholarship_id)
-        
-        return jsonify({
-            'success': True,
-            'blocked': restriction['blocked'],
-            'message': restriction['message'] if restriction['blocked'] else None,
-            'reason': restriction['reason'] if restriction['blocked'] else None
-        })
+            # Use the names provided in the form for the check (source_data)
+            # We translate frontend keys to backend keys if needed
+            source_data = {
+                'first_name': data.get('firstName'),
+                'last_name': data.get('lastName'),
+                'father_name': data.get('fatherName'),
+                'mother_name': data.get('motherName')
+            }
+            
+            restriction_scope = get_identity_restriction_scope(cur, applicant, source_data=source_data)
+            restriction = get_scholarship_restriction(restriction_scope, scholarship_id)
+            
+            return jsonify({
+                'success': True,
+                'blocked': restriction['blocked'],
+                'message': restriction['message'] if restriction['blocked'] else None,
+                'reason': restriction['reason'] if restriction['blocked'] else None
+            })
     except Exception as e:
         print(f"[RESTR-CHECK] Error: {str(e)}", flush=True)
         return jsonify({'success': False, 'message': str(e)}), 500
-    finally:
-        cur.close()
-        conn.close()
 
 @student_api_bp.route('/applications/submit', methods=['POST'])
 @token_required
@@ -2561,7 +2558,7 @@ def submit_application():
                 from concurrent.futures import ThreadPoolExecutor
                 verification_tasks = {}
                 # Expand worker pool to allow true simultaneous background downloading and validation
-                with ThreadPoolExecutor(max_workers=5) as executor:
+                with ThreadPoolExecutor(max_workers=10) as executor:
                     # 1. OCR Identity Check
                     if id_front_bytes:
                         town_city = form_data.get('townCity') or applicant.get('town_city_municipality', '')

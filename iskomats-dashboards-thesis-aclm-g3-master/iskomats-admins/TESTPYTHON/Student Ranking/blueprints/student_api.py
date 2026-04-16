@@ -2105,6 +2105,20 @@ def get_profile():
             applicant['duplicate_applicant_exists'] = request.user_no > min(duplicate_ids)
             applicant['portal_lock_message'] = 'This is a duplicate account. Please use your original login.' if applicant['duplicate_applicant_exists'] else None
 
+            # Calculate sibling-blocked scholarships for the portal view/audit
+            sibling_blocked_ids = []
+            restriction_scope = get_identity_restriction_scope(cur, applicant)
+            if restriction_scope and restriction_scope.get('applications'):
+                # Check all existing scholarship IDs to see which ones are family-taken
+                cur.execute("SELECT req_no FROM scholarships WHERE is_removed = FALSE")
+                all_sch_ids = [row['req_no'] for row in cur.fetchall()]
+                for sid in all_sch_ids:
+                    res = get_scholarship_restriction(restriction_scope, sid)
+                    if res['blocked'] and res['reason'] in ['family-existing-same-scholarship', 'family-accepted-same-scholarship', 'family-pending-same-scholarship']:
+                        sibling_blocked_ids.append(sid)
+            
+            applicant['sibling_blocked_scholarships'] = sibling_blocked_ids
+
             media_document_fields = [
                 *blob_fields,
                 'id_vid_url',
@@ -2439,6 +2453,49 @@ def update_profile():
     except Exception as exc:
         return jsonify({'message': str(exc)}), 500
 
+
+@student_api_bp.route('/applications/check-sibling', methods=['POST'])
+@token_required
+def check_sibling_restriction():
+    """
+    Performs a 'pre-flight' sibling check based on parent names provided in the form.
+    """
+    data = request.get_json() or {}
+    scholarship_id = data.get('scholarship_id') or data.get('scholarship_no')
+    
+    if not scholarship_id:
+        return jsonify({'success': False, 'message': 'Missing scholarship ID'}), 400
+
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            # Fetch current student data to help with identity building
+            cur.execute("SELECT * FROM applicants WHERE applicant_no = %s", (request.user_no,))
+            applicant = cur.fetchone()
+            
+            if not applicant:
+                return jsonify({'success': False, 'message': 'Applicant not found'}), 404
+
+            # Use the names provided in the form for the check (source_data)
+            source_data = {
+                'first_name': data.get('firstName'),
+                'last_name': data.get('lastName'),
+                'father_name': data.get('fatherName'),
+                'mother_name': data.get('motherName')
+            }
+            
+            restriction_scope = get_identity_restriction_scope(cur, applicant, source_data=source_data)
+            restriction = get_scholarship_restriction(restriction_scope, scholarship_id)
+            
+            return jsonify({
+                'success': True,
+                'blocked': restriction['blocked'],
+                'message': restriction['message'] if restriction['blocked'] else None,
+                'reason': restriction['reason'] if restriction['blocked'] else None
+            })
+    except Exception as e:
+        print(f"[RESTR-CHECK] Error: {str(e)}", flush=True)
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @student_api_bp.route('/applications/submit', methods=['POST'])
 @token_required
