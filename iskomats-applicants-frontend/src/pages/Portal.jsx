@@ -186,7 +186,18 @@ const Portal = () => {
     
     if (user) {
       fetchApplications();
-      fetchProfile();
+      fetchProfile().then((profile) => {
+        // Final Safety Check: If the user just came from a submission and there's a family conflict
+        const justAppliedId = localStorage.getItem('last_submitted_scholarship_id');
+        if (justAppliedId && profile?.sibling_blocked_scholarships?.includes(parseInt(justAppliedId))) {
+          setStatusInfo({
+            message: 'A family member completed their application for this scholarship just before you. Your application has been restricted to ensure the "One Sibling per Scholarship" rule.',
+            isError: true
+          });
+          setShowStatusModal(true);
+          localStorage.removeItem('last_submitted_scholarship_id');
+        }
+      });
     }
 
     // Load scholarship resources

@@ -715,6 +715,29 @@ const StudentInfo = () => {
     dateAccomplished: ''
   });
 
+  // Automated Sibling Early Warning Check
+  useEffect(() => {
+    const checkSiblingRestriction = async () => {
+      // Only check if all identifying family fields + scholarship ID are present
+      let reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
+      const hasFamilyData = formData.lastName && formData.fatherName && formData.motherName;
+      
+      if (reqNo && hasFamilyData) {
+        try {
+          const res = await applicationAPI.checkSibling(parseInt(reqNo), formData);
+          if (res.blocked) {
+            showPromptMessage(`?? Restriction Notice: ${res.message}`);
+          }
+        } catch (err) {
+          console.error("Early sibling check failed:", err);
+        }
+      }
+    };
+
+    const timer = setTimeout(checkSiblingRestriction, 1000); // Debounce check
+    return () => clearTimeout(timer);
+  }, [formData.lastName, formData.fatherName, formData.motherName, searchParams]);
+
   const scholarshipSearchSnapshot = {
     scholarship: scholarshipName,
     gpa: formData.gpa || searchParams.get('gpa') || '',
@@ -2169,6 +2192,7 @@ const StudentInfo = () => {
     }
 
     const numericReqNo = parseInt(reqNo, 10);
+    localStorage.setItem('last_submitted_scholarship_id', numericReqNo.toString());
     setIsSubmitting(true);
 
     try {

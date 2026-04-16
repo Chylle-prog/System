@@ -775,8 +775,25 @@ export const applicationAPI = {
       method: 'POST',
       body: JSON.stringify({ 
         req_no: reqNo, 
-        skipVerification: skipVerification,
         ...applicationData 
+      }),
+    });
+  },
+
+  /**
+   * Check if a sibling has already applied for this scholarship
+   * @param {number} scholarshipId 
+   * @param {object} formData 
+   */
+  checkSibling: async (scholarshipId, formData) => {
+    return makeRequest('/student/applications/check-sibling', {
+      method: 'POST',
+      body: JSON.stringify({
+        scholarship_id: scholarshipId,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        fatherName: formData.fatherName,
+        motherName: formData.motherName
       }),
     });
   },

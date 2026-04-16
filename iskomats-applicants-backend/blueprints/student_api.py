@@ -636,19 +636,17 @@ def build_restriction_identity(first_name=None, middle_name=None, last_name=None
     }
 
 
-def build_duplicate_account_identity(first_name=None, middle_name=None, last_name=None, father_name=None, mother_name=None):
+def build_duplicate_account_identity(first_name=None, middle_name=None, last_name=None, barangay=None):
     applicant_full_name = normalize_identity_name(' '.join(filter(None, [first_name, middle_name, last_name])))
-    father_name = normalize_identity_name(father_name)
-    mother_name = normalize_identity_name(mother_name)
+    barangay = normalize_identity_name(barangay)
 
-    if not applicant_full_name or not father_name or not mother_name:
+    if not applicant_full_name or not barangay:
         return None
 
     return {
         'applicant_full_name': applicant_full_name,
-        'father_name': father_name,
-        'mother_name': mother_name,
-        'identity_key': '|'.join([applicant_full_name, father_name, mother_name]),
+        'barangay': barangay,
+        'identity_key': '|'.join([applicant_full_name, barangay]),
     }
 
 
@@ -684,23 +682,13 @@ def build_duplicate_account_identity_from_applicant(applicant, source_data=None)
     first_name = source_data.get('firstName') or source_data.get('first_name') or applicant.get('first_name')
     middle_name = source_data.get('middleName') or source_data.get('middle_name') or applicant.get('middle_name')
     last_name = source_data.get('lastName') or source_data.get('last_name') or applicant.get('last_name')
-
-    if 'fatherName' in source_data or 'father_name' in source_data:
-        father_name = normalize_parent_full_name(source_data.get('fatherName') or source_data.get('father_name'))
-    else:
-        father_name = normalize_parent_full_name(applicant.get('father_name'))
-
-    if 'motherName' in source_data or 'mother_name' in source_data:
-        mother_name = normalize_parent_full_name(source_data.get('motherName') or source_data.get('mother_name'))
-    else:
-        mother_name = normalize_parent_full_name(applicant.get('mother_name'))
+    barangay = source_data.get('barangay') or applicant.get('barangay')
 
     return build_duplicate_account_identity(
         first_name=first_name,
         middle_name=middle_name,
         last_name=last_name,
-        father_name=father_name,
-        mother_name=mother_name,
+        barangay=barangay
     )
 
 
@@ -737,7 +725,7 @@ def get_matching_duplicate_applicant_ids(cursor, applicant, source_data=None):
 
     cursor.execute(
         """
-        SELECT applicant_no, first_name, middle_name, last_name, father_name, mother_name
+        SELECT applicant_no, first_name, middle_name, last_name, barangay
         FROM applicants
         """
     )
@@ -2071,8 +2059,23 @@ def get_profile():
                 return jsonify({'message': 'Not found'}), 404
 
             duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, applicant)
-            applicant['duplicate_applicant_exists'] = any(applicant_no != request.user_no for applicant_no in duplicate_ids)
-            applicant['portal_lock_message'] = 'You already exist in the system' if applicant['duplicate_applicant_exists'] else None
+            # Oldest Account Wins: Only restrict if the current user_no is NOT the smallest ID for this identity
+            applicant['duplicate_applicant_exists'] = request.user_no > min(duplicate_ids)
+            applicant['portal_lock_message'] = 'This is a duplicate account. Please use your original login.' if applicant['duplicate_applicant_exists'] else None
+
+            # Calculate sibling-blocked scholarships for the portal
+            sibling_blocked_ids = []
+            restriction_scope = get_identity_restriction_scope(cur, applicant)
+            if restriction_scope and restriction_scope.get('applications'):
+                # Check all existing scholarship IDs to see which ones are family-taken
+                cur.execute("SELECT req_no FROM scholarships WHERE is_removed = FALSE")
+                all_sch_ids = [row['req_no'] for row in cur.fetchall()]
+                for sid in all_sch_ids:
+                    res = get_scholarship_restriction(restriction_scope, sid)
+                    if res['blocked'] and res['reason'] in ['family-existing-same-scholarship', 'family-accepted-same-scholarship', 'family-pending-same-scholarship']:
+                        sibling_blocked_ids.append(sid)
+            
+            applicant['sibling_blocked_scholarships'] = sibling_blocked_ids
 
             media_document_fields = [
                 *blob_fields,
@@ -2374,6 +2377,53 @@ def update_profile():
     except Exception as exc:
         return jsonify({'message': str(exc)}), 500
 
+
+@student_api_bp.route('/applications/check-sibling', methods=['POST'])
+@token_required
+def check_sibling_restriction():
+    """
+    Performs a 'pre-flight' sibling check based on parent names provided in the form.
+    """
+    data = request.get_json() or {}
+    scholarship_id = data.get('scholarship_id') or data.get('scholarship_no')
+    
+    if not scholarship_id:
+        return jsonify({'success': False, 'message': 'Missing scholarship ID'}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # Fetch current student data to help with identity building
+        cur.execute("SELECT * FROM applicants WHERE applicant_no = %s", (request.user_no,))
+        applicant = cur.fetchone()
+        
+        if not applicant:
+            return jsonify({'success': False, 'message': 'Applicant not found'}), 404
+
+        # Use the names provided in the form for the check (source_data)
+        # We translate frontend keys to backend keys if needed
+        source_data = {
+            'first_name': data.get('firstName'),
+            'last_name': data.get('lastName'),
+            'father_name': data.get('fatherName'),
+            'mother_name': data.get('motherName')
+        }
+        
+        restriction_scope = get_identity_restriction_scope(cur, applicant, source_data=source_data)
+        restriction = get_scholarship_restriction(restriction_scope, scholarship_id)
+        
+        return jsonify({
+            'success': True,
+            'blocked': restriction['blocked'],
+            'message': restriction['message'] if restriction['blocked'] else None,
+            'reason': restriction['reason'] if restriction['blocked'] else None
+        })
+    except Exception as e:
+        print(f"[RESTR-CHECK] Error: {str(e)}", flush=True)
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
 
 @student_api_bp.route('/applications/submit', methods=['POST'])
 @token_required

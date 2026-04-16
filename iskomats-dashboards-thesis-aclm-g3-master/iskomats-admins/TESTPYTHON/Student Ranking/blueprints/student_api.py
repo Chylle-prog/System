@@ -661,19 +661,17 @@ def build_restriction_identity(first_name=None, middle_name=None, last_name=None
     }
 
 
-def build_duplicate_account_identity(first_name=None, middle_name=None, last_name=None, father_name=None, mother_name=None):
+def build_duplicate_account_identity(first_name=None, middle_name=None, last_name=None, barangay=None):
     applicant_full_name = normalize_identity_name(' '.join(filter(None, [first_name, middle_name, last_name])))
-    father_name = normalize_identity_name(father_name)
-    mother_name = normalize_identity_name(mother_name)
+    barangay = normalize_identity_name(barangay)
 
-    if not applicant_full_name or not father_name or not mother_name:
+    if not applicant_full_name or not barangay:
         return None
 
     return {
         'applicant_full_name': applicant_full_name,
-        'father_name': father_name,
-        'mother_name': mother_name,
-        'identity_key': '|'.join([applicant_full_name, father_name, mother_name]),
+        'barangay': barangay,
+        'identity_key': '|'.join([applicant_full_name, barangay]),
     }
 
 
@@ -709,23 +707,13 @@ def build_duplicate_account_identity_from_applicant(applicant, source_data=None)
     first_name = source_data.get('firstName') or source_data.get('first_name') or applicant.get('first_name')
     middle_name = source_data.get('middleName') or source_data.get('middle_name') or applicant.get('middle_name')
     last_name = source_data.get('lastName') or source_data.get('last_name') or applicant.get('last_name')
-
-    if 'fatherName' in source_data or 'father_name' in source_data:
-        father_name = normalize_parent_full_name(source_data.get('fatherName') or source_data.get('father_name'))
-    else:
-        father_name = normalize_parent_full_name(applicant.get('father_name'))
-
-    if 'motherName' in source_data or 'mother_name' in source_data:
-        mother_name = normalize_parent_full_name(source_data.get('motherName') or source_data.get('mother_name'))
-    else:
-        mother_name = normalize_parent_full_name(applicant.get('mother_name'))
+    barangay = source_data.get('barangay') or applicant.get('barangay')
 
     return build_duplicate_account_identity(
         first_name=first_name,
         middle_name=middle_name,
         last_name=last_name,
-        father_name=father_name,
-        mother_name=mother_name,
+        barangay=barangay
     )
 
 
@@ -762,7 +750,7 @@ def get_matching_duplicate_applicant_ids(cursor, applicant, source_data=None):
 
     cursor.execute(
         """
-        SELECT applicant_no, first_name, middle_name, last_name, father_name, mother_name
+        SELECT applicant_no, first_name, middle_name, last_name, barangay
         FROM applicants
         """
     )
@@ -2113,8 +2101,9 @@ def get_profile():
                 return jsonify({'message': 'Not found'}), 404
 
             duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, applicant)
-            applicant['duplicate_applicant_exists'] = any(applicant_no != request.user_no for applicant_no in duplicate_ids)
-            applicant['portal_lock_message'] = 'You already exist in the system' if applicant['duplicate_applicant_exists'] else None
+            # Oldest Account Wins: Only restrict if the current user_no is NOT the smallest ID for this identity
+            applicant['duplicate_applicant_exists'] = request.user_no > min(duplicate_ids)
+            applicant['portal_lock_message'] = 'This is a duplicate account. Please use your original login.' if applicant['duplicate_applicant_exists'] else None
 
             media_document_fields = [
                 *blob_fields,
@@ -2384,8 +2373,7 @@ def update_profile():
                 uploaded_file = files_data.get(field_key)
                 if uploaded_file:
                     blob_bytes = uploaded_file.read()
-                    if field_key == 'signature_data' and blob_bytes and fernet:
-                        blob_bytes = fernet.encrypt(blob_bytes)
+                    # SIGNATURE MIGRATION: No more encryption, we want raw bytes for storage bucket
                     if db_col == 'profile_picture' and has_profile_picture_column:
                         add_update(db_col, blob_bytes)
                     elif db_col != 'profile_picture':
@@ -2395,12 +2383,10 @@ def update_profile():
                 if field_key in data and data[field_key]:
                     blob_bytes = decode_base64(data[field_key])
                     if blob_bytes is not None:
-                        if field_key == 'signature_data' and blob_bytes and fernet:
-                            blob_bytes = fernet.encrypt(blob_bytes)
+                        # SIGNATURE MIGRATION: No more encryption, we want raw bytes for storage bucket
                         if db_col == 'profile_picture' and has_profile_picture_column:
                             add_update(db_col, blob_bytes)
                         elif db_col != 'profile_picture':
-                            # STORAGE MIGRATION: These specific columns are now text/URLs
                             storage_columns = {
                                 'indigency_doc': 'indigency',
                                 'grades_doc': 'grades',
@@ -2408,17 +2394,25 @@ def update_profile():
                                 'id_img_front': 'id_front',
                                 'id_img_back': 'id_back',
                                 'id_pic': 'face_photo',
-                                'schoolID_photo': 'school_id'
+                                'schoolID_photo': 'school_id',
+                                'signature_image_data': 'signatures'
                             }
                             
                             if db_col in storage_columns:
                                 folder = storage_columns[db_col]
                                 timestamp = int(time.time())
-                                file_name = f"{request.user_no}_{db_col}_{timestamp}.jpg"
                                 
-                                # Detect mime if possible, default to jpeg
+                                # Handle signature specifically (always PNG from signature pad)
                                 mime = 'image/jpeg'
-                                if blob_bytes[:4] == b'\x89PNG': mime = 'image/png'
+                                ext = 'jpg'
+                                if db_col == 'signature_image_data':
+                                    mime = 'image/png'
+                                    ext = 'png'
+                                elif blob_bytes[:4] == b'\x89PNG':
+                                    mime = 'image/png'
+                                    ext = 'png'
+                                    
+                                file_name = f"{request.user_no}_{db_col}_{timestamp}.{ext}"
                                 
                                 print(f"[UPDATE PROFILE] Moving field {db_col} to storage...", flush=True)
                                 url = upload_image_to_storage(blob_bytes, folder, file_name, mime, applicant_no=request.user_no, db_col=db_col)
@@ -2710,7 +2704,7 @@ def submit_application():
             'id_img_front': id_front_bytes,
             'id_img_back': id_back_bytes,
             'profile_picture': profile_pic_bytes,
-            'signature_image_data': fernet.encrypt(signature_bytes) if fernet and signature_bytes else None,
+            'signature_image_data': signature_bytes,
             'enrollment_certificate_doc': doc_bytes['mayorCOE_photo'],
             'grades_doc': doc_bytes['mayorGrades_photo'],
             'indigency_doc': doc_bytes['mayorIndigency_photo'],
@@ -2731,17 +2725,25 @@ def submit_application():
                         'id_img_front': 'id_front',
                         'id_img_back': 'id_back',
                         'id_pic': 'face_photo',
-                        'schoolID_photo': 'school_id'
+                        'schoolID_photo': 'school_id',
+                        'signature_image_data': 'signatures'
                     }
                     
                     if column_name in storage_columns and isinstance(value, (bytes, bytearray)):
                         folder = storage_columns[column_name]
                         timestamp = int(time.time())
-                        file_name = f"{current_user_id}_{column_name}_{timestamp}.jpg"
                         
-                        # Detect mime if possible, default to jpeg
+                        # Handle signature specifically (always PNG from signature pad)
                         mime = 'image/jpeg'
-                        if value[:4] == b'\x89PNG': mime = 'image/png'
+                        ext = 'jpg'
+                        if column_name == 'signature_image_data':
+                            mime = 'image/png'
+                            ext = 'png'
+                        elif value[:4] == b'\x89PNG':
+                            mime = 'image/png'
+                            ext = 'png'
+                            
+                        file_name = f"{current_user_id}_{column_name}_{timestamp}.{ext}"
                         
                         print(f"[SUBMIT] Moving field {column_name} to storage...", flush=True)
                         url = upload_image_to_storage(value, folder, file_name, mime, applicant_no=current_user_id, db_col=column_name)
