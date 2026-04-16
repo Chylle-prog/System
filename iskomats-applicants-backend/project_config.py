@@ -32,17 +32,17 @@ PERFORMANCE_CONFIG = {
         'gc_frequency': 'always'
     },
     'HIGH': {
-        'ocr_concurrency': 4,
-        'threads_per_process': 4,
+        'ocr_concurrency': 8,
+        'threads_per_process': 8,
         'image_max_width': 1024,
-        'gc_frequency': 'periodic'
+        'gc_frequency': 'minimal'
     }
 }
 
 def get_performance_config():
     return PERFORMANCE_CONFIG.get(APP_PERFORMANCE_MODE, PERFORMANCE_CONFIG['HIGH'])
 
-print(f"[RESOURCES] Performance Mode: {APP_PERFORMANCE_MODE}", flush=True)
+print(f"[RESOURCES] Performance Mode: {APP_PERFORMANCE_MODE} (LOCAL ULTRA)", flush=True)
 
 # ─── CONNECTION POOLING ───────────────────────────────────────────────────────
 _CONNECTION_POOL = None
@@ -59,8 +59,8 @@ def _init_pool():
         
         # Adjust pool size based on environment
         # For managed DBs like Render (limit 20), we keep these very conservative
-        min_conn = int(os.environ.get('DB_POOL_MIN', '1'))
-        max_conn = int(os.environ.get('DB_POOL_MAX', '10'))
+        min_conn = int(os.environ.get('DB_POOL_MIN', '2'))
+        max_conn = int(os.environ.get('DB_POOL_MAX', '20'))
         
         try:
             _CONNECTION_POOL = pool.ThreadedConnectionPool(

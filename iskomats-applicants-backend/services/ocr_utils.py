@@ -38,13 +38,15 @@ OCR_SEMAPHORE = eventlet.semaphore.Semaphore(_ocr_concurrency)
 
 def clear_heavy_memory():
     """Aggressive memory release for 512MB limits."""
-    gc.collect()
-    try:
-        # Clear OpenCV cache (internally keeps many mat frames)
-        cv2.setNumThreads(1)
-        cv2.setNumThreads(int(_threads_per_proc))
-    except:
-        pass
+    # Only garbage collect if explicitly requested or in LOW mode
+    if _perf.get('gc_frequency') == 'always':
+        gc.collect()
+        try:
+            # Clear OpenCV cache (internally keeps many mat frames)
+            cv2.setNumThreads(1)
+            cv2.setNumThreads(int(_threads_per_proc))
+        except:
+            pass
 
 
 # ─── Environment hints for threading & memory ──────────────────────────────────
