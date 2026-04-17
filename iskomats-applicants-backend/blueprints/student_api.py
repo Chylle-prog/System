@@ -3250,9 +3250,9 @@ def ocr_check():
 
                         gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
                         
-                        # Grades should match the school and student identity
+                        # Grades should match the school, student identity (Name + ID), and semester
                         # If the image is unreadable (v is False), everything fails
-                        v = v and name_ok and year_only_ok and gpa_ok and school_ok and year_level_ok and semester_ok
+                        v = v and name_ok and id_ok and year_only_ok and gpa_ok and school_ok and year_level_ok and semester_ok
                         
                         if school_name and not school_ok:
                             sample = raw[:300].replace('\n', ' ')
@@ -3262,6 +3262,7 @@ def ocr_check():
                             f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
                             f"Middle Name: {'OK' if name_details.get('middle_ok') else 'X'}" if middle_name else None,
                             f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
+                            f"ID: {'OK' if id_ok else 'X'}",
                             f"School: {'OK' if school_ok else 'X'}",
                             f"GPA: {'OK' if gpa_ok else 'X'}",
                             f"Level: {'OK' if year_level_ok else 'X'}",
