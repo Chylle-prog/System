@@ -230,8 +230,8 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
     
     t1 = time.time()
-    # OEM 1 (LSTM-only) is significantly faster than Legacy mode
-    text1 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 1')
+    # OEM 1 (LSTM-only) + DPI hint for maximum speed and stability
+    text1 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 1 --dpi 300')
     t1_end = time.time()
     
     # Pass in fast mode only if we already have sufficient text density
@@ -838,11 +838,11 @@ def verify_id_with_ocr(image_bytes, expected_first_name=None, expected_middle_na
         if name_v and addr_v:
             print(f"[OCR CACHE HIT] Reusing previous results for {image_hash[:8]}...", flush=True)
             return True, f"Verified (cached)", cached_text, {'name_ok': True, 'addr_ok': True, 'cached': True, 'detected_brgy': meta.get('detected_brgy', [])}
-    
+
     # --- OPTIMIZATION #3: Image quality assessment ---
     try:
         nparr = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE) # Grayscale immediately
+        img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
         del nparr
         
         if img is None: 
@@ -854,14 +854,11 @@ def verify_id_with_ocr(image_bytes, expected_first_name=None, expected_middle_na
             return False, f"Image quality issue: {quality_reason}", "", 0.0
         
         # Optimize resizing for IDs (Lower = Much Faster)
+        # 650px is plenty for clear School IDs and minimizes Tesseract process time.
         h, w = img.shape[:2]
-        # IDs are small and text is clear. 
-        # Indigency documents (Certificates) need more resolution to capture small letterheads.
-        # Reduced from 1000 to 900 for a significant speed gain without accuracy loss.
-        target_w = 750 if not is_indigency else 900 
+        target_w = 650 if not is_indigency else 900 
         if w > target_w:
             scale = target_w / w
-            # Using INTER_LINEAR is faster than INTER_AREA for these resolutions
             img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LINEAR)
     except Exception as e:
         return False, f"Preprocessing error: {str(e)}", "", {'name_ok': False, 'addr_ok': False, 'error': str(e)}
@@ -872,79 +869,53 @@ def verify_id_with_ocr(image_bytes, expected_first_name=None, expected_middle_na
         doc_keywords = ['Indigency', 'Indigent', 'Resident', 'Residency', 'Certification', 'Certificate', 'Barangay', 'Office', 'Barangay Hall']
 
     best_text = ""
-    best_ratio = 0.0
-    print(f"[OCR] Running PSM3 verification...", flush=True)
+    print(f"[OCR] Starting ID Verification (Turbo Zone-Prioritization)...", flush=True)
     
     with OCR_SEMAPHORE:
         try:
             t_start = time.time()
-            # Indigency Turbo Path (Optimization #7): Parallel Dual-Zone Scanning
-            if is_indigency:
-                h_total = img.shape[0]
-                # Zone 1: Top 55% (Usually contains header and student name)
-                # Zone 2: Middle-to-Bottom 60% (Catch barangay and body text)
-                zone1 = img[:int(h_total * 0.55), :]
-                zone2 = img[int(h_total * 0.40):, :]  # Overlap at 40-55%
-                
-                print(f"[OCR] Running Indigency Dual-Zone Parallel Fast-Path...", flush=True)
-                from concurrent.futures import ThreadPoolExecutor
-                with ThreadPoolExecutor(max_workers=2) as fast_executor:
-                    f1 = fast_executor.submit(_run_tesseract_on_image, zone1, psm=6, skip_pass2=True)
-                    f2 = fast_executor.submit(_run_tesseract_on_image, zone2, psm=6, skip_pass2=True)
-                    
-                    t1, t2 = f1.result(), f2.result()
-                    
-                # Combine but check specifically
-                for fast_text in [t1, t2, f"{t1}\n{t2}"]:
-                    name_v, addr_v, found_kw, ratio, meta = _perform_text_matching(fast_text, target_f, target_m, target_l, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
-                    if name_v and addr_v:
-                        print(f"[OCR PERF] SUCCESS (Early Exit zone1+zone2) after {time.time() - t_start:.2f}s", flush=True)
-                        details = {'name_ok': True, 'addr_ok': True, 'name_ratio': ratio, 'keywords': found_kw, 'fast_path': True, 'detected_brgy': meta.get('detected_brgy', [])}
-                        return True, "Verified", fast_text, details
+            h_total, w_total = img.shape[:2]
+
+            # ─── TURBO ID PATH: ZONES FIRST ───
+            # High-speed early exit by scanning just the header regions where 90% of info lives.
+            header_h = int(h_total * 0.40)
+            left_w = int(w_total * 0.55)
             
-            # --- Indigency PASS 1: Zone 1 Early Exit ---
-            if is_indigency:
-                name_v_z1, addr_v_z1, _, _, _ = _perform_text_matching(t1, target_f, target_m, target_l, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
-                if name_v_z1 and addr_v_z1:
-                    print(f"[OCR PERF] SUCCESS (Early Exit Zone 1) after {time.time() - t_start:.2f}s", flush=True)
-                    return True, "Verified", t1, {'name_ok': True, 'addr_ok': True, 'fast_path': True}
+            zone_header_left = img[:header_h, :left_w]
+            zone_header_right = img[:header_h, left_w:]
             
-            # -- PARALLELIZE SUB-SCANS (Optimization #6) ---
             from concurrent.futures import ThreadPoolExecutor
-            with ThreadPoolExecutor(max_workers=3) as sub_executor:
-                # 1. Start full image scan (PSM 6 is MUCH faster for ID blocks)
-                best_future = sub_executor.submit(_run_tesseract_on_image, img, psm=6, skip_pass2=True)
+            # Restricted concurrency to 2 workers to avoid CPU/Memory thrashing on low-tier servers
+            with ThreadPoolExecutor(max_workers=2) as zone_executor:
+                f_left = zone_executor.submit(_run_tesseract_on_image, zone_header_left, psm=6, skip_pass2=True)
+                f_right = zone_executor.submit(_run_tesseract_on_image, zone_header_right, psm=6, skip_pass2=True)
                 
-                # 2. Start column sub-scans
-                h_total, w_total = img.shape[:2]
-                header_h, left_w = int(h_total * 0.35), int(w_total * 0.52)
-                l_c, r_c = img[:header_h, :left_w], img[:header_h, left_w:]
+                txt_left = f_left.result()
+                txt_right = f_right.result()
                 
-                left_future = sub_executor.submit(_run_tesseract_on_image, l_c, psm=6, skip_pass2=True)
-                right_future = sub_executor.submit(_run_tesseract_on_image, r_c, psm=6, skip_pass2=True)
+                # Immediate check of combined zones
+                combined_zones_text = f"{txt_left}\n{txt_right}"
+                name_ok, addr_ok, found_kw, ratio, meta = _perform_text_matching(combined_zones_text, target_f, target_m, target_l, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
                 
-                # SEQUENTIAL ACQUISITION for Early-Exit
-                best_text = best_future.result()
-                name_ok, addr_ok, found_kw, _, _ = _perform_text_matching(best_text, target_f, target_m, target_l, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
-                
-                if not (name_ok and addr_ok):
-                    l_t, r_t = left_future.result(), right_future.result()
-                    best_text = f"{best_text}\n---\n{l_t}\n---\n{r_t}"
-                else:
-                    print(f"[OCR PERF] ID SUCCESS (Fast Path) in {time.time() - t_start:.2f}s", flush=True)
+                if name_ok and addr_ok:
+                    print(f"[OCR PERF] ID SUCCESS (Turbo Zones) in {time.time() - t_start:.2f}s", flush=True)
+                    return True, "Verified", combined_zones_text, {'name_ok': True, 'addr_ok': True, 'name_ratio': ratio, 'keywords': found_kw, 'fast_path': True, 'detected_brgy': meta.get('detected_brgy', [])}
 
-
-            # t_end moved up into early-exit block or handled naturally
+            # ─── FALLBACK: FULL IMAGE SCAN ───
+            # If zones failed, run a fast full scan as a catch-all.
+            print(f"[OCR] Zones insufficient. Running full scan fallback...", flush=True)
+            best_text = _run_tesseract_on_image(img, psm=6, skip_pass2=True)
+            best_text = f"{combined_zones_text}\n---\n{best_text}"
 
             t_end = time.time()
-            print(f"[OCR PERF] Total ID OCR time (w/ Column-Split): {t_end - t_start:.3f}s", flush=True)
+            print(f"[OCR PERF] Total ID OCR time: {t_end - t_start:.3f}s", flush=True)
         except Exception as e:
-            print(f"[OCR] PSM3 error: {e}", flush=True)
+            print(f"[OCR] Verification error: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
             best_text = ""
         finally:
             clear_heavy_memory()
-    
-    
     name_v, addr_v, found_kw, best_ratio, meta = _perform_text_matching(best_text, target_f, target_m, target_l, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
     details = {
         'name_ok': name_v,
@@ -955,13 +926,9 @@ def verify_id_with_ocr(image_bytes, expected_first_name=None, expected_middle_na
     }
     
     if name_v and addr_v:
-        _cache_set(image_hash, (best_text, best_ratio, "verified_psm3"))
+        _cache_set(image_hash, (best_text, best_ratio, "verified_final"))
         return True, "Verified", best_text, details
     
-    # Return result - no additional fallback passes.
-    # Do not auto-verify on partial ratios alone because the OCR payload is
-    # compared against the student's current inputs and false positives are worse
-    # than surfacing a mismatch for retry.
     if best_ratio >= 0.3:
         prefix = "Indigency: " if is_indigency else ""
         _cache_set(image_hash, (best_text, best_ratio, "partial_match"))
