@@ -667,12 +667,22 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
             'middle_ratio': middle_ratio,
             'last_ratio': last_ratio
         }
-        # Note: ID Number Matching is handled externally by student_id_no_matches_text
+        # 1.b ID Number Matching (If provided)
+        id_ok = True
+        if target_id_no and str(target_id_no).strip():
+            id_ok, _ = student_id_no_matches_text(target_id_no, norm_txt)
+            if not id_ok:
+                n_verified = False # Identity includes ID number if requested
         
         # 1.c Year Level Matching (If provided)
+        year_level_ok = True
         if target_year_level and str(target_year_level).strip():
-            if not year_level_matches_text(target_year_level, norm_txt):
+            year_level_ok, _ = year_level_matches_text(target_year_level, norm_txt)
+            if not year_level_ok:
                 n_verified = False
+
+        meta['id_ok'] = id_ok
+        meta['year_level_ok'] = year_level_ok
 
         num_names = sum([bool(target_first_name), bool(target_middle_name), bool(target_last_name)])
         if num_names > 0:
@@ -741,6 +751,8 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
             if normalize_for_ocr(var) in norm_raw:
                 school_ok = True
                 break
+        
+        meta['school_ok'] = school_ok
         
         if not school_ok:
             # Try fuzzy matching if exact fails
@@ -1018,15 +1030,27 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
 
     with OCR_SEMAPHORE:
         try:
-            # Enrollment/other structured documents can use a faster single-block OCR path.
-            if prefer_fast_layout:
-                primary_psm = 6
-                skip_pass2 = True
+            # Performance Optimization: Parallel Dual-Zone Scanning for large documents
+            # Standard forms (COE, Grades) benefit significantly from processing segments in parallel.
+            if prefer_fast_layout and not is_id_back:
+                h_total = img.shape[0]
+                z1 = img[:int(h_total * 0.55), :]
+                z2 = img[int(h_total * 0.45):, :]
+                
+                print(f"[OCR] Running parallel dual-zone extraction for large document...", flush=True)
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=2) as t_executor:
+                    f1 = t_executor.submit(_run_tesseract_on_image, z1, psm=6, skip_pass2=True)
+                    f2 = t_executor.submit(_run_tesseract_on_image, z2, psm=6, skip_pass2=True)
+                    text = f"{f1.result()}\n{f2.result()}"
             else:
-                primary_psm = 3
-                skip_pass2 = False
-
-            text = _run_tesseract_on_image(img, psm=primary_psm, skip_pass2=skip_pass2)
+                if prefer_fast_layout:
+                    primary_psm = 6
+                    skip_pass2 = True
+                else:
+                    primary_psm = 3
+                    skip_pass2 = False
+                text = _run_tesseract_on_image(img, psm=primary_psm, skip_pass2=skip_pass2)
             
             # Optimization: Skip header pass if keywords already found in primary text.
             needs_header = len(text.strip()) < 150

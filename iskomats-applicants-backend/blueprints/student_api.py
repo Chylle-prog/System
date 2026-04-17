@@ -3150,26 +3150,37 @@ def ocr_check():
                         raw_t, extraction_error = extract_document_text(doc_bytes, is_id_back=True)
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read school ID back text'), raw_t, {}
-                    elif doc_type == 'Indigency':
-                        # Speed Optimization: Use the specialized parallel dual-zone scanning for Indigency
-                        # This is significantly faster than the generic extraction path and handles 
-                        # name/address matching in a single concurrent pass.
-                        ocr_data = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address)
+                    elif doc_type in ['Indigency', 'SchoolID']:
+                        # Speed Optimization: Use the specialized parallel dual-zone scanning for IDs/Certificates
+                        # This is significantly faster and handles name/id/school/address matching in one pass.
+                        ocr_data = verify_id_with_ocr(
+                            doc_bytes, first_name, middle_name, last_name, 
+                            expected_address=target_address,
+                            expected_id_no=expected_id_no,
+                            expected_school_name=school_name,
+                            expected_year_level=expected_year_level
+                        )
                         v, msg, raw_t, meta = ocr_data[0], ocr_data[1], ocr_data[2], ocr_data[3]
                         
-                        # Re-format message for consistency with the indigency checklist UI
+                        # Re-format message for consistent UI feedback
                         if not v:
-                            brgy_str = ", ".join(meta.get('detected_brgy', [])) if meta.get('detected_brgy') else "None detected"
-                            name_details = meta.get('name_details', {})
-                            f_ok = 'OK' if name_details.get('first_ok') else 'X'
-                            l_ok = 'OK' if name_details.get('last_ok') else 'X'
-                            addr_ok = 'OK' if meta.get('addr_ok') else 'X'
-                            msg = f"Checklist: [First: {f_ok} | Last: {l_ok} | Addr: {addr_ok} (Target: {target_address or 'Missing'}, Found: {brgy_str})]"
+                            checklist = [
+                                f"First: {'OK' if meta.get('name_details', {}).get('first_ok') else 'X'}",
+                                f"Last: {'OK' if meta.get('name_details', {}).get('last_ok') else 'X'}"
+                            ]
+                            if doc_type == 'Indigency':
+                                brgy_str = ", ".join(meta.get('detected_brgy', [])) if meta.get('detected_brgy') else "None"
+                                checklist.append(f"Addr: {'OK' if meta.get('addr_ok') else 'X'} ({brgy_str})")
+                            else:
+                                checklist.append(f"ID: {'OK' if meta.get('id_ok') else 'X'}")
+                                checklist.append(f"School: {'OK' if meta.get('school_ok') else 'X'}")
+                            
+                            msg = f"Checklist: [{' | '.join(checklist)}]"
                         
-                        return {'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw_t, 'video_verified': v_video, 'video_message': msg_video}
+                        return {'doc': doc_type, 'verified': v, 'message': msg, 'raw_text': raw_t, 'video_verified': v_video, 'video_message': msg_video}
                     else:
                         # Always return a 4-tuple for unknown doc types
-                        result = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=expected_id_no if doc_type != 'Indigency' else None, expected_school_name=school_name)
+                        result = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=expected_id_no, expected_school_name=school_name)
                         # If result is already a 4-tuple, return as is
                         if isinstance(result, tuple) and len(result) == 4:
                             return result
@@ -3201,10 +3212,24 @@ def ocr_check():
                     return {'doc': doc_type, 'verified': False, 'message': f"Video verification failed: {msg_video}", 'video_verified': False, 'video_message': msg_video}
                 
                 # Document-Specific Logic
-                # Pre-calculate common fields used across multiple document types
-                name_ok, name_ratio, name_details = student_name_matches_text(raw, first_name, middle_name, last_name, is_indigency=(doc_type == 'Indigency'))
-                school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
-                year_level_ok, _ = year_level_matches_text(expected_year_level, raw)
+                # Speed Optimization: Consolidated Metadata Matching
+                # We perform ONE unified check for names, id, school, and level to save on redundant passes.
+                _, _, _, _, meta = _perform_text_matching(
+                    raw, first_name, middle_name, last_name, 
+                    target_id_no=expected_id_no,
+                    target_school_name=school_name,
+                    target_year_level=expected_year_level,
+                    is_indigency=(doc_type == 'Indigency')
+                )
+                
+                name_details = meta.get('name_details', {})
+                name_ok = name_details.get('first_ok', False) and name_details.get('last_ok', False)
+                if middle_name and doc_type != 'Indigency':
+                    name_ok = name_ok and name_details.get('middle_ok', False)
+                
+                school_ok = meta.get('school_ok', True)
+                year_level_ok = meta.get('year_level_ok', True)
+                id_ok = meta.get('id_ok', True)
                 
                 if doc_type in ['Enrollment', 'Grades']:
                     year_label = extract_school_year_from_text(raw)
@@ -3234,7 +3259,6 @@ def ocr_check():
                         semester_ok = True
                     
                     if doc_type == 'Enrollment':
-                        id_ok, _ = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
                         course_ok, _ = course_matches_text(course, raw) if course else (True, None)
                         
                         # Strictly require ALL fields for Enrollment (COR/COE) to be OK
