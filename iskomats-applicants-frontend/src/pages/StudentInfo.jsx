@@ -454,6 +454,12 @@ const StudentInfo = () => {
   const [extraSignaturePhoto, setExtraSignaturePhoto] = useState(null);
   const [isFaceMatching, setIsFaceMatching] = useState(false);
   const [faceMatchResult, setFaceMatchResult] = useState(null); 
+  const [idScanTime, setIdScanTime] = useState(0); 
+  const [coeScanTime, setCoeScanTime] = useState(0); // DIAGNOSTIC TIMER
+  const [gradesScanTime, setGradesScanTime] = useState(0); // DIAGNOSTIC TIMER
+  const idTimerRef = useRef(null);
+  const coeTimerRef = useRef(null);
+  const gradesTimerRef = useRef(null);
   const [faceVerified, setFaceVerified] = useState(null); 
 
   const [documentVideos, setDocumentVideos] = useState({
@@ -1128,6 +1134,14 @@ const StudentInfo = () => {
     setLoadingMessage({ title: 'Scanning School ID', message: 'Verifying your School ID images and Video Content...' });
     lastIdScanRef.current = { front: idFront, back: idBack, frontVid: frontVideoUrl, backVid: backVideoUrl };
 
+    // --- DIAGNOSTIC TIMER START ---
+    setIdScanTime(0);
+    const start = Date.now();
+    idTimerRef.current = setInterval(() => {
+      setIdScanTime(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+    // ------------------------------
+
     try {
       // Only check video presence, not full video OCR (backend already optimized)
       const success = await performOcrVerification(
@@ -1140,6 +1154,11 @@ const StudentInfo = () => {
         },
         { front: frontVideoUrl, back: backVideoUrl }
       );
+      
+      // --- DIAGNOSTIC TIMER STOP ---
+      if (idTimerRef.current) clearInterval(idTimerRef.current);
+      // -----------------------------
+
       if (success) {
         showPromptMessage('✅ Front & Back ID verified successfully!');
       } else {
@@ -1147,6 +1166,7 @@ const StudentInfo = () => {
       }
     } catch (err) {
       console.error('Scan Error:', err);
+      if (idTimerRef.current) clearInterval(idTimerRef.current);
     }
   };
 
@@ -3607,10 +3627,18 @@ const StudentInfo = () => {
                   {idStatus && (
                     <div className={`validation-status-card ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`} style={{marginTop: '1.2rem'}}>
                       <div className={`status-icon ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`}>
-                        <i className={`fas ${idVerified === 'success' ? 'fa-check' : (idVerified === 'failed' ? 'fa-circle-xmark' : 'fa-magnifying-glass')}`}></i>
+                        <i className={`fas ${idVerified === 'success' ? 'fa-check' : (idVerified === 'failed' ? 'fa-circle-xmark' : (idVerified === 'verifying' ? 'fa-stopwatch fa-spin' : 'fa-magnifying-glass'))}`}></i>
                       </div>
-                      <div>
-                        <p style={{fontSize: '0.85rem', fontWeight: '800', margin: '0 0 4px 0'}}>Verification Engine Result</p>
+                      <div style={{flex: 1}}>
+                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px'}}>
+                           <p style={{fontSize: '0.85rem', fontWeight: '800', margin: 0}}>Verification Engine Result</p>
+                           {/* DIAGNOSTIC TIMER DISPLAY */}
+                           {idVerified === 'verifying' && (
+                             <span style={{fontSize: '0.8rem', fontWeight: '900', color: 'var(--primary)', background: '#fff', padding: '2px 8px', borderRadius: '6px', border: '1px solid var(--primary)'}}>
+                               LIVE: {idScanTime}s
+                             </span>
+                           )}
+                        </div>
                         <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.5'}}>{idStatus}</p>
                       </div>
                     </div>
@@ -3722,9 +3750,18 @@ const StudentInfo = () => {
                           {coeStatus && (
                             <div className={`validation-status-card ${coeVerified === 'success' ? 'success' : (coeVerified === 'failed' ? 'failed' : 'processing')}`}>
                               <div className={`status-icon ${coeVerified === 'success' ? 'success' : (coeVerified === 'failed' ? 'failed' : 'processing')}`}>
-                                <i className={`fas ${coeVerified === 'success' ? 'fa-check' : (coeVerified === 'failed' ? 'fa-circle-xmark' : 'fa-info-circle')}`}></i>
+                                <i className={`fas ${coeVerified === 'success' ? 'fa-check' : (coeVerified === 'failed' ? 'fa-circle-xmark' : (coeVerified === 'verifying' ? 'fa-stopwatch fa-spin' : 'fa-info-circle'))}`}></i>
                               </div>
-                              <div>
+                              <div style={{flex: 1}}>
+                                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px'}}>
+                                   <p style={{fontSize: '0.85rem', fontWeight: '800', margin: 0}}>Verification Engine Result</p>
+                                   {/* DIAGNOSTIC TIMER DISPLAY */}
+                                   {coeVerified === 'verifying' && (
+                                     <span style={{fontSize: '0.8rem', fontWeight: '900', color: 'var(--primary)', background: '#fff', padding: '2px 8px', borderRadius: '6px', border: '1px solid var(--primary)'}}>
+                                       LIVE: {coeScanTime}s
+                                     </span>
+                                   )}
+                                </div>
                                 <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.4'}}>{coeStatus}</p>
                               </div>
                             </div>
@@ -3858,9 +3895,17 @@ const StudentInfo = () => {
                           {gradesStatus && (
                             <div className={`validation-status-card ${gradesVerified === 'success' ? 'success' : (gradesVerified === 'failed' ? 'failed' : 'processing')}`}>
                               <div className={`status-icon ${gradesVerified === 'success' ? 'success' : (gradesVerified === 'failed' ? 'failed' : 'processing')}`}>
-                                <i className={`fas ${gradesVerified === 'success' ? 'fa-check' : (gradesVerified === 'failed' ? 'fa-circle-xmark' : 'fa-info-circle')}`}></i>
+                                <i className={`fas ${gradesVerified === 'success' ? 'fa-check' : (gradesVerified === 'failed' ? 'fa-circle-xmark' : (gradesVerified === 'verifying' ? 'fa-stopwatch fa-spin' : 'fa-info-circle'))}`}></i>
                               </div>
-                              <div>
+                              <div style={{flex: 1}}>
+                                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px'}}>
+                                   <p style={{fontSize: '0.8rem', fontWeight: '800', margin: 0}}>Academic Scan Result</p>
+                                   {gradesVerified === 'verifying' && (
+                                     <span style={{fontSize: '0.75rem', fontWeight: '900', color: 'var(--primary)', background: '#fff', padding: '1px 6px', borderRadius: '4px', border: '1px solid var(--primary)'}}>
+                                       LIVE: {gradesScanTime}s
+                                     </span>
+                                   )}
+                                </div>
                                 <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.4'}}>{gradesStatus}</p>
                               </div>
                             </div>

@@ -3217,6 +3217,9 @@ def ocr_check():
                         
                         # Strictly require ALL fields for Enrollment (COR/COE) to be OK
                         # Including the text density check (v) to prevent blank images from passing
+                        duration_total = time.perf_counter() - t_job_start
+                        perf_label = f" (Net: {res_time:.1f}s | OCR: {duration_total - res_time:.1f}s)"
+                        
                         v = v and name_ok and id_ok and school_ok and course_ok and year_only_ok and semester_ok and year_level_ok
                         
                         checklist = [
@@ -3231,11 +3234,15 @@ def ocr_check():
                             f"Course: {'OK' if course_ok else 'X'}"
                         ]
                         checklist = [c for c in checklist if c is not None]
-                        msg = f"Checklist: [{' | '.join(checklist)}]"
+                        msg = f"COE Verified{perf_label}. Checklist: [{' | '.join(checklist)}]"
                         if not v:
+                            msg = f"COE Check failed{perf_label}. Checklist: [{' | '.join(checklist)}]"
                             msg += f" (Checked vs F:'{first_name}' M:'{middle_name}' L:'{last_name}' ID:'{expected_id_no}')"
                         return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
                     elif doc_type == 'Grades':
+                        duration_total = time.perf_counter() - t_job_start
+                        perf_label = f" (Net: {res_time:.1f}s | OCR: {duration_total - res_time:.1f}s)"
+
                         gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
                         
                         # Grades should match the school and student identity
@@ -3257,7 +3264,8 @@ def ocr_check():
                             f"Sem: {'OK' if semester_ok else 'X'}"
                         ]
                         checklist = [c for c in checklist if c is not None]
-                        return {'doc': 'Grades', 'verified': v, 'message': f"Checklist: [{' | '.join(checklist)}]", 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                        msg = f"{'Grades Verified' if v else 'Grades Check Failed'}{perf_label}. Checklist: [{' | '.join(checklist)}]"
+                        return {'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'Indigency':
                     name_ok = meta.get('name_ok', False)
