@@ -3274,6 +3274,10 @@ def ocr_check():
                 elif doc_type == 'SchoolID':
                     id_ok, _ = student_id_no_matches_text(expected_id_no, raw)
                     
+                    # Performance Profile Label (Easy to remove later)
+                    duration_total = time.perf_counter() - t_job_start
+                    perf_label = f" (Net: {res_time:.1f}s | OCR: {duration_total - res_time:.1f}s)"
+                    
                     checklist = [
                         f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
                         f"Middle Name: {'OK' if name_details.get('middle_ok') else 'X'}" if middle_name else None,
@@ -3286,9 +3290,9 @@ def ocr_check():
                     # Strictly require name, id, and school to be OK
                     v = name_ok and id_ok and school_ok
                     if v:
-                        msg = f"Front ID verified successfully. Checklist: [{', '.join(checklist)}]"
+                        msg = f"Front ID verified successfully{perf_label}. Checklist: [{', '.join(checklist)}]"
                     else:
-                        msg = f"Verification failed. Checklist: [{', '.join(checklist)}]"
+                        msg = f"Verification failed{perf_label}. Checklist: [{', '.join(checklist)}]"
                         if not name_ok: msg += f" (Name mismatch)"
                         if not id_ok: msg += f" (ID mismatch)"
                         if not school_ok: msg += f" (School mismatch)"
@@ -3299,13 +3303,17 @@ def ocr_check():
                     year_label = extract_school_year_from_text(raw)
                     year_ok = academic_year_matches_latest_expected(year_label, expected_academic_year)
 
+                    # Performance Profile Label (Easy to remove later)
+                    duration_total = time.perf_counter() - t_job_start
+                    perf_label = f" (Net: {res_time:.1f}s | OCR: {duration_total - res_time:.1f}s)"
+
                     v = bool(v and year_label and year_ok)
                     checklist = [f"Year: {'OK' if year_ok else 'X'}"]
                     
                     if v:
-                        msg = f"Back ID verified | Checklist: [{' | '.join(checklist)}]"
+                        msg = f"Back ID verified{perf_label} | Checklist: [{' | '.join(checklist)}]"
                     else:
-                        msg = f"Verification failed. Checklist: [{' | '.join(checklist)}]"
+                        msg = f"Verification failed{perf_label}. Checklist: [{' | '.join(checklist)}]"
                         if not year_label: msg += " (Year not detected)"
                         
                     return {'doc': 'Back ID', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
