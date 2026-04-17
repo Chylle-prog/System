@@ -137,7 +137,7 @@ const STEP_FIELDS = {
     'parentsGrossIncome', 'numberOfSiblings'
   ],
   3: [
-    'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course', 'gpa',
+    'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'semester', 'course', 'gpa',
     'mayorCOE_photo', 'mayorGrades_photo'
   ],
   4: [
@@ -831,7 +831,7 @@ const StudentInfo = () => {
         }, 80);
       }
 
-      const { townCity, barangay, schoolName, idNumber, yearLevel, gpa, course } = extraParams;
+      const { townCity, barangay, schoolName, idNumber, yearLevel, semester, gpa, course } = extraParams;
       const targetBarangay = barangay || formData.barangay || '';
       const { firstName, lastName, middleName } = formData;
       const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
@@ -850,7 +850,8 @@ const StudentInfo = () => {
         videoUrl,
         reqNo,
         docType,
-        targetBarangay
+        targetBarangay,
+        semester
       );
 
       if (!silent && pInterval) clearInterval(pInterval);
@@ -946,6 +947,7 @@ const StudentInfo = () => {
     const schoolName = formData.schoolName || '';
     const idNumber = formData.schoolIdNumber || '';
     const yearLevel = formData.yearLevel || '';
+    const semester = formData.semester || '';
     const course = formData.course || '';
     const videoUrl = formData.mayorCOE_video || documentVideos.mayorCOE_video;
 
@@ -965,7 +967,7 @@ const StudentInfo = () => {
     setLoadingMessage({ title: 'Scanning COE', message: 'Verifying your Certificate of Enrollment and Video Content...' });
 
     try {
-      const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, idNumber, yearLevel, course }, videoUrl);
+      const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, idNumber, yearLevel, semester, course }, videoUrl);
       if (success) {
         showPromptMessage('✅ COE verified successfully!');
       } else {
@@ -984,6 +986,7 @@ const StudentInfo = () => {
     );
     const schoolName = formData.schoolName || '';
     const yearLevel = formData.yearLevel || '';
+    const semester = formData.semester || '';
     const gpa = formData.gpa || '';
     const videoUrl = formData.mayorGrades_video || documentVideos.mayorGrades_video;
 
@@ -1003,7 +1006,7 @@ const StudentInfo = () => {
     setLoadingMessage({ title: 'Scanning Grades', message: 'Verifying your Grades document and Video Content...' });
 
     try {
-      const success = await performOcrVerification('Grades', gradesDoc, { schoolName, yearLevel, gpa }, videoUrl);
+      const success = await performOcrVerification('Grades', gradesDoc, { schoolName, yearLevel, semester, gpa }, videoUrl);
       if (success) {
         showPromptMessage('✅ Grades verified successfully!');
       } else {
@@ -3288,6 +3291,14 @@ const StudentInfo = () => {
                     <select name="yearLevel" value={formData.yearLevel} onChange={handleInputChange} required={currentStep === 3}>
                       <option value="">Select Year</option>
                       {[1, 2, 3, 4, 5].map(yr => <option key={yr} value={`${yr}${yr === 1 ? 'st' : yr === 2 ? 'nd' : yr === 3 ? 'rd' : 'th'} Year`}>{yr}{yr === 1 ? 'st' : yr === 2 ? 'nd' : yr === 3 ? 'rd' : 'th'} Year</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Semester <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <select name="semester" value={formData.semester} onChange={handleInputChange} required={currentStep === 3}>
+                      <option value="">Select Semester</option>
+                      <option value="1st">1st Semester</option>
+                      <option value="2nd">2nd Semester</option>
                     </select>
                   </div>
                 </div>

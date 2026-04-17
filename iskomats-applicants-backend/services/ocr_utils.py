@@ -1310,6 +1310,7 @@ def extract_school_year(image_bytes):
 def extract_semester_from_text(text):
     if not text: return None
     semester_patterns = [
+        r'\b20\d{2}\s*-\s*([12])\b', # Match 2025-1 or 2025-2
         r'(1st|2nd|first|second|1|2|I|II|and|lst|ist)\s*(?:sem|semester|grading|sern|sun)\b',
         r'\b(?:sem|semester|grading|sern|sun)\s*[:\-]?\s*(1st|2nd|first|second|1|2|I|II|and|lst|ist)\b',
         r'\b(First|Second|and)\s+Semester\b',

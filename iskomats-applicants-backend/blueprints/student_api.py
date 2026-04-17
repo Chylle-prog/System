@@ -2974,6 +2974,13 @@ def ocr_check():
         expected_academic_year = str(data.get('expected_year') or data.get('expectedYear') or '').strip()
         expected_id_no = str(data.get('id_number') or data.get('idNumber') or '').strip()
         
+        # Capture semester from request if not already set by scholarship metadata
+        request_semester = str(data.get('semester') or data.get('expected_semester') or data.get('expectedSemester') or '').strip()
+        if request_semester and not expected_semester:
+            expected_semester = request_semester
+            print(f"[OCR] Using request-provided semester: {expected_semester}", flush=True)
+        
+        
         print(f"[OCR-DEBUG-EXPECTED] First='{first_name}' Middle='{middle_name}' Last='{last_name}' ID='{expected_id_no}'", flush=True)
 
 
@@ -3207,7 +3214,8 @@ def ocr_check():
                     elif normalized_expected_semester:
                         semester_ok = (normalized_expected_semester == normalized_semester_label)
                     else:
-                        semester_ok = True
+                        # If no semester provided in request/scholarship, fail for Enrollment/Grades to prevent skipping
+                        semester_ok = False if doc_type in ['Enrollment', 'Grades'] else True
                     
                     if doc_type == 'Enrollment':
                         course_ok, _ = course_matches_text(course, raw) if course else (True, None)
