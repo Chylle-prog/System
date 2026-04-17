@@ -1001,16 +1001,15 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
                 needs_header = False
 
             if not is_id_back and needs_header:
-                if not prefer_fast_layout:
-                    header_height = max(int(img.shape[0] * 0.28), 1)
-                    header_img = img[:header_height, :]
-                    header_text = _run_tesseract_on_image(header_img, psm=6, skip_pass2=True)
+                header_height = max(int(img.shape[0] * 0.28), 1)
+                header_img = img[:header_height, :]
+                header_text = _run_tesseract_on_image(header_img, psm=6, skip_pass2=True)
 
-                    if header_text.strip():
-                        normalized_text = normalize_for_ocr(text)
-                        normalized_header = normalize_for_ocr(header_text)
-                        if normalized_header and normalized_header not in normalized_text:
-                            text = f"{header_text.strip()}\n{text}".strip()
+                if header_text.strip():
+                    normalized_text = normalize_for_ocr(text)
+                    normalized_header = normalize_for_ocr(header_text)
+                    if normalized_header and normalized_header not in normalized_text:
+                        text = f"{header_text.strip()}\n{text}".strip()
             
             # ID backs often have very sparse text (stickers).
             # If PSM3 didn't get much, try PSM11 (Sparse) and PSM6 (Uniform)
