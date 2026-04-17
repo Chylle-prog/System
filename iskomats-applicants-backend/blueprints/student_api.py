@@ -3255,11 +3255,6 @@ def ocr_check():
                             f"Sem: {semester_status}"
                         ]
                         msg = f"{'Grades Verified' if v else 'Grades Check Failed'}{perf_label}. Checklist: [{' | '.join(checklist)}]"
-                        return {'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}             f"Year: {'OK' if year_only_ok else 'X'}",
-                            f"Sem: {'OK' if semester_ok else 'X'}"
-                        ]
-                        checklist = [c for c in checklist if c is not None]
-                        msg = f"{'Grades Verified' if v else 'Grades Check Failed'}{perf_label}. Checklist: [{' | '.join(checklist)}]"
                         return {'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'Indigency':
