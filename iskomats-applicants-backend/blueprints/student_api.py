@@ -94,6 +94,15 @@ except Exception:
 
 
 student_api_bp = Blueprint('student_api', __name__, url_prefix='/api/student')
+
+@student_api_bp.route('/health-check', methods=['GET'])
+def student_blueprint_health():
+    return jsonify({
+        'status': 'ok',
+        'blueprint': 'student_api',
+        'prefix': '/api/student'
+    }), 200
+
 bcrypt = Bcrypt()
 SECRET_KEY = get_secret_key()
 
@@ -2465,6 +2474,7 @@ def check_sibling_restriction():
     """
     Performs a 'pre-flight' sibling check based on parent names provided in the form.
     """
+    print(f"[DEBUG] Sibling Check requested for user_no: {getattr(request, 'user_no', 'unknown')}", flush=True)
     data = request.get_json() or {}
     scholarship_id = data.get('scholarship_id') or data.get('scholarship_no')
     

@@ -59,7 +59,7 @@ socketio = SocketIO(
 
 print("[STARTUP] Registering blueprints...")
 app.register_blueprint(admin_bp)
-app.register_blueprint(student_api_bp)
+app.register_blueprint(student_api_bp, url_prefix='/api/student')
 
 register_admin_routes(app)
 init_admin_socketio(socketio)
