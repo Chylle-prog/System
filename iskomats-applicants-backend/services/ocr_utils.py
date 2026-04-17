@@ -221,6 +221,14 @@ def _preprocess_strategy_c(img):
     _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return binary
 
+def _preprocess_strategy_d(img):
+    """High-contrast sharpening specifically for faint ID text."""
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+    # Kernel for sharp edge detection
+    kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+    sharpened = cv2.filter2D(gray, -1, kernel)
+    return cv2.adaptiveThreshold(sharpened, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+
 def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     """Internal helper to run OCR on an already decoded/resized image with specified strategies."""
     if img is None: return ""
@@ -859,7 +867,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name=None, expected_middle_na
         # 550px is large enough for Tesseract's LSTM but small enough for sub-5s processing.
         h, w = img.shape[:2]
         is_back = kwargs.get('is_back', False)
-        target_w = 350 if is_back else (550 if not is_indigency else 900)
+        target_w = 1000 if is_back else (1000 if not is_indigency else 1200)
         
         if w > target_w:
             scale = target_w / w
@@ -883,9 +891,9 @@ def verify_id_with_ocr(image_bytes, expected_first_name=None, expected_middle_na
         try:
             t_start = time.time()
             
-            # --- SINGLE PASS PSM 6 ---
-            # Much faster than PSM 3 for structured ID layouts and skips most of the noise analysis.
-            best_text = _run_tesseract_on_image(img, psm=6, skip_pass2=True)
+            # --- ROBUST MULTI-STRATEGY SCAN ---
+            # Using PSM 3 and specific strategies for ID-specific text features.
+            best_text = _run_tesseract_on_image(img, psm=3, strategies=[_preprocess_strategy_d], skip_pass2=False)
             
             t_end = time.time()
             print(f"[OCR PERF] Unified ID OCR completed in {t_end - t_start:.2f}s", flush=True)
@@ -961,8 +969,8 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
 
         # Optimization: Standardize width to 850px for non-identity documents
         # This is a sweet spot for TORs/COEs to maintain readability while being fast.
-        effective_max_width = 850 if is_id_back else max_width
-        if is_id_back: effective_max_width = 750 # Increased from 500 to 750 for better Year detection
+        effective_max_width = 1000 if is_id_back else max_width
+        if is_id_back: effective_max_width = 1000 # Increased to 1000 for maximum Year detection accuracy
         
         if w > effective_max_width:
             scale = effective_max_width / w
@@ -982,7 +990,8 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
                 print(f"[OCR] Running single-pass PSM 6 extraction for document...", flush=True)
                 text = _run_tesseract_on_image(img, psm=6, skip_pass2=True)
             else:
-                text = _run_tesseract_on_image(img, psm=3, skip_pass2=False)
+                strats = [_preprocess_strategy_d] if is_id_back else None
+                text = _run_tesseract_on_image(img, psm=3, strategies=strats, skip_pass2=False)
             
             # Optimization: Skip header pass if keywords already found in primary text.
             needs_header = len(text.strip()) < 150
