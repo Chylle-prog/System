@@ -75,23 +75,12 @@ def list_routes():
         output.append(line)
     return "<pre>" + "\n".join(sorted(output)) + "</pre>"
 
-@app.route('/api/student/health-check')
-def student_health_check_alt():
-    return jsonify({
-        "status": "active", 
-        "service": "applicants-backend", 
-        "blueprint_registered": True
-    }), 200
 
 @app.route('/api/student/applications/check-sibling', methods=['POST', 'OPTIONS'])
 def check_sibling_root_redirect():
     from blueprints.student_api import check_sibling_restriction
     return check_sibling_restriction()
 
-@app.errorhandler(404)
-def handle_404(e):
-    print(f"[404-ERROR] Route Not Found: {request.method} {request.path}", flush=True)
-    return jsonify({"error": "Not Found", "path": request.path, "method": request.method}), 404
 
 # Track startup completion
 APP_READY = False
