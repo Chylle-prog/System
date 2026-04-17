@@ -3200,73 +3200,62 @@ def ocr_check():
                     print(f"[OCR-YEAR] Doc={doc_type} extracted_year='{year_label}' expected_year='{expected_academic_year}' extracted_sem='{semester_label}' expected_sem='{expected_semester}'", flush=True)
                     print(f"[OCR-NAME] First='{first_name}' (OK={name_details.get('first_ok')}) Middle='{middle_name}' (OK={name_details.get('middle_ok')}) Last='{last_name}' (OK={name_details.get('last_ok')})", flush=True)
                     
-                    # Year check: only pass if (v_is_true and (matches or no_expected_value))
-                    if not v:
-                        year_only_ok = False
-                    elif expected_academic_year:
+                    # Year check: only enforce if we have an expected year to compare against
+                    if expected_academic_year:
                         year_only_ok = academic_year_matches_expected(year_label, expected_academic_year)
                     else:
                         year_only_ok = True
-                        
-                    # Semester check: similar logic
-                    if not v:
-                        semester_ok = False
-                    elif normalized_expected_semester:
+                    
+                    # Strict semester check
+                    if normalized_expected_semester:
                         semester_ok = (normalized_expected_semester == normalized_semester_label)
+                        semester_status = f"{'OK' if semester_ok else 'X'} ({semester_label or 'None'}/{expected_semester})"
                     else:
                         # If no semester provided in request/scholarship, fail for Enrollment/Grades to prevent skipping
                         semester_ok = False if doc_type in ['Enrollment', 'Grades'] else True
+                        semester_status = "X (Missing Selection)" if doc_type in ['Enrollment', 'Grades'] else "OK"
                     
                     if doc_type == 'Enrollment':
+                        id_ok, found_id = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
                         course_ok, _ = course_matches_text(course, raw) if course else (True, None)
-                        
-                        # Strictly require ALL fields for Enrollment (COR/COE) to be OK
-                        # Including the text density check (v) to prevent blank images from passing
                         duration_total = time.perf_counter() - t_job_start
                         perf_label = f" (Net: {res_time:.1f}s | OCR: {duration_total - res_time:.1f}s)"
                         
                         v = v and name_ok and id_ok and school_ok and course_ok and year_only_ok and semester_ok and year_level_ok
                         
+                        id_status = f"{'OK' if id_ok else 'X'} ({found_id or 'None'}/{expected_id_no})"
+                        
                         checklist = [
-                            f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
-                            f"Middle Name: {'OK' if name_details.get('middle_ok') else 'X'}" if middle_name else None,
-                            f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
-                            f"ID: {'OK' if id_ok else 'X'}",
+                            f"Name: {'OK' if name_ok else 'X'}",
+                            f"ID: {id_status}",
                             f"School: {'OK' if school_ok else 'X'}",
-                            f"Level: {'OK' if year_level_ok else 'X'}",
                             f"Year: {'OK' if year_only_ok else 'X'}",
-                            f"Sem: {'OK' if semester_ok else 'X'}",
+                            f"Sem: {semester_status}",
                             f"Course: {'OK' if course_ok else 'X'}"
                         ]
-                        checklist = [c for c in checklist if c is not None]
-                        msg = f"COE Verified{perf_label}. Checklist: [{' | '.join(checklist)}]"
-                        if not v:
-                            msg = f"COE Check failed{perf_label}. Checklist: [{' | '.join(checklist)}]"
-                            msg += f" (Checked vs F:'{first_name}' M:'{middle_name}' L:'{last_name}' ID:'{expected_id_no}')"
+                        msg = f"{'COE Verified' if v else 'COE Check Failed'}{perf_label}. Checklist: [{' | '.join(checklist)}]"
                         return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+
                     elif doc_type == 'Grades':
+                        id_ok, found_id = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
                         duration_total = time.perf_counter() - t_job_start
                         perf_label = f" (Net: {res_time:.1f}s | OCR: {duration_total - res_time:.1f}s)"
-
                         gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
                         
-                        # Grades should match the school, student identity (Name + ID), and semester
-                        # If the image is unreadable (v is False), everything fails
                         v = v and name_ok and id_ok and year_only_ok and gpa_ok and school_ok and year_level_ok and semester_ok
                         
-                        if school_name and not school_ok:
-                            sample = raw[:300].replace('\n', ' ')
-                            print(f"[OCR-MISMATCH] School check failed for {school_name}. Text sample: {sample}", flush=True)
+                        id_status = f"{'OK' if id_ok else 'X'} ({found_id or 'None'}/{expected_id_no})"
                         
                         checklist = [
-                            f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
-                            f"Middle Name: {'OK' if name_details.get('middle_ok') else 'X'}" if middle_name else None,
-                            f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
-                            f"ID: {'OK' if id_ok else 'X'}",
+                            f"Name: {'OK' if name_ok else 'X'}",
+                            f"ID: {id_status}",
                             f"School: {'OK' if school_ok else 'X'}",
                             f"GPA: {'OK' if gpa_ok else 'X'}",
-                            f"Level: {'OK' if year_level_ok else 'X'}",
                             f"Year: {'OK' if year_only_ok else 'X'}",
+                            f"Sem: {semester_status}"
+                        ]
+                        msg = f"{'Grades Verified' if v else 'Grades Check Failed'}{perf_label}. Checklist: [{' | '.join(checklist)}]"
+                        return {'doc': 'Grades', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}             f"Year: {'OK' if year_only_ok else 'X'}",
                             f"Sem: {'OK' if semester_ok else 'X'}"
                         ]
                         checklist = [c for c in checklist if c is not None]
