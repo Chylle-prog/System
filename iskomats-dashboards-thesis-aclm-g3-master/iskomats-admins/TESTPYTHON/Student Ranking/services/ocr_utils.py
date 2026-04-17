@@ -1286,10 +1286,12 @@ def extract_school_year(image_bytes):
 def extract_semester_from_text(text):
     if not text: return None
     semester_patterns = [
+        r'\b20\d{2}\s*[-]?\s*(1|2|1st|2nd|first|second)\b', # Match 2025-1, 2025 1, 2026 1st, etc.
         r'(1st|2nd|first|second|1|2|I|II|and|lst|ist)\s*(?:sem|semester|grading|sern|sun)\b',
         r'\b(?:sem|semester|grading|sern|sun)\s*[:\-]?\s*(1st|2nd|first|second|1|2|I|II|and|lst|ist)\b',
         r'\b(First|Second|and)\s+Semester\b',
-        r'\b(1|2|and|lst|ist)\s*-\s*(?:Sem|Sern)\b'
+        r'\b(1|2|and|lst|ist)\s*-\s*(?:Sem|Sern)\b',
+        r'(?:sem|semester|grading|sern|sun|school\s+year\s+sem).{0,20}?\b(1|2|I|II|1st|2nd)\b'
     ]
     for pattern in semester_patterns:
         match = re.search(pattern, text, re.IGNORECASE)

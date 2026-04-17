@@ -60,6 +60,21 @@ app.register_blueprint(student_api_bp)
 register_admin_routes(app)
 init_admin_socketio(socketio)
 
+@app.route('/api/student/health-check')
+def health_check_routing_test():
+    return jsonify({"status": "routing_ok", "blueprint": "root", "target": "check-sibling"}), 200
+
+@app.route('/_routes')
+def list_registered_routes():
+    import urllib.parse
+    output = []
+    for rule in app.url_map.iter_rules():
+        methods = ','.join(rule.methods)
+        url = urllib.parse.unquote(str(rule))
+        output.append(f"{rule.endpoint}: {url} [{methods}]")
+    return jsonify(sorted(output))
+
+
 # Track startup completion
 APP_READY = False
 APP_STARTUP_ERROR = None

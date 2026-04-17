@@ -846,7 +846,7 @@ const StudentInfo = () => {
       await performOcrVerification(
         docType, 
         docType === 'SchoolID' ? { front: base64, back: null } : base64, 
-        { schoolName: formData.schoolName, idNumber: formData.schoolIdNumber, yearLevel: formData.yearLevel }, 
+        { schoolName: formData.schoolName, idNumber: formData.schoolIdNumber, yearLevel: formData.yearLevel, semester: formData.semester }, 
         null, 
         true
       );
@@ -886,7 +886,7 @@ const StudentInfo = () => {
         }, 80);
       }
 
-      let { townCity, barangay, schoolName, idNumber, yearLevel, gpa, course } = extraParams;
+      let { townCity, barangay, schoolName, idNumber, yearLevel, gpa, course, semester } = extraParams;
       const targetBarangay = barangay || formData.barangay || formData.streetBarangay || '';
       const { firstName, lastName, middleName } = formData;
       const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
@@ -905,7 +905,8 @@ const StudentInfo = () => {
         videoUrl,
         reqNo,
         docType,
-        targetBarangay
+        targetBarangay,
+        semester || formData.semester
       );
 
       if (!silent && pInterval) clearInterval(pInterval);
@@ -1026,8 +1027,8 @@ const StudentInfo = () => {
       showPromptMessage('⚠️ Please record and upload the COE video first.');
       return;
     }
-    if (!schoolName || !idNumber || !yearLevel || !course) {
-      showPromptMessage('⚠️ Please complete School Name, School ID Number, Year Level, and Course first.');
+    if (!schoolName || !idNumber || !yearLevel || !course || !formData.semester) {
+      showPromptMessage('⚠️ Please complete School Name, School ID Number, Year Level, Course, and Semester first.');
       return;
     }
 
@@ -1042,7 +1043,7 @@ const StudentInfo = () => {
     // ------------------------------
 
     try {
-      const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, idNumber, yearLevel, course }, videoUrl);
+      const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, idNumber, yearLevel, course, semester: formData.semester }, videoUrl);
 
       // --- DIAGNOSTIC TIMER STOP ---
       if (coeTimerRef.current) clearInterval(coeTimerRef.current);
@@ -1096,6 +1097,7 @@ const StudentInfo = () => {
     try {
       const success = await performOcrVerification('Grades', gradesDoc, { 
         schoolName: formData.schoolName, 
+        idNumber: formData.schoolIdNumber,
         yearLevel: formData.yearLevel, 
         gpa: formData.gpa,
         semester: formData.semester 
