@@ -64,6 +64,24 @@ app.register_blueprint(student_api_bp)
 register_admin_routes(app)
 init_admin_socketio(socketio)
 
+@app.route('/_routes')
+def list_routes():
+    import urllib.parse
+    output = []
+    for rule in app.url_map.iter_rules():
+        methods = ','.join(rule.methods)
+        line = urllib.parse.unquote(f"{rule.endpoint:50s} {methods:20s} {rule}")
+        output.append(line)
+    return "<pre>" + "\n".join(sorted(output)) + "</pre>"
+
+@app.route('/api/student/health-check')
+def student_health_check_alt():
+    return jsonify({"status": "active", "service": "applicants-backend", "blueprint_registered": True}), 200
+
+@app.route('/api/student/applications/health-check')
+def sibling_health_check():
+    return jsonify({"status": "listening", "route": "applications_health"}), 200
+
 # Track startup completion
 APP_READY = False
 APP_STARTUP_ERROR = None
@@ -81,6 +99,21 @@ def index():
         'uptime': time.time() - STARTUP_TIME
     }), 200
 
+
+@app.errorhandler(404)
+def handle_404(e):
+    print(f"[404-ERROR] Route Not Found: {request.method} {request.path}", flush=True)
+    return jsonify({"error": "Not Found", "path": request.path, "method": request.method}), 404
+
+@app.route('/api/student/applications/check-sibling', methods=['POST', 'OPTIONS'])
+def check_sibling_root_redirect():
+    # Redirect or proxy to the blueprint route if needed, or just handle it here
+    from blueprints.student_api import check_sibling_restriction
+    return check_sibling_restriction()
+
+@app.route('/api/student/health-check')
+def student_health_check_alt():
+    return jsonify({"status": "active", "service": "applicants-backend", "blueprint_registered": True}), 200
 
 def apply_cors_headers(response, origin):
     """Internal helper to apply standard CORS headers to any response object."""
