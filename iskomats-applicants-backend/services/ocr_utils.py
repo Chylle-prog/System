@@ -1109,57 +1109,57 @@ def verify_video_content(video_data, keywords, expected_address=None, sample_pos
             _cache_set(vid_hash, (False, "Invalid video frame count"))
             return False, "Invalid video frame count"
         
-        # --- SPEED OPTIMIZATION: Sample 2 frames (Start/End) instead of 5 ---
-        # This reduces Video OCR time by ~60%
-        sample_positions = sample_positions or [0.3, 0.75]
-        sample_indices = []
-        for pos in sample_positions:
-            idx = int(frame_count * pos)
-            if idx not in sample_indices:
-                sample_indices.append(idx)
-
-        # Insert cooperative yield for eventlet to prevent blocking other requests
-        try:
-            import eventlet
-            eventlet.sleep(0)
-        except ImportError:
-            pass
-
-        all_ocr_text = ""
-        found_keywords = []
-        addr_ok = False
-
-        # Use even lower resolution for video frames (400px) for non-indigency fast scanning
+        # --- SPEED OPTIMIZATION: Context-aware sampling ---
+        # For non-address documents (COE/Grades/ID), one clear frame is often enough
+        is_address_check = bool(expected_address)
+        sample_positions = sample_positions or ([0.3, 0.75] if is_address_check else [0.55])
+        
         frames_to_ocr = []
-        for sample_idx in sample_indices:
+        for sample_idx_pos in sample_positions:
+            sample_idx = int(frame_count * sample_idx_pos)
             cap.set(cv2.CAP_PROP_POS_FRAMES, sample_idx)
             ret, frame = cap.read()
             if ret and frame is not None:
-                # Preprocess and resize immediately to keep memory usage low
                 processed_frame = _preprocess_frame_for_ocr(frame)
                 h, w = processed_frame.shape[:2]
-                default_width = 400 if not is_address_verification else 520
-                width_limit = max_width or default_width
+                # Lower resolution for video frames (300px) is sufficient for keyword detection
+                width_limit = max_width or (520 if is_address_check else 300)
                 if w > width_limit:
                     scale = width_limit / w
                     processed_frame = cv2.resize(processed_frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
                 frames_to_ocr.append(processed_frame)
         
         cap.release()
-        cap = None # Explicitly release to free memory
+        cap = None
 
         if not frames_to_ocr:
             return False, "Could not capture readable frames from video"
 
-        # Now run OCR on captured frames in parallel
-        from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=min(len(frames_to_ocr), 3)) as executor:
-            # allow_alt_pass=True for thoroughness on documents
-            ocr_results = list(executor.map(lambda f: _ocr_video_frame(f, allow_alt_pass=allow_alt_pass, keywords=keywords), frames_to_ocr))
-
-        all_ocr_text = " ".join(ocr_results)
+        # Sequential OCR with Fast-Exit to save CPU/RAM
         found_keywords = []
         addr_ok = False
+        all_ocr_text = ""
+        
+        for f_idx, f in enumerate(frames_to_ocr):
+            # Use PSM 11 for sparse keyword search - much faster
+            text = _ocr_video_frame(f, allow_alt_pass=allow_alt_pass, keywords=keywords)
+            all_ocr_text += " " + text
+            
+            # Check against keywords immediately
+            _, f_addr_ok, f_keywords, _, _ = _perform_text_matching(
+                text, None, None, None, None, 
+                keywords=keywords, is_indigency=is_address_check
+            )
+            
+            if f_keywords:
+                for k in f_keywords:
+                    if k not in found_keywords: found_keywords.append(k)
+            if f_addr_ok: addr_ok = True
+            
+            # Fast-Exit: If we found what we needed, stop processing other frames
+            if found_keywords and (not is_address_check or addr_ok):
+                print(f"[VIDEO-SPEED] Fast-exit on frame {f_idx+1}/{len(frames_to_ocr)}", flush=True)
+                break
         
         # Check against keywords
         _, addr_ok, found_keywords, _, _ = _perform_text_matching(

@@ -3051,50 +3051,38 @@ def ocr_check():
                 def run_video_check():
                     if not vid_url:
                         if doc_type in ['Indigency', 'Enrollment', 'Grades', 'SchoolID', 'SchoolIDBack']:
-                            return False, "Mandatory supporting video is missing"
-                        return True, "Not provided"
+                            return False, "Supporting video missing"
+                        return True, "No video"
                     
                     if doc_type in ['SchoolID', 'SchoolIDBack']:
+                        print(f"[BREADCRUMB] Verifying ID video reference ({doc_type})", flush=True)
                         return verify_video_reference(vid_url)
                     
-                    # Optimized scan options
-                    scan_options = {
-                        'Indigency': {'sample_positions': [0.5], 'max_width': 450, 'allow_alt_pass': False, 'fallback_text_length': 8},
-                        'Enrollment': {'sample_positions': [0.5], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 12},
-                        'Grades': {'sample_positions': [0.5], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 12},
-                        'SchoolID': {'sample_positions': [0.35, 0.65], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 15},
-                        'SchoolIDBack': {'sample_positions': [0.35, 0.65], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 10},
-                    }
-                    scan_opt = scan_options.get(doc_type, scan_options['Enrollment'])
-
-                    video_keywords_map = {
-                        'Indigency': ['Indigency', 'Certificate', 'Barangay', 'Indigent', 'Residency', 'Clearance'],
-                        'Enrollment': ['Enrollment', 'Enrolment', 'Certificate', 'COE', 'COR', 'Registered', 'Registration', 'Reg', 'Matriculation', 'Assessment', 'Billing', 'Semester', 'Sem'],
-                        'Grades': ['Grades', 'Grade', 'Transcript', 'Record', 'Evaluation', 'Rating', 'Units', 'Credit', 'Sem', 'GPA', 'Report', 'Card', 'Academic', 'TOR', 'Checklist'],
-                    }
-                    
-                    # Optimization: Pass URL directly to avoid redundant downloads
-                    return verify_video_content(
+                    print(f"[BREADCRUMB] Starting Video Scan for {doc_type}", flush=True)
+                    # Use PSM 11 and limited frames for speed
+                    result = verify_video_content(
                         video_data=vid_url,
                         keywords=video_keywords_map.get(doc_type),
                         expected_address=(barangay if doc_type == 'Indigency' else None),
-                        sample_positions=scan_opt['sample_positions'],
-                        max_width=scan_opt['max_width'],
-                        allow_alt_pass=scan_opt['allow_alt_pass'],
-                        fallback_text_length=scan_opt['fallback_text_length']
+                        sample_positions=[0.5], # Single frame for fast verification
+                        max_width=350,
+                        allow_alt_pass=False,
+                        fallback_text_length=12
                     )
+                    print(f"[BREADCRUMB] Video Scan finished for {doc_type}", flush=True)
+                    return result
                 
                 # Connection already released back to pool by context manager above
 
                 def run_ocr_check():
                     if doc_type == 'Enrollment':
                         # Speed Optimization: Forced PSM 6 and 600px width
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=600, prefer_fast_layout=True, crop_percent=0.85)
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=500, prefer_fast_layout=True, crop_percent=0.85)
                         v_t = bool(raw_t and len(raw_t.strip()) > 20)
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'Grades':
-                        # Speed Optimization: Forced PSM 6 and 600px width
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=600, prefer_fast_layout=True, crop_percent=0.85)
+                        # Speed Optimization: Forced PSM 6 and 500px width
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=500, prefer_fast_layout=True, crop_percent=0.85)
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'SchoolIDBack':
