@@ -2162,7 +2162,7 @@ const StudentInfo = () => {
       return;
     }
 
-    if (!signaturePreview && !drawnSignature) {
+    if (!signaturePreview && !drawnSignature && !signatureImage && !formData.applicantSignatureName) {
       showPromptMessage('⚠️ Please either upload a signature photo or draw your signature.');
       return;
     }
@@ -2210,10 +2210,9 @@ const StudentInfo = () => {
       if (photos.id_back  || schoolIdPhotos.back)  submissionData.append('id_back',  photos.id_back  || schoolIdPhotos.back);
       if (photos.face_photo) submissionData.append('face_photo', photos.face_photo);
       
-      if (drawnSignature) {
-        submissionData.append('signature_data', drawnSignature);
-      } else if (signaturePreview) {
-        submissionData.append('signature_data', signaturePreview);
+      const finalSignature = signaturePreview || drawnSignature || signatureImage || formData.applicantSignatureName;
+      if (finalSignature) {
+        submissionData.append('signature_data', finalSignature);
       }
       
       const docKeys = ['mayorCOE', 'mayorGrades', 'mayorIndigency'];

@@ -184,11 +184,14 @@ def gpa_matches_text(raw_text, expected_gpa):
     raw_text_str = str(raw_text or '')
     
     # 1. Find all numbers in the text for absolute fallback
+    # Robust numeric search: handles spaces like "3. 548"
     raw_numbers = []
-    for num_match in re.finditer(r'\b\d+(?:\.\d+)?\b', raw_text_str):
+    # This regex looks for digits possibly separated by a dot and spaces
+    for num_match in re.finditer(r'\b(\d+\s*[\.\,]\s*\d+|\d+)\b', raw_text_str):
         try:
-            val = float(num_match.group(0))
-            # Keep numbers that look like grades
+            val_str = num_match.group(1).replace(' ', '').replace(',', '.')
+            val = float(val_str)
+            # Keep numbers that look like grades/GPAs (1.0-5.0 or 70-100)
             if 1.0 <= val <= 5.0 or 70.0 <= val <= 100.0:
                 raw_numbers.append(val)
         except: continue
@@ -550,85 +553,97 @@ def is_trusted_storage_url(url):
 
 def upload_image_to_storage(image_data, applicant_no, field_name, is_update=False):
     """
-    Unified Cloud Storage Migration (Optimization #8)
-    Uploads raw image bytes to Supabase storage and returns the public URL.
+    Uploads image data to Supabase storage and returns the public URL.
     """
-    if not image_data or not use_storage():
-        return None
-    
-    # Identify bucket and folder
-    bucket_name = os.environ.get('SUPABASE_STORAGE_BUCKET', 'iskomats-files')
-    
-    # Map fields to folders for organization
-    folder_map = {
-        'signature_image_data': 'signatures',
-        'grades_doc': 'grades',
-        'enrollment_certificate_doc': 'coe',
-        'indigency_doc': 'indigency',
-        'id_img_front': 'id_verification',
-        'id_img_back': 'id_verification',
-        'profile_picture': 'profile_pictures'
-    }
-    folder = folder_map.get(field_name, 'others')
-    
-    # Detect MIME type and extension
-    mime_type = 'image/jpeg'
-    ext = 'jpg'
-    
     try:
-        if isinstance(image_data, (bytes, bytearray, memoryview)):
-            raw_bytes = bytes(image_data)
-            if raw_bytes.startswith(b'\x89PNG\r\n\x1a\n'):
-                mime_type = 'image/png'
-                ext = 'png'
-            elif raw_bytes.startswith(b'\xff\xd8'):
-                mime_type = 'image/jpeg'
-                ext = 'jpg'
-        else:
-            # If it's already a URL, return it
-            if isinstance(image_data, str) and image_data.startswith('http'):
-                return image_data
+        from project_config import use_storage, get_storage_bucket, get_supabase_client
+        from services.db_service import get_db, db_bytes
+
+        if not image_data or not use_storage():
             return None
-            
+
+        # Clean folder mapping
+        folder_map = {
+            'signature_image_data': 'signatures',
+            'grades_doc': 'grades',
+            'enrollment_certificate_doc': 'coe',
+            'indigency_doc': 'indigency',
+            'id_img_front': 'id_verification',
+            'id_img_back': 'id_verification',
+            'id_pic': 'id_verification',
+            'profile_picture': 'profile_pictures',
+            'schoolID_photo': 'school_id'
+        }
+
+        folder = folder_map.get(field_name, 'others')
+        bucket_name = get_storage_bucket()
         supabase = get_supabase_client()
         if not supabase:
             print(f"[STORAGE ERROR] Supabase client unavailable for {field_name}", flush=True)
             return None
 
-        # Clean up existing file if this is an update (non-blocking)
+        # Clean up old file if updating
         if is_update:
             try:
                 from services.applicant_document_service import fetch_applicant_document_values
-                with get_db() as conn:
-                    cur = conn.cursor()
-                    row = fetch_applicant_document_values(cur, applicant_no, [field_name])
-                    if row and row.get(field_name):
-                        old_url = str(row[field_name])
-                        if f'/public/{bucket_name}/' in old_url:
-                            old_path = old_url.split(f'/public/{bucket_name}/')[1].strip()
-                            import threading
-                            threading.Thread(target=lambda: supabase.storage.from_(bucket_name).remove([old_path]), daemon=True).start()
-            except Exception as cleanup_err:
-                print(f"[STORAGE CLEANUP] Skip: {cleanup_err}", flush=True)
+                conn = get_db()
+                with conn.cursor() as cur:
+                    existing_results = fetch_applicant_document_values(cur, applicant_no, [field_name])
+                    old_url = existing_results.get(field_name)
+                    
+                    if old_url and isinstance(old_url, str) and old_url.startswith('http'):
+                        if f"{bucket_name}/" in old_url:
+                            old_path = old_url.split(f"{bucket_name}/")[-1]
+                            print(f"[STORAGE] Cleanup: Removing old file {old_path}", flush=True)
+                            supabase.storage.from_(bucket_name).remove([old_path])
+            except Exception as clean_err:
+                print(f"[STORAGE WARNING] Cleanup failed for {field_name}: {clean_err}", flush=True)
 
-        # Upload
-        file_name = f"{applicant_no}_{int(time.time())}.{ext}"
-        file_path = f"{folder}/{file_name}"
+        # Generate unique path: {folder}/{applicant_no}-{field_name}.jpg
+        file_path = f"{folder}/{applicant_no}-{field_name}.jpg"
+        mime_type = "image/jpeg"
         
-        print(f"[STORAGE] Uploading {field_name} for applicant {applicant_no} to {bucket_name}/{file_path}", flush=True)
+        # Ensure we have bytes
+        if isinstance(image_data, str) and image_data.startswith('http'):
+            return image_data # Already a URL
+            
+        data_to_upload = db_bytes(image_data)
+        if not data_to_upload:
+            return None
+            
+        # Optional: refined MIME detection
+        if data_to_upload.startswith(b'\x89PNG\r\n\x1a\n'):
+            mime_type = 'image/png'
+        
+        # Binary data upload
+        print(f"[STORAGE] Uploading {len(data_to_upload)} bytes to {bucket_name}/{file_path}", flush=True)
         res = supabase.storage.from_(bucket_name).upload(
             file_path,
-            bytes(image_data),
-            file_options={'content-type': mime_type, 'upsert': 'true'}
+            bytes(data_to_upload),
+            file_options={'content-type': mime_type, 'upsert': True}
         )
         
         # Public URL structure
-        public_url = supabase.storage.from_(bucket_name).get_public_url(file_path)
-        print(f"[STORAGE SUCCESS] {field_name} (Applicant {applicant_no}) uploaded to: {public_url}", flush=True)
-        return public_url
+        public_url_obj = supabase.storage.from_(bucket_name).get_public_url(file_path)
+        
+        # Handle different SDK return types
+        if hasattr(public_url_obj, 'public_url'):
+            public_url = public_url_obj.public_url
+        elif isinstance(public_url_obj, dict):
+            public_url = public_url_obj.get('public_url')
+        else:
+            public_url = str(public_url_obj)
+        
+        if not public_url or not public_url.startswith('http'):
+            print(f"[STORAGE ERROR] Invalid public URL returned for {field_name}: {public_url}", flush=True)
+            return None
 
+        print(f"[STORAGE] SUCCESS: {field_name} uploaded. URL: {public_url[:50]}...", flush=True)
+        return public_url
     except Exception as e:
-        print(f"[STORAGE ERROR] {field_name} upload failed: {str(e)}", flush=True)
+        print(f"[STORAGE ERROR] Upload failed for field {field_name}: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         return None
 
 
@@ -974,8 +989,8 @@ GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
 GOOGLE_REFRESH_TOKEN = os.environ.get('GOOGLE_REFRESH_TOKEN')
 
-# Database Migration: Ensure auth-related support tables exist
-def ensure_verification_columns():
+# Database Migration: Ensure document storage columns are correct type (TEXT)
+def ensure_applicant_document_storage():
     try:
         conn = get_db_startup()  # Fast-fail: 3 retries × 0.5s to avoid 300s deploy stall
         cur = conn.cursor()
@@ -1005,27 +1020,80 @@ def ensure_verification_columns():
         """)
         
         # Legacy compatibility: keep applicant video columns only while documents still live on applicants.
-        if not get_applicant_document_table(cur):
-            video_cols = {
-                'id_vid_url': 'id_vid_url',
-                'indigency_vid_url': 'indigency_vid_url',
-                'grades_vid_url': 'grades_vid_url',
-                'enrollment_certificate_vid_url': 'enrollment_certificate_vid_url',
-                'schoolid_front_vid_url': 'schoolid_front_vid_url',
-                'schoolid_back_vid_url': 'schoolid_back_vid_url'
+        video_cols = {
+            'id_vid_url': 'id_vid_url',
+            'indigency_vid_url': 'indigency_vid_url',
+            'grades_vid_url': 'grades_vid_url',
+            'enrollment_certificate_vid_url': 'enrollment_certificate_vid_url',
+            'schoolid_front_vid_url': 'schoolid_front_vid_url',
+            'schoolid_back_vid_url': 'schoolid_back_vid_url'
+        }
+        
+        cur.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'applicants' AND column_name IN %s
+        """, (tuple(video_cols.keys()),))
+        existing_vid_cols = [row['column_name'] if isinstance(row, dict) else row[0] for row in cur.fetchall()]
+        
+        for col in video_cols.keys():
+            if col not in existing_vid_cols:
+                print(f"[MIGRATION] Adding column {col} to applicants table", flush=True)
+                cur.execute(f"ALTER TABLE applicants ADD COLUMN {col} TEXT")
+
+        # --- CLOUD STORAGE MIGRATION: Convert BYTEA to TEXT and Ensure Columns Exist ---
+        doc_cols = [
+            'id_img_front', 'id_img_back', 'enrollment_certificate_doc',
+            'grades_doc', 'indigency_doc', 'id_pic', 'signature_image_data',
+            'profile_picture', 'schoolID_photo'
+        ]
+        
+        # 1. Primary Table: applicants
+        cur.execute("""
+            SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_name = 'applicants' AND column_name IN %s
+        """, (tuple(doc_cols),))
+        app_cols_info = {
+            (row['column_name'] if isinstance(row, dict) else row[0]): (row['data_type'] if isinstance(row, dict) else row[1]) 
+            for row in cur.fetchall()
+        }
+        
+        for col in doc_cols:
+            if col in app_cols_info:
+                d_type = app_cols_info[col].lower()
+                if d_type == 'bytea':
+                    print(f"[MIGRATION] EXECUTING: Converting {col} in applicants to TEXT", flush=True)
+                    cur.execute(f"UPDATE applicants SET {col} = NULL WHERE {col} IS NOT NULL")
+                    cur.execute(f"ALTER TABLE applicants ALTER COLUMN {col} TYPE TEXT")
+        
+        # 2. Auxiliary Table (ensure columns and correct type)
+        doc_table = get_applicant_document_table(cur)
+        if doc_table:
+            print(f"[MIGRATION] Checking auxiliary table: {doc_table}", flush=True)
+            cur.execute(f"""
+                SELECT column_name, data_type 
+                FROM information_schema.columns 
+                WHERE table_name = '{doc_table}'
+            """)
+            existing_doc_table_info = {
+                (row['column_name'] if isinstance(row, dict) else row[0]): (row['data_type'] if isinstance(row, dict) else row[1])
+                for row in cur.fetchall()
             }
             
-            cur.execute("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'applicants' AND column_name IN %s
-            """, (tuple(video_cols.keys()),))
-            existing_cols = [row['column_name'] for row in cur.fetchall()]
-            
-            for col in video_cols.keys():
-                if col not in existing_cols:
-                    print(f"[MIGRATION] Adding column {col} to applicants table")
-                    cur.execute(f"ALTER TABLE applicants ADD COLUMN {col} TEXT")
+            for col in doc_cols:
+                if col in existing_doc_table_info:
+                    d_type = existing_doc_table_info[col].lower()
+                    if d_type == 'bytea':
+                        print(f"[MIGRATION] EXECUTING: Converting {col} in {doc_table} to TEXT", flush=True)
+                        cur.execute(f"UPDATE {doc_table} SET {col} = NULL WHERE {col} IS NOT NULL")
+                        cur.execute(f"ALTER TABLE {doc_table} ALTER COLUMN {col} TYPE TEXT")
+                else:
+                    # Column missing in auxiliary table, add it as TEXT
+                    print(f"[MIGRATION] Adding missing column {col} to {doc_table} as TEXT", flush=True)
+                    cur.execute(f"ALTER TABLE {doc_table} ADD COLUMN {col} TEXT")
+        
+        print("[MIGRATION] Document column conversion completed.", flush=True)
             
         conn.commit()
         conn.close()
@@ -1033,9 +1101,9 @@ def ensure_verification_columns():
         print(f"[MIGRATION ERROR] {e}", flush=True)
 
 try:
-    ensure_verification_columns()
+    ensure_applicant_document_storage()
 except Exception as e:
-    print(f"[STARTUP ERROR] Verification migration failed: {e}", flush=True)
+    print(f"[STARTUP ERROR] Applicant storage migration failed: {e}", flush=True)
 
 def generate_password_reset_token(user_no, email):
     """Generate a time-limited password reset token for students."""
@@ -2401,16 +2469,27 @@ def update_profile():
                     blob_bytes = uploaded_file.read()
                 elif field_key in data and data[field_key]:
                     blob_bytes = decode_base64(data[field_key])
+                elif field_key in request.form and request.form[field_key]:
+                    blob_bytes = decode_base64(request.form[field_key])
                 
                 if blob_bytes:
-                    print(f"[UPDATE PROFILE] Moving field {db_col} to storage...", flush=True)
-                    url = upload_image_to_storage(blob_bytes, request.user_no, db_col, is_update=True)
-                    if url:
-                        if db_col == 'profile_picture' and has_profile_picture_column:
-                            add_update(db_col, url)
+                    print(f"[UPDATE PROFILE] Field {field_key} -> {db_col}: {len(blob_bytes)} bytes detected. Cloud? {use_storage()}", flush=True)
+                    try:
+                        url = upload_image_to_storage(blob_bytes, request.user_no, db_col, is_update=True)
+                        if url:
+                            print(f"[UPDATE PROFILE] SUCCESS: {db_col} uploaded to {url[:50]}...", flush=True)
+                            if db_col == 'profile_picture' and has_profile_picture_column:
+                                add_update(db_col, url)
+                            else:
+                                document_updates[db_col] = url
                         else:
-                            document_updates[db_col] = url
-                    else:
+                            print(f"[UPDATE PROFILE] WARNING: upload_image_to_storage returned None for {db_col}. Falling back to BYTEA.", flush=True)
+                            if db_col == 'profile_picture' and has_profile_picture_column:
+                                add_update(db_col, blob_bytes)
+                            else:
+                                document_updates[db_col] = blob_bytes
+                    except Exception as storage_err:
+                        print(f"[UPDATE PROFILE] CRITICAL STORAGE ERROR for {db_col}: {storage_err}", flush=True)
                         if db_col == 'profile_picture' and has_profile_picture_column:
                             add_update(db_col, blob_bytes)
                         else:
@@ -2489,15 +2568,24 @@ def submit_application():
         form_data = request.form
         files_data = request.files
         request_payload = request.get_json(silent=True) or request.form.to_dict(flat=True)
+        
+        # Priority data source: 
+        # 1. request.files (binary)
+        # 2. request.form (base64 strings or fields)
+        # 3. request.json (json fields)
+        def get_unified_val(key):
+            if key in form_data: return form_data[key]
+            if request_payload and key in request_payload: return request_payload[key]
+            return None
 
+        # Re-map skip_verify and req_no
         if request.is_json:
             req_no = request.json.get('req_no')
             skip_verify = str(request.json.get('skip_verification', 'false')).lower() == 'true'
         else:
-            req_no = form_data.get('req_no')
-            # Support both camelCase (frontend) and snake_case (legacy/internal)
-            skip_verify_val = form_data.get('skipVerification') or form_data.get('skip_verification')
-            skip_verify = str(skip_verify_val).lower() == 'true' if skip_verify_val is not None else False
+            req_no = get_unified_val('req_no')
+            skip_v = get_unified_val('skipVerification') or get_unified_val('skip_verification')
+            skip_verify = str(skip_v).lower() == 'true' if skip_v is not None else False
         
         print(f"[SUBMIT] Processing application for User {current_user_id}, Req {req_no} (skip_verify={skip_verify})")
 
@@ -2578,14 +2666,28 @@ def submit_application():
             return jsonify(response_payload), 409
 
         # ── Data Preparation ──────────────────────────────────────────────────
-        id_front_bytes = decode_base64(form_data.get('id_front')) or db_bytes(applicant.get('id_img_front'))
-        id_back_bytes = decode_base64(form_data.get('id_back')) or db_bytes(applicant.get('id_img_back'))
-        face_photo_bytes = decode_base64(form_data.get('face_photo'))
+        def get_doc_bytes(key, db_field):
+            # Try file upload first
+            if key in files_data:
+                return files_data[key].read()
+            # Try base64 from form or json
+            val = get_unified_val(key)
+            if val and isinstance(val, str) and not val.startswith('http') and (val.startswith('data:') or len(val) > 100):
+                return decode_base64(val)
+            # Try existing database value
+            existing = applicant.get(db_field)
+            if existing and not isinstance(existing, str):
+                return db_bytes(existing)
+            return None
+
+        id_front_bytes = get_doc_bytes('id_front', 'id_img_front')
+        id_back_bytes = get_doc_bytes('id_back', 'id_img_back')
+        face_photo_bytes = get_doc_bytes('face_photo', 'face_photo')
         profile_pic_bytes = None
         if has_profile_picture_column:
-            profile_pic_bytes = decode_base64(form_data.get('profile_picture')) or db_bytes(applicant.get('profile_picture'))
+            profile_pic_bytes = get_doc_bytes('profile_picture', 'profile_picture')
         
-        signature_bytes = decode_signature(form_data.get('signature_data')) or decode_signature(applicant.get('signature_image_data'))
+        signature_bytes = get_doc_bytes('signature_data', 'signature_image_data')
 
         doc_keys = ['mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo', 'mayorValidID_photo']
         doc_column_map = {
@@ -2596,12 +2698,8 @@ def submit_application():
         }
 
         doc_bytes = {}
-        for key in doc_keys:
-            uploaded_file = files_data.get(key)
-            if uploaded_file:
-                doc_bytes[key] = uploaded_file.read()
-            else:
-                doc_bytes[key] = decode_base64(form_data.get(key)) or db_bytes(applicant.get(doc_column_map[key]))
+        for k in doc_keys:
+            doc_bytes[k] = get_doc_bytes(k, doc_column_map[k])
 
         # ── OCR & VIDEO VERIFICATION (PARALLEL) ───────────────────────────────
         ocr_ok = True
@@ -2748,15 +2846,25 @@ def submit_application():
 
         for column_name, value in binary_map.items():
             if value is not None:
-                print(f"[SUBMIT] Moving field {column_name} to storage...", flush=True)
-                url = upload_image_to_storage(value, current_user_id, column_name, is_update=False)
-                if url:
-                    if column_name == 'profile_picture' and has_profile_picture_column:
-                        updates.append(f'{column_name} = %s')
-                        params.append(url)
+                print(f"[SUBMIT] Processing {column_name}: {len(value) if isinstance(value, (bytes, bytearray)) else 'scalar'} data. Cloud? {use_storage()}", flush=True)
+                try:
+                    url = upload_image_to_storage(value, current_user_id, column_name, is_update=False)
+                    if url:
+                        print(f"[SUBMIT] SUCCESS: {column_name} uploaded to {url[:50]}...", flush=True)
+                        if column_name == 'profile_picture' and has_profile_picture_column:
+                            updates.append(f'{column_name} = %s')
+                            params.append(url)
+                        else:
+                            document_updates[column_name] = url
                     else:
-                        document_updates[column_name] = url
-                else:
+                        print(f"[SUBMIT] WARNING: upload_image_to_storage returned None for {column_name}. Falling back to BYTEA.", flush=True)
+                        if column_name == 'profile_picture' and has_profile_picture_column:
+                            updates.append(f'{column_name} = %s')
+                            params.append(value)
+                        else:
+                            document_updates[column_name] = value
+                except Exception as storage_err:
+                    print(f"[SUBMIT] CRITICAL STORAGE ERROR for {column_name}: {storage_err}", flush=True)
                     if column_name == 'profile_picture' and has_profile_picture_column:
                         updates.append(f'{column_name} = %s')
                         params.append(value)
@@ -3042,7 +3150,8 @@ def ocr_check():
                         v_t = bool(raw_t and len(raw_t.strip()) > 20)
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text (low text density)'), raw_t, {}
                     elif doc_type == 'Grades':
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=850, prefer_fast_layout=True, crop_percent=1.0)
+                        # High resolution and Auto Layout (PSM 3) required for academic tables
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1200, prefer_fast_layout=False, crop_percent=1.0)
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'SchoolIDBack':

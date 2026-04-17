@@ -824,13 +824,19 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
         
         # Optimize resizing for IDs (Lower = Much Faster)
         h, w = img.shape[:2]
-        # IDs are small and text is clear, 750px is enough for reliable extraction
-        target_w = 750 if not is_indigency else 800 
+        # IDs are small and text is clear. 
+        # Indigency documents (Certificates) need more resolution to capture small letterheads.
+        target_w = 750 if not is_indigency else 1000 
         if w > target_w:
             scale = target_w / w
             img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
     except Exception as e:
         return False, f"Preprocessing error: {str(e)}", "", {'name_ok': False, 'addr_ok': False, 'error': str(e)}
+
+    # Define document-specific keywords to increase confidence
+    doc_keywords = []
+    if is_indigency:
+        doc_keywords = ['Indigency', 'Indigent', 'Resident', 'Residency', 'Certification', 'Certificate', 'Barangay', 'Office', 'Barangay Hall']
 
     best_text = ""
     best_ratio = 0.0
@@ -857,7 +863,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
                     
                 # Combine but check specifically
                 for fast_text in [t1, t2, f"{t1}\n{t2}"]:
-                    name_v, addr_v, found_kw, ratio, meta = _perform_text_matching(fast_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
+                    name_v, addr_v, found_kw, ratio, meta = _perform_text_matching(fast_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
                     if name_v and addr_v:
                         print(f"[OCR PERF] SUCCESS (Early Exit zone1+zone2) after {time.time() - t_start:.2f}s", flush=True)
                         details = {'name_ok': True, 'addr_ok': True, 'name_ratio': ratio, 'keywords': found_kw, 'fast_path': True, 'detected_brgy': meta.get('detected_brgy', [])}
@@ -865,7 +871,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             
             # --- Indigency PASS 1: Zone 1 Early Exit ---
             if is_indigency:
-                name_v_z1, addr_v_z1, _, _, _ = _perform_text_matching(t1, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
+                name_v_z1, addr_v_z1, _, _, _ = _perform_text_matching(t1, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
                 if name_v_z1 and addr_v_z1:
                     print(f"[OCR PERF] SUCCESS (Early Exit Zone 1) after {time.time() - t_start:.2f}s", flush=True)
                     return True, "Verified", t1, {'name_ok': True, 'addr_ok': True, 'fast_path': True}
@@ -886,7 +892,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
                 
                 # SEQUENTIAL ACQUISITION for Early-Exit
                 best_text = best_future.result()
-                name_ok, addr_ok, _, _, _ = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
+                name_ok, addr_ok, found_kw, _, _ = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
                 
                 if not (name_ok and addr_ok):
                     l_t, r_t = left_future.result(), right_future.result()
@@ -906,7 +912,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             clear_heavy_memory()
     
     
-    name_v, addr_v, found_kw, best_ratio, meta = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
+    name_v, addr_v, found_kw, best_ratio, meta = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
     details = {
         'name_ok': name_v,
         'addr_ok': addr_v,
