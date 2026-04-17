@@ -3158,16 +3158,18 @@ def ocr_check():
                 if not v_video:
                     return {'doc': doc_type, 'verified': False, 'message': f"Video verification failed: {msg_video}", 'video_verified': False, 'video_message': msg_video}
                 
-                # Document-Specific Logic
-                # Speed Optimization: Consolidated Metadata Matching
-                # We perform ONE unified check for names, id, school, and level to save on redundant passes.
-                _, _, _, _, meta = _perform_text_matching(
-                    raw, first_name, middle_name, last_name, 
-                    target_id_no=expected_id_no,
-                    target_school_name=school_name,
-                    target_year_level=expected_year_level,
-                    is_indigency=(doc_type == 'Indigency')
-                )
+                # Speed Optimization: Reuse metadata if already computed, else perform unified match
+                if 'meta' in locals() and meta:
+                    # Metadata already contains matching results from verify_id_with_ocr
+                    pass
+                else:
+                    _, _, _, _, meta = _perform_text_matching(
+                        raw, first_name, middle_name, last_name, 
+                        target_id_no=expected_id_no,
+                        target_school_name=school_name,
+                        target_year_level=expected_year_level,
+                        is_indigency=(doc_type == 'Indigency')
+                    )
                 
                 name_details = meta.get('name_details', {})
                 name_ok = name_details.get('first_ok', False) and name_details.get('last_ok', False)

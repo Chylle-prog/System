@@ -230,8 +230,10 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
     
     t1 = time.time()
-    # OEM 1 (LSTM-only) + DPI hint for maximum speed and stability
-    text1 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 1 --dpi 300')
+    # OEM 1 (LSTM) + DPI hint + NO-Dictionary (Faster for alphanumeric IDs)
+    # Disabling system/freq dawg saves significant time spent on language model lookups for numbers/names.
+    config = f'--psm {psm} --oem 1 --dpi 300 -c load_system_dawg=0 -c load_freq_dawg=0 -c load_number_dawg=0'
+    text1 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=config)
     t1_end = time.time()
     
     # Pass in fast mode only if we already have sufficient text density
@@ -853,13 +855,20 @@ def verify_id_with_ocr(image_bytes, expected_first_name=None, expected_middle_na
             print(f"[QUALITY REJECT] {quality_reason}", flush=True)
             return False, f"Image quality issue: {quality_reason}", "", 0.0
         
-        # Optimize resizing for IDs (Lower = Much Faster)
-        # 650px is plenty for clear School IDs and minimizes Tesseract process time.
+        # SPEED DEMON: Use lower target resolution for IDs. (350px for back, 550px for front)
+        # 550px is large enough for Tesseract's LSTM but small enough for sub-5s processing.
         h, w = img.shape[:2]
-        target_w = 650 if not is_indigency else 900 
+        is_back = kwargs.get('is_back', False)
+        target_w = 350 if is_back else (550 if not is_indigency else 900)
+        
         if w > target_w:
             scale = target_w / w
             img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LINEAR)
+            
+        # Subtle sharpening for small text in IDs
+        if not is_indigency:
+            kernel = np.array([[0, -1, 0], [-1, 5,-1], [0, -1, 0]])
+            img = cv2.filter2D(img, -1, kernel)
     except Exception as e:
         return False, f"Preprocessing error: {str(e)}", "", {'name_ok': False, 'addr_ok': False, 'error': str(e)}
 
@@ -868,51 +877,20 @@ def verify_id_with_ocr(image_bytes, expected_first_name=None, expected_middle_na
     if is_indigency:
         doc_keywords = ['Indigency', 'Indigent', 'Resident', 'Residency', 'Certification', 'Certificate', 'Barangay', 'Office', 'Barangay Hall']
 
-    best_text = ""
-    print(f"[OCR] Starting ID Verification (Turbo Zone-Prioritization)...", flush=True)
+    print(f"[OCR] Starting ID Verification (Speed-Demon Single-Pass)...", flush=True)
     
     with OCR_SEMAPHORE:
         try:
             t_start = time.time()
-            h_total, w_total = img.shape[:2]
-
-            # ─── TURBO ID PATH: ZONES FIRST ───
-            # High-speed early exit by scanning just the header regions where 90% of info lives.
-            header_h = int(h_total * 0.40)
-            left_w = int(w_total * 0.55)
             
-            zone_header_left = img[:header_h, :left_w]
-            zone_header_right = img[:header_h, left_w:]
-            
-            from concurrent.futures import ThreadPoolExecutor
-            # Restricted concurrency to 2 workers to avoid CPU/Memory thrashing on low-tier servers
-            with ThreadPoolExecutor(max_workers=2) as zone_executor:
-                f_left = zone_executor.submit(_run_tesseract_on_image, zone_header_left, psm=6, skip_pass2=True)
-                f_right = zone_executor.submit(_run_tesseract_on_image, zone_header_right, psm=6, skip_pass2=True)
-                
-                txt_left = f_left.result()
-                txt_right = f_right.result()
-                
-                # Immediate check of combined zones
-                combined_zones_text = f"{txt_left}\n{txt_right}"
-                name_ok, addr_ok, found_kw, ratio, meta = _perform_text_matching(combined_zones_text, target_f, target_m, target_l, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
-                
-                if name_ok and addr_ok:
-                    print(f"[OCR PERF] ID SUCCESS (Turbo Zones) in {time.time() - t_start:.2f}s", flush=True)
-                    return True, "Verified", combined_zones_text, {'name_ok': True, 'addr_ok': True, 'name_ratio': ratio, 'keywords': found_kw, 'fast_path': True, 'detected_brgy': meta.get('detected_brgy', [])}
-
-            # ─── FALLBACK: FULL IMAGE SCAN ───
-            # If zones failed, run a fast full scan as a catch-all.
-            print(f"[OCR] Zones insufficient. Running full scan fallback...", flush=True)
+            # --- SINGLE PASS PSM 6 ---
+            # Much faster than PSM 3 for structured ID layouts and skips most of the noise analysis.
             best_text = _run_tesseract_on_image(img, psm=6, skip_pass2=True)
-            best_text = f"{combined_zones_text}\n---\n{best_text}"
-
+            
             t_end = time.time()
-            print(f"[OCR PERF] Total ID OCR time: {t_end - t_start:.3f}s", flush=True)
+            print(f"[OCR PERF] Unified ID OCR completed in {t_end - t_start:.2f}s", flush=True)
         except Exception as e:
-            print(f"[OCR] Verification error: {e}", flush=True)
-            import traceback
-            traceback.print_exc()
+            print(f"[OCR] Unified scan error: {e}", flush=True)
             best_text = ""
         finally:
             clear_heavy_memory()
@@ -984,7 +962,7 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
         # Optimization: Standardize width to 850px for non-identity documents
         # This is a sweet spot for TORs/COEs to maintain readability while being fast.
         effective_max_width = 850 if is_id_back else max_width
-        if is_id_back: effective_max_width = 950 # ID backs need more detail for small stickers
+        if is_id_back: effective_max_width = 500 # Reduced from 950 to 500 for Speed-Demon mode
         
         if w > effective_max_width:
             scale = effective_max_width / w
