@@ -531,7 +531,7 @@ def is_trusted_storage_url(url):
     return parsed_url.netloc.lower().endswith('.supabase.co')
 
 
-def upload_image_to_storage(applicant_no, column_name, image_bytes):
+def upload_image_to_storage(applicant_no, column_name, image_bytes, folder=None):
     """
     Uploads a document image to Supabase storage and returns the public URL.
     Returns None if storage is disabled or upload fails.
@@ -543,22 +543,42 @@ def upload_image_to_storage(applicant_no, column_name, image_bytes):
     if not supabase:
         print(f"[STORAGE] Supabase client skipped for {column_name}", flush=True)
         return None
-        
+    
+    # 1. Resolve bytes if it's a memoryview or other wrapper
+    raw_bytes = image_bytes if isinstance(image_bytes, (bytes, bytearray)) else bytes(image_bytes)
+    
+    # 2. Determine MIME and folder
+    # mapping if folder not provided
+    if not folder:
+        storage_columns = {
+            'indigency_doc': 'indigency',
+            'grades_doc': 'grades',
+            'enrollment_certificate_doc': 'coe',
+            'id_img_front': 'id_front',
+            'id_img_back': 'id_back',
+            'id_pic': 'face_photo',
+            'schoolID_photo': 'school_id',
+            'signature_image_data': 'signatures'
+        }
+        folder = storage_columns.get(column_name, 'misc')
+
+    mime = 'image/jpeg'
+    ext = 'jpg'
+    if column_name == 'signature_image_data' or raw_bytes[:4] == b'\x89PNG':
+        mime = 'image/png'
+        ext = 'png'
+    
     # Standardize bucket and path
     bucket = get_storage_bucket('document_images')
-    # Generate a unique path to avoid collisions and caching issues
     timestamp = int(time.time())
-    file_path = f"{applicant_no}/{column_name}_{timestamp}.jpg"
+    file_path = f"{folder}/{applicant_no}_{column_name}_{timestamp}.{ext}"
     
     try:
-        # Resolve bytes if it's a memoryview or other wrapper
-        raw_bytes = image_bytes if isinstance(image_bytes, (bytes, bytearray)) else bytes(image_bytes)
-        
         # Upload to Supabase
         supabase.storage.from_(bucket).upload(
             file_path, 
             raw_bytes,
-            file_options={"content-type": "image/jpeg", "upsert": "true"}
+            file_options={"content-type": mime, "upsert": "true"}
         )
         
         # Get and return public URL
@@ -2334,8 +2354,7 @@ def update_profile():
                 uploaded_file = files_data.get(field_key)
                 if uploaded_file:
                     blob_bytes = uploaded_file.read()
-                    if field_key == 'signature_data' and blob_bytes and fernet:
-                        blob_bytes = fernet.encrypt(blob_bytes)
+                    # SIGNATURE MIGRATION: No more encryption, raw bytes needed for storage
                     if db_col == 'profile_picture' and has_profile_picture_column:
                         add_update(db_col, blob_bytes)
                     elif db_col != 'profile_picture':
@@ -2350,8 +2369,7 @@ def update_profile():
                 if field_key in data and data[field_key]:
                     blob_bytes = decode_base64(data[field_key])
                     if blob_bytes is not None:
-                        if field_key == 'signature_data' and blob_bytes and fernet:
-                            blob_bytes = fernet.encrypt(blob_bytes)
+                        # SIGNATURE MIGRATION: No more encryption, raw bytes needed for storage
                         if db_col == 'profile_picture' and has_profile_picture_column:
                             add_update(db_col, blob_bytes)
                         elif db_col != 'profile_picture':
@@ -2685,7 +2703,7 @@ def submit_application():
             'id_img_front': id_front_bytes,
             'id_img_back': id_back_bytes,
             'profile_picture': profile_pic_bytes,
-            'signature_image_data': fernet.encrypt(signature_bytes) if fernet and signature_bytes else None,
+            'signature_image_data': signature_bytes,
             'enrollment_certificate_doc': doc_bytes['mayorCOE_photo'],
             'grades_doc': doc_bytes['mayorGrades_photo'],
             'indigency_doc': doc_bytes['mayorIndigency_photo'],
