@@ -3014,10 +3014,15 @@ def ocr_check():
         # ── Worker Function for Parallel Processing ──
         def process_doc(doc_type, doc_param, db_val):
             try:
-                # Use standard doc bytes for provided parameters, fallback to DB only for Indigency/ID
-                # Support both newly uploaded base64 data and existing Supabase URLs
+                t_job_start = time.perf_counter()
+                
+                # ─── 1. RESOLVE IMAGE BYTES ───
+                t_resolve_start = time.perf_counter()
                 doc_bytes = resolve_verification_image_bytes(doc_param) if doc_param else (resolve_verification_image_bytes(db_val) if db_val else None)
                 
+                res_time = time.perf_counter() - t_resolve_start
+                print(f"[PERF] [{doc_type}] Image resolved in {res_time:.4f}s", flush=True)
+
                 if not doc_bytes: 
                     return None
 

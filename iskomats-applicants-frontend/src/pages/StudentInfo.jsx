@@ -1285,7 +1285,7 @@ const StudentInfo = () => {
     googleFontsSheet.href = 'https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap';
     document.head.appendChild(googleFontsSheet);
 
-    const compressImage = (file, maxWidth = 1200, quality = 0.7) => {
+    const compressImage = (file, maxWidth = 800, quality = 0.75) => {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);

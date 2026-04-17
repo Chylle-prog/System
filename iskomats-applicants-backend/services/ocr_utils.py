@@ -2080,7 +2080,8 @@ def fetch_video_bytes_from_url(url):
             return None, err
             
         content = b""
-        for chunk in response.iter_content(chunk_size=8192):
+        # Optimization: Use larger chunk size for fewer context switches during download
+        for chunk in response.iter_content(chunk_size=1024 * 1024): 
             content += chunk
             if len(content) > 50 * 1024 * 1024:
                 return None, "Video exceeds 50MB safety limit (stream)"
