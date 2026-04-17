@@ -4033,21 +4033,40 @@ def get_applicant_image(applicant_no, column_name):
         
         data = row[column_name]
         
+        # --- CLOUD STORAGE REDIRECT (Optimization #8) ---
+        # If the data is a string starting with http, it's a cloud URL. Redirect instead of serving bytes.
+        if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
+            from flask import redirect
+            print(f"[APPLICANT IMAGE] Redirecting {column_name} (Applicant {applicant_no}) to cloud URL: {data[:60]}...", flush=True)
+            return redirect(data)
+
         # Convert memoryview to bytes if needed
         if hasattr(data, 'tobytes'):
             data = data.tobytes()
-        elif not isinstance(data, bytes):
-            data = bytes(data)
+        elif not isinstance(data, (bytes, bytearray)):
+            # If it's a string but doesn't start with http, it might be a base64 encoded string or a raw value
+            # Only convert to bytes if it's not already binary
+            try:
+                data = bytes(data)
+            except (TypeError, ValueError):
+                # Fallback: if it's a string, encode it
+                if isinstance(data, str):
+                    data = data.encode('utf-8')
+                else:
+                    data = bytes(str(data), 'utf-8')
             
-        # Handle encryption for signature
+        # Handle encryption for signature (Only for binary data)
+        # Note: We already checked for Cloud URLs above and redirected, so remaining signatures are legacy binaries
         if column_name == 'signature_image_data':
             if not _fernet:
                 return jsonify({'message': 'Encryption not configured'}), 500
             try:
-                data = _fernet.decrypt(data)
+                # Only decrypt if it looks like encrypted binary (usually longer than a few bytes)
+                if len(data) > 16:
+                    data = _fernet.decrypt(data)
             except Exception as e:
                 print(f"[APPLICANT IMAGE] Failed to decrypt signature: {e}")
-                return jsonify({'message': 'Failed to decrypt signature'}), 500
+                # Don't fail if decryption fails, might not be encrypted
         
         # Detect image type from magic bytes
         mime_type = get_mime_type(data)

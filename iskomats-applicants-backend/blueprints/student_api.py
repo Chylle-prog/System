@@ -574,18 +574,26 @@ def upload_image_to_storage(applicant_no, column_name, image_bytes, folder=None)
     file_path = f"{folder}/{applicant_no}_{column_name}_{timestamp}.{ext}"
     
     try:
+        print(f"[STORAGE] Uploading {column_name} to {bucket}/{file_path} (MIME: {mime})...", flush=True)
         # Upload to Supabase
-        supabase.storage.from_(bucket).upload(
+        res = supabase.storage.from_(bucket).upload(
             file_path, 
             raw_bytes,
             file_options={"content-type": mime, "upsert": "true"}
         )
         
+        # Check for error in response if any (some client versions return dict with error)
+        if isinstance(res, dict) and res.get('error'):
+            print(f"[STORAGE FAIL] Response error for {column_name}: {res['error']}", flush=True)
+            return None
+
         # Get and return public URL
         url_res = supabase.storage.from_(bucket).get_public_url(file_path)
+        print(f"[STORAGE SUCCESS] {column_name} -> {url_res}", flush=True)
         return url_res
     except Exception as e:
-        print(f"[STORAGE ERROR] {column_name}: {e}", flush=True)
+        print(f"[STORAGE ERROR] {column_name} upload failed: {e}", flush=True)
+        traceback.print_exc()
         return None
 
 def resolve_verification_image_bytes(image_data):
