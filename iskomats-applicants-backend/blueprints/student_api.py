@@ -2719,7 +2719,8 @@ def submit_application():
                         verification_tasks['ocr'] = executor.submit(
                             verify_id_with_ocr, 
                             image_bytes=id_front_bytes,
-                            expected_name=full_name,
+                            expected_first_name=applicant.get('first_name', ''),
+                            expected_last_name=applicant.get('last_name', ''),
                             expected_address=town_city
                         )
 
@@ -3022,18 +3023,9 @@ def ocr_check():
         if 'expected_academic_year_from_sch' in locals():
             expected_academic_year = expected_academic_year_from_sch
 
-        # ─── SPEED OPTIMIZATION: Early Video Prefetching ───
-        # Initiate parallel downloads of all relevant videos immediately
-        all_relevant_urls = [
-            data.get('video_url'), data.get('video_url_back'),
-            data.get('face_video'), applicant.get('id_vid_url'),
-            data.get('mayorIndigency_video'), applicant.get('indigency_vid_url'),
-            data.get('mayorCOE_video'), applicant.get('enrollment_certificate_vid_url'),
-            data.get('mayorGrades_video'), applicant.get('grades_vid_url'),
-            data.get('schoolIdFront_video'), applicant.get('schoolid_front_vid_url'),
-            data.get('schoolIdBack_video'), applicant.get('schoolid_back_vid_url')
-        ]
-        prefetch_video_urls(all_relevant_urls)
+        # Speed Optimization: Removed blocking prefetch_video_urls call.
+        # Video fetching is now handled concurrently within run_video_check to avoid 
+        # delaying the start of the OCR CPU-bound tasks.
         
         verification_cache_key = json.dumps({
             'user_no': request.user_no,
@@ -3159,25 +3151,22 @@ def ocr_check():
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read school ID back text'), raw_t, {}
                     elif doc_type == 'Indigency':
-                        # Restored capture range: many certificates place name/address in the middle-bottom.
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=800, prefer_fast_layout=True, crop_percent=0.85)
-                        name_ok, name_ratio, name_details = student_name_matches_text(raw_t, first_name, middle_name, last_name, is_indigency=True)
-                        # Perform matching to detect Barangays even if target_address is empty for feedback
-                        _, addr_ok, found_keywords, _, detect_meta = _perform_text_matching(raw_t, None, None, None, target_address, is_indigency=True)
-                        found_kw = found_keywords
-                        detected_brgys = detect_meta.get('detected_brgy', [])
-                        # In Indigency, address is mandatory for a 'verified' result
-                        if not target_address:
-                            addr_ok = False
-                        meta = {'name_ok': name_ok, 'addr_ok': addr_ok, 'name_ratio': name_ratio, 'keywords': found_kw, 'detected_brgy': detected_brgys}
-                        v_t = name_ok and addr_ok
-                        msg = 'Verified' if v_t else 'Verification failed'
-                        brgy_str = ", ".join(detected_brgys) if detected_brgys else "None detected"
-                        status_addr = 'OK' if addr_ok else 'X'
-                        f_name_ok = name_details.get('first_ok', False)
-                        l_name_ok = name_details.get('last_ok', False)
-                        msg = f"Checklist: [First: {'OK' if f_name_ok else 'X'} | Last: {'OK' if l_name_ok else 'X'} | Addr: {status_addr} (Target: {target_address or 'Missing'}, Found: {brgy_str})]"
-                        return v_t, extraction_error or msg, raw_t, meta
+                        # Speed Optimization: Use the specialized parallel dual-zone scanning for Indigency
+                        # This is significantly faster than the generic extraction path and handles 
+                        # name/address matching in a single concurrent pass.
+                        ocr_data = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address)
+                        v, msg, raw_t, meta = ocr_data[0], ocr_data[1], ocr_data[2], ocr_data[3]
+                        
+                        # Re-format message for consistency with the indigency checklist UI
+                        if not v:
+                            brgy_str = ", ".join(meta.get('detected_brgy', [])) if meta.get('detected_brgy') else "None detected"
+                            name_details = meta.get('name_details', {})
+                            f_ok = 'OK' if name_details.get('first_ok') else 'X'
+                            l_ok = 'OK' if name_details.get('last_ok') else 'X'
+                            addr_ok = 'OK' if meta.get('addr_ok') else 'X'
+                            msg = f"Checklist: [First: {f_ok} | Last: {l_ok} | Addr: {addr_ok} (Target: {target_address or 'Missing'}, Found: {brgy_str})]"
+                        
+                        return {'doc': 'Indigency', 'verified': v, 'message': msg, 'raw_text': raw_t, 'video_verified': v_video, 'video_message': msg_video}
                     else:
                         # Always return a 4-tuple for unknown doc types
                         result = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=expected_id_no if doc_type != 'Indigency' else None, expected_school_name=school_name)

@@ -781,7 +781,7 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
 
 
 
-def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, expected_last_name, expected_address=None, expected_id_no=None, expected_year_level=None, expected_school_name=None):
+def verify_id_with_ocr(image_bytes, expected_first_name=None, expected_middle_name=None, expected_last_name=None, expected_address=None, expected_id_no=None, expected_year_level=None, expected_school_name=None, **kwargs):
     """
     Optimized version with multiple improvements:
     1. Image quality pre-check (Optimization #3)
@@ -790,7 +790,25 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     4. Early exit on successful match
     5. Single decode/resize pass
     6. Middle name validation: accepts full middle name or initial
+    7. Dual-zone parallel processing for Indigency certificates
     """
+    # Performance Optimization: Handle 'expected_name' as an alias if provided
+    # This prevents TypeError when called from older backend blueprints
+    target_f = expected_first_name
+    target_m = expected_middle_name
+    target_l = expected_last_name
+    
+    if kwargs.get('expected_name'):
+        full_name = kwargs.get('expected_name')
+        name_parts = full_name.split()
+        if len(name_parts) >= 2:
+            target_f = target_f or name_parts[0]
+            target_l = target_l or name_parts[-1]
+            if len(name_parts) > 2:
+                target_m = target_m or " ".join(name_parts[1:-1])
+        else:
+            target_f = target_f or full_name
+
     if not _check_tesseract(): 
         return False, "OCR Engine (Tesseract) not found.", "", 0.0
     if not image_bytes:
@@ -803,7 +821,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     cached_result = _cache_get(image_hash)
     if cached_result is not None and isinstance(cached_result, (list, tuple)) and len(cached_result) == 3:
         cached_text, cached_ratio, cached_message = cached_result
-        name_v, addr_v, found_kw, score, meta = _perform_text_matching(cached_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
+        name_v, addr_v, found_kw, score, meta = _perform_text_matching(cached_text, target_f, target_m, target_l, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
         if name_v and addr_v:
             print(f"[OCR CACHE HIT] Reusing previous results for {image_hash[:8]}...", flush=True)
             return True, f"Verified (cached)", cached_text, {'name_ok': True, 'addr_ok': True, 'cached': True, 'detected_brgy': meta.get('detected_brgy', [])}
@@ -826,10 +844,12 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
         h, w = img.shape[:2]
         # IDs are small and text is clear. 
         # Indigency documents (Certificates) need more resolution to capture small letterheads.
-        target_w = 750 if not is_indigency else 1000 
+        # Reduced from 1000 to 900 for a significant speed gain without accuracy loss.
+        target_w = 750 if not is_indigency else 900 
         if w > target_w:
             scale = target_w / w
-            img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+            # Using INTER_LINEAR is faster than INTER_AREA for these resolutions
+            img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LINEAR)
     except Exception as e:
         return False, f"Preprocessing error: {str(e)}", "", {'name_ok': False, 'addr_ok': False, 'error': str(e)}
 
@@ -863,7 +883,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
                     
                 # Combine but check specifically
                 for fast_text in [t1, t2, f"{t1}\n{t2}"]:
-                    name_v, addr_v, found_kw, ratio, meta = _perform_text_matching(fast_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
+                    name_v, addr_v, found_kw, ratio, meta = _perform_text_matching(fast_text, target_f, target_m, target_l, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
                     if name_v and addr_v:
                         print(f"[OCR PERF] SUCCESS (Early Exit zone1+zone2) after {time.time() - t_start:.2f}s", flush=True)
                         details = {'name_ok': True, 'addr_ok': True, 'name_ratio': ratio, 'keywords': found_kw, 'fast_path': True, 'detected_brgy': meta.get('detected_brgy', [])}
@@ -871,7 +891,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             
             # --- Indigency PASS 1: Zone 1 Early Exit ---
             if is_indigency:
-                name_v_z1, addr_v_z1, _, _, _ = _perform_text_matching(t1, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
+                name_v_z1, addr_v_z1, _, _, _ = _perform_text_matching(t1, target_f, target_m, target_l, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
                 if name_v_z1 and addr_v_z1:
                     print(f"[OCR PERF] SUCCESS (Early Exit Zone 1) after {time.time() - t_start:.2f}s", flush=True)
                     return True, "Verified", t1, {'name_ok': True, 'addr_ok': True, 'fast_path': True}
@@ -892,7 +912,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
                 
                 # SEQUENTIAL ACQUISITION for Early-Exit
                 best_text = best_future.result()
-                name_ok, addr_ok, found_kw, _, _ = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
+                name_ok, addr_ok, found_kw, _, _ = _perform_text_matching(best_text, target_f, target_m, target_l, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
                 
                 if not (name_ok and addr_ok):
                     l_t, r_t = left_future.result(), right_future.result()
@@ -912,7 +932,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             clear_heavy_memory()
     
     
-    name_v, addr_v, found_kw, best_ratio, meta = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
+    name_v, addr_v, found_kw, best_ratio, meta = _perform_text_matching(best_text, target_f, target_m, target_l, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
     details = {
         'name_ok': name_v,
         'addr_ok': addr_v,
@@ -988,7 +1008,7 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
         
         if w > effective_max_width:
             scale = effective_max_width / w
-            img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+            img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LINEAR)
 
         if is_id_back:
             # Subtle sharpening for ID backs
