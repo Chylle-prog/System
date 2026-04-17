@@ -3133,7 +3133,7 @@ def ocr_check():
                             
                             msg = f"Checklist: [{' | '.join(checklist)}]"
                         
-                        return {'doc': doc_type, 'verified': v, 'message': msg, 'raw_text': raw_t, 'video_verified': v_video, 'video_message': msg_video}
+                        return v, msg, raw_t, meta
                     else:
                         # Always return a 4-tuple for unknown doc types
                         result = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=expected_id_no, expected_school_name=school_name)

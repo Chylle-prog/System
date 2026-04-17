@@ -825,9 +825,9 @@ def verify_id_with_ocr(image_bytes, expected_first_name=None, expected_middle_na
             target_f = target_f or full_name
 
     if not _check_tesseract(): 
-        return False, "OCR Engine (Tesseract) not found.", "", 0.0
+        return False, "OCR Engine (Tesseract) not found.", "", {}
     if not image_bytes:
-        return False, "No image data provided.", "", 0.0
+        return False, "No image data provided.", "", {}
     
     is_indigency = (expected_address is not None)
     
@@ -848,12 +848,12 @@ def verify_id_with_ocr(image_bytes, expected_first_name=None, expected_middle_na
         del nparr
         
         if img is None: 
-            return False, "Invalid image format", "", 0.0
+            return False, "Invalid image format", "", {}
         
         is_good, quality_reason = assess_image_quality(img)
         if not is_good:
             print(f"[QUALITY REJECT] {quality_reason}", flush=True)
-            return False, f"Image quality issue: {quality_reason}", "", 0.0
+            return False, f"Image quality issue: {quality_reason}", "", {}
         
         # SPEED DEMON: Use lower target resolution for IDs. (350px for back, 550px for front)
         # 550px is large enough for Tesseract's LSTM but small enough for sub-5s processing.
@@ -962,7 +962,7 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
         # Optimization: Standardize width to 850px for non-identity documents
         # This is a sweet spot for TORs/COEs to maintain readability while being fast.
         effective_max_width = 850 if is_id_back else max_width
-        if is_id_back: effective_max_width = 500 # Reduced from 950 to 500 for Speed-Demon mode
+        if is_id_back: effective_max_width = 750 # Increased from 500 to 750 for better Year detection
         
         if w > effective_max_width:
             scale = effective_max_width / w
@@ -1231,19 +1231,22 @@ def extract_school_year_from_text(text):
 
     # Normalize delimiters: replace weird hyphens/dots/underscores between digits with a standard dash
     # e.g. "2024.2025", "2024/2025" or "2024_2025" -> "2024-2025"
-    text = re.sub(r'(20\d{2})[\s\.\,_\~\/\-\|\[\]\(\)\:\;]+(20\d{2})', r'\1-\2', text)
+    text = re.sub(r'(20\d{2})[\s\.\,_\~\/\-\|\[\]\(\)\:\;]+(20\d[0-9SszBGeGQ])', r'\1-\2', text)
     
     # Fix corruptions in chunks that look like years (4 chars starting with something like 2)
     def fix_year_chunk(m):
         chunk = m.group(0)
         fixed = apply_hygiene(chunk)
         # Verify it's now a plausible year (2020-2035)
-        if re.match(r'20[23][0-9]', fixed):
+        if re.match(r'20[23][0-9]|19[89][0-9]', fixed):
             return fixed
         return chunk
 
     # Pass 1: Fix standalone 4-char year-like strings
-    clean_text = re.sub(r'[2ZSI][0OQoDU][2ZSI][0-9SszBGeGQ\d]', fix_year_chunk, text)
+    # This handles ZOZ4, 2O25, etc.
+    clean_text = re.sub(r'\b[2ZSI][0OQoDU][2ZSI][0-9SszBGeGQ\d]\b', fix_year_chunk, text)
+    # Also handle short variants like 24-25
+    clean_text = re.sub(r'\b[2ZSI][0-9SszBGeGQ\d][\s\-\/\\–—]+[2ZSI][0-9SszBGeGQ\d]\b', fix_year_chunk, clean_text)
     
     # 2. Label Normalization
     clean_text = re.sub(r'\bS\.?Y\.?\s*[:\-\/]?\s*', 'school year ', clean_text, flags=re.IGNORECASE)
