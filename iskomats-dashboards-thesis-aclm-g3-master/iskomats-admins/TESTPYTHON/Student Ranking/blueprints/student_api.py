@@ -188,13 +188,12 @@ def gpa_matches_text(raw_text, expected_gpa):
     for num_match in re.finditer(r'\b\d+(?:\.\d+)?\b', raw_text_str):
         try:
             val = float(num_match.group(0))
-            # Only keep realistic GPA/Grade numbers to avoid noise
+            # Keep numbers that look like grades
             if 1.0 <= val <= 5.0 or 70.0 <= val <= 100.0:
                 raw_numbers.append(val)
         except: continue
 
-    # 2. Specifically look for GPA labels (more robust regex)
-    # Handles "GPA: 3.25", "G.P.A. 3.25", "GPA 3.25", etc.
+    # 2. Specifically look for GPA labels
     gpa_candidates = []
     gpa_patterns = [
         r'g\s*\.?\s*p\s*\.?\s*a\s*\.?\s*[:=]?\s*(\d+(?:\.\d+)?)',
@@ -207,30 +206,37 @@ def gpa_matches_text(raw_text, expected_gpa):
     for pattern in gpa_patterns:
         for labeled_match in re.finditer(pattern, raw_text_str, re.IGNORECASE):
             try:
-                # Handle common OCR misreads within the captured value (e.g., 3.S481 instead of 3.5481)
-                clean_num = labeled_match.group(1).lower().replace('s', '5').replace('o', '0').replace('z', '2').replace('b', '8').replace('g', '9').replace('i', '1').replace('l', '1')
+                clean_num = labeled_match.group(1).lower().replace('s', '5').replace('o', '0').replace('z', '2')
                 gpa_candidates.append(float(clean_num))
             except: continue
 
-    # Priority 1: Numbers following a GPA label
-    # Priority 2: Any number in the text that looks like a GPA (1.0 - 5.0 or 70 - 100)
-    candidate_numbers = gpa_candidates + [num for num in raw_numbers if (1.0 <= num <= 5.0 or 70.0 <= num <= 100.0) and num not in gpa_candidates]
+    candidate_numbers = gpa_candidates + [num for num in raw_numbers if num not in gpa_candidates]
 
-    # Standard tolerance for general matching
+    def normalize_to_percent(val):
+        """Converts point scales (1.0-5.0) to approx percentage (70-100)."""
+        if 70.0 <= val <= 100.0: return val
+        # 4.0 Scale (e.g. DLSL, US Schools) where 4.0 is 100%
+        if 1.0 <= val <= 4.0:
+            return 75.0 + (val - 1.0) * 8.0
+        # 5.0 Scale (e.g. UP, most PH public) where 1.0 is 100%, 3.0 is passing, 5.0 is failing
+        if 1.0 <= val <= 5.0:
+            return 100.0 - (val - 1.0) * 12.5
+        return val
+
+    exp_norm = normalize_to_percent(expected_value)
+
     for number in candidate_numbers:
-        diff = abs(number - expected_value)
+        # Check standard close match
+        if abs(number - expected_value) <= 0.08:
+            return True, number, candidate_numbers
         
-        # Scenario A: Very close match (within 0.02) - Always pass
-        if diff <= 0.025:
-            return True, number, candidate_numbers
-            
-        # Scenario B: "Flexible last digit"
-        if diff <= 0.08:
-            return True, number, candidate_numbers
-            
-        # Scenario C: Larger tolerance (0.12) if it's explicitly labeled as GPA
-        if number in gpa_candidates and diff <= 0.12:
-            return True, number, candidate_numbers
+        # Check cross-scale match
+        num_norm = normalize_to_percent(number)
+        
+        # If both normalized to percentage, check if doc >= expected (Student claimed less than they have)
+        if 70 <= num_norm <= 100 and 70 <= exp_norm <= 100:
+            if num_norm >= (exp_norm - 2.0): 
+                return True, number, candidate_numbers
 
     return False, None, candidate_numbers
 
@@ -529,68 +535,89 @@ def is_trusted_storage_url(url):
             pass
 
     return parsed_url.netloc.lower().endswith('.supabase.co')
-
-
-def upload_image_to_storage(file_bytes, folder, file_name, content_type='image/jpeg', applicant_no=None, db_col=None):
+def upload_image_to_storage(image_data, applicant_no, field_name, is_update=False):
     """
-    Upload an image to the Supabase 'document_images' bucket and return its public URL.
-    Includes automatic cleanup of old files if applicant_no and db_col are provided.
+    Unified Cloud Storage Migration (Optimization #8)
+    Uploads raw image bytes to Supabase storage and returns the public URL.
     """
-    if not file_bytes:
-        print("[STORAGE] No file bytes provided for upload.", flush=True)
-        return None
-        
-    supabase = get_supabase_client()
-    if not supabase:
-        print("[STORAGE ERROR] Supabase client not available. Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.", flush=True)
+    if not image_data:
         return None
     
-    bucket = "document_images"
+    # Identify bucket and folder
+    bucket_name = os.environ.get('SUPABASE_STORAGE_BUCKET', 'iskomats-files')
     
-    # 1. CLEANUP OLD FILE (Non-blocking background thread)
-    if applicant_no and db_col:
-        def _cleanup_task(u_id, col):
-            try:
-                with get_db() as conn:
-                    cur = conn.cursor()
-                    row = fetch_applicant_document_values(cur, u_id, [col])
-                    if row and row.get(col):
-                        old_url = str(row[col])
-                        if '/public/document_images/' in old_url:
-                            # Extract path
-                            old_path = old_url.split('/public/document_images/')[1].strip()
-                            supabase.storage.from_(bucket).remove([old_path])
-                            print(f"[STORAGE] Cleaned up old file: {old_path}", flush=True)
-            except Exception as e:
-                print(f"[STORAGE] Cleanup error: {e}", flush=True)
-        
-        threading.Thread(target=_cleanup_task, args=(applicant_no, db_col), daemon=True).start()
-
-    # 2. UPLOAD NEW FILE
-    file_path = f"{folder}/{file_name}"
+    # Map fields to folders for organization
+    folder_map = {
+        'signature_image_data': 'signatures',
+        'grades_doc': 'grades',
+        'enrollment_certificate_doc': 'coe',
+        'indigency_doc': 'indigency',
+        'id_img_front': 'id_verification',
+        'id_img_back': 'id_verification',
+        'profile_picture': 'profile_pictures'
+    }
+    folder = folder_map.get(field_name, 'others')
+    
+    # Detect MIME type and extension
+    mime_type = 'image/jpeg'
+    ext = 'jpg'
     
     try:
-        print(f"[STORAGE] Attempting upload to bucket '{bucket}': {file_path} ({len(file_bytes)} bytes)", flush=True)
-        res = supabase.storage.from_(bucket).upload(
-            file_path,
-            file_bytes,
-            file_options={
-                'content-type': content_type,
-                'upsert': 'true'
-            }
-        )
-        
-        # Check if upload was successful (handling various supabase-py version return types)
-        if hasattr(res, 'error') and res.error:
-            print(f"[STORAGE ERROR] Supabase returned error: {res.error}", flush=True)
+        if isinstance(image_data, (bytes, bytearray, memoryview)):
+            raw_bytes = bytes(image_data)
+            if raw_bytes.startswith(b'\x89PNG\r\n\x1a\n'):
+                mime_type = 'image/png'
+                ext = 'png'
+            elif raw_bytes.startswith(b'\xff\xd8'):
+                mime_type = 'image/jpeg'
+                ext = 'jpg'
+        else:
+            # If it's already a URL, return it
+            if isinstance(image_data, str) and image_data.startswith('http'):
+                return image_data
             return None
             
-        public_url = supabase.storage.from_(bucket).get_public_url(file_path)
-        print(f"[STORAGE SUCCESS] Uploaded: {public_url}", flush=True)
+        supabase = get_supabase_client()
+        if not supabase:
+            print(f"[STORAGE ERROR] Supabase client unavailable for {field_name}", flush=True)
+            return None
+
+        # Clean up existing file if this is an update (non-blocking)
+        if is_update:
+            try:
+                from services.applicant_document_service import fetch_applicant_document_values
+                with get_db() as conn:
+                    cur = conn.cursor()
+                    row = fetch_applicant_document_values(cur, applicant_no, [field_name])
+                    if row and row.get(field_name):
+                        old_url = str(row[field_name])
+                        if f'/public/{bucket_name}/' in old_url:
+                            old_path = old_url.split(f'/public/{bucket_name}/')[1].strip()
+                            import threading
+                            threading.Thread(target=lambda: supabase.storage.from_(bucket_name).remove([old_path]), daemon=True).start()
+            except Exception as cleanup_err:
+                print(f"[STORAGE CLEANUP] Skip: {cleanup_err}", flush=True)
+
+        # Upload
+        file_name = f"{applicant_no}_{int(time.time())}.{ext}"
+        file_path = f"{folder}/{file_name}"
+        
+        print(f"[STORAGE] Uploading {field_name} for applicant {applicant_no} to {bucket_name}/{file_path}", flush=True)
+        res = supabase.storage.from_(bucket_name).upload(
+            file_path,
+            bytes(image_data),
+            file_options={'content-type': mime_type, 'upsert': 'true'}
+        )
+        
+        # Public URL structure
+        public_url = supabase.storage.from_(bucket_name).get_public_url(file_path)
+        print(f"[STORAGE SUCCESS] {field_name} (Applicant {applicant_no}) uploaded to: {public_url}", flush=True)
         return public_url
+
     except Exception as e:
-        print(f"[STORAGE ERROR] Exception during upload: {str(e)}", flush=True)
+        print(f"[STORAGE ERROR] {field_name} upload failed: {str(e)}", flush=True)
         return None
+ne
 
 
 def resolve_verification_image_bytes(image_data):
@@ -2384,59 +2411,31 @@ def update_profile():
             }
 
             for field_key, db_col in binary_fields.items():
+                blob_bytes = None
                 uploaded_file = files_data.get(field_key)
                 if uploaded_file:
                     blob_bytes = uploaded_file.read()
-                    # SIGNATURE MIGRATION: No more encryption, we want raw bytes for storage bucket
-                    if db_col == 'profile_picture' and has_profile_picture_column:
-                        add_update(db_col, blob_bytes)
-                    elif db_col != 'profile_picture':
-                        document_updates[db_col] = blob_bytes
-                    continue
-
-                if field_key in data and data[field_key]:
+                elif field_key in data and data[field_key]:
                     blob_bytes = decode_base64(data[field_key])
-                    if blob_bytes is not None:
-                        # SIGNATURE MIGRATION: No more encryption, we want raw bytes for storage bucket
-                        if db_col == 'profile_picture' and has_profile_picture_column:
+                
+                if blob_bytes:
+                    print(f"[UPDATE PROFILE] Processing field {db_col}...", flush=True)
+                    # 1. Profile Picture: Special handling if it's inline
+                    if db_col == 'profile_picture' and has_profile_picture_column:
+                        # Even profile pictures should be in storage now for consistency
+                        url = upload_image_to_storage(blob_bytes, request.user_no, db_col, is_update=True)
+                        if url:
+                            add_update(db_col, url)
+                        else:
                             add_update(db_col, blob_bytes)
-                        elif db_col != 'profile_picture':
-                            storage_columns = {
-                                'indigency_doc': 'indigency',
-                                'grades_doc': 'grades',
-                                'enrollment_certificate_doc': 'coe',
-                                'id_img_front': 'id_front',
-                                'id_img_back': 'id_back',
-                                'id_pic': 'face_photo',
-                                'schoolID_photo': 'school_id',
-                                'signature_image_data': 'signatures'
-                            }
-                            
-                            if db_col in storage_columns:
-                                folder = storage_columns[db_col]
-                                timestamp = int(time.time())
-                                
-                                # Handle signature specifically (always PNG from signature pad)
-                                mime = 'image/jpeg'
-                                ext = 'jpg'
-                                if db_col == 'signature_image_data':
-                                    mime = 'image/png'
-                                    ext = 'png'
-                                elif blob_bytes[:4] == b'\x89PNG':
-                                    mime = 'image/png'
-                                    ext = 'png'
-                                    
-                                file_name = f"{request.user_no}_{db_col}_{timestamp}.{ext}"
-                                
-                                print(f"[UPDATE PROFILE] Moving field {db_col} to storage...", flush=True)
-                                url = upload_image_to_storage(blob_bytes, folder, file_name, mime, applicant_no=request.user_no, db_col=db_col)
-                                if url:
-                                    document_updates[db_col] = url
-                                else:
-                                    print(f"[UPDATE PROFILE WARNING] Storage upload failed for {db_col}, falling back to bytes.", flush=True)
-                                    document_updates[db_col] = blob_bytes
-                            else:
-                                document_updates[db_col] = blob_bytes
+                    else:
+                        # 2. General Documents: Always use storage
+                        url = upload_image_to_storage(blob_bytes, request.user_no, db_col, is_update=True)
+                        if url:
+                            document_updates[db_col] = url
+                        else:
+                            print(f"[UPDATE PROFILE WARNING] Storage upload failed for {db_col}, falling back to bytes.", flush=True)
+                            document_updates[db_col] = blob_bytes
 
             if not updates and not document_updates:
                 return jsonify({'message': 'No changes provided'}), 200
@@ -2786,24 +2785,9 @@ def submit_application():
                         'signature_image_data': 'signatures'
                     }
                     
-                    if column_name in storage_columns and isinstance(value, (bytes, bytearray)):
-                        folder = storage_columns[column_name]
-                        timestamp = int(time.time())
-                        
-                        # Handle signature specifically (always PNG from signature pad)
-                        mime = 'image/jpeg'
-                        ext = 'jpg'
-                        if column_name == 'signature_image_data':
-                            mime = 'image/png'
-                            ext = 'png'
-                        elif value[:4] == b'\x89PNG':
-                            mime = 'image/png'
-                            ext = 'png'
-                            
-                        file_name = f"{current_user_id}_{column_name}_{timestamp}.{ext}"
-                        
+                    if column_name in storage_columns:
                         print(f"[SUBMIT] Moving field {column_name} to storage...", flush=True)
-                        url = upload_image_to_storage(value, folder, file_name, mime, applicant_no=current_user_id, db_col=column_name)
+                        url = upload_image_to_storage(value, current_user_id, column_name, is_update=False)
                         if url:
                             document_updates[column_name] = url
                         else:

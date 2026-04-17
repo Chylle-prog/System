@@ -1692,9 +1692,6 @@ const StudentInfo = () => {
           setGradesStatus('');
         }
         
-        if (type !== 'face_photo') {
-          applicantAPI.updateProfile({ [type]: compressedBase64 }).catch(console.error);
-        }
         setHasInteracted(true);
       });
     }
@@ -1826,8 +1823,6 @@ const StudentInfo = () => {
             if (name === 'mayorIndigency_photo') { setOcrVerified(null); setOcrStatus(''); preScanDocument('Indigency', compressedBase64); }
             else if (name === 'mayorCOE_photo') { setCoeVerified(null); setCoeStatus(''); preScanDocument('Enrollment', compressedBase64); }
             else if (name === 'mayorGrades_photo') { setGradesVerified(null); setGradesStatus(''); preScanDocument('Grades', compressedBase64); }
-            
-            applicantAPI.updateProfile({ [name]: compressedBase64 }).catch(console.error);
           });
         } else {
           // Non-image or compression skipped
@@ -1844,7 +1839,6 @@ const StudentInfo = () => {
         window.compressImage(file).then(compressedBase64 => {
           setFormData(prev => ({ ...prev, [name]: compressedBase64 }));
           if (name === 'mayorValidID_photo') setValidIdPreview(compressedBase64);
-          applicantAPI.updateProfile({ [name]: compressedBase64 }).catch(console.error);
         });
       } else {
         setFormData(prev => ({ ...prev, [name]: file }));
@@ -1864,8 +1858,6 @@ const StudentInfo = () => {
       window.compressImage(file, 400).then(compressedBase64 => { 
         setIdPicturePreview(compressedBase64);
         setFormData(prev => ({ ...prev, profile_picture: compressedBase64 }));
-        
-        applicantAPI.updateProfile({ profile_picture: compressedBase64 }).catch(console.error);
       });
     }
   };
@@ -1884,10 +1876,6 @@ const StudentInfo = () => {
         const photoKey = side === 'front' ? 'id_front' : 'id_back';
         setPhotos(prev => ({ ...prev, [photoKey]: compressedBase64 }));
         
-        applicantAPI.updateProfile({ 
-          [photoKey]: compressedBase64
-        }).catch(console.error);
-
         // Pre-scan front ID in background
         if (side === 'front') preScanDocument('SchoolID', compressedBase64);
       });
@@ -1908,8 +1896,6 @@ const StudentInfo = () => {
     if (file && window.compressImage) {
       window.compressImage(file).then(compressedBase64 => {
         setSignaturePreview(compressedBase64);
-        
-        applicantAPI.updateProfile({ signature_data: compressedBase64 }).catch(console.error);
       });
     }
   };
@@ -1940,7 +1926,7 @@ const StudentInfo = () => {
       setShowSignaturePad(false);
       setSignatureVerified(null); // Reset verification when updated
       setSignatureStatus('');
-      applicantAPI.updateProfile({ signature_data: dataUrl }).catch(console.error);
+      setSignatureImage(dataUrl);
     } else {
       showPromptMessage('⚠️ Please provide a signature first.');
     }

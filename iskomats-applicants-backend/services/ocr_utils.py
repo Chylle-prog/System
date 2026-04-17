@@ -158,9 +158,10 @@ def decode_base64(data):
     return data
 
 # ─── Image preprocessing & quality assessment (Optimization #3) ──────────────
-_MAX_OCR_WIDTH = _perf['image_max_width']
-_MAX_VIDEO_OCR_WIDTH = 600
-_MAX_FACE_WIDTH = 512
+# Image dimensions for OCR (Lower = Faster)
+_MAX_OCR_WIDTH = 800 
+_MAX_VIDEO_OCR_WIDTH = 450
+_MAX_FACE_WIDTH = 400
 
 # Module-level CLAHE instance (reused across all OCR calls instead of recreating each time)
 _CLAHE = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
@@ -224,16 +225,16 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     if img is None: return ""
     results = []
     
-    # Pass 1: Raw Grayscale (Best for modern LSTM Tesseract, handles white-on-black perfectly)
+    # Pass 1: Raw Grayscale (Best for modern LSTM Tesseract)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
     
     t1 = time.time()
+    # OEM 1 (LSTM-only) is significantly faster than Legacy mode
     text1 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 1')
     t1_end = time.time()
     
-    # Pass in fast mode only conditionally
-    if skip_pass2 and len(text1.strip()) > 8:
-        print(f"[OCR PERF] Pass1 ({psm}) SUCCESS: {t1_end - t1:.3f}s", flush=True)
+    # Pass in fast mode only if we already have sufficient text density
+    if skip_pass2 and len(text1.strip()) > 10:
         return text1.strip()
         
     results.append(text1.strip())
@@ -821,9 +822,10 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             print(f"[QUALITY REJECT] {quality_reason}", flush=True)
             return False, f"Image quality issue: {quality_reason}", "", 0.0
         
-        # Handle resizing dynamically. Avoid crushing large A4 sheets (Enrollment/Grades).
+        # Optimize resizing for IDs (Lower = Much Faster)
         h, w = img.shape[:2]
-        target_w = _MAX_OCR_WIDTH 
+        # IDs are small and text is clear, 750px is enough for reliable extraction
+        target_w = 750 if not is_indigency else 800 
         if w > target_w:
             scale = target_w / w
             img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
@@ -857,38 +859,43 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
                 for fast_text in [t1, t2, f"{t1}\n{t2}"]:
                     name_v, addr_v, found_kw, ratio, meta = _perform_text_matching(fast_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
                     if name_v and addr_v:
-                        print(f"[OCR PERF] Indigency Dual-Zone Success!", flush=True)
+                        print(f"[OCR PERF] SUCCESS (Early Exit zone1+zone2) after {time.time() - t_start:.2f}s", flush=True)
                         details = {'name_ok': True, 'addr_ok': True, 'name_ratio': ratio, 'keywords': found_kw, 'fast_path': True, 'detected_brgy': meta.get('detected_brgy', [])}
                         return True, "Verified", fast_text, details
             
+            # --- Indigency PASS 1: Zone 1 Early Exit ---
+            if is_indigency:
+                name_v_z1, addr_v_z1, _, _, _ = _perform_text_matching(t1, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
+                if name_v_z1 and addr_v_z1:
+                    print(f"[OCR PERF] SUCCESS (Early Exit Zone 1) after {time.time() - t_start:.2f}s", flush=True)
+                    return True, "Verified", t1, {'name_ok': True, 'addr_ok': True, 'fast_path': True}
+            
             # -- PARALLELIZE SUB-SCANS (Optimization #6) ---
-            # Instead of sequential scans, run best_text and columns together.
-            # Note: We use max_workers=3 and the global semaphore will handle throttling.
             from concurrent.futures import ThreadPoolExecutor
             with ThreadPoolExecutor(max_workers=3) as sub_executor:
-                # 1. Start full image scan (usually PSM 3)
-                primary_psm = 6 if is_indigency else 3
-                best_future = sub_executor.submit(_run_tesseract_on_image, img, primary_psm)
+                # 1. Start full image scan (PSM 6 is MUCH faster for ID blocks)
+                best_future = sub_executor.submit(_run_tesseract_on_image, img, psm=6, skip_pass2=True)
                 
-                # 2. Start column sub-scans (Fix for Sample 1 layout)
+                # 2. Start column sub-scans
                 h_total, w_total = img.shape[:2]
-                header_h = int(h_total * 0.35)
-                left_w = int(w_total * 0.55) # Slightly wider left to catch ID colons
+                header_h, left_w = int(h_total * 0.35), int(w_total * 0.52)
+                l_c, r_c = img[:header_h, :left_w], img[:header_h, left_w:]
                 
-                left_col = img[:header_h, :left_w]
-                right_col = img[:header_h, left_w:]
+                left_future = sub_executor.submit(_run_tesseract_on_image, l_c, psm=6, skip_pass2=True)
+                right_future = sub_executor.submit(_run_tesseract_on_image, r_c, psm=6, skip_pass2=True)
                 
-                left_future = sub_executor.submit(_run_tesseract_on_image, left_col, psm=6, skip_pass2=True)
-                right_future = sub_executor.submit(_run_tesseract_on_image, right_col, psm=6, skip_pass2=True)
-                
-                # Wait for all to finish
+                # SEQUENTIAL ACQUISITION for Early-Exit
                 best_text = best_future.result()
-                left_text = left_future.result()
-                right_text = right_future.result()
+                name_ok, addr_ok, _, _, _ = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, None, is_indigency)
+                
+                if not (name_ok and addr_ok):
+                    l_t, r_t = left_future.result(), right_future.result()
+                    best_text = f"{best_text}\n---\n{l_t}\n---\n{r_t}"
+                else:
+                    print(f"[OCR PERF] ID SUCCESS (Fast Path) in {time.time() - t_start:.2f}s", flush=True)
 
-            # Combine all text sources
-            all_source_texts = [best_text, left_text, right_text]
-            best_text = "\n---\n".join([t for t in all_source_texts if t.strip()])
+
+            # t_end moved up into early-exit block or handled naturally
 
             t_end = time.time()
             print(f"[OCR PERF] Total ID OCR time (w/ Column-Split): {t_end - t_start:.3f}s", flush=True)
@@ -997,8 +1004,9 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
             
             # Optimization: Skip header pass if keywords already found in primary text.
             needs_header = len(text.strip()) < 150
-            if any(k.lower() in text.lower() for k in ['indigency', 'barangay', 'certificate', 'enrollment', 'grades']):
-                needs_header = False
+            # ALWAYS perform a brief header scan for academic/indigency docs to catch the school/office name
+            # Previously this was skipped if 'grades' etc were found, but that caused us to miss the logo area.
+            needs_header = True
 
             if not is_id_back and needs_header:
                 header_height = max(int(img.shape[0] * 0.28), 1)

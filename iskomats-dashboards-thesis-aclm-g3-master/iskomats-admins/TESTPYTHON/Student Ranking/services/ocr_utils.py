@@ -981,9 +981,8 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
             text = _run_tesseract_on_image(img, psm=primary_psm, skip_pass2=skip_pass2)
             
             # Optimization: Skip header pass if keywords already found in primary text.
-            needs_header = len(text.strip()) < 150
-            if any(k.lower() in text.lower() for k in ['indigency', 'barangay', 'certificate', 'enrollment', 'grades']):
-                needs_header = False
+            # CRITICAL: For academic docs (Grades/COE), ALWAYS scan header to catch school logo/name
+            needs_header = True
 
             if not is_id_back and needs_header:
                 if not prefer_fast_layout:
