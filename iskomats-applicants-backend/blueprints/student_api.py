@@ -3088,14 +3088,13 @@ def ocr_check():
 
                 def run_ocr_check():
                     if doc_type == 'Enrollment':
-                        # Use PSM 6 but keep width at 800 which was stable before
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=800, prefer_fast_layout=True, crop_percent=0.90)
-                        # Stricter volume check: if a document has < 20 characters, it's likely not an enrollment form
+                        # Speed Optimization: Forced PSM 6 and 600px width
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=600, prefer_fast_layout=True, crop_percent=0.85)
                         v_t = bool(raw_t and len(raw_t.strip()) > 20)
-                        return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text (low text density)'), raw_t, {}
+                        return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'Grades':
-                        # High resolution and Auto Layout (PSM 3) required for academic tables
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1200, prefer_fast_layout=False, crop_percent=1.0)
+                        # Speed Optimization: Forced PSM 6 and 600px width
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=600, prefer_fast_layout=True, crop_percent=0.85)
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
                     elif doc_type == 'SchoolIDBack':

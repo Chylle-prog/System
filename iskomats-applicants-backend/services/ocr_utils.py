@@ -976,27 +976,13 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
 
     with OCR_SEMAPHORE:
         try:
-            # Performance Optimization: Parallel Dual-Zone Scanning for large documents
-            # Standard forms (COE, Grades) benefit significantly from processing segments in parallel.
-            if prefer_fast_layout and not is_id_back:
-                h_total = img.shape[0]
-                z1 = img[:int(h_total * 0.55), :]
-                z2 = img[int(h_total * 0.45):, :]
-                
-                print(f"[OCR] Running parallel dual-zone extraction for large document...", flush=True)
-                from concurrent.futures import ThreadPoolExecutor
-                with ThreadPoolExecutor(max_workers=2) as t_executor:
-                    f1 = t_executor.submit(_run_tesseract_on_image, z1, psm=6, skip_pass2=True)
-                    f2 = t_executor.submit(_run_tesseract_on_image, z2, psm=6, skip_pass2=True)
-                    text = f"{f1.result()}\n{f2.result()}"
+            # Speed Optimization: Single-pass PSM 6 for fast documents (COE/Grades)
+            # Dual-zone scanning was found to cause memory thrashing on small server instances.
+            if prefer_fast_layout:
+                print(f"[OCR] Running single-pass PSM 6 extraction for document...", flush=True)
+                text = _run_tesseract_on_image(img, psm=6, skip_pass2=True)
             else:
-                if prefer_fast_layout:
-                    primary_psm = 6
-                    skip_pass2 = True
-                else:
-                    primary_psm = 3
-                    skip_pass2 = False
-                text = _run_tesseract_on_image(img, psm=primary_psm, skip_pass2=skip_pass2)
+                text = _run_tesseract_on_image(img, psm=3, skip_pass2=False)
             
             # Optimization: Skip header pass if keywords already found in primary text.
             needs_header = len(text.strip()) < 150

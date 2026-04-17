@@ -1033,8 +1033,21 @@ const StudentInfo = () => {
 
     setLoadingMessage({ title: 'Scanning COE', message: 'Verifying your Certificate of Enrollment and Video Content...' });
     
+    // --- DIAGNOSTIC TIMER START ---
+    setCoeScanTime(0);
+    const start = Date.now();
+    coeTimerRef.current = setInterval(() => {
+      setCoeScanTime(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+    // ------------------------------
+
     try {
       const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, idNumber, yearLevel, course }, videoUrl);
+
+      // --- DIAGNOSTIC TIMER STOP ---
+      if (coeTimerRef.current) clearInterval(coeTimerRef.current);
+      // -----------------------------
+
       if (success) {
         showPromptMessage('✅ COE verified successfully!');
       } else {
@@ -1042,6 +1055,7 @@ const StudentInfo = () => {
       }
     } catch (err) {
       console.error('Scan Error:', err);
+      if (coeTimerRef.current) clearInterval(coeTimerRef.current);
     }
   };
 
@@ -1071,6 +1085,14 @@ const StudentInfo = () => {
 
     setLoadingMessage({ title: 'Scanning Grades', message: 'Verifying your Grades document and Video Content...' });
     
+    // --- DIAGNOSTIC TIMER START ---
+    setGradesScanTime(0);
+    const start = Date.now();
+    gradesTimerRef.current = setInterval(() => {
+      setGradesScanTime(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+    // ------------------------------
+
     try {
       const success = await performOcrVerification('Grades', gradesDoc, { 
         schoolName: formData.schoolName, 
@@ -1078,6 +1100,10 @@ const StudentInfo = () => {
         gpa: formData.gpa,
         semester: formData.semester 
       }, videoUrl);
+
+      // --- DIAGNOSTIC TIMER STOP ---
+      if (gradesTimerRef.current) clearInterval(gradesTimerRef.current);
+      // -----------------------------
       if (success) {
         showPromptMessage('✅ Grades verified successfully!');
       } else {
