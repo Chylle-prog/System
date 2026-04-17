@@ -12,6 +12,7 @@ import multiprocessing as mp
 import re
 import difflib
 import hashlib
+import requests
 import eventlet.tpool
 import eventlet.semaphore
 from collections import OrderedDict
@@ -1146,12 +1147,22 @@ def verify_video_content(video_data, keywords, expected_address=None, sample_pos
     # Determine if this is an address-based verification (indigency only)
     is_address_verification = expected_address is not None
     
-    tmp_path = None
     if is_url:
-        tmp_path = video_data
-        print(f"[VIDEO STREAM] Streaming frames directly from URL to save bandwidth...", flush=True)
-    else:
-        # Save to temp file because VideoCapture needs a path
+        # Speed Optimization: ALWAYS download URL videos to a local temp file.
+        # cv2.VideoCapture over a network URL is EXTREMELY slow due to network-seek overhead.
+        # Performance gained: Drops from 7+ minutes down to seconds.
+        print(f"[VIDEO FETCH] Pre-downloading video for local processing: {video_data[:60]}...", flush=True)
+        video_bytes, fetch_err = fetch_video_bytes_from_url(video_data)
+        if not video_bytes:
+            print(f"[VIDEO FETCH ERROR] {fetch_err}", flush=True)
+            return False, f"Could not access video: {fetch_err}"
+        
+        # Now treat it as bytes
+        video_data = video_bytes
+        is_url = False
+        
+    if not is_url:
+        # Save to temp file because VideoCapture needs a local path for efficient frame seeking
         with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
             tmp.write(video_data)
             tmp_path = tmp.name
@@ -2071,3 +2082,70 @@ def clear_heavy_memory():
         libc.malloc_trim(0)
     except:
         pass
+
+
+# ─── Video Fetching & Caching ──────────────────────────────────────────────
+_VIDEO_FETCH_CACHE = OrderedDict()
+_VIDEO_FETCH_CACHE_SIZE_LIMIT = 24
+_VIDEO_FETCH_CACHE_TTL_SECONDS = 600
+
+def fetch_video_bytes_from_url(url):
+    """
+    Downloads video bytes with a 50MB safety limit to prevent OOM.
+    Caches results to avoid redundant network calls.
+    """
+    if not url or not isinstance(url, str) or not url.startswith('http'):
+        return None, "Invalid URL"
+    
+    normalized_url = url.strip()
+    
+    # Check cache
+    now = time.time()
+    if normalized_url in _VIDEO_FETCH_CACHE:
+        cached = _VIDEO_FETCH_CACHE[normalized_url]
+        if now - cached['timestamp'] < _VIDEO_FETCH_CACHE_TTL_SECONDS:
+            if cached['content']:
+                return cached['content'], None
+            return None, cached['error']
+    
+    try:
+        # Use streaming to check content length without loading everything into memory
+        headers = {'User-Agent': 'Mozilla/5.0 (ISKOMATS-Verification-Bot/2.0)'}
+        
+        # Attach Supabase Service Role credentials if available
+        supabase_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
+        if supabase_key and 'supabase.co' in normalized_url:
+            headers['apikey'] = supabase_key
+            headers['Authorization'] = f"Bearer {supabase_key}"
+            if '/object/public/' in normalized_url:
+                normalized_url = normalized_url.replace('/object/public/', '/object/authenticated/')
+
+        response = requests.get(normalized_url, headers=headers, stream=True, timeout=15)
+        
+        if response.status_code != 200:
+            err = f"HTTP {response.status_code}"
+            _VIDEO_FETCH_CACHE[normalized_url] = {'content': None, 'error': err, 'timestamp': now}
+            return None, err
+            
+        # 50MB Safety Limit
+        content_length = response.headers.get('Content-Length')
+        if content_length and int(content_length) > 50 * 1024 * 1024:
+            err = "Video exceeds 50MB safety limit"
+            _VIDEO_FETCH_CACHE[normalized_url] = {'content': None, 'error': err, 'timestamp': now}
+            return None, err
+            
+        content = b""
+        for chunk in response.iter_content(chunk_size=8192):
+            content += chunk
+            if len(content) > 50 * 1024 * 1024:
+                return None, "Video exceeds 50MB safety limit (stream)"
+        
+        _VIDEO_FETCH_CACHE[normalized_url] = {'content': content, 'error': None, 'timestamp': now}
+        while len(_VIDEO_FETCH_CACHE) > _VIDEO_FETCH_CACHE_SIZE_LIMIT:
+            _VIDEO_FETCH_CACHE.popitem(last=False)
+            
+        return content, None
+    except Exception as e:
+        err = str(e)
+        _VIDEO_FETCH_CACHE[normalized_url] = {'content': None, 'error': err, 'timestamp': now}
+        return None, err

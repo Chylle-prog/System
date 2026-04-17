@@ -47,7 +47,8 @@ from services.ocr_utils import (
     student_name_matches_text,
     course_matches_text,
     student_id_no_matches_text,
-    year_level_matches_text
+    year_level_matches_text,
+    fetch_video_bytes_from_url
 )
 from services.school_utils import build_school_name_variants, school_name_matches_text
 from services.notification_service import create_notification, fetch_google_access_token, send_verification_email
@@ -431,59 +432,6 @@ def prefetch_video_urls(urls, max_workers=4):
                 future.result()
             except Exception:
                 pass
-
-def fetch_video_bytes_from_url(url):
-    if not url: return None, "No URL provided"
-    if not isinstance(url, str) or not url.startswith('http'):
-        return None, f"Invalid URL: {url}"
-
-    normalized_url = url.strip()
-    cached = _get_cached_video_fetch(normalized_url)
-    if cached is not None:
-        content, error = cached
-        if content is not None:
-            print(f"[VIDEO FETCH CACHE] Reusing {len(content)} bytes for: {normalized_url}", flush=True)
-        return content, error
-        
-    try:
-        print(f"[VIDEO FETCH] Fetching video from: {normalized_url}", flush=True)
-        # Use requests with a reasonable timeout and user-agent
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ISKOMATS-Verification-Bot/1.0'
-        }
-        
-        url_to_fetch = normalized_url
-        # If it's a Supabase URL, try to use the Service Role Key for authentication
-        # (This allows fetching from private buckets)
-        supabase_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
-        if supabase_key and 'supabase.co' in url:
-            if '/object/public/' in url:
-                url_to_fetch = url.replace('/object/public/', '/object/authenticated/')
-                
-            headers['apikey'] = supabase_key
-            headers['Authorization'] = f"Bearer {supabase_key}"
-            print("[VIDEO FETCH] Attaching Supabase Service Role credentials to authenticated endpoint...", flush=True)
-
-        response = requests.get(url_to_fetch, headers=headers, timeout=15)
-        
-        if response.status_code == 200:
-            content = response.content
-            print(f"[VIDEO FETCH] Successfully fetched {len(content)} bytes", flush=True)
-            _cache_video_fetch(normalized_url, content, None)
-            return content, None
-        else:
-            err_msg = f"HTTP {response.status_code}"
-            print(f"[VIDEO FETCH] {err_msg} for {url_to_fetch}", flush=True)
-            _cache_video_fetch(normalized_url, None, err_msg)
-            return None, err_msg
-    except requests.exceptions.Timeout:
-        _cache_video_fetch(normalized_url, None, "Connection timeout")
-        return None, "Connection timeout"
-    except Exception as e:
-        error_message = str(e)
-        _cache_video_fetch(normalized_url, None, error_message)
-        return None, error_message
-
 
 def verify_video_reference(url):
     if not url:
@@ -3057,12 +3005,11 @@ def ocr_check():
             'school_back_video': str(data.get('schoolIdBack_video') or applicant.get('schoolid_back_vid_url') or '').strip(),
         }, sort_keys=True)
         
-        # NOTE: High-level cache is disabled temporarily to ensure user tests are fresh
-        # while we fix the OCR logic issues.
-        # cached_verification = _get_cached_verification_result(verification_cache_key)
-        # if cached_verification is not None:
-        #     print(f"[OCR CACHE HIT] Reusing cached verification for user={request.user_no}, target={target_doc or 'all'}", flush=True)
-        #     return jsonify(cached_verification)
+        # High-level cache is now re-enabled following the latency optimizations.
+        cached_verification = _get_cached_verification_result(verification_cache_key)
+        if cached_verification is not None:
+            print(f"[OCR CACHE HIT] Reusing cached verification for user={request.user_no}, target={target_doc or 'all'}", flush=True)
+            return jsonify(cached_verification)
 
         # ── Worker Function for Parallel Processing ──
         def process_doc(doc_type, doc_param, db_val):
