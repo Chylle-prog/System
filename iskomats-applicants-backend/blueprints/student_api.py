@@ -3087,15 +3087,6 @@ def ocr_check():
         return jsonify({'verified': False, 'message': str(e)}), 500
 
 
-@student_api_bp.route('/applications/<int:scholarship_no>', methods=['DELETE'])" | ".join([f"{r['doc']}: {r['message']}" for r in results])
-        response_payload = {'verified': overall_verified, 'message': final_msg, 'results': results}
-        _cache_verification_result(verification_cache_key, response_payload)
-        return jsonify(response_payload)
-
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({'verified': False, 'message': f'Server error: {str(e)}'}), 500
-
 
 @student_api_bp.route('/applications/<int:scholarship_no>', methods=['DELETE'])
 @token_required
