@@ -498,8 +498,19 @@ def db_bytes(val):
 def decode_base64(s):
     if not s: return None
     if isinstance(s, bytes): return s
-    if ',' in s: s = s.split(',')[1]
-    return base64.b64decode(s)
+    try:
+        if ',' in s: s = s.split(',')[1]
+        s = s.strip().replace(' ', '+')
+        
+        # Add missing padding
+        missing_padding = len(s) % 4
+        if missing_padding:
+            s += '=' * (4 - missing_padding)
+            
+        return base64.b64decode(s)
+    except Exception as e:
+        print(f"[BASE64 ERROR] Failed to decode: {str(e)}")
+        return None
 
 def clear_heavy_memory():
     gc.collect()
