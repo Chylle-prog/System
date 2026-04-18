@@ -129,6 +129,12 @@ def _init_tesseract():
             pytesseract.pytesseract.tesseract_cmd = _tess_cmd
         except Exception:
             pass
+    else:
+        # Common Linux/Render paths
+        for path in ['/usr/bin/tesseract', '/usr/local/bin/tesseract']:
+            if os.path.exists(path):
+                pytesseract.pytesseract.tesseract_cmd = path
+                break
     
     _tesseract_initialized = True
     
@@ -1052,6 +1058,11 @@ def _preprocess_frame_for_ocr(frame):
 def _ocr_video_frame(processed_frame, allow_alt_pass=True, keywords=None):
     """Run OCR for a single video frame while holding the shared OCR gate only for Tesseract work."""
     with OCR_SEMAPHORE:
+        # Diagnostic: Ensure Tesseract is actually found in this thread
+        if not pytesseract.pytesseract.tesseract_cmd:
+            print("[VIDEO OCR ERROR] Tesseract CMD is empty. Attempting re-init...", flush=True)
+            _init_tesseract()
+            
         # For video keywords, PSM 11 (Sparse Text) is often faster and sufficient for 'Indigency' / 'Grades' headers.
         psm = 11 if keywords else 3
         text = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config=f'--psm {psm} --oem 1')
@@ -1078,6 +1089,8 @@ def verify_video_content(video_data, keywords, expected_address=None, sample_pos
     For videos without address requirements (like COE, Grades), keyword matching is more lenient
     and accepts partial/fuzzy matches to handle OCR errors.
     """
+    if not _check_tesseract():
+        return False, "OCR Engine (Tesseract) not found on system."
     # Speed Optimization: Stream from URL directly if possible
     is_url = isinstance(video_data, str) and video_data.startswith('http')
     
