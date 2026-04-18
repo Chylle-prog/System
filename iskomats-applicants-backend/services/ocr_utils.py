@@ -1203,9 +1203,10 @@ def verify_video_content(video_data, keywords, expected_address=None, sample_pos
             return False, "Invalid video frame count"
         
         # --- SPEED OPTIMIZATION: Context-aware sampling ---
-        # For non-address documents (COE/Grades/ID), one clear frame is often enough
+        # For non-address documents (COE/Grades/ID), one clear frame is often enough.
+        # For certificates of Indigency, we need more frames to catch the specific address/barangay text.
         is_address_check = bool(expected_address)
-        sample_positions = sample_positions or ([0.3, 0.75] if is_address_check else [0.55])
+        sample_positions = sample_positions or ([0.15, 0.35, 0.55, 0.75, 0.9] if is_address_check else [0.3, 0.55, 0.75])
         
         frames_to_ocr = []
         for sample_idx_pos in sample_positions:
@@ -1215,11 +1216,11 @@ def verify_video_content(video_data, keywords, expected_address=None, sample_pos
             if ret and frame is not None:
                 processed_frame = _preprocess_frame_for_ocr(frame)
                 h, w = processed_frame.shape[:2]
-                # Lower resolution for video frames (300px) is sufficient for keyword detection
-                width_limit = max_width or (520 if is_address_check else 300)
+                # High resolution for address checks is mandatory to catch small barangay names
+                width_limit = max_width or (650 if is_address_check else 400)
                 if w > width_limit:
                     scale = width_limit / w
-                    processed_frame = cv2.resize(processed_frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+                    processed_frame = cv2.resize(processed_frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LANCZOS4)
                 frames_to_ocr.append(processed_frame)
         
         cap.release()
@@ -1277,7 +1278,10 @@ def verify_video_content(video_data, keywords, expected_address=None, sample_pos
             return True, msg
 
         if not is_success:
-            fail_msg = "Required document content not detected in video."
+            if expected_address and not addr_ok:
+                fail_msg = f"Address content ('{expected_address}') not clearly detected in video scan. Please hold the document still for 1-2 seconds."
+            else:
+                fail_msg = f"Required keywords not detected in video. (Target: {', '.join(keywords[:3])}...)"
             _cache_set(vid_hash, (False, fail_msg))
             return False, fail_msg
         
