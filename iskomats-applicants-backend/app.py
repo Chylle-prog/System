@@ -38,6 +38,7 @@ print("[STARTUP] 4. Services imported. Initializing Flask app...", flush=True)
 app = Flask(__name__)
 app.secret_key = get_secret_key()
 app.config['PREFERRED_URL_SCHEME'] = 'https'
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB Limit
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
 # Get origins and split into exact strings and regex patterns
@@ -54,7 +55,8 @@ socketio = SocketIO(
     cors_allowed_origins=exact_allowed_origins,
     engineio_logger=True,
     ping_timeout=120,
-    ping_interval=30
+    ping_interval=30,
+    max_http_buffer_size=100 * 1024 * 1024  # 100MB
 )
 
 print("[STARTUP] Registering blueprints...")

@@ -1658,7 +1658,20 @@ const StudentInfo = () => {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    // Limit image resolution to 1200px max width to reduce payload size
+    let finalCanvas = canvas;
+    const maxWidth = 1200;
+    if (canvas.width > maxWidth) {
+      const scale = maxWidth / canvas.width;
+      const resCanvas = document.createElement('canvas');
+      resCanvas.width = maxWidth;
+      resCanvas.height = canvas.height * scale;
+      const resCtx = resCanvas.getContext('2d');
+      resCtx.drawImage(canvas, 0, 0, resCanvas.width, resCanvas.height);
+      finalCanvas = resCanvas;
+    }
+
+    const dataUrl = finalCanvas.toDataURL('image/jpeg', 0.8);
     setPhotos(prev => ({ ...prev, face_photo: dataUrl }));
     setFaceVerificationPreview(dataUrl);
     setFaceVerified(null);
