@@ -2286,9 +2286,12 @@ def get_applicant_document_raw(field_name):
             
             # Handle Supabase Storage URLs (MIGRATION: BYTEA -> TEXT)
             if isinstance(value, str) and value.startswith('http'):
-                from flask import redirect
+                from flask import redirect, make_response
                 print(f"[DOCUMENT RAW] Redirecting to storage: {value}", flush=True)
-                return redirect(value)
+                # 302 redirect with 1-hour cache
+                response = make_response(redirect(value))
+                response.headers.set('Cache-Control', 'public, max-age=3600')
+                return response
             
             if not isinstance(value, bytes):
                 if hasattr(value, 'tobytes'):

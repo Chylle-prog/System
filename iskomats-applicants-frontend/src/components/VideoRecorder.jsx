@@ -234,6 +234,8 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
               <video 
                 src={previewUrl} 
                 controls 
+                preload="none"
+                playsInline
                 onError={() => setVideoError('Video preview failed')}
                 style={{ 
                   width: '100%', 

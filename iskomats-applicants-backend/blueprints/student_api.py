@@ -2356,6 +2356,7 @@ def get_applicant_document_raw(field_name):
             from flask import make_response
             response = make_response(value)
             response.headers.set('Content-Type', mime_type)
+            # Add browser caching to reduce egress (1 hour)
             response.headers.set('Cache-Control', 'public, max-age=3600')
             return response
     except Exception as e:
@@ -3065,12 +3066,11 @@ def ocr_check():
             'school_back_video': str(data.get('schoolIdBack_video') or applicant.get('schoolid_back_vid_url') or '').strip(),
         }, sort_keys=True)
         
-        # NOTE: High-level cache is disabled temporarily to ensure user tests are fresh
-        # while we fix the OCR logic issues.
-        # cached_verification = _get_cached_verification_result(verification_cache_key)
-        # if cached_verification is not None:
-        #     print(f"[OCR CACHE HIT] Reusing cached verification for user={request.user_no}, target={target_doc or 'all'}", flush=True)
-        #     return jsonify(cached_verification)
+        # Reuse cached verification results if the input files and data are identical
+        cached_verification = _get_cached_verification_result(verification_cache_key)
+        if cached_verification is not None:
+            print(f"[OCR CACHE HIT] Reusing cached verification for user={request.user_no}, target={target_doc or 'all'}", flush=True)
+            return jsonify(cached_verification)
 
         # ── Worker Function for Parallel Processing ──
         def process_doc(doc_type, doc_param, db_val):

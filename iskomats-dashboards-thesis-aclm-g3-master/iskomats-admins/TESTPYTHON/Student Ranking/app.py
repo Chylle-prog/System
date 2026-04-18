@@ -18,9 +18,13 @@ STARTUP_TIME = time.time()
 print("[STARTUP] 1. eventlet monkey_patch complete. Loading modules...", flush=True)
 
 # Deployment trigger: 2026-04-08 - CORS TIMEOUT FIX - Better error handling
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, Request
 from flask_socketio import SocketIO
 from werkzeug.middleware.proxy_fix import ProxyFix
+
+# Increase form parsing limits globally
+Request.max_form_memory_size = 500 * 1024 * 1024  # 500MB
+Request.max_content_length = 500 * 1024 * 1024    # 500MB
 
 print("[STARTUP] 2. Flask/SocketIO imported. Loading blueprints...", flush=True)
 from blueprints import admin_bp, init_admin_socketio, register_admin_routes, student_api_bp
@@ -34,8 +38,17 @@ print("[STARTUP] 4. Services imported. Initializing Flask app...", flush=True)
 app = Flask(__name__)
 app.secret_key = get_secret_key()
 app.config['PREFERRED_URL_SCHEME'] = 'https'
-app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB Limit
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB Limit
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+
+@app.before_request
+def log_request_info():
+    if request.path.startswith('/api'):
+        length = request.content_length or 0
+        if length > 1 * 1024 * 1024:  # Log if > 1MB
+            print(f"[REQUEST] {request.method} {request.path} - Size: {length / (1024*1024):.2f}MB", flush=True)
+
+# ... (rest of the file)
 
 # Get origins and split into exact strings and regex patterns
 all_allowed_origins = get_allowed_origins()
@@ -181,9 +194,13 @@ def handle_500(e):
 
 @app.errorhandler(413)
 def handle_413(e):
+    limit = app.config.get('MAX_CONTENT_LENGTH', 0) / (1024 * 1024)
+    length = request.content_length / (1024 * 1024) if request.content_length else 0
     response = jsonify({
         'error': 'Payload Too Large',
-        'message': 'The uploaded images may be too large. Please try with smaller files.',
+        'message': f'Request size ({length:.1f}MB) exceeds limit ({limit:.1f}MB). Please use smaller files.',
+        'content_length_mb': round(length, 2),
+        'limit_mb': round(limit, 2),
         'status': 413
     })
     response.status_code = 413
