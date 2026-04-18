@@ -141,10 +141,8 @@ def _decode_cv_image(image_source, white_background=False):
     """Robust image decoder covering raw bytes, base64, and files."""
     try:
         if not image_source: return None
-        if isinstance(image_source, bytes):
-            nparr = np.frombuffer(image_source, np.uint8)
-        else:
-            nparr = np.frombuffer(decode_base64(image_source), np.uint8)
+        b_data = decode_base64(image_source) if not isinstance(image_source, bytes) else image_source
+        nparr = np.frombuffer(b_data, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
         if img is None: return None
         
@@ -307,11 +305,12 @@ def verify_id_with_ocr(image_bytes, first_name, middle_name, last_name, address=
     if not _check_tesseract() or not image_bytes: return False, "Service Unavailable", "", 0.0, {}
     
     is_indigency = address is not None
-    img_hash = _hash_image(image_bytes)
+    b_data = decode_base64(image_bytes) if not isinstance(image_bytes, bytes) else image_bytes
+    img_hash = _hash_image(b_data)
     cached = _cache_get(img_hash)
     if cached: return True, "Verified (cached)", cached[0], {'name_ok':True, 'addr_ok':True}
 
-    nparr = np.frombuffer(image_bytes, np.uint8)
+    nparr = np.frombuffer(b_data, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
     if img is None: return False, "Invalid image", "", 0.0, {}
     
@@ -343,7 +342,8 @@ def verify_id_with_ocr(image_bytes, first_name, middle_name, last_name, address=
 def extract_document_text(image_bytes, max_width=None, is_id_back=False, prefer_fast_layout=False, crop_percent=None):
     if not _check_tesseract() or not image_bytes: return "", "Service Unavailable"
     
-    nparr = np.frombuffer(image_bytes, np.uint8)
+    b_data = decode_base64(image_bytes) if not isinstance(image_bytes, bytes) else image_bytes
+    nparr = np.frombuffer(b_data, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
     if img is None: return "", "Invalid image"
     
@@ -464,9 +464,12 @@ def _init_face_models():
 def verify_face_with_id(user_bytes, id_bytes):
     try:
         det, rec = _init_face_models()
-        u_nparr = np.frombuffer(user_bytes, np.uint8)
+        b_user = decode_base64(user_bytes) if not isinstance(user_bytes, bytes) else user_bytes
+        u_nparr = np.frombuffer(b_user, np.uint8)
         u_img = cv2.imdecode(u_nparr, cv2.IMREAD_COLOR)
-        i_nparr = np.frombuffer(id_bytes, np.uint8)
+        
+        b_id = decode_base64(id_bytes) if not isinstance(id_bytes, bytes) else id_bytes
+        i_nparr = np.frombuffer(b_id, np.uint8)
         i_img = cv2.imdecode(i_nparr, cv2.IMREAD_COLOR)
         
         u_faces = det.detect(u_img)
