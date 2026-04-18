@@ -2996,8 +2996,16 @@ def ocr_check():
         def process_doc(doc_type, doc_param, db_val):
             try:
                 # Resolve bytes
-                if isinstance(doc_param, bytes): doc_bytes = doc_param
-                else: doc_bytes = decode_base64(doc_param) if doc_param else (db_bytes(db_val) if db_val else None)
+                def resolve_bytes(param, db_val):
+                    if isinstance(param, bytes): return param
+                    if isinstance(param, str):
+                        if param.startswith('http'):
+                            b, _ = fetch_video_bytes_from_url(param)
+                            return b
+                        return decode_base64(param)
+                    return db_bytes(db_val) if db_val else None
+                
+                doc_bytes = resolve_bytes(doc_param, db_val)
                 
                 if not doc_bytes: return None
 
