@@ -77,7 +77,10 @@ def _check_tesseract():
 def _hash_image(image_bytes, suffix=b""):
     """Creates a unique hash for an image to avoid redundant OCR."""
     if not image_bytes: return "empty"
-    return hashlib.md5(image_bytes + suffix).hexdigest()
+    # Ensure both are bytes
+    b_data = image_bytes if isinstance(image_bytes, bytes) else str(image_bytes).encode('utf-8')
+    b_suffix = suffix if isinstance(suffix, bytes) else str(suffix).encode('utf-8')
+    return hashlib.md5(b_data + b_suffix).hexdigest()
 
 def _cache_get(key):
     return _OCR_CACHE.get(key)
@@ -122,9 +125,12 @@ def _run_tesseract_on_image(img, psm=3, skip_pass2=False):
     if not _check_tesseract(): return ""
     config = f'--psm {psm} --oem 1'
     try:
-        text = eventlet.tpool.execute(pytesseract.image_to_string, img, config=config)
+        res = eventlet.tpool.execute(pytesseract.image_to_string, img, config=config)
+        text = res.decode('utf-8') if isinstance(res, bytes) else str(res)
+        
         if not skip_pass2 and len(text.strip()) < 10:
-            text_alt = eventlet.tpool.execute(pytesseract.image_to_string, img, config='--psm 11 --oem 1')
+            res_alt = eventlet.tpool.execute(pytesseract.image_to_string, img, config='--psm 11 --oem 1')
+            text_alt = res_alt.decode('utf-8') if isinstance(res_alt, bytes) else str(res_alt)
             if len(text_alt) > len(text): text = text_alt
         return text
     except Exception as e:
@@ -157,13 +163,15 @@ def _ocr_video_frame(processed_frame, allow_alt_pass=True, keywords=None):
     """Run OCR for a single video frame."""
     with OCR_SEMAPHORE:
         psm = 11 if keywords else 3
-        text = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config=f'--psm {psm} --oem 1')
+        res = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config=f'--psm {psm} --oem 1')
+        text = res.decode('utf-8') if isinstance(res, bytes) else str(res)
         
         if keywords and any(k.lower() in text.lower() for k in keywords):
             return text
 
         if allow_alt_pass and len(text.strip()) < 12:
-            text_alt = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config='--psm 6 --oem 1')
+            res_alt = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config='--psm 6 --oem 1')
+            text_alt = res_alt.decode('utf-8') if isinstance(res_alt, bytes) else str(res_alt)
             if len(text_alt.strip()) > len(text.strip()):
                 text = text_alt
     return text
