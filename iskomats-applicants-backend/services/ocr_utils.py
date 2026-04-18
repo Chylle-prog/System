@@ -82,7 +82,7 @@ def _preload_tesseract():
         print(f"[OCR] Tesseract preload failed: {e}", flush=True)
 
 
-def _hash_image(image_bytes, suffix=b"_v2"):
+def _hash_image(image_bytes, suffix=b"_v5_robust"):
     """Generate MD5 hash of image bytes for caching."""
     return hashlib.md5(image_bytes + suffix).hexdigest()
 
@@ -639,11 +639,17 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
             p_ratio = f_count / len(n_words) if n_words else 0
             
             # Ultimate Space-Stripped Fallback for Names
-            if p_ratio < (0.7 if is_indigency else 0.80):
+            if p_ratio < (0.65 if is_indigency else 0.75):
                 clean_name_part = "".join(filter(str.isalnum, str(name_part))).lower()
                 clean_text = "".join(filter(str.isalnum, str(norm_txt)))
                 if len(clean_name_part) >= 4 and clean_name_part in clean_text:
                     return True, 1.0
+                
+                # Double-check sequence for names with common OCR errors
+                seq_name = clean_name_part.replace('o', '0').replace('i', '1').replace('l', '1').replace('s', '5')
+                seq_text = clean_text.replace('o', '0').replace('i', '1').replace('l', '1').replace('s', '5')
+                if len(seq_name) >= 4 and seq_name in seq_text:
+                    return True, 0.95
                     
             # For middle names, allow initial-based fallback
             if is_middle and n_words and p_ratio < (0.7 if is_indigency else 0.80):
@@ -892,8 +898,11 @@ def verify_id_with_ocr(image_bytes, expected_first_name=None, expected_middle_na
             t_start = time.time()
             
             # --- ROBUST MULTI-STRATEGY SCAN ---
-            # Using PSM 3 and specific strategies for ID-specific text features.
-            best_text = _run_tesseract_on_image(img, psm=3, strategies=[_preprocess_strategy_d], skip_pass2=False)
+            # Using PSM 3 for layout and PSM 11 for sparse text (captures ID/Name labels better).
+            text_p1 = _run_tesseract_on_image(img, psm=3, strategies=[_preprocess_strategy_d], skip_pass2=False)
+            text_p2 = _run_tesseract_on_image(img, psm=11, skip_pass2=True)
+            
+            best_text = text_p1 + "\n" + text_p2
             
             t_end = time.time()
             print(f"[OCR PERF] Unified ID OCR completed in {t_end - t_start:.2f}s", flush=True)
@@ -913,15 +922,15 @@ def verify_id_with_ocr(image_bytes, expected_first_name=None, expected_middle_na
     
     if name_v and addr_v:
         _cache_set(image_hash, (best_text, best_ratio, "verified_final"))
-        return True, "Verified", best_text, details
+        return True, "Verified (V5.Robust)", best_text, details
     
     if best_ratio >= 0.3:
         prefix = "Indigency: " if is_indigency else ""
         _cache_set(image_hash, (best_text, best_ratio, "partial_match"))
-        return False, f"{prefix}Identity mismatch ({best_ratio:.0%})", best_text, details
+        return False, f"{prefix}Identity Mismatch ({best_ratio:.0%}) [V5.Robust]", best_text, details
 
     _cache_set(image_hash, (best_text, best_ratio, "failed"))
-    return False, "Identity verification mismatch", best_text, details
+    return False, "Identity verification mismatch [V5.Robust]", best_text, details
 
 def student_name_matches_text(ocr_text, first_name, middle_name, last_name, is_indigency=False):
     """

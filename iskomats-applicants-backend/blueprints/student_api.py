@@ -2871,6 +2871,13 @@ def submit_application():
 @token_required
 def ocr_check():
     """OCR verification endpoint — supports multi-document authentication in parallel."""
+    video_keywords_map = {
+        'Indigency': ['Certificate', 'Indigency', 'Resident', 'Certification', 'Office', 'Barangay'],
+        'SchoolID': ['Student', 'Identity', 'Republic', 'Department'],
+        'SchoolIDBack': ['Address', 'Contact', 'Emergency', 'Valid'],
+        'Enrollment': ['Enrollment', 'Certificate', 'School', 'University', 'Registration'],
+        'Grades': ['Grades', 'Rating', 'Academic', 'Subject', 'Semester']
+    }
     try:
         # Support both JSON and multipart/form-data
         if request.is_json:
