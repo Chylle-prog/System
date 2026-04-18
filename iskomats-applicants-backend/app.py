@@ -295,6 +295,52 @@ def health():
     }), 200
 
 
+@app.route('/_ocr_diagnostic', methods=['GET'])
+def ocr_diagnostic():
+    """Detailed OCR status for debugging production issues."""
+    import pytesseract
+    import shutil
+    import platform
+    import subprocess
+    from services.ocr_utils import _check_tesseract
+    
+    cmd_path = getattr(pytesseract.pytesseract, 'tesseract_cmd', 'Not Set')
+    exists = os.path.exists(cmd_path) if os.path.isabs(cmd_path) else bool(shutil.which(cmd_path))
+    
+    tess_ver = "Unknown"
+    tess_error = None
+    if exists:
+        try:
+            res = subprocess.run([cmd_path, '--version'], capture_output=True, text=True, timeout=5)
+            tess_ver = res.stdout.split('\n')[0] if res.returncode == 0 else f"Error: {res.stderr}"
+        except Exception as e:
+            tess_error = str(e)
+            
+    is_available = _check_tesseract()
+    
+    return jsonify({
+        'platform': {
+            'system': platform.system(),
+            'release': platform.release(),
+            'python_version': sys.version
+        },
+        'tesseract': {
+            'command_path': cmd_path,
+            'exists_or_in_path': exists,
+            'version': tess_ver,
+            'check_passed': is_available,
+            'error': tess_error
+        },
+        'environment': {
+            'PATH': os.environ.get('PATH', 'Not Set'),
+            'TESSDATA_PREFIX': os.environ.get('TESSDATA_PREFIX', 'Not Set'),
+            'TESSERACT_CMD': os.environ.get('TESSERACT_CMD', 'Not Set'),
+            'RENDER': os.environ.get('RENDER', 'False'),
+            'PWD': os.getcwd()
+        }
+    }), 200
+
+
 @app.route('/api/health', methods=['GET', 'OPTIONS'])
 @app.route('/api/student/health', methods=['GET', 'OPTIONS'])
 def api_health():

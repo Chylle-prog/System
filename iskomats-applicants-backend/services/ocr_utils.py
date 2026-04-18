@@ -124,6 +124,8 @@ def _init_tesseract():
     if _tesseract_initialized:
         return
     
+    print(f"[OCR] Initializing Tesseract... Platform: {platform.system()}, PATH: {os.environ.get('PATH', 'Not Set')[:100]}...", flush=True)
+    
     if platform.system() == 'Windows':
         # Priority 1: User-defined ENV variable
         env_cmd = os.environ.get('TESSERACT_CMD')
@@ -135,24 +137,43 @@ def _init_tesseract():
             if found_cmd:
                 pytesseract.pytesseract.tesseract_cmd = found_cmd
             else:
-                # Priority 3: Common installer path
-                legacy_path = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-                if os.path.exists(legacy_path):
-                    pytesseract.pytesseract.tesseract_cmd = legacy_path
+                # Priority 3: Common installer paths
+                for path in [
+                    r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+                    r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+                    os.path.join(os.environ.get('USERPROFILE', ''), r'AppData\Local\Tesseract-OCR\tesseract.exe')
+                ]:
+                    if os.path.exists(path):
+                        pytesseract.pytesseract.tesseract_cmd = path
+                        break
     else:
-        # Linux/Render/MacOS: Priority 1: shutil.which
-        found_cmd = shutil.which('tesseract')
-        if found_cmd:
-            pytesseract.pytesseract.tesseract_cmd = found_cmd
+        # Linux/Render/MacOS
+        # Priority 1: User-defined ENV variable (Standard Override)
+        env_cmd = os.environ.get('TESSERACT_CMD')
+        if env_cmd and os.path.exists(env_cmd):
+            pytesseract.pytesseract.tesseract_cmd = env_cmd
         else:
-            # Priority 2: Fallback common paths
-            for path in ['/usr/bin/tesseract', '/usr/local/bin/tesseract']:
-                if os.path.exists(path):
-                    pytesseract.pytesseract.tesseract_cmd = path
-                    break
+            # Priority 2: shutil.which
+            found_cmd = shutil.which('tesseract')
+            if found_cmd:
+                pytesseract.pytesseract.tesseract_cmd = found_cmd
+            else:
+                # Priority 3: Fallback common paths (Linux/Docker/Nix)
+                for path in [
+                    '/usr/bin/tesseract', 
+                    '/usr/local/bin/tesseract',
+                    '/bin/tesseract',
+                    '/usr/sbin/tesseract',
+                    '/opt/render/project/src/.apt/usr/bin/tesseract' # Common Render .apt path
+                ]:
+                    if os.path.exists(path):
+                        pytesseract.pytesseract.tesseract_cmd = path
+                        break
     
     _tesseract_initialized = True
-    print(f"[OCR] Tesseract Initialization: cmd='{pytesseract.pytesseract.tesseract_cmd}' (exists={os.path.exists(pytesseract.pytesseract.tesseract_cmd) if pytesseract.pytesseract.tesseract_cmd else False})", flush=True)
+    cmd_path = getattr(pytesseract.pytesseract, 'tesseract_cmd', 'tesseract')
+    exists = os.path.exists(cmd_path) if os.path.isabs(cmd_path) else bool(shutil.which(cmd_path))
+    print(f"[OCR] Tesseract Initialization: cmd='{cmd_path}' (found={exists})", flush=True)
     
 _preload_tesseract()
 
@@ -160,8 +181,10 @@ def _check_tesseract():
     global _tesseract_available
     if _tesseract_available is True: 
         return True
+    
+    # We always re-attempt initialization if not available, in case of dynamic env changes
     try:
-        _init_tesseract()  # Ensure Tesseract config is set
+        _init_tesseract() 
         cmd = getattr(pytesseract.pytesseract, 'tesseract_cmd', 'tesseract')
         
         # Priority: verify with a real subprocess call to ensure binary execution works
@@ -171,21 +194,26 @@ def _check_tesseract():
             ver = result.stdout.split('\n')[0]
             print(f"[OCR] Tesseract verified via subprocess — {ver}", flush=True)
             _tesseract_available = True
+            return True
         else:
-            raise RuntimeError(f"Tesseract returned code {result.returncode}: {result.stderr}")
+            print(f"[OCR] Tesseract returned code {result.returncode}: {result.stderr}", flush=True)
             
     except Exception as e:
-        print(f"[OCR] Tesseract CHECK FAILED: {str(e)}", flush=True)
-        # If we failed, try one more fallback to just 'tesseract' before giving up
-        if getattr(pytesseract.pytesseract, 'tesseract_cmd', None) != 'tesseract':
+        print(f"[OCR] Tesseract CHECK FAILED for '{getattr(pytesseract.pytesseract, 'tesseract_cmd', 'None')}': {str(e)}", flush=True)
+        # If we failed with a custom path, try one final fallback to just 'tesseract' before giving up
+        if getattr(pytesseract.pytesseract, 'tesseract_cmd', 'tesseract') != 'tesseract':
+            print("[OCR] Attempting final fallback to raw 'tesseract' command...", flush=True)
             pytesseract.pytesseract.tesseract_cmd = 'tesseract'
             try:
-                ver = pytesseract.get_tesseract_version()
-                _tesseract_available = True
-                return True
+                import subprocess
+                res = subprocess.run(['tesseract', '--version'], capture_output=True, text=True, timeout=5)
+                if res.returncode == 0:
+                    _tesseract_available = True
+                    return True
             except: pass
-        _tesseract_available = False
-    return _tesseract_available
+            
+    _tesseract_available = False
+    return False
 
 # ─── Helper Utilities ─────────────────────────────────────────────────────────
 
