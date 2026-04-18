@@ -16,7 +16,11 @@ sys.stdout.reconfigure(line_buffering=True)
 
 # Performance Tuning: Limit Tesseract's internal threads so our Python parallelism works better
 os.environ['OMP_THREAD_LIMIT'] = '1'
-os.environ['TESSDATA_PREFIX'] = os.environ.get('TESSDATA_PREFIX', '/usr/share/tesseract-ocr/5/tessdata')
+# Flexible TESSDATA_PREFIX detection
+for _path in ['/usr/share/tesseract-ocr/5/tessdata', '/usr/share/tesseract-ocr/4.00/tessdata', '/usr/share/tesseract-ocr/tessdata']:
+    if os.path.exists(_path):
+        os.environ['TESSDATA_PREFIX'] = _path
+        break
 
 STARTUP_TIME = time.time()
 print("[STARTUP] 1. eventlet monkey_patch complete. Loading modules...", flush=True)

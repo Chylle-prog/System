@@ -158,15 +158,32 @@ _preload_tesseract()
 
 def _check_tesseract():
     global _tesseract_available
-    if _tesseract_available is not None: 
-        return _tesseract_available
+    if _tesseract_available is True: 
+        return True
     try:
         _init_tesseract()  # Ensure Tesseract config is set
-        ver = pytesseract.get_tesseract_version()
-        print(f"[OCR] Tesseract available — version {ver}", flush=True)
-        _tesseract_available = True
+        cmd = getattr(pytesseract.pytesseract, 'tesseract_cmd', 'tesseract')
+        
+        # Priority: verify with a real subprocess call to ensure binary execution works
+        import subprocess
+        result = subprocess.run([cmd, '--version'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            ver = result.stdout.split('\n')[0]
+            print(f"[OCR] Tesseract verified via subprocess — {ver}", flush=True)
+            _tesseract_available = True
+        else:
+            raise RuntimeError(f"Tesseract returned code {result.returncode}: {result.stderr}")
+            
     except Exception as e:
-        print(f"[OCR] Tesseract not available: {e}", flush=True)
+        print(f"[OCR] Tesseract CHECK FAILED: {str(e)}", flush=True)
+        # If we failed, try one more fallback to just 'tesseract' before giving up
+        if getattr(pytesseract.pytesseract, 'tesseract_cmd', None) != 'tesseract':
+            pytesseract.pytesseract.tesseract_cmd = 'tesseract'
+            try:
+                ver = pytesseract.get_tesseract_version()
+                _tesseract_available = True
+                return True
+            except: pass
         _tesseract_available = False
     return _tesseract_available
 

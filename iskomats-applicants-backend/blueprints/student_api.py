@@ -2301,6 +2301,14 @@ def get_applicant_document_raw(field_name):
                 return "Not found", 404
             
             value = row[field_name]
+            if not value:
+                return "Empty document", 404
+
+            # --- URL HANDLING (Supabase Migration) ---
+            if isinstance(value, str) and value.startswith('http'):
+                from flask import redirect
+                return redirect(value)
+
             if field_name == 'signature_image_data':
                 value = decode_signature(value)
             else:
