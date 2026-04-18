@@ -2712,9 +2712,10 @@ def submit_application():
                         
                         video_url = form_data.get(field)
                         if v_bytes or (isinstance(video_url, str) and video_url.startswith('http')):
-                            expected_addr = form_data.get('townCity') or applicant.get('town_city_municipality', '') if field == 'mayorIndigency_video' else None
+                            # SYNC WITH ADMIN: Videos only check keywords to verify document type. 
+                            # Detail matching (Address/Name) is handled by the high-res static OCR.
                             verification_tasks[f'video_{field}'] = executor.submit(
-                                _threaded_verify, video_url, keywords, expected_addr, v_bytes
+                                _threaded_verify, video_url, keywords, None, v_bytes
                             )
 
                     # --- GATHER RESULTS ---
@@ -2880,7 +2881,7 @@ def submit_application():
 def ocr_check():
     """OCR verification endpoint — supports multi-document authentication in parallel."""
     video_keywords_map = {
-        'Indigency': ['Certificate', 'Indigency', 'Resident', 'Certification', 'Office', 'Barangay'],
+        'Indigency': ['Certificate', 'Indigency', 'Indigent', 'Resident', 'Residency', 'Certification', 'Office', 'Barangay', 'Clearance'],
         'SchoolID': ['Student', 'Identity', 'Republic', 'Department'],
         'SchoolIDBack': ['Address', 'Contact', 'Emergency', 'Valid'],
         'Enrollment': ['Enrollment', 'Certificate', 'School', 'University', 'Registration'],
@@ -3090,14 +3091,16 @@ def ocr_check():
                         print(f"[BREADCRUMB] Verifying ID video reference ({doc_type})", flush=True)
                         return verify_video_reference(vid_url)
                     
+                    # SYNC WITH ADMIN: Videos only check keywords to verify document type. 
+                    # Detail matching (Address/Name) is handled by the high-res static OCR.
+                    # This reduces false failures from blurry video frames.
                     print(f"[BREADCRUMB] Starting Video Scan for {doc_type}", flush=True)
-                    # Use PSM 11 and limited frames for speed
                     result = verify_video_content(
                         video_data=vid_url,
                         keywords=video_keywords_map.get(doc_type),
-                        expected_address=(barangay if doc_type == 'Indigency' else None),
-                        sample_positions=[0.5], # Single frame for fast verification
-                        max_width=350,
+                        expected_address=None,
+                        sample_positions=[0.3, 0.7],
+                        max_width=300,
                         allow_alt_pass=False,
                         fallback_text_length=12
                     )

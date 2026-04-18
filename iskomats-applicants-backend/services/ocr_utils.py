@@ -853,10 +853,13 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
     # 3. Keyword Matching
     found_keywords = []
     if keywords:
+        norm_txt_no_spaces = "".join(norm_txt.split())
         for kw in keywords:
             norm_kw = normalize_for_ocr(kw)
+            norm_kw_no_spaces = "".join(norm_kw.split())
+            
             # Try exact substring match first
-            if norm_kw in norm_txt:
+            if norm_kw in norm_txt or norm_kw_no_spaces in norm_txt_no_spaces:
                 found_keywords.append(kw)
             else:
                 # Fuzzy match: allow partial/close matches for document keywords
@@ -866,6 +869,7 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
                         if len(kw_word) < 2: continue
                         for ocr_word in all_ocr_words:
                             if len(ocr_word) < 2: continue
+                            # STABILITY: Using 0.7 ratio for keywords (matches admin repo)
                             if difflib.SequenceMatcher(None, kw_word, ocr_word).ratio() >= 0.7:
                                 found_keywords.append(kw)
                                 break
@@ -1124,9 +1128,14 @@ def _ocr_video_frame(processed_frame, allow_alt_pass=True, keywords=None):
             print("[VIDEO OCR ERROR] Tesseract CMD is empty. Attempting re-init...", flush=True)
             _init_tesseract()
             
-        # For video keywords, PSM 11 (Sparse Text) is often faster and sufficient for 'Indigency' / 'Grades' headers.
+        # SYNC WITH ADMIN: PSM 11 (Sparse Text) is significantly faster and better 
+        # for catching floating headers like 'Certificate' or 'Indigency' in video.
         psm = 11 if keywords else 3
-        text = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config=f'--psm {psm} --oem 1')
+        try:
+            config = f'--psm {psm} --oem 1'
+            text = pytesseract.image_to_string(processed_frame, config=config)
+        except Exception:
+            text = ""
 
         # Smart Exit: If keywords provided and found, exit immediately for speed
         if keywords and any(k.lower() in text.lower() for k in keywords):
@@ -1134,9 +1143,11 @@ def _ocr_video_frame(processed_frame, allow_alt_pass=True, keywords=None):
 
         # Only run fallback pass if Pass 1 was relatively poor (< 12 chars)
         if allow_alt_pass and len(text.strip()) < 12:
-            text_alt = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config='--psm 6 --oem 1')
-            if len(text_alt.strip()) > len(text.strip()):
-                text = text_alt
+            try:
+                text_alt = pytesseract.image_to_string(processed_frame, config='--psm 6 --oem 1')
+                if len(text_alt.strip()) > len(text.strip()):
+                    text = text_alt
+            except Exception: pass
 
     return text
 
