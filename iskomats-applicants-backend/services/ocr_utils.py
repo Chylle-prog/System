@@ -152,6 +152,7 @@ def _init_tesseract():
                     break
     
     _tesseract_initialized = True
+    print(f"[OCR] Tesseract Initialization: cmd='{pytesseract.pytesseract.tesseract_cmd}' (exists={os.path.exists(pytesseract.pytesseract.tesseract_cmd) if pytesseract.pytesseract.tesseract_cmd else False})", flush=True)
     
 _preload_tesseract()
 
@@ -1105,7 +1106,8 @@ def verify_video_content(video_data, keywords, expected_address=None, sample_pos
     and accepts partial/fuzzy matches to handle OCR errors.
     """
     if not _check_tesseract():
-        return False, "OCR Engine (Tesseract) not found on system."
+        cmd_path = getattr(pytesseract.pytesseract, 'tesseract_cmd', 'None')
+        return False, f"OCR Engine (Tesseract) not found on system. (Path: {cmd_path})"
     # Speed Optimization: Stream from URL directly if possible
     is_url = isinstance(video_data, str) and video_data.startswith('http')
     
