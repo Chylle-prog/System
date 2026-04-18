@@ -10,6 +10,7 @@ import pytesseract
 import platform
 import multiprocessing as mp
 import re
+import shutil
 import difflib
 import hashlib
 import requests
@@ -124,17 +125,31 @@ def _init_tesseract():
         return
     
     if platform.system() == 'Windows':
-        try:
-            _tess_cmd = os.environ.get('TESSERACT_CMD', r'C:\Program Files\Tesseract-OCR\tesseract.exe')
-            pytesseract.pytesseract.tesseract_cmd = _tess_cmd
-        except Exception:
-            pass
+        # Priority 1: User-defined ENV variable
+        env_cmd = os.environ.get('TESSERACT_CMD')
+        if env_cmd and os.path.exists(env_cmd):
+             pytesseract.pytesseract.tesseract_cmd = env_cmd
+        else:
+            # Priority 2: shutil.which (standard Windows path or system path)
+            found_cmd = shutil.which('tesseract')
+            if found_cmd:
+                pytesseract.pytesseract.tesseract_cmd = found_cmd
+            else:
+                # Priority 3: Common installer path
+                legacy_path = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+                if os.path.exists(legacy_path):
+                    pytesseract.pytesseract.tesseract_cmd = legacy_path
     else:
-        # Common Linux/Render paths
-        for path in ['/usr/bin/tesseract', '/usr/local/bin/tesseract']:
-            if os.path.exists(path):
-                pytesseract.pytesseract.tesseract_cmd = path
-                break
+        # Linux/Render/MacOS: Priority 1: shutil.which
+        found_cmd = shutil.which('tesseract')
+        if found_cmd:
+            pytesseract.pytesseract.tesseract_cmd = found_cmd
+        else:
+            # Priority 2: Fallback common paths
+            for path in ['/usr/bin/tesseract', '/usr/local/bin/tesseract']:
+                if os.path.exists(path):
+                    pytesseract.pytesseract.tesseract_cmd = path
+                    break
     
     _tesseract_initialized = True
     
