@@ -302,7 +302,7 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
 
 # --- PUBLIC API FUNCTIONS ---
 def verify_id_with_ocr(image_bytes, first_name, middle_name, last_name, address=None, expected_id_no=None, expected_school_name=None):
-    if not _check_tesseract() or not image_bytes: return False, "Service Unavailable", "", 0.0, {}
+    if not _check_tesseract() or not image_bytes: return False, "Service Unavailable", "", {}
     
     is_indigency = address is not None
     b_data = decode_base64(image_bytes) if not isinstance(image_bytes, bytes) else image_bytes
@@ -312,10 +312,10 @@ def verify_id_with_ocr(image_bytes, first_name, middle_name, last_name, address=
 
     nparr = np.frombuffer(b_data, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
-    if img is None: return False, "Invalid image", "", 0.0, {}
+    if img is None: return False, "Invalid image", "", {}
     
     is_q, q_msg = assess_image_quality(img)
-    if not is_q: return False, q_msg, "", 0.0, {}
+    if not is_q: return False, q_msg, "", {}
     
     h, w = img.shape[:2]
     if w > _MAX_OCR_WIDTH:
