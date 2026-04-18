@@ -1,6 +1,6 @@
 import { io } from 'socket.io-client';
 
-// const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://applicant-site-backend.onrender.com';
+// const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://iskomats-applicants-backend.onrender.com';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:10001';
 
 class SocketService {

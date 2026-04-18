@@ -33,7 +33,7 @@ export const uploadProfilePicture = async (file) => {
 import { supabase } from '../supabaseClient';
 
 // API Base URL - change this if backend is on different server
-// const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://applicant-site-backend.onrender.com/api';
+// const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://iskomats-applicants-backend.onrender.com/api';
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:10001/api';
 export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
 let backendWarmupPromise = null;
@@ -601,7 +601,7 @@ export const applicantAPI = {
    * @param {string} lastName - User's current last name for verification
    * @returns {Promise}
    */
-  ocrCheck: async (idFront = null, idBack = null, indigencyDoc = null, townCity = null, enrollmentDoc = null, grades_doc = null, firstName = null, lastName = null, middleName = null, schoolName = null, idNumber = null, yearLevel = null, gpa = null, course = null, videoUrl = null, scholarshipNo = null, targetDoc = null, barangay = null, semester = null) => {
+  ocrCheck: async (idFront = null, idBack = null, indigencyDoc = null, townCity = null, enrollmentDoc = null, grades_doc = null, firstName = null, lastName = null, middleName = null, schoolName = null, idNumber = null, yearLevel = null, gpa = null, course = null, videoUrl = null, scholarshipNo = null, targetDoc = null, barangay = null) => {
     const fData = new FormData();
 
     const appendDocumentIfNeeded = (fieldName, value) => {
@@ -642,7 +642,6 @@ export const applicantAPI = {
     fData.append('schoolName', schoolName || '');
     fData.append('idNumber', idNumber || '');
     fData.append('yearLevel', yearLevel || '');
-    fData.append('semester', semester || '');
     fData.append('gpa', gpa || '');
     fData.append('course', course || '');
     if (videoUrl && typeof videoUrl === 'object') {

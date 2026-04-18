@@ -454,12 +454,6 @@ const StudentInfo = () => {
   const [extraSignaturePhoto, setExtraSignaturePhoto] = useState(null);
   const [isFaceMatching, setIsFaceMatching] = useState(false);
   const [faceMatchResult, setFaceMatchResult] = useState(null); 
-  const [idScanTime, setIdScanTime] = useState(0); 
-  const [coeScanTime, setCoeScanTime] = useState(0); // DIAGNOSTIC TIMER
-  const [gradesScanTime, setGradesScanTime] = useState(0); // DIAGNOSTIC TIMER
-  const idTimerRef = useRef(null);
-  const coeTimerRef = useRef(null);
-  const gradesTimerRef = useRef(null);
   const [faceVerified, setFaceVerified] = useState(null); 
 
   const [documentVideos, setDocumentVideos] = useState({
@@ -846,7 +840,7 @@ const StudentInfo = () => {
       await performOcrVerification(
         docType, 
         docType === 'SchoolID' ? { front: base64, back: null } : base64, 
-        { schoolName: formData.schoolName, idNumber: formData.schoolIdNumber, yearLevel: formData.yearLevel, semester: formData.semester }, 
+        { schoolName: formData.schoolName, idNumber: formData.schoolIdNumber, yearLevel: formData.yearLevel }, 
         null, 
         true
       );
@@ -886,7 +880,7 @@ const StudentInfo = () => {
         }, 80);
       }
 
-      let { townCity, barangay, schoolName, idNumber, yearLevel, gpa, course, semester } = extraParams;
+      let { townCity, barangay, schoolName, idNumber, yearLevel, gpa, course } = extraParams;
       const targetBarangay = barangay || formData.barangay || formData.streetBarangay || '';
       const { firstName, lastName, middleName } = formData;
       const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
@@ -905,8 +899,7 @@ const StudentInfo = () => {
         videoUrl,
         reqNo,
         docType,
-        targetBarangay,
-        semester || formData.semester
+        targetBarangay
       );
 
       if (!silent && pInterval) clearInterval(pInterval);
@@ -1027,28 +1020,15 @@ const StudentInfo = () => {
       showPromptMessage('⚠️ Please record and upload the COE video first.');
       return;
     }
-    if (!schoolName || !idNumber || !yearLevel || !course || !formData.semester) {
-      showPromptMessage('⚠️ Please complete School Name, School ID Number, Year Level, Course, and Semester first.');
+    if (!schoolName || !idNumber || !yearLevel || !course) {
+      showPromptMessage('⚠️ Please complete School Name, School ID Number, Year Level, and Course first.');
       return;
     }
 
     setLoadingMessage({ title: 'Scanning COE', message: 'Verifying your Certificate of Enrollment and Video Content...' });
     
-    // --- DIAGNOSTIC TIMER START ---
-    setCoeScanTime(0);
-    const start = Date.now();
-    coeTimerRef.current = setInterval(() => {
-      setCoeScanTime(Math.floor((Date.now() - start) / 1000));
-    }, 1000);
-    // ------------------------------
-
     try {
-      const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, idNumber, yearLevel, course, semester: formData.semester }, videoUrl);
-
-      // --- DIAGNOSTIC TIMER STOP ---
-      if (coeTimerRef.current) clearInterval(coeTimerRef.current);
-      // -----------------------------
-
+      const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, idNumber, yearLevel, course }, videoUrl);
       if (success) {
         showPromptMessage('✅ COE verified successfully!');
       } else {
@@ -1056,7 +1036,6 @@ const StudentInfo = () => {
       }
     } catch (err) {
       console.error('Scan Error:', err);
-      if (coeTimerRef.current) clearInterval(coeTimerRef.current);
     }
   };
 
@@ -1086,26 +1065,13 @@ const StudentInfo = () => {
 
     setLoadingMessage({ title: 'Scanning Grades', message: 'Verifying your Grades document and Video Content...' });
     
-    // --- DIAGNOSTIC TIMER START ---
-    setGradesScanTime(0);
-    const start = Date.now();
-    gradesTimerRef.current = setInterval(() => {
-      setGradesScanTime(Math.floor((Date.now() - start) / 1000));
-    }, 1000);
-    // ------------------------------
-
     try {
       const success = await performOcrVerification('Grades', gradesDoc, { 
         schoolName: formData.schoolName, 
-        idNumber: formData.schoolIdNumber,
         yearLevel: formData.yearLevel, 
         gpa: formData.gpa,
         semester: formData.semester 
       }, videoUrl);
-
-      // --- DIAGNOSTIC TIMER STOP ---
-      if (gradesTimerRef.current) clearInterval(gradesTimerRef.current);
-      // -----------------------------
       if (success) {
         showPromptMessage('✅ Grades verified successfully!');
       } else {
@@ -1162,14 +1128,6 @@ const StudentInfo = () => {
     setLoadingMessage({ title: 'Scanning School ID', message: 'Verifying your School ID images and Video Content...' });
     lastIdScanRef.current = { front: idFront, back: idBack, frontVid: frontVideoUrl, backVid: backVideoUrl };
 
-    // --- DIAGNOSTIC TIMER START ---
-    setIdScanTime(0);
-    const start = Date.now();
-    idTimerRef.current = setInterval(() => {
-      setIdScanTime(Math.floor((Date.now() - start) / 1000));
-    }, 1000);
-    // ------------------------------
-
     try {
       // Only check video presence, not full video OCR (backend already optimized)
       const success = await performOcrVerification(
@@ -1182,11 +1140,6 @@ const StudentInfo = () => {
         },
         { front: frontVideoUrl, back: backVideoUrl }
       );
-      
-      // --- DIAGNOSTIC TIMER STOP ---
-      if (idTimerRef.current) clearInterval(idTimerRef.current);
-      // -----------------------------
-
       if (success) {
         showPromptMessage('✅ Front & Back ID verified successfully!');
       } else {
@@ -1194,7 +1147,6 @@ const StudentInfo = () => {
       }
     } catch (err) {
       console.error('Scan Error:', err);
-      if (idTimerRef.current) clearInterval(idTimerRef.current);
     }
   };
 
@@ -1333,7 +1285,7 @@ const StudentInfo = () => {
     googleFontsSheet.href = 'https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap';
     document.head.appendChild(googleFontsSheet);
 
-    const compressImage = (file, maxWidth = 800, quality = 0.75) => {
+    const compressImage = (file, maxWidth = 1200, quality = 0.7) => {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
@@ -1818,8 +1770,8 @@ const StudentInfo = () => {
               handleCOEScan();
             }
           }
-          // Grades: Only auto-scan after COE is successful to match UI disclosure
-          if (coeVerified === 'success' && gradesVerified === null) {
+          // Grades
+          if (gradesVerified === null) {
             const doc = getVerificationDocumentSource(photos.mayorGrades_photo, formData.mayorGrades_photo, userProfile?.grades_doc);
             const vid = formData.mayorGrades_video || documentVideos.mayorGrades_video || userProfile?.grades_vid_url;
             if (doc && vid && typeof vid === 'string' && vid.startsWith('http')) {
@@ -3655,18 +3607,10 @@ const StudentInfo = () => {
                   {idStatus && (
                     <div className={`validation-status-card ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`} style={{marginTop: '1.2rem'}}>
                       <div className={`status-icon ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`}>
-                        <i className={`fas ${idVerified === 'success' ? 'fa-check' : (idVerified === 'failed' ? 'fa-circle-xmark' : (idVerified === 'verifying' ? 'fa-stopwatch fa-spin' : 'fa-magnifying-glass'))}`}></i>
+                        <i className={`fas ${idVerified === 'success' ? 'fa-check' : (idVerified === 'failed' ? 'fa-circle-xmark' : 'fa-magnifying-glass')}`}></i>
                       </div>
-                      <div style={{flex: 1}}>
-                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px'}}>
-                           <p style={{fontSize: '0.85rem', fontWeight: '800', margin: 0}}>Verification Engine Result</p>
-                           {/* DIAGNOSTIC TIMER DISPLAY */}
-                           {idVerified === 'verifying' && (
-                             <span style={{fontSize: '0.8rem', fontWeight: '900', color: 'var(--primary)', background: '#fff', padding: '2px 8px', borderRadius: '6px', border: '1px solid var(--primary)'}}>
-                               LIVE: {idScanTime}s
-                             </span>
-                           )}
-                        </div>
+                      <div>
+                        <p style={{fontSize: '0.85rem', fontWeight: '800', margin: '0 0 4px 0'}}>Verification Engine Result</p>
                         <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.5'}}>{idStatus}</p>
                       </div>
                     </div>
@@ -3674,297 +3618,258 @@ const StudentInfo = () => {
                 </div>
               </div>
 
-              {/* Documentary Requirements: COE and Grades (Progressive Disclosure) */}
-              <div style={{marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.2rem'}}>
-                {idVerified === 'success' ? (
-                  <div className="requirement-card">
-                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
-                      <div>
-                        <h4 style={{fontSize: '1.15rem', color: '#1a202c', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px'}}>
-                          <div style={{width: '36px', height: '36px', background: 'var(--accent-soft)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                            <i className="fas fa-file-signature" style={{color: 'var(--primary)', fontSize: '1.1rem'}}></i>
-                          </div>
-                          Certificate of Enrollment <span style={{color: '#e74c3c'}}>*</span>
-                        </h4>
-                        <p style={{fontSize: '0.85rem', color: '#64748b', marginTop: '6px', marginLeft: '46px'}}>Current semester registration form or COE</p>
-                      </div>
-                      {(photos.mayorCOE_photo || formData.mayorCOE_photo) && (
-                        <div style={{display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0'}}>
-                          <i className="fas fa-check-circle"></i> Upload Ready
+              {/* Documentary Requirements: COE and Grades */}
+              {idVerified === 'success' ? (
+                <div style={{marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.2rem'}}>
+                <div className="requirement-card">
+                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
+                    <div>
+                      <h4 style={{fontSize: '1.15rem', color: '#1a202c', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px'}}>
+                        <div style={{width: '36px', height: '36px', background: 'var(--accent-soft)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                          <i className="fas fa-file-signature" style={{color: 'var(--primary)', fontSize: '1.1rem'}}></i>
                         </div>
-                      )}
+                        Certificate of Enrollment <span style={{color: '#e74c3c'}}>*</span>
+                      </h4>
+                      <p style={{fontSize: '0.85rem', color: '#64748b', marginTop: '6px', marginLeft: '46px'}}>Current semester registration form or COE</p>
+                    </div>
+                    {(photos.mayorCOE_photo || formData.mayorCOE_photo) && (
+                      <div style={{display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0'}}>
+                        <i className="fas fa-check-circle"></i> Upload Ready
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="preview-box" style={{background: '#fff', borderStyle: 'solid'}}>
+                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
+                      <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155'}}>COE Media Check</label>
+                      <div style={{fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca'}}>PHOTO + VIDEO</div>
                     </div>
 
-                    <div className="preview-box" style={{background: '#fff', borderStyle: 'solid'}}>
-                      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
-                        <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155'}}>COE Media Check</label>
-                        <div style={{fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca'}}>PHOTO + VIDEO</div>
-                      </div>
+                    {renderDocumentMediaPicker({
+                      photoId: 'photo_mayorCOE_photo',
+                      photoName: 'mayorCOE_photo',
+                      photoValue: photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc,
+                      onPhotoChange: handleInputChange,
+                      videoId: 'video_mayorCOE_video',
+                      videoName: 'mayorCOE_video',
+                      videoValue: documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url,
+                      onVideoChange: handleVideoUpload,
+                      isUploadingVideo: Boolean(uploadingFields['mayorCOE_video'])
+                    })}
 
-                      {renderDocumentMediaPicker({
-                        photoId: 'photo_mayorCOE_photo',
-                        photoName: 'mayorCOE_photo',
-                        photoValue: photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc,
-                        onPhotoChange: handleInputChange,
-                        videoId: 'video_mayorCOE_video',
-                        videoName: 'mayorCOE_video',
-                        videoValue: documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url,
-                        onVideoChange: handleVideoUpload,
-                        isUploadingVideo: Boolean(uploadingFields['mayorCOE_video'])
-                      })}
-
-                      <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
-                        <div className="scanning-container">
-                          <div className="image-container" style={{height: '240px'}} onClick={() => (photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && setLightboxSrc(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc)}>
-                            {(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) ? (
-                              <img src={photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc} style={{objectFit: 'contain', background: '#000'}} alt="COE Preview" />
-                            ) : (
-                              <div style={{height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc'}}>
-                                <i className="fas fa-image" style={{fontSize: '2rem', marginBottom: '8px'}}></i>
-                                <span style={{fontSize: '0.7rem'}}>No Photo</span>
-                              </div>
-                            )}
-                            {coeVerified === 'verifying' && <div className="scanning-laser"></div>}
-                          </div>
-                        </div>
-
-                        <VideoRecorder 
-                          label="COE Verification Video" 
-                          onRecordComplete={(blob) => handleVideoUpload('mayorCOE_video', blob)} 
-                          initialVideoUrl={documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url}
-                          isUploading={Boolean(uploadingFields['mayorCOE_video'])}
-                          uploadProgress={uploadProgress['mayorCOE_video']}
-                          disabled={isAnyScanning || isSavingStep}
-                          hideButton={true}
-                          containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
-                        />
-                      </div>
-
-                      {(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && (
-                        <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
-                          <button 
-                            type="button" 
-                            onClick={handleCOEScan}
-                            disabled={isSavingStep || coeVerified === 'verifying' || isAnyVideoUploading}
-                            style={{
-                              width: '100%',
-                              padding: '0.85rem',
-                              borderRadius: '14px',
-                              background: coeVerified === 'success' ? '#10b981' : (coeVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
-                              color: 'white',
-                              border: 'none',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '10px',
-                              fontSize: '0.9rem',
-                              fontWeight: '800',
-                              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                              boxShadow: coeVerified === 'success' ? '0 10px 15px -5px rgba(16, 185, 129, 0.2)' : '0 10px 15px -5px rgba(79, 13, 0, 0.2)',
-                              textTransform: 'uppercase'
-                            }}
-                          >
-                            <i className={`fas ${coeVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-magnifying-glass'}`}></i>
-                            {coeVerified === 'verifying' ? 'Reviewing...' : (coeVerified === 'success' ? 'COE Verified' : 'Rapid COE Scan')}
-                          </button>
-
-                          {coeVerified === 'verifying' && (
-                            <div style={{width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0'}}>
-                              <div style={{position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px'}}></div>
+                    <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
+                      <div className="scanning-container">
+                        <div className="image-container" style={{height: '240px'}} onClick={() => (photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && setLightboxSrc(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc)}>
+                          {(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) ? (
+                            <img src={photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc} style={{objectFit: 'contain', background: '#000'}} alt="COE Preview" />
+                          ) : (
+                            <div style={{height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc'}}>
+                              <i className="fas fa-image" style={{fontSize: '2rem', marginBottom: '8px'}}></i>
+                              <span style={{fontSize: '0.7rem'}}>No Photo</span>
                             </div>
                           )}
-                          
-                          {coeStatus && (
-                            <div className={`validation-status-card ${coeVerified === 'success' ? 'success' : (coeVerified === 'failed' ? 'failed' : 'processing')}`}>
-                              <div className={`status-icon ${coeVerified === 'success' ? 'success' : (coeVerified === 'failed' ? 'failed' : 'processing')}`}>
-                                <i className={`fas ${coeVerified === 'success' ? 'fa-check' : (coeVerified === 'failed' ? 'fa-circle-xmark' : (coeVerified === 'verifying' ? 'fa-stopwatch fa-spin' : 'fa-info-circle'))}`}></i>
-                              </div>
-                              <div style={{flex: 1}}>
-                                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px'}}>
-                                   <p style={{fontSize: '0.85rem', fontWeight: '800', margin: 0}}>Verification Engine Result</p>
-                                   {/* DIAGNOSTIC TIMER DISPLAY */}
-                                   {coeVerified === 'verifying' && (
-                                     <span style={{fontSize: '0.8rem', fontWeight: '900', color: 'var(--primary)', background: '#fff', padding: '2px 8px', borderRadius: '6px', border: '1px solid var(--primary)'}}>
-                                       LIVE: {coeScanTime}s
-                                     </span>
-                                   )}
-                                </div>
-                                <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.4'}}>{coeStatus}</p>
-                              </div>
-                            </div>
-                          )}
+                          {coeVerified === 'verifying' && <div className="scanning-laser"></div>}
                         </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{
-                    padding: '2rem 1.5rem', 
-                    background: '#f8fafc', 
-                    borderRadius: '28px', 
-                    border: '1.5px dashed #e2e8f0',
-                    textAlign: 'center',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '12px',
-                    animation: 'fadeIn 0.5s ease'
-                  }}>
-                    <div style={{width: '64px', height: '64px', background: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px rgba(0,0,0,0.04)', marginBottom: '4px'}}>
-                      <i className="fas fa-file-shield" style={{color: '#94a3b8', fontSize: '1.4rem'}}></i>
-                    </div>
-                    <h4 style={{fontSize: '1.1rem', color: '#334155', fontWeight: '800', margin: 0}}>COE Section Locked</h4>
-                    <p style={{fontSize: '0.85rem', color: '#64748b', maxWidth: '320px', margin: 0, lineHeight: '1.5'}}>
-                      Please complete the <b>Updated School ID verification</b> above first. Once verified, the COE section will appear.
-                    </p>
-                  </div>
-                )}
+                      </div>
 
-                {coeVerified === 'success' ? (
-                  <div className="requirement-card">
-                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
-                      <div>
-                        <h4 style={{fontSize: '1.15rem', color: '#1a202c', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px'}}>
-                          <div style={{width: '36px', height: '36px', background: 'var(--accent-soft)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                            <i className="fas fa-star" style={{color: 'var(--primary)', fontSize: '1.1rem'}}></i>
+                      <VideoRecorder 
+                        label="COE Verification Video" 
+                        onRecordComplete={(blob) => handleVideoUpload('mayorCOE_video', blob)} 
+                        initialVideoUrl={documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url}
+                        isUploading={Boolean(uploadingFields['mayorCOE_video'])}
+                        uploadProgress={uploadProgress['mayorCOE_video']}
+                        disabled={isAnyScanning || isSavingStep}
+                        hideButton={true}
+                        containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                      />
+                    </div>
+
+                    {(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && (
+                      <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                        <button 
+                          type="button" 
+                          onClick={handleCOEScan}
+                          disabled={isSavingStep || coeVerified === 'verifying' || isAnyVideoUploading}
+                          style={{
+                            width: '100%',
+                            padding: '0.85rem',
+                            borderRadius: '14px',
+                            background: coeVerified === 'success' ? '#10b981' : (coeVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
+                            color: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '10px',
+                            fontSize: '0.9rem',
+                            fontWeight: '800',
+                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                            boxShadow: coeVerified === 'success' ? '0 10px 15px -5px rgba(16, 185, 129, 0.2)' : '0 10px 15px -5px rgba(79, 13, 0, 0.2)',
+                            textTransform: 'uppercase'
+                          }}
+                        >
+                          <i className={`fas ${coeVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-magnifying-glass'}`}></i>
+                          {coeVerified === 'verifying' ? 'Reviewing...' : (coeVerified === 'success' ? 'COE Verified' : 'Rapid COE Scan')}
+                        </button>
+
+                        {coeVerified === 'verifying' && (
+                          <div style={{width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0'}}>
+                            <div style={{position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px'}}></div>
                           </div>
-                          Academic Grades <span style={{color: '#e74c3c'}}>*</span>
-                        </h4>
-                        <p style={{fontSize: '0.85rem', color: '#64748b', marginTop: '6px', marginLeft: '46px'}}>Previous semester report card or transcript</p>
-                      </div>
-                      {(photos.mayorGrades_photo || formData.mayorGrades_photo) && (
-                        <div style={{display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0'}}>
-                          <i className="fas fa-check-circle"></i> Upload Ready
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="preview-box" style={{background: '#fff', borderStyle: 'solid'}}>
-                      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
-                        <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155'}}>Academic Media Check</label>
-                        <div style={{fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca'}}>PHOTO + VIDEO</div>
-                      </div>
-
-                      {renderDocumentMediaPicker({
-                        photoId: 'photo_mayorGrades_photo',
-                        photoName: 'mayorGrades_photo',
-                        photoValue: photos.mayorGrades_photo || userProfile?.grades_doc,
-                        onPhotoChange: handleInputChange,
-                        videoId: 'video_mayorGrades_video',
-                        videoName: 'mayorGrades_video',
-                        videoValue: documentVideos.mayorGrades_video || userProfile?.grades_vid_url,
-                        onVideoChange: handleVideoUpload,
-                        isUploadingVideo: Boolean(uploadingFields['mayorGrades_video'])
-                      })}
-
-                      <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
-                        <div className="scanning-container">
-                          <div className="image-container" style={{height: '240px'}} onClick={() => (photos.mayorGrades_photo || userProfile?.grades_doc) && setLightboxSrc(photos.mayorGrades_photo || userProfile?.grades_doc)}>
-                            {(photos.mayorGrades_photo || userProfile?.grades_doc) ? (
-                              <img src={photos.mayorGrades_photo || userProfile?.grades_doc} style={{objectFit: 'contain', background: '#000'}} alt="Grades Preview" />
-                            ) : (
-                              <div style={{height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc'}}>
-                                <i className="fas fa-image" style={{fontSize: '2rem', marginBottom: '8px'}}></i>
-                                <span style={{fontSize: '0.7rem'}}>No Photo</span>
-                              </div>
-                            )}
-                            {gradesVerified === 'verifying' && <div className="scanning-laser"></div>}
+                        )}
+                        
+                        {coeStatus && (
+                          <div className={`validation-status-card ${coeVerified === 'success' ? 'success' : (coeVerified === 'failed' ? 'failed' : 'processing')}`}>
+                            <div className={`status-icon ${coeVerified === 'success' ? 'success' : (coeVerified === 'failed' ? 'failed' : 'processing')}`}>
+                              <i className={`fas ${coeVerified === 'success' ? 'fa-check' : (coeVerified === 'failed' ? 'fa-circle-xmark' : 'fa-info-circle')}`}></i>
+                            </div>
+                            <div>
+                              <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.4'}}>{coeStatus}</p>
+                            </div>
                           </div>
-                        </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-                        <VideoRecorder 
-                          label="Grades Verification Video" 
-                          onRecordComplete={(blob) => handleVideoUpload('mayorGrades_video', blob)} 
-                          initialVideoUrl={documentVideos.mayorGrades_video || userProfile?.grades_vid_url}
-                          isUploading={Boolean(uploadingFields['mayorGrades_video'])}
-                          uploadProgress={uploadProgress['mayorGrades_video']}
-                          disabled={isAnyScanning || isSavingStep}
-                          hideButton={true}
-                          containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
-                        />
+                <div className="requirement-card">
+                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem'}}>
+                    <div>
+                      <h4 style={{fontSize: '1.15rem', color: '#1a202c', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px'}}>
+                        <div style={{width: '36px', height: '36px', background: 'var(--accent-soft)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                          <i className="fas fa-star" style={{color: 'var(--primary)', fontSize: '1.1rem'}}></i>
+                        </div>
+                        Academic Grades <span style={{color: '#e74c3c'}}>*</span>
+                      </h4>
+                      <p style={{fontSize: '0.85rem', color: '#64748b', marginTop: '6px', marginLeft: '46px'}}>Previous semester report card or transcript</p>
+                    </div>
+                    {(photos.mayorGrades_photo || formData.mayorGrades_photo) && (
+                      <div style={{display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0'}}>
+                        <i className="fas fa-check-circle"></i> Upload Ready
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="preview-box" style={{background: '#fff', borderStyle: 'solid'}}>
+                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
+                      <label style={{display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155'}}>Academic Media Check</label>
+                      <div style={{fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca'}}>PHOTO + VIDEO</div>
+                    </div>
+
+                    {renderDocumentMediaPicker({
+                      photoId: 'photo_mayorGrades_photo',
+                      photoName: 'mayorGrades_photo',
+                      photoValue: photos.mayorGrades_photo || userProfile?.grades_doc,
+                      onPhotoChange: handleInputChange,
+                      videoId: 'video_mayorGrades_video',
+                      videoName: 'mayorGrades_video',
+                      videoValue: documentVideos.mayorGrades_video || userProfile?.grades_vid_url,
+                      onVideoChange: handleVideoUpload,
+                      isUploadingVideo: Boolean(uploadingFields['mayorGrades_video'])
+                    })}
+
+                    <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
+                      <div className="scanning-container">
+                        <div className="image-container" style={{height: '240px'}} onClick={() => (photos.mayorGrades_photo || userProfile?.grades_doc) && setLightboxSrc(photos.mayorGrades_photo || userProfile?.grades_doc)}>
+                          {(photos.mayorGrades_photo || userProfile?.grades_doc) ? (
+                            <img src={photos.mayorGrades_photo || userProfile?.grades_doc} style={{objectFit: 'contain', background: '#000'}} alt="Grades Preview" />
+                          ) : (
+                            <div style={{height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc'}}>
+                              <i className="fas fa-image" style={{fontSize: '2rem', marginBottom: '8px'}}></i>
+                              <span style={{fontSize: '0.7rem'}}>No Photo</span>
+                            </div>
+                          )}
+                          {gradesVerified === 'verifying' && <div className="scanning-laser"></div>}
+                        </div>
                       </div>
 
-                      {(photos.mayorGrades_photo || userProfile?.grades_doc) && (
-                        <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
-                          <button 
-                            type="button" 
-                            onClick={handleGradesScan}
-                            disabled={isSavingStep || gradesVerified === 'verifying' || isAnyVideoUploading}
-                            style={{
-                              width: '100%',
-                              padding: '0.85rem',
-                              borderRadius: '14px',
-                              background: gradesVerified === 'success' ? '#10b981' : (gradesVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
-                              color: 'white',
-                              border: 'none',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '10px',
-                              fontSize: '0.9rem',
-                              fontWeight: '800',
-                              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                              boxShadow: gradesVerified === 'success' ? '0 10px 15px -5px rgba(16, 185, 129, 0.2)' : '0 10px 15px -5px rgba(79, 13, 0, 0.2)',
-                              textTransform: 'uppercase'
-                            }}
-                          >
-                            <i className={`fas ${gradesVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-clipboard-check'}`}></i>
-                            {gradesVerified === 'verifying' ? 'Analyzing...' : (gradesVerified === 'success' ? 'Grades Verified' : 'Rapid Grades Scan')}
-                          </button>
+                      <VideoRecorder 
+                        label="Grades Verification Video" 
+                        onRecordComplete={(blob) => handleVideoUpload('mayorGrades_video', blob)} 
+                        initialVideoUrl={documentVideos.mayorGrades_video || userProfile?.grades_vid_url}
+                        isUploading={Boolean(uploadingFields['mayorGrades_video'])}
+                        uploadProgress={uploadProgress['mayorGrades_video']}
+                        disabled={isAnyScanning || isSavingStep}
+                        hideButton={true}
+                        containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                      />
+                    </div>
 
-                          {gradesVerified === 'verifying' && (
-                            <div style={{width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0'}}>
-                              <div style={{position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px'}}></div>
+                    {(photos.mayorGrades_photo || userProfile?.grades_doc) && (
+                      <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                        <button 
+                          type="button" 
+                          onClick={handleGradesScan}
+                          disabled={isSavingStep || gradesVerified === 'verifying' || isAnyVideoUploading}
+                          style={{
+                            width: '100%',
+                            padding: '0.85rem',
+                            borderRadius: '14px',
+                            background: gradesVerified === 'success' ? '#10b981' : (gradesVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
+                            color: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '10px',
+                            fontSize: '0.9rem',
+                            fontWeight: '800',
+                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                            boxShadow: gradesVerified === 'success' ? '0 10px 15px -5px rgba(16, 185, 129, 0.2)' : '0 10px 15px -5px rgba(79, 13, 0, 0.2)',
+                            textTransform: 'uppercase'
+                          }}
+                        >
+                          <i className={`fas ${gradesVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-clipboard-check'}`}></i>
+                          {gradesVerified === 'verifying' ? 'Analyzing...' : (gradesVerified === 'success' ? 'Grades Verified' : 'Rapid Grades Scan')}
+                        </button>
+
+                        {gradesVerified === 'verifying' && (
+                          <div style={{width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0'}}>
+                            <div style={{position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px'}}></div>
+                          </div>
+                        )}
+                        
+                        {gradesStatus && (
+                          <div className={`validation-status-card ${gradesVerified === 'success' ? 'success' : (gradesVerified === 'failed' ? 'failed' : 'processing')}`}>
+                            <div className={`status-icon ${gradesVerified === 'success' ? 'success' : (gradesVerified === 'failed' ? 'failed' : 'processing')}`}>
+                              <i className={`fas ${gradesVerified === 'success' ? 'fa-check' : (gradesVerified === 'failed' ? 'fa-circle-xmark' : 'fa-info-circle')}`}></i>
                             </div>
-                          )}
-                          
-                          {gradesStatus && (
-                            <div className={`validation-status-card ${gradesVerified === 'success' ? 'success' : (gradesVerified === 'failed' ? 'failed' : 'processing')}`}>
-                              <div className={`status-icon ${gradesVerified === 'success' ? 'success' : (gradesVerified === 'failed' ? 'failed' : 'processing')}`}>
-                                <i className={`fas ${gradesVerified === 'success' ? 'fa-check' : (gradesVerified === 'failed' ? 'fa-circle-xmark' : (gradesVerified === 'verifying' ? 'fa-stopwatch fa-spin' : 'fa-info-circle'))}`}></i>
-                              </div>
-                              <div style={{flex: 1}}>
-                                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px'}}>
-                                   <p style={{fontSize: '0.8rem', fontWeight: '800', margin: 0}}>Academic Scan Result</p>
-                                   {gradesVerified === 'verifying' && (
-                                     <span style={{fontSize: '0.75rem', fontWeight: '900', color: 'var(--primary)', background: '#fff', padding: '1px 6px', borderRadius: '4px', border: '1px solid var(--primary)'}}>
-                                       LIVE: {gradesScanTime}s
-                                     </span>
-                                   )}
-                                </div>
-                                <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.4'}}>{gradesStatus}</p>
-                              </div>
+                            <div>
+                              <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.4'}}>{gradesStatus}</p>
                             </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                ) : idVerified === 'success' ? (
-                  <div style={{
-                    padding: '2rem 1.5rem', 
-                    background: '#f8fafc', 
-                    borderRadius: '28px', 
-                    border: '1.5px dashed #e2e8f0',
-                    textAlign: 'center',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '12px',
-                    animation: 'fadeIn 0.5s ease'
-                  }}>
-                    <div style={{width: '64px', height: '64px', background: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px rgba(0,0,0,0.04)', marginBottom: '4px'}}>
-                      <i className="fas fa-lock" style={{color: '#94a3b8', fontSize: '1.4rem'}}></i>
-                    </div>
-                    <h4 style={{fontSize: '1.1rem', color: '#334155', fontWeight: '800', margin: 0}}>Grades Section Locked</h4>
-                    <p style={{fontSize: '0.85rem', color: '#64748b', maxWidth: '320px', margin: 0, lineHeight: '1.5'}}>
-                      Please complete the <b>Certificate of Enrollment (COE)</b> verification above first to unlock your Grades section.
-                    </p>
+                </div>
+                </div>
+              ) : (
+                <div style={{
+                  marginTop: '1.5rem', 
+                  padding: '2.5rem 1.5rem', 
+                  background: '#f8fafc', 
+                  borderRadius: '28px', 
+                  border: '1.5px dashed #e2e8f0',
+                  textAlign: 'center',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '12px',
+                  animation: 'fadeIn 0.5s ease'
+                }}>
+                  <div style={{width: '64px', height: '64px', background: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px rgba(0,0,0,0.04)', marginBottom: '4px'}}>
+                    <i className="fas fa-file-shield" style={{color: '#94a3b8', fontSize: '1.4rem'}}></i>
                   </div>
-                ) : null}
-              </div>
+                  <h4 style={{fontSize: '1.1rem', color: '#334155', fontWeight: '800', margin: 0}}>Document Uploads Locked</h4>
+                  <p style={{fontSize: '0.85rem', color: '#64748b', maxWidth: '320px', margin: 0, lineHeight: '1.5'}}>
+                    Please complete the <b>Updated School ID verification</b> above first. Once verified, the COE and Academic Grades sections will automatically appear.
+                  </p>
+                </div>
+              )}
 
               <div style={{marginTop: '2rem', display: 'flex', justifyContent: 'space-between'}}>
                 <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>

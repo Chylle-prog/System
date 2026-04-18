@@ -32,8 +32,8 @@ PERFORMANCE_CONFIG = {
         'gc_frequency': 'always'
     },
     'HIGH': {
-        'ocr_concurrency': 4, # Reduced from 8 to 4 to ensure each task gets sufficient CPU share
-        'threads_per_process': 1, # LOCK to 1 to avoid context-switching thrashing
+        'ocr_concurrency': 8,
+        'threads_per_process': 8,
         'image_max_width': 1024,
         'gc_frequency': 'minimal'
     }

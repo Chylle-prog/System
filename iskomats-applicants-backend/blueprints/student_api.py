@@ -39,7 +39,7 @@ from services.applicant_document_service import (
 from services.ocr_utils import (
     verify_id_with_ocr, verify_face_with_id, extract_school_year, 
     extract_school_year_from_text, is_current_school_year, 
-    verify_video_content,
+    verify_signature_against_id, save_signature_profile, verify_video_content,
     extract_semester_from_text,
     normalize_semester_label,
     _perform_text_matching,
@@ -47,11 +47,7 @@ from services.ocr_utils import (
     student_name_matches_text,
     course_matches_text,
     student_id_no_matches_text,
-    year_level_matches_text,
-    fetch_video_bytes_from_url,
-    clear_heavy_memory,
-    db_bytes,
-    decode_base64
+    year_level_matches_text
 )
 from services.school_utils import build_school_name_variants, school_name_matches_text
 from services.notification_service import create_notification, fetch_google_access_token, send_verification_email
@@ -97,15 +93,6 @@ except Exception:
 
 
 student_api_bp = Blueprint('student_api', __name__, url_prefix='/api/student')
-
-@student_api_bp.route('/health-check', methods=['GET'])
-def student_blueprint_health():
-    return jsonify({
-        'status': 'ok',
-        'blueprint': 'student_api',
-        'prefix': '/api/student'
-    }), 200
-
 bcrypt = Bcrypt()
 SECRET_KEY = get_secret_key()
 
@@ -444,6 +431,59 @@ def prefetch_video_urls(urls, max_workers=4):
                 future.result()
             except Exception:
                 pass
+
+def fetch_video_bytes_from_url(url):
+    if not url: return None, "No URL provided"
+    if not isinstance(url, str) or not url.startswith('http'):
+        return None, f"Invalid URL: {url}"
+
+    normalized_url = url.strip()
+    cached = _get_cached_video_fetch(normalized_url)
+    if cached is not None:
+        content, error = cached
+        if content is not None:
+            print(f"[VIDEO FETCH CACHE] Reusing {len(content)} bytes for: {normalized_url}", flush=True)
+        return content, error
+        
+    try:
+        print(f"[VIDEO FETCH] Fetching video from: {normalized_url}", flush=True)
+        # Use requests with a reasonable timeout and user-agent
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ISKOMATS-Verification-Bot/1.0'
+        }
+        
+        url_to_fetch = normalized_url
+        # If it's a Supabase URL, try to use the Service Role Key for authentication
+        # (This allows fetching from private buckets)
+        supabase_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
+        if supabase_key and 'supabase.co' in url:
+            if '/object/public/' in url:
+                url_to_fetch = url.replace('/object/public/', '/object/authenticated/')
+                
+            headers['apikey'] = supabase_key
+            headers['Authorization'] = f"Bearer {supabase_key}"
+            print("[VIDEO FETCH] Attaching Supabase Service Role credentials to authenticated endpoint...", flush=True)
+
+        response = requests.get(url_to_fetch, headers=headers, timeout=15)
+        
+        if response.status_code == 200:
+            content = response.content
+            print(f"[VIDEO FETCH] Successfully fetched {len(content)} bytes", flush=True)
+            _cache_video_fetch(normalized_url, content, None)
+            return content, None
+        else:
+            err_msg = f"HTTP {response.status_code}"
+            print(f"[VIDEO FETCH] {err_msg} for {url_to_fetch}", flush=True)
+            _cache_video_fetch(normalized_url, None, err_msg)
+            return None, err_msg
+    except requests.exceptions.Timeout:
+        _cache_video_fetch(normalized_url, None, "Connection timeout")
+        return None, "Connection timeout"
+    except Exception as e:
+        error_message = str(e)
+        _cache_video_fetch(normalized_url, None, error_message)
+        return None, error_message
+
 
 def verify_video_reference(url):
     if not url:
@@ -2304,14 +2344,6 @@ def get_applicant_document_raw(field_name):
                 return "Not found", 404
             
             value = row[field_name]
-            if not value:
-                return "Empty document", 404
-
-            # --- URL HANDLING (Supabase Migration) ---
-            if isinstance(value, str) and value.startswith('http'):
-                from flask import redirect
-                return redirect(value)
-
             if field_name == 'signature_image_data':
                 value = decode_signature(value)
             else:
@@ -2485,7 +2517,6 @@ def check_sibling_restriction():
     """
     Performs a 'pre-flight' sibling check based on parent names provided in the form.
     """
-    print(f"[DEBUG] Sibling Check requested for user_no: {getattr(request, 'user_no', 'unknown')}", flush=True)
     data = request.get_json() or {}
     scholarship_id = data.get('scholarship_id') or data.get('scholarship_no')
     
@@ -2688,23 +2719,21 @@ def submit_application():
                         verification_tasks['ocr'] = executor.submit(
                             verify_id_with_ocr, 
                             image_bytes=id_front_bytes,
-                            expected_first_name=applicant.get('first_name', ''),
-                            expected_last_name=applicant.get('last_name', ''),
+                            expected_name=full_name,
                             expected_address=town_city
                         )
 
                     # 2. Video OCR Validations
                     video_requirements = {
-                        'mayorIndigency_video': ['Indigency', 'Certificate', 'Barangay', 'Indigent', 'Residency', 'Clearance', 'Resident', 'Certification'],
-                        'mayorGrades_video': ['Grades', 'Grade', 'Transcript', 'Records', 'Units', 'GPA', 'Semester', 'Sem'],
-                        'mayorCOE_video': ['Enrollment', 'Enrolment', 'Certificate', 'Registration', 'Registered', 'College', 'Enrolled', 'COE', 'Semester', 'Sem']
+                        'mayorIndigency_video': ['Indigency', 'Barangay', 'Certificate', 'Resident'],
+                        'mayorGrades_video': ['Grades', 'Grade', 'Transcript', 'Records', 'Units', 'Unit', 'Subject', 'GPA', 'Evaluation', 'Academic', 'Semester'],
+                        'mayorCOE_video': ['Enrollment', 'Enrolment', 'Certificate', 'Registration', 'Registered', 'College', 'Enrolled', 'COE', 'Semester']
                     }
                     def _threaded_verify(v_url, kws, addr, upl_bytes):
                         data_bytes = upl_bytes
                         if not data_bytes and v_url:
                             data_bytes, _ = fetch_video_bytes_from_url(v_url)
                         if not data_bytes: return False, "Video inaccessible."
-                        # Use the synchronized verification logic (PSM 11)
                         return verify_video_content(data_bytes, kws, addr)
 
                     for field, keywords in video_requirements.items():
@@ -2716,8 +2745,9 @@ def submit_application():
                         
                         video_url = form_data.get(field)
                         if v_bytes or (isinstance(video_url, str) and video_url.startswith('http')):
+                            expected_addr = form_data.get('townCity') or applicant.get('town_city_municipality', '') if field == 'mayorIndigency_video' else None
                             verification_tasks[f'video_{field}'] = executor.submit(
-                                _threaded_verify, video_url, keywords, None, v_bytes
+                                _threaded_verify, video_url, keywords, expected_addr, v_bytes
                             )
 
                     # --- GATHER RESULTS ---
@@ -2727,12 +2757,10 @@ def submit_application():
 
                     for key in verification_tasks:
                         if key.startswith('video_'):
-                            is_v, v_msg = verification_tasks[key].result()
-                            if not is_v:
+                            is_valid, v_msg = verification_tasks[key].result()
+                            if not is_valid:
                                 print(f"[SUBMIT] ❌ Video Validation Failed ({key}): {v_msg}")
-                                # Clean memory before returning error
-                                clear_heavy_memory()
-                                return jsonify({'message': f'Verification failed: {v_msg}'}), 400
+                                return jsonify({'message': f'Invalid Video Content: {v_msg}'}), 400
                             print(f"[SUBMIT] ✅ Video Validated ({key}): {v_msg}")
 
             except Exception as ai_err:
@@ -2870,7 +2898,7 @@ def submit_application():
 
     except Exception as exc:
         traceback.print_exc()
-        print(f"[SUBMIT] ❌ Error: {str(exc)}")
+        print(f"[SUBMIT] ❌ Error after {time.time() - start_time:.2f}s: {str(exc)}")
         if 'conn' in locals():
             try: conn.rollback()
             except: pass
@@ -2936,9 +2964,8 @@ def ocr_check():
             if not applicant:
                 return jsonify({'verified': False, 'message': 'Applicant profile not found'}), 404
 
-            # Fetch scholarship metadata
+            # Fetch scholarship metadata while we still have the connection
             expected_semester = None
-            expected_academic_year = None
             scholarship_no = data.get('scholarship_no')
             if scholarship_no:
                 try:
@@ -2946,13 +2973,16 @@ def ocr_check():
                     sch = cur.fetchone()
                     if sch:
                         if sch['year']:
-                            expected_academic_year = sch['year']
+                            expected_academic_year_from_sch = sch['year']
+                            print(f"[OCR] Using scholarship-defined academic year: {expected_academic_year_from_sch}", flush=True)
                         if sch['semester']:
                             expected_semester = sch['semester']
+                            print(f"[OCR] Using scholarship-defined semester: {expected_semester}", flush=True)
                 except Exception as sch_err:
                     print(f"[OCR ERROR] Failed to fetch scholarship year: {sch_err}", flush=True)
+        # Connection is now released back to pool — all remaining work is CPU-bound OCR
 
-        # 2. Resolve parameters
+        # 2. Resolve parameters (multipart files prioritize over payload/JSON)
         id_front_file = request.files.get('id_front') or request.files.get('idFront')
         id_back_file = request.files.get('id_back') or request.files.get('idBack')
         indigency_doc_file = request.files.get('indigency_doc') or request.files.get('indigencyDoc')
@@ -2969,131 +2999,424 @@ def ocr_check():
         middle_name = str(data.get('middle_name') or data.get('middleName') or applicant.get('middle_name') or '').strip()
         last_name = str(data.get('last_name') or data.get('lastName') or applicant.get('last_name') or '').strip()
         
+        # Construct full expected name for OCR matching
+        # Include middle name only if it's more than a single character or placeholder
+        full_expected_name = f"{first_name} {last_name}"
+        if middle_name and len(middle_name) > 1:
+            full_expected_name = f"{first_name} {middle_name} {last_name}"
         town_city = str(data.get('town_city') or data.get('townCity') or data.get('townCityMunicipality') or applicant.get('town_city_municipality', '')).strip()
         barangay = str(data.get('barangay') or data.get('streetBarangay') or data.get('targetBarangay') or applicant.get('street_brgy') or '').strip()
         
+        print(f"[OCR-DEBUG] User={request.user_no} Doc={target_doc} Town={town_city} Brgy={barangay}", flush=True)
         school_name = str(data.get('school_name') or data.get('schoolName') or '').strip()
         course = str(data.get('course') or '').strip()
         expected_gpa = str(data.get('gpa') or data.get('expectedGPA') or '').strip()
         expected_year_level = str(data.get('year_level') or data.get('yearLevel') or '').strip()
+        expected_academic_year = str(data.get('expected_year') or data.get('expectedYear') or '').strip()
         expected_id_no = str(data.get('id_number') or data.get('idNumber') or '').strip()
-
-        request_semester = str(data.get('semester') or data.get('expected_semester') or data.get('expectedSemester') or '').strip()
-        if request_semester and not expected_semester:
-            expected_semester = request_semester
         
-        print(f"[OCR-DEBUG] User={request.user_no} Doc={target_doc} Expected ID={expected_id_no}", flush=True)
+        print(f"[OCR-DEBUG-EXPECTED] First='{first_name}' Middle='{middle_name}' Last='{last_name}' ID='{expected_id_no}'", flush=True)
 
-        video_keywords_map = {
-            'Indigency': ['Indigency', 'Certificate', 'Barangay', 'Indigent', 'Residency', 'Clearance', 'Resident', 'Certification'],
-            'Enrollment': ['Enrollment', 'Enrolment', 'Certificate', 'COE', 'COR', 'Registered', 'Registration', 'Matriculation', 'Semester'],
-            'Grades': ['Grades', 'Grade', 'Transcript', 'Record', 'Evaluation', 'GPA', 'Semester', 'Sem'],
-            'SchoolID': ['Student', 'Identity', 'Republic', 'Department'],
-            'SchoolIDBack': ['Address', 'Contact', 'Emergency', 'Valid']
-        }
+
+        # Apply scholarship-defined overrides if they were fetched from DB
+        if 'expected_academic_year_from_sch' in locals():
+            expected_academic_year = expected_academic_year_from_sch
+
+        # ─── SPEED OPTIMIZATION: Early Video Prefetching ───
+        # Initiate parallel downloads of all relevant videos immediately
+        all_relevant_urls = [
+            data.get('video_url'), data.get('video_url_back'),
+            data.get('face_video'), applicant.get('id_vid_url'),
+            data.get('mayorIndigency_video'), applicant.get('indigency_vid_url'),
+            data.get('mayorCOE_video'), applicant.get('enrollment_certificate_vid_url'),
+            data.get('mayorGrades_video'), applicant.get('grades_vid_url'),
+            data.get('schoolIdFront_video'), applicant.get('schoolid_front_vid_url'),
+            data.get('schoolIdBack_video'), applicant.get('schoolid_back_vid_url')
+        ]
+        prefetch_video_urls(all_relevant_urls)
+        
+        verification_cache_key = json.dumps({
+            'user_no': request.user_no,
+            'target_doc': target_doc,
+            'scholarship_no': scholarship_no,
+            'first_name': first_name,
+            'middle_name': middle_name,
+            'last_name': last_name,
+            'town_city': town_city,
+            'barangay': barangay,
+            'school_name': school_name,
+            'course': course,
+            'expected_gpa': expected_gpa,
+            'expected_year_level': expected_year_level,
+            'expected_academic_year': expected_academic_year,
+            'expected_semester': expected_semester,
+            'expected_id_no': expected_id_no,
+            'id_front': _hash_verification_source(id_front_param or applicant.get('id_img_front')),
+            'id_back': _hash_verification_source(id_back_param or applicant.get('id_img_back')),
+            'indigency_doc': _hash_verification_source(indigency_doc_param or applicant.get('indigency_doc')),
+            'enrollment_doc': _hash_verification_source(enrollment_doc_param or applicant.get('enrollment_certificate_doc')),
+            'grades_doc': _hash_verification_source(grades_doc_param or applicant.get('grades_doc')),
+            'video_url': str(data.get('video_url') or '').strip(),
+            'video_url_back': str(data.get('video_url_back') or '').strip(),
+            'indigency_video': str(data.get('mayorIndigency_video') or applicant.get('indigency_vid_url') or '').strip(),
+            'enrollment_video': str(data.get('mayorCOE_video') or applicant.get('enrollment_certificate_vid_url') or '').strip(),
+            'grades_video': str(data.get('mayorGrades_video') or applicant.get('grades_vid_url') or '').strip(),
+            'school_front_video': str(data.get('schoolIdFront_video') or applicant.get('schoolid_front_vid_url') or '').strip(),
+            'school_back_video': str(data.get('schoolIdBack_video') or applicant.get('schoolid_back_vid_url') or '').strip(),
+        }, sort_keys=True)
+        
+        # NOTE: High-level cache is disabled temporarily to ensure user tests are fresh
+        # while we fix the OCR logic issues.
+        # cached_verification = _get_cached_verification_result(verification_cache_key)
+        # if cached_verification is not None:
+        #     print(f"[OCR CACHE HIT] Reusing cached verification for user={request.user_no}, target={target_doc or 'all'}", flush=True)
+        #     return jsonify(cached_verification)
 
         # ── Worker Function for Parallel Processing ──
         def process_doc(doc_type, doc_param, db_val):
             try:
-                # Resolve bytes
-                def resolve_bytes(param, db_val):
-                    if isinstance(param, bytes): return param
-                    if isinstance(param, str):
-                        if param.startswith('http'):
-                            b, _ = fetch_video_bytes_from_url(param)
-                            return b
-                        return decode_base64(param)
-                    return db_bytes(db_val) if db_val else None
+                # Use standard doc bytes for provided parameters, fallback to DB only for Indigency/ID
+                # Support both newly uploaded base64 data and existing Supabase URLs
+                doc_bytes = resolve_verification_image_bytes(doc_param) if doc_param else (resolve_verification_image_bytes(db_val) if db_val else None)
                 
-                doc_bytes = resolve_bytes(doc_param, db_val)
-                
-                if not doc_bytes: return None
+                if not doc_bytes: 
+                    return None
 
-                # Determine video URL
+                # 1. Main OCR Verification (Identity)
+                # Determine video URL for this document type (Prioritize request payload)
+                frontend_video_front_url = data.get('video_url')
+                frontend_video_back_url = data.get('video_url_back') or frontend_video_front_url
+                school_id_front_video = applicant.get('schoolid_front_vid_url')
+                school_id_back_video = applicant.get('schoolid_back_vid_url')
                 vid_url_map = {
-                    'Indigency': data.get('video_url') or applicant.get('indigency_vid_url'),
-                    'SchoolID': data.get('video_url') or applicant.get('schoolid_front_vid_url'),
-                    'SchoolIDBack': data.get('video_url_back') or data.get('video_url') or applicant.get('schoolid_back_vid_url'),
-                    'Enrollment': data.get('video_url') or applicant.get('enrollment_certificate_vid_url'),
-                    'Grades': data.get('video_url') or applicant.get('grades_vid_url')
+                    'Indigency': frontend_video_front_url or applicant.get('indigency_vid_url'),
+                    'SchoolID': frontend_video_front_url or school_id_front_video,
+                    'SchoolIDBack': frontend_video_back_url or school_id_back_video,
+                    'Enrollment': frontend_video_front_url or applicant.get('enrollment_certificate_vid_url'),
+                    'Grades': frontend_video_front_url or applicant.get('grades_vid_url')
                 }
                 vid_url = vid_url_map.get(doc_type)
                 
-                # ─── PARALLEL VERIFICATION ───
+                # ─── PARALLEL VERIFICATION (Part 1: Preparation) ───
+                target_address = barangay if doc_type == 'Indigency' else None
+                
+                # Pre-define results
+                video_res = [True, "Not provided"]
+                ocr_res = [False, "Unable to read document text", ""]
+
                 def run_video_check():
                     if not vid_url:
-                        return False, "Supporting video missing"
+                        if doc_type in ['Indigency', 'Enrollment', 'Grades', 'SchoolID', 'SchoolIDBack']:
+                            return False, "Mandatory supporting video is missing"
+                        return True, "Not provided"
                     
-                    # Fetch video bytes
-                    v_bytes, v_err = fetch_video_bytes_from_url(vid_url)
-                    if not v_bytes: return False, f"Video unreachable ({v_err})"
+                    if doc_type in ['SchoolID', 'SchoolIDBack']:
+                        return verify_video_reference(vid_url)
                     
-                    return verify_video_content(video_bytes=v_bytes, keywords=video_keywords_map.get(doc_type), expected_address=None)
-                
-                def run_ocr_check():
-                    if doc_type in ['Enrollment', 'Grades']:
-                        raw_t, _ = extract_document_text(doc_bytes, max_width=850)
-                        return True, "Verified", raw_t, {}
-                    elif doc_type == 'SchoolIDBack':
-                        raw_t, _ = extract_document_text(doc_bytes, is_id_back=True)
-                        return True, "Verified", raw_t, {}
-                    else:
-                        target_addr = barangay if doc_type == 'Indigency' else None
-                        return verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_addr, expected_id_no, school_name)
+                    # Optimized scan options
+                    scan_options = {
+                        'Indigency': {'sample_positions': [0.5], 'max_width': 450, 'allow_alt_pass': False, 'fallback_text_length': 8},
+                        'Enrollment': {'sample_positions': [0.5], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 12},
+                        'Grades': {'sample_positions': [0.5], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 12},
+                        'SchoolID': {'sample_positions': [0.35, 0.65], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 15},
+                        'SchoolIDBack': {'sample_positions': [0.35, 0.65], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 10},
+                    }
+                    scan_opt = scan_options.get(doc_type, scan_options['Enrollment'])
 
+                    video_keywords_map = {
+                        'Indigency': ['Indigency', 'Certificate', 'Barangay', 'Indigent', 'Residency', 'Clearance'],
+                        'Enrollment': ['Enrollment', 'Enrolment', 'Certificate', 'COE', 'COR', 'Registered', 'Registration', 'Reg', 'Matriculation', 'Assessment', 'Billing', 'Semester', 'Sem'],
+                        'Grades': ['Grades', 'Grade', 'Transcript', 'Record', 'Evaluation', 'Rating', 'Units', 'Credit', 'Sem', 'GPA', 'Report', 'Card', 'Academic', 'TOR', 'Checklist'],
+                    }
+                    
+                    # Optimization: Pass URL directly to avoid redundant downloads
+                    return verify_video_content(
+                        video_data=vid_url,
+                        keywords=video_keywords_map.get(doc_type),
+                        expected_address=(barangay if doc_type == 'Indigency' else None),
+                        sample_positions=scan_opt['sample_positions'],
+                        max_width=scan_opt['max_width'],
+                        allow_alt_pass=scan_opt['allow_alt_pass'],
+                        fallback_text_length=scan_opt['fallback_text_length']
+                    )
+                
+                # Connection already released back to pool by context manager above
+
+                def run_ocr_check():
+                    if doc_type == 'Enrollment':
+                        # Use PSM 6 but keep width at 800 which was stable before
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=800, prefer_fast_layout=True, crop_percent=0.90)
+                        # Stricter volume check: if a document has < 20 characters, it's likely not an enrollment form
+                        v_t = bool(raw_t and len(raw_t.strip()) > 20)
+                        return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text (low text density)'), raw_t, {}
+                    elif doc_type == 'Grades':
+                        # High resolution and Auto Layout (PSM 3) required for academic tables
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1200, prefer_fast_layout=False, crop_percent=1.0)
+                        v_t = bool(raw_t and raw_t.strip())
+                        return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
+                    elif doc_type == 'SchoolIDBack':
+                        raw_t, extraction_error = extract_document_text(doc_bytes, is_id_back=True)
+                        v_t = bool(raw_t and raw_t.strip())
+                        return v_t, extraction_error or ('Verified' if v_t else 'Unable to read school ID back text'), raw_t, {}
+                    elif doc_type == 'Indigency':
+                        # Restored capture range: many certificates place name/address in the middle-bottom.
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=800, prefer_fast_layout=True, crop_percent=0.85)
+                        name_ok, name_ratio, name_details = student_name_matches_text(raw_t, first_name, middle_name, last_name, is_indigency=True)
+                        # Perform matching to detect Barangays even if target_address is empty for feedback
+                        _, addr_ok, found_keywords, _, detect_meta = _perform_text_matching(raw_t, None, None, None, target_address, is_indigency=True)
+                        found_kw = found_keywords
+                        detected_brgys = detect_meta.get('detected_brgy', [])
+                        # In Indigency, address is mandatory for a 'verified' result
+                        if not target_address:
+                            addr_ok = False
+                        meta = {'name_ok': name_ok, 'addr_ok': addr_ok, 'name_ratio': name_ratio, 'keywords': found_kw, 'detected_brgy': detected_brgys}
+                        v_t = name_ok and addr_ok
+                        msg = 'Verified' if v_t else 'Verification failed'
+                        brgy_str = ", ".join(detected_brgys) if detected_brgys else "None detected"
+                        status_addr = 'OK' if addr_ok else 'X'
+                        f_name_ok = name_details.get('first_ok', False)
+                        l_name_ok = name_details.get('last_ok', False)
+                        msg = f"Checklist: [First: {'OK' if f_name_ok else 'X'} | Last: {'OK' if l_name_ok else 'X'} | Addr: {status_addr} (Target: {target_address or 'Missing'}, Found: {brgy_str})]"
+                        return v_t, extraction_error or msg, raw_t, meta
+                    else:
+                        # Always return a 4-tuple for unknown doc types
+                        result = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=expected_id_no if doc_type != 'Indigency' else None, expected_school_name=school_name)
+                        # If result is already a 4-tuple, return as is
+                        if isinstance(result, tuple) and len(result) == 4:
+                            return result
+                        # Otherwise, pad to 4-tuple
+                        elif isinstance(result, tuple) and len(result) == 3:
+                            return (*result, {})
+                        else:
+                            return False, 'Unknown error', '', {}
+
+                # ─── PARALLEL EXECUTION (Concurrency) ───
                 with ThreadPoolExecutor(max_workers=2) as executor:
                     video_future = executor.submit(run_video_check)
                     ocr_future = executor.submit(run_ocr_check)
                     
-                    v_video, msg_video = video_future.result()
-                    v_ocr, msg_ocr, raw_text, meta = ocr_future.result()
+                    video_res = video_future.result()
+                    if not video_res or not isinstance(video_res, (list, tuple)):
+                        video_res = [False, "Video verification service unavailable"]
+                    
+                    v_video, msg_video = video_res[0], video_res[1]
+                    
+                    ocr_data = ocr_future.result()
+                    if not ocr_data or not isinstance(ocr_data, (list, tuple)):
+                        return {'doc': doc_type, 'verified': False, 'message': 'OCR processing failed or document unreachable'}
+                    
+                    v, msg, raw, meta = ocr_data[0], ocr_data[1], ocr_data[2], ocr_data[3]
 
+                # ─── COMBINED RESULT ───
                 if not v_video:
-                    return {'doc': doc_type, 'verified': False, 'message': f"Video failed: {msg_video}"}
+                    return {'doc': doc_type, 'verified': False, 'message': f"Video verification failed: {msg_video}", 'video_verified': False, 'video_message': msg_video}
+                
+                # Document-Specific Logic
+                # Pre-calculate common fields used across multiple document types
+                name_ok, name_ratio, name_details = student_name_matches_text(raw, first_name, middle_name, last_name, is_indigency=(doc_type == 'Indigency'))
+                school_ok, _, _ = school_name_matches_text(raw, school_name) if school_name else (True, None, None)
+                year_level_ok, _ = year_level_matches_text(expected_year_level, raw)
                 
                 if doc_type in ['Enrollment', 'Grades']:
-                    # Final logic check (Name, Year, Sem)
-                    name_v, _, name_meta = student_name_matches_text(raw_text, first_name, middle_name, last_name)
-                    year_v = is_current_school_year(extract_school_year_from_text(raw_text), extract_semester_from_text(raw_text), expected_academic_year, expected_semester)
+                    year_label = extract_school_year_from_text(raw)
+                    semester_label = extract_semester_from_text(raw)
+                    normalized_expected_semester = normalize_semester_label(expected_semester)
+                    normalized_semester_label = normalize_semester_label(semester_label)
                     
-                    v = v_ocr and name_v and year_v
-                    res_msg = f"{'Verified' if v else 'Verification failed'}. [Name: {'OK' if name_v else 'X'}, Year/Sem: {'OK' if year_v else 'X'}]"
-                    return {'doc': doc_type, 'verified': v, 'message': res_msg, 'raw_text': raw_text}
+                    raw_preview = raw[:200].replace('\n', ' ')
+                    print(f"[OCR-DIAG] Extracted Text (first 200 chars): {raw_preview}", flush=True)
+                    print(f"[OCR-YEAR] Doc={doc_type} extracted_year='{year_label}' expected_year='{expected_academic_year}' extracted_sem='{semester_label}' expected_sem='{expected_semester}'", flush=True)
+                    print(f"[OCR-NAME] First='{first_name}' (OK={name_details.get('first_ok')}) Middle='{middle_name}' (OK={name_details.get('middle_ok')}) Last='{last_name}' (OK={name_details.get('last_ok')})", flush=True)
+                    
+                    # Year check: only pass if (v_is_true and (matches or no_expected_value))
+                    if not v:
+                        year_only_ok = False
+                    elif expected_academic_year:
+                        year_only_ok = academic_year_matches_expected(year_label, expected_academic_year)
+                    else:
+                        year_only_ok = True
+                        
+                    # Semester check: similar logic
+                    if not v:
+                        semester_ok = False
+                    elif normalized_expected_semester:
+                        semester_ok = (normalized_expected_semester == normalized_semester_label)
+                    else:
+                        semester_ok = True
+                    
+                    if doc_type == 'Enrollment':
+                        id_ok, _ = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
+                        course_ok, _ = course_matches_text(course, raw) if course else (True, None)
+                        
+                        # Strictly require ALL fields for Enrollment (COR/COE) to be OK
+                        # Including the text density check (v) to prevent blank images from passing
+                        v = v and name_ok and id_ok and school_ok and course_ok and year_only_ok and semester_ok and year_level_ok
+                        
+                        checklist = [
+                            f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
+                            f"Middle Name: {'OK' if name_details.get('middle_ok') else 'X'}" if middle_name else None,
+                            f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
+                            f"ID: {'OK' if id_ok else 'X'}",
+                            f"School: {'OK' if school_ok else 'X'}",
+                            f"Level: {'OK' if year_level_ok else 'X'}",
+                            f"Year: {'OK' if year_only_ok else 'X'}",
+                            f"Sem: {'OK' if semester_ok else 'X'}",
+                            f"Course: {'OK' if course_ok else 'X'}"
+                        ]
+                        checklist = [c for c in checklist if c is not None]
+                        msg = f"Checklist: [{' | '.join(checklist)}]"
+                        if not v:
+                            msg += f" (Checked vs F:'{first_name}' M:'{middle_name}' L:'{last_name}' ID:'{expected_id_no}')"
+                        return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                    elif doc_type == 'Grades':
+                        gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
+                        
+                        # Grades should match the school and student identity
+                        # If the image is unreadable (v is False), everything fails
+                        v = v and name_ok and year_only_ok and gpa_ok and school_ok and year_level_ok and semester_ok
+                        
+                        if school_name and not school_ok:
+                            sample = raw[:300].replace('\n', ' ')
+                            print(f"[OCR-MISMATCH] School check failed for {school_name}. Text sample: {sample}", flush=True)
+                        
+                        checklist = [
+                            f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
+                            f"Middle Name: {'OK' if name_details.get('middle_ok') else 'X'}" if middle_name else None,
+                            f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
+                            f"School: {'OK' if school_ok else 'X'}",
+                            f"GPA: {'OK' if gpa_ok else 'X'}",
+                            f"Level: {'OK' if year_level_ok else 'X'}",
+                            f"Year: {'OK' if year_only_ok else 'X'}",
+                            f"Sem: {'OK' if semester_ok else 'X'}"
+                        ]
+                        checklist = [c for c in checklist if c is not None]
+                        return {'doc': 'Grades', 'verified': v, 'message': f"Checklist: [{' | '.join(checklist)}]", 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
-                return {'doc': doc_type, 'verified': v_ocr, 'message': msg_ocr, 'raw_text': raw_text}
+                elif doc_type == 'Indigency':
+                    name_ok = meta.get('name_ok', False)
+                    addr_ok = meta.get('addr_ok', True)
+                    v = name_ok and addr_ok
+                    
+                    brgy_str = ", ".join(meta.get('detected_brgy', [])) if meta.get('detected_brgy') else "None detected"
+                    status_addr = 'OK' if addr_ok else 'X'
+                    # Use a consistent format that includes the discovered data
+                    detail_msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Addr: {status_addr} (Target: {target_address or 'Missing'}, Found: {brgy_str})]"
+                    
+                    return {'doc': 'Indigency', 'verified': v, 'message': detail_msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
-            except Exception as e:
-                print(f"[OCR ERROR] {doc_type}: {e}")
-                return {'doc': doc_type, 'verified': False, 'message': str(e)}
+                elif doc_type == 'SchoolID':
+                    id_ok, _ = student_id_no_matches_text(expected_id_no, raw)
+                    
+                    checklist = [
+                        f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
+                        f"Middle Name: {'OK' if name_details.get('middle_ok') else 'X'}" if middle_name else None,
+                        f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
+                        f"ID Number: {'OK' if id_ok else 'X'}",
+                        f"School: {'OK' if school_ok else 'X'}"
+                    ]
+                    checklist = [c for c in checklist if c is not None]
+                    
+                    # Strictly require name, id, and school to be OK
+                    v = name_ok and id_ok and school_ok
+                    if v:
+                        msg = f"Front ID verified successfully. Checklist: [{', '.join(checklist)}]"
+                    else:
+                        msg = f"Verification failed. Checklist: [{', '.join(checklist)}]"
+                        if not name_ok: msg += f" (Name mismatch)"
+                        if not id_ok: msg += f" (ID mismatch)"
+                        if not school_ok: msg += f" (School mismatch)"
 
-        # 3. Schedule Jobs
+                    return {'doc': 'SchoolID', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+
+                elif doc_type == 'SchoolIDBack':
+                    year_label = extract_school_year_from_text(raw)
+                    year_ok = academic_year_matches_latest_expected(year_label, expected_academic_year)
+
+                    v = bool(v and year_label and year_ok)
+                    checklist = [f"Year: {'OK' if year_ok else 'X'}"]
+                    
+                    if v:
+                        msg = f"Back ID verified | Checklist: [{' | '.join(checklist)}]"
+                    else:
+                        msg = f"Verification failed. Checklist: [{' | '.join(checklist)}]"
+                        if not year_label: msg += " (Year not detected)"
+                        
+                    return {'doc': 'Back ID', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+
+                return None
+            except Exception as worker_err:
+                print(f"[OCR WORKER ERROR] {doc_type}: {str(worker_err)}", flush=True)
+                return {'doc': doc_type, 'verified': False, 'message': f'Processing error: {str(worker_err)}'}
+
+        # 3. Schedule Parallel Jobs
         jobs = []
-        if not target_doc or target_doc == 'Enrollment':
-            jobs.append(('Enrollment', enrollment_doc_param, applicant.get('enrollment_certificate_doc')))
-        if not target_doc or target_doc == 'Grades':
-            jobs.append(('Grades', grades_doc_param, applicant.get('grades_doc')))
-        if not target_doc or target_doc == 'Indigency':
-            jobs.append(('Indigency', indigency_doc_param, applicant.get('indigency_doc')))
-        if not target_doc or target_doc == 'SchoolID':
-            jobs.append(('SchoolID', id_front_param, applicant.get('id_img_front')))
-            jobs.append(('SchoolIDBack', id_back_param, applicant.get('id_img_back')))
-                
-        jobs = [j for j in jobs if j[1] or j[2]]
-        if not jobs: return jsonify({'verified': False, 'message': 'No documents found'}), 400
+        if target_doc:
+            print(f"[OCR-ISOLATION] Strictly verifying only: {target_doc}", flush=True)
 
-        pool = GreenPool(size=min(len(jobs), 5))
-        results = list(pool.imap(lambda j: process_doc(*j), jobs))
-        results = [r for r in results if r]
+        if not target_doc or target_doc == 'Enrollment':
+            if enrollment_doc_param or applicant.get('enrollment_certificate_doc'):
+                jobs.append(('Enrollment', enrollment_doc_param, applicant.get('enrollment_certificate_doc')))
+
+        if not target_doc or target_doc == 'Grades':
+            if grades_doc_param or applicant.get('grades_doc'):
+                jobs.append(('Grades', grades_doc_param, applicant.get('grades_doc')))
+
+        if not target_doc or target_doc == 'Indigency':
+            if indigency_doc_param or applicant.get('indigency_doc'):
+                jobs.append(('Indigency', indigency_doc_param, applicant.get('indigency_doc')))
+
+        if not target_doc or target_doc == 'SchoolID':
+            if id_front_param or applicant.get('id_img_front'):
+                jobs.append(('SchoolID', id_front_param, applicant.get('id_img_front')))
+            if id_back_param or applicant.get('id_img_back'):
+                jobs.append(('SchoolIDBack', id_back_param, applicant.get('id_img_back')))
+                
+        if not jobs:
+            # If we were strictly targeting a doc, explain why it was skipped.
+            if target_doc:
+                missing_doc_msg = f"The requested document ({target_doc}) was not found in the request or your profile records."
+                return jsonify({'verified': False, 'message': missing_doc_msg}), 400
+            return jsonify({'verified': False, 'message': 'No documents provided for verification'}), 400
+
+        print(f"[OCR-JOBS] Launching {len(jobs)} parallel extraction tasks...", flush=True)
+
+        results = []
+        overall_verified = True
         
-        overall = all(r['verified'] for r in results)
+        if jobs:
+            # Optimization: Restored pool size to 5 for multi-document concurrency.
+            pool = GreenPool(size=min(len(jobs), 5)) 
+            
+            def run_job(job_data):
+                try:
+                    # process_doc uses tpool.execute internally for blocking Tesseract tasks
+                    return process_doc(*job_data)
+                except Exception as e:
+                    print(f"[OCR POOL ERROR] {job_data[0]}: {e}", flush=True)
+                    return {'doc': job_data[0], 'verified': False, 'message': f'Pool error: {str(e)}'}
+
+            # Use imap to run jobs in parallel and collect results
+            job_results = list(pool.imap(run_job, jobs))
+            
+            for res in job_results:
+                if res:
+                    results.append(res)
+                    if not res.get('verified', False): 
+                        overall_verified = False
+
+
+        if not results:
+             # Fallback message if jobs existed but pool returned nothing
+             return jsonify({'verified': False, 'message': 'Verification failed to produce results. Try again later.'}), 400
+
         final_msg = " | ".join([f"{r['doc']}: {r['message']}" for r in results])
-        
-        return jsonify({'verified': overall, 'message': final_msg, 'results': results})
+        response_payload = {'verified': overall_verified, 'message': final_msg, 'results': results}
+        _cache_verification_result(verification_cache_key, response_payload)
+        return jsonify(response_payload)
 
     except Exception as e:
         traceback.print_exc()
-        return jsonify({'verified': False, 'message': str(e)}), 500
-
+        return jsonify({'verified': False, 'message': f'Server error: {str(e)}'}), 500
 
 
 @student_api_bp.route('/applications/<int:scholarship_no>', methods=['DELETE'])

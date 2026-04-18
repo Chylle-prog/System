@@ -16,11 +16,7 @@ sys.stdout.reconfigure(line_buffering=True)
 
 # Performance Tuning: Limit Tesseract's internal threads so our Python parallelism works better
 os.environ['OMP_THREAD_LIMIT'] = '1'
-# Flexible TESSDATA_PREFIX detection
-for _path in ['/usr/share/tesseract-ocr/5/tessdata', '/usr/share/tesseract-ocr/4.00/tessdata', '/usr/share/tesseract-ocr/tessdata']:
-    if os.path.exists(_path):
-        os.environ['TESSDATA_PREFIX'] = _path
-        break
+os.environ['TESSDATA_PREFIX'] = os.environ.get('TESSDATA_PREFIX', '/usr/share/tesseract-ocr/5/tessdata')
 
 STARTUP_TIME = time.time()
 print("[STARTUP] 1. eventlet monkey_patch complete. Loading modules...", flush=True)
@@ -68,27 +64,10 @@ app.register_blueprint(student_api_bp)
 register_admin_routes(app)
 init_admin_socketio(socketio)
 
-# Diagnostic Routes
-@app.route('/_routes')
-def list_routes():
-    import urllib.parse
-    output = []
-    for rule in app.url_map.iter_rules():
-        methods = ','.join(rule.methods)
-        line = urllib.parse.unquote(f"{rule.endpoint:50s} {methods:20s} {rule}")
-        output.append(line)
-    return "<pre>" + "\n".join(sorted(output)) + "</pre>"
-
-
-@app.route('/api/student/applications/check-sibling', methods=['POST', 'OPTIONS'])
-def check_sibling_root_redirect():
-    from blueprints.student_api import check_sibling_restriction
-    return check_sibling_restriction()
-
-
 # Track startup completion
 APP_READY = False
 APP_STARTUP_ERROR = None
+
 
 @app.route('/')
 def index():
@@ -101,6 +80,7 @@ def index():
         'startupTime': STARTUP_TIME,
         'uptime': time.time() - STARTUP_TIME
     }), 200
+
 
 def apply_cors_headers(response, origin):
     """Internal helper to apply standard CORS headers to any response object."""
@@ -292,52 +272,6 @@ def health():
         'version': '1.0',
         'timestamp': time.time(),
         'uptime': time.time() - STARTUP_TIME
-    }), 200
-
-
-@app.route('/_ocr_diagnostic', methods=['GET'])
-def ocr_diagnostic():
-    """Detailed OCR status for debugging production issues."""
-    import pytesseract
-    import shutil
-    import platform
-    import subprocess
-    from services.ocr_utils import _check_tesseract
-    
-    cmd_path = getattr(pytesseract.pytesseract, 'tesseract_cmd', 'Not Set')
-    exists = os.path.exists(cmd_path) if os.path.isabs(cmd_path) else bool(shutil.which(cmd_path))
-    
-    tess_ver = "Unknown"
-    tess_error = None
-    if exists:
-        try:
-            res = subprocess.run([cmd_path, '--version'], capture_output=True, text=True, timeout=5)
-            tess_ver = res.stdout.split('\n')[0] if res.returncode == 0 else f"Error: {res.stderr}"
-        except Exception as e:
-            tess_error = str(e)
-            
-    is_available = _check_tesseract()
-    
-    return jsonify({
-        'platform': {
-            'system': platform.system(),
-            'release': platform.release(),
-            'python_version': sys.version
-        },
-        'tesseract': {
-            'command_path': cmd_path,
-            'exists_or_in_path': exists,
-            'version': tess_ver,
-            'check_passed': is_available,
-            'error': tess_error
-        },
-        'environment': {
-            'PATH': os.environ.get('PATH', 'Not Set'),
-            'TESSDATA_PREFIX': os.environ.get('TESSDATA_PREFIX', 'Not Set'),
-            'TESSERACT_CMD': os.environ.get('TESSERACT_CMD', 'Not Set'),
-            'RENDER': os.environ.get('RENDER', 'False'),
-            'PWD': os.getcwd()
-        }
     }), 200
 
 
