@@ -3022,6 +3022,9 @@ def ocr_check():
         # Apply scholarship-defined overrides if they were fetched from DB
         if 'expected_academic_year_from_sch' in locals():
             expected_academic_year = expected_academic_year_from_sch
+        
+        # Pull optional semester from request (often provided by frontend in extraParams)
+        expected_semester = data.get('semester') or expected_semester
 
         # ─── SPEED OPTIMIZATION: Early Video Prefetching ───
         # Initiate parallel downloads of all relevant videos immediately
@@ -3270,10 +3273,11 @@ def ocr_check():
                         return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
                     elif doc_type == 'Grades':
                         gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
+                        id_ok, _ = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
                         
                         # Grades should match the school and student identity
                         # If the image is unreadable (v is False), everything fails
-                        v = v and name_ok and year_only_ok and gpa_ok and school_ok and year_level_ok and semester_ok
+                        v = v and name_ok and id_ok and year_only_ok and gpa_ok and school_ok and year_level_ok and semester_ok
                         
                         if school_name and not school_ok:
                             sample = raw[:300].replace('\n', ' ')
@@ -3283,6 +3287,7 @@ def ocr_check():
                             f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
                             f"Middle Name: {'OK' if name_details.get('middle_ok') else 'X'}" if middle_name else None,
                             f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
+                            f"ID: {'OK' if id_ok else 'X'}",
                             f"School: {'OK' if school_ok else 'X'}",
                             f"GPA: {'OK' if gpa_ok else 'X'}",
                             f"Level: {'OK' if year_level_ok else 'X'}",

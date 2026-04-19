@@ -211,9 +211,6 @@ export const scholarshipAPI = {
   declineApplicant: (applicantId, scholarshipNo) =>
     api.post(`/admin/applicants/${applicantId}/decline`, { scholarshipNo }),
   
-  cancelApplicant: (applicantId, scholarshipNo) =>
-    api.post(`/admin/applicants/${applicantId}/cancel`, { scholarshipNo }),
-
   sendSchoolVerification: (applicantId, scholarshipNo) =>
     api.post(`/admin/applicants/${applicantId}/school-verification`, { scholarshipNo }),
 

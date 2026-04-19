@@ -1324,11 +1324,11 @@ def extract_school_year(image_bytes):
 def extract_semester_from_text(text):
     if not text: return None
     semester_patterns = [
-        r'(1st|2nd|first|second|1|2|I|II|and|lst|ist)\s*(?:sem|semester|grading|sern|sun)\b',
-        r'\b(?:sem|semester|grading|sern|sun)\s*[:\-]?\s*(1st|2nd|first|second|1|2|I|II|and|lst|ist)\b',
+        r'(1st|2nd|first|second|1|2|I|II|and|lst|ist)\s*(?:sem|semester|grading|sern|sen|sun)\b',
+        r'\b(?:sem|semester|grading|sern|sen|sun)\s*[:\-]?\s*(1st|2nd|first|second|1|2|I|II|and|lst|ist)\b',
         r'\b(First|Second|and)\s+Semester\b',
-        r'\b(1|2|and|lst|ist)\s*-\s*(?:Sem|Sern)\b',
-        r'(?:sem|semester|grading|sern|sun|school\s+year\s+sem).{0,20}?\b(1|2|I|II|1st|2nd)\b'
+        r'\b(1|2|and|lst|ist)\s*-\s*(?:Sem|Sern|Sen)\b',
+        r'(?:sem|semester|grading|sern|sen|sun|school\s+year\s+sem).{0,25}?\b(1|2|I|II|1st|2nd)\b'
     ]
     for pattern in semester_patterns:
         match = re.search(pattern, text, re.IGNORECASE)

@@ -1709,34 +1709,6 @@ export default function ScholarshipDashboard({
     });
   };
 
-  const cancelApplicant = (listType, index) => {
-    const list = data[listType] || [];
-    const applicant = list[index];
-    if (!applicant) return;
-
-    const recipient = applicant.studentContact?.email || applicant.emailAddress || applicant.email || 'Student Email';
-
-    setPendingAction({
-      type: 'cancellation',
-      title: 'Cancel Application Confirmation',
-      recipient: recipient,
-      messageSummary: `Your application for ${scholarshipLabel} is being reset to Pending status. Please review your dashboard for any updates.`,
-      onConfirm: async () => {
-        beginApplicantStatusRequest({
-          applicant,
-          requestedStatus: 'Pending',
-          request: (applicantId, scholarshipNo) => scholarshipAPI.cancelApplicant(applicantId, scholarshipNo),
-          successEvent: 'applicant_cancel',
-          failureMessage: 'Failed to cancel applicant',
-          onStart: () => {
-            setSection('track');
-            setTrackTab('all');
-          },
-        });
-      }
-    });
-  };
-
   const getStudentStatus = (id, name, currentStatus) => {
     if (currentStatus && currentStatus !== 'Unknown') return currentStatus;
     const inList = (list) => list.some((a) => a.applicant_no?.toString() === id?.toString() || a.studentContact?.email === id || a.name === name);
@@ -2723,10 +2695,6 @@ export default function ScholarshipDashboard({
                           <button type="button" onClick={() => viewApplicantFn(idx, 'accepted')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
                             View
                           </button>
-                          <button type="button" onClick={() => cancelApplicant('accepted', idx)} className="px-3 py-1 rounded bg-amber-500 text-gray-900 text-xs font-semibold flex items-center gap-2" disabled={!!getApplicantProcessingState(a)}>
-                            {getApplicantProcessingState(a) ? <FaSpinner className="animate-spin" /> : null}
-                            Cancel
-                          </button>
                         </div>
                       </td>
                     </tr>
@@ -2750,10 +2718,6 @@ export default function ScholarshipDashboard({
                         <div className="flex gap-1">
                           <button type="button" onClick={() => viewApplicantFn(idx, 'declined')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
                             View
-                          </button>
-                          <button type="button" onClick={() => cancelApplicant('declined', idx)} className="px-3 py-1 rounded bg-amber-500 text-gray-900 text-xs font-semibold flex items-center gap-2" disabled={!!getApplicantProcessingState(a)}>
-                            {getApplicantProcessingState(a) ? <FaSpinner className="animate-spin" /> : null}
-                            Cancel
                           </button>
                         </div>
                       </td>

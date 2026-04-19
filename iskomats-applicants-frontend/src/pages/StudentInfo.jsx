@@ -1010,6 +1010,7 @@ const StudentInfo = () => {
     const idNumber = formData.schoolIdNumber || '';
     const yearLevel = formData.yearLevel || '';
     const course = formData.course || '';
+    const semester = formData.semester || '';
     const videoUrl = formData.mayorCOE_video || documentVideos.mayorCOE_video;
 
     if (!coeDoc) {
@@ -1020,15 +1021,15 @@ const StudentInfo = () => {
       showPromptMessage('⚠️ Please record and upload the COE video first.');
       return;
     }
-    if (!schoolName || !idNumber || !yearLevel || !course) {
-      showPromptMessage('⚠️ Please complete School Name, School ID Number, Year Level, and Course first.');
+    if (!schoolName || !idNumber || !yearLevel || !course || !semester) {
+      showPromptMessage('⚠️ Please complete School Name, School ID Number, Year Level, Course, and Semester first.');
       return;
     }
 
     setLoadingMessage({ title: 'Scanning COE', message: 'Verifying your Certificate of Enrollment and Video Content...' });
     
     try {
-      const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, idNumber, yearLevel, course }, videoUrl);
+      const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, idNumber, yearLevel, course, semester }, videoUrl);
       if (success) {
         showPromptMessage('✅ COE verified successfully!');
       } else {
@@ -1046,6 +1047,7 @@ const StudentInfo = () => {
       userProfile?.grades_doc
     );
     const schoolName = formData.schoolName || '';
+    const idNumber = formData.schoolIdNumber || '';
     const yearLevel = formData.yearLevel || '';
     const gpa = formData.gpa || '';
     const videoUrl = formData.mayorGrades_video || documentVideos.mayorGrades_video;
@@ -1058,8 +1060,8 @@ const StudentInfo = () => {
       showPromptMessage('⚠️ Please record and upload the Grades video first.');
       return;
     }
-    if (!schoolName || !yearLevel || !gpa || !formData.semester) {
-      showPromptMessage('⚠️ Please complete School Name, Year Level, GPA, and Semester first.');
+    if (!schoolName || !idNumber || !yearLevel || !gpa || !formData.semester) {
+      showPromptMessage('⚠️ Please complete School Name, School ID Number, Year Level, GPA, and Semester first.');
       return;
     }
 
@@ -1068,6 +1070,7 @@ const StudentInfo = () => {
     try {
       const success = await performOcrVerification('Grades', gradesDoc, { 
         schoolName: formData.schoolName, 
+        idNumber: formData.schoolIdNumber,
         yearLevel: formData.yearLevel, 
         gpa: formData.gpa,
         semester: formData.semester 
