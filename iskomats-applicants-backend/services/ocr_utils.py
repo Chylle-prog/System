@@ -522,23 +522,6 @@ def student_id_no_matches_text(target_id, text):
         if re.search(pattern, full_clean_text):
             return True, target_id
             
-    # 4. Final Relaxed Fallback: Allow matching if 90% of digits match in sequence
-    # This handles cases where OCR skips a single digit in a long ID.
-    if len(clean_target_id) >= 8:
-        # Create a more relaxed pattern that allows for 1 missing or wrong char
-        for i in range(len(clean_target_id)):
-            # Create a variant where one digit is a wildcard
-            relaxed_parts = []
-            for j, c in enumerate(clean_target_id):
-                if i == j:
-                    relaxed_parts.append('[a-z0-9]?') # Allow 0 or 1 character of any kind
-                else:
-                    relaxed_parts.append(mapping.get(c, re.escape(c)))
-            relaxed_pattern = "".join(relaxed_parts)
-            if re.search(relaxed_pattern, full_clean_text):
-                print(f"[ID-RELAXED] Matched variant with wildcard at position {i}", flush=True)
-                return True, target_id
-
     # Check for off-by-one errors for better user feedback (don't verify, just log/return hint)
     if len(clean_target_id) >= 8:
         for word in text.split():
@@ -776,8 +759,16 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
                         if kw in found_keywords:
                             break
     
+    # 2.9 Student ID Matching
+    id_ok = True
+    if target_id_no:
+        # Check both the raw text and the normalized clean text
+        id_ok, _ = student_id_no_matches_text(target_id_no, ocr_text)
+
     meta['detected_brgy'] = detected_brgy
-    return n_verified and school_ok, a_verified, found_keywords, m_ratio, meta
+    meta['id_ok'] = id_ok
+    
+    return n_verified and school_ok and id_ok, a_verified, found_keywords, m_ratio, meta
 
 
 

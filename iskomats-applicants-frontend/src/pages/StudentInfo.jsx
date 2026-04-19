@@ -362,6 +362,7 @@ const StudentInfo = () => {
     if (fieldName === 'schoolIdNumber') {
       invalidateVerificationState('SchoolID', 'school ID number changed');
       invalidateVerificationState('Enrollment', 'school ID number changed');
+      invalidateVerificationState('Grades', 'school ID number changed');
       return;
     }
 
@@ -389,6 +390,7 @@ const StudentInfo = () => {
     }
 
     if (fieldName === 'semester') {
+      invalidateVerificationState('Enrollment', 'semester changed');
       invalidateVerificationState('Grades', 'semester changed');
     }
   };
@@ -880,7 +882,7 @@ const StudentInfo = () => {
         }, 80);
       }
 
-      let { townCity, barangay, schoolName, idNumber, yearLevel, gpa, course } = extraParams;
+      let { townCity, barangay, schoolName, idNumber, yearLevel, gpa, course, semester } = extraParams;
       const targetBarangay = barangay || formData.barangay || formData.streetBarangay || '';
       const { firstName, lastName, middleName } = formData;
       const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
@@ -899,7 +901,8 @@ const StudentInfo = () => {
         videoUrl,
         reqNo,
         docType,
-        targetBarangay
+        targetBarangay,
+        semester
       );
 
       if (!silent && pInterval) clearInterval(pInterval);

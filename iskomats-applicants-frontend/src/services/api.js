@@ -601,7 +601,7 @@ export const applicantAPI = {
    * @param {string} lastName - User's current last name for verification
    * @returns {Promise}
    */
-  ocrCheck: async (idFront = null, idBack = null, indigencyDoc = null, townCity = null, enrollmentDoc = null, grades_doc = null, firstName = null, lastName = null, middleName = null, schoolName = null, idNumber = null, yearLevel = null, gpa = null, course = null, videoUrl = null, scholarshipNo = null, targetDoc = null, barangay = null) => {
+  ocrCheck: async (idFront = null, idBack = null, indigencyDoc = null, townCity = null, enrollmentDoc = null, grades_doc = null, firstName = null, lastName = null, middleName = null, schoolName = null, idNumber = null, yearLevel = null, gpa = null, course = null, videoUrl = null, scholarshipNo = null, targetDoc = null, barangay = null, semester = null) => {
     const fData = new FormData();
 
     const appendDocumentIfNeeded = (fieldName, value) => {
@@ -644,6 +644,7 @@ export const applicantAPI = {
     fData.append('yearLevel', yearLevel || '');
     fData.append('gpa', gpa || '');
     fData.append('course', course || '');
+    fData.append('semester', semester || '');
     if (videoUrl && typeof videoUrl === 'object') {
       fData.append('video_url', videoUrl.front || '');
       fData.append('video_url_back', videoUrl.back || '');
