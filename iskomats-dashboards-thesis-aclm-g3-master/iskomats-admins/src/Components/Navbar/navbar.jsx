@@ -48,13 +48,7 @@ const Navbar = () => {
         <div className="hidden md:flex items-center gap-4">
           {isDashboardRoute ? (
             <>
-              <Link
-                to={dashboardPath}
-                className="px-6 py-3 rounded-xl border-2 border-gray-600 text-gray-300 font-semibold text-sm transition-all duration-300 hover:border-transparent hover:bg-gradient-to-r hover:from-red-800 hover:to-red-700 hover:text-white hover:shadow-xl hover:-translate-y-1"
-              >
-                <FaTachometerAlt className="inline mr-2" />
-                Dashboard
-              </Link>
+
 
               <button
                 onClick={handleLogout}
@@ -100,14 +94,7 @@ const Navbar = () => {
         <div className="p-4 space-y-2">
           {isDashboardRoute ? (
             <>
-              <Link
-                to={dashboardPath}
-                className="block w-full px-4 py-2 rounded-lg bg-gradient-to-r from-red-800 to-red-700 text-white font-medium text-sm shadow-md hover:shadow-lg transition-all duration-300 text-center"
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                <FaTachometerAlt className="inline mr-1.5" />
-                Dashboard
-              </Link>
+
 
               <button
                 onClick={() => {

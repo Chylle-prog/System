@@ -147,7 +147,7 @@ const Login = () => {
               </p>
             </div>
 
-            <div className="p-4 sm:p-6 lg:p-8 lg:w-3/5 border-r border-white/20">
+            <div className="p-4 sm:p-6 lg:p-8 lg:w-3/5">
               {formData.error && (
                 <div className="bg-red-600 text-white p-4 rounded-xl mb-6 text-sm text-center">
                   {formData.error}
