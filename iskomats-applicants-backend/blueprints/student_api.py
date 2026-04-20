@@ -3194,7 +3194,7 @@ def ocr_check():
                         return verify_video_content(
                             video_data=vid_url,
                             keywords=id_keywords,
-                            sample_positions=[0.35, 0.65],
+                            sample_positions=[0.35, 0.55, 0.75],
                             max_width=540,
                             allow_alt_pass=True,
                             fallback_text_length=20

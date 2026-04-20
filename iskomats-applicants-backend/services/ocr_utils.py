@@ -1099,19 +1099,8 @@ def verify_video_content(video_data, keywords, expected_address=None, sample_pos
     
     tmp_path = None
     if is_url:
-        import requests
-        print(f"[VIDEO DL] Fetching video locally for much faster cv2 seeking...", flush=True)
-        try:
-            r = requests.get(video_data, timeout=20)
-            if r.status_code == 200:
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
-                    tmp.write(r.content)
-                    tmp_path = tmp.name
-            else:
-                tmp_path = video_data # Fallback
-        except Exception as e:
-            print(f"[VIDEO DL] Failed to download {e}, falling back to stream.", flush=True)
-            tmp_path = video_data
+        tmp_path = video_data
+        print(f"[VIDEO STREAM] Streaming frames directly from URL to save bandwidth...", flush=True)
     else:
         # Save to temp file because VideoCapture needs a path
         with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
