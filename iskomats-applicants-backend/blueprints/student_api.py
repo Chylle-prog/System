@@ -3484,8 +3484,11 @@ def ocr_check():
 
         for dtype, param, db_val in doc_configs:
             # Skip if not the target (if target specified)
-            if target_doc and dtype != target_doc:
-                continue
+            if target_doc:
+                if target_doc == 'SchoolID' and dtype in ['SchoolID', 'SchoolIDBack']:
+                    pass
+                elif dtype != target_doc:
+                    continue
             
             # Check if image exists
             has_img = bool(param or db_val)
