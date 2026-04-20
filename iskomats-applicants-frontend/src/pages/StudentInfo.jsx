@@ -2883,6 +2883,12 @@ const StudentInfo = () => {
 
 
       <div className="form-container">
+        {/* Back to FindScholarship Button */}
+        <div style={{ marginBottom: '1.5rem', marginTop: '1rem' }}>
+          <Link to="/findscholarship" className="back-button" style={{ textDecoration: 'none', border: '1.5px solid var(--gray-2)', padding: '0.5rem 1.5rem', borderRadius: '40px', fontWeight: 600, color: 'var(--text-soft)', display: 'inline-block', marginTop: 0 }}>
+            <i className="fas fa-arrow-left" style={{ marginRight: '8px' }}></i> Back to Find Scholarships
+          </Link>
+        </div>
         <div className="form-card">
           <div className="section-header">
             <img src="/iskologo.png" alt="Logo" style={{height: '50px', marginBottom: '1rem', filter: 'grayscale(1) contrast(1.2)'}} />
