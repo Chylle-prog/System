@@ -132,7 +132,23 @@ def fetch_applicant_document_values(cursor, applicant_no, column_names):
 
 
 def persist_applicant_document_values(cursor, applicant_no, values):
+    is_cloud = os.environ.get('STORE_FILES_IN', 'database').strip().lower() == 'storage'
+    
     document_values = {key: value for key, value in values.items() if key in APPLICANT_DOCUMENT_COLUMNS}
+    if not document_values:
+        return
+
+    # If cloud storage is enabled, we MUST NOT save raw bytes/blobs to the document columns.
+    # We only allow URLs or Data URIs.
+    if is_cloud:
+        cleaned_values = {}
+        for k, v in document_values.items():
+            if isinstance(v, str):
+                cleaned_values[k] = v
+            else:
+                print(f"[SERVICE] WARNING: Rejecting binary persistence for {k} because Cloud Storage is enabled.", flush=True)
+        document_values = cleaned_values
+        
     if not document_values:
         return
 
@@ -144,24 +160,24 @@ def persist_applicant_document_values(cursor, applicant_no, values):
             for key, value in document_values.items()
             if key in document_columns
         }
-        if not filtered_values:
-            return
-
-        insert_columns = ['applicant_no', *filtered_values.keys()]
-        placeholders = ', '.join(['%s'] * len(insert_columns))
-        assignments = ', '.join(f'"{column}" = EXCLUDED."{column}"' for column in filtered_values.keys())
-        params = [applicant_no, *filtered_values.values()]
-        cursor.execute(
-            f'''
-            INSERT INTO {document_table} ({', '.join(insert_columns)})
-            VALUES ({placeholders})
-            ON CONFLICT (applicant_no)
-            DO UPDATE SET {assignments}
-            ''',
-            tuple(params),
-        )
-        return
-
+        if filtered_values:
+            insert_columns = ['applicant_no', *filtered_values.keys()]
+            placeholders = ', '.join(['%s'] * len(insert_columns))
+            assignments = ', '.join(f'"{column}" = EXCLUDED."{column}"' for column in filtered_values.keys())
+            params = [applicant_no, *filtered_values.values()]
+            cursor.execute(
+                f'''
+                INSERT INTO {document_table} ({', '.join(insert_columns)})
+                VALUES ({placeholders})
+                ON CONFLICT (applicant_no)
+                DO UPDATE SET {assignments}
+                ''',
+                tuple(params),
+            )
+            # If we persisted to the doc table, we don't necessarily want to duplicate in applicants?
+            # Actually, some columns like profile_picture might be in both.
+            # We'll continue to the fallback loop just for those.
+    
     applicant_columns = get_table_columns(cursor, 'applicants')
     fallback_values = {
         key: value
@@ -181,36 +197,51 @@ def persist_applicant_document_values(cursor, applicant_no, values):
 
 def normalize_supabase_url(url):
     """
-    Standardizes Supabase storage URLs to the current project domain.
-    Helps resolve media loading failures (400 Bad Request) if project credentials changed.
+    Standardizes Supabase storage URLs to the current project domain and correct buckets.
     """
     if not url or not isinstance(url, str) or '.supabase.co/' not in url:
         return url
 
     current_url = os.environ.get('SUPABASE_URL', '').strip()
+    img_bucket = os.environ.get('SUPABASE_STORAGE_BUCKET', 'document_images').strip()
+    vid_bucket = 'document_videos' # Hardcoded as seen in user's Supabase dashboard
+    
     if not current_url:
         return url
 
     try:
         current_host = urlparse(current_url).netloc.lower()
-        current_bucket = os.environ.get('SUPABASE_STORAGE_BUCKET', 'document_images').strip()
         parsed_url = urlparse(url)
         path = parsed_url.path
         
-        # 1. Host or Bucket mismatch correction
-        needs_rewrite = False
-        if parsed_url.netloc.lower() != current_host:
-            needs_rewrite = True
-        
         if '/storage/v1/object/' in path:
             parts = path.split('/')
-            if len(parts) > 5 and parts[5] != current_bucket:
-                parts[5] = current_bucket
-                path = '/'.join(parts)
-                needs_rewrite = True
-        
-        if needs_rewrite:
+            if len(parts) > 5:
+                # parts[5] is the bucket name
+                old_bucket = parts[5]
+                
+                # 1. Determine the correct target bucket
+                # If it's already one of our new buckets, keep it.
+                # If it's an old bucket (like iskomats-files), decide based on folder/file name
+                target_bucket = old_bucket
+                
+                valid_buckets = {img_bucket, vid_bucket, 'announcement_images'}
+                
+                if old_bucket not in valid_buckets:
+                    # Logic to migrate from old 'iskomats-files' or other buckets
+                    if '/videos/' in path or 'vid_url' in path or old_bucket == 'document_videos':
+                        target_bucket = vid_bucket
+                    else:
+                        target_bucket = img_bucket
+                
+                # 2. Rewrite path if bucket changed
+                if old_bucket != target_bucket:
+                    parts[5] = target_bucket
+                    path = '/'.join(parts)
+            
+            # 3. Always update the host to the current project domain
             return f"https://{current_host}{path}{'?' + parsed_url.query if parsed_url.query else ''}"
+
     except Exception:
         pass
 

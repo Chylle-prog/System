@@ -654,6 +654,8 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
 
 
 def resolve_verification_image_bytes(image_data):
+    if not image_data:
+        return None
     if isinstance(image_data, memoryview):
         return image_data.tobytes()
     if isinstance(image_data, (bytes, bytearray)):
@@ -669,9 +671,12 @@ def resolve_verification_image_bytes(image_data):
     if decoded:
         return decoded
 
-    if normalized.startswith('http') and is_trusted_storage_url(normalized):
-        content, _error = fetch_video_bytes_from_url(normalized)
-        return content
+    # If it's a URL, normalize it and fetch bytes
+    if normalized.startswith('http'):
+        target_url = normalize_supabase_url(normalized)
+        if is_trusted_storage_url(target_url):
+            content, _error = fetch_video_bytes_from_url(target_url)
+            return content
 
     return None
 
@@ -682,7 +687,7 @@ def normalize_matching_text(value):
 
 
 
-def parse_parent_status_value(value):
+def parse_parent_status(value):
     if isinstance(value, bool):
         return value
 
@@ -1076,9 +1081,8 @@ def ensure_applicant_document_storage():
                 for row in cur.fetchall()
             }
             
-            # Only ensure columns that are NOT explicitly applicant-only
-            doc_table_cols = shared_doc_cols + document_only_cols
-            for col in doc_table_cols:
+            # Only ensure columns that are relevant for the doc table
+            for col in document_table_cols:
                 if col in existing_doc_table_info:
                     d_type = existing_doc_table_info[col].lower()
                     if d_type == 'bytea':
@@ -2313,7 +2317,7 @@ def get_applicant_document(field_name):
                 if value.startswith('http') or value.startswith('data:'):
                     return jsonify({
                         'fieldName': field_name,
-                        'data': value
+                        'data': normalize_supabase_url(value) if value.startswith('http') else value
                     })
                 # Fallback for plain strings
                 value = value.encode('utf-8')
@@ -2478,17 +2482,11 @@ def update_profile():
 
             binary_fields = {
                 'profile_picture': 'profile_picture',
-                'id_front': 'id_img_front',
-                'id_back': 'id_img_back',
-                'mayorCOE_photo': 'enrollment_certificate_doc',
-                'enrollment_certificate_doc': 'enrollment_certificate_doc',
-                'mayorGrades_photo': 'grades_doc',
-                'grades_doc': 'grades_doc',
-                'mayorIndigency_photo': 'indigency_doc',
-                'indigency_doc': 'indigency_doc',
-                'mayorValidID_photo': 'id_pic',
                 'id_pic': 'id_pic',
                 'signature_data': 'signature_image_data',
+                'schoolID_photo': 'school_id',
+                'id_front': 'id_img_front',
+                'id_back': 'id_img_back',
             }
 
             for field_key, db_col in binary_fields.items():
@@ -2526,22 +2524,12 @@ def update_profile():
                             else:
                                 document_updates[db_col] = url
                         else:
-                            # If storage is enabled, we MUST NOT fall back to BYTEA
-                            if use_storage():
-                                print(f"[UPDATE PROFILE] ERROR: upload_image_to_storage failed for {db_col}. Persistence aborted to prevent BYTEA corruption.", flush=True)
-                                raise ValueError(f"Cloud upload failed for {field_key}. Please try again.")
-                            
-                            print(f"[UPDATE PROFILE] WARNING: upload_image_to_storage returned None for {db_col}. Falling back to BYTEA.", flush=True)
-                            if db_col == 'profile_picture' and has_profile_picture_column:
-                                add_update(db_col, blob_bytes)
-                            else:
-                                document_updates[db_col] = blob_bytes
+                            # Cloud upload failed
+                            print(f"[UPDATE PROFILE] ERROR: upload_image_to_storage failed for {db_col}. Persistence aborted to prevent BYTEA corruption.", flush=True)
+                            raise ValueError(f"Cloud upload failed for {field_key}. The server might be experiencing connectivity issues. Please try again.")
                     except Exception as storage_err:
                         print(f"[UPDATE PROFILE] CRITICAL STORAGE ERROR for {db_col}: {storage_err}", flush=True)
-                        if db_col == 'profile_picture' and has_profile_picture_column:
-                            add_update(db_col, blob_bytes)
-                        else:
-                            document_updates[db_col] = blob_bytes
+                        raise ValueError(f"Storage System Error: {str(storage_err)}")
 
             if not updates and not document_updates:
                 return jsonify({'message': 'No changes provided'}), 200
@@ -2896,12 +2884,12 @@ def submit_application():
             add_update('mother_name', normalize_parent_full_name(request_payload.get('motherName')))
 
         if 'fatherStatus' in request_payload:
-            father_status = parse_parent_status_value(request_payload.get('fatherStatus'))
+            father_status = parse_parent_status(request_payload.get('fatherStatus'))
             if father_status is not None:
                 add_update('father_status', father_status)
 
         if 'motherStatus' in request_payload:
-            mother_status = parse_parent_status_value(request_payload.get('motherStatus'))
+            mother_status = parse_parent_status(request_payload.get('motherStatus'))
             if mother_status is not None:
                 add_update('mother_status', mother_status)
 
@@ -2943,23 +2931,11 @@ def submit_application():
                         else:
                             document_updates[column_name] = url
                     else:
-                        if use_storage():
-                            print(f"[SUBMIT] ERROR: Cloud upload failed for {column_name}. Refusing BYTEA fallback.", flush=True)
-                            raise ValueError(f"Failed to upload {column_name} to cloud storage.")
-
-                        print(f"[SUBMIT] WARNING: upload_image_to_storage returned None for {column_name}. Falling back to BYTEA.", flush=True)
-                        if column_name == 'profile_picture' and has_profile_picture_column:
-                            updates.append(f'{column_name} = %s')
-                            params.append(value)
-                        else:
-                            document_updates[column_name] = value
-                except Exception as storage_err:
-                    print(f"[SUBMIT] CRITICAL STORAGE ERROR for {column_name}: {storage_err}", flush=True)
-                    if (column_name == 'profile_picture' and has_profile_picture_column) or (column_name == 'school_id_pic' and has_school_id_pic_column):
-                        updates.append(f'{column_name} = %s')
-                        params.append(value)
-                    else:
-                        document_updates[column_name] = value
+                        print(f"[SUBMIT] ERROR: Cloud upload failed for {column_name}. Refusing BYTEA fallback.", flush=True)
+                        raise ValueError(f"Failed to upload {column_name} to cloud storage.")
+                except Exception as e:
+                    print(f"[SUBMIT] CRITICAL STORAGE ERROR for {column_name}: {e}", flush=True)
+                    raise ValueError(f"Storage System Error: {str(e)}")
 
         if updates:
             sql = f"UPDATE applicants SET {', '.join(updates)} WHERE applicant_no = %s"
@@ -4075,23 +4051,25 @@ def upload_video():
                 'mayorGrades_video': 'grades',
                 'schoolIdFront_video': 'school_id',
                 'schoolIdBack_video': 'school_id',
-                'id_vid_url': 'id_verification',
-                'face_video': 'id_verification'
+                'face_video': 'id_verification',
+                'id_vid_url': 'id_verification'
             }
             
             folder = folder_map.get(field_name, 'others')
+            # For videos, we use the dedicated document_videos bucket as seen in your setup
+            bucket_name = 'document_videos'
             file_name = f"{current_user_id}_{int(time.time())}{ext}"
             file_path = f"videos/{folder}/{file_name}"
 
             # --- OVERWRITE PREVIOUS VIDEO CLEANUP (non-blocking) ---
-            # Run in background thread so it doesn't delay the upload response.
             db_column_map = {
                 'mayorIndigency_video': 'indigency_vid_url',
                 'mayorCOE_video': 'enrollment_certificate_vid_url',
                 'mayorGrades_video': 'grades_vid_url',
                 'schoolIdFront_video': 'schoolid_front_vid_url',
                 'schoolIdBack_video': 'schoolid_back_vid_url',
-                'face_video': 'id_vid_url'
+                'face_video': 'id_vid_url',
+                'id_vid_url': 'id_vid_url'
             }
             db_col = db_column_map.get(field_name)
             if db_col:
@@ -4105,18 +4083,25 @@ def upload_video():
                             row = fetch_applicant_document_values(cur, user_id, [col])
                             if row and row[col]:
                                 old_url = row[col]
-                                if '/public/document_videos/' in old_url:
-                                    old_path = old_url.split('/public/document_videos/')[1].strip()
-                                    supa.storage.from_('document_videos').remove([old_path])
-                                    print(f"[VIDEO-UPLOAD] Deleted previous video from storage: {old_path}", flush=True)
+                                # Identify bucket and path from the public URL
+                                if '/storage/v1/object/public/' in old_url:
+                                    url_parts = old_url.split('/public/')
+                                    if len(url_parts) > 1:
+                                        bucket_and_path = url_parts[1].split('/', 1)
+                                        if len(bucket_and_path) > 1:
+                                            target_bucket = bucket_and_path[0]
+                                            old_path = bucket_and_path[1].strip()
+                                            supa.storage.from_(target_bucket).remove([old_path])
+                                            print(f"[VIDEO-UPLOAD] Deleted previous video from {target_bucket}: {old_path}", flush=True)
                     except Exception as e:
-                        print(f"[VIDEO-UPLOAD] Error cleaning up old video: {e}", flush=True)
+                        print(f"[VIDEO-CLEANUP] Warning: {e}", flush=True)
+
                 threading.Thread(target=_cleanup_old_video, args=(current_user_id, db_col, supabase), daemon=True).start()
-            # ----------------------------------------
-            # Direct stream upload bypasses heavy memory buffers
-            response = supabase.storage.from_('document_videos').upload(
-                file_path,
-                video_bytes,
+
+            # Upload binary data to Supabase (using the dedicated videos bucket)
+            supabase.storage.from_(bucket_name).upload(
+                file=video_bytes,
+                path=file_path,
                 file_options={
                     'content-type': content_type,
                     'cache-control': '3600',
@@ -4124,7 +4109,7 @@ def upload_video():
                 }
             )
             
-            public_url = supabase.storage.from_('document_videos').get_public_url(file_path)
+            public_url = supabase.storage.from_(bucket_name).get_public_url(file_path)
             print(f"[VIDEO-UPLOAD] Successfully verified and uploaded: {public_url}", flush=True)
             
             return jsonify({
