@@ -356,7 +356,7 @@ def year_level_matches_text(target_year, text):
         if v in norm_text: return True, expected_level
     
     # Final fallback: Look for "Year" or "Level" followed by the target number within a small window
-    if re.search(rf'\b(?:year|level)\b.{0,15}?{number_pattern}\b', norm_text, re.IGNORECASE | re.DOTALL):
+    if re.search(rf'\b(?:year|level|lev|yr)\b.{0,25}?{number_pattern}\b', norm_text, re.IGNORECASE | re.DOTALL):
         return True, expected_level
 
     return False, None
