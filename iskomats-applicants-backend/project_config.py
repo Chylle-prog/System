@@ -213,7 +213,7 @@ def use_storage():
     return os.environ.get('STORE_FILES_IN', 'database').strip().lower() == 'storage'
 
 
-def get_storage_bucket(default='iskomats-files'):
+def get_storage_bucket(default='document_images'):
     return os.environ.get('SUPABASE_STORAGE_BUCKET', default).strip() or default
 
 

@@ -4,10 +4,10 @@ export const uploadProfilePicture = async (file) => {
   const currentUser = sanitizeStorageSegment(localStorage.getItem('currentUser'), 'unknown-user');
   const ext = resolveVideoUploadExtension(file);
   const contentType = file?.type || 'image/jpeg';
-  const objectPath = `profile_pictures/${applicantNo}-${currentUser}${ext}`;
+  const objectPath = `profile_pic/${applicantNo}-${currentUser}${ext}`;
 
   const uploadResult = await supabase.storage
-    .from('iskomats-files')
+    .from('document_images')
     .upload(objectPath, file, {
       upsert: true,
       contentType,
@@ -18,7 +18,7 @@ export const uploadProfilePicture = async (file) => {
     throw uploadResult.error;
   }
 
-  const { data } = supabase.storage.from('iskomats-files').getPublicUrl(objectPath);
+  const { data } = supabase.storage.from('document_images').getPublicUrl(objectPath);
   if (!data?.publicUrl) {
     throw new Error('Profile picture upload succeeded but no public URL was returned.');
   }
@@ -92,10 +92,10 @@ const uploadRequirementVideoDirect = async (fieldName, file, onProgress) => {
   const folder = folderMap[fieldName] || 'others';
   const ext = resolveVideoUploadExtension(file);
   const contentType = file?.type || (ext === '.webm' ? 'video/webm' : 'video/mp4');
-  const objectPath = `videos/${folder}/${applicantNo}-${currentUser}/${fieldName}${ext}`;
+  const objectPath = `document_images/videos/${folder}/${applicantNo}-${currentUser}/${fieldName}${ext}`;
 
   const uploadResult = await supabase.storage
-    .from('iskomats-files')
+    .from('document_images')
     .upload(objectPath, file, {
       upsert: true,
       contentType,
@@ -107,7 +107,7 @@ const uploadRequirementVideoDirect = async (fieldName, file, onProgress) => {
     throw uploadResult.error;
   }
 
-  const { data } = supabase.storage.from('iskomats-files').getPublicUrl(objectPath);
+  const { data } = supabase.storage.from('document_images').getPublicUrl(objectPath);
   if (!data?.publicUrl) {
     throw new Error('Direct upload succeeded but no public URL was returned.');
   }

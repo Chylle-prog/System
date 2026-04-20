@@ -564,15 +564,15 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
 
         # Clean folder mapping
         folder_map = {
-            'signature_image_data': 'signatures',
-            'grades_doc': 'grades',
-            'enrollment_certificate_doc': 'coe',
-            'indigency_doc': 'indigency',
-            'id_img_front': 'id_verification',
-            'id_img_back': 'id_verification',
-            'id_pic': 'id_verification',
-            'profile_picture': 'profile_pictures',
-            'schoolID_photo': 'school_id'
+            'signature_image_data': 'document_images/signatures',
+            'grades_doc': 'document_images/grades',
+            'enrollment_certificate_doc': 'document_images/coe',
+            'indigency_doc': 'document_images/indigency',
+            'id_img_front': 'document_images/id_verification',
+            'id_img_back': 'document_images/id_verification',
+            'id_pic': 'document_images/id_verification',
+            'profile_picture': 'profile_pic',
+            'schoolID_photo': 'document_images/school_id'
         }
 
         folder = folder_map.get(field_name, 'others')
