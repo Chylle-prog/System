@@ -1319,11 +1319,11 @@ def extract_school_year(image_bytes):
 def extract_semester_from_text(text):
     if not text: return None
     semester_patterns = [
-        r'(1st|2nd|first|second|1|2|I|II|and|lst|ist)\s*(?:sem|semester|grading|sern|sen|sun)\b',
-        r'\b(?:sem|semester|grading|sern|sen|sun)\s*[:\-]?\s*(1st|2nd|first|second|1|2|I|II|and|lst|ist)\b',
+        r'(1st|2nd|first|second|1|2|I|II|and|lst|ist|4)\s*(?:sem|semester|grading|sern|sen|sun)\b',
+        r'\b(?:sem|semester|grading|sern|sen|sun)\s*[:\-]?\s*(1st|2nd|first|second|1|2|I|II|and|lst|ist|4)\b',
         r'\b(First|Second|and)\s+Semester\b',
-        r'\b(1|2|and|lst|ist)\s*-\s*(?:Sem|Sern|Sen)\b',
-        r'(?:sem|semester|grading|sern|sen|sun|school\s+year\s+sem).{0,25}?\b(1|2|I|II|1st|2nd)\b'
+        r'\b(1|2|and|lst|ist|4)\s*-\s*(?:Sem|Sern|Sen)\b',
+        r'(?:sem|semester|grading|sern|sen|sun|school\s+year\s+sem|school\s+year|AY).{0,35}?\b(1|2|I|II|1st|2nd|4)\b'
     ]
     for pattern in semester_patterns:
         match = re.search(pattern, text, re.IGNORECASE)
@@ -1339,7 +1339,7 @@ def normalize_semester_label(value):
     if not semester_value:
         return None
 
-    if '1' in semester_value or 'first' in semester_value or 'lst' in semester_value or 'ist' in semester_value:
+    if '1' in semester_value or 'first' in semester_value or 'lst' in semester_value or 'ist' in semester_value or '4' in semester_value:
         return "1st"
     if '2' in semester_value or 'second' in semester_value or 'and' in semester_value:
         return "2nd"
