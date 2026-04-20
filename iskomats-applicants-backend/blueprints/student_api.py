@@ -761,7 +761,7 @@ def build_duplicate_account_identity_from_applicant(applicant, source_data=None)
     first_name = source_data.get('firstName') or source_data.get('first_name') or applicant.get('first_name')
     middle_name = source_data.get('middleName') or source_data.get('middle_name') or applicant.get('middle_name')
     last_name = source_data.get('lastName') or source_data.get('last_name') or applicant.get('last_name')
-    barangay = source_data.get('barangay') or applicant.get('barangay')
+    barangay = source_data.get('streetBarangay') or source_data.get('street_brgy') or applicant.get('street_brgy') or applicant.get('barangay')
 
     return build_duplicate_account_identity(
         first_name=first_name,
@@ -804,7 +804,7 @@ def get_matching_duplicate_applicant_ids(cursor, applicant, source_data=None):
 
     cursor.execute(
         """
-        SELECT applicant_no, first_name, middle_name, last_name, barangay
+        SELECT applicant_no, first_name, middle_name, last_name, street_brgy as barangay
         FROM applicants
         """
     )
@@ -2511,6 +2511,22 @@ def update_profile():
                 cur.execute(sql, tuple(params))
             if document_updates:
                 persist_applicant_document_values(cur, request.user_no, document_updates)
+
+            # Preventive Duplicate Check:
+            # We fetch the potentially updated applicant and check if they've become a duplicate.
+            # "Oldest Wins": If the current account is NOT the oldest for this identity, we reject the save.
+            cur.execute("SELECT * FROM applicants WHERE applicant_no = %s", (request.user_no,))
+            potential_duplicate = cur.fetchone()
+            if potential_duplicate:
+                duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, potential_duplicate)
+                if len(duplicate_ids) > 1 and request.user_no > min(duplicate_ids):
+                    conn.rollback()
+                    print(f"[CONFLICT] User {request.user_no} attempted to create/update to a duplicate identity of {min(duplicate_ids)}", flush=True)
+                    return jsonify({
+                        'message': 'Conflict detected',
+                        'error': 'An account with this name and address already exists. Please use your original login to this existing account.'
+                    }), 409
+
             conn.commit()
 
             return jsonify({'message': 'Progress saved successfully'})
