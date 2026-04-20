@@ -1184,6 +1184,11 @@ const StudentInfo = () => {
         continue;
       }
 
+      // Skip fields that are handled specially later as files/blobs
+      if (DOCUMENT_IMAGE_FIELDS.has(fieldName) || fieldName === 'profile_picture') {
+        continue;
+      }
+
       if (fieldName === 'barangay') {
         const fullAddress = formData.barangay || formData.streetBarangay || '';
         if (!jsonData['street_brgy']) {
@@ -1202,67 +1207,70 @@ const StudentInfo = () => {
       hasPayload = true;
     }
 
+    // Helper to convert base64 dataUrl to Blob
+    const dataUrlToBlob = (dataUrl) => {
+      try {
+        const arr = dataUrl.split(',');
+        const mime = arr[0].match(/:(.*?);/)[1];
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) u8arr[n] = bstr.charCodeAt(n);
+        return new Blob([u8arr], { type: mime });
+      } catch (e) {
+        return null;
+      }
+    };
+
+    const appendSmartFile = (fieldName, sourceValue) => {
+      if (!sourceValue) return;
+
+      // If it's already a URL, don't re-upload as binary
+      if (typeof sourceValue === 'string' && sourceValue.startsWith('http')) {
+        jsonData[fieldName] = sourceValue;
+        hasPayload = true;
+        return;
+      }
+
+      if (isFileLike(sourceValue)) {
+        payload.append(fieldName, sourceValue);
+        hasPayload = true;
+      } else if (typeof sourceValue === 'string' && sourceValue.startsWith('data:')) {
+        const blob = dataUrlToBlob(sourceValue);
+        if (blob) {
+          payload.append(fieldName, blob, `${fieldName}.jpg`);
+          hasPayload = true;
+        }
+      }
+    };
+
     // 2. Special handling for files and previews based on the current step
-    
-    // STEP 1: Profile and Residency
     if (stepNumber === 1) {
-      if (idPicturePreview) {
-        if (isFileLike(idPicturePreview)) payload.append('profile_picture', idPicturePreview);
-        else if (typeof idPicturePreview === 'string' && idPicturePreview.startsWith('data:')) jsonData['profile_picture'] = idPicturePreview;
-        hasPayload = true;
-      }
-      if (photos.mayorIndigency_photo) {
-        if (isFileLike(photos.mayorIndigency_photo)) payload.append('indigency_doc', photos.mayorIndigency_photo);
-        else if (typeof photos.mayorIndigency_photo === 'string' && photos.mayorIndigency_photo.startsWith('data:')) jsonData['indigency_doc'] = photos.mayorIndigency_photo;
-        hasPayload = true;
-      }
+      appendSmartFile('profile_picture', idPicturePreview);
+      appendSmartFile('indigency_doc', photos.mayorIndigency_photo);
     }
 
-    // STEP 3: School and Document Verification
     if (stepNumber === 3) {
-      if (schoolIdPhotos.front) {
-        if (isFileLike(schoolIdPhotos.front)) payload.append('id_front', schoolIdPhotos.front);
-        else if (typeof schoolIdPhotos.front === 'string' && schoolIdPhotos.front.startsWith('data:')) jsonData['id_front'] = schoolIdPhotos.front;
-        hasPayload = true;
-      }
-      if (schoolIdPhotos.back) {
-        if (isFileLike(schoolIdPhotos.back)) payload.append('id_back', schoolIdPhotos.back);
-        else if (typeof schoolIdPhotos.back === 'string' && schoolIdPhotos.back.startsWith('data:')) jsonData['id_back'] = schoolIdPhotos.back;
-        hasPayload = true;
-      }
-      if (photos.mayorCOE_photo) {
-        if (isFileLike(photos.mayorCOE_photo)) payload.append('enrollment_certificate_doc', photos.mayorCOE_photo);
-        else if (typeof photos.mayorCOE_photo === 'string' && photos.mayorCOE_photo.startsWith('data:')) jsonData['enrollment_certificate_doc'] = photos.mayorCOE_photo;
-        hasPayload = true;
-      }
-      if (photos.mayorGrades_photo) {
-        if (isFileLike(photos.mayorGrades_photo)) payload.append('grades_doc', photos.mayorGrades_photo);
-        else if (typeof photos.mayorGrades_photo === 'string' && photos.mayorGrades_photo.startsWith('data:')) jsonData['grades_doc'] = photos.mayorGrades_photo;
-        hasPayload = true;
-      }
+      appendSmartFile('id_front', schoolIdPhotos.front);
+      appendSmartFile('id_back', schoolIdPhotos.back);
+      appendSmartFile('enrollment_certificate_doc', photos.mayorCOE_photo);
+      appendSmartFile('grades_doc', photos.mayorGrades_photo);
     }
 
-    // STEP 4: Face Verification & Submission
     if (stepNumber === 4) {
-      if (photos.face_photo) {
-        if (isFileLike(photos.face_photo)) payload.append('face_photo', photos.face_photo);
-        else if (typeof photos.face_photo === 'string' && photos.face_photo.startsWith('data:')) jsonData['face_photo'] = photos.face_photo;
-        hasPayload = true;
-      }
-
+      appendSmartFile('face_photo', photos.face_photo);
       const signatureToSave = drawnSignature || signaturePreview;
       if (signatureToSave) {
-        if (isFileLike(signatureToSave)) payload.append('signature_data', signatureToSave);
-        else if (typeof signatureToSave === 'string' && signatureToSave.startsWith('data:')) jsonData['signature_data'] = signatureToSave;
-        hasPayload = true;
+        appendSmartFile('signature_data', signatureToSave);
       }
     }
 
     // Common: Handle video URLs if they exist in formData (e.g. from previous loads)
     const videoFields = ['mayorIndigency_video', 'mayorGrades_video', 'mayorCOE_video', 'schoolIdFront_video', 'schoolIdBack_video', 'face_video'];
     videoFields.forEach(field => {
-      if (formData[field] && typeof formData[field] === 'string' && formData[field].startsWith('http')) {
-        jsonData[field] = formData[field];
+      const val = formData[field];
+      if (val && typeof val === 'string' && val.startsWith('http')) {
+        jsonData[field] = val;
         hasPayload = true;
       }
     });

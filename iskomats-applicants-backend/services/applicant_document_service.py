@@ -193,13 +193,24 @@ def normalize_supabase_url(url):
 
     try:
         current_host = urlparse(current_url).netloc.lower()
+        current_bucket = os.environ.get('SUPABASE_STORAGE_BUCKET', 'document_images').strip()
         parsed_url = urlparse(url)
+        path = parsed_url.path
         
-        # If domain mismatch, rewrite with current project host
+        # 1. Host or Bucket mismatch correction
+        needs_rewrite = False
         if parsed_url.netloc.lower() != current_host:
-            # Reconstruct URL with current host
-            # parsed_url.path contains everything from /storage/v1/object/...
-            return f"https://{current_host}{parsed_url.path}{'?' + parsed_url.query if parsed_url.query else ''}"
+            needs_rewrite = True
+        
+        if '/storage/v1/object/' in path:
+            parts = path.split('/')
+            if len(parts) > 5 and parts[5] != current_bucket:
+                parts[5] = current_bucket
+                path = '/'.join(parts)
+                needs_rewrite = True
+        
+        if needs_rewrite:
+            return f"https://{current_host}{path}{'?' + parsed_url.query if parsed_url.query else ''}"
     except Exception:
         pass
 

@@ -2248,7 +2248,11 @@ def get_profile():
                 'schoolid_front_vid_url',
                 'schoolid_back_vid_url',
             ):
-                applicant[key] = document_values.get(key) or applicant.get(key)
+                val = document_values.get(key) or applicant.get(key)
+                if isinstance(val, str) and val.startswith('http'):
+                    applicant[key] = normalize_supabase_url(val)
+                else:
+                    applicant[key] = val
 
             # 3. Handle specific profile picture logic for the frontend
             if applicant.get('profile_picture'):
@@ -2365,7 +2369,7 @@ def get_applicant_document_raw(field_name):
             if isinstance(value, str):
                 if value.startswith('http'):
                     from flask import redirect
-                    return redirect(value)
+                    return redirect(normalize_supabase_url(value))
                 value = value.encode('utf-8')
             elif hasattr(value, 'tobytes'):
                 value = value.tobytes()
