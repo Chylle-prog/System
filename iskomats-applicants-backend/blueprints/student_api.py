@@ -2465,13 +2465,27 @@ def update_profile():
 
             for field_key, db_col in binary_fields.items():
                 blob_bytes = None
+                raw_val = None
+                
                 uploaded_file = files_data.get(field_key)
                 if uploaded_file:
                     blob_bytes = uploaded_file.read()
                 elif field_key in data and data[field_key]:
-                    blob_bytes = decode_base64(data[field_key])
+                    raw_val = data[field_key]
                 elif field_key in request.form and request.form[field_key]:
-                    blob_bytes = decode_base64(request.form[field_key])
+                    raw_val = request.form[field_key]
+                
+                if raw_val:
+                    # If it's already a URL, we don't need to decode or upload
+                    if isinstance(raw_val, str) and (raw_val.startswith('http') or raw_val.startswith('https')):
+                        print(f"[UPDATE PROFILE] Field {field_key} is already a URL. Saving directly.", flush=True)
+                        if db_col == 'profile_picture' and has_profile_picture_column:
+                            add_update(db_col, raw_val)
+                        else:
+                            document_updates[db_col] = raw_val
+                        continue
+                    else:
+                        blob_bytes = decode_base64(raw_val)
                 
                 if blob_bytes:
                     print(f"[UPDATE PROFILE] Field {field_key} -> {db_col}: {len(blob_bytes)} bytes detected. Cloud? {use_storage()}", flush=True)
@@ -2487,7 +2501,6 @@ def update_profile():
                             # If storage is enabled, we MUST NOT fall back to BYTEA
                             if use_storage():
                                 print(f"[UPDATE PROFILE] ERROR: upload_image_to_storage failed for {db_col}. Persistence aborted to prevent BYTEA corruption.", flush=True)
-                                # Throwing here prevents partial update of documents but allows data to be logged
                                 raise ValueError(f"Cloud upload failed for {field_key}. Please try again.")
                             
                             print(f"[UPDATE PROFILE] WARNING: upload_image_to_storage returned None for {db_col}. Falling back to BYTEA.", flush=True)
@@ -2706,9 +2719,17 @@ def submit_application():
         id_front_bytes = get_doc_bytes('id_front', 'id_img_front')
         id_back_bytes = get_doc_bytes('id_back', 'id_img_back')
         face_photo_bytes = get_doc_bytes('face_photo', 'face_photo')
+        
         profile_pic_bytes = None
+        profile_pic_url = None
+        
         if has_profile_picture_column:
-            profile_pic_bytes = get_doc_bytes('profile_picture', 'profile_picture')
+            # Check for URL first
+            raw_url = get_unified_val('profile_picture') or get_unified_val('profilePicture')
+            if isinstance(raw_url, str) and raw_url.startswith('http'):
+                profile_pic_url = raw_url
+            else:
+                profile_pic_bytes = get_doc_bytes('profile_picture', 'profile_picture')
         
         signature_bytes = get_doc_bytes('signature_data', 'signature_image_data')
 
@@ -2868,6 +2889,15 @@ def submit_application():
         }
 
         for column_name, value in binary_map.items():
+            # If we already have a URL (from profile_pic_url etc), use it directly
+            if column_name == 'profile_picture' and profile_pic_url:
+                if has_profile_picture_column:
+                    updates.append(f'{column_name} = %s')
+                    params.append(profile_pic_url)
+                else:
+                    document_updates[column_name] = profile_pic_url
+                continue
+
             if value is not None:
                 print(f"[SUBMIT] Processing {column_name}: {len(value) if isinstance(value, (bytes, bytearray)) else 'scalar'} data. Cloud? {use_storage()}", flush=True)
                 try:
