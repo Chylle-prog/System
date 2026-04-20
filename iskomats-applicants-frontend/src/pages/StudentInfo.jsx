@@ -298,6 +298,17 @@ const StudentInfo = () => {
     back: null
   });
 
+  const [autoScanTrigger, setAutoScanTrigger] = useState(null);
+  const triggerAutoScan = (docType) => setAutoScanTrigger(prev => prev === docType ? `${docType}_${Date.now()}` : docType);
+
+  const getDocTypeFromField = (field) => {
+    if (field.includes('Indigency')) return 'Indigency';
+    if (field.includes('COE') || field.includes('Enrollment')) return 'Enrollment';
+    if (field.includes('Grades')) return 'Grades';
+    if (field.includes('schoolId') || field.includes('id_front') || field.includes('id_back') || field.includes('SchoolId')) return 'SchoolID';
+    return null;
+  };
+
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   const [cameraInitializing, setCameraInitializing] = useState(false);
@@ -431,12 +442,16 @@ const StudentInfo = () => {
           return next;
         });
 
-        // Persist to profile in background
+        // Persist to profile in background (Wait! We already do this? If not, keep it)
         applicantAPI.updateProfile({ [fieldName]: publicUrl }).catch(err => {
           console.warn(`Could not sync ${fieldName} to profile:`, err.message);
         });
         
         console.log(`Video uploaded successfully for ${fieldName}:`, publicUrl);
+        
+        // Trigger auto-scan logic
+        const docType = getDocTypeFromField(fieldName);
+        if (docType) triggerAutoScan(docType);
       })
       .catch(err => {
         console.error(`Failed to upload video for ${fieldName}:`, err);
@@ -1656,12 +1671,15 @@ const StudentInfo = () => {
         } else if (type === 'mayorIndigency_photo') {
           setOcrVerified(null);
           setOcrStatus('');
+          triggerAutoScan('Indigency');
         } else if (type === 'mayorCOE_photo') {
           setCoeVerified(null);
           setCoeStatus('');
+          triggerAutoScan('Enrollment');
         } else if (type === 'mayorGrades_photo') {
           setGradesVerified(null);
           setGradesStatus('');
+          triggerAutoScan('Grades');
         }
         
         setHasInteracted(true);
@@ -1705,50 +1723,53 @@ const StudentInfo = () => {
   const [hasInteracted, setHasInteracted] = useState(false);
 
   useEffect(() => {
-    // ─── AUTO-SCAN LOGIC (PARALLELIZED COE/GRADES) ───
-    if (isAnyScanning || isSavingStep || !hasInteracted) return;
+    // ─── AUTO-SCAN LOGIC ───
+    if (isAnyScanning || isSavingStep || !autoScanTrigger) return;
+
+    const baseScanType = String(autoScanTrigger).split('_')[0];
 
     const autoTrigger = async () => {
       // Step 1: Indigency
-      if (currentStep === 1 && ocrVerified === null) {
+      if (currentStep === 1 && baseScanType === 'Indigency' && ocrVerified === null) {
         const doc = getVerificationDocumentSource(photos.mayorIndigency_photo, formData.mayorIndigency_photo, userProfile?.indigency_doc);
         const vid = formData.mayorIndigency_video || documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url;
         if (doc && vid && typeof vid === 'string' && vid.startsWith('http')) {
           handleIndigencyScan();
+          setAutoScanTrigger(null);
         }
       }
 
       // Step 3: School ID, COE, Grades
       if (currentStep === 3) {
-        // School ID (sequential, as required)
-        if (idVerified === null) {
+        // School ID
+        if (baseScanType === 'SchoolID' && idVerified === null) {
           const front = getVerificationDocumentSource(schoolIdPhotos.front, userProfile?.id_img_front);
           const back = getVerificationDocumentSource(schoolIdPhotos.back, userProfile?.id_img_back);
           const fVid = formData.schoolIdFront_video || documentVideos.schoolIdFront_video;
           const bVid = formData.schoolIdBack_video || documentVideos.schoolIdBack_video;
           if (front && back && fVid && bVid && typeof fVid === 'string' && fVid.startsWith('http') && typeof bVid === 'string' && bVid.startsWith('http')) {
             handleIdScan();
+            setAutoScanTrigger(null);
           }
         }
 
-        // COE and Grades: parallelize after ID is verified
-        if (idVerified === 'success') {
-          // COE
-          if (coeVerified === null) {
-            const doc = getVerificationDocumentSource(photos.mayorCOE_photo, formData.mayorCOE_photo, userProfile?.enrollment_certificate_doc);
-            const vid = formData.mayorCOE_video || documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url;
-            // Only trigger if not already verified and not already running
-            if (doc && vid && typeof vid === 'string' && vid.startsWith('http')) {
-              handleCOEScan();
-            }
+        // COE
+        if (baseScanType === 'Enrollment' && coeVerified === null) {
+          const doc = getVerificationDocumentSource(photos.mayorCOE_photo, formData.mayorCOE_photo, userProfile?.enrollment_certificate_doc);
+          const vid = formData.mayorCOE_video || documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url;
+          if (doc && vid && typeof vid === 'string' && vid.startsWith('http')) {
+            handleCOEScan();
+            setAutoScanTrigger(null);
           }
-          // Grades
-          if (gradesVerified === null) {
-            const doc = getVerificationDocumentSource(photos.mayorGrades_photo, formData.mayorGrades_photo, userProfile?.grades_doc);
-            const vid = formData.mayorGrades_video || documentVideos.mayorGrades_video || userProfile?.grades_vid_url;
-            if (doc && vid && typeof vid === 'string' && vid.startsWith('http')) {
-              handleGradesScan();
-            }
+        }
+        
+        // Grades
+        if (baseScanType === 'Grades' && gradesVerified === null) {
+          const doc = getVerificationDocumentSource(photos.mayorGrades_photo, formData.mayorGrades_photo, userProfile?.grades_doc);
+          const vid = formData.mayorGrades_video || documentVideos.mayorGrades_video || userProfile?.grades_vid_url;
+          if (doc && vid && typeof vid === 'string' && vid.startsWith('http')) {
+            handleGradesScan();
+            setAutoScanTrigger(null);
           }
         }
       }
@@ -1756,6 +1777,7 @@ const StudentInfo = () => {
 
     autoTrigger();
   }, [
+    autoScanTrigger,
     currentStep, ocrVerified, idVerified, coeVerified, gradesVerified,
     photos.mayorIndigency_photo, documentVideos.mayorIndigency_video,
     schoolIdPhotos.front, schoolIdPhotos.back, documentVideos.schoolIdFront_video, documentVideos.schoolIdBack_video,
@@ -1792,9 +1814,9 @@ const StudentInfo = () => {
             setPhotos(prev => ({ ...prev, [name]: compressedBase64 })); // Update with compressed version
             
             // Reset verification on photo change
-            if (name === 'mayorIndigency_photo') { setOcrVerified(null); setOcrStatus(''); preScanDocument('Indigency', compressedBase64); }
-            else if (name === 'mayorCOE_photo') { setCoeVerified(null); setCoeStatus(''); preScanDocument('Enrollment', compressedBase64); }
-            else if (name === 'mayorGrades_photo') { setGradesVerified(null); setGradesStatus(''); preScanDocument('Grades', compressedBase64); }
+            if (name === 'mayorIndigency_photo') { setOcrVerified(null); setOcrStatus(''); preScanDocument('Indigency', compressedBase64); triggerAutoScan('Indigency'); }
+            else if (name === 'mayorCOE_photo') { setCoeVerified(null); setCoeStatus(''); preScanDocument('Enrollment', compressedBase64); triggerAutoScan('Enrollment'); }
+            else if (name === 'mayorGrades_photo') { setGradesVerified(null); setGradesStatus(''); preScanDocument('Grades', compressedBase64); triggerAutoScan('Grades'); }
           });
         } else {
           // Non-image or compression skipped
@@ -1850,6 +1872,8 @@ const StudentInfo = () => {
         
         // Pre-scan front ID in background
         if (side === 'front') preScanDocument('SchoolID', compressedBase64);
+
+        triggerAutoScan('SchoolID');
       });
     }
   };

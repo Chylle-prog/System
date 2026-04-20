@@ -3199,21 +3199,30 @@ def ocr_check():
                         return True, "Not provided"
                     
                     if doc_type in ['SchoolID', 'SchoolIDBack']:
-                        return verify_video_reference(vid_url)
+                        # Define ID-specific keywords
+                        id_keywords = ['ID', 'Card', 'Student', 'School', 'University', 'Identification', 'Identity', 'Republic', 'Philippines']
+                        return verify_video_content(
+                            video_data=vid_url,
+                            keywords=id_keywords,
+                            sample_positions=[0.35, 0.55, 0.75],
+                            max_width=540,
+                            allow_alt_pass=True,
+                            fallback_text_length=20
+                        )
                     
                     # Optimized scan options
                     scan_options = {
-                        'Indigency': {'sample_positions': [0.5], 'max_width': 450, 'allow_alt_pass': False, 'fallback_text_length': 8},
-                        'Enrollment': {'sample_positions': [0.5], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 12},
-                        'Grades': {'sample_positions': [0.5], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 12},
-                        'SchoolID': {'sample_positions': [0.35, 0.65], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 15},
-                        'SchoolIDBack': {'sample_positions': [0.35, 0.65], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 10},
+                        'Indigency': {'sample_positions': [0.25, 0.5, 0.75], 'max_width': 600, 'allow_alt_pass': True, 'fallback_text_length': 15},
+                        'Enrollment': {'sample_positions': [0.4, 0.65], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 45},
+                        'Grades': {'sample_positions': [0.4, 0.65], 'max_width': 700, 'allow_alt_pass': True, 'fallback_text_length': 45},
+                        'SchoolID': {'sample_positions': [0.35, 0.65], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 20},
+                        'SchoolIDBack': {'sample_positions': [0.35, 0.65], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 15},
                     }
                     scan_opt = scan_options.get(doc_type, scan_options['Enrollment'])
 
                     video_keywords_map = {
-                        'Indigency': ['Indigency', 'Certificate', 'Barangay', 'Indigent', 'Residency', 'Clearance'],
-                        'Enrollment': ['Enrollment', 'Enrolment', 'Certificate', 'COE', 'COR', 'Registered', 'Registration', 'Reg', 'Matriculation', 'Assessment', 'Billing', 'Semester', 'Sem'],
+                        'Indigency': ['Indigency', 'Certificate', 'Barangay', 'Indigent', 'Residency', 'Clearance', 'Resident', 'Office', 'Official'],
+                        'Enrollment': ['Enrollment', 'Enrolment', 'Certificate', 'COE', 'COR', 'Registered', 'Registration', 'Reg', 'Matriculation', 'Assessment', 'Billing', 'Semester', 'Sem', 'School'],
                         'Grades': ['Grades', 'Grade', 'Transcript', 'Record', 'Evaluation', 'Rating', 'Units', 'Credit', 'Sem', 'GPA', 'Report', 'Card', 'Academic', 'TOR', 'Checklist'],
                     }
                     
@@ -3455,11 +3464,15 @@ def ocr_check():
             if indigency_doc_param or applicant.get('indigency_doc'):
                 jobs.append(('Indigency', indigency_doc_param, applicant.get('indigency_doc')))
 
-        if not target_doc or target_doc == 'SchoolID':
+        if not target_doc or target_doc in ['SchoolID', 'SchoolIDBack']:
             if id_front_param or applicant.get('id_img_front'):
-                jobs.append(('SchoolID', id_front_param, applicant.get('id_img_front')))
+                if not target_doc or target_doc == 'SchoolID':
+                    jobs.append(('SchoolID', id_front_param, applicant.get('id_img_front')))
             if id_back_param or applicant.get('id_img_back'):
-                jobs.append(('SchoolIDBack', id_back_param, applicant.get('id_img_back')))
+                if not target_doc or target_doc == 'SchoolIDBack':
+                    jobs.append(('SchoolIDBack', id_back_param, applicant.get('id_img_back')))
+                elif not target_doc:
+                     jobs.append(('SchoolIDBack', id_back_param, applicant.get('id_img_back')))
                 
         if not jobs:
             # If we were strictly targeting a doc, explain why it was skipped.
