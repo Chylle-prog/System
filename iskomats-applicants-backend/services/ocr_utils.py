@@ -866,30 +866,35 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
                 if name_v_z1 and addr_v_z1:
                     print(f"[OCR PERF] SUCCESS (Early Exit Zone 1) after {time.time() - t_start:.2f}s", flush=True)
                     return True, "Verified", t1, {'name_ok': True, 'addr_ok': True, 'fast_path': True}
-            
-            # -- PARALLELIZE SUB-SCANS (Optimization #6) ---
-            from concurrent.futures import ThreadPoolExecutor
-            with ThreadPoolExecutor(max_workers=3) as sub_executor:
-                # 1. Start full image scan (PSM 6 is MUCH faster for ID blocks)
-                best_future = sub_executor.submit(_run_tesseract_on_image, img, psm=6, skip_pass2=True)
                 
-                # 2. Start column sub-scans
-                h_total, w_total = img.shape[:2]
-                header_h, left_w = int(h_total * 0.35), int(w_total * 0.52)
-                l_c, r_c = img[:header_h, :left_w], img[:header_h, left_w:]
-                
-                left_future = sub_executor.submit(_run_tesseract_on_image, l_c, psm=6, skip_pass2=True)
-                right_future = sub_executor.submit(_run_tesseract_on_image, r_c, psm=6, skip_pass2=True)
-                
-                # SEQUENTIAL ACQUISITION for Early-Exit
-                best_text = best_future.result()
-                name_ok, addr_ok, found_kw, _, _ = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
-                
-                if not (name_ok and addr_ok):
-                    l_t, r_t = left_future.result(), right_future.result()
-                    best_text = f"{best_text}\n---\n{l_t}\n---\n{r_t}"
-                else:
-                    print(f"[OCR PERF] ID SUCCESS (Fast Path) in {time.time() - t_start:.2f}s", flush=True)
+                # If zone 1 alone didn't do it, combine zone 1 and 2. 
+                # There is NO NEED to run column splits for Certificates!
+                best_text = f"{t1}\n{t2}"
+                print(f"[OCR PERF] Indigency Total OCR time (Dual-Zone): {time.time() - t_start:.3f}s", flush=True)
+            else:
+                # -- PARALLELIZE SUB-SCANS for IDs ONLY (Optimization #6) ---
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=3) as sub_executor:
+                    # 1. Start full image scan (PSM 6 is MUCH faster for ID blocks)
+                    best_future = sub_executor.submit(_run_tesseract_on_image, img, psm=6, skip_pass2=True)
+                    
+                    # 2. Start column sub-scans
+                    h_total, w_total = img.shape[:2]
+                    header_h, left_w = int(h_total * 0.35), int(w_total * 0.52)
+                    l_c, r_c = img[:header_h, :left_w], img[:header_h, left_w:]
+                    
+                    left_future = sub_executor.submit(_run_tesseract_on_image, l_c, psm=6, skip_pass2=True)
+                    right_future = sub_executor.submit(_run_tesseract_on_image, r_c, psm=6, skip_pass2=True)
+                    
+                    # SEQUENTIAL ACQUISITION for Early-Exit
+                    best_text = best_future.result()
+                    name_ok, addr_ok, found_kw, _, _ = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
+                    
+                    if not (name_ok and addr_ok):
+                        l_t, r_t = left_future.result(), right_future.result()
+                        best_text = f"{best_text}\n---\n{l_t}\n---\n{r_t}"
+                    else:
+                        print(f"[OCR PERF] ID SUCCESS (Fast Path) in {time.time() - t_start:.2f}s", flush=True)
 
 
             # t_end moved up into early-exit block or handled naturally
