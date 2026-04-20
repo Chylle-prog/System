@@ -3377,7 +3377,7 @@ def ocr_check():
                         checklist = [c for c in checklist if c is not None]
                         msg = f"Checklist: [{' | '.join(checklist)}]"
                         if not v:
-                            msg += f" (Checked vs F:'{first_name}' M:'{middle_name}' L:'{last_name}' ID:'{expected_id_no}')"
+                            msg += f" (Checked vs F:'{first_name}' L:'{last_name}' ID:'{expected_id_no}' Lvl:'{expected_year_level}' Y:'{expected_academic_year}')"
                         return {'doc': 'Enrollment', 'verified': v, 'message': msg + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
                     elif doc_type == 'Grades':
                         gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
