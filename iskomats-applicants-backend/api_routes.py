@@ -3246,7 +3246,7 @@ def get_applicants(current_user_id, pro_no, role, program):
         cursor = conn.cursor()
         applicant_email_table = get_applicant_email_table(cursor)
         document_join = applicant_document_join_sql(cursor, 'a', 'ad')
-        profile_picture_expr = '(a.profile_pic IS NOT NULL)' if applicant_has_column(cursor, 'profile_pic') else '(a.profile_picture IS NOT NULL)' if applicant_has_column(cursor, 'profile_picture') else 'FALSE'
+        profile_picture_expr = '(a.profile_picture IS NOT NULL)' if applicant_has_column(cursor, 'profile_picture') else '(a.profile_pic IS NOT NULL)' if applicant_has_column(cursor, 'profile_pic') else 'FALSE'
         
         query = f'''
             SELECT a.applicant_no as id, a.first_name as "firstName", a.last_name as "lastName", 

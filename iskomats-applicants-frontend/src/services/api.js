@@ -4,7 +4,7 @@ export const uploadProfilePicture = async (file) => {
   const currentUser = sanitizeStorageSegment(localStorage.getItem('currentUser'), 'unknown-user');
   const ext = resolveVideoUploadExtension(file);
   const contentType = file?.type || 'image/jpeg';
-  const objectPath = `profile_pic/${applicantNo}-${currentUser}${ext}`;
+  const objectPath = `profile_pictures/${applicantNo}-${currentUser}${ext}`;
 
   const uploadResult = await supabase.storage
     .from('document_images')

@@ -564,15 +564,15 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
 
         # Clean folder mapping
         folder_map = {
-            'signature_image_data': 'document_images/signatures',
-            'grades_doc': 'document_images/grades',
-            'enrollment_certificate_doc': 'document_images/coe',
-            'indigency_doc': 'document_images/indigency',
-            'id_img_front': 'document_images/id_verification',
-            'id_img_back': 'document_images/id_verification',
-            'id_pic': 'document_images/id_verification',
-            'profile_pic': 'document_images/profile_pic',
-            'schoolID_photo': 'document_images/school_id'
+            'signature_image_data': 'signatures',
+            'grades_doc': 'grades',
+            'enrollment_certificate_doc': 'coe',
+            'indigency_doc': 'indigency',
+            'id_img_front': 'id_verification',
+            'id_img_back': 'id_verification',
+            'id_pic': 'id_verification',
+            'profile_picture': 'profile_pictures',
+            'schoolID_photo': 'school_id'
         }
 
         folder = folder_map.get(field_name, 'others')
@@ -1021,7 +1021,7 @@ def ensure_applicant_document_storage():
         
         # --- CLOUD STORAGE MIGRATION: Convert BYTEA to TEXT and Ensure Columns Exist ---
         # Define columns by their intended primary location
-        applicant_only_cols = ['profile_pic', 'merits_awards_received']
+        applicant_only_cols = ['profile_picture', 'merits_awards_received']
         
         document_table_cols = [
             'signature_image_data', 'schoolID_photo', 'id_img_front', 'id_img_back',
@@ -2143,13 +2143,13 @@ def get_profile():
             
             # Binary fields to optimize away from main SELECT
             blob_fields = [
-                'profile_pic', 'signature_image_data', 'id_img_front', 'id_img_back', 
+                'profile_picture', 'signature_image_data', 'id_img_front', 'id_img_back', 
                 'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic'
             ]
             
             # Map fields to has_ flags
             flag_map = {
-                'profile_pic': 'has_profile_picture',
+                'profile_picture': 'has_profile_picture',
                 'signature_image_data': 'has_signature',
                 'id_img_front': 'has_id',
                 'id_img_back': 'has_id_back',
@@ -2215,12 +2215,12 @@ def get_profile():
             # This ensures the browser can still access the data without bloating the initial profile load
             for key in blob_fields:
                 flag_name = flag_map.get(key, f"has_{key}")
-                if key != 'profile_pic':
+                if key != 'profile_picture':
                     applicant[flag_name] = document_values.get(key) is not None
                 else:
                     # Specialized check for profile picture
                     applicant['has_profile_picture'] = (
-                        document_values.get('profile_pic') is not None or 
+                        document_values.get('profile_picture') is not None or 
                         applicant.get('has_profile_picture') # fallback for pre-loaded apps column
                     )
 
@@ -2245,8 +2245,8 @@ def get_profile():
                 applicant[key] = document_values.get(key) or applicant.get(key)
 
             # 3. Handle specific profile picture logic for the frontend
-            if applicant.get('profile_pic'):
-                 applicant['profile_picture'] = applicant['profile_pic']
+            if applicant.get('profile_picture'):
+                 applicant['profile_picture'] = applicant['profile_picture']
 
             # 4. Clean up other types
             for key, value in list(applicant.items()):
@@ -2274,7 +2274,7 @@ def get_applicant_document(field_name):
     This prevents memory exhaustion by avoiding loading ALL images at once in /profile.
     """
     allowed_fields = [
-        'profile_pic', 'signature_image_data', 'id_img_front', 'id_img_back',
+        'profile_picture', 'signature_image_data', 'id_img_front', 'id_img_back',
         'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic'
     ]
     
@@ -2337,7 +2337,7 @@ def get_applicant_document(field_name):
 def get_applicant_document_raw(field_name):
     """Returns raw bytes with correct Content-Type for direct <img> usage."""
     allowed_fields = [
-        'profile_pic', 'signature_image_data', 'id_img_front', 'id_img_back',
+        'profile_picture', 'signature_image_data', 'id_img_front', 'id_img_back',
         'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic'
     ]
     if field_name not in allowed_fields:
@@ -2389,7 +2389,7 @@ def update_profile():
             updates = []
             params = []
             document_updates = {}
-            has_profile_pic_column = applicant_has_column(cur, 'profile_pic')
+            has_profile_picture_column = applicant_has_column(cur, 'profile_picture')
 
             def add_update(column_name, value):
                 updates.append(f'{column_name} = %s')
@@ -2464,7 +2464,7 @@ def update_profile():
                     add_update('mother_status', mother_status)
 
             binary_fields = {
-                'profile_picture': 'profile_pic' if has_profile_pic_column else 'profile_picture',
+                'profile_picture': 'profile_picture',
                 'id_front': 'id_img_front',
                 'id_back': 'id_img_back',
                 'mayorCOE_photo': 'enrollment_certificate_doc',
@@ -2525,7 +2525,7 @@ def update_profile():
                                 document_updates[db_col] = blob_bytes
                     except Exception as storage_err:
                         print(f"[UPDATE PROFILE] CRITICAL STORAGE ERROR for {db_col}: {storage_err}", flush=True)
-                        if db_col == 'profile_pic' and has_profile_pic_column:
+                        if db_col == 'profile_picture' and has_profile_picture_column:
                             add_update(db_col, blob_bytes)
                         else:
                             document_updates[db_col] = blob_bytes
@@ -2651,7 +2651,7 @@ def submit_application():
 
         conn = get_db()
         cur = conn.cursor()
-        has_profile_pic_column = applicant_has_column(cur, 'profile_pic')
+        has_profile_picture_column = applicant_has_column(cur, 'profile_picture')
         
         # Ensure the created_at support column exists only once per process.
         ensure_applicant_status_created_at_column(cur)
