@@ -3202,7 +3202,7 @@ def ocr_check():
                     
                     # Optimized scan options
                     scan_options = {
-                        'Indigency': {'sample_positions': [0.25, 0.5, 0.75], 'max_width': 600, 'allow_alt_pass': True, 'fallback_text_length': 15},
+                        'Indigency': {'sample_positions': [0.35, 0.75], 'max_width': 540, 'allow_alt_pass': False, 'fallback_text_length': 15},
                         'Enrollment': {'sample_positions': [0.4, 0.65], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 45},
                         'Grades': {'sample_positions': [0.4, 0.65], 'max_width': 700, 'allow_alt_pass': True, 'fallback_text_length': 45},
                         'SchoolID': {'sample_positions': [0.35, 0.65], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 20},

@@ -1004,11 +1004,9 @@ def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=Fals
 
             text = _run_tesseract_on_image(img, psm=primary_psm, skip_pass2=skip_pass2)
             
-            # Optimization: Skip header pass if keywords already found in primary text.
-            needs_header = len(text.strip()) < 150
-            # ALWAYS perform a brief header scan for academic/indigency docs to catch the school/office name
-            # Previously this was skipped if 'grades' etc were found, but that caused us to miss the logo area.
-            needs_header = True
+            # Optimization: Skip header pass if primary_psm is already 6. 
+            # PSM 6 on the entire image captures headers perfectly. A second PSM 6 pass is completely redundant.
+            needs_header = (primary_psm != 6)
 
             if not is_id_back and needs_header:
                 header_height = max(int(img.shape[0] * 0.28), 1)
@@ -1051,15 +1049,16 @@ def _preprocess_frame_for_ocr(frame):
     return cv2.normalize(enhanced, None, 0, 255, cv2.NORM_MINMAX)
 
 
-def _ocr_video_frame(processed_frame, allow_alt_pass=True, keywords=None):
+def _ocr_video_frame(processed_frame, allow_alt_pass=True, keywords=None, is_address_verification=False):
     """Run OCR for a single video frame while holding the shared OCR gate only for Tesseract work."""
     with OCR_SEMAPHORE:
-        # For video keywords, PSM 11 (Sparse Text) is often faster and sufficient for 'Indigency' / 'Grades' headers.
-        psm = 11 if keywords else 3
+        # For address verification (Indigency), we need continuous lines. PSM 6 (Uniform Block) is fastest and most reliable.
+        # For general keywords, PSM 11 (Sparse Text) is fast.
+        psm = 6 if is_address_verification else (11 if keywords else 3)
         text = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config=f'--psm {psm} --oem 1')
 
-        # Smart Exit: If keywords provided and found, exit immediately for speed
-        if keywords and any(k.lower() in text.lower() for k in keywords):
+        # Smart Exit: If keywords provided and found, and we don't strictly need a full address paragraph, exit early.
+        if keywords and not is_address_verification and any(k.lower() in text.lower() for k in keywords):
             return text
 
         # Only run fallback pass if Pass 1 was relatively poor (< 12 chars)
@@ -1164,8 +1163,8 @@ def verify_video_content(video_data, keywords, expected_address=None, sample_pos
         # Now run OCR on captured frames in parallel
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=min(len(frames_to_ocr), 3)) as executor:
-            # allow_alt_pass=True for thoroughness on documents
-            ocr_results = list(executor.map(lambda f: _ocr_video_frame(f, allow_alt_pass=allow_alt_pass, keywords=keywords), frames_to_ocr))
+            # pass is_address_verification so it forces PSM 6 for better continuous text line reading
+            ocr_results = list(executor.map(lambda f: _ocr_video_frame(f, allow_alt_pass=allow_alt_pass, keywords=keywords, is_address_verification=is_address_verification), frames_to_ocr))
 
         all_ocr_text = " ".join(ocr_results)
         found_keywords = []
