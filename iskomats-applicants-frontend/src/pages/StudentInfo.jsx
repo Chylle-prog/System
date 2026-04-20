@@ -3193,7 +3193,7 @@ const StudentInfo = () => {
                       <button 
                         type="button" 
                         onClick={handleIndigencyScan}
-                        disabled={isSavingStep || ocrVerified === 'verifying' || isAnyVideoUploading}
+                        disabled={isSavingStep || ocrVerified === 'verifying' || isAnyVideoUploading || !(documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url || formData.mayorIndigency_video)}
                         style={{
                           width: '100%',
                           padding: '0.9rem',
@@ -3609,7 +3609,13 @@ const StudentInfo = () => {
                   <button 
                     type="button" 
                     onClick={handleIdScan}
-                    disabled={isSavingStep || idVerified === 'verifying' || isAnyVideoUploading || (!schoolIdPhotos.front && !userProfile?.id_img_front)}
+                    disabled={
+                      isSavingStep || idVerified === 'verifying' || isAnyVideoUploading || 
+                      !(schoolIdPhotos.front || userProfile?.id_img_front) || 
+                      !(schoolIdPhotos.back || userProfile?.id_img_back) || 
+                      !(documentVideos.schoolIdFront_video || userProfile?.schoolid_front_vid_url || formData.schoolIdFront_video) || 
+                      !(documentVideos.schoolIdBack_video || userProfile?.schoolid_back_vid_url || formData.schoolIdBack_video)
+                    }
                     style={{
                       width: '100%',
                       padding: '1rem',
@@ -3725,7 +3731,7 @@ const StudentInfo = () => {
                         <button 
                           type="button" 
                           onClick={handleCOEScan}
-                          disabled={isSavingStep || coeVerified === 'verifying' || isAnyVideoUploading}
+                          disabled={isSavingStep || coeVerified === 'verifying' || isAnyVideoUploading || !(documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url || formData.mayorCOE_video)}
                           style={{
                             width: '100%',
                             padding: '0.85rem',
@@ -3839,7 +3845,7 @@ const StudentInfo = () => {
                           <button 
                             type="button" 
                             onClick={handleGradesScan}
-                            disabled={isSavingStep || gradesVerified === 'verifying' || isAnyVideoUploading}
+                            disabled={isSavingStep || gradesVerified === 'verifying' || isAnyVideoUploading || !(documentVideos.mayorGrades_video || userProfile?.grades_vid_url || formData.mayorGrades_video)}
                             style={{
                               width: '100%',
                               padding: '0.85rem',
