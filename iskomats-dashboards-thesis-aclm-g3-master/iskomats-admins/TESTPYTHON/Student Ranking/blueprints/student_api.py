@@ -615,9 +615,7 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
         return public_url
 
     except Exception as e:
-        print(f"[STORAGE ERROR] {field_name} upload failed: {str(e)}", flush=True)
         return None
-ne
 
 
 def resolve_verification_image_bytes(image_data):
