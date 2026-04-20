@@ -3155,7 +3155,9 @@ def ocr_check():
             try:
                 # Use standard doc bytes for provided parameters, fallback to DB only for Indigency/ID
                 # Support both newly uploaded base64 data and existing Supabase URLs
+                source = "Frontend Local Upload" if doc_param else ("Database Fallback URL" if db_val else "None")
                 doc_bytes = resolve_verification_image_bytes(doc_param) if doc_param else (resolve_verification_image_bytes(db_val) if db_val else None)
+                print(f"[IMAGE TRACER] {doc_type} sourced from: {source}. Target bytes acquired: {len(doc_bytes) if doc_bytes else 0}", flush=True)
                 
                 if not doc_bytes: 
                     return None
