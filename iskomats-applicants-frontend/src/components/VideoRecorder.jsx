@@ -232,9 +232,9 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
           ) : (
             <>
               <video 
-                src={previewUrl} 
+                src={previewUrl.includes('#t=') ? previewUrl : `${previewUrl}#t=0.1`} 
                 controls 
-                preload="none"
+                preload="metadata"
                 playsInline
                 onError={() => setVideoError('Video preview failed')}
                 style={{ 
