@@ -1483,7 +1483,10 @@ const StudentInfo = () => {
         // (Removed fetchHeavyBlobs as it was causing excessive egress and slowing down initial load.
         // Images now load on-demand using standard <img> tags and browser caching.)
 
-        
+        if (profile.profile_picture) {
+          setIdPicturePreview(profile.profile_picture);
+        }
+
         if (profile.has_other_assistance) {
           setHasOtherAssistance('Yes');
         } else if (profile.has_other_assistance === false) {

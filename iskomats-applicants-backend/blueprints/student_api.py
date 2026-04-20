@@ -2488,11 +2488,15 @@ def update_profile():
 
             binary_fields = {
                 'profile_picture': 'profile_picture',
-                'id_pic': 'id_pic',
+                'id_pic': 'id_pic',  # legacy mapping
+                'face_photo': 'id_pic', # mapping from step 4
                 'signature_data': 'signature_image_data',
                 'schoolID_photo': 'school_id',
                 'id_front': 'id_img_front',
                 'id_back': 'id_img_back',
+                'indigency_doc': 'indigency_doc',
+                'grades_doc': 'grades_doc',
+                'enrollment_certificate_doc': 'enrollment_certificate_doc',
             }
 
             for field_key, db_col in binary_fields.items():
