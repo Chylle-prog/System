@@ -1,7 +1,7 @@
 APPLICANT_DOCUMENT_TABLE_CANDIDATES = ('applicant_documents', 'applicant_document')
 
 APPLICANT_INLINE_MEDIA_COLUMNS = (
-    'profile_picture',
+    'profile_pic',
 )
 
 APPLICANT_DOCUMENT_COLUMNS = (
@@ -19,7 +19,7 @@ APPLICANT_DOCUMENT_COLUMNS = (
     'enrollment_certificate_vid_url',
     'schoolid_front_vid_url',
     'schoolid_back_vid_url',
-    'profile_picture',
+    'profile_pic',
 )
 
 _TABLE_CACHE = {}

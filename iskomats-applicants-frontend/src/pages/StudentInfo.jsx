@@ -137,7 +137,7 @@ const STEP_FIELDS = {
     'parentsGrossIncome', 'numberOfSiblings'
   ],
   3: [
-    'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course', 'gpa', 'semester',
+    'meritsAwardsReceived', 'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course', 'gpa', 'semester',
     'mayorCOE_photo', 'mayorGrades_photo'
   ],
   4: [
@@ -682,6 +682,7 @@ const StudentInfo = () => {
     emailAddress: '',
     gpa: '',
     semester: '',
+    meritsAwardsReceived: '',
     
     fatherStatus: '',
     fatherName: '',
@@ -1428,7 +1429,8 @@ const StudentInfo = () => {
           parentsGrossIncome: urlIncome || scholarshipSearchProfile?.income || profile.financial_income_of_parents || '',
           gpa: urlGpa || scholarshipSearchProfile?.gpa || profile.overall_gpa || '',
           numberOfSiblings: profile.sibling_no || '',
-          course: profile.course || ''
+          course: profile.course || '',
+          meritsAwardsReceived: profile.merits_awards_received || ''
         };
 
         if (scholarshipSearchProfile?.street_brgy || profile.street_brgy || profile.streetBarangay) {
@@ -3323,6 +3325,25 @@ const StudentInfo = () => {
                     style={{ backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }}
                   />
                 </div>
+              </div>
+
+              <div className="form-group" style={{marginBottom: '1.5rem'}}>
+                <label style={{display: 'block', fontSize: '0.9rem', fontWeight: '700', color: '#1e293b', marginBottom: '8px'}}>Merits and Awards Received <span style={{fontSize: '0.75rem', color: '#64748b', fontWeight: 'normal'}}>(Optional)</span></label>
+                <textarea 
+                  name="meritsAwardsReceived" 
+                  value={formData.meritsAwardsReceived} 
+                  onChange={handleInputChange} 
+                  placeholder="List your honors, merits, certificates, and awards..." 
+                  style={{ 
+                    width: '100%', 
+                    padding: '0.8rem', 
+                    borderRadius: '12px', 
+                    border: '1px solid #e2e8f0', 
+                    minHeight: '80px',
+                    fontFamily: 'inherit',
+                    fontSize: '0.9rem'
+                  }}
+                />
               </div>
 
               <div className="form-row">

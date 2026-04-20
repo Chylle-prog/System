@@ -571,7 +571,7 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
             'id_img_front': 'document_images/id_verification',
             'id_img_back': 'document_images/id_verification',
             'id_pic': 'document_images/id_verification',
-            'profile_picture': 'profile_pic',
+            'profile_pic': 'document_images/profile_pic',
             'schoolID_photo': 'document_images/school_id'
         }
 
@@ -1019,53 +1019,42 @@ def ensure_applicant_document_storage():
             )
         """)
         
-        # Legacy compatibility: keep applicant video columns only while documents still live on applicants.
-        video_cols = {
-            'id_vid_url': 'id_vid_url',
-            'indigency_vid_url': 'indigency_vid_url',
-            'grades_vid_url': 'grades_vid_url',
-            'enrollment_certificate_vid_url': 'enrollment_certificate_vid_url',
-            'schoolid_front_vid_url': 'schoolid_front_vid_url',
-            'schoolid_back_vid_url': 'schoolid_back_vid_url'
-        }
-        
-        cur.execute("""
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'applicants' AND column_name IN %s
-        """, (tuple(video_cols.keys()),))
-        existing_vid_cols = [row['column_name'] if isinstance(row, dict) else row[0] for row in cur.fetchall()]
-        
-        for col in video_cols.keys():
-            if col not in existing_vid_cols:
-                print(f"[MIGRATION] Adding column {col} to applicants table", flush=True)
-                cur.execute(f"ALTER TABLE applicants ADD COLUMN {col} TEXT")
-
         # --- CLOUD STORAGE MIGRATION: Convert BYTEA to TEXT and Ensure Columns Exist ---
-        doc_cols = [
-            'id_img_front', 'id_img_back', 'enrollment_certificate_doc',
-            'grades_doc', 'indigency_doc', 'id_pic', 'signature_image_data',
-            'profile_picture', 'schoolID_photo'
+        # Define columns by their intended primary location
+        applicant_only_cols = ['profile_pic', 'merits_awards_received']
+        
+        document_table_cols = [
+            'signature_image_data', 'schoolID_photo', 'id_img_front', 'id_img_back',
+            'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic',
+            'id_vid_url', 'indigency_vid_url', 'grades_vid_url', 
+            'enrollment_certificate_vid_url', 'schoolid_front_vid_url', 'schoolid_back_vid_url'
         ]
+        
+        all_cols_to_check = applicant_only_cols + document_table_cols
         
         # 1. Primary Table: applicants
         cur.execute("""
             SELECT column_name, data_type 
             FROM information_schema.columns 
             WHERE table_name = 'applicants' AND column_name IN %s
-        """, (tuple(doc_cols),))
+        """, (tuple(all_cols_to_check),))
         app_cols_info = {
             (row['column_name'] if isinstance(row, dict) else row[0]): (row['data_type'] if isinstance(row, dict) else row[1]) 
             for row in cur.fetchall()
         }
         
-        for col in doc_cols:
+        for col in all_cols_to_check:
             if col in app_cols_info:
                 d_type = app_cols_info[col].lower()
                 if d_type == 'bytea':
                     print(f"[MIGRATION] EXECUTING: Converting {col} in applicants to TEXT", flush=True)
                     cur.execute(f"UPDATE applicants SET {col} = NULL WHERE {col} IS NOT NULL")
                     cur.execute(f"ALTER TABLE applicants ALTER COLUMN {col} TYPE TEXT")
+            elif col in applicant_only_cols:
+                # Add missing column to applicants
+                print(f"[MIGRATION] Adding missing column {col} to applicants table", flush=True)
+                col_type = "BOOLEAN" if "is_" in col else "TEXT"
+                cur.execute(f"ALTER TABLE applicants ADD COLUMN {col} {col_type}")
         
         # 2. Auxiliary Table (ensure columns and correct type)
         doc_table = get_applicant_document_table(cur)
@@ -1081,7 +1070,9 @@ def ensure_applicant_document_storage():
                 for row in cur.fetchall()
             }
             
-            for col in doc_cols:
+            # Only ensure columns that are NOT explicitly applicant-only
+            doc_table_cols = shared_doc_cols + document_only_cols
+            for col in doc_table_cols:
                 if col in existing_doc_table_info:
                     d_type = existing_doc_table_info[col].lower()
                     if d_type == 'bytea':
@@ -2152,13 +2143,13 @@ def get_profile():
             
             # Binary fields to optimize away from main SELECT
             blob_fields = [
-                'profile_picture', 'signature_image_data', 'id_img_front', 'id_img_back', 
+                'profile_pic', 'signature_image_data', 'id_img_front', 'id_img_back', 
                 'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic'
             ]
             
             # Map fields to has_ flags
             flag_map = {
-                'profile_picture': 'has_profile_picture',
+                'profile_pic': 'has_profile_picture',
                 'signature_image_data': 'has_signature',
                 'id_img_front': 'has_id',
                 'id_img_back': 'has_id_back',
@@ -2224,11 +2215,22 @@ def get_profile():
             # This ensures the browser can still access the data without bloating the initial profile load
             for key in blob_fields:
                 flag_name = flag_map.get(key, f"has_{key}")
-                if key != 'profile_picture':
+                if key != 'profile_pic':
                     applicant[flag_name] = document_values.get(key) is not None
+                else:
+                    # Specialized check for profile picture
+                    applicant['has_profile_picture'] = (
+                        document_values.get('profile_pic') is not None or 
+                        applicant.get('has_profile_picture') # fallback for pre-loaded apps column
+                    )
+
                 if applicant.get(flag_name):
-                    # Use absolute URL for raw bytes to avoid origin issues on Surge
-                    applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
+                    # For profile picture, prioritize the Cloud URL if it already exists as a string
+                    raw_val = document_values.get(key)
+                    if isinstance(raw_val, str) and raw_val.startswith('http'):
+                        applicant[key] = raw_val
+                    else:
+                        applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
                 else:
                     applicant[key] = None
 
@@ -2242,14 +2244,18 @@ def get_profile():
             ):
                 applicant[key] = document_values.get(key) or applicant.get(key)
 
-            # 3. Clean up other types
+            # 3. Handle specific profile picture logic for the frontend
+            if applicant.get('profile_pic'):
+                 applicant['profile_picture'] = applicant['profile_pic']
+
+            # 4. Clean up other types
             for key, value in list(applicant.items()):
                 if isinstance(value, (datetime)):
                     applicant[key] = value.isoformat()
                 elif key == 'birthdate' and value:
                     applicant[key] = str(value)
 
-            # 4. Email verification status
+            # 5. Email verification status
             applicant['email_verified'] = applicant.get('is_verified', False)
             if applicant.get('google_id'):
                 applicant['email_verified'] = True
@@ -2268,7 +2274,7 @@ def get_applicant_document(field_name):
     This prevents memory exhaustion by avoiding loading ALL images at once in /profile.
     """
     allowed_fields = [
-        'profile_picture', 'signature_image_data', 'id_img_front', 'id_img_back',
+        'profile_pic', 'signature_image_data', 'id_img_front', 'id_img_back',
         'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic'
     ]
     
@@ -2331,7 +2337,7 @@ def get_applicant_document(field_name):
 def get_applicant_document_raw(field_name):
     """Returns raw bytes with correct Content-Type for direct <img> usage."""
     allowed_fields = [
-        'profile_picture', 'signature_image_data', 'id_img_front', 'id_img_back',
+        'profile_pic', 'signature_image_data', 'id_img_front', 'id_img_back',
         'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic'
     ]
     if field_name not in allowed_fields:
@@ -2346,6 +2352,14 @@ def get_applicant_document_raw(field_name):
             value = row[field_name]
             if field_name == 'signature_image_data':
                 value = decode_signature(value)
+            
+            if isinstance(value, str):
+                if value.startswith('http'):
+                    from flask import redirect
+                    return redirect(value)
+                value = value.encode('utf-8')
+            elif hasattr(value, 'tobytes'):
+                value = value.tobytes()
             else:
                 value = bytes(value)
 
@@ -2375,7 +2389,7 @@ def update_profile():
             updates = []
             params = []
             document_updates = {}
-            has_profile_picture_column = applicant_has_column(cur, 'profile_picture')
+            has_profile_pic_column = applicant_has_column(cur, 'profile_pic')
 
             def add_update(column_name, value):
                 updates.append(f'{column_name} = %s')
@@ -2405,6 +2419,7 @@ def update_profile():
                 'motherPhoneNumber': 'mother_phone_no', 'fatherOccupation': 'father_occupation',
                 'motherOccupation': 'mother_occupation', 'parentsGrossIncome': 'financial_income_of_parents',
                 'gpa': 'overall_gpa', 'numberOfSiblings': 'sibling_no', 'course': 'course',
+                'meritsAwardsReceived': 'merits_awards_received',
             }
 
             document_field_mapping = {
@@ -2449,7 +2464,7 @@ def update_profile():
                     add_update('mother_status', mother_status)
 
             binary_fields = {
-                'profile_picture': 'profile_picture',
+                'profile_picture': 'profile_pic' if has_profile_pic_column else 'profile_picture',
                 'id_front': 'id_img_front',
                 'id_back': 'id_img_back',
                 'mayorCOE_photo': 'enrollment_certificate_doc',
@@ -2510,7 +2525,7 @@ def update_profile():
                                 document_updates[db_col] = blob_bytes
                     except Exception as storage_err:
                         print(f"[UPDATE PROFILE] CRITICAL STORAGE ERROR for {db_col}: {storage_err}", flush=True)
-                        if db_col == 'profile_picture' and has_profile_picture_column:
+                        if db_col == 'profile_pic' and has_profile_pic_column:
                             add_update(db_col, blob_bytes)
                         else:
                             document_updates[db_col] = blob_bytes
@@ -2636,7 +2651,7 @@ def submit_application():
 
         conn = get_db()
         cur = conn.cursor()
-        has_profile_picture_column = applicant_has_column(cur, 'profile_picture')
+        has_profile_pic_column = applicant_has_column(cur, 'profile_pic')
         
         # Ensure the created_at support column exists only once per process.
         ensure_applicant_status_created_at_column(cur)
@@ -2728,13 +2743,12 @@ def submit_application():
         profile_pic_bytes = None
         profile_pic_url = None
         
-        if has_profile_picture_column:
-            # Check for URL first
+        if has_profile_pic_column:
             raw_url = get_unified_val('profile_picture') or get_unified_val('profilePicture')
-            if isinstance(raw_url, str) and raw_url.startswith('http'):
+            if isinstance(raw_url, str) and (raw_url.startswith('http') or raw_url.startswith('https')):
                 profile_pic_url = raw_url
             else:
-                profile_pic_bytes = get_doc_bytes('profile_picture', 'profile_picture')
+                profile_pic_bytes = get_doc_bytes('profile_picture', 'profile_pic')
         
         signature_bytes = get_doc_bytes('signature_data', 'signature_image_data')
 
@@ -2838,6 +2852,7 @@ def submit_application():
             'parentsGrossIncome': 'financial_income_of_parents', 'course': 'course',
             'fatherPhoneNumber': 'father_phone_no', 'motherPhoneNumber': 'mother_phone_no',
             'fatherOccupation': 'father_occupation', 'motherOccupation': 'mother_occupation',
+            'meritsAwardsReceived': 'merits_awards_received',
         }
 
         document_field_mapping = {
@@ -2885,7 +2900,7 @@ def submit_application():
         binary_map = {
             'id_img_front': id_front_bytes,
             'id_img_back': id_back_bytes,
-            'profile_picture': profile_pic_bytes,
+            'profile_pic': profile_pic_bytes,
             'signature_image_data': signature_bytes,
             'enrollment_certificate_doc': doc_bytes['mayorCOE_photo'],
             'grades_doc': doc_bytes['mayorGrades_photo'],
@@ -2895,8 +2910,8 @@ def submit_application():
 
         for column_name, value in binary_map.items():
             # If we already have a URL (from profile_pic_url etc), use it directly
-            if column_name == 'profile_picture' and profile_pic_url:
-                if has_profile_picture_column:
+            if column_name == 'profile_pic' and profile_pic_url:
+                if has_profile_pic_column:
                     updates.append(f'{column_name} = %s')
                     params.append(profile_pic_url)
                 else:
@@ -2909,7 +2924,7 @@ def submit_application():
                     url = upload_image_to_storage(value, current_user_id, column_name, is_update=False)
                     if url:
                         print(f"[SUBMIT] SUCCESS: {column_name} uploaded to {url[:50]}...", flush=True)
-                        if column_name == 'profile_picture' and has_profile_picture_column:
+                        if column_name == 'profile_pic' and has_profile_pic_column:
                             updates.append(f'{column_name} = %s')
                             params.append(url)
                         else:
@@ -2920,14 +2935,14 @@ def submit_application():
                             raise ValueError(f"Failed to upload {column_name} to cloud storage.")
 
                         print(f"[SUBMIT] WARNING: upload_image_to_storage returned None for {column_name}. Falling back to BYTEA.", flush=True)
-                        if column_name == 'profile_picture' and has_profile_picture_column:
+                        if column_name == 'profile_pic' and has_profile_pic_column:
                             updates.append(f'{column_name} = %s')
                             params.append(value)
                         else:
                             document_updates[column_name] = value
                 except Exception as storage_err:
                     print(f"[SUBMIT] CRITICAL STORAGE ERROR for {column_name}: {storage_err}", flush=True)
-                    if column_name == 'profile_picture' and has_profile_picture_column:
+                    if (column_name == 'profile_picture' and has_profile_picture_column) or (column_name == 'school_id_pic' and has_school_id_pic_column):
                         updates.append(f'{column_name} = %s')
                         params.append(value)
                     else:
