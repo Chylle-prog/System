@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { applicantAPI } from '../services/api';
+import { applicantAPI, uploadProfilePicture } from '../services/api';
 
 const Profile = () => {
   const navigate = useNavigate();
@@ -12,6 +12,7 @@ const Profile = () => {
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
   const [error, setError] = useState(null);
+  const [rawProfilePictureFile, setRawProfilePictureFile] = useState(null);
   const [formData, setFormData] = useState({
     firstName: '',
     middleName: '',
@@ -136,12 +137,14 @@ const Profile = () => {
   const handleProfilePictureUpload = (e) => {
     const file = e.target.files[0];
     if (file && window.compressImage) {
+      setRawProfilePictureFile(file);
       window.compressImage(file, 400).then(compressedBase64 => {
         setFormData(prev => ({ ...prev, profile_picture: compressedBase64 }));
         // Logically update it in DB immediately on select for better UX, or wait for submit?
         // Let's wait for submit to be consistent with the rest of the form.
       });
     } else if (file) {
+      setRawProfilePictureFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
         setFormData(prev => ({ ...prev, profile_picture: reader.result }));
@@ -170,6 +173,18 @@ const Profile = () => {
     try {
       setLoadingMessage({ title: 'Updating Profile', message: 'Saving your changes to the database...' });
       setShowLoadingOverlay(true);
+      // Use the exact names expected by the backend field_mapping
+      let finalProfilePictureUrl = formData.profile_picture;
+      if (rawProfilePictureFile) {
+        try {
+          setLoadingMessage({ title: 'Uploading Photo', message: 'Securing your profile picture...' });
+          finalProfilePictureUrl = await uploadProfilePicture(rawProfilePictureFile);
+        } catch (uploadError) {
+          console.error('[PROFILE-PIC] Failed to upload to storage:', uploadError);
+          // Fallback to dataURL/formData value if storage fails
+        }
+      }
+
       const profileData = {
         firstName: formData.firstName,
         middleName: formData.middleName,
@@ -181,7 +196,7 @@ const Profile = () => {
         townCity: formData.townCityMunicipality,
         province: formData.province,
         zipCode: formData.zipCode,
-        profile_picture: formData.profile_picture
+        profile_picture: finalProfilePictureUrl
       };
 
       // Update profile via API

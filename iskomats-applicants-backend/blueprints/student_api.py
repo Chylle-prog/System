@@ -2484,6 +2484,12 @@ def update_profile():
                             else:
                                 document_updates[db_col] = url
                         else:
+                            # If storage is enabled, we MUST NOT fall back to BYTEA
+                            if use_storage():
+                                print(f"[UPDATE PROFILE] ERROR: upload_image_to_storage failed for {db_col}. Persistence aborted to prevent BYTEA corruption.", flush=True)
+                                # Throwing here prevents partial update of documents but allows data to be logged
+                                raise ValueError(f"Cloud upload failed for {field_key}. Please try again.")
+                            
                             print(f"[UPDATE PROFILE] WARNING: upload_image_to_storage returned None for {db_col}. Falling back to BYTEA.", flush=True)
                             if db_col == 'profile_picture' and has_profile_picture_column:
                                 add_update(db_col, blob_bytes)
@@ -2858,6 +2864,10 @@ def submit_application():
                         else:
                             document_updates[column_name] = url
                     else:
+                        if use_storage():
+                            print(f"[SUBMIT] ERROR: Cloud upload failed for {column_name}. Refusing BYTEA fallback.", flush=True)
+                            raise ValueError(f"Failed to upload {column_name} to cloud storage.")
+
                         print(f"[SUBMIT] WARNING: upload_image_to_storage returned None for {column_name}. Falling back to BYTEA.", flush=True)
                         if column_name == 'profile_picture' and has_profile_picture_column:
                             updates.append(f'{column_name} = %s')

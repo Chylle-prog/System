@@ -19,6 +19,7 @@ APPLICANT_DOCUMENT_COLUMNS = (
     'enrollment_certificate_vid_url',
     'schoolid_front_vid_url',
     'schoolid_back_vid_url',
+    'profile_picture',
 )
 
 _TABLE_CACHE = {}
@@ -118,12 +119,6 @@ def fetch_applicant_document_values(cursor, applicant_no, column_names):
     for column_name in requested_columns:
         if column_name == 'applicant_no':
             select_parts.append('a.applicant_no AS applicant_no')
-            continue
-        if column_name == 'profile_picture':
-            if 'profile_picture' not in applicant_columns:
-                select_parts.append('NULL AS profile_picture')
-            else:
-                select_parts.append('a."profile_picture" AS profile_picture')
             continue
         select_parts.append(f'{applicant_document_expr(cursor, column_name, "a", "ad")} AS "{column_name}"')
 
