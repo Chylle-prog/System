@@ -563,7 +563,8 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
     """
     try:
         from project_config import use_storage, get_storage_bucket, get_supabase_client
-        from services.db_service import get_db, db_bytes
+        from services.db_service import get_db
+        # db_bytes is defined as a module-level function in this file (student_api.py)
 
         if not image_data or not use_storage():
             return None
