@@ -3231,8 +3231,8 @@ def ocr_check():
 
                 def run_ocr_check():
                     if doc_type == 'Enrollment':
-                        # Use PSM 6 but keep width at 800 which was stable before
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=800, prefer_fast_layout=True, crop_percent=0.90)
+                        # Use PSM 6 but increase width to 1200 to capture small ID digits and dates reliably even on noisy webcams
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1200, prefer_fast_layout=True, crop_percent=0.90)
                         # Stricter volume check: if a document has < 20 characters, it's likely not an enrollment form
                         v_t = bool(raw_t and len(raw_t.strip()) > 20)
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text (low text density)'), raw_t, {}
