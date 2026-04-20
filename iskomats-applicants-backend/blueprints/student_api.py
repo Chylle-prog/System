@@ -3278,25 +3278,49 @@ def ocr_check():
                             return False, 'Unknown error', '', {}
 
                 # ─── PARALLEL EXECUTION (Concurrency) ───
+                import time
+                t_total_start = time.time()
+
+                def timed_run_video_check():
+                    t0 = time.time()
+                    res = run_video_check()
+                    return res, time.time() - t0
+
+                def timed_run_ocr_check():
+                    t0 = time.time()
+                    res = run_ocr_check()
+                    return res, time.time() - t0
+
                 with ThreadPoolExecutor(max_workers=2) as executor:
-                    video_future = executor.submit(run_video_check)
-                    ocr_future = executor.submit(run_ocr_check)
+                    video_future = executor.submit(timed_run_video_check)
+                    ocr_future = executor.submit(timed_run_ocr_check)
                     
-                    video_res = video_future.result()
-                    if not video_res or not isinstance(video_res, (list, tuple)):
-                        video_res = [False, "Video verification service unavailable"]
+                    video_res_data, video_time = video_future.result()
+                    if not video_res_data or not isinstance(video_res_data, (list, tuple)):
+                        video_res_data = [False, "Video verification service unavailable"]
                     
-                    v_video, msg_video = video_res[0], video_res[1]
+                    v_video, msg_video = video_res_data[0], video_res_data[1]
                     
-                    ocr_data = ocr_future.result()
-                    if not ocr_data or not isinstance(ocr_data, (list, tuple)):
+                    ocr_res_data, ocr_time = ocr_future.result()
+                    if not ocr_res_data or not isinstance(ocr_res_data, (list, tuple)):
                         return {'doc': doc_type, 'verified': False, 'message': 'OCR processing failed or document unreachable'}
                     
-                    v, msg, raw, meta = ocr_data[0], ocr_data[1], ocr_data[2], ocr_data[3]
+                    v, msg, raw, meta = ocr_res_data[0], ocr_res_data[1], ocr_res_data[2], ocr_res_data[3]
+
+                total_time = time.time() - t_total_start
+                # Inject timing info into meta
+                meta = dict(meta) if meta else {}
+                time_meta = {
+                    'ocr': round(ocr_time, 2),
+                    'vid': round(video_time, 2),
+                    'tot': round(total_time, 2)
+                }
+                meta['timing'] = time_meta
+                t_str = f" [Time: {time_meta['tot']}s (OCR: {time_meta['ocr']}s, Vid: {time_meta['vid']}s)]"
 
                 # ─── COMBINED RESULT ───
                 if not v_video:
-                    return {'doc': doc_type, 'verified': False, 'message': f"Video verification failed: {msg_video}", 'video_verified': False, 'video_message': msg_video}
+                    return {'doc': doc_type, 'verified': False, 'message': f"Video verification failed: {msg_video}{t_str}", 'video_verified': False, 'video_message': msg_video}
                 
                 # Document-Specific Logic
                 # Pre-calculate common fields used across multiple document types
@@ -3354,7 +3378,7 @@ def ocr_check():
                         msg = f"Checklist: [{' | '.join(checklist)}]"
                         if not v:
                             msg += f" (Checked vs F:'{first_name}' M:'{middle_name}' L:'{last_name}' ID:'{expected_id_no}')"
-                        return {'doc': 'Enrollment', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                        return {'doc': 'Enrollment', 'verified': v, 'message': msg + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
                     elif doc_type == 'Grades':
                         gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
                         id_ok, _ = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
@@ -3379,7 +3403,7 @@ def ocr_check():
                             f"Sem: {'OK' if semester_ok else 'X'}"
                         ]
                         checklist = [c for c in checklist if c is not None]
-                        return {'doc': 'Grades', 'verified': v, 'message': f"Checklist: [{' | '.join(checklist)}]", 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                        return {'doc': 'Grades', 'verified': v, 'message': f"Checklist: [{' | '.join(checklist)}]" + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'Indigency':
                     name_ok = meta.get('name_ok', False)
@@ -3391,7 +3415,7 @@ def ocr_check():
                     # Use a consistent format that includes the discovered data
                     detail_msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Addr: {status_addr} (Target: {target_address or 'Missing'}, Found: {brgy_str})]"
                     
-                    return {'doc': 'Indigency', 'verified': v, 'message': detail_msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                    return {'doc': 'Indigency', 'verified': v, 'message': detail_msg + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'SchoolID':
                     id_ok, _ = student_id_no_matches_text(expected_id_no, raw)
@@ -3415,7 +3439,7 @@ def ocr_check():
                         if not id_ok: msg += f" (ID mismatch)"
                         if not school_ok: msg += f" (School mismatch)"
 
-                    return {'doc': 'SchoolID', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                    return {'doc': 'SchoolID', 'verified': v, 'message': msg + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'SchoolIDBack':
                     year_label = extract_school_year_from_text(raw)
@@ -3430,7 +3454,7 @@ def ocr_check():
                         msg = f"Verification failed. Checklist: [{' | '.join(checklist)}]"
                         if not year_label: msg += " (Year not detected)"
                         
-                    return {'doc': 'Back ID', 'verified': v, 'message': msg, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                    return {'doc': 'Back ID', 'verified': v, 'message': msg + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 return None
             except Exception as worker_err:
