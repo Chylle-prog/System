@@ -34,6 +34,7 @@ from services.applicant_document_service import (
     fetch_applicant_document_values,
     get_applicant_document_table,
     persist_applicant_document_values,
+    normalize_supabase_url
 )
 
 from services.ocr_utils import (
@@ -432,8 +433,13 @@ def prefetch_video_urls(urls, max_workers=4):
             except Exception:
                 pass
 
+
 def fetch_video_bytes_from_url(url):
     if not url: return None, "No URL provided"
+    
+    # Normalize URL to current Supabase project if applicable
+    url = normalize_supabase_url(url)
+    
     if not isinstance(url, str) or not url.startswith('http'):
         return None, f"Invalid URL: {url}"
 
@@ -2228,7 +2234,7 @@ def get_profile():
                     # For profile picture, prioritize the Cloud URL if it already exists as a string
                     raw_val = document_values.get(key)
                     if isinstance(raw_val, str) and raw_val.startswith('http'):
-                        applicant[key] = raw_val
+                        applicant[key] = normalize_supabase_url(raw_val)
                     else:
                         applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
                 else:
@@ -2296,6 +2302,9 @@ def get_applicant_document(field_name):
                 value = decode_signature(value)
             # Handle both binary data (BLOBs) and URL strings (from Storage)
             if isinstance(value, str):
+                # Normalize Supabase URLs to current project
+                value = normalize_supabase_url(value)
+                
                 # If it's already a URL or Data URI, return it directly or wrapped
                 if value.startswith('http') or value.startswith('data:'):
                     return jsonify({
@@ -2743,12 +2752,12 @@ def submit_application():
         profile_pic_bytes = None
         profile_pic_url = None
         
-        if has_profile_pic_column:
+        if has_profile_picture_column:
             raw_url = get_unified_val('profile_picture') or get_unified_val('profilePicture')
             if isinstance(raw_url, str) and (raw_url.startswith('http') or raw_url.startswith('https')):
                 profile_pic_url = raw_url
             else:
-                profile_pic_bytes = get_doc_bytes('profile_picture', 'profile_pic')
+                profile_pic_bytes = get_doc_bytes('profile_picture', 'profile_picture')
         
         signature_bytes = get_doc_bytes('signature_data', 'signature_image_data')
 
@@ -2900,7 +2909,7 @@ def submit_application():
         binary_map = {
             'id_img_front': id_front_bytes,
             'id_img_back': id_back_bytes,
-            'profile_pic': profile_pic_bytes,
+            'profile_picture': profile_pic_bytes,
             'signature_image_data': signature_bytes,
             'enrollment_certificate_doc': doc_bytes['mayorCOE_photo'],
             'grades_doc': doc_bytes['mayorGrades_photo'],
@@ -2910,8 +2919,8 @@ def submit_application():
 
         for column_name, value in binary_map.items():
             # If we already have a URL (from profile_pic_url etc), use it directly
-            if column_name == 'profile_pic' and profile_pic_url:
-                if has_profile_pic_column:
+            if column_name == 'profile_picture' and profile_pic_url:
+                if has_profile_picture_column:
                     updates.append(f'{column_name} = %s')
                     params.append(profile_pic_url)
                 else:
@@ -2924,7 +2933,7 @@ def submit_application():
                     url = upload_image_to_storage(value, current_user_id, column_name, is_update=False)
                     if url:
                         print(f"[SUBMIT] SUCCESS: {column_name} uploaded to {url[:50]}...", flush=True)
-                        if column_name == 'profile_pic' and has_profile_pic_column:
+                        if column_name == 'profile_picture' and has_profile_picture_column:
                             updates.append(f'{column_name} = %s')
                             params.append(url)
                         else:
@@ -2935,7 +2944,7 @@ def submit_application():
                             raise ValueError(f"Failed to upload {column_name} to cloud storage.")
 
                         print(f"[SUBMIT] WARNING: upload_image_to_storage returned None for {column_name}. Falling back to BYTEA.", flush=True)
-                        if column_name == 'profile_pic' and has_profile_pic_column:
+                        if column_name == 'profile_picture' and has_profile_picture_column:
                             updates.append(f'{column_name} = %s')
                             params.append(value)
                         else:

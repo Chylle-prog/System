@@ -77,6 +77,7 @@ from services.applicant_document_service import (
     applicant_document_expr,
     applicant_document_join_sql,
     fetch_applicant_document_values,
+    normalize_supabase_url
 )
 
 def convert_bytea_array_to_urls(bytea_array):
@@ -143,9 +144,9 @@ def get_applicant_media_metadata(applicant_no, column_name, has_data, data_value
     media_type = 'video/mp4' if is_video else 'image/jpeg'
     
     if is_video and data_value:
-        # For video URLs, use the URL directly from database
+        # For video URLs, use the URL directly from database (normalized to current project)
         return [{
-            'src': data_value,
+            'src': normalize_supabase_url(data_value),
             'type': media_type,
             'name': f"{name}"
         }]
@@ -4037,8 +4038,9 @@ def get_applicant_image(applicant_no, column_name):
         # If the data is a string starting with http, it's a cloud URL. Redirect instead of serving bytes.
         if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
             from flask import redirect
-            print(f"[APPLICANT IMAGE] Redirecting {column_name} (Applicant {applicant_no}) to cloud URL: {data[:60]}...", flush=True)
-            return redirect(data)
+            normalized_url = normalize_supabase_url(data)
+            print(f"[APPLICANT IMAGE] Redirecting {column_name} (Applicant {applicant_no}) to cloud URL: {normalized_url[:60]}...", flush=True)
+            return redirect(normalized_url)
 
         # Convert memoryview to bytes if needed
         if hasattr(data, 'tobytes'):
