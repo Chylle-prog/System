@@ -267,8 +267,9 @@ const Login = () => {
           finalProfilePictureUrl = await uploadProfilePicture(rawProfilePictureFile);
         } catch (uploadError) {
           console.error('[PROFILE-PIC] Failed to upload to storage:', uploadError);
-          // Fallback to dataURL if storage fails (though ideally we want storage)
-          finalProfilePictureUrl = profilePicture;
+          // With strict cloud enforcement in the backend, we should only proceed if upload succeeds
+          // or if we're willing to accept no photo.
+          finalProfilePictureUrl = null; 
         }
       }
 
@@ -314,11 +315,17 @@ const Login = () => {
     if (!file) return;
 
     setRawProfilePictureFile(file);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setProfilePicture(ev.target.result);
-    };
-    reader.readAsDataURL(file);
+    if (window.compressImage) {
+      window.compressImage(file, 400).then(compressedBase64 => {
+        setProfilePicture(compressedBase64);
+      });
+    } else {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setProfilePicture(ev.target.result);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const closeRegistrationModal = () => {
