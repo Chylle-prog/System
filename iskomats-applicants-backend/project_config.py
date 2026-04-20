@@ -228,3 +228,42 @@ def get_supabase_client():
         raise RuntimeError('supabase package is not installed. Add it to requirements.txt before using storage features.')
 
     return create_client(url, service_role_key)
+
+
+def upload_to_supabase(image_data, bucket_name, file_path, content_type='image/jpeg'):
+    """
+    General helper to upload binary data to a Supabase storage bucket.
+    Returns the public URL on success, or None on failure.
+    """
+    supabase = get_supabase_client()
+    if not supabase:
+        return None
+    
+    try:
+        # Standardize bytes
+        if hasattr(image_data, 'read'):
+            binary_data = image_data.read()
+        elif isinstance(image_data, (bytes, bytearray, memoryview)):
+            binary_data = bytes(image_data)
+        elif isinstance(image_data, str) and (image_data.startswith('http') or len(image_data) > 1000):
+            # Probably already a URL or base64 (which we shouldn't handle here directly as bytes)
+            return None
+        else:
+            binary_data = bytes(image_data)
+
+        # Upload using service role key (bypasses RLS)
+        supabase.storage.from_(bucket_name).upload(
+            path=file_path,
+            file=binary_data,
+            file_options={"contentType": content_type, "upsert": "true"}
+        )
+        
+        # Get public URL
+        url_res = supabase.storage.from_(bucket_name).get_public_url(file_path)
+        # Note: supabase-py returns the URL string or a dict depending on version
+        if isinstance(url_res, dict):
+            return url_res.get('publicUrl')
+        return url_res
+    except Exception as e:
+        print(f"[STORAGE ERROR] Upload failed for {file_path} in {bucket_name}: {e}", flush=True)
+        return None

@@ -60,7 +60,7 @@ def on_blueprint_init(state):
         except Exception as e:
             print(f"[BACKEND] Admin schema migration skipped or failed: {e}")
 
-from project_config import get_db, get_db_startup
+from project_config import get_db, get_db_startup, use_storage, upload_to_supabase
 from services.notification_service import create_notification, init_socketio as init_notification_socketio, fetch_google_access_token, send_verification_email
 
 # ─── SCHEMA & AUDIT CACHE ───
@@ -3913,7 +3913,17 @@ def get_announcement_image(image_id):
         if not row or not row['img']:
             return jsonify({'message': 'Image not found'}), 404
         
-        encrypted_img = row['img']
+        data = row['img']
+        
+        # --- CLOUD STORAGE REDIRECT ---
+        if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
+            from flask import redirect
+            from services.applicant_document_service import normalize_supabase_url
+            normalized_url = normalize_supabase_url(data)
+            print(f"[ANN IMAGE] Redirecting {image_id} to cloud URL: {normalized_url[:60]}...", flush=True)
+            return redirect(normalized_url)
+
+        encrypted_img = data
         
         # Convert memoryview to bytes if needed
         if hasattr(encrypted_img, 'tobytes'):
@@ -3975,7 +3985,17 @@ def get_announcement_image_by_index(ann_no, idx):
         if not row or not row['img']:
             return jsonify({'message': f'Image not found for announcement {ann_no} at index {idx}'}), 404
         
-        encrypted_img = row['img']
+        data = row['img']
+        
+        # --- CLOUD STORAGE REDIRECT ---
+        if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
+            from flask import redirect
+            from services.applicant_document_service import normalize_supabase_url
+            normalized_url = normalize_supabase_url(data)
+            print(f"[ANN INDEX ENDPOINT] Redirecting {ann_no}/{idx} to cloud URL: {normalized_url[:60]}...", flush=True)
+            return redirect(normalized_url)
+
+        encrypted_img = data
         
         # Convert memoryview to bytes if needed
         if hasattr(encrypted_img, 'tobytes'):
@@ -4144,7 +4164,7 @@ def get_admin_announcements(current_user_id, pro_no, role):
             {image_join}
         """.format(
             date_col=date_col,
-            image_select=f"ai.{primary_key_column} AS image_id" if primary_key_column and foreign_key_column else "NULL AS image_id",
+            image_select=f"ai.{primary_key_column} AS image_id, ai.img AS announcement_image_data" if primary_key_column and foreign_key_column else "NULL AS image_id, NULL AS announcement_image_data",
             image_join=f"LEFT JOIN announcement_images ai ON a.ann_no = ai.{foreign_key_column}" if primary_key_column and foreign_key_column else "",
         )
         params = []
@@ -4188,13 +4208,20 @@ def get_admin_announcements(current_user_id, pro_no, role):
                 }
 
             if image_id is not None:
-                image_url = url_for(
-                    'admin_api.get_announcement_image_by_index',
-                    ann_no=ann_no,
-                    idx=len(announcements[ann_no]['announcementImages']),
-                    entity='announcement',
-                    _external=True,
-                )
+                img_data_val = row_dict.get('announcement_image_data')
+                
+                # Check for cloud URL directly in result set
+                if isinstance(img_data_val, str) and img_data_val.startswith('http'):
+                    image_url = normalize_supabase_url(img_data_val)
+                else:
+                    image_url = url_for(
+                        'admin_api.get_announcement_image_by_index',
+                        ann_no=ann_no,
+                        idx=len(announcements[ann_no]['announcementImages']),
+                        entity='announcement',
+                        _external=True,
+                    )
+                
                 announcements[ann_no]['announcementImages'].append(image_url)
 
         cur.close()
@@ -4268,7 +4295,19 @@ def create_announcement(current_user_id, pro_no, role):
 
         if image_attachments:
             _, foreign_key_column = get_entity_image_columns(cur, 'announcement')
-            for img_bytes in image_attachments:
+            for i, img_bytes in enumerate(image_attachments):
+                if use_storage():
+                    # Upload to Supabase bucket 'announcement_images'
+                    file_path = f"ann_{ann_no}_img_{i}_{int(datetime.now().timestamp())}.jpg"
+                    url = upload_to_supabase(img_bytes, 'announcement_images', file_path)
+                    if url:
+                        cur.execute(
+                            f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
+                            (ann_no, url)
+                        )
+                        continue
+
+                # Fallback to BYTEA (or if TEXT is used, it will be stored as bytes/string representation)
                 encrypted = _fernet.encrypt(img_bytes) if _fernet else img_bytes
                 cur.execute(
                     f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
@@ -4400,15 +4439,27 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
                         new_sequence.append(file.read())
 
         # 4. Sync image table using a temporary staging table to avoid DB round-trips for blobs
-        cur.execute("CREATE TEMP TABLE temp_ann_imgs (img bytea)")
-        for item in new_sequence:
+        cur.execute("CREATE TEMP TABLE temp_ann_imgs (img text)")
+        for i, item in enumerate(new_sequence):
             if isinstance(item, bytes):
-                # New image - encrypt and insert
+                # New image - try cloud storage first
+                if use_storage():
+                    file_path = f"ann_{ann_no}_upd_{i}_{int(datetime.now().timestamp())}.jpg"
+                    url = upload_to_supabase(item, 'announcement_images', file_path)
+                    if url:
+                        cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (url,))
+                        continue
+
+                # Fallback
                 final_data = _fernet.encrypt(item) if _fernet else item
                 cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (final_data,))
             else:
-                # Existing image - copy directly within the database
-                cur.execute(f"INSERT INTO temp_ann_imgs (img) SELECT img FROM announcement_images WHERE {primary_key_column} = %s", (item,))
+                # Existing image (either a URL string or an ID int)
+                if isinstance(item, str) and item.startswith('http'):
+                    cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (item,))
+                else:
+                    # Copy from DB (might be BYTEA or URL)
+                    cur.execute(f"INSERT INTO temp_ann_imgs (img) SELECT img FROM announcement_images WHERE {primary_key_column} = %s", (item,))
         
         # Replace the original image set
         cur.execute(f"DELETE FROM announcement_images WHERE {foreign_key_column} = %s", (ann_no,))

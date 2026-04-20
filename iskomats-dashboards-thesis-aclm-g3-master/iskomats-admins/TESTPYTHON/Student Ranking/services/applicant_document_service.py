@@ -179,3 +179,36 @@ def persist_applicant_document_values(cursor, applicant_no, values):
         f'UPDATE applicants SET {assignments} WHERE applicant_no = %s',
         tuple(params),
     )
+
+
+def normalize_supabase_url(url):
+    """
+    Ensures a Supabase storage URL points to the current project domain.
+    This prevents 400 Bad Request errors when switching between projects.
+    """
+    import os
+    from urllib.parse import urlparse
+
+    if not url or not isinstance(url, str) or not url.startswith('http'):
+        return url
+
+    # Skip if it's not a Supabase-like URL
+    if '.supabase.co' not in url:
+        return url
+
+    current_url = os.environ.get('SUPABASE_URL', '').strip()
+    if not current_url:
+        return url
+
+    try:
+        current_host = urlparse(current_url).netloc.lower()
+        parsed_url = urlparse(url)
+        
+        # If domain mismatch, rewrite with current project host
+        if parsed_url.netloc.lower() != current_host:
+            # Reconstruct URL with current host
+            return f"https://{current_host}{parsed_url.path}{'?' + parsed_url.query if parsed_url.query else ''}"
+    except Exception:
+        pass
+
+    return url

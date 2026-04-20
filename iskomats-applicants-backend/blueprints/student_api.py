@@ -3746,7 +3746,7 @@ def get_announcements():
             if primary_key_column and foreign_key_column:
                 cur.execute(f"""
                     SELECT a.ann_no, a.ann_title, a.ann_message, {date_col} AS ann_date, {date_col} AS time_added, COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,
-                           ai.{primary_key_column} AS image_id
+                           ai.{primary_key_column} AS image_id, ai.img AS announcement_image_data
                     FROM announcements a
                     LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
                     LEFT JOIN announcement_images ai ON a.ann_no = ai.{foreign_key_column}
@@ -3787,14 +3787,20 @@ def get_announcements():
                     }
 
                 if row.get('image_id') is not None:
-                    announcements[ann_no]['announcementImages'].append(
-                        url_for(
+                    img_data_val = row.get('announcement_image_data')
+                    
+                    # Check for cloud URL directly in result set
+                    if isinstance(img_data_val, str) and img_data_val.startswith('http'):
+                        image_url = normalize_supabase_url(img_data_val)
+                    else:
+                        image_url = url_for(
                             'admin_api.get_announcement_image_by_index',
                             ann_no=ann_no,
                             idx=len(announcements[ann_no]['announcementImages']),
                             _external=True,
                         )
-                    )
+                    
+                    announcements[ann_no]['announcementImages'].append(image_url)
 
             return jsonify(list(announcements.values()))
     except Exception as e:
