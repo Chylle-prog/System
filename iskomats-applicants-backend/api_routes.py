@@ -379,19 +379,21 @@ def ensure_schema_integrity(cursor):
             return row[0] if row else 0
         return 0
 
-    # 1. Soft-delete columns
-    for table in ['scholarships', 'announcements']:
-        cursor.execute(
-            """
-            SELECT COUNT(*)
-            FROM information_schema.columns
-            WHERE table_name = %s AND column_name = 'is_removed'
-            """,
-            (table,)
-        )
-        if read_count(cursor.fetchone()) == 0:
-            print(f"[MIGRATION] Adding is_removed to {table} table")
-            cursor.execute(f"ALTER TABLE {table} ADD COLUMN is_removed BOOLEAN DEFAULT FALSE")
+    # 2. Convert announcement_images.img to TEXT if it's still BYTEA
+    cursor.execute(
+        """
+        SELECT data_type 
+        FROM information_schema.columns 
+        WHERE table_name = 'announcement_images' AND column_name = 'img'
+        """
+    )
+    res = cursor.fetchone()
+    if res:
+        col_type = res['data_type'] if isinstance(res, dict) else res[0]
+        if col_type.lower() == 'bytea':
+            print("[MIGRATION] Converting announcement_images.img from BYTEA to TEXT")
+            # We use USING NULL to avoid conversion errors with encrypted data
+            cursor.execute("ALTER TABLE announcement_images ALTER COLUMN img TYPE TEXT USING NULL")
 
     # 2. Scholarship specific fields
     scholarship_cols = {
@@ -4305,14 +4307,12 @@ def create_announcement(current_user_id, pro_no, role):
                             f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
                             (ann_no, url)
                         )
-                        continue
-
-                # Fallback to BYTEA (or if TEXT is used, it will be stored as bytes/string representation)
-                encrypted = _fernet.encrypt(img_bytes) if _fernet else img_bytes
-                cur.execute(
-                    f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
-                    (ann_no, encrypted)
-                )
+                    else:
+                        print(f"[ANNOUNCEMENT ERROR] Storage failed for image {i}. Refusing BYTEA fallback.", flush=True)
+                        raise ValueError("Failed to upload announcement image to cloud storage.")
+                else:
+                    print(f"[ANNOUNCEMENT ERROR] Cloud storage is disabled. Cannot save image for announcement {ann_no}.", flush=True)
+                    raise ValueError("Cloud storage must be enabled to save announcement images.")
 
         conn.commit()
         
@@ -4448,11 +4448,12 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
                     url = upload_to_supabase(item, 'announcement_images', file_path)
                     if url:
                         cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (url,))
-                        continue
-
-                # Fallback
-                final_data = _fernet.encrypt(item) if _fernet else item
-                cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (final_data,))
+                    else:
+                        print(f"[ANNOUNCEMENT UPDATE] Cloud storage failed for image {i}. Refusing BYTEA fallback.", flush=True)
+                        raise ValueError("Failed to upload updated announcement image to cloud storage.")
+                else:
+                    print(f"[ANNOUNCEMENT UPDATE] Cloud store restricted. Refusing BYTEA.", flush=True)
+                    raise ValueError("Cloud storage must be enabled to update announcement images.")
             else:
                 # Existing image (either a URL string or an ID int)
                 if isinstance(item, str) and item.startswith('http'):

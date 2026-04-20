@@ -2,7 +2,7 @@
 export const uploadProfilePicture = async (file) => {
   const applicantNo = sanitizeStorageSegment(localStorage.getItem('applicantNo'), 'unknown-applicant');
   const currentUser = sanitizeStorageSegment(localStorage.getItem('currentUser'), 'unknown-user');
-  const ext = resolveVideoUploadExtension(file);
+  const ext = resolveImageUploadExtension(file);
   const contentType = file?.type || 'image/jpeg';
   const objectPath = `profile_pictures/${applicantNo}-${currentUser}${ext}`;
 
@@ -63,6 +63,19 @@ const resolveVideoUploadExtension = (file) => {
   return '.mp4';
 };
 
+const resolveImageUploadExtension = (file) => {
+  const mimeType = String(file?.type || '').toLowerCase();
+  const fileName = String(file?.name || '').toLowerCase();
+
+  if (mimeType.includes('png') || fileName.endsWith('.png')) return '.png';
+  if (mimeType.includes('webp') || fileName.endsWith('.webp')) return '.webp';
+  if (mimeType.includes('gif') || fileName.endsWith('.gif')) return '.gif';
+  if (mimeType.includes('jpeg') || mimeType.includes('jpg') || fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')) return '.jpg';
+  if (fileName.includes('.')) return fileName.slice(fileName.lastIndexOf('.'));
+
+  return '.jpg';
+};
+
 const shouldDirectUploadVideo = (file) => {
   const ext = resolveVideoUploadExtension(file);
   const mimeType = String(file?.type || '').toLowerCase();
@@ -92,10 +105,10 @@ const uploadRequirementVideoDirect = async (fieldName, file, onProgress) => {
   const folder = folderMap[fieldName] || 'others';
   const ext = resolveVideoUploadExtension(file);
   const contentType = file?.type || (ext === '.webm' ? 'video/webm' : 'video/mp4');
-  const objectPath = `document_images/videos/${folder}/${applicantNo}-${currentUser}/${fieldName}${ext}`;
+  const objectPath = `videos/${folder}/${applicantNo}-${currentUser}/${fieldName}${ext}`;
 
   const uploadResult = await supabase.storage
-    .from('document_images')
+    .from('document_videos')
     .upload(objectPath, file, {
       upsert: true,
       contentType,
@@ -107,7 +120,7 @@ const uploadRequirementVideoDirect = async (fieldName, file, onProgress) => {
     throw uploadResult.error;
   }
 
-  const { data } = supabase.storage.from('document_images').getPublicUrl(objectPath);
+  const { data } = supabase.storage.from('document_videos').getPublicUrl(objectPath);
   if (!data?.publicUrl) {
     throw new Error('Direct upload succeeded but no public URL was returned.');
   }
