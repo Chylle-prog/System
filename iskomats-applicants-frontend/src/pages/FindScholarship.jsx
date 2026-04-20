@@ -555,6 +555,7 @@ const FindScholarship = () => {
           font-weight: 600;
           color: var(--text-soft);
           margin-bottom: 2rem;
+          margin-top: 1.5rem;
           cursor: pointer;
           transition: 0.1s;
           font-size: 0.9rem;
