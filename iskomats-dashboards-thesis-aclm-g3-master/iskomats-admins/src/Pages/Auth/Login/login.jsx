@@ -147,7 +147,7 @@ const Login = () => {
               </p>
             </div>
 
-            <div className="p-4 sm:p-6 lg:p-8 lg:w-3/5">
+            <div className="p-4 sm:p-6 lg:p-8 lg:w-3/5 border-r border-white/20">
               {formData.error && (
                 <div className="bg-red-600 text-white p-4 rounded-xl mb-6 text-sm text-center">
                   {formData.error}
@@ -177,9 +177,6 @@ const Login = () => {
                   <div className="form-group">
                     <div className="flex justify-between items-center mb-2">
                       <label className="text-white text-sm font-semibold">Password</label>
-                      <a href="/forget-password" onClick={(e) => { e.preventDefault(); navigate('/forget-password'); }} className="text-xs text-white/60 hover:text-white hover:underline transition-colors">
-                        Forgot password?
-                      </a>
                     </div>
                     <div className="relative group">
                       <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-white/40 group-focus-within:text-white transition-colors">
@@ -201,6 +198,11 @@ const Login = () => {
                       >
                         {formData.showPassword ? <FaEyeSlash /> : <FaEye />}
                       </button>
+                    </div>
+                    <div className="mt-2 text-right">
+                      <a href="/forget-password" onClick={(e) => { e.preventDefault(); navigate('/forget-password'); }} className="text-xs text-white/60 hover:text-white hover:underline transition-colors">
+                        Forgot password?
+                      </a>
                     </div>
                   </div>
                 </div>

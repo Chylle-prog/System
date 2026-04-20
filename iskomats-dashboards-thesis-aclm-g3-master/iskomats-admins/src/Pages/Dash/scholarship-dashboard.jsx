@@ -2829,8 +2829,7 @@ export default function ScholarshipDashboard({
     const metricsData = [
       { Metric: 'Acceptance Rate', Value: `${filteredHistoricalData.performanceMetrics.acceptanceRate}%` },
       { Metric: 'Avg. Processing Time', Value: `${filteredHistoricalData.performanceMetrics.averageProcessingTime} days` },
-      { Metric: 'Application Completion Rate', Value: `${filteredHistoricalData.performanceMetrics.applicationCompletionRate}%` },
-      { Metric: 'Satisfaction Score', Value: `${filteredHistoricalData.performanceMetrics.satisfactionScore}/5` }
+      { Metric: 'Application Completion Rate', Value: `${filteredHistoricalData.performanceMetrics.applicationCompletionRate}%` }
     ];
     const metricsWS = XLSX.utils.json_to_sheet(metricsData);
 
@@ -2961,13 +2960,7 @@ export default function ScholarshipDashboard({
                       <p className="text-[10px] text-gray-500 font-bold">Successfully submitted applications</p>
                     </div>
                   </div>
-                  <div className="flex flex-col justify-center items-center text-center p-6 bg-gray-50 rounded-2xl border border-gray-100">
-                    <div className="w-20 h-20 rounded-full border-4 border-[#800020] flex items-center justify-center mb-4">
-                      <span className="text-xl font-black text-[#800020]">{historicalData.performanceMetrics.satisfactionScore}</span>
-                    </div>
-                    <h5 className="font-bold text-gray-800">Student Satisfaction</h5>
-                    <p className="text-[11px] text-gray-500 mt-2 px-4 italic line-clamp-2">"The feedback from applicants has been overwhelmingly positive this semester."</p>
-                  </div>
+
                 </div>
               </div>
             </div>
@@ -3142,7 +3135,6 @@ export default function ScholarshipDashboard({
                       { label: 'Acceptance Rate', value: `${historicalData.performanceMetrics.acceptanceRate}%`, color: 'bg-green-500' },
                       { label: 'Avg. Processing Time', value: `${historicalData.performanceMetrics.averageProcessingTime} days`, color: 'bg-blue-500' },
                       { label: 'Application Completion', value: `${historicalData.performanceMetrics.applicationCompletionRate}%`, color: 'bg-purple-500' },
-                      { label: 'Satisfaction Score', value: `${historicalData.performanceMetrics.satisfactionScore}/5.0`, color: 'bg-amber-500' },
                     ].map((metric) => (
                       <div key={metric.label} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
                         <span className="font-bold text-gray-600 text-sm">{metric.label}</span>
@@ -3719,7 +3711,7 @@ export default function ScholarshipDashboard({
                {/* School ID No. display under profile picture */}
                <div className="mt-2 text-center">
                  <span className="block text-[10px] font-black text-gray-400 uppercase">School ID No.</span>
-                 <span className="block font-bold text-gray-800">{a.school_id_no || a.schoolId || 'N/A'}</span>
+                 <span className="block font-bold text-gray-800">{a.school_id_no || 'N/A'}</span>
                </div>
             </div>
             <div>
@@ -3838,7 +3830,7 @@ export default function ScholarshipDashboard({
             </div>
             <div className="p-4 border-t border-r border-gray-100">
               <p className="text-[10px] font-black text-gray-400 uppercase mb-1">School ID Number</p>
-              <p className="font-bold text-gray-800">{a.schoolId || 'N/A'}</p>
+              <p className="font-bold text-gray-800">{a.school_id_no || 'N/A'}</p>
             </div>
             <div className="p-4 border-t border-gray-100">
               <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Year Level</p>
