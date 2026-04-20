@@ -2533,11 +2533,16 @@ def update_profile():
             if potential_duplicate:
                 duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, potential_duplicate)
                 if len(duplicate_ids) > 1 and request.user_no > min(duplicate_ids):
+                    main_id = min(duplicate_ids)
+                    cur.execute("SELECT email_address FROM applicants WHERE applicant_no = %s", (main_id,))
+                    main_email_row = cur.fetchone()
+                    main_email = main_email_row['email_address'] if main_email_row else "your original account"
+                    
                     conn.rollback()
-                    print(f"[CONFLICT] User {request.user_no} attempted to create/update to a duplicate identity of {min(duplicate_ids)}", flush=True)
+                    print(f"[CONFLICT] User {request.user_no} attempted to create/update to a duplicate identity of {main_id} ({main_email})", flush=True)
                     return jsonify({
-                        'message': 'Conflict detected',
-                        'error': 'An account with this name and address already exists. Please use your original login to this existing account.'
+                        'message': 'Alternate Account detected',
+                        'error': f'Please use your main account: {main_email}'
                     }), 409
 
             conn.commit()
