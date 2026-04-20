@@ -713,29 +713,11 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
         brgy_matches = re.findall(r'(?:barangay|brgy)\.?\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)?)', ocr_text, re.IGNORECASE)
         detected_brgy = list(set([m.strip() for m in brgy_matches if len(m.strip()) > 2]))
 
-    # 2.8 School Name Matching
+    # 2.8 School Name Matching — delegated to school_utils for consistent logic
     school_ok = True
     if target_school_name:
-        from services.school_utils import build_school_name_variants
-        variants = build_school_name_variants(target_school_name)
-        school_ok = False
-        norm_raw = normalize_for_ocr(ocr_text)
-        for var in variants:
-            if normalize_for_ocr(var) in norm_raw:
-                school_ok = True
-                break
-        
-        if not school_ok:
-            # Try fuzzy matching if exact fails
-            for var in variants:
-                var_norm = normalize_for_ocr(var)
-                if len(var_norm) < 4: continue
-                for word in all_ocr_words:
-                    if len(word) < 4: continue
-                    if difflib.SequenceMatcher(None, var_norm, word).ratio() >= 0.8:
-                        school_ok = True
-                        break
-                if school_ok: break
+        from services.school_utils import school_name_matches_text as _school_match
+        school_ok, _, _ = _school_match(ocr_text, target_school_name)
 
     # 3. Keyword Matching
     found_keywords = []

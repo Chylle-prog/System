@@ -3247,6 +3247,15 @@ def ocr_check():
                         raw_t, extraction_error = extract_document_text(doc_bytes, is_id_back=True)
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read school ID back text'), raw_t, {}
+                    elif doc_type == 'SchoolID':
+                        # Dedicated School ID Front path: use high-res extraction optimized for student ID cards
+                        # Using 950px width (same as ID back) + multi-pass OCR for best text capture
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=950, prefer_fast_layout=False, crop_percent=1.0)
+                        v_t = bool(raw_t and len(raw_t.strip()) > 5)
+                        raw_preview = (raw_t or '')[:300].replace('\n', ' ')
+                        print(f"[OCR-SCHOOLID] Extracted text ({len(raw_t or '')} chars): {raw_preview}", flush=True)
+                        print(f"[OCR-SCHOOLID] Expected: First='{first_name}' Middle='{middle_name}' Last='{last_name}' ID='{expected_id_no}' School='{school_name}'", flush=True)
+                        return v_t, extraction_error or ('Verified' if v_t else 'Unable to read school ID text'), raw_t, {}
                     elif doc_type == 'Indigency':
                         # Restored capture range: many certificates place name/address in the middle-bottom.
                         raw_t, extraction_error = extract_document_text(doc_bytes, max_width=800, prefer_fast_layout=True, crop_percent=0.85)
@@ -3420,7 +3429,13 @@ def ocr_check():
                     return {'doc': 'Indigency', 'verified': v, 'message': detail_msg + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
 
                 elif doc_type == 'SchoolID':
-                    id_ok, _ = student_id_no_matches_text(expected_id_no, raw)
+                    id_ok, _ = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
+                    
+                    # Diagnostic logging for SchoolID verification
+                    raw_preview = (raw or '')[:400].replace('\n', ' ')
+                    print(f"[OCR-SCHOOLID-MATCH] Raw text preview: {raw_preview}", flush=True)
+                    print(f"[OCR-SCHOOLID-MATCH] name_ok={name_ok} (First={name_details.get('first_ok')}, Mid={name_details.get('middle_ok')}, Last={name_details.get('last_ok')})", flush=True)
+                    print(f"[OCR-SCHOOLID-MATCH] id_ok={id_ok} (expected='{expected_id_no}') school_ok={school_ok} (expected='{school_name}')", flush=True)
                     
                     checklist = [
                         f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
