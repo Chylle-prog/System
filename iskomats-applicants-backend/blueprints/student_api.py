@@ -622,12 +622,17 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
             mime_type = 'image/png'
         
         # Binary data upload
-        print(f"[STORAGE] Uploading {len(data_to_upload)} bytes to {bucket_name}/{file_path}", flush=True)
-        res = supabase.storage.from_(bucket_name).upload(
-            file_path,
-            bytes(data_to_upload),
-            file_options={'content-type': mime_type, 'upsert': True}
-        )
+        try:
+            print(f"[STORAGE] Uploading {len(data_to_upload)} bytes to bucket: '{bucket_name}', path: '{file_path}'", flush=True)
+            # Use positional arguments for safety [path, file, options]
+            supabase.storage.from_(bucket_name).upload(
+                file_path,
+                bytes(data_to_upload),
+                {'content-type': mime_type, 'upsert': 'true'}
+            )
+        except Exception as upload_err:
+            print(f"[STORAGE ERROR] SDK upload call failed for {field_name}: {upload_err}", flush=True)
+            return None
         
         # Public URL structure
         public_url_obj = supabase.storage.from_(bucket_name).get_public_url(file_path)
@@ -3427,32 +3432,47 @@ def ocr_check():
                 print(f"[OCR WORKER ERROR] {doc_type}: {str(worker_err)}", flush=True)
                 return {'doc': doc_type, 'verified': False, 'message': f'Processing error: {str(worker_err)}'}
 
-        # 3. Schedule Parallel Jobs
+        # 3. Validation: Enforce that BOTH image and video must be present
+        def get_effective_video_url(dtype):
+            if dtype == 'Enrollment': return data.get('mayorCOE_video') or applicant.get('enrollment_certificate_vid_url')
+            if dtype == 'Grades': return data.get('mayorGrades_video') or applicant.get('grades_vid_url')
+            if dtype == 'Indigency': return data.get('mayorIndigency_video') or applicant.get('indigency_vid_url')
+            if dtype == 'SchoolID': return data.get('video_url') or applicant.get('schoolid_front_vid_url')
+            if dtype == 'SchoolIDBack': return data.get('video_url_back') or data.get('video_url') or applicant.get('schoolid_back_vid_url')
+            return None
+
         jobs = []
         if target_doc:
             print(f"[OCR-ISOLATION] Strictly verifying only: {target_doc}", flush=True)
 
-        if not target_doc or target_doc == 'Enrollment':
-            if enrollment_doc_param or applicant.get('enrollment_certificate_doc'):
-                jobs.append(('Enrollment', enrollment_doc_param, applicant.get('enrollment_certificate_doc')))
+        doc_configs = [
+            ('Enrollment', enrollment_doc_param, applicant.get('enrollment_certificate_doc')),
+            ('Grades', grades_doc_param, applicant.get('grades_doc')),
+            ('Indigency', indigency_doc_param, applicant.get('indigency_doc')),
+            ('SchoolID', id_front_param, applicant.get('id_img_front')),
+            ('SchoolIDBack', id_back_param, applicant.get('id_img_back')),
+        ]
 
-        if not target_doc or target_doc == 'Grades':
-            if grades_doc_param or applicant.get('grades_doc'):
-                jobs.append(('Grades', grades_doc_param, applicant.get('grades_doc')))
+        for dtype, param, db_val in doc_configs:
+            # Skip if not the target (if target specified)
+            if target_doc and dtype != target_doc:
+                continue
+            
+            # Check if image exists
+            has_img = bool(param or db_val)
+            # Check if video exists
+            v_url = get_effective_video_url(dtype)
+            has_vid = bool(v_url and isinstance(v_url, str) and v_url.startswith('http'))
 
-        if not target_doc or target_doc == 'Indigency':
-            if indigency_doc_param or applicant.get('indigency_doc'):
-                jobs.append(('Indigency', indigency_doc_param, applicant.get('indigency_doc')))
-
-        if not target_doc or target_doc in ['SchoolID', 'SchoolIDBack']:
-            if id_front_param or applicant.get('id_img_front'):
-                if not target_doc or target_doc == 'SchoolID':
-                    jobs.append(('SchoolID', id_front_param, applicant.get('id_img_front')))
-            if id_back_param or applicant.get('id_img_back'):
-                if not target_doc or target_doc == 'SchoolIDBack':
-                    jobs.append(('SchoolIDBack', id_back_param, applicant.get('id_img_back')))
-                elif not target_doc:
-                     jobs.append(('SchoolIDBack', id_back_param, applicant.get('id_img_back')))
+            if has_img:
+                if has_vid:
+                    jobs.append((dtype, param, db_val))
+                elif target_doc == dtype:
+                    # Explicit error for the user's targeted scan
+                    return jsonify({
+                        'verified': False, 
+                        'message': f"Verification video is missing for {dtype}. Please record/upload the video before scanning."
+                    }), 400
                 
         if not jobs:
             # If we were strictly targeting a doc, explain why it was skipped.
@@ -4099,17 +4119,22 @@ def upload_video():
                 threading.Thread(target=_cleanup_old_video, args=(current_user_id, db_col, supabase), daemon=True).start()
 
             # Upload binary data to Supabase (using the dedicated videos bucket)
-            supabase.storage.from_(bucket_name).upload(
-                file=video_bytes,
-                path=file_path,
-                file_options={
-                    'content-type': content_type,
-                    'cache-control': '3600',
-                    'upsert': 'true'
-                }
-            )
+            try:
+                print(f"[VIDEO-UPLOAD] Bucket: '{bucket_name}' | Path: '{file_path}'", flush=True)
+                supabase.storage.from_(bucket_name).upload(
+                    file_path,
+                    video_bytes,
+                    {'content-type': content_type, 'cache-control': '3600', 'upsert': 'true'}
+                )
+            except Exception as e:
+                print(f"[VIDEO-UPLOAD ERROR] SDK failed: {e}", flush=True)
+                raise
             
             public_url = supabase.storage.from_(bucket_name).get_public_url(file_path)
+            # Standardize output URL to string
+            if hasattr(public_url, 'public_url'): 
+                public_url = public_url.public_url
+            
             print(f"[VIDEO-UPLOAD] Successfully verified and uploaded: {public_url}", flush=True)
             
             return jsonify({

@@ -234,9 +234,17 @@ def normalize_supabase_url(url):
                     else:
                         target_bucket = img_bucket
                 
-                # 2. Rewrite path if bucket changed
-                if old_bucket != target_bucket:
+                # 2. Rewrite path if bucket changed or if it's improperly nested
+                bucket_changed = (old_bucket != target_bucket)
+                
+                # Deduplication: if parts[6] is the same as the bucket name, it's likely a nested error (bucket/bucket/path)
+                # This fixes the "document_images/document_images/videos" issue.
+                is_nested = (len(parts) > 6 and parts[6] == target_bucket)
+                if bucket_changed or is_nested:
                     parts[5] = target_bucket
+                    if is_nested:
+                        # Remove the duplicate bucket folder
+                        parts.pop(6)
                     path = '/'.join(parts)
             
             # 3. Always update the host to the current project domain
