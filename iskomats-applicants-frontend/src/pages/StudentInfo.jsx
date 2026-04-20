@@ -3359,24 +3359,6 @@ const StudentInfo = () => {
                 </div>
               </div>
 
-              <div className="form-group" style={{marginBottom: '1.5rem'}}>
-                <label style={{display: 'block', fontSize: '0.9rem', fontWeight: '700', color: '#1e293b', marginBottom: '8px'}}>Merits and Awards Received <span style={{fontSize: '0.75rem', color: '#64748b', fontWeight: 'normal'}}>(Optional)</span></label>
-                <textarea 
-                  name="meritsAwardsReceived" 
-                  value={formData.meritsAwardsReceived} 
-                  onChange={handleInputChange} 
-                  placeholder="List your honors, merits, certificates, and awards..." 
-                  style={{ 
-                    width: '100%', 
-                    padding: '0.8rem', 
-                    borderRadius: '12px', 
-                    border: '1px solid #e2e8f0', 
-                    minHeight: '80px',
-                    fontFamily: 'inherit',
-                    fontSize: '0.9rem'
-                  }}
-                />
-              </div>
 
               <div className="form-row">
                 <div className="form-group">
