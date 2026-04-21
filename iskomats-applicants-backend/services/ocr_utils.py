@@ -1858,6 +1858,7 @@ def _extract_signature_from_id_back(id_img):
     height, width = gray.shape[:2]
     if height == 0 or width == 0:
         return None
+
     # Step 1: Targeting the student signature zone
     lane_y0, lane_y1 = int(height * 0.25), int(height * 0.45)
     lane_x0, lane_x1 = int(width * 0.15), int(width * 0.85)
@@ -1877,39 +1878,26 @@ def _extract_signature_from_id_back(id_img):
     candidates = []
     h_idx, w_idx = binary.shape[:2]
     
-    # Calculate adaptive side margins for frame line purging (15% of width)
-    # The signature is always centered; frame lines/brackets are at the extreme left/right.
-    side_margin = int(w_idx * 0.15)
-    top_bottom_margin = max(5, int(h_idx * 0.10))
-    
     for cnt in contours:
         x, y, w, h = cv2.boundingRect(cnt)
         
-        # SIDE-MARGIN PURGE: The frame lines/brackets usually sit at the extremes.
-        if x < side_margin or (x + w) > (w_idx - side_margin):
-            # If it's at the margin, it must be very signature-like to stay (not just a line)
-            aspect_ratio = w / float(h) if h > 0 else 0
-            if aspect_ratio > 4.0 or aspect_ratio < 0.25: # Very thin lines/bars are frame parts
-                continue
-        
-        if y < top_bottom_margin or (y + h) > (h_idx - top_bottom_margin):
-            continue
+        # SIDE-MARGIN PURGE: The frame lines always sit at the edges.
+        # Handwriting is centered. 30px is a safe 'no-ink' buffer.
+        if x < 30 or (x+w) > w_idx-30: continue
+        if y < 4 or (y+h) > h_idx-4: continue
         
         area = cv2.contourArea(cnt)
-        if area < 40: continue
+        if area < 30: continue
         
-        # SOLIDITY REJECTION: Printed lines are solid; handwriting is flowy.
+        # SOLIDITY REJECTION: Printed lines are solid; handwriting is flowy/hollow.
         solidity = area / float(w * h)
-        aspect = max(w/float(h), h/float(w))
+        aspect = max(w/h, h/w)
         
-        # Reject extremely solid rectangles (like printed brackets or box pieces)
-        if solidity > 0.85 and area > 100: continue
-        
-        # Reject very long thin lines (even if not at margins)
-        if aspect > 12.0: continue
+        # Any component that is "line-like" AND "solid" is a printed frame line.
+        if aspect > 3.0 and solidity > 0.55: continue
             
         complexity = cv2.arcLength(cnt, True)
-        candidates.append({'box': (x, y, w, h), 'complex': complexity, 'y_mid': y + h/2.0})
+        candidates.append({'box': (x, y, w, h), 'complex': complexity, 'y_mid': y + h/2})
 
     if not candidates:
         ch, cw = int(h_idx * 0.6), int(w_idx * 0.7)
