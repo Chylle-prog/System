@@ -392,7 +392,23 @@ def ensure_schema_integrity(cursor):
             print(f"[MIGRATION] Adding is_removed to {table} table")
             cursor.execute(f"ALTER TABLE {table} ADD COLUMN is_removed BOOLEAN DEFAULT FALSE")
 
-    # 2. Scholarship specific fields
+    # 2. Convert announcement_images.img to TEXT if it's still BYTEA
+    cursor.execute(
+        """
+        SELECT data_type 
+        FROM information_schema.columns 
+        WHERE table_name = 'announcement_images' AND column_name = 'img'
+        """
+    )
+    res = cursor.fetchone()
+    if res:
+        col_type = res['data_type'] if isinstance(res, dict) else res[0]
+        if col_type.lower() == 'bytea':
+            print("[MIGRATION] Converting announcement_images.img from BYTEA to TEXT")
+            # We use USING NULL to avoid conversion errors with encrypted data
+            cursor.execute("ALTER TABLE announcement_images ALTER COLUMN img TYPE TEXT USING NULL")
+
+    # 3. Scholarship specific fields
     scholarship_cols = {
         'semester': 'VARCHAR(50)',
         'year': 'VARCHAR(50)'
@@ -4286,23 +4302,17 @@ def create_announcement(current_user_id, pro_no, role):
         if image_attachments:
             _, foreign_key_column = get_entity_image_columns(cur, 'announcement')
             for i, img_bytes in enumerate(image_attachments):
-                if use_storage():
-                    # Upload to Supabase bucket 'announcement_images'
-                    file_path = f"ann_{ann_no}_img_{i}_{int(datetime.now().timestamp())}.jpg"
-                    url = upload_to_supabase(img_bytes, 'announcement_images', file_path)
-                    if url:
-                        cur.execute(
-                            f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
-                            (ann_no, url)
-                        )
-                        continue
-
-                # Fallback to BYTEA (or if TEXT is used, it will be stored as bytes/string representation)
-                encrypted = _fernet.encrypt(img_bytes) if _fernet else img_bytes
-                cur.execute(
-                    f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
-                    (ann_no, encrypted)
-                )
+                # Upload to Supabase bucket 'announcement_images'
+                file_path = f"ann_{ann_no}_img_{i}_{int(datetime.now().timestamp())}.jpg"
+                url = upload_to_supabase(img_bytes, 'announcement_images', file_path)
+                if url:
+                    cur.execute(
+                        f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
+                        (ann_no, url)
+                    )
+                else:
+                    print(f"[ANNOUNCEMENT ERROR] Storage failed for image {i}.", flush=True)
+                    raise ValueError("Failed to upload announcement image to cloud storage.")
 
         conn.commit()
         
@@ -4432,17 +4442,14 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
         cur.execute("CREATE TEMP TABLE temp_ann_imgs (img text)")
         for i, item in enumerate(new_sequence):
             if isinstance(item, bytes):
-                # New image - try cloud storage first
-                if use_storage():
-                    file_path = f"ann_{ann_no}_upd_{i}_{int(datetime.now().timestamp())}.jpg"
-                    url = upload_to_supabase(item, 'announcement_images', file_path)
-                    if url:
-                        cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (url,))
-                        continue
-
-                # Fallback
-                final_data = _fernet.encrypt(item) if _fernet else item
-                cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (final_data,))
+                # New image - ALWAYS cloud storage for announcements
+                file_path = f"ann_{ann_no}_upd_{i}_{int(datetime.now().timestamp())}.jpg"
+                url = upload_to_supabase(item, 'announcement_images', file_path)
+                if url:
+                    cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (url,))
+                else:
+                    print(f"[ANNOUNCEMENT UPDATE] Cloud storage failed for image {i}.", flush=True)
+                    raise ValueError("Failed to upload updated announcement image to cloud storage.")
             else:
                 # Existing image (either a URL string or an ID int)
                 if isinstance(item, str) and item.startswith('http'):
