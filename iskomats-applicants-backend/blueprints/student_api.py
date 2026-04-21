@@ -3370,6 +3370,8 @@ def ocr_check():
                         id_ok, _ = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
                         course_ok, _ = course_matches_text(course, raw) if course else (True, None)
                         
+                        print(f"[OCR-ENROLLMENT] Checking Year Level: target='{expected_year_level}', result={year_level_ok}", flush=True)
+                        
                         # Strictly require ALL fields for Enrollment (COR/COE) to be OK
                         # Including the text density check (v) to prevent blank images from passing
                         v = v and name_ok and id_ok and school_ok and course_ok and year_only_ok and semester_ok and year_level_ok

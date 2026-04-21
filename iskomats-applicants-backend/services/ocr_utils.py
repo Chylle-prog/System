@@ -314,16 +314,20 @@ def year_level_matches_text(target_year, text):
     
     norm_text = text.lower()
     
+    # Roman numeral variations for common year levels
+    roman_map = {'1': 'i', '2': 'ii', '3': 'iii', '4': 'iv', '5': 'v'}
+    expected_roman = roman_map.get(expected_level)
+    
     # Common OCR misreads for specific digits
     digit_misreads = {
         '0': r'[0OQoD]',
-        '1': r'[1Il|!i]',
-        '2': r'[2Zz]',
-        '3': r'[3]',
+        '1': r'[1Il|!i/]',
+        '2': r'[2ZzS]',
+        '3': r'[3E]',
         '4': r'[4A]',
         '5': r'[5SsS\$]',
         '6': r'[6G]',
-        '7': r'[7]',
+        '7': r'[7T]',
         '8': r'[8B]',
         '9': r'[9gq]'
     }
@@ -336,27 +340,36 @@ def year_level_matches_text(target_year, text):
     
     number_pattern = "".join(get_char_pattern(d) for d in expected_level)
     
-    # Pattern A: Standard labels
-    # Handles: "Year Level: 1", "Level: 1", "Year: 1"
-    if re.search(rf'\b(?:year\s*)?level\s*[:\-.;]?\s*{number_pattern}{suffix_pattern}\b', norm_text, re.IGNORECASE):
+    # Prefix variations: Year, Level, Yr, Lvl, Y/L
+    # Loosened boundary before 'level' to handle "YearLevel" concatenation from OCR
+    prefix_pattern = r'(?:year\s*l?e?v?e?l?|yr\.?\s*l?e?v?e?l?|year/level|yr/lvl|lvl\.?|level|lev|yr\.?)'
+    
+    # Pattern A: Standard labels with expanded prefixes
+    # Handles: "Year Level: 1", "Lvl: 1", "Year: 1", "YearLevel 1"
+    # Note: [^\w] is used before the prefix to handle concatenation while still ensuring it's likely a label
+    if re.search(rf'(?:^|[^\w]){prefix_pattern}\s*[:\-.;]?\s*{number_pattern}{suffix_pattern}\b', norm_text, re.IGNORECASE):
         return True, expected_level
     
-    # Pattern B: Standalone with Year/Yr
+    # Pattern B: Standalone with Year/Yr suffix
     if re.search(rf'\b{number_pattern}{suffix_pattern}?\s*(?:year|yr\.?)\b', norm_text, re.IGNORECASE):
         return True, expected_level
 
     # Pattern C: Word-based mapped variations
     variations = []
-    if expected_level == '1': variations.extend(['1st', 'first', 'yr 1', 'year 1', 'freshman', 'freshmen', 'freshie'])
-    elif expected_level == '2': variations.extend(['2nd', 'second', 'yr 2', 'year 2', 'sophomore'])
-    elif expected_level == '3': variations.extend(['3rd', 'third', 'yr 3', 'year 3', 'junior'])
-    elif expected_level == '4': variations.extend(['4th', 'fourth', 'yr 4', 'year 4', 'senior'])
+    if expected_level == '1': variations.extend(['1st', 'first', 'yr 1', 'year 1', 'yr1', 'year1', 'freshman', 'freshmen', 'freshie'])
+    elif expected_level == '2': variations.extend(['2nd', 'second', 'yr 2', 'year 2', 'yr2', 'year2', 'sophomore'])
+    elif expected_level == '3': variations.extend(['3rd', 'third', 'yr 3', 'year 3', 'yr3', 'year3', 'junior'])
+    elif expected_level == '4': variations.extend(['4th', 'fourth', 'yr 4', 'year 4', 'yr4', 'year4', 'senior'])
+    
+    if expected_roman:
+        variations.append(rf'\b{expected_roman}\b')
     
     for v in variations:
-        if v in norm_text: return True, expected_level
+        if re.search(v if v.startswith('\\b') else rf'\b{re.escape(v)}\b', norm_text, re.IGNORECASE):
+            return True, expected_level
     
-    # Final fallback: Look for "Year" or "Level" followed by the target number within a small window
-    if re.search(rf'\b(?:year|level|lev|yr)\b.{0,25}?{number_pattern}\b', norm_text, re.IGNORECASE | re.DOTALL):
+    # Pattern D: Final fallback - Look for a prefix followed by the target number within a small window
+    if re.search(rf'{prefix_pattern}.{{0,25}}?{number_pattern}\b', norm_text, re.IGNORECASE | re.DOTALL):
         return True, expected_level
 
     return False, None
