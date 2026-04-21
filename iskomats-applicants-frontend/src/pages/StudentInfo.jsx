@@ -2010,7 +2010,7 @@ const StudentInfo = () => {
       setShowSignaturePad(false);
       setSignatureVerified(null); // Reset verification when updated
       setSignatureStatus('');
-      setSignatureImage(dataUrl);
+      setDrawnSignature(dataUrl);
     } else {
       showPromptMessage('âš ï¸ Please provide a signature first.');
     }
@@ -2247,7 +2247,7 @@ const StudentInfo = () => {
       return;
     }
 
-    if (!signaturePreview && !drawnSignature && !signatureImage && !formData.applicantSignatureName) {
+    if (!signaturePreview && !drawnSignature && !formData.applicantSignatureName) {
       showPromptMessage('âš ï¸ Please either upload a signature photo or draw your signature.');
       return;
     }
@@ -2295,7 +2295,7 @@ const StudentInfo = () => {
       if (photos.id_back  || schoolIdPhotos.back)  submissionData.append('id_back',  photos.id_back  || schoolIdPhotos.back);
       if (photos.face_photo) submissionData.append('face_photo', photos.face_photo);
       
-      const finalSignature = signaturePreview || drawnSignature || signatureImage || formData.applicantSignatureName;
+      const finalSignature = signaturePreview || drawnSignature || formData.applicantSignatureName;
       if (finalSignature) {
         submissionData.append('signature_data', finalSignature);
       }
