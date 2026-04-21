@@ -3255,7 +3255,7 @@ def get_applicants(current_user_id, pro_no, role, program):
         profile_picture_expr = '(a.profile_picture IS NOT NULL)' if applicant_has_column(cursor, 'profile_picture') else '(a.profile_pic IS NOT NULL)' if applicant_has_column(cursor, 'profile_pic') else 'FALSE'
         
         query = f'''
-            SELECT a.applicant_no as id, a.applicant_no, a.first_name as "firstName", a.last_name as "lastName", 
+            SELECT a.applicant_no, a.applicant_no as id, a.first_name as "firstName", a.last_name as "lastName", 
                    a.middle_name as "middleName",
                    a.mother_name as "motherName",
                    a.father_name as "fatherName",
@@ -3271,7 +3271,7 @@ def get_applicants(current_user_id, pro_no, role, program):
                    a.sex,
                    a.course,
                    a.school,
-                   a.school_id_no as "schoolId", a.school_id_no,
+                   a.school_id_no, a.school_id_no as "schoolId",
                    a.school_sector as "schoolSector",
                    a.mobile_no as "mobileNumber",
                    a.year_lvl as year,
