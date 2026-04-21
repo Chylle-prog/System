@@ -923,10 +923,10 @@ def send_school_verification_dispatch(current_user_id, pro_no, role, applicant_n
                 document_values = fetch_applicant_document_values(
                     bg_cursor,
                     applicant_no,
-                    ['enrollment_certificate_doc', 'grades_doc', 'id_img_front', 'id_img_back', 'schoolID_photo']
+                    ['enrollment_certificate_doc', 'grades_doc', 'id_img_front', 'id_img_back']
                 )
 
-                front_id = document_values.get('id_img_front') or document_values.get('schoolID_photo')
+                front_id = document_values.get('id_img_front')
                 back_id = document_values.get('id_img_back')
                 enrollment_doc = document_values.get('enrollment_certificate_doc')
                 grades_doc = document_values.get('grades_doc')
@@ -3293,10 +3293,8 @@ def get_applicants(current_user_id, pro_no, role, program):
                     ({applicant_document_expr(cursor, 'indigency_doc', 'a', 'ad')} IS NOT NULL) as "has_indigency_doc",
                     ({applicant_document_expr(cursor, 'enrollment_certificate_doc', 'a', 'ad')} IS NOT NULL) as "has_enrollment_certificate_doc",
                     ({applicant_document_expr(cursor, 'grades_doc', 'a', 'ad')} IS NOT NULL) as "has_grades_doc",
-                    ({applicant_document_expr(cursor, 'schoolID_photo', 'a', 'ad')} IS NOT NULL) as "has_schoolID_photo",
                     ({applicant_document_expr(cursor, 'id_img_front', 'a', 'ad')} IS NOT NULL) as "has_id_img_front",
                     ({applicant_document_expr(cursor, 'id_img_back', 'a', 'ad')} IS NOT NULL) as "has_id_img_back",
-                    ({applicant_document_expr(cursor, 'id_pic', 'a', 'ad')} IS NOT NULL) as "has_id_pic",
                     {profile_picture_expr} as "has_profile_picture",
                     ({applicant_document_expr(cursor, 'signature_image_data', 'a', 'ad')} IS NOT NULL) as "has_signature",
                     {applicant_document_expr(cursor, 'indigency_vid_url', 'a', 'ad')} as indigency_vid_url,
@@ -4037,7 +4035,7 @@ def get_applicant_image(applicant_no, column_name):
     """Get applicant image or document as binary file on demand (Lazy Loading)"""
     allowed_columns = [
         'indigency_doc', 'enrollment_certificate_doc', 'grades_doc', 
-        'schoolID_photo', 'id_img_front', 'id_img_back', 'id_pic', 'profile_picture',
+        'id_img_front', 'id_img_back', 'profile_picture',
         'profile_pic', 'signature_image_data'
     ]
     if column_name not in allowed_columns:
