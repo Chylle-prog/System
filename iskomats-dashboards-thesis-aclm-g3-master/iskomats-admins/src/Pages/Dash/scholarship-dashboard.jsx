@@ -2796,6 +2796,7 @@ export default function ScholarshipDashboard({
     // Helper to format applicant data for Excel
     const formatApplicants = (list) => list.map(app => ({
       'Student Name': app.name || `${app.firstName} ${app.lastName}`,
+      'Scholarship Name': app.scholarshipName || 'N/A',
       'Grade': app.grade || 'N/A',
       'Financial Status': getFinancialStatusLabel(app.income || app.family?.grossIncome),
       'School': app.school || 'N/A',
@@ -2881,11 +2882,16 @@ export default function ScholarshipDashboard({
     return (
       <div className="space-y-6">
         {/* Header with Export Buttons */}
-        <div className="flex items-center justify-between gap-3 flex-wrap report-header">
+        <div className="flex items-center justify-between gap-3 flex-wrap report-header relative">
           <div>
             <h3 className="text-2xl font-bold text-[#800020] report-title">{reportTitle}</h3>
             <p className="text-gray-500 text-sm report-subtitle">Comprehensive KPI report and periodic trends</p>
             <p className="print-only text-[10px] text-gray-400 mt-2 font-bold italic">Generated on: {new Date().toLocaleString()}</p>
+          </div>
+          
+          {/* Print-only Logo positioned at top right */}
+          <div className="print-only absolute right-0 top-0">
+             <img src={iskomatsLogo} alt="Iskomats Logo" className="h-14 w-auto object-contain opacity-90" />
           </div>
           <div className="flex gap-4 items-center flex-wrap">
             <div className="flex bg-gray-100 p-1 rounded-xl">
