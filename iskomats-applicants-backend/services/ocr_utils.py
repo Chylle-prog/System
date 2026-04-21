@@ -1863,6 +1863,7 @@ def _extract_signature_from_id_back(id_img):
     lane_y0, lane_y1 = int(height * 0.25), int(height * 0.45)
     lane_x0, lane_x1 = int(width * 0.15), int(width * 0.85)
     roi_gray = gray[lane_y0:lane_y1, lane_x0:lane_x1]
+    print(f"[SIGNATURE] Extracted ROI from ID Back: shape={roi_gray.shape}, zone=y({lane_y0}:{lane_y1}), x({lane_x0}:{lane_x1})", flush=True)
     
     # Step 2: High-contrast smoothing
     norm = cv2.normalize(roi_gray, None, 0, 255, cv2.NORM_MINMAX)
@@ -1974,8 +1975,10 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
         matcher_submitted_view = prepare_signature_match_view(sig_img)
 
         if extracted_id_signature is None or extracted_id_signature.size == 0:
+            print("[SIGNATURE] Failed to isolate signature from ID Back.", flush=True)
             return False, "Could not isolate a signature from the ID back image", 0.0, preview_signature, None, matcher_submitted_view, None
 
+        print(f"[SIGNATURE] ID signature isolated: shape={extracted_id_signature.shape}", flush=True)
         extracted_id_preview = extracted_id_signature  # Already display-ready via single-pass extraction
         matcher_reference_view = prepare_signature_match_view(extracted_id_signature)
         
@@ -1987,10 +1990,16 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
             if profile_score > 0.0:
                 # 80/20 weighted average incorporates learning without overriding the primary ID check
                 score = (direct_score * 0.8) + (profile_score * 0.2)
-                score_source = f"direct={direct_score:.2f}, profile={profile_score:.2f}"
+                score_source = f"direct={direct_score:.2f}, profile={profile_score:.2f} (80/20 weighted)"
+            elif profile_score < 0:
+                # Blacklist penalty applied
+                score = direct_score + profile_score 
+                score_source = f"direct={direct_score:.2f}, penalty={profile_score:.2f}"
             else:
                 score = direct_score
                 score_source = f"direct={direct_score:.2f}"
+            
+            print(f"[SIGNATURE] Final combined score: {score:.4f} ({score_source})", flush=True)
         except Exception as e:
             print(f"[SIGNATURE] Error in neural matching: {e}", flush=True)
             return False, f"Matching error: {str(e)}", 0.0, preview_signature, extracted_id_preview, matcher_submitted_view, matcher_reference_view

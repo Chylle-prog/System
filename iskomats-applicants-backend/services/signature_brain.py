@@ -14,6 +14,8 @@ except Exception as exc:
     TENSORFLOW_AVAILABLE = False
     print(f"[BRAIN] TensorFlow unavailable, using OpenCV fallback: {exc}", flush=True)
 
+print(f"[BRAIN] Signature verification system initialized. TensorFlow Available: {TENSORFLOW_AVAILABLE}", flush=True)
+
 # --- GLOBAL MODEL CACHE ---
 # Using MobileNetV2 for its extreme efficiency on CPU
 _SIGNATURE_MODELS = {}
@@ -107,6 +109,8 @@ def _prepare_signature_canvas(img_np, size=224):
 
     margin = max(4, int(size * 0.04))
     usable_size = max(8, size - (margin * 2))
+    
+    print(f"[BRAIN] Preparing signature canvas: input={img_np.shape[:2]}, crop={cropped.shape[:2]}, target_size={size}", flush=True)
 
     if h_c > w_c:
         new_h, new_w = usable_size, max(1, int(w_c * usable_size / h_c))
@@ -273,32 +277,22 @@ def calculate_neural_match(drawing_img, student_id):
         return 0.0
     
     similarity = _cosine_similarity(current_embedding, mean_real_vector)
-    print(f"[BRAIN] Profile similarity: {similarity:.6f}", flush=True)
+    print(f"[BRAIN] Profile similarity: {similarity:.6f} (Student {student_id})", flush=True)
     return float(similarity)
-
 
 def compare_signature_images(submitted_img, reference_img):
     """
-    Compare a submitted signature directly against a reference signature crop.
-    Returns a cosine-similarity score from 0.0 to 1.0.
+    Direct comparison between two signature images (usually submitted vs ID back).
     """
-    submitted_embedding = extract_signature_embedding(submitted_img)
-    if submitted_embedding is None:
-        print("[BRAIN] Submitted signature embedding is None", flush=True)
+    embedding_a = extract_signature_embedding(submitted_img)
+    embedding_b = extract_signature_embedding(reference_img)
+    
+    if embedding_a is None or embedding_b is None:
+        print("[BRAIN] Failed to extract one or both embeddings.", flush=True)
         return 0.0
 
-    reference_embedding = extract_signature_embedding(reference_img)
-    if reference_embedding is None:
-        print("[BRAIN] Reference signature embedding is None", flush=True)
-        return 0.0
-
-    similarity = _cosine_similarity(submitted_embedding, reference_embedding)
-    print(
-        f"[BRAIN] Direct signature similarity: {similarity:.6f} "
-        f"(submitted norm: {np.linalg.norm(submitted_embedding):.6f}, "
-        f"reference norm: {np.linalg.norm(reference_embedding):.6f})",
-        flush=True,
-    )
+    similarity = _cosine_similarity(embedding_a, embedding_b)
+    print(f"[BRAIN] Direct signature similarity: {similarity:.6f} (using {'Neural' if TENSORFLOW_AVAILABLE else 'Classical'})", flush=True)
     return float(similarity)
 
 def get_training_count(student_id):
