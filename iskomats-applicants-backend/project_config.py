@@ -257,11 +257,20 @@ def upload_to_supabase(image_data, bucket_name, file_path, content_type='image/j
             supabase.storage.get_bucket(bucket_name)
         except Exception:
             try:
-                print(f"[STORAGE] Bucket '{bucket_name}' not found, attempting to create...", flush=True)
+                # List available buckets for diagnostic purposes
+                all_buckets = [b.name for b in supabase.storage.list_buckets()]
+                print(f"[STORAGE] Bucket '{bucket_name}' not found. Available buckets: {all_buckets}", flush=True)
+                
+                print(f"[STORAGE] Attempting to create bucket '{bucket_name}'...", flush=True)
                 supabase.storage.create_bucket(bucket_name, {"public": True})
             except Exception as e:
-                print(f"[STORAGE ERROR] Could not create bucket '{bucket_name}': {e}", flush=True)
-                # We continue anyway in case it was a permission error but bucket exists
+                # Refresh list after failed create
+                available = []
+                try:
+                    available = [b.name for b in supabase.storage.list_buckets()]
+                except: pass
+                print(f"[STORAGE ERROR] Could not create bucket '{bucket_name}': {e}. Visible buckets: {available}", flush=True)
+                raise RuntimeError(f"Storage Error: Bucket '{bucket_name}' not found and creation failed. Visible buckets: {available}. Error: {str(e)}")
 
         # 2. Upload using service role key (bypasses RLS)
         supabase.storage.from_(bucket_name).upload(
