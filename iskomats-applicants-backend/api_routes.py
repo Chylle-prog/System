@@ -3133,14 +3133,16 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
         semester_expr = 's.semester' if 'semester' in scholarship_columns else 'NULL'
         year_expr = 's.year' if 'year' in scholarship_columns else 'NULL'
 
+        include_removed = request.args.get('include_removed', 'false').lower() == 'true'
         where_clauses = []
-        if 'is_removed' in scholarship_columns:
+        if 'is_removed' in scholarship_columns and not include_removed:
             where_clauses.append('COALESCE(s.is_removed, FALSE) = FALSE')
         
         query = '''
             SELECT s.req_no as id, s.req_no as "reqNo", s.scholarship_name as "scholarshipName", 
                    s.gpa as "minGpa", s.location, s.parent_finance as "parentFinance",
                    s.slots, s.deadline, s.pro_no as "proNo", p.provider_name as "providerName",
+                   COALESCE(s.is_removed, FALSE) as "isRemoved",
                                          {description_expr} as description, {date_created_expr} as "dateCreated",
                                          {semester_expr} as semester, {year_expr} as year,
                                          COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS TRUE) as "acceptedCount",

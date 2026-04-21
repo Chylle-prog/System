@@ -361,7 +361,7 @@ export default function ScholarshipDashboard({
   const loadScholarships = async (showAlert = true) => {
     try {
       console.log(`Loading scholarships for program: ${providerKey}`);
-      const response = await scholarshipAPI.getByProgram(providerKey);
+      const response = await scholarshipAPI.getByProgram(providerKey, { include_removed: true });
       console.log('Full API Response:', response);
       console.log('Response data:', response.data);
 
@@ -1169,7 +1169,8 @@ export default function ScholarshipDashboard({
   };
 
   const filteredScholarshipPosts = useMemo(() => {
-    const posts = data.scholarshipPosts || [];
+    // For the MANAGE list, we ONLY want scholarships that are NOT removed
+    const posts = (data.scholarshipPosts || []).filter(p => !p.isRemoved);
     if (!manageSearch) return posts;
     const search = manageSearch.toLowerCase();
     return posts.filter(post => 
@@ -1192,7 +1193,10 @@ export default function ScholarshipDashboard({
   const scholarshipFilterOptions = useMemo(() => {
     return (data.scholarshipPosts || []).map((post) => {
       const value = String(post.reqNo || post.id || post.scholarshipName || post.title || '').trim();
-      const label = post.scholarshipName || post.title || 'Untitled Scholarship';
+      let label = post.scholarshipName || post.title || 'Untitled Scholarship';
+      if (post.isRemoved) {
+        label += ' (Archived)';
+      }
       return value ? { value, label } : null;
     }).filter(Boolean);
   }, [data.scholarshipPosts]);

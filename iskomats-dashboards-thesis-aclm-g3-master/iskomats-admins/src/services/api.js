@@ -168,8 +168,8 @@ export const adminAPI = {
 // ===== SCHOLARSHIP ENDPOINTS =====
 
 export const scholarshipAPI = {
-  getByProgram: (program) =>
-    api.get(`/admin/scholarships/${program}`),
+  getByProgram: (program, params = {}) =>
+    api.get(`/admin/scholarships/${program}`, { params }),
   
   getApplicants: (program, filters = {}) =>
     api.get(`/admin/applicants/${program}`, { params: filters }),
