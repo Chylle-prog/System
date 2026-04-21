@@ -277,4 +277,4 @@ def upload_to_supabase(image_data, bucket_name, file_path, content_type='image/j
         return url_res
     except Exception as e:
         print(f"[STORAGE ERROR] Upload failed for {file_path} in {bucket_name}: {e}", flush=True)
-        return None
+        raise  # Bubble up to the caller so they can report the full traceback
