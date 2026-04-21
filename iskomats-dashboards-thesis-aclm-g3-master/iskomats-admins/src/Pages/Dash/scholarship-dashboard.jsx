@@ -261,7 +261,13 @@ export default function ScholarshipDashboard({
     ].map(normalizeProviderIdentity).filter(Boolean)),
     [programName, providerName, scholarshipLabel, userFirstName, userName]
   );
-  const sidebarTitle = providerName;
+  const sidebarTitle = useMemo(() => {
+    const payload = decodeTokenPayload(localStorage.getItem('authToken'));
+    if (payload?.role && payload.role.toLowerCase() !== 'admin') {
+      return payload.role;
+    }
+    return providerName;
+  }, [providerName]);
   const sidebarSubtitle = 'Scholarship Program';
   const trackTitle = `${scholarshipLabel} - Track Applicants`;
   const reportTitle = `${scholarshipLabel} Reports`;

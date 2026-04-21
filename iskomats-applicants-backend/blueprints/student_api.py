@@ -104,7 +104,8 @@ _verification_result_cache_lock = threading.Lock()
 _VERIFICATION_RESULT_CACHE_SIZE_LIMIT = 128
 _VERIFICATION_RESULT_CACHE_TTL_SECONDS = 300
 PENDING_REGISTRATION_EXPIRY_WINDOW = timedelta(hours=1)
-    # Core AY matching logic
+def academic_year_matches_expected(found_year, expected_year):
+    """Core AY matching logic"""
     if not expected_year: return True
     if not found_year: return False
 
