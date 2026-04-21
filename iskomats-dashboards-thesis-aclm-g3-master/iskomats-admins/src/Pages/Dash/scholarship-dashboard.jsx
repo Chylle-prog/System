@@ -4486,8 +4486,11 @@ export default function ScholarshipDashboard({
               </div>
             </div>
 
-            <p className="text-center text-[10px] text-gray-500 mb-8 px-8 font-medium italic">
+            <p className="text-center text-[10px] text-gray-500 mb-2 px-8 font-medium italic">
               Confirmation results in an automated dispatch from the ISKOMATS provider system.
+            </p>
+            <p className="text-center text-xs text-red-600 font-black mb-8 uppercase tracking-widest">
+              Note: This action cannot be reversed
             </p>
             
             <div className="grid grid-cols-2 gap-4">
