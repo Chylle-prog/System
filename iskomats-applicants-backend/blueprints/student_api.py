@@ -3330,8 +3330,8 @@ def ocr_check():
                 t_str = f" [Time: {time_meta['tot']}s (OCR: {time_meta['ocr']}s, Vid: {time_meta['vid']}s)]"
 
                 # ─── COMBINED RESULT ───
-                if not v_video:
-                    return {'doc': doc_type, 'verified': False, 'message': f"Video verification failed: {msg_video}{t_str}", 'video_verified': False, 'video_message': msg_video}
+                # Note: We still calculate individual scores even if video verification fails
+                # but we will report verified=False globally if video fails.
                 
                 # Document-Specific Logic
                 # Pre-calculate common fields used across multiple document types
@@ -3374,7 +3374,8 @@ def ocr_check():
                         
                         # Strictly require ALL fields for Enrollment (COR/COE) to be OK
                         # Including the text density check (v) to prevent blank images from passing
-                        v = v and name_ok and id_ok and school_ok and course_ok and year_only_ok and semester_ok and year_level_ok
+                        data_verified = name_ok and id_ok and school_ok and course_ok and year_only_ok and semester_ok and year_level_ok
+                        v = v and data_verified and v_video
                         
                         checklist = [
                             f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
@@ -3385,20 +3386,34 @@ def ocr_check():
                             f"Level: {'OK' if year_level_ok else 'X'}",
                             f"Year: {'OK' if year_only_ok else 'X'}",
                             f"Sem: {'OK' if semester_ok else 'X'}",
-                            f"Course: {'OK' if course_ok else 'X'}"
+                            f"Course: {'OK' if course_ok else 'X'}",
+                            f"Video: {'OK' if v_video else 'X'}"
                         ]
+                        score_details = {
+                            'First Name': name_details.get('first_ok'),
+                            'Middle Name': name_details.get('middle_ok') if middle_name else None,
+                            'Last Name': name_details.get('last_ok'),
+                            'ID Number': id_ok,
+                            'School': school_ok,
+                            'Grade Level': year_level_ok,
+                            'Academic Year': year_only_ok,
+                            'Semester': semester_ok,
+                            'Course': course_ok,
+                            'Video Verification': v_video
+                        }
                         checklist = [c for c in checklist if c is not None]
                         msg = f"Checklist: [{' | '.join(checklist)}]"
                         if not v:
                             msg += f" (Checked vs F:'{first_name}' L:'{last_name}' ID:'{expected_id_no}' Lvl:'{expected_year_level}' Y:'{expected_academic_year}')"
-                        return {'doc': 'Enrollment', 'verified': v, 'message': msg + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                        return {'doc': 'Enrollment', 'verified': v, 'message': msg + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video, 'score_details': score_details}
                     elif doc_type == 'Grades':
                         gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
                         id_ok, _ = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
                         
                         # Grades should match the school and student identity
                         # If the image is unreadable (v is False), everything fails
-                        v = v and name_ok and id_ok and year_only_ok and gpa_ok and school_ok and year_level_ok and semester_ok
+                        data_verified = name_ok and id_ok and year_only_ok and gpa_ok and school_ok and year_level_ok and semester_ok
+                        v = v and data_verified and v_video
                         
                         if school_name and not school_ok:
                             sample = raw[:300].replace('\n', ' ')
@@ -3413,22 +3428,41 @@ def ocr_check():
                             f"GPA: {'OK' if gpa_ok else 'X'}",
                             f"Level: {'OK' if year_level_ok else 'X'}",
                             f"Year: {'OK' if year_only_ok else 'X'}",
-                            f"Sem: {'OK' if semester_ok else 'X'}"
+                            f"Sem: {'OK' if semester_ok else 'X'}",
+                            f"Video: {'OK' if v_video else 'X'}"
                         ]
+                        score_details = {
+                            'First Name': name_details.get('first_ok'),
+                            'Middle Name': name_details.get('middle_ok') if middle_name else None,
+                            'Last Name': name_details.get('last_ok'),
+                            'ID Number': id_ok,
+                            'School': school_ok,
+                            'GPA Match': gpa_ok,
+                            'Grade Level': year_level_ok,
+                            'Academic Year': year_only_ok,
+                            'Semester': semester_ok,
+                            'Video Verification': v_video
+                        }
                         checklist = [c for c in checklist if c is not None]
-                        return {'doc': 'Grades', 'verified': v, 'message': f"Checklist: [{' | '.join(checklist)}]" + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                        return {'doc': 'Grades', 'verified': v, 'message': f"Checklist: [{' | '.join(checklist)}]" + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video, 'score_details': score_details}
 
                 elif doc_type == 'Indigency':
                     name_ok = meta.get('name_ok', False)
                     addr_ok = meta.get('addr_ok', True)
-                    v = name_ok and addr_ok
+                    v = v and name_ok and addr_ok and v_video
                     
                     brgy_str = ", ".join(meta.get('detected_brgy', [])) if meta.get('detected_brgy') else "None detected"
                     status_addr = 'OK' if addr_ok else 'X'
                     # Use a consistent format that includes the discovered data
-                    detail_msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Addr: {status_addr} (Target: {target_address or 'Missing'}, Found: {brgy_str})]"
+                    detail_msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Addr: {status_addr} (Target: {target_address or 'Missing'}, Found: {brgy_str}) | Video: {'OK' if v_video else 'X'}]"
                     
-                    return {'doc': 'Indigency', 'verified': v, 'message': detail_msg + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                    score_details = {
+                        'Name Match': name_ok,
+                        'Address Match': addr_ok,
+                        'Video Verification': v_video
+                    }
+                    
+                    return {'doc': 'Indigency', 'verified': v, 'message': detail_msg + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video, 'score_details': score_details}
 
                 elif doc_type == 'SchoolID':
                     id_ok, _ = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
@@ -3439,17 +3473,29 @@ def ocr_check():
                     print(f"[OCR-SCHOOLID-MATCH] name_ok={name_ok} (First={name_details.get('first_ok')}, Mid={name_details.get('middle_ok')}, Last={name_details.get('last_ok')})", flush=True)
                     print(f"[OCR-SCHOOLID-MATCH] id_ok={id_ok} (expected='{expected_id_no}') school_ok={school_ok} (expected='{school_name}')", flush=True)
                     
+                    # Strictly require name, id, and school to be OK
+                    data_verified = name_ok and id_ok and school_ok
+                    v = v and data_verified and v_video
+                    
                     checklist = [
                         f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
                         f"Middle Name: {'OK' if name_details.get('middle_ok') else 'X'}" if middle_name else None,
                         f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
                         f"ID Number: {'OK' if id_ok else 'X'}",
-                        f"School: {'OK' if school_ok else 'X'}"
+                        f"School: {'OK' if school_ok else 'X'}",
+                        f"Video: {'OK' if v_video else 'X'}"
                     ]
+                    score_details = {
+                        'First Name': name_details.get('first_ok'),
+                        'Middle Name': name_details.get('middle_ok') if middle_name else None,
+                        'Last Name': name_details.get('last_ok'),
+                        'ID Number': id_ok,
+                        'School': school_ok,
+                        'Video Verification': v_video
+                    }
+                    
                     checklist = [c for c in checklist if c is not None]
                     
-                    # Strictly require name, id, and school to be OK
-                    v = name_ok and id_ok and school_ok
                     if v:
                         msg = f"Front ID verified successfully. Checklist: [{', '.join(checklist)}]"
                     else:
@@ -3458,14 +3504,18 @@ def ocr_check():
                         if not id_ok: msg += f" (ID mismatch)"
                         if not school_ok: msg += f" (School mismatch)"
 
-                    return {'doc': 'SchoolID', 'verified': v, 'message': msg + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                    return {'doc': 'SchoolID', 'verified': v, 'message': msg + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video, 'score_details': score_details}
 
                 elif doc_type == 'SchoolIDBack':
                     year_label = extract_school_year_from_text(raw)
                     year_ok = academic_year_matches_latest_expected(year_label, expected_academic_year)
 
-                    v = bool(v and year_label and year_ok)
-                    checklist = [f"Year: {'OK' if year_ok else 'X'}"]
+                    v = bool(v and year_label and year_ok and v_video)
+                    checklist = [f"Year: {'OK' if year_ok else 'X'}", f"Video: {'OK' if v_video else 'X'}"]
+                    score_details = {
+                        'Academic Year': year_ok,
+                        'Video Verification': v_video
+                    }
                     
                     if v:
                         msg = f"Back ID verified | Checklist: [{' | '.join(checklist)}]"
@@ -3473,7 +3523,7 @@ def ocr_check():
                         msg = f"Verification failed. Checklist: [{' | '.join(checklist)}]"
                         if not year_label: msg += " (Year not detected)"
                         
-                    return {'doc': 'Back ID', 'verified': v, 'message': msg + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video}
+                    return {'doc': 'Back ID', 'verified': v, 'message': msg + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video, 'score_details': score_details}
 
                 return None
             except Exception as worker_err:

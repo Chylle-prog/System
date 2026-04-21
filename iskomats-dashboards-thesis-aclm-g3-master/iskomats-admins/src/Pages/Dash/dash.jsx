@@ -677,8 +677,8 @@ export default function Dash() {
         </div>
       </aside>
 
-      <main className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-24' : 'ml-[17rem]'} flex-1 flex flex-col overflow-y-auto pr-8 scroll-smooth custom-scrollbar border-l border-r border-gray-200/80 shadow-[inset_10px_0_15px_-10px_rgba(0,0,0,0.05)]`} style={{ height: 'calc(100vh - 5rem)', position: 'relative' }}>
-        <div className="flex-shrink-0 p-6 pb-4">
+      <main className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-24' : 'ml-[17rem]'} flex-1 flex flex-col overflow-y-auto px-10 py-10 scroll-smooth custom-scrollbar border-l border-r border-gray-200/80 shadow-[inset_10px_0_15px_-10px_rgba(0,0,0,0.05)]`} style={{ height: 'calc(100vh - 5rem)', position: 'relative' }}>
+        <div className="flex-shrink-0 mb-4">
           <header className="bg-white rounded-2xl shadow-sm px-8 py-5 flex items-center justify-between border border-gray-100">
             <div>
               <h1 className="text-2xl font-black text-[#800020] tracking-tight uppercase">{activeTab.replace('-', ' ')}</h1>
@@ -708,7 +708,7 @@ export default function Dash() {
           )}
         </div>
 
-        <div className="flex-1 overflow-hidden px-6 pb-6">
+        <div className="flex-1 overflow-hidden">
           {isLoading ? (
             <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-10 text-center h-full flex items-center justify-center">
               <p className="text-sm font-black uppercase tracking-widest text-gray-500">Loading dashboard data from PostgreSQL...</p>

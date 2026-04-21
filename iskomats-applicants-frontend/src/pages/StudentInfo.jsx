@@ -299,6 +299,30 @@ const StudentInfo = () => {
   });
 
   const [autoScanTrigger, setAutoScanTrigger] = useState(null);
+  const [indigencyResults, setIndigencyResults] = useState([]);
+  const [coeResults, setCoeResults] = useState([]);
+  const [gradesResults, setGradesResults] = useState([]);
+  const [idResults, setIdResults] = useState([]);
+
+  const calculateVerificationPercentage = (results) => {
+    if (!results || !Array.isArray(results) || results.length === 0) return null;
+    let totalFields = 0;
+    let passedFields = 0;
+    
+    results.forEach(res => {
+      if (res.score_details) {
+        Object.values(res.score_details).forEach(val => {
+          if (val !== null) {
+            totalFields++;
+            if (val === true) passedFields++;
+          }
+        });
+      }
+    });
+    
+    if (totalFields === 0) return 0;
+    return Math.round((passedFields / totalFields) * 100);
+  };
   const triggerAutoScan = (docType) => setAutoScanTrigger(prev => prev === docType ? `${docType}_${Date.now()}` : docType);
 
   const getDocTypeFromField = (field) => {
@@ -927,6 +951,15 @@ const StudentInfo = () => {
       if (result.verified) {
         setVerified('success');
         setStatus(result.message || 'Verification successful!');
+        
+        // Store the detailed results if available
+        if (result.results) {
+          if (docType === 'Indigency') setIndigencyResults(result.results);
+          else if (docType === 'Enrollment') setCoeResults(result.results);
+          else if (docType === 'Grades') setGradesResults(result.results);
+          else if (docType === 'SchoolID') setIdResults(result.results);
+        }
+        
         return true;
       } else {
         const isTechnical = result.message?.includes('temporarily unavailable') || 
@@ -942,6 +975,15 @@ const StudentInfo = () => {
         setVerified('failed');
         const finalFailMsg = result.message || 'Verification failed. Please ensure your document is clear and all details (Name, ID, Year) are correct.';
         setStatus(finalFailMsg);
+        
+        // Store the detailed results even if verification failed to show the percentage
+        if (result.results) {
+          if (docType === 'Indigency') setIndigencyResults(result.results);
+          else if (docType === 'Enrollment') setCoeResults(result.results);
+          else if (docType === 'Grades') setGradesResults(result.results);
+          else if (docType === 'SchoolID') setIdResults(result.results);
+        }
+        
         return false;
       }
     } catch (err) {
@@ -3265,8 +3307,22 @@ const StudentInfo = () => {
                           <div className={`status-icon ${ocrVerified === 'success' ? 'success' : (ocrVerified === 'failed' ? 'failed' : 'processing')}`}>
                             <i className={`fas ${ocrVerified === 'success' ? 'fa-check' : (ocrVerified === 'failed' ? 'fa-circle-xmark' : 'fa-magnifying-glass')}`}></i>
                           </div>
-                          <div>
-                            <p style={{fontSize: '0.85rem', fontWeight: '700', margin: '0 0 4px 0'}}>Verification Feedback</p>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                              <p style={{fontSize: '0.85rem', fontWeight: '700', margin: 0}}>Verification Feedback</p>
+                              {indigencyResults.length > 0 && (
+                                <div style={{ 
+                                  fontSize: '0.75rem', 
+                                  fontWeight: '800', 
+                                  padding: '4px 10px', 
+                                  borderRadius: '10px', 
+                                  background: calculateVerificationPercentage(indigencyResults) === 100 ? '#dcfce7' : '#fee2e2',
+                                  color: calculateVerificationPercentage(indigencyResults) === 100 ? '#15803d' : '#b91c1c'
+                                }}>
+                                  {calculateVerificationPercentage(indigencyResults)}% Match
+                                </div>
+                              )}
+                            </div>
                             <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.5'}}>{ocrStatus}</p>
                           </div>
                         </div>
@@ -3686,8 +3742,22 @@ const StudentInfo = () => {
                       <div className={`status-icon ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`}>
                         <i className={`fas ${idVerified === 'success' ? 'fa-check' : (idVerified === 'failed' ? 'fa-circle-xmark' : 'fa-magnifying-glass')}`}></i>
                       </div>
-                      <div>
-                        <p style={{fontSize: '0.85rem', fontWeight: '800', margin: '0 0 4px 0'}}>Verification Engine Result</p>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                          <p style={{fontSize: '0.85rem', fontWeight: '800', margin: 0}}>Verification Engine Result</p>
+                          {idResults.length > 0 && (
+                            <div style={{ 
+                              fontSize: '0.75rem', 
+                              fontWeight: '800', 
+                              padding: '4px 10px', 
+                              borderRadius: '10px', 
+                              background: calculateVerificationPercentage(idResults) === 100 ? '#dcfce7' : '#fee2e2',
+                              color: calculateVerificationPercentage(idResults) === 100 ? '#15803d' : '#b91c1c'
+                            }}>
+                              {calculateVerificationPercentage(idResults)}% Match
+                            </div>
+                          )}
+                        </div>
                         <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.5'}}>{idStatus}</p>
                       </div>
                     </div>
@@ -3801,7 +3871,22 @@ const StudentInfo = () => {
                             <div className={`status-icon ${coeVerified === 'success' ? 'success' : (coeVerified === 'failed' ? 'failed' : 'processing')}`}>
                               <i className={`fas ${coeVerified === 'success' ? 'fa-check' : (coeVerified === 'failed' ? 'fa-circle-xmark' : 'fa-info-circle')}`}></i>
                             </div>
-                            <div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <p style={{fontSize: '0.8rem', fontWeight: '700', margin: 0}}>Verification Result</p>
+                                {coeResults.length > 0 && (
+                                  <div style={{ 
+                                    fontSize: '0.75rem', 
+                                    fontWeight: '800', 
+                                    padding: '4px 10px', 
+                                    borderRadius: '10px', 
+                                    background: calculateVerificationPercentage(coeResults) === 100 ? '#dcfce7' : '#fee2e2',
+                                    color: calculateVerificationPercentage(coeResults) === 100 ? '#15803d' : '#b91c1c'
+                                  }}>
+                                    {calculateVerificationPercentage(coeResults)}% Match
+                                  </div>
+                                )}
+                              </div>
                               <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.4'}}>{coeStatus}</p>
                             </div>
                           </div>
@@ -3915,7 +4000,22 @@ const StudentInfo = () => {
                               <div className={`status-icon ${gradesVerified === 'success' ? 'success' : (gradesVerified === 'failed' ? 'failed' : 'processing')}`}>
                                 <i className={`fas ${gradesVerified === 'success' ? 'fa-check' : (gradesVerified === 'failed' ? 'fa-circle-xmark' : 'fa-info-circle')}`}></i>
                               </div>
-                              <div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                  <p style={{fontSize: '0.8rem', fontWeight: '700', margin: 0}}>Verification Result</p>
+                                  {gradesResults.length > 0 && (
+                                    <div style={{ 
+                                      fontSize: '0.75rem', 
+                                      fontWeight: '800', 
+                                      padding: '4px 10px', 
+                                      borderRadius: '10px', 
+                                      background: calculateVerificationPercentage(gradesResults) === 100 ? '#dcfce7' : '#fee2e2',
+                                      color: calculateVerificationPercentage(gradesResults) === 100 ? '#15803d' : '#b91c1c'
+                                    }}>
+                                      {calculateVerificationPercentage(gradesResults)}% Match
+                                    </div>
+                                  )}
+                                </div>
                                 <p style={{fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.4'}}>{gradesStatus}</p>
                               </div>
                             </div>

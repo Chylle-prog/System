@@ -1870,7 +1870,7 @@ export default function ScholarshipDashboard({
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Recent Applicants */}
-          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="bg-white rounded-3xl shadow-md border border-gray-100 overflow-hidden">
             <div className="p-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
               <h3 className="font-black text-gray-900 uppercase tracking-widest text-xs">Recent Applicants</h3>
               <button onClick={() => setSection('track')} className="text-xs font-bold text-[#800020] hover:underline">View All</button>
@@ -1898,7 +1898,7 @@ export default function ScholarshipDashboard({
 
 
           {/* Recent Messages */}
-          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="bg-white rounded-3xl shadow-md border border-gray-100 overflow-hidden">
             <div className="p-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
               <h3 className="font-black text-gray-900 uppercase tracking-widest text-xs">Recent Messages</h3>
               <button onClick={() => setSection('inbox')} className="text-xs font-bold text-[#800020] hover:underline">View Inbox</button>
@@ -1932,7 +1932,7 @@ export default function ScholarshipDashboard({
 
     return (
       <section className="space-y-6">
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
+        <div className="bg-white rounded-3xl shadow-md border border-gray-100 p-8">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
             <div className="flex-1">
               <h2 className="text-2xl font-black text-gray-900">Scholarship Slot Tracking</h2>
@@ -2073,7 +2073,7 @@ export default function ScholarshipDashboard({
   const renderManage = () => {
     if (manageMode === 'list') {
       return (
-        <section className="bg-white p-6 rounded-xl shadow-sm">
+        <section className="bg-white p-8 rounded-2xl shadow-md border border-gray-50">
           <div className="flex items-center justify-between gap-3 flex-wrap mb-6">
             <div className="flex bg-gray-100 p-1 rounded-xl shadow-inner mb-4 md:mb-0">
                <button
@@ -2268,7 +2268,7 @@ export default function ScholarshipDashboard({
     }
 
     return (
-      <section className="bg-white p-6 rounded-xl shadow-sm">
+      <section className="bg-white p-8 rounded-2xl shadow-md border border-gray-50">
         <div className="flex items-center justify-between gap-3 mb-6">
           <h3 className="text-xl font-semibold text-[#800020]">
             {manageMode === 'edit' ? `Edit ${manageTab === 'scholarship' ? 'Scholarship Post' : 'Announcement'}` : `Create New ${manageTab === 'scholarship' ? 'Scholarship Post' : 'Announcement'}`}
@@ -2535,7 +2535,7 @@ export default function ScholarshipDashboard({
     const declinedList = declinedTagged;
 
     return (
-      <section className="bg-white p-6 rounded-xl shadow-sm">
+      <section className="bg-white p-8 rounded-2xl shadow-md border border-gray-50">
         <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
           <h3 className="text-xl font-semibold text-[#800020]">{trackTitle}</h3>
           <button
@@ -4330,8 +4330,8 @@ export default function ScholarshipDashboard({
         </nav>
       </aside>
 
-      <main className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-24' : 'ml-[19rem]'} flex-1 flex flex-col overflow-y-auto border-l border-gray-200/80 shadow-[inset_10px_0_15px_-10px_rgba(0,0,0,0.05)]`} style={{ maxHeight: 'calc(100vh - 5rem)' }}>
-        <header className="bg-white rounded-xl shadow-sm px-6 py-4 mb-6 flex items-center justify-between">
+      <main className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-24' : 'ml-[19rem]'} flex-1 flex flex-col overflow-y-auto px-10 py-10 custom-scrollbar border-l border-r border-gray-200/80 shadow-[inset_10px_0_15px_-10px_rgba(0,0,0,0.05)]`} style={{ maxHeight: 'calc(100vh - 5rem)' }}>
+        <header className="bg-white rounded-2xl shadow-sm px-8 py-5 mb-8 flex items-center justify-between border border-gray-100">
           <div className="flex items-center gap-2 text-[#800020] font-bold text-xl">
             {dashboardTitle}
           </div>
