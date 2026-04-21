@@ -4420,6 +4420,9 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
                     img_bytes = base64_to_bytes(url)
                     if img_bytes:
                         new_sequence.append(img_bytes)
+                elif url.startswith('http'):
+                    # Preserve existing cloud URLs
+                    new_sequence.append(url)
                 elif '/announcement-image/' in url:
                     try:
                         # Extract the index from the URL (last part of the path)
@@ -4446,12 +4449,18 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
             if isinstance(item, bytes):
                 # New image - ALWAYS cloud storage for announcements
                 file_path = f"ann_{ann_no}_upd_{i}_{int(datetime.now().timestamp())}.jpg"
-                url = upload_to_supabase(item, 'announcement_images', file_path)
-                if url:
-                    cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (url,))
-                else:
-                    print(f"[ANNOUNCEMENT UPDATE] Cloud storage failed for image {i}.", flush=True)
-                    raise ValueError("Failed to upload updated announcement image to cloud storage.")
+                try:
+                    url = upload_to_supabase(item, 'announcement_images', file_path)
+                    if url:
+                        cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (url,))
+                    else:
+                        print(f"[ANNOUNCEMENT UPDATE] Cloud storage failed for image {i}. Falling back to Base64 to prevent 500.", flush=True)
+                        b64 = base64.b64encode(item).decode('utf-8')
+                        cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (f"data:image/jpeg;base64,{b64}",))
+                except Exception as e:
+                    print(f"[ANNOUNCEMENT UPDATE] Cloud upload error: {e}", flush=True)
+                    b64 = base64.b64encode(item).decode('utf-8')
+                    cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (f"data:image/jpeg;base64,{b64}",))
             else:
                 # Existing image (either a URL string or an ID int)
                 if isinstance(item, str) and item.startswith('http'):
