@@ -4361,8 +4361,18 @@ def create_announcement(current_user_id, pro_no, role):
 
         return jsonify({'message': 'Announcement created', 'ann_no': ann_no}), 201
     except Exception as e:
-        return jsonify({'message': str(e)}), 500
+        if 'conn' in locals() and conn:
+            conn.rollback()
+        error_msg = f"Announcement creation failed: {str(e)}"
+        print(f"[ANNOUNCEMENT ERROR] {error_msg}", flush=True)
+        traceback.print_exc()
+        return jsonify({
+            'message': error_msg,
+            'details': traceback.format_exc()
+        }), 500
     finally:
+        if 'cur' in locals() and cur:
+            cur.close()
         if 'conn' in locals() and conn:
             conn.close()
 
@@ -4519,8 +4529,18 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
         
         return jsonify({'message': 'Announcement updated', 'ann_no': ann_no}), 200
     except Exception as e:
-        return jsonify({'message': str(e)}), 500
+        if 'conn' in locals() and conn:
+            conn.rollback()
+        error_msg = f"Announcement update failed: {str(e)}"
+        print(f"[ANNOUNCEMENT ERROR] {error_msg}", flush=True)
+        traceback.print_exc()
+        return jsonify({
+            'message': error_msg,
+            'details': traceback.format_exc()
+        }), 500
     finally:
+        if 'cur' in locals() and cur:
+            cur.close()
         if 'conn' in locals() and conn:
             conn.close()
 
