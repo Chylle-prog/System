@@ -2369,12 +2369,12 @@ export default function ScholarshipDashboard({
               <div>
                 <label className="block text-sm font-semibold text-[#800020] mb-1">Semester *</label>
                 <input
-                  type="text"
+                  type="number"
                   name="semester"
                   value={formData.semester}
                   onChange={handleFormChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                  placeholder="e.g. 1st Semester"
+                  placeholder="e.g. 1"
                   required
                 />
               </div>
