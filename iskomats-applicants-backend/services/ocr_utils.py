@@ -1293,7 +1293,7 @@ def extract_school_year_from_text(text):
     # Handles "Valid Until: 2025", "SY 2026", "School Year Sem 2025-2026"
     # We grab all digits and common year separators following the keyword
     keyword_pat = r'(?:school\s*year|academic\s*year|valid\s*until|v\.?u\.?|exp\.?\s*date|sem\b|sy\b|ay\b)'
-    keyword_match = re.search(f'{keyword_pat}.{{0,15}}?([0-9\\s\\-\\/\\.\\,\\~\\|]{{4,25}})', compact_text, re.IGNORECASE)
+    keyword_match = re.search(f'{keyword_pat}.{{0,40}}?([0-9\\s\\-\\/\\.\\,\\~\\|]{{4,25}})', compact_text, re.IGNORECASE)
     if keyword_match:
         captured = keyword_match.group(1).strip()
         # Clean the captured part to only keep digits and separators
