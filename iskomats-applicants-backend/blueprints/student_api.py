@@ -66,7 +66,7 @@ def ensure_applicant_verification_columns():
         cur.execute(f"""
             SELECT column_name
             FROM information_schema.columns
-            WHERE table_name = %s AND column_name IN ('is_verified', 'verification_code')
+            WHERE table_name = %s AND column_name IN ('is_verified')
         """, (applicant_email_table,))
         existing = {row['column_name'] if isinstance(row, dict) else row[0] for row in cur.fetchall()}
         
@@ -75,10 +75,6 @@ def ensure_applicant_verification_columns():
             cur.execute(f"ALTER TABLE {applicant_email_table} ADD COLUMN is_verified BOOLEAN DEFAULT FALSE")
             # For existing users, assume they are verified since they were promoted
             cur.execute(f"UPDATE {applicant_email_table} SET is_verified = TRUE")
-        
-        if 'verification_code' not in existing:
-            print(f"[MIGRATION] Adding verification_code to {applicant_email_table}")
-            cur.execute(f"ALTER TABLE {applicant_email_table} ADD COLUMN verification_code VARCHAR(100)")
             
         conn.commit()
         cur.close()
@@ -577,9 +573,7 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
             'indigency_doc': 'indigency',
             'id_img_front': 'id_verification',
             'id_img_back': 'id_verification',
-            'id_pic': 'id_verification',
             'profile_picture': 'profile_pictures',
-            'schoolID_photo': 'school_id'
         }
 
         folder = folder_map.get(field_name, 'others')
@@ -1505,13 +1499,11 @@ def student_verify_email():
             # 1b. If not in pending, check if they are an unverified permanent user
             if not pending and email:
                 cur.execute(
-                    f"SELECT app_em_no as pr_no, email_address, password_hash, verification_code FROM {applicant_email_table} WHERE email_address ILIKE %s AND is_verified = FALSE",
+                    f"SELECT app_em_no as pr_no, email_address, password_hash FROM {applicant_email_table} WHERE email_address ILIKE %s AND is_verified = FALSE",
                     (email,)
                 )
                 pending = cur.fetchone()
-                if pending and pending.get('verification_code') != token:
-                    pending = None
-                elif pending:
+                if pending:
                     # Mock pr_no for compatibility with the cleanup logic below
                     pending['is_permanent_unverified'] = True
 
@@ -1559,7 +1551,7 @@ def student_verify_email():
                 cur.execute(f"SELECT applicant_no FROM {applicant_email_table} WHERE email_address ILIKE %s", (email,))
                 applicant_no = cur.fetchone()['applicant_no']
                 cur.execute(
-                    f"UPDATE {applicant_email_table} SET is_verified = TRUE, verification_code = NULL WHERE email_address ILIKE %s",
+                    f"UPDATE {applicant_email_table} SET is_verified = TRUE WHERE email_address ILIKE %s",
                     (email,)
                 )
 
@@ -1923,7 +1915,7 @@ def student_reset_password():
 
             # Update password and verify account
             cur.execute(
-                f"UPDATE {applicant_email_table} SET password_hash = %s, is_verified = TRUE, verification_code = NULL WHERE applicant_no = %s AND TRIM(email_address) ILIKE %s",
+                f"UPDATE {applicant_email_table} SET password_hash = %s, is_verified = TRUE WHERE applicant_no = %s AND TRIM(email_address) ILIKE %s",
                 (hashed_password, user_no, email)
             )
             conn.commit()

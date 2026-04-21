@@ -9,13 +9,11 @@ APPLICANT_INLINE_MEDIA_COLUMNS = (
 
 APPLICANT_DOCUMENT_COLUMNS = (
     'signature_image_data',
-    'schoolID_photo',
     'id_img_front',
     'id_img_back',
     'enrollment_certificate_doc',
     'grades_doc',
     'indigency_doc',
-    'id_pic',
     'id_vid_url',
     'indigency_vid_url',
     'grades_vid_url',
