@@ -369,8 +369,14 @@ def year_level_matches_text(target_year, text):
             return True, expected_level
     
     # Pattern D: Final fallback - Look for a prefix followed by the target number within a small window
-    if re.search(rf'{prefix_pattern}.{{0,25}}?{number_pattern}\b', norm_text, re.IGNORECASE | re.DOTALL):
+    if re.search(rf'{prefix_pattern}.{{0,35}}?{number_pattern}\b', norm_text, re.IGNORECASE | re.DOTALL):
         return True, expected_level
+        
+    # Pattern E: Standalone match for ordinal numbers (e.g. "1st", "2nd")
+    if re.search(rf'\b{number_pattern}{suffix_pattern}\b', norm_text, re.IGNORECASE):
+        # But only if it's likely a year level (e.g. near "Year" or at start of line)
+        if re.search(rf'\b{number_pattern}{suffix_pattern}\s*year\b', norm_text, re.IGNORECASE):
+            return True, expected_level
 
     return False, None
 
@@ -1339,7 +1345,9 @@ def extract_semester_from_text(text):
     for pattern in semester_patterns:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
-            return normalize_semester_label(match.group(1))
+            # We always want the first captured group in these patterns
+            val = match.group(1) if match.groups() else match.group(0)
+            return normalize_semester_label(val)
     return None
 
 def normalize_semester_label(value):
@@ -1350,9 +1358,14 @@ def normalize_semester_label(value):
     if not semester_value:
         return None
 
-    if '1' in semester_value or 'first' in semester_value or 'lst' in semester_value or 'ist' in semester_value or '4' in semester_value:
+    # Handle numeric strings "1" or "2" directly
+    if semester_value == "1": return "1st"
+    if semester_value == "2": return "2nd"
+
+    # Aggressive keyword check
+    if any(x in semester_value for x in ['1st', 'first', 'lst', 'ist', '1']):
         return "1st"
-    if '2' in semester_value or 'second' in semester_value or 'and' in semester_value:
+    if any(x in semester_value for x in ['2nd', 'second', 'and', '2']):
         return "2nd"
     return None
 
