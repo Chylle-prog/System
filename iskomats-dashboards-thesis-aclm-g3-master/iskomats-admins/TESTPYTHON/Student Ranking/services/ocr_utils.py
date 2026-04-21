@@ -1807,6 +1807,7 @@ def _extract_signature_from_id_back(id_img):
     lane_y0, lane_y1 = int(height * 0.25), int(height * 0.45)
     lane_x0, lane_x1 = int(width * 0.15), int(width * 0.85)
     roi_gray = gray[lane_y0:lane_y1, lane_x0:lane_x1]
+    print(f"[SIGNATURE] Extracted ROI from ID Back: shape={roi_gray.shape}, zone=y({lane_y0}:{lane_y1}), x({lane_x0}:{lane_x1})", flush=True)
     
     # Step 2: High-contrast smoothing
     norm = cv2.normalize(roi_gray, None, 0, 255, cv2.NORM_MINMAX)
@@ -1821,28 +1822,42 @@ def _extract_signature_from_id_back(id_img):
     candidates = []
     h_idx, w_idx = binary.shape[:2]
     
+    # Calculate adaptive side margins for frame line purging (15% of width)
+    # The signature is always centered; frame lines/brackets are at the extreme left/right.
+    side_margin = int(w_idx * 0.15)
+    top_bottom_margin = max(5, int(h_idx * 0.10))
+    
     for cnt in contours:
         x, y, w, h = cv2.boundingRect(cnt)
         
         # SIDE-MARGIN PURGE: The frame lines always sit at the edges.
-        # Handwriting is centered. 30px is a safe 'no-ink' buffer.
-        if x < 30 or (x+w) > w_idx-30: continue
-        if y < 4 or (y+h) > h_idx-4: continue
+        if x < side_margin or (x + w) > (w_idx - side_margin):
+            # If it's at the margin, it must be very signature-like to stay (not just a line)
+            aspect_ratio = w / float(h) if h > 0 else 0
+            if aspect_ratio > 4.0 or aspect_ratio < 0.25: # Very thin lines/bars are frame parts
+                continue
+        
+        if y < top_bottom_margin or (y + h) > (h_idx - top_bottom_margin):
+            continue
         
         area = cv2.contourArea(cnt)
-        if area < 30: continue
+        if area < 40: continue
         
-        # SOLIDITY REJECTION: Printed lines are solid; handwriting is flowy/hollow.
+        # SOLIDITY REJECTION: Printed lines are solid; handwriting is flowy.
         solidity = area / float(w * h)
-        aspect = max(w/h, h/w)
+        aspect = max(w/float(h), h/float(w))
         
-        # Any component that is "line-like" AND "solid" is a printed frame line.
-        if aspect > 3.0 and solidity > 0.55: continue
+        # Reject extremely solid rectangles (like printed brackets or box pieces)
+        if solidity > 0.85 and area > 100: continue
+        
+        # Reject very long thin lines (even if not at margins)
+        if aspect > 12.0: continue
             
         complexity = cv2.arcLength(cnt, True)
-        candidates.append({'box': (x, y, w, h), 'complex': complexity, 'y_mid': y + h/2})
+        candidates.append({'box': (x, y, w, h), 'complex': complexity, 'y_mid': y + h/2.0})
 
     if not candidates:
+        print("[SIGNATURE] No handwriting candidates found in box.", flush=True)
         ch, cw = int(h_idx * 0.6), int(w_idx * 0.7)
         qy0, qx0 = int((h_idx - ch)/2), int((w_idx - cw)/2)
         fallback = roi_gray[qy0:qy0+ch, qx0:qx0+cw]
@@ -1865,7 +1880,7 @@ def _extract_signature_from_id_back(id_img):
     x1 = max(b[0] + b[2] for b in final_parts)
     y1 = max(b[1] + b[3] for b in final_parts)
     
-    pad = 4
+    pad = 5
     crop_bin = binary[max(0, y0-pad):min(h_idx, y1+pad), 
                       max(0, x0-pad):min(w_idx, x1+pad)]
     
@@ -1879,39 +1894,29 @@ def _extract_signature_from_id_back(id_img):
 def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None):
     """
     Neural signature matching against ID back image.
-    FIXED (Priority 6): Corrected function signature to match call site in student_api.py
-    
-    Args:
-        signature_bytes: Signature drawing as bytes or base64 data URI
-        id_back_bytes: ID back image as bytes or base64 data URI
-        student_id: Optional student ID for profile-based matching
-    
-    Returns:
-        (verified: bool, message: str, confidence: float, 
-         processed_signature_img: ndarray, extracted_id_img: ndarray)
     """
     try:
         from .signature_brain import calculate_neural_match, compare_signature_images, prepare_signature_match_view
         
         if not signature_bytes or not id_back_bytes:
-            return False, "Missing signature or ID image", 0.0, None, None
+            return False, "Missing signature or ID image", 0.0, None, None, None, None
         
         # Safely decode signature
         try:
             sig_img = _decode_cv_image(signature_bytes, white_background=True)
         except Exception as e:
             print(f"[SIGNATURE] Error decoding signature: {e}", flush=True)
-            return False, "Invalid signature format", 0.0, None, None
+            return False, "Invalid signature format", 0.0, None, None, None, None
         
         # Safely decode ID back image
         try:
             id_img = _decode_cv_image(id_back_bytes)
         except Exception as e:
             print(f"[SIGNATURE] Error decoding ID image: {e}", flush=True)
-            return False, "Invalid ID image format", 0.0, None, None
+            return False, "Invalid ID image format", 0.0, None, None, None, None
         
         if sig_img is None or id_img is None:
-            return False, "Could not decode images", 0.0, None, None
+            return False, "Could not decode images", 0.0, None, None, None, None
 
         preview_signature = _prepare_signature_preview(sig_img)
         extracted_id_signature = _extract_signature_from_id_back(id_img)
@@ -1923,7 +1928,7 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
         extracted_id_preview = extracted_id_signature  # Already display-ready via single-pass extraction
         matcher_reference_view = prepare_signature_match_view(extracted_id_signature)
         
-        # Neural matching restored: System now benefits from patterns learned in the Bench
+        # Neural matching: System now benefits from patterns learned in the Bench
         try:
             direct_score = compare_signature_images(sig_img, extracted_id_signature)
             profile_score = calculate_neural_match(sig_img, student_id) if student_id else 0.0
@@ -1931,10 +1936,12 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
             if profile_score > 0.0:
                 # 80/20 weighted average incorporates learning without overriding the primary ID check
                 score = (direct_score * 0.8) + (profile_score * 0.2)
-                score_source = f"direct={direct_score:.2f}, profile={profile_score:.2f}"
+                score_source = f"direct={direct_score:.4f}, profile={profile_score:.4f}"
             else:
                 score = direct_score
-                score_source = f"direct={direct_score:.2f}"
+                score_source = f"direct={direct_score:.4f}"
+            
+            print(f"[SIGNATURE] Final combined score: {score:.4f} ({score_source})", flush=True)
         except Exception as e:
             print(f"[SIGNATURE] Error in neural matching: {e}", flush=True)
             return False, f"Matching error: {str(e)}", 0.0, preview_signature, extracted_id_preview, matcher_submitted_view, matcher_reference_view
@@ -1949,6 +1956,9 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
         )
         
         return is_verified, status, float(score), preview_signature, extracted_id_preview, matcher_submitted_view, matcher_reference_view
+    except Exception as e:
+        print(f"[SIGNATURE] Wrapper error: {e}", flush=True)
+        return False, str(e), 0.0, None, None, None, None
     except Exception as e:
         print(f"[SIGNATURE] Wrapper error: {e}", flush=True)
         return False, str(e), 0.0, None, None, None, None
