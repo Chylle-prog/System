@@ -3379,11 +3379,9 @@ def ocr_check():
                         id_ok, _ = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
                         course_ok, _ = course_matches_text(course, raw) if course else (True, None)
                         
-                        print(f"[OCR-ENROLLMENT] Checking Year Level: target='{expected_year_level}', result={year_level_ok}", flush=True)
-                        
-                        # Strictly require ALL fields for Enrollment (COR/COE) to be OK
-                        # Including the text density check (v) to prevent blank images from passing
-                        data_verified = name_ok and id_ok and school_ok and course_ok and year_only_ok and semester_ok and year_level_ok
+                        # Removal: Year level verification is disabled to prevent common OCR mismatches for Enrollment
+                        year_level_ok = True
+                        data_verified = name_ok and id_ok and school_ok and course_ok and year_only_ok and semester_ok
                         v = v and data_verified and v_video
                         
                         checklist = [
@@ -3419,9 +3417,9 @@ def ocr_check():
                         gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
                         id_ok, _ = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
                         
-                        # Grades should match the school and student identity
-                        # If the image is unreadable (v is False), everything fails
-                        data_verified = name_ok and id_ok and year_only_ok and gpa_ok and school_ok and year_level_ok and semester_ok
+                        # Removal: Year level verification is disabled to prevent common OCR mismatches for Grades
+                        year_level_ok = True
+                        data_verified = name_ok and id_ok and year_only_ok and gpa_ok and school_ok and semester_ok
                         v = v and data_verified and v_video
                         
                         if school_name and not school_ok:
