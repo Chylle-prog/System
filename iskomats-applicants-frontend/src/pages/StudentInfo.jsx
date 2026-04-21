@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import SignaturePad from '../components/SignaturePad';
 import VideoRecorder from '../components/VideoRecorder';
@@ -4256,59 +4256,9 @@ const StudentInfo = () => {
                                 borderLeft: `3px solid ${signatureResults.verified ? '#10b981' : '#ef4444'}`,
                                 fontSize: '0.7rem',
                                 color: '#475569',
-                                lineHeight: '1.4',
-                                marginBottom: '15px'
+                                lineHeight: '1.4'
                               }}>
                                 {signatureResults.message}
-                              </div>
-
-                              <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '12px' }}>
-                                <button 
-                                  type="button" 
-                                  onClick={async () => {
-                                    try {
-                                      setIsFaceMatching(true);
-                                      const resp = await applicantAPI.submitSignatureFeedback({
-                                        signature_image: photos.signature_photo,
-                                        was_verified: signatureResults.verified,
-                                        decision: 'agree'
-                                      });
-                                      showPromptMessage(`âœ… ${resp.message}`);
-                                    } catch (err) {
-                                      showPromptMessage('Failed to submit feedback.');
-                                    } finally {
-                                      setIsFaceMatching(false);
-                                    }
-                                  }}
-                                  style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', fontSize: '0.65rem', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s' }}
-                                  onMouseOver={(e) => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#10b981'; e.currentTarget.style.color = '#10b981'; }}
-                                  onMouseOut={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = 'inherit'; }}
-                                >
-                                  <i className="fas fa-thumbs-up" style={{ marginRight: '5px' }}></i> I AGREE
-                                </button>
-                                <button 
-                                  type="button" 
-                                  onClick={async () => {
-                                    try {
-                                      setIsFaceMatching(true);
-                                      const resp = await applicantAPI.submitSignatureFeedback({
-                                        signature_image: photos.signature_photo,
-                                        was_verified: signatureResults.verified,
-                                        decision: 'disagree'
-                                      });
-                                      showPromptMessage(`â„¹ï¸ ${resp.message}`);
-                                    } catch (err) {
-                                      showPromptMessage('Failed to submit feedback.');
-                                    } finally {
-                                      setIsFaceMatching(false);
-                                    }
-                                  }}
-                                  style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', fontSize: '0.65rem', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s' }}
-                                  onMouseOver={(e) => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#ef4444'; e.currentTarget.style.color = '#ef4444'; }}
-                                  onMouseOut={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = 'inherit'; }}
-                                >
-                                  <i className="fas fa-thumbs-down" style={{ marginRight: '5px' }}></i> DISAGREE
-                                </button>
                               </div>
                             </div>
                           )}
