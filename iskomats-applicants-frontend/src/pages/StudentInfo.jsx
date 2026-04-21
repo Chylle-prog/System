@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+﻿import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import SignaturePad from '../components/SignaturePad';
 import VideoRecorder from '../components/VideoRecorder';
@@ -21,7 +21,7 @@ const BARANGAYS = [
   "Poblacion Barangay 12", "Pusil", "Quezon", "Rizal", "Sabang",
   "Sampaguita", "San Benito", "San Carlos", "San Celestino", "San Francisco",
   "San Guillermo", "San Isidro", "San Jose", "San Lucas", "San Salvador",
-  "San Sebastian (Balagbag)", "Santo Niño", "Santo Toribio", "Sico",
+  "San Sebastian (Balagbag)", "Santo NiÃ±o", "Santo Toribio", "Sico",
   "Talisay", "Tambo", "Tangob", "Tanguay", "Tibig", "Tipacan"
 ];
 
@@ -816,12 +816,12 @@ const StudentInfo = () => {
     const currentSignature = drawnSignature || formData.applicantSignatureName;
 
     if (!currentSignature) {
-      showPromptMessage('⚠️ Please provide your signature first using the digital pad.');
+      showPromptMessage('âš ï¸ Please provide your signature first using the digital pad.');
       return;
     }
 
     if (!idBack) {
-      showPromptMessage('⚠️ Reference ID (Back) not found. Please upload it in Step 3 first.');
+      showPromptMessage('âš ï¸ Reference ID (Back) not found. Please upload it in Step 3 first.');
       return;
     }
 
@@ -861,7 +861,7 @@ const StudentInfo = () => {
       if (type === 'signature') {
         await applicantAPI.sendSignatureFeedback(isCorrect);
         setFeedbackStatus(prev => ({ ...prev, signature: true }));
-        showPromptMessage('✅ Thank you for your feedback!');
+        showPromptMessage('âœ… Thank you for your feedback!');
       }
     } catch (err) {
       console.warn('Feedback error:', err);
@@ -1030,19 +1030,19 @@ const StudentInfo = () => {
     }
 
     if (!indigencyDoc) {
-      showPromptMessage('⚠️ Please upload or capture your Certificate of Indigency first.');
+      showPromptMessage('âš ï¸ Please upload or capture your Certificate of Indigency first.');
       return;
     }
     if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
-      showPromptMessage('⚠️ Please record and upload the Indigency video first.');
+      showPromptMessage('âš ï¸ Please record and upload the Indigency video first.');
       return;
     }
     if (!townCity) {
-      showPromptMessage('⚠️ Please fill in your Town/City first.');
+      showPromptMessage('âš ï¸ Please fill in your Town/City first.');
       return;
     }
     if (!barangay) {
-      showPromptMessage('⚠️ Please select your Barangay first in the dropdown.');
+      showPromptMessage('âš ï¸ Please select your Barangay first in the dropdown.');
       return;
     }
 
@@ -1053,9 +1053,9 @@ const StudentInfo = () => {
       // Only check video presence, not full video OCR (backend already optimized)
       const success = await performOcrVerification('Indigency', indigencyDoc, { townCity: formData.townCityMunicipality, barangay: formData.barangay }, videoUrl);
       if (success) {
-        showPromptMessage('✅ Indigency verified successfully!');
+        showPromptMessage('âœ… Indigency verified successfully!');
       } else {
-        showPromptMessage('❌ Verification failed. Please ensure document and video are clear.');
+        showPromptMessage('âŒ Verification failed. Please ensure document and video are clear.');
       }
     } catch (err) {
       console.error('Scan Error:', err);
@@ -1076,15 +1076,15 @@ const StudentInfo = () => {
     const videoUrl = formData.mayorCOE_video || documentVideos.mayorCOE_video;
 
     if (!coeDoc) {
-      showPromptMessage('⚠️ Please upload your Certificate of Enrollment first.');
+      showPromptMessage('âš ï¸ Please upload your Certificate of Enrollment first.');
       return;
     }
     if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
-      showPromptMessage('⚠️ Please record and upload the COE video first.');
+      showPromptMessage('âš ï¸ Please record and upload the COE video first.');
       return;
     }
     if (!schoolName || !idNumber || !yearLevel || !course || !semester) {
-      showPromptMessage('⚠️ Please complete School Name, School ID Number, Year Level, Course, and Semester first.');
+      showPromptMessage('âš ï¸ Please complete School Name, School ID Number, Year Level, Course, and Semester first.');
       return;
     }
 
@@ -1093,9 +1093,9 @@ const StudentInfo = () => {
     try {
       const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, idNumber, yearLevel, course, semester }, videoUrl);
       if (success) {
-        showPromptMessage('✅ COE verified successfully!');
+        showPromptMessage('âœ… COE verified successfully!');
       } else {
-        showPromptMessage('❌ COE verification failed.');
+        showPromptMessage('âŒ COE verification failed.');
       }
     } catch (err) {
       console.error('Scan Error:', err);
@@ -1115,15 +1115,15 @@ const StudentInfo = () => {
     const videoUrl = formData.mayorGrades_video || documentVideos.mayorGrades_video;
 
     if (!gradesDoc) {
-      showPromptMessage('⚠️ Please upload your Grades document first.');
+      showPromptMessage('âš ï¸ Please upload your Grades document first.');
       return;
     }
     if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
-      showPromptMessage('⚠️ Please record and upload the Grades video first.');
+      showPromptMessage('âš ï¸ Please record and upload the Grades video first.');
       return;
     }
     if (!schoolName || !idNumber || !yearLevel || !gpa || !formData.semester) {
-      showPromptMessage('⚠️ Please complete School Name, School ID Number, Year Level, GPA, and Semester first.');
+      showPromptMessage('âš ï¸ Please complete School Name, School ID Number, Year Level, GPA, and Semester first.');
       return;
     }
 
@@ -1138,9 +1138,9 @@ const StudentInfo = () => {
         semester: formData.semester 
       }, videoUrl);
       if (success) {
-        showPromptMessage('✅ Grades verified successfully!');
+        showPromptMessage('âœ… Grades verified successfully!');
       } else {
-        showPromptMessage('❌ Grades verification failed.');
+        showPromptMessage('âŒ Grades verification failed.');
       }
     } catch (err) {
       console.error('Scan Error:', err);
@@ -1174,19 +1174,19 @@ const StudentInfo = () => {
     }
 
     if (!idFront || !idBack) {
-      showPromptMessage('⚠️ Please upload both front and back of your School ID first.');
+      showPromptMessage('âš ï¸ Please upload both front and back of your School ID first.');
       return;
     }
     if (!frontVideoUrl || typeof frontVideoUrl !== 'string' || !frontVideoUrl.startsWith('http')) {
-      showPromptMessage('⚠️ Please record and upload the front School ID video first.');
+      showPromptMessage('âš ï¸ Please record and upload the front School ID video first.');
       return;
     }
     if (!backVideoUrl || typeof backVideoUrl !== 'string' || !backVideoUrl.startsWith('http')) {
-      showPromptMessage('⚠️ Please record and upload the back School ID video first.');
+      showPromptMessage('âš ï¸ Please record and upload the back School ID video first.');
       return;
     }
     if (!formData.schoolName || !formData.schoolIdNumber || !formData.yearLevel) {
-      showPromptMessage('⚠️ Please complete School Name, School ID Number, and Year Level first.');
+      showPromptMessage('âš ï¸ Please complete School Name, School ID Number, and Year Level first.');
       return;
     }
 
@@ -1206,9 +1206,9 @@ const StudentInfo = () => {
         { front: frontVideoUrl, back: backVideoUrl }
       );
       if (success) {
-        showPromptMessage('✅ Front & Back ID verified successfully!');
+        showPromptMessage('âœ… Front & Back ID verified successfully!');
       } else {
-        showPromptMessage('❌ Front & Back ID verification failed.');
+        showPromptMessage('âŒ Front & Back ID verification failed.');
       }
     } catch (err) {
       console.error('Scan Error:', err);
@@ -1811,7 +1811,7 @@ const StudentInfo = () => {
   const [hasInteracted, setHasInteracted] = useState(false);
 
   useEffect(() => {
-    // ─── AUTO-SCAN LOGIC ───
+    // â”€â”€â”€ AUTO-SCAN LOGIC â”€â”€â”€
     if (isAnyScanning || isSavingStep || !autoScanTrigger) return;
 
     const baseScanType = String(autoScanTrigger).split('_')[0];
@@ -2012,7 +2012,7 @@ const StudentInfo = () => {
       setSignatureStatus('');
       setSignatureImage(dataUrl);
     } else {
-      showPromptMessage('⚠️ Please provide a signature first.');
+      showPromptMessage('âš ï¸ Please provide a signature first.');
     }
   };
 
@@ -2027,7 +2027,7 @@ const StudentInfo = () => {
   const handleNextStep = async (e) => {
     if (e) e.preventDefault();
     if (isAnyScanning) {
-      showPromptMessage('⚠️ Please wait for individual verification to complete before proceeding.');
+      showPromptMessage('âš ï¸ Please wait for individual verification to complete before proceeding.');
       return;
     }
     const pendingUploads = Object.values(uploadingFields);
@@ -2070,63 +2070,63 @@ const StudentInfo = () => {
     // --- Manual File Requirement Checks ---
     if (currentStep === 1) {
       if (!idPicturePreview) {
-        showPromptMessage('⚠️ Please upload your 2x2 ID Picture.');
+        showPromptMessage('âš ï¸ Please upload your 2x2 ID Picture.');
         return;
       }
       if (!photos.mayorIndigency_photo && !formData.mayorIndigency_photo && !userProfile?.indigency_doc) {
-        showPromptMessage('⚠️ Please upload your Certificate of Indigency.');
+        showPromptMessage('âš ï¸ Please upload your Certificate of Indigency.');
         return;
       }
       if (!isStep1DocumentsVerified) {
-        showPromptMessage('⚠️ Please verify your Certificate of Indigency before proceeding to the next step.');
+        showPromptMessage('âš ï¸ Please verify your Certificate of Indigency before proceeding to the next step.');
         return;
       }
     }
 
     if (currentStep === 3) {
       if ((!schoolIdPhotos.front && !userProfile?.id_img_front) || (!schoolIdPhotos.back && !userProfile?.id_img_back)) {
-        showPromptMessage('⚠️ Please upload both Front and Back of your ID.');
+        showPromptMessage('âš ï¸ Please upload both Front and Back of your ID.');
         return;
       }
       if (!photos.mayorCOE_photo && !formData.mayorCOE_photo && !userProfile?.enrollment_certificate_doc) {
-        showPromptMessage('⚠️ Please upload your Certificate of Enrollment.');
+        showPromptMessage('âš ï¸ Please upload your Certificate of Enrollment.');
         return;
       }
       if (!photos.mayorGrades_photo && !formData.mayorGrades_photo && !userProfile?.grades_doc) {
-        showPromptMessage('⚠️ Please upload your Grades document.');
+        showPromptMessage('âš ï¸ Please upload your Grades document.');
         return;
       }
       if (idVerified !== 'success') {
-        showPromptMessage('⚠️ Please verify your Front & Back ID before proceeding to the next step.');
+        showPromptMessage('âš ï¸ Please verify your Front & Back ID before proceeding to the next step.');
         return;
       }
       if (coeVerified !== 'success') {
-        showPromptMessage('⚠️ Please verify your Certificate of Enrollment before proceeding to the next step.');
+        showPromptMessage('âš ï¸ Please verify your Certificate of Enrollment before proceeding to the next step.');
         return;
       }
       if (gradesVerified !== 'success') {
-        showPromptMessage('⚠️ Please verify your Grades document before proceeding to the next step.');
+        showPromptMessage('âš ï¸ Please verify your Grades document before proceeding to the next step.');
         return;
       }
     }
 
     if (currentStep === 4) {
       if (!(drawnSignature || formData.applicantSignatureName)) {
-        showPromptMessage('⚠️ Please provide your signature before proceeding.');
+        showPromptMessage('âš ï¸ Please provide your signature before proceeding.');
         return;
       }
       if (signatureVerified !== 'success') {
-        showPromptMessage('⚠️ Please verify your handwriting against your ID signature before submitting.');
+        showPromptMessage('âš ï¸ Please verify your handwriting against your ID signature before submitting.');
         return;
       }
       if (faceVerified !== 'success' && faceMatchResult?.is_match !== true) {
-        showPromptMessage('⚠️ Please complete the final Face Identity Verification before submitting.');
+        showPromptMessage('âš ï¸ Please complete the final Face Identity Verification before submitting.');
         return;
       }
     }
 
     if (isMissing) {
-      showPromptMessage('⚠️ Please fill in all required fields.');
+      showPromptMessage('âš ï¸ Please fill in all required fields.');
       return;
     }
 
@@ -2143,7 +2143,7 @@ const StudentInfo = () => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       console.error('Save error:', err);
-      showPromptMessage(`⚠️ Could not save Step ${currentStep}. ${err.message}`);
+      showPromptMessage(`âš ï¸ Could not save Step ${currentStep}. ${err.message}`);
     } finally {
       setIsSavingStep(false);
     }
@@ -2205,7 +2205,7 @@ const StudentInfo = () => {
     }
 
     if (missingLabel) {
-      showPromptMessage(`⚠️ Please fill in all fields: ${missingLabel} is missing.`);
+      showPromptMessage(`âš ï¸ Please fill in all fields: ${missingLabel} is missing.`);
       return;
     }
 
@@ -2225,7 +2225,7 @@ const StudentInfo = () => {
     }
 
     if (missingDocLabel) {
-      showPromptMessage(`⚠️ Please upload the document: ${missingDocLabel}.`);
+      showPromptMessage(`âš ï¸ Please upload the document: ${missingDocLabel}.`);
       return;
     }
 
@@ -2234,21 +2234,21 @@ const StudentInfo = () => {
       (!schoolIdPhotos.back && !userProfile?.id_img_back) ||
       (!photos.face_photo && !userProfile?.profile_picture)
     ) {
-      showPromptMessage('⚠️ Please complete Identity Verification: Upload Front/Back School ID and a Face Photo.');
+      showPromptMessage('âš ï¸ Please complete Identity Verification: Upload Front/Back School ID and a Face Photo.');
       return;
     }
 
     if (!formData.privacyConsent) {
-      showPromptMessage('⚠️ Please accept the Privacy Policy to proceed.');
+      showPromptMessage('âš ï¸ Please accept the Privacy Policy to proceed.');
       return;
     }
     if (!formData.dataCertifyConsent) {
-      showPromptMessage('⚠️ Please certify that the information provided is correct.');
+      showPromptMessage('âš ï¸ Please certify that the information provided is correct.');
       return;
     }
 
     if (!signaturePreview && !drawnSignature && !signatureImage && !formData.applicantSignatureName) {
-      showPromptMessage('⚠️ Please either upload a signature photo or draw your signature.');
+      showPromptMessage('âš ï¸ Please either upload a signature photo or draw your signature.');
       return;
     }
 
@@ -2258,7 +2258,7 @@ const StudentInfo = () => {
     }
     
     if (!reqNo || isNaN(parseInt(reqNo))) {
-      showPromptMessage('⚠️ Scholarship ID missing or invalid.');
+      showPromptMessage('âš ï¸ Scholarship ID missing or invalid.');
       return;
     }
 
@@ -2351,7 +2351,7 @@ const StudentInfo = () => {
       }, 3000);
     } catch (err) {
       console.error('Submission error:', err);
-      showPromptMessage(`⚠️ Error: ${err.message}`);
+      showPromptMessage(`âš ï¸ Error: ${err.message}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -4204,7 +4204,7 @@ const StudentInfo = () => {
                                   {signatureResults.verified ? 'VERIFIED' : 'MISMATCH'}
                                 </div>
                                 <div style={{fontSize: '0.75rem', fontWeight: '700', color: '#64748b'}}>
-                                  Confidence Score: {(signatureResults.confidence * 100).toFixed(1)}%
+                                  Confidence Score: {signatureResults.confidence.toFixed(1)}%
                                 </div>
                               </div>
 
@@ -4228,6 +4228,27 @@ const StudentInfo = () => {
                                 </div>
                               </div>
 
+                              <div style={{ marginBottom: '15px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                  <span style={{ fontSize: '0.65rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>MATCHER ZOOM (Normalized for comparison)</span>
+                                  <div style={{ fontSize: '0.6rem', color: '#3b82f6', background: '#eff6ff', padding: '2px 6px', borderRadius: '4px', fontWeight: '700' }}>ALGORITHM VIEW</div>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px', textAlign: 'center' }}>
+                                    <p style={{ fontSize: '0.55rem', color: '#94a3b8', marginBottom: '4px', fontWeight: '700' }}>SUBMITTED</p>
+                                    {signatureResults.matcher_submitted ? (
+                                      <img src={signatureResults.matcher_submitted} alt="Matcher Sub" style={{ width: '100%', height: '50px', objectFit: 'contain' }} />
+                                    ) : <div style={{ height: '50px', background: '#eee' }}></div>}
+                                  </div>
+                                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px', textAlign: 'center' }}>
+                                    <p style={{ fontSize: '0.55rem', color: '#94a3b8', marginBottom: '4px', fontWeight: '700' }}>REFERENCE</p>
+                                    {signatureResults.matcher_reference ? (
+                                      <img src={signatureResults.matcher_reference} alt="Matcher Ref" style={{ width: '100%', height: '50px', objectFit: 'contain' }} />
+                                    ) : <div style={{ height: '50px', background: '#eee' }}></div>}
+                                  </div>
+                                </div>
+                              </div>
+
                               <div style={{
                                 background: 'white',
                                 padding: '10px',
@@ -4239,6 +4260,55 @@ const StudentInfo = () => {
                                 marginBottom: '15px'
                               }}>
                                 {signatureResults.message}
+                              </div>
+
+                              <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '12px' }}>
+                                <button 
+                                  type="button" 
+                                  onClick={async () => {
+                                    try {
+                                      setIsFaceMatching(true);
+                                      const resp = await applicantAPI.submitSignatureFeedback({
+                                        signature_image: photos.signature_photo,
+                                        was_verified: signatureResults.verified,
+                                        decision: 'agree'
+                                      });
+                                      showPromptMessage(`âœ… ${resp.message}`);
+                                    } catch (err) {
+                                      showPromptMessage('Failed to submit feedback.');
+                                    } finally {
+                                      setIsFaceMatching(false);
+                                    }
+                                  }}
+                                  style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', fontSize: '0.65rem', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s' }}
+                                  onMouseOver={(e) => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#10b981'; e.currentTarget.style.color = '#10b981'; }}
+                                  onMouseOut={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = 'inherit'; }}
+                                >
+                                  <i className="fas fa-thumbs-up" style={{ marginRight: '5px' }}></i> I AGREE
+                                </button>
+                                <button 
+                                  type="button" 
+                                  onClick={async () => {
+                                    try {
+                                      setIsFaceMatching(true);
+                                      const resp = await applicantAPI.submitSignatureFeedback({
+                                        signature_image: photos.signature_photo,
+                                        was_verified: signatureResults.verified,
+                                        decision: 'disagree'
+                                      });
+                                      showPromptMessage(`â„¹ï¸ ${resp.message}`);
+                                    } catch (err) {
+                                      showPromptMessage('Failed to submit feedback.');
+                                    } finally {
+                                      setIsFaceMatching(false);
+                                    }
+                                  }}
+                                  style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', fontSize: '0.65rem', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s' }}
+                                  onMouseOver={(e) => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#ef4444'; e.currentTarget.style.color = '#ef4444'; }}
+                                  onMouseOut={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = 'inherit'; }}
+                                >
+                                  <i className="fas fa-thumbs-down" style={{ marginRight: '5px' }}></i> DISAGREE
+                                </button>
                               </div>
                             </div>
                           )}
@@ -4315,7 +4385,7 @@ const StudentInfo = () => {
                         <button type="button" onClick={async () => {
                           const idImg = schoolIdPhotos.front || userProfile?.id_img_front;
                           if (!idImg) {
-                            showPromptMessage('⚠️ Please upload your School ID in Step 3 first.');
+                            showPromptMessage('âš ï¸ Please upload your School ID in Step 3 first.');
                             return;
                           }
                           
@@ -4328,14 +4398,14 @@ const StudentInfo = () => {
                             const result = await applicantAPI.verifyFaceAgainstId(faceImage, normalizedIdImage);
                             setFaceMatchResult(result);
                             if (result.verified) {
-                              showPromptMessage('✅ Face successfully matched with ID!');
+                              showPromptMessage('âœ… Face successfully matched with ID!');
                             } else {
-                              showPromptMessage(`❌ Face Match Issue: ${result.message || 'Face does not match the ID.'}`);
+                              showPromptMessage(`âŒ Face Match Issue: ${result.message || 'Face does not match the ID.'}`);
                             }
                           } catch (err) {
                             console.error('Match error:', err);
                             // Do not auto-verify on technical errors for security
-                            showPromptMessage('ℹ️ Verification service issue. Please try again with a clearer photo.');
+                            showPromptMessage('â„¹ï¸ Verification service issue. Please try again with a clearer photo.');
                             setFaceMatchResult({ verified: false, technical_unavailable: true });
                           } finally {
                             setIsFaceMatching(false);

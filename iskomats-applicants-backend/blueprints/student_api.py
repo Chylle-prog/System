@@ -239,28 +239,35 @@ def gpa_matches_text(raw_text, expected_gpa):
     if gpa_candidates:
         msg_prefix = "[GPA LABELED]"
         for number in gpa_candidates:
-            if abs(number - expected_value) <= 0.08:
+            # Stricter absolute check
+            if abs(number - expected_value) <= 0.02:
                 return True, number, gpa_candidates
             
             num_norm = normalize_to_percent(number)
             if 70 <= num_norm <= 100 and 70 <= exp_norm <= 100:
-                if num_norm >= (exp_norm - 1.5):
+                # Stricter percentage buffer
+                if abs(num_norm - exp_norm) <= 0.5:
                     return True, number, gpa_candidates
         
         print(f"{msg_prefix} Found labeled GPA but mismatched expected {expected_value}. Candidates: {gpa_candidates}", flush=True)
         return False, gpa_candidates[0], gpa_candidates
 
     # Only if no GPA/GWA labels were found, fallback to raw numeric scanning
+    # CRITICAL: We skip common low numbers (1, 2, 3, 4) in transcripts as they are usually credits/units
     for number in raw_numbers:
-        if abs(number - expected_value) <= 0.05:
+        # If it's a common credit value and doesn't exactly match our target to 0.01, ignore it
+        if number in [1.0, 2.0, 3.0, 4.0, 5.0] and abs(number - expected_value) > 0.01:
+            continue
+
+        if abs(number - expected_value) <= 0.02:
             return True, number, raw_numbers
         
         num_norm = normalize_to_percent(number)
         if 70 <= num_norm <= 100 and 70 <= exp_norm <= 100:
-            if num_norm >= (exp_norm - 1.0): 
+            if abs(num_norm - exp_norm) <= 0.5: 
                 return True, number, raw_numbers
 
-    return False, (candidate_numbers[0] if candidate_numbers else None), candidate_numbers
+    return False, None, raw_numbers
 
 
 def get_announcement_image_columns(cursor):
@@ -4021,10 +4028,11 @@ def signature_match():
             matcher_reference = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
         
         # Ensure all values are native Python types (not numpy types)
+        # Scale confidence to 0-100 to match Verifier Bench UI expectations
         return jsonify({
             'verified': bool(verified),
             'message': str(message),
-            'confidence': float(confidence),
+            'confidence': float(confidence) * 100.0,
             'processed_submitted': processed_submitted,
             'extracted_signature': extracted_signature,
             'matcher_submitted': matcher_submitted,
