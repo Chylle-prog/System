@@ -2119,7 +2119,7 @@ const StudentInfo = () => {
         showPromptMessage('âš ï¸ Please verify your handwriting against your ID signature before submitting.');
         return;
       }
-      if (faceVerified !== 'success' && faceMatchResult?.is_match !== true) {
+      if (faceVerified !== 'success' && faceMatchResult?.verified !== true) {
         showPromptMessage('âš ï¸ Please complete the final Face Identity Verification before submitting.');
         return;
       }
@@ -4348,6 +4348,7 @@ const StudentInfo = () => {
                             const result = await applicantAPI.verifyFaceAgainstId(faceImage, normalizedIdImage);
                             setFaceMatchResult(result);
                             if (result.verified) {
+                              setFaceVerified('success');
                               showPromptMessage('âœ… Face successfully matched with ID!');
                             } else {
                               showPromptMessage(`âŒ Face Match Issue: ${result.message || 'Face does not match the ID.'}`);

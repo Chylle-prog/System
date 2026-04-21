@@ -70,8 +70,8 @@ _FACE_MODEL_LOCK = eventlet.semaphore.Semaphore(1)
 _FACE_DETECTOR = None
 _FACE_RECOGNIZER = None
 _FACE_MODEL_INIT_ERROR = None
-_FACE_MATCH_THRESHOLD = 0.50 # Unified threshold
-_FACE_DETECTION_THRESHOLD = 0.35
+_FACE_MATCH_THRESHOLD = 0.40 # Unified threshold (lowered from 0.50 for better UX)
+_FACE_DETECTION_THRESHOLD = 0.25 # Lowered from 0.35 to tolerate varied lighting
 
 # Preload Tesseract at startup for faster first OCR (after definition)
 def _preload_tesseract():
@@ -1513,9 +1513,9 @@ def verify_face_with_id(user_photo_bytes, id_photo_bytes):
         user_image = _decode_face_image(user_photo_bytes)
         id_image = _decode_face_image(id_photo_bytes)
 
-        # For selfies, we want the face to occupy at least 8% of the processing frame
+        # For selfies, we want the face to occupy at least 6% of the processing frame (lowered from 8%)
         user_faces = detector.detect(user_image)
-        user_face = _pick_primary_face(user_faces, 'the live photo', min_area_pct=8.0)
+        user_face = _pick_primary_face(user_faces, 'the live photo', min_area_pct=6.0)
         
         # For ID cards, the face can be quite small (no min_area)
         id_faces = detector.detect(id_image)
@@ -1538,7 +1538,7 @@ def verify_face_with_id(user_photo_bytes, id_photo_bytes):
         if similarity >= _FACE_MATCH_THRESHOLD:
             return True, f"Face verified (similarity: {similarity:.3f})", similarity
 
-        if similarity >= 0.40:
+        if similarity >= 0.33:
             return False, f"Face match uncertain (similarity: {similarity:.3f}).", similarity
 
         return False, f"Face does not match the ID (similarity: {similarity:.3f}).", similarity
@@ -2004,8 +2004,8 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
             print(f"[SIGNATURE] Error in neural matching: {e}", flush=True)
             return False, f"Matching error: {str(e)}", 0.0, preview_signature, extracted_id_preview, matcher_submitted_view, matcher_reference_view
         
-        # Threshold set to 0.60 based on user preference
-        threshold = 0.60
+        # Threshold lowered to 0.52 to improve user acceptance for digital drawings
+        threshold = 0.52
         is_verified = score >= threshold
         status = (
             f"Signature match successful ({score_source})"
