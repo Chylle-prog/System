@@ -404,9 +404,13 @@ def ensure_schema_integrity(cursor):
     if res:
         col_type = res['data_type'] if isinstance(res, dict) else res[0]
         if col_type.lower() == 'bytea':
-            print("[MIGRATION] Converting announcement_images.img from BYTEA to TEXT")
-            # We use USING NULL to avoid conversion errors with encrypted data
-            cursor.execute("ALTER TABLE announcement_images ALTER COLUMN img TYPE TEXT USING NULL")
+            print("[MIGRATION] Converting announcement_images.img from BYTEA to TEXT (preserving data via Base64 encode)")
+            # Try to preserve data by converting binary to its Base64 string representation
+            try:
+                cursor.execute("ALTER TABLE announcement_images ALTER COLUMN img TYPE TEXT USING encode(img, 'base64')")
+            except Exception as e:
+                print(f"[MIGRATION WARNING] Binary conversion failed, forcing NULL: {e}")
+                cursor.execute("ALTER TABLE announcement_images ALTER COLUMN img TYPE TEXT USING NULL")
 
     # 3. Scholarship specific fields
     scholarship_cols = {
@@ -4305,14 +4309,21 @@ def create_announcement(current_user_id, pro_no, role):
                 # Upload to Supabase bucket 'announcement_images'
                 file_path = f"ann_{ann_no}_img_{i}_{int(datetime.now().timestamp())}.jpg"
                 url = upload_to_supabase(img_bytes, 'announcement_images', file_path)
+                
                 if url:
                     cur.execute(
                         f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
                         (ann_no, url)
                     )
                 else:
-                    print(f"[ANNOUNCEMENT ERROR] Storage failed for image {i}.", flush=True)
-                    raise ValueError("Failed to upload announcement image to cloud storage.")
+                    # Fallback to Base64 string if cloud storage is unavailable
+                    print(f"[ANNOUNCEMENT] Cloud storage failed for image {i}, falling back to Base64.", flush=True)
+                    b64_data = base64.b64encode(img_bytes).decode('utf-8')
+                    data_url = f"data:image/jpeg;base64,{b64_data}"
+                    cur.execute(
+                        f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
+                        (ann_no, data_url)
+                    )
 
         conn.commit()
         
