@@ -4313,14 +4313,8 @@ def create_announcement(current_user_id, pro_no, role):
                         (ann_no, url)
                     )
                 else:
-                    # Fallback to Base64 string if cloud storage is unavailable
-                    print(f"[ANNOUNCEMENT] Cloud storage failed for image {i}, falling back to Base64.", flush=True)
-                    b64_data = base64.b64encode(img_bytes).decode('utf-8')
-                    data_url = f"data:image/jpeg;base64,{b64_data}"
-                    cur.execute(
-                        f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
-                        (ann_no, data_url)
-                    )
+                    print(f"[ANNOUNCEMENT ERROR] Storage failed for image {i}. Check Supabase credentials/bucket.", flush=True)
+                    raise ValueError("Failed to upload announcement image to cloud storage bucket 'announcement_images'.")
 
         conn.commit()
         

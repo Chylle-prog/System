@@ -233,10 +233,12 @@ def get_supabase_client():
 def upload_to_supabase(image_data, bucket_name, file_path, content_type='image/jpeg'):
     """
     General helper to upload binary data to a Supabase storage bucket.
+    Ensures bucket exists before upload.
     Returns the public URL on success, or None on failure.
     """
     supabase = get_supabase_client()
     if not supabase:
+        print("[STORAGE ERROR] Supabase client not initialized.", flush=True)
         return None
     
     try:
@@ -246,21 +248,30 @@ def upload_to_supabase(image_data, bucket_name, file_path, content_type='image/j
         elif isinstance(image_data, (bytes, bytearray, memoryview)):
             binary_data = bytes(image_data)
         elif isinstance(image_data, str) and (image_data.startswith('http') or len(image_data) > 1000):
-            # Probably already a URL or base64 (which we shouldn't handle here directly as bytes)
             return None
         else:
             binary_data = bytes(image_data)
 
-        # Upload using service role key (bypasses RLS)
+        # 1. Ensure bucket exists
+        try:
+            supabase.storage.get_bucket(bucket_name)
+        except Exception:
+            try:
+                print(f"[STORAGE] Bucket '{bucket_name}' not found, attempting to create...", flush=True)
+                supabase.storage.create_bucket(bucket_name, {"public": True})
+            except Exception as e:
+                print(f"[STORAGE ERROR] Could not create bucket '{bucket_name}': {e}", flush=True)
+                # We continue anyway in case it was a permission error but bucket exists
+
+        # 2. Upload using service role key (bypasses RLS)
         supabase.storage.from_(bucket_name).upload(
             path=file_path,
             file=binary_data,
             file_options={"contentType": content_type, "upsert": "true"}
         )
         
-        # Get public URL
+        # 3. Get public URL
         url_res = supabase.storage.from_(bucket_name).get_public_url(file_path)
-        # Note: supabase-py returns the URL string or a dict depending on version
         if isinstance(url_res, dict):
             return url_res.get('publicUrl')
         return url_res
