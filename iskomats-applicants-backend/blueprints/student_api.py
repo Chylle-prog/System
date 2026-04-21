@@ -104,34 +104,32 @@ _verification_result_cache_lock = threading.Lock()
 _VERIFICATION_RESULT_CACHE_SIZE_LIMIT = 128
 _VERIFICATION_RESULT_CACHE_TTL_SECONDS = 300
 PENDING_REGISTRATION_EXPIRY_WINDOW = timedelta(hours=1)
-def academic_year_matches_expected(found_year, expected_year):
-    """
-    Core AY matching logic:
-    1. If scholarship expects a range (2025-2026), check if applicant's year is same or in between.
-    2. If scholarship expects a single year (2026), compare it with the later year for the applicant.
-    """
-    if not expected_year: expected_year = "2025-2026"
+    # Core AY matching logic
+    if not expected_year: return True
     if not found_year: return False
 
-    found_years = [int(year) for year in re.findall(r'20\d{2}', str(found_year))]
-    expected_years = [int(year) for year in re.findall(r'20\d{2}', str(expected_year))]
+    # Normalize found and expected to digit lists
+    found_years = [int(y) for y in re.findall(r'20\d{2}', str(found_year))]
+    # Handle both hyphen and Unicode dashes
+    expected_str = str(expected_year).replace('–', '-').replace('—', '-')
+    expected_years = [int(y) for y in re.findall(r'20\d{2}', expected_str)]
 
     if not found_years or not expected_years: return False
 
-    # Case 1: Scholarship expects a range (e.g. 2025-2026)
+    # Check for direct year match (e.g. 2026 in 2026-2027)
+    for f in found_years:
+        if f in expected_years:
+            return True
+            
+    # Range check
     if len(expected_years) >= 2:
         min_exp, max_exp = min(expected_years), max(expected_years)
-        # Check if ANY of the student's found years are same or in between
-        # e.g., if student says 2025, and range is 2025-2026 -> OK
         return any(min_exp <= y <= max_exp for y in found_years)
     
-    # Case 2: Scholarship expects a single year (e.g. 2026)
-    else:
-        # Compare with the later year for the applicant
-        # e.g., if student says 2025-2026, latest is 2026. If target is 2026 -> OK.
-        latest_found = max(found_years)
-        target_year = expected_years[0]
-        return latest_found >= target_year
+    # Target check
+    latest_found = max(found_years)
+    target_year = expected_years[0]
+    return latest_found >= target_year
 
 def academic_year_matches_latest_expected(found_year, expected_year):
     # Use the harmonized logic
@@ -3225,11 +3223,10 @@ def ocr_check():
 
                 def run_ocr_check():
                     if doc_type == 'Enrollment':
-                        # Use PSM 6 but increase width to 1200 to capture small ID digits and dates reliably even on noisy webcams
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1200, prefer_fast_layout=True, crop_percent=0.90)
-                        # Stricter volume check: if a document has < 20 characters, it's likely not an enrollment form
-                        v_t = bool(raw_t and len(raw_t.strip()) > 20)
-                        return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text (low text density)'), raw_t, {}
+                        # Use multi-pass OCR for complex COR layouts
+                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1200, prefer_fast_layout=False, crop_percent=1.0)
+                        v_t = bool(raw_t and len(raw_t.strip()) > 15)
+                        return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text (verify lighting)'), raw_t, {}
                     elif doc_type == 'Grades':
                         # High resolution and Auto Layout (PSM 3) required for academic tables
                         raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1200, prefer_fast_layout=False, crop_percent=1.0)

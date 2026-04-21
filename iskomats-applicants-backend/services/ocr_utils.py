@@ -1307,14 +1307,19 @@ def extract_school_year_from_text(text):
     if short_range:
         return f"{short_range.group(1)}-20{short_range.group(2)}"
 
-    # Priority D: Any plausible year in 2024-2035 range
+    # Priority D: Any plausible years in range
     all_years = re.findall(r'20[2-3][0-9]', compact_text)
     if all_years:
-        # If we have two years close together, assume it was a range with a weird separator
-        # that we missed earlier (though delimiter normalization should catch it)
-        if len(all_years) >= 2:
-            return f"{all_years[0]}-{all_years[1]}"
-        return all_years[0]
+        # Filter duplicates and return as a space-separated string for the matching logic
+        unique_years = []
+        for y in all_years:
+            if y not in unique_years: unique_years.append(y)
+        
+        # If we have exactly two, it might be a range
+        if len(unique_years) == 2:
+            return f"{unique_years[0]}-{unique_years[1]}"
+        
+        return " ".join(unique_years)
 
     return None
 
