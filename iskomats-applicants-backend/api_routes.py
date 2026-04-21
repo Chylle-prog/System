@@ -380,6 +380,26 @@ def ensure_schema_integrity(cursor):
             return row[0] if row else 0
         return 0
 
+    # 1. Ensure announcement_images table exists
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM information_schema.tables
+        WHERE table_name = 'announcement_images'
+        """
+    )
+    if read_count(cursor.fetchone()) == 0:
+        print("[MIGRATION] Creating announcement_images table")
+        cursor.execute(
+            """
+            CREATE TABLE announcement_images (
+                ann_img_no SERIAL PRIMARY KEY,
+                ann_no INTEGER REFERENCES announcements(ann_no) ON DELETE CASCADE,
+                img TEXT
+            )
+            """
+        )
+
     # 2. Convert announcement_images.img to TEXT if it's still BYTEA
     cursor.execute(
         """
