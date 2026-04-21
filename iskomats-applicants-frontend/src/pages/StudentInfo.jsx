@@ -1485,12 +1485,46 @@ const StudentInfo = () => {
 
         if (profile.profile_picture) {
           setIdPicturePreview(profile.profile_picture);
+          setPhotos(prev => ({ ...prev, face_photo: profile.profile_picture }));
+        }
+        if (profile.signature_data) {
+          setFormData(prev => ({ ...prev, applicantSignatureName: profile.signature_data }));
+          setSignaturePreview(profile.signature_data);
+          setSignatureVerified('success');
         }
 
         if (profile.has_other_assistance) {
           setHasOtherAssistance('Yes');
         } else if (profile.has_other_assistance === false) {
           setHasOtherAssistance('No');
+        }
+
+        if (profile.indigency_doc) {
+          setOcrVerified('success');
+          setPhotos(prev => ({ ...prev, mayorIndigency_photo: profile.indigency_doc }));
+        }
+        if (profile.id_img_front && profile.id_img_back) {
+          setIdVerified('success');
+          setSchoolIdPhotos({ front: profile.id_img_front, back: profile.id_img_back });
+          setPhotos(prev => ({ ...prev, id_front: profile.id_img_front, id_back: profile.id_img_back }));
+        }
+        if (profile.enrollment_certificate_doc) {
+          setCoeVerified('success');
+          setPhotos(prev => ({ ...prev, mayorCOE_photo: profile.enrollment_certificate_doc }));
+        }
+        if (profile.grades_doc) {
+          setGradesVerified('success');
+          setPhotos(prev => ({ ...prev, mayorGrades_photo: profile.grades_doc }));
+        }
+        if (profile.profile_picture) {
+          setFaceVerified('success');
+          setIdPicturePreview(profile.profile_picture);
+          setPhotos(prev => ({ ...prev, face_photo: profile.profile_picture }));
+        }
+        if (profile.signature_data) {
+          setFormData(prev => ({ ...prev, applicantSignatureName: profile.signature_data }));
+          setSignaturePreview(profile.signature_data);
+          setSignatureVerified('success');
         }
 
         const videoMap = {
@@ -1996,7 +2030,7 @@ const StudentInfo = () => {
         showPromptMessage('⚠️ Please upload your 2x2 ID Picture.');
         return;
       }
-      if (!photos.mayorIndigency_photo && !formData.mayorIndigency_photo) {
+      if (!photos.mayorIndigency_photo && !formData.mayorIndigency_photo && !userProfile?.indigency_doc) {
         showPromptMessage('⚠️ Please upload your Certificate of Indigency.');
         return;
       }
@@ -2007,15 +2041,15 @@ const StudentInfo = () => {
     }
 
     if (currentStep === 3) {
-      if (!schoolIdPhotos.front || !schoolIdPhotos.back) {
+      if ((!schoolIdPhotos.front && !userProfile?.id_img_front) || (!schoolIdPhotos.back && !userProfile?.id_img_back)) {
         showPromptMessage('⚠️ Please upload both Front and Back of your ID.');
         return;
       }
-      if (!photos.mayorCOE_photo && !formData.mayorCOE_photo) {
+      if (!photos.mayorCOE_photo && !formData.mayorCOE_photo && !userProfile?.enrollment_certificate_doc) {
         showPromptMessage('⚠️ Please upload your Certificate of Enrollment.');
         return;
       }
-      if (!photos.mayorGrades_photo && !formData.mayorGrades_photo) {
+      if (!photos.mayorGrades_photo && !formData.mayorGrades_photo && !userProfile?.grades_doc) {
         showPromptMessage('⚠️ Please upload your Grades document.');
         return;
       }
@@ -2133,14 +2167,15 @@ const StudentInfo = () => {
     }
 
     const requiredDocs = [
-      { name: 'mayorCOE_photo', label: 'COE Photo' },
-      { name: 'mayorGrades_photo', label: 'Grades Photo' },
-      { name: 'mayorIndigency_photo', label: 'Indigency Photo' }
+      { name: 'mayorCOE_photo', profileField: 'enrollment_certificate_doc', label: 'COE Photo' },
+      { name: 'mayorGrades_photo', profileField: 'grades_doc', label: 'Grades Photo' },
+      { name: 'mayorIndigency_photo', profileField: 'indigency_doc', label: 'Indigency Photo' }
     ];
 
     let missingDocLabel = '';
     for (const doc of requiredDocs) {
-      if (!formData[doc.name] && !photos[doc.name]) {
+      const hasPhoto = formData[doc.name] || photos[doc.name] || userProfile?.[doc.profileField];
+      if (!hasPhoto) {
         missingDocLabel = doc.label;
         break;
       }
@@ -2152,9 +2187,9 @@ const StudentInfo = () => {
     }
 
     if (
-      !schoolIdPhotos.front ||
-      !schoolIdPhotos.back ||
-      !photos.face_photo
+      (!schoolIdPhotos.front && !userProfile?.id_img_front) ||
+      (!schoolIdPhotos.back && !userProfile?.id_img_back) ||
+      (!photos.face_photo && !userProfile?.profile_picture)
     ) {
       showPromptMessage('⚠️ Please complete Identity Verification: Upload Front/Back School ID and a Face Photo.');
       return;
@@ -3131,7 +3166,7 @@ const StudentInfo = () => {
                     </h4>
                     <p style={{fontSize: '0.85rem', color: '#64748b', marginTop: '6px', marginLeft: '46px'}}>Verify residency eligibility via Barangay Indigency document</p>
                   </div>
-                  {(photos.mayorIndigency_photo || formData.mayorIndigency_photo) && (
+                  {(photos.mayorIndigency_photo || formData.mayorIndigency_photo || userProfile?.indigency_doc) && (
                     <div style={{display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0'}}>
                       <i className="fas fa-check-circle"></i> Upload Ready
                     </div>
