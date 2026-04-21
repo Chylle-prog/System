@@ -2804,8 +2804,12 @@ export default function ScholarshipDashboard({
       'Address': app.municipality || 'N/A'
     }));
 
+    const activeScholarshipName = analyticsScholarshipFilter === 'all' 
+      ? scholarshipLabel 
+      : (scholarshipFilterOptions.find(o => o.value === analyticsScholarshipFilter)?.label || scholarshipLabel);
+
     const createSheetWithHeader = (list, title) => {
-      const ws = XLSX.utils.aoa_to_sheet([[scholarshipLabel], [title], [`Date: ${new Date().toLocaleDateString()}`], []]);
+      const ws = XLSX.utils.aoa_to_sheet([[sidebarTitle, activeScholarshipName], [title], [`Date: ${new Date().toLocaleDateString()}`], []]);
       const formattedData = formatApplicants(list);
       XLSX.utils.sheet_add_json(ws, formattedData, { origin: 'A5' });
       ws['!cols'] = autoAdjustColumnWidths(formattedData);
