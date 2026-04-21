@@ -234,21 +234,33 @@ def gpa_matches_text(raw_text, expected_gpa):
 
     exp_norm = normalize_to_percent(expected_value)
 
-    for number in candidate_numbers:
-        # Check standard close match
-        if abs(number - expected_value) <= 0.08:
-            return True, number, candidate_numbers
+    # 4. Decision Logic: Prioritize labeled candidates
+    # If we found explicit labels (GPA/GWA), we match only against them.
+    if gpa_candidates:
+        msg_prefix = "[GPA LABELED]"
+        for number in gpa_candidates:
+            if abs(number - expected_value) <= 0.08:
+                return True, number, gpa_candidates
+            
+            num_norm = normalize_to_percent(number)
+            if 70 <= num_norm <= 100 and 70 <= exp_norm <= 100:
+                if num_norm >= (exp_norm - 1.5):
+                    return True, number, gpa_candidates
         
-        # Check cross-scale match
-        num_norm = normalize_to_percent(number)
-        
-        # If both normalized to percentage, check if doc >= expected (Student claimed less than they have)
-        # We allow a generous 5% error margin for conversion inaccuracies
-        if 70 <= num_norm <= 100 and 70 <= exp_norm <= 100:
-            if num_norm >= (exp_norm - 2.0): 
-                return True, number, candidate_numbers
+        print(f"{msg_prefix} Found labeled GPA but mismatched expected {expected_value}. Candidates: {gpa_candidates}", flush=True)
+        return False, gpa_candidates[0], gpa_candidates
 
-    return False, None, candidate_numbers
+    # Only if no GPA/GWA labels were found, fallback to raw numeric scanning
+    for number in raw_numbers:
+        if abs(number - expected_value) <= 0.05:
+            return True, number, raw_numbers
+        
+        num_norm = normalize_to_percent(number)
+        if 70 <= num_norm <= 100 and 70 <= exp_norm <= 100:
+            if num_norm >= (exp_norm - 1.0): 
+                return True, number, raw_numbers
+
+    return False, (candidate_numbers[0] if candidate_numbers else None), candidate_numbers
 
 
 def get_announcement_image_columns(cursor):
