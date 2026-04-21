@@ -3380,16 +3380,16 @@ def ocr_check():
                             f"Video: {'OK' if v_video else 'X'}"
                         ]
                         score_details = {
-                            'First Name': name_details.get('first_ok'),
-                            'Middle Name': name_details.get('middle_ok') if middle_name else None,
-                            'Last Name': name_details.get('last_ok'),
-                            'ID Number': id_ok,
-                            'School': school_ok,
-                            'Grade Level': year_level_ok,
-                            'Academic Year': year_only_ok,
-                            'Semester': semester_ok,
-                            'Course': course_ok,
-                            'Video Verification': v_video
+                            'First Name': bool(name_details.get('first_ok')),
+                            'Middle Name': bool(name_details.get('middle_ok')) if middle_name else None,
+                            'Last Name': bool(name_details.get('last_ok')),
+                            'ID Number': bool(id_ok),
+                            'School': bool(school_ok),
+                            'Grade Level': bool(year_level_ok),
+                            'Academic Year': bool(year_only_ok),
+                            'Semester': bool(semester_ok),
+                            'Course': bool(course_ok),
+                            'Video Verification': bool(v_video)
                         }
                         checklist = [c for c in checklist if c is not None]
                         msg = f"Checklist: [{' | '.join(checklist)}]"
@@ -3447,9 +3447,9 @@ def ocr_check():
                     detail_msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Addr: {status_addr} (Target: {target_address or 'Missing'}, Found: {brgy_str}) | Video: {'OK' if v_video else 'X'}]"
                     
                     score_details = {
-                        'Name Match': name_ok,
-                        'Address Match': addr_ok,
-                        'Video Verification': v_video
+                        'Name Match': bool(name_ok),
+                        'Address Match': bool(addr_ok),
+                        'Video Verification': bool(v_video)
                     }
                     
                     return {'doc': 'Indigency', 'verified': v, 'message': detail_msg + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video, 'score_details': score_details}
@@ -3476,12 +3476,12 @@ def ocr_check():
                         f"Video: {'OK' if v_video else 'X'}"
                     ]
                     score_details = {
-                        'First Name': name_details.get('first_ok'),
-                        'Middle Name': name_details.get('middle_ok') if middle_name else None,
-                        'Last Name': name_details.get('last_ok'),
-                        'ID Number': id_ok,
-                        'School': school_ok,
-                        'Video Verification': v_video
+                        'First Name': bool(name_details.get('first_ok')),
+                        'Middle Name': bool(name_details.get('middle_ok')) if middle_name else None,
+                        'Last Name': bool(name_details.get('last_ok')),
+                        'ID Number': bool(id_ok),
+                        'School': bool(school_ok),
+                        'Video Verification': bool(v_video)
                     }
                     
                     checklist = [c for c in checklist if c is not None]

@@ -312,16 +312,17 @@ const StudentInfo = () => {
     results.forEach(res => {
       if (res.score_details) {
         Object.values(res.score_details).forEach(val => {
-          if (val !== null) {
+          if (val !== null && val !== undefined) {
             totalFields++;
-            if (val === true) passedFields++;
+            if (val === true || val === 1 || val === 'true') passedFields++;
           }
         });
       }
     });
     
     if (totalFields === 0) return 0;
-    return Math.round((passedFields / totalFields) * 100);
+    const percentage = Math.round((passedFields / totalFields) * 100);
+    return percentage;
   };
   const triggerAutoScan = (docType) => setAutoScanTrigger(prev => prev === docType ? `${docType}_${Date.now()}` : docType);
 
