@@ -19,6 +19,7 @@ from cryptography.fernet import Fernet
 from io import BytesIO
 import traceback
 import threading
+from services.applicant_document_service import normalize_supabase_url
 
 # Global SocketIO instance to avoid circular imports with app.py
 _socketio_instance = None
@@ -4298,21 +4299,17 @@ def create_announcement(current_user_id, pro_no, role):
         if image_attachments:
             _, foreign_key_column = get_entity_image_columns(cur, 'announcement')
             for i, img_bytes in enumerate(image_attachments):
-                if use_storage():
-                    # Upload to Supabase bucket 'announcement_images'
-                    file_path = f"ann_{ann_no}_img_{i}_{int(datetime.now().timestamp())}.jpg"
-                    url = upload_to_supabase(img_bytes, 'announcement_images', file_path)
-                    if url:
-                        cur.execute(
-                            f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
-                            (ann_no, url)
-                        )
-                    else:
-                        print(f"[ANNOUNCEMENT ERROR] Storage failed for image {i}. Refusing BYTEA fallback.", flush=True)
-                        raise ValueError("Failed to upload announcement image to cloud storage.")
+                # Upload to Supabase bucket 'announcement_images'
+                file_path = f"ann_{ann_no}_img_{i}_{int(datetime.now().timestamp())}.jpg"
+                url = upload_to_supabase(img_bytes, 'announcement_images', file_path)
+                if url:
+                    cur.execute(
+                        f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
+                        (ann_no, url)
+                    )
                 else:
-                    print(f"[ANNOUNCEMENT ERROR] Cloud storage is disabled. Cannot save image for announcement {ann_no}.", flush=True)
-                    raise ValueError("Cloud storage must be enabled to save announcement images.")
+                    print(f"[ANNOUNCEMENT ERROR] Storage failed for image {i}.", flush=True)
+                    raise ValueError("Failed to upload announcement image to cloud storage.")
 
         conn.commit()
         
@@ -4442,18 +4439,14 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
         cur.execute("CREATE TEMP TABLE temp_ann_imgs (img text)")
         for i, item in enumerate(new_sequence):
             if isinstance(item, bytes):
-                # New image - try cloud storage first
-                if use_storage():
-                    file_path = f"ann_{ann_no}_upd_{i}_{int(datetime.now().timestamp())}.jpg"
-                    url = upload_to_supabase(item, 'announcement_images', file_path)
-                    if url:
-                        cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (url,))
-                    else:
-                        print(f"[ANNOUNCEMENT UPDATE] Cloud storage failed for image {i}. Refusing BYTEA fallback.", flush=True)
-                        raise ValueError("Failed to upload updated announcement image to cloud storage.")
+                # New image - ALWAYS cloud storage for announcements
+                file_path = f"ann_{ann_no}_upd_{i}_{int(datetime.now().timestamp())}.jpg"
+                url = upload_to_supabase(item, 'announcement_images', file_path)
+                if url:
+                    cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (url,))
                 else:
-                    print(f"[ANNOUNCEMENT UPDATE] Cloud store restricted. Refusing BYTEA.", flush=True)
-                    raise ValueError("Cloud storage must be enabled to update announcement images.")
+                    print(f"[ANNOUNCEMENT UPDATE] Cloud storage failed for image {i}.", flush=True)
+                    raise ValueError("Failed to upload updated announcement image to cloud storage.")
             else:
                 # Existing image (either a URL string or an ID int)
                 if isinstance(item, str) and item.startswith('http'):
