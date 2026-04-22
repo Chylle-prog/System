@@ -3682,8 +3682,12 @@ def get_my_applications():
             cur.execute(
                 """
                 SELECT
-                    s.scholarship_name as name,
-                    s.req_no as scholarship_no,
+                    CASE 
+                        WHEN s.req_no IS NULL OR COALESCE(s.is_removed, FALSE) = TRUE 
+                        THEN COALESCE(s.scholarship_name, 'Unknown Scholarship') || ' (deleted)'
+                        ELSE s.scholarship_name 
+                    END as name,
+                    ast.scholarship_no,
                     s.req_no,
                     s.deadline,
                     s.pro_no,
@@ -3694,7 +3698,7 @@ def get_my_applications():
                     END as status,
                     ast.status_updated
                 FROM applicant_status ast
-                JOIN scholarships s ON ast.scholarship_no = s.req_no
+                LEFT JOIN scholarships s ON ast.scholarship_no = s.req_no
                 WHERE ast.applicant_no = %s
                 """,
                 (request.user_no,),
