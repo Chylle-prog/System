@@ -1780,22 +1780,28 @@ def init_socketio(socketio):
             if user_role in admin_roles:
                 # Provider room format: applicant_id+pro_no
                 if pro_no:
-                    # Find all relevant scholarships for this provider
+                    # Find all relevant scholarships for this provider, excluding declined
                     cursor.execute("""
                         SELECT DISTINCT ast.applicant_no, s.pro_no 
                         FROM applicant_status ast
                         JOIN scholarships s ON ast.scholarship_no = s.req_no
-                        WHERE s.pro_no = %s
+                        WHERE s.pro_no = %s AND (ast.is_accepted IS NULL OR ast.is_accepted IS TRUE)
                         UNION
-                        SELECT DISTINCT applicant_no, pro_no
-                        FROM message
-                        WHERE pro_no = %s
+                        SELECT DISTINCT m.applicant_no, m.pro_no
+                        FROM message m
+                        LEFT JOIN applicant_status ast ON m.applicant_no = ast.applicant_no
+                        WHERE m.pro_no = %s AND (ast.is_accepted IS NULL OR ast.is_accepted IS TRUE)
                     """, (pro_no, pro_no))
                     relevant_pairs = cursor.fetchall()
                     rooms = [f"{p['applicant_no']}+{p['pro_no']}" for p in relevant_pairs]
                 else:
-                    # Super admin - can see all rooms with messages
-                    cursor.execute("SELECT DISTINCT room FROM message WHERE room IS NOT NULL")
+                    # Super admin - can see all rooms with messages, excluding declined
+                    cursor.execute("""
+                        SELECT DISTINCT m.room 
+                        FROM message m
+                        LEFT JOIN applicant_status ast ON m.applicant_no = ast.applicant_no
+                        WHERE m.room IS NOT NULL AND (ast.is_accepted IS NULL OR ast.is_accepted IS TRUE)
+                    """)
                     rooms = [row['room'] for row in cursor.fetchall()]
             else:
                 # Student (Scholar) room format: applicant_id+pro_no

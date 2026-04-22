@@ -1841,6 +1841,12 @@ export default function ScholarshipDashboard({
         }
         return true;
       });
+    } else {
+      // By default, do not show Declined applicants in the inbox
+      filtered = filtered.filter((c) => {
+        const studentStatus = getStudentStatus(c.studentEmail, c.studentName, c.lastMessage?.studentStatus);
+        return studentStatus !== 'Declined';
+      });
     }
 
     // Apply search filter
@@ -1886,7 +1892,7 @@ export default function ScholarshipDashboard({
               <button onClick={() => setSection('track')} className="text-xs font-bold text-[#800020] hover:underline">View All</button>
             </div>
             <div className="divide-y divide-gray-50">
-              {data.applicants.slice(0, 5).map((app, idx) => (
+              {data.applicants.slice(0, 15).map((app, idx) => (
                 <div key={idx} className="p-4 flex items-center gap-4 hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => viewApplicantFn(idx, 'all')}>
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#800020] to-[#650018] flex items-center justify-center text-white font-semibold">
                     {(app.firstName?.[0] || app.name?.[0] || '').toUpperCase()}
@@ -1914,7 +1920,7 @@ export default function ScholarshipDashboard({
               <button onClick={() => setSection('inbox')} className="text-xs font-bold text-[#800020] hover:underline">View Inbox</button>
             </div>
             <div className="divide-y divide-gray-50">
-              {allMessages.slice(0, 5).map(msg => (
+              {allMessages.slice(0, 15).map(msg => (
                 <div key={msg.id} className="p-4 flex items-center gap-4 hover:bg-gray-50 transition-colors">
                   <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-white bg-blue-500"><FaEnvelope /></div>
                   <div className="flex-1">
