@@ -3342,7 +3342,7 @@ def get_applicants(current_user_id, pro_no, role, program):
                    CASE WHEN a.father_status = true THEN 'Living' ELSE 'Deceased' END as "fatherStatus",
                    a.mother_phone_no as "motherPhone",
                    a.father_phone_no as "fatherPhone",
-                   CONCAT_WS(', ', NULLIF(a.street_brgy, ''), NULLIF(a.town_city_municipality, ''), NULLIF(a.province, ''), NULLIF(a.zip_code, '')) as "schoolAddress",
+                   a.school_address as "schoolAddress",
                    s.is_accepted, s.scholarship_no as "scholarshipNo", p.provider_name as program,
                    e.email_address as email,
                    CASE 

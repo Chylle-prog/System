@@ -3848,6 +3848,10 @@ export default function ScholarshipDashboard({
               <p className="text-[10px] font-black text-gray-400 uppercase mb-1">School Attended</p>
               <p className="font-bold text-gray-800">{a.school || 'N/A'}</p>
             </div>
+            <div className="p-4 border-t border-r border-gray-100 col-span-2">
+              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">School Location</p>
+              <p className="font-bold text-gray-800">{a.schoolAddress || 'N/A'}</p>
+            </div>
             <div className="p-4 border-t border-r border-gray-100">
               <p className="text-[10px] font-black text-gray-400 uppercase mb-1">School ID Number</p>
               <p className="font-bold text-gray-800">{a.school_id_no || 'N/A'}</p>
