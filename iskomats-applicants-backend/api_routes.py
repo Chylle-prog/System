@@ -1742,22 +1742,30 @@ def init_socketio(socketio):
             if user_role in admin_roles:
                 # Provider room format: applicant_id+pro_no
                 if pro_no:
-                    # Find all relevant scholarships for this provider
+                    # Find all relevant scholarships for this provider, excluding those where they were declined FOR THIS PROVIDER
                     cursor.execute("""
                         SELECT DISTINCT ast.applicant_no, s.pro_no 
                         FROM applicant_status ast
                         JOIN scholarships s ON ast.scholarship_no = s.req_no
-                        WHERE s.pro_no = %s
+                        WHERE s.pro_no = %s AND (ast.is_accepted IS NULL OR ast.is_accepted IS TRUE)
                         UNION
-                        SELECT DISTINCT applicant_no, pro_no
-                        FROM message
-                        WHERE pro_no = %s
+                        SELECT DISTINCT m.applicant_no, m.pro_no
+                        FROM message m
+                        JOIN scholarships sch ON m.pro_no = sch.pro_no
+                        LEFT JOIN applicant_status ast ON (m.applicant_no = ast.applicant_no AND ast.scholarship_no = sch.req_no)
+                        WHERE m.pro_no = %s AND (ast.is_accepted IS NULL OR ast.is_accepted IS TRUE)
                     """, (pro_no, pro_no))
                     relevant_pairs = cursor.fetchall()
                     rooms = [f"{p['applicant_no']}+{p['pro_no']}" for p in relevant_pairs]
                 else:
-                    # Super admin - can see all rooms with messages
-                    cursor.execute("SELECT DISTINCT room FROM message WHERE room IS NOT NULL")
+                    # Super admin - can see all rooms with messages, excluding those explicitly declined
+                    cursor.execute("""
+                        SELECT DISTINCT m.room 
+                        FROM message m
+                        LEFT JOIN scholarships s ON m.pro_no = s.pro_no
+                        LEFT JOIN applicant_status ast ON (m.applicant_no = ast.applicant_no AND ast.scholarship_no = s.req_no)
+                        WHERE m.room IS NOT NULL AND (ast.is_accepted IS NULL OR ast.is_accepted IS TRUE)
+                    """)
                     rooms = [row['room'] for row in cursor.fetchall()]
             else:
                 # Student (Scholar) room format: applicant_id+pro_no
@@ -3163,11 +3171,13 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
         if 'is_removed' in scholarship_columns and not include_removed:
             where_clauses.append('COALESCE(s.is_removed, FALSE) = FALSE')
         
+        is_removed_expr = 'COALESCE(s.is_removed, FALSE)' if 'is_removed' in scholarship_columns else 'FALSE'
+        
         query = '''
             SELECT s.req_no as id, s.req_no as "reqNo", s.scholarship_name as "scholarshipName", 
                    s.gpa as "minGpa", s.location, s.parent_finance as "parentFinance",
                    s.slots, s.deadline, s.pro_no as "proNo", p.provider_name as "providerName",
-                   COALESCE(s.is_removed, FALSE) as "isRemoved",
+                   {is_removed_expr} as "isRemoved",
                                          {description_expr} as description, {date_created_expr} as "dateCreated",
                                          {semester_expr} as semester, {year_expr} as year,
                                          COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS TRUE) as "acceptedCount",
@@ -3177,6 +3187,7 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
             LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
                         LEFT JOIN applicant_status ast ON ast.scholarship_no = s.req_no
         '''.format(
+            is_removed_expr=is_removed_expr,
             description_expr=description_expr,
             date_created_expr=date_created_expr,
             semester_expr=semester_expr,
@@ -3210,6 +3221,8 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
             's.pro_no',
             'p.provider_name',
         ]
+        if 'is_removed' in scholarship_columns:
+            group_by_columns.append('s.is_removed')
         if 'desc' in scholarship_columns:
             group_by_columns.append('s."desc"')
         if 'date_created' in scholarship_columns:
