@@ -3389,7 +3389,7 @@ def get_my_applications():
                 SELECT
                     CASE 
                         WHEN s.req_no IS NULL OR COALESCE(s.is_removed, FALSE) = TRUE 
-                        THEN COALESCE(s.scholarship_name, 'Unknown Scholarship') || ' (deleted)'
+                        THEN COALESCE(s.scholarship_name, 'Unknown Scholarship') || ' (Deleted)'
                         ELSE s.scholarship_name 
                     END as name,
                     ast.scholarship_no,

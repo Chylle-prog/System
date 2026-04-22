@@ -147,12 +147,12 @@ const getRequestErrorMessage = (error, fallbackMessage) => {
 
 const getApplicantIdentityKey = (applicant) => String(
   applicant?.id
-    ?? applicant?.applicant_no
-    ?? applicant?.studentContact?.email
-    ?? applicant?.emailAddress
-    ?? applicant?.email
-    ?? applicant?.name
-    ?? ''
+  ?? applicant?.applicant_no
+  ?? applicant?.studentContact?.email
+  ?? applicant?.emailAddress
+  ?? applicant?.email
+  ?? applicant?.name
+  ?? ''
 ).trim().toLowerCase();
 
 const optimizeImageFile = (file) => new Promise((resolve) => {
@@ -344,14 +344,14 @@ export default function ScholarshipDashboard({
       const response = await scholarshipAPI.getApplicants(providerKey);
       if (response.data.success) {
         const allApplicantsRaw = response.data.applicants || [];
-        
+
         // Deduplicate applicants to avoid multiple rows for the same student (e.g. if they applied to multiple scholarships)
         // We prioritize Accepted > Declined > Pending status for the display record
         const applicantMap = new Map();
         allApplicantsRaw.forEach(app => {
           const id = String(app.applicant_no || app.id);
           const existing = applicantMap.get(id);
-          
+
           if (!existing) {
             applicantMap.set(id, app);
           } else {
@@ -361,10 +361,10 @@ export default function ScholarshipDashboard({
             }
           }
         });
-        
+
         const uniqueApplicants = Array.from(applicantMap.values());
         const historicalData = calculateHistoricalData(allApplicantsRaw); // Use raw data for history/stats
-        
+
         setData(prev => ({
           ...prev,
           applicants: uniqueApplicants.filter(a => a.status === 'Pending'),
@@ -446,7 +446,7 @@ export default function ScholarshipDashboard({
 
       // Track which rooms belong to this admin
       const myRooms = new Set();
-      
+
       const unsubMsg = socketService.subscribe('message', (msg) => {
         // Only accept messages for rooms this admin is authorized for
         if (!myRooms.has(msg.room)) return;
@@ -457,12 +457,12 @@ export default function ScholarshipDashboard({
           const isDuplicate = roomMsgs.some(m => {
             if (msg.m_id && m.m_id) return m.m_id === msg.m_id;
             return (
-              m.message === msg.message && 
-              m.username === msg.username && 
+              m.message === msg.message &&
+              m.username === msg.username &&
               m.timestamp === msg.timestamp
             );
           });
-          
+
           if (isDuplicate) return prev;
 
           const [appNo, proNo] = msg.room.split('+');
@@ -507,7 +507,7 @@ export default function ScholarshipDashboard({
       // Subscribe to applicant status updates from other admins
       const unsubStatusUpdate = socketService.subscribe('applicant_status_update', (update) => {
         if (update.program !== providerKey) return;
-        
+
         setData(prev => {
           const newData = { ...prev };
           const applicantToMove = newData.applicants.find(
@@ -565,7 +565,7 @@ export default function ScholarshipDashboard({
   const getFinancialStatusLabel = (incomeVal) => {
     const income = parseFloat((incomeVal || "0").toString().replace(/,/g, ''));
     if (isNaN(income)) return incomeVal || 'Unknown';
-    
+
     if (income <= 30000) return "Very Low";
     if (income <= 70000) return "Low";
     if (income <= 100000) return "High";
@@ -659,11 +659,11 @@ export default function ScholarshipDashboard({
 
     return {
       monthlyApplications: Object.values(monthlyData).sort((a, b) => new Date(a.month) - new Date(b.month)),
-      courseDistribution: Object.entries(courses).map(([course, count]) => ({ course, count, percentage: Math.round((count / total) * 100) })).sort((a,b) => b.count - a.count),
+      courseDistribution: Object.entries(courses).map(([course, count]) => ({ course, count, percentage: Math.round((count / total) * 100) })).sort((a, b) => b.count - a.count),
       gradeRanges: Object.entries(grades).map(([range, count]) => ({ range, count, percentage: Math.round((count / total) * 100) })),
       financialBreakdown: Object.entries(financial).map(([level, count]) => ({ level, count, percentage: Math.round((count / total) * 100) })),
-      locationStats: Object.entries(locations).map(([location, count]) => ({ location, count, percentage: Math.round((count / total) * 100) })).sort((a,b) => b.count - a.count),
-      schoolStats: Object.entries(schools).map(([school, count]) => ({ school, count, percentage: Math.round((count / total) * 100) })).sort((a,b) => b.count - a.count),
+      locationStats: Object.entries(locations).map(([location, count]) => ({ location, count, percentage: Math.round((count / total) * 100) })).sort((a, b) => b.count - a.count),
+      schoolStats: Object.entries(schools).map(([school, count]) => ({ school, count, percentage: Math.round((count / total) * 100) })).sort((a, b) => b.count - a.count),
       performanceMetrics: {
         averageProcessingTime: 5,
         acceptanceRate: Math.round((applicants.filter(a => a.status === 'Accepted').length / total) * 100),
@@ -894,7 +894,7 @@ export default function ScholarshipDashboard({
       loadScholarships(false);
       loadAnnouncements();
     }
-    
+
     // Listen for scholarship updates from other admins
     const unsubScholarships = socketService.onScholarshipUpdate((data) => {
       if (data.program === providerKey) {
@@ -902,7 +902,7 @@ export default function ScholarshipDashboard({
         loadScholarships();
       }
     });
-    
+
     // Listen for announcement updates from other admins
     const unsubAnnouncements = socketService.onAnnouncementUpdate((data) => {
       if (data.program === providerKey) {
@@ -910,7 +910,7 @@ export default function ScholarshipDashboard({
         loadAnnouncements();
       }
     });
-    
+
     return () => {
       unsubScholarships();
       unsubAnnouncements();
@@ -991,7 +991,7 @@ export default function ScholarshipDashboard({
         resetForm();
         setManageMode('list');
         await loadScholarships(false);
-        
+
         // Notify other admins of the update via socket
         socketService.emit('scholarship_update', {
           program: providerKey,
@@ -1152,7 +1152,7 @@ export default function ScholarshipDashboard({
         resetForm();
         await loadAnnouncements();
         setManageMode('list');
-        
+
         // Notify other admins of the announcement update via socket
         socketService.emit('announcement_update', {
           program: providerKey,
@@ -1193,7 +1193,7 @@ export default function ScholarshipDashboard({
     const posts = (data.scholarshipPosts || []).filter(p => !p.isRemoved);
     if (!manageSearch) return posts;
     const search = manageSearch.toLowerCase();
-    return posts.filter(post => 
+    return posts.filter(post =>
       (post.scholarshipName || post.title || '').toLowerCase().includes(search) ||
       (post.description || '').toLowerCase().includes(search) ||
       (post.location || '').toLowerCase().includes(search)
@@ -1204,7 +1204,7 @@ export default function ScholarshipDashboard({
     const announcements = data.announcements || [];
     if (!manageSearch) return announcements;
     const search = manageSearch.toLowerCase();
-    return announcements.filter(ann => 
+    return announcements.filter(ann =>
       (ann.title || '').toLowerCase().includes(search) ||
       (ann.content || '').toLowerCase().includes(search)
     );
@@ -1212,10 +1212,14 @@ export default function ScholarshipDashboard({
 
   const scholarshipFilterOptions = useMemo(() => {
     const options = (data.scholarshipPosts || [])
-      .filter((post) => !post.isRemoved && !post.is_removed)
       .map((post) => {
         const value = String(post.reqNo || post.id || post.scholarshipName || post.title || '').trim();
         let label = post.scholarshipName || post.title || 'Untitled Scholarship';
+
+        if (post.isRemoved || post.is_removed) {
+          label = `${label} (Deleted)`;
+        }
+
         return value ? { value, label } : null;
       }).filter(Boolean);
 
@@ -1555,8 +1559,8 @@ export default function ScholarshipDashboard({
 
     // Resolve school email for preview
     const schoolName = (applicant?.school || '').toLowerCase();
-    const recipient = schoolName.includes('dlsl') || schoolName.includes('de la salle') 
-      ? 'dlsl.edu.ph@gmail.com' 
+    const recipient = schoolName.includes('dlsl') || schoolName.includes('de la salle')
+      ? 'dlsl.edu.ph@gmail.com'
       : 'Institutional Verification Office';
 
     setPendingAction({
@@ -1765,15 +1769,15 @@ export default function ScholarshipDashboard({
 
   const groupMessagesByStudent = (messages) => {
     const grouped = {};
-    
+
     // Seed with all known applicants so rooms show up even if no messages exist yet
     const allKnownApplicants = [...(data.applicants || []), ...(data.accepted || []), ...(data.declined || [])];
     allKnownApplicants.forEach(a => {
       const key = (a.applicant_no || a.id || '').toString();
       if (!key) return;
-      
+
       const applicantRoom = a.scholarshipNo ? `${key}+${activeProviderNo}` : null;
-      
+
       grouped[key] = {
         studentName: a.name || (a.firstName ? `${a.firstName} ${a.lastName}` : 'Unknown Applicant'),
         studentEmail: a.email || a.emailAddress,
@@ -1798,11 +1802,11 @@ export default function ScholarshipDashboard({
 
       if (!grouped[key]) {
         // Find actual applicant name for this ID from local data state if not already seeded
-        const applicant = allKnownApplicants.find(a => 
-          a.applicant_no?.toString() === m.applicant_no?.toString() || 
+        const applicant = allKnownApplicants.find(a =>
+          a.applicant_no?.toString() === m.applicant_no?.toString() ||
           a.id?.toString() === m.applicant_no?.toString()
         );
-        
+
         let initialName = m.studentName;
         if (applicant && applicant.name) {
           initialName = applicant.name;
@@ -2159,7 +2163,7 @@ export default function ScholarshipDashboard({
         <section className="bg-white p-8 rounded-2xl shadow-md border border-gray-50">
           <div className="flex items-center justify-between gap-3 flex-wrap mb-6">
             <div className="flex bg-gray-100 p-1 rounded-xl shadow-inner mb-4 md:mb-0">
-               <button
+              <button
                 onClick={() => setManageTab('scholarship')}
                 className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${manageTab === 'scholarship' ? 'bg-[#800020] text-white shadow-md' : 'text-gray-500 hover:text-[#800020]'}`}
               >
@@ -2173,7 +2177,7 @@ export default function ScholarshipDashboard({
               </button>
             </div>
             <div className="flex items-center gap-3">
-               <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+              <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
                 <FaSearch className="text-[#800020]" />
                 <input
                   type="text"
@@ -2269,7 +2273,7 @@ export default function ScholarshipDashboard({
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
-                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${ann.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${ann.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
                             {ann.status}
                           </span>
                           <div className="flex flex-col">
@@ -2847,7 +2851,7 @@ export default function ScholarshipDashboard({
         'Course': app.course
       }));
 
-      const activeScholarship = trackScholarshipFilter !== 'all' 
+      const activeScholarship = trackScholarshipFilter !== 'all'
         ? data.scholarshipPosts.find(p => (p.reqNo || p.id) === trackScholarshipFilter)?.scholarshipName || scholarshipLabel
         : scholarshipLabel;
 
@@ -2855,10 +2859,10 @@ export default function ScholarshipDashboard({
         const ws = XLSX.utils.aoa_to_sheet([[activeScholarship], [`Report: ${sheetName}`], [`Generated: ${new Date().toLocaleString()}`], []]);
         const formattedData = formatTracking(list);
         XLSX.utils.sheet_add_json(ws, formattedData, { origin: 'A5' });
-        
+
         // Auto-width adjustment
         ws['!cols'] = autoAdjustColumnWidths(formattedData);
-        
+
         XLSX.utils.book_append_sheet(wb, ws, sheetName);
       };
 
@@ -2881,8 +2885,8 @@ export default function ScholarshipDashboard({
       'Address': app.municipality || 'N/A'
     }));
 
-    const activeScholarshipName = analyticsScholarshipFilter === 'all' 
-      ? scholarshipLabel 
+    const activeScholarshipName = analyticsScholarshipFilter === 'all'
+      ? scholarshipLabel
       : (scholarshipFilterOptions.find(o => o.value === analyticsScholarshipFilter)?.label || scholarshipLabel);
 
     const createSheetWithHeader = (list, title) => {
@@ -2969,10 +2973,10 @@ export default function ScholarshipDashboard({
             <p className="text-gray-500 text-sm report-subtitle">Comprehensive KPI report and periodic trends</p>
             <p className="print-only text-[10px] text-gray-400 mt-2 font-bold italic">Generated on: {new Date().toLocaleString()}</p>
           </div>
-          
+
           {/* Print-only Logo positioned at top right */}
           <div className="print-only absolute right-0 top-0">
-             <img src={iskomatsLogo} alt="Iskomats Logo" className="h-14 w-auto object-contain opacity-90" />
+            <img src={iskomatsLogo} alt="Iskomats Logo" className="h-14 w-auto object-contain opacity-90" />
           </div>
           <div className="flex gap-4 items-center flex-wrap">
             <div className="flex bg-gray-100 p-1 rounded-xl">
@@ -3794,18 +3798,18 @@ export default function ScholarshipDashboard({
         <div className="flex items-center justify-between mb-8 pb-6 border-b-2 border-[#800020]">
           <div className="flex items-center gap-6">
             <div className="w-20 h-20 rounded-2xl bg-gray-50 border-2 border-gray-100 p-1 shadow-sm overflow-hidden flex-shrink-0">
-               {a.profile_picture ? (
-                 <img src={a.profile_picture} alt="Avatar" className="w-full h-full object-cover rounded-xl" />
-               ) : (
-                 <div className="w-full h-full flex items-center justify-center bg-gray-200 text-gray-400">
-                   <FaUsers className="text-2xl" />
-                 </div>
-               )}
-               {/* School ID No. display under profile picture */}
-               <div className="mt-2 text-center">
-                 <span className="block text-[10px] font-black text-gray-400 uppercase">School ID No.</span>
-                 <span className="block font-bold text-gray-800">{a.school_id_no || 'N/A'}</span>
-               </div>
+              {a.profile_picture ? (
+                <img src={a.profile_picture} alt="Avatar" className="w-full h-full object-cover rounded-xl" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-gray-200 text-gray-400">
+                  <FaUsers className="text-2xl" />
+                </div>
+              )}
+              {/* School ID No. display under profile picture */}
+              <div className="mt-2 text-center">
+                <span className="block text-[10px] font-black text-gray-400 uppercase">School ID No.</span>
+                <span className="block font-bold text-gray-800">{a.school_id_no || 'N/A'}</span>
+              </div>
             </div>
             <div>
               <h2 className="text-2xl font-black text-[#800020] uppercase tracking-tight flex items-center gap-2 mb-1">
@@ -4199,9 +4203,9 @@ export default function ScholarshipDashboard({
                         const room = conv.room || (conv.messages.length > 0 ? conv.messages[0].room : conv.lastMessage?.room);
                         if (room) {
                           markConversationAsRead(conv.applicant_no, room);
-                          setViewMessage({ 
-                            messageId: conv.lastMessage?.id || `new-${conv.applicant_no}`, 
-                            applicant_no: conv.applicant_no 
+                          setViewMessage({
+                            messageId: conv.lastMessage?.id || `new-${conv.applicant_no}`,
+                            applicant_no: conv.applicant_no
                           });
                           socketService.loadHistory(room);
                         } else {
@@ -4209,18 +4213,17 @@ export default function ScholarshipDashboard({
                           // Fallback room construction if room is still missing
                           const fallbackRoom = `${conv.applicant_no}+${activeProviderNo}`;
                           markConversationAsRead(conv.applicant_no, fallbackRoom);
-                          setViewMessage({ 
-                            messageId: `new-${conv.applicant_no}`, 
-                            applicant_no: conv.applicant_no 
+                          setViewMessage({
+                            messageId: `new-${conv.applicant_no}`,
+                            applicant_no: conv.applicant_no
                           });
                           socketService.loadHistory(fallbackRoom);
                         }
                       }}
-                      className={`p-4 cursor-pointer transition-colors border-l-4 ${
-                        isActive
+                      className={`p-4 cursor-pointer transition-colors border-l-4 ${isActive
                           ? 'bg-blue-100 border-l-4 border-[#800020] shadow-sm'
                           : `border-l-4 border-transparent hover:bg-blue-50/50 ${conv.unreadCount > 0 ? 'bg-blue-50/30' : ''}`
-                      }`}
+                        }`}
                     >
                       <div className="flex items-start gap-3">
                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#800020] to-[#650018] flex items-center justify-center text-white font-semibold flex-shrink-0">
@@ -4280,37 +4283,37 @@ export default function ScholarshipDashboard({
 
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 {currentConversationMessages.map((msg) => (
-                    <div key={msg.id} className="space-y-2">
-                      <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-semibold text-gray-900 text-sm">{msg.studentName}</span>
-                          <span className="text-xs text-gray-500 flex items-center gap-1">
-                            <FaClock className="text-[10px]" /> {formatDate(msg.timestamp)}
-                          </span>
-                        </div>
-                        <p className="text-gray-700 whitespace-pre-wrap text-sm">{msg.message}</p>
-                        <div className="mt-2 flex items-center justify-end gap-2">
-                          <button type="button" onClick={() => toggleStar(msg.id)} className={`p-2 rounded-lg hover:bg-gray-100 ${msg.starred ? 'text-yellow-500' : 'text-gray-400'}`}>
-                            <FaStar />
-                          </button>
-                        </div>
+                  <div key={msg.id} className="space-y-2">
+                    <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-semibold text-gray-900 text-sm">{msg.studentName}</span>
+                        <span className="text-xs text-gray-500 flex items-center gap-1">
+                          <FaClock className="text-[10px]" /> {formatDate(msg.timestamp)}
+                        </span>
                       </div>
-
-                      {msg.replies && msg.replies.length > 0 && (
-                        <div className="ml-8 space-y-2">
-                          {msg.replies.map((r) => (
-                            <div key={r.id} className="bg-[#800020] text-white rounded-2xl p-4">
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="font-semibold text-sm">{r.from}</span>
-                                <span className="text-xs text-white/70">{formatDate(r.timestamp)}</span>
-                              </div>
-                              <p className="text-sm whitespace-pre-wrap">{r.text}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      <p className="text-gray-700 whitespace-pre-wrap text-sm">{msg.message}</p>
+                      <div className="mt-2 flex items-center justify-end gap-2">
+                        <button type="button" onClick={() => toggleStar(msg.id)} className={`p-2 rounded-lg hover:bg-gray-100 ${msg.starred ? 'text-yellow-500' : 'text-gray-400'}`}>
+                          <FaStar />
+                        </button>
+                      </div>
                     </div>
-                  ))}
+
+                    {msg.replies && msg.replies.length > 0 && (
+                      <div className="ml-8 space-y-2">
+                        {msg.replies.map((r) => (
+                          <div key={r.id} className="bg-[#800020] text-white rounded-2xl p-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-semibold text-sm">{r.from}</span>
+                              <span className="text-xs text-white/70">{formatDate(r.timestamp)}</span>
+                            </div>
+                            <p className="text-sm whitespace-pre-wrap">{r.text}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
                 <div ref={inboxMessagesEndRef} />
               </div>
 
@@ -4388,9 +4391,8 @@ export default function ScholarshipDashboard({
                 key={item.id}
                 type="button"
                 onClick={() => setSection(item.id)}
-                className={`w-full flex items-center transition-all rounded-xl ${
-                  section === item.id ? 'bg-white/20' : 'hover:bg-white/10'
-                } ${sidebarCollapsed ? 'justify-center p-3' : 'justify-start px-4 py-3 gap-3'}`}
+                className={`w-full flex items-center transition-all rounded-xl ${section === item.id ? 'bg-white/20' : 'hover:bg-white/10'
+                  } ${sidebarCollapsed ? 'justify-center p-3' : 'justify-start px-4 py-3 gap-3'}`}
               >
                 <span className="flex-shrink-0 text-lg">{item.icon}</span>
                 {!sidebarCollapsed && <span className="whitespace-nowrap">{item.label}</span>}
@@ -4539,13 +4541,13 @@ export default function ScholarshipDashboard({
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl animate-in zoom-in-95 duration-200 border border-gray-100 overflow-hidden relative">
             <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-[#800020] to-[#650018]"></div>
-            
+
             <div className="w-16 h-16 bg-[#800020]/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
               <FaEnvelope className="text-3xl text-[#800020]" />
             </div>
-            
+
             <h3 className="text-2xl font-black text-gray-900 text-center mb-2">{pendingAction.title}</h3>
-            
+
             <div className="bg-gray-50 rounded-2xl p-5 mb-6 border border-gray-100">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-8 h-8 rounded-lg bg-[#800020] flex items-center justify-center text-white text-xs">TO</div>
@@ -4582,7 +4584,7 @@ export default function ScholarshipDashboard({
             <p className="text-center text-xs text-red-600 font-black mb-8 uppercase tracking-widest">
               Note: This action cannot be reversed
             </p>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <button
                 type="button"
@@ -4612,12 +4614,12 @@ export default function ScholarshipDashboard({
             <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
               <FaTrashAlt className="text-3xl text-red-600" />
             </div>
-            
+
             <h3 className="text-xl font-bold text-gray-900 text-center mb-2">{confirmDeleteModal.title}</h3>
             <p className="text-gray-500 text-center mb-8">
               Are you sure you want to delete <span className="font-semibold text-gray-700">"{confirmDeleteModal.label}"</span>? This action cannot be undone.
             </p>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <button
                 type="button"
