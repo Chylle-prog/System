@@ -157,8 +157,8 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
         
         # 1. Insert into database
         cur.execute("""
-            INSERT INTO notifications (user_no, title, message, type)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO notifications (user_no, title, message, type, expires_at)
+            VALUES (%s, %s, %s, %s, NOW() + INTERVAL '10 days')
             RETURNING notif_id
         """, (user_no, title, message, notif_type))
         notif_result = cur.fetchone()  # Fetch the RETURNING result

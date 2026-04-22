@@ -1277,7 +1277,7 @@ def get_notifications():
             cur.execute("""
                 SELECT notif_id as id, title, message, type, is_read as read, created_at
                 FROM notifications
-                WHERE user_no = %s
+                WHERE user_no = %s AND (expires_at IS NULL OR expires_at > NOW())
                 ORDER BY created_at DESC
                 LIMIT 50
             """, (request.user_no,))
