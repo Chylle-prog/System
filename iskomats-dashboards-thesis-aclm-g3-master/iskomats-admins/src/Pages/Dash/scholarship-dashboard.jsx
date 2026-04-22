@@ -1191,19 +1191,35 @@ export default function ScholarshipDashboard({
   }, [data.announcements, manageSearch]);
 
   const scholarshipFilterOptions = useMemo(() => {
-    return (data.scholarshipPosts || []).map((post) => {
+    const options = (data.scholarshipPosts || []).map((post) => {
       const value = String(post.reqNo || post.id || post.scholarshipName || post.title || '').trim();
       let label = post.scholarshipName || post.title || 'Untitled Scholarship';
-      if (post.isRemoved) {
+      if (post.isRemoved || post.is_removed) {
         label += ' (Archived)';
       }
       return value ? { value, label } : null;
     }).filter(Boolean);
+
+    return [
+      { value: 'deleted', label: 'Deleted Scholarships' },
+      ...options
+    ];
   }, [data.scholarshipPosts]);
 
   const matchesScholarshipSelection = (applicant, selectedValue) => {
     if (selectedValue === 'all') {
       return true;
+    }
+
+    if (selectedValue === 'deleted') {
+      const applicantReqNo = applicant.reqNo || applicant.req_no || applicant.request_no || applicant.scholarshipNo || applicant.scholarship_no;
+      if (!applicantReqNo) return false;
+
+      const scholarship = (data.scholarshipPosts || []).find(s =>
+        String(s.reqNo || s.id || '') === String(applicantReqNo)
+      );
+
+      return scholarship?.isRemoved === true || scholarship?.is_removed === true;
     }
 
     const selectedOption = scholarshipFilterOptions.find((option) => option.value === selectedValue);
