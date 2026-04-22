@@ -641,7 +641,11 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
             supabase.storage.from_(bucket_name).upload(
                 file_path,
                 bytes(data_to_upload),
-                {'content-type': mime_type, 'upsert': 'true'}
+                {
+                    'content-type': mime_type, 
+                    'upsert': 'true',
+                    'cache-control': '31536000'
+                }
             )
         except Exception as upload_err:
             print(f"[STORAGE ERROR] SDK upload call failed for {field_name}: {upload_err}", flush=True)
@@ -4233,7 +4237,11 @@ def upload_video():
                 supabase.storage.from_(bucket_name).upload(
                     file_path,
                     video_bytes,
-                    {'content-type': content_type, 'cache-control': '3600', 'upsert': 'true'}
+                    {
+                        'content-type': content_type, 
+                        'cache-control': '31536000', 
+                        'upsert': 'true'
+                    }
                 )
             except Exception as e:
                 print(f"[VIDEO-UPLOAD ERROR] SDK failed: {e}", flush=True)

@@ -276,7 +276,11 @@ def upload_to_supabase(image_data, bucket_name, file_path, content_type='image/j
         supabase.storage.from_(bucket_name).upload(
             path=file_path,
             file=binary_data,
-            file_options={"contentType": content_type, "upsert": "true"}
+            file_options={
+                "contentType": content_type, 
+                "upsert": "true",
+                "cacheControl": "31536000"
+            }
         )
         
         # 3. Get public URL
