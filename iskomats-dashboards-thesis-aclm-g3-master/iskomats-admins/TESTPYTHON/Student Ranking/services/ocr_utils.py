@@ -51,8 +51,8 @@ _FACE_MODEL_LOCK = eventlet.semaphore.Semaphore(1)
 _FACE_DETECTOR = None
 _FACE_RECOGNIZER = None
 _FACE_MODEL_INIT_ERROR = None
-_FACE_MATCH_THRESHOLD = 0.35 # Unified threshold (lowered for better UX)
-_FACE_DETECTION_THRESHOLD = 0.20 # Lowered from 0.35 to tolerate varied lighting
+_FACE_MATCH_THRESHOLD = 0.30 # Lowered strictness for better pass rate on low-quality IDs
+_FACE_DETECTION_THRESHOLD = 0.18 # Lowered to tolerate extremely varied lighting
 
 # Preload Tesseract at startup for faster first OCR (after definition)
 def _preload_tesseract():
@@ -1482,8 +1482,8 @@ def verify_face_with_id(user_photo_bytes, id_photo_bytes):
         if similarity >= _FACE_MATCH_THRESHOLD:
             return True, f"Face verified (similarity: {similarity:.3f})", similarity
 
-        if similarity >= 0.40:
-            return False, f"Face match uncertain (similarity: {similarity:.3f}).", similarity
+        if similarity >= 0.25:
+            return False, f"Face match uncertain (similarity: {similarity:.3f}). Please try a clearer selfie.", similarity
 
         return False, f"Face does not match the ID (similarity: {similarity:.3f}).", similarity
     except ValueError as exc:
