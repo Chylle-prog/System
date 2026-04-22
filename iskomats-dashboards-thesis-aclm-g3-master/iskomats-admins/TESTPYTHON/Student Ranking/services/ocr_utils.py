@@ -1614,14 +1614,14 @@ def _build_signature_mask(gray_image):
     clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
     enhanced = clahe.apply(denoised)
 
-    # Adaptive threshold - smaller block preserves thin strokes
+    # Adaptive threshold - larger block size to avoid hollow strokes in thick signatures
     adaptive = cv2.adaptiveThreshold(
         enhanced,
         255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY_INV,
-        15,
-        10,
+        31,
+        7,
     )
 
     return _refine_signature_mask(adaptive)
@@ -1713,6 +1713,16 @@ def _isolate_signature_ink_region(signature_crop):
         # The handwritten mark sits in a fairly narrow middle band.
         if center_y < height * 0.18 or center_y > height * 0.58:
             continue
+            
+        # Reject stars and solid logos (high solidity, square aspect)
+        solidity = area / float(w * h)
+        if 0.7 < aspect_ratio < 1.4 and solidity > 0.45:
+            continue
+            
+        # Reject large photo borders/boxes
+        extent = area / float(width * height)
+        if extent > 0.15 and solidity > 0.5:
+            continue
 
         # Reject long thin printed lines and underline strokes.
         # Handwritten signatures are rarely perfectly horizontal and very long ( > 70% width)
@@ -1803,9 +1813,9 @@ def _extract_signature_from_id_back(id_img):
     if height == 0 or width == 0:
         return None
 
-    # Step 1: Targeting the student signature zone (Broadened for variety in ID designs)
-    lane_y0, lane_y1 = int(height * 0.15), int(height * 0.55)
-    lane_x0, lane_x1 = int(width * 0.10), int(width * 0.90)
+    # Step 1: Broadened signature zone to capture wide/slanted signatures
+    lane_y0, lane_y1 = int(height * 0.18), int(height * 0.48)
+    lane_x0, lane_x1 = int(width * 0.05), int(width * 0.95)
     roi_gray = gray[lane_y0:lane_y1, lane_x0:lane_x1].copy()
     
     # NEW: OCR-Assisted Label Erasure
@@ -1816,9 +1826,10 @@ def _extract_signature_from_id_back(id_img):
         for i in range(len(ocr_data['text'])):
             text = ocr_data['text'][i].strip().lower()
             clean_text = re.sub(r'[^a-z]', '', text)
-            if clean_text in ['signature', 'sign', 'sig', 'signatureof', 'student']:
+            # Erase common ID labels and footers
+            if clean_text in ['signature', 'sign', 'sig', 'signatureof', 'student', 'transferable', 'valid', 'until', 'this']:
                 tx, ty, tw, th = ocr_data['left'][i], ocr_data['top'][i], ocr_data['width'][i], ocr_data['height'][i]
-                cv2.rectangle(roi_gray, (tx-5, ty-5), (tx+tw+5, ty+th+5), (255), -1)
+                cv2.rectangle(roi_gray, (tx-10, ty-10), (tx+tw+10, ty+th+10), (255), -1)
                 print(f"[SIGNATURE] OCR Filter: Erased label '{text}' at ROI coords ({tx},{ty})", flush=True)
     except Exception as e:
         print(f"[SIGNATURE] OCR pre-filter error (non-critical): {e}", flush=True)
@@ -1828,9 +1839,11 @@ def _extract_signature_from_id_back(id_img):
     # Step 2: High-contrast smoothing
     norm = cv2.normalize(roi_gray, None, 0, 255, cv2.NORM_MINMAX)
     smooth = cv2.bilateralFilter(norm, 9, 75, 75)
+    
+    # Adaptive threshold - larger block size to avoid hollow strokes in thick signatures
     binary = cv2.adaptiveThreshold(
         smooth, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV, 21, 5
+        cv2.THRESH_BINARY_INV, 31, 7
     )
     
     # Step 3: Component isolation
@@ -1840,16 +1853,51 @@ def _extract_signature_from_id_back(id_img):
     
     for cnt in contours:
         x, y, w, h = cv2.boundingRect(cnt)
-        if x < 15 or (x+w) > w_idx-15: continue
+        
+        # SIDE-MARGIN PURGE: Frames/edges
+        if x < 8 or (x+w) > w_idx-8: continue
         if y < 4 or (y+h) > h_idx-4: continue
+        
         area = cv2.contourArea(cnt)
-        if area < 25: continue
-        solidity = area / float(w * h)
-        aspect = max(w/h, h/w)
-        if aspect > 5.0 and solidity > 0.4: continue
-        if w < 50 and h < 50 and solidity > 0.7: continue
+        if area < 50: continue # Slightly more aggressive noise filter
+        
+        # SOLIDITY & SHAPE REJECTION: Lines, stars, and printed text blocks
+        solidity = area / float(w * h) if w * h > 0 else 0
+        aspect = w / float(h) if h > 0 else 0
+        extent = area / float(w_idx * h_idx)
+        
+        # Printed lines/underlines - signatures are rarely extremely long and flat
+        if aspect > 3.0 and h < 20: 
+            print(f"[SIGNATURE] Rejecting potential underline: aspect={aspect:.1f}, h={h}", flush=True)
+            continue
+        
+        # RECTANGULARITY FILTER: Catch photo boxes and "Valid Until" boxes
+        # Printed boxes have 4 corners and high solidity. 
+        # Relaxed solidity to 0.5 to catch noisy/hollow boxes.
+        peri = cv2.arcLength(cnt, True)
+        approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
+        if 4 <= len(approx) <= 6 and solidity > 0.5:
+             print(f"[SIGNATURE] Rejecting geometric box: corners={len(approx)}, solidity={solidity:.2f}", flush=True)
+             continue
+             
+        # Stars and solid logos
+        if 0.6 < aspect < 1.6 and solidity > 0.40:
+            continue
+            
+        # Photo boxes / larger borders / solid rectangular text blocks
+        if (extent > 0.10 or w > w_idx * 0.35) and solidity > 0.45: continue
+            
         complexity = cv2.arcLength(cnt, True)
-        candidates.append({'box': (x, y, w, h), 'complex': complexity, 'y_mid': y + h/2, 'area': area})
+        # Handwriting score: favors complexity relative to area
+        hw_score = complexity / (np.sqrt(area) + 1)
+        
+        candidates.append({
+            'box': (x, y, w, h), 
+            'complex': complexity, 
+            'hw_score': hw_score,
+            'y_mid': y + h/2, 
+            'area': area
+        })
 
     if not candidates:
         ch, cw = int(h_idx * 0.6), int(w_idx * 0.7)
@@ -1859,14 +1907,24 @@ def _extract_signature_from_id_back(id_img):
         return cv2.resize(result, (400, int(400 * ch/cw)), interpolation=cv2.INTER_LINEAR)
         
     # Step 4: ANCHOR ON THE SIGNATURE
-    candidates.sort(key=lambda c: c['complex'], reverse=True)
-    top_candidates = [c for c in candidates if c['y_mid'] < h_idx * 0.65]
-    anchor = top_candidates[0] if top_candidates else candidates[0]
+    # We prefer components with high hw_score in the target lane
+    candidates.sort(key=lambda c: c['hw_score'], reverse=True)
     
-    final_parts = [anchor['box']]
+    # Vertically tighten: We expect the signature to be near the top/center of our ROI
+    signature_lane = [c for c in candidates if h_idx * 0.10 < c['y_mid'] < h_idx * 0.60]
+    anchor = signature_lane[0] if signature_lane else candidates[0]
+    
+    # VERTICAL PURGE: Only grab pieces that are physically close to the signature cluster.
+    # Handwriting flows horizontally; printed lines/boxes sit in a separate 'lane' below.
+    final_parts = []
     for c in candidates:
+        # Distance check: Components must be within 25% of the ROI height from the anchor center
+        # This prevents 'jumping' to a line or box sitting significantly below the signature.
         if abs(c['y_mid'] - anchor['y_mid']) < h_idx * 0.25:
             final_parts.append(c['box'])
+            
+    if not final_parts:
+        final_parts = [anchor['box']]
             
     x0 = min(b[0] for b in final_parts)
     y0 = min(b[1] for b in final_parts)

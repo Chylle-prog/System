@@ -45,11 +45,10 @@ def _extract_ink_crop(img_np):
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     enhanced = clahe.apply(gray)
     
-    # Adaptive threshold - smaller block preserves thin strokes
-    # Aggressive threshold (C=14) filters out more background noise/texture from physical IDs
+    # Adaptive threshold - larger block size to avoid hollow strokes in thick signatures
     binary = cv2.adaptiveThreshold(
         enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-        cv2.THRESH_BINARY_INV, 15, 14
+        cv2.THRESH_BINARY_INV, 31, 7
     )
     
     # Close tiny gaps but don't dilate significantly

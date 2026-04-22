@@ -140,22 +140,32 @@ const App = () => {
     const avgX = sumX / inkPixels;
     const avgY = sumY / inkPixels;
     
-    // Calculate variance as a proxy for structural entropy
-    let variance = 0;
+    let junctions = 0;
+    const neighborOffsets = [
+      [-1, -1], [0, -1], [1, -1],
+      [-1, 0],          [1, 0],
+      [-1, 1],  [0, 1],  [1, 1]
+    ];
+
     points.forEach(p => {
-      variance += Math.sqrt(Math.pow(p.x - avgX, 2) + Math.pow(p.y - avgY, 2));
+      let neighbors = 0;
+      neighborOffsets.forEach(([dx, dy]) => {
+        const nx = p.x + dx;
+        const ny = p.y + dy;
+        const idx = (ny * canvas.width + nx) * 4;
+        if (data[idx] < 200) neighbors++;
+      });
+      if (neighbors > 2) junctions++;
     });
-    const entropy = points.length > 0 ? (variance / points.length) : 0;
     
-    // Heuristic: Real signatures have higher mass and higher entropy (varied strokes)
-    // Doodles are often either very sparse or very repetitive
-    const normalizedMass = Math.min(1, inkPixels / 2500); // 2500 is a healthy mass
-    const normalizedEntropy = Math.min(1, entropy / 60); // 60 is a decent spread
+    // Heuristic: Real signatures have many junctions (overlapping strokes, tight curves)
+    const normalizedMass = Math.min(1, inkPixels / 2000);
+    const normalizedJunctions = Math.min(1, junctions / 150); // 150 junctions for a decent signature
     
-    // Complexity score
-    const score = (normalizedMass * 0.4) + (normalizedEntropy * 0.6);
+    // Complexity score now favors structured "junction-rich" handwriting
+    const score = (normalizedMass * 0.3) + (normalizedJunctions * 0.7);
     
-    return { score, mass: inkPixels, entropy: entropy.toFixed(2) };
+    return { score, mass: inkPixels, junctions };
   };
 
   const runSignatureTest = async () => {
@@ -169,18 +179,14 @@ const App = () => {
       setLastSignatureImage(signatureData);
       
       const complexity = analyzeSignatureComplexity(canvas);
-      setSignatureStats(prev => ({ ...prev, inkMass: complexity.mass, entropy: complexity.entropy }));
+      setSignatureStats(prev => ({ ...prev, inkMass: complexity.mass, junctions: complexity.junctions }));
 
       const res = await api.signatureMatch(signatureData, form.idBackImage);
       
-      // Bench-only Fix: If complexity is extremely low, override a "successful" match
-      // This prevents the "Random Doodle" pass that the user reported.
-      if (complexity.score < 0.28 && res.verified) {
+      // If complexity is extremely low, override a "successful" match
+      if (complexity.score < 0.22 && res.verified) {
         res.verified = false;
-        res.message = `[Bench Rejected] Signature too simple. Score was ${res.confidence?.toFixed(1)}% but complexity failed (${(complexity.score * 100).toFixed(1)}%). Doodles are not allowed.`;
-        res.confidence = res.confidence * 0.5; // Penalty
-      } else if (complexity.score < 0.28) {
-        res.message = `[Complexity Low] ${res.message}`;
+        res.message = `[Bench Rejected] Simple doodle detected. Structure score: ${(complexity.score * 100).toFixed(1)}%.`;
       }
 
       setResults({ type: 'signature', data: res });
@@ -223,60 +229,52 @@ const App = () => {
     }
   };
 
-  const setupSignatureCanvas = () => {
+  const [isDrawing, setIsDrawing] = useState(false);
+
+  const startDrawing = (e) => {
     const canvas = signatureCanvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = 'white';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+    
+    const x = (clientX - rect.left) * scaleX;
+    const y = (clientY - rect.top) * scaleY;
+    
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 2.5;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    setIsDrawing(true);
+  };
 
-    let isDrawing = false;
-
-    const startDrawing = (e) => {
-      isDrawing = true;
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
-      
-      const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
-      const y = (e.clientY || (e.touches && e.touches[0].clientY)) - rect.top;
-      
-      ctx.beginPath();
-      ctx.moveTo(x * scaleX, y * scaleY);
-    };
-
-    const draw = (e) => {
-      if (!isDrawing) return;
-      e.preventDefault();
-      
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
-      
-      const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
-      const y = (e.clientY || (e.touches && e.touches[0].clientY)) - rect.top;
-      
-      ctx.lineTo(x * scaleX, y * scaleY);
-      ctx.stroke();
-    };
-
-    const stopDrawing = () => {
-      isDrawing = false;
-    };
-
-    canvas.addEventListener('mousedown', startDrawing);
-    canvas.addEventListener('mousemove', draw);
-    canvas.addEventListener('mouseup', stopDrawing);
-    canvas.addEventListener('mouseout', stopDrawing);
+  const draw = (e) => {
+    if (!isDrawing) return;
+    const canvas = signatureCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
     
-    canvas.addEventListener('touchstart', startDrawing);
-    canvas.addEventListener('touchmove', draw);
-    canvas.addEventListener('touchend', stopDrawing);
+    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+    
+    const x = (clientX - rect.left) * scaleX;
+    const y = (clientY - rect.top) * scaleY;
+    
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
   };
 
   const clearSignatureCanvas = () => {
@@ -290,7 +288,7 @@ const App = () => {
   // Initialize canvas when signature tab is active
   useEffect(() => {
     if (activeTab === 'signature') {
-      setTimeout(setupSignatureCanvas, 100);
+      setTimeout(clearSignatureCanvas, 100);
     }
   }, [activeTab]);
 
@@ -395,155 +393,113 @@ const App = () => {
     const isMatch = data.verified;
 
     return (
-      <div className="mt-6 space-y-6">
-        <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <PenTool className="w-5 h-5 text-indigo-400" />
+      <div className="results-container">
+        <div className="score-card">
+          <div className="score-header">
+            <h3 style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <PenTool size={20} color="#818cf8" />
               Signature Match Score
             </h3>
-            <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-              isMatch ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
-            }`}>
-              {isMatch ? 'Signature Valid' : 'Signature Mismatch'}
+            <span className={`status-badge ${isMatch ? 'status-success' : 'status-failed'}`}>
+              {isMatch ? 'Valid' : 'Mismatch'}
             </span>
           </div>
 
-          <div className="relative pt-2">
-            <div className="flex items-center justify-center mb-2">
-              <span className={`text-5xl font-black ${
-                isMatch ? 'text-emerald-400' : 'text-rose-400'
-              }`}>
-                {(data.confidence || 0).toFixed(1)}%
-              </span>
-            </div>
-            <div className="w-full bg-slate-700 rounded-full h-2">
-              <div 
-                className={`h-2 rounded-full transition-all duration-1000 ${
-                  isMatch ? 'bg-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.5)]' : 'bg-rose-500'
-                }`}
-                style={{ width: `${data.confidence || 0}%` }}
-              ></div>
-            </div>
-            <p className="text-center text-slate-400 text-sm mt-2">Signature Match Confidence</p>
+          <div className="score-value" style={{ color: isMatch ? '#10b981' : '#ef4444' }}>
+            {(data.confidence || 0).toFixed(1)}%
           </div>
+          
+          <div className="confidence-bar">
+            <div className="confidence-fill" style={{ width: `${data.confidence || 0}%`, background: isMatch ? '#10b981' : '#ef4444' }}></div>
+          </div>
+          <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>Match Confidence</p>
         </div>
 
-        {/* Training Feedback Loop (Adaptive Profile) */}
-        <div className="bg-indigo-900/20 p-4 rounded-xl border border-indigo-500/30">
-          <p className="text-xs text-indigo-300 font-bold uppercase mb-3 flex items-center gap-2">
-            <Sparkles className="w-3 h-3" />
-            Signature Training Loop
+        {/* Training Feedback Loop */}
+        <div className="training-loop">
+          <p style={{ fontSize: '0.65rem', fontWeight: '800', color: '#818cf8', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <Sparkles size={12} /> TRAINING FEEDBACK
           </p>
-          <div className="flex gap-3">
-            <button
-              onClick={() => handleSignatureFeedback('agree')}
-              disabled={loading}
-              className="flex-1 py-2 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
-            >
-              Agree with Result
-            </button>
-            <button
-              onClick={() => handleSignatureFeedback('disagree')}
-              disabled={loading}
-              className="flex-1 py-2 px-4 bg-rose-700 hover:bg-rose-600 text-white rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
-            >
-              Disagree with Result
-            </button>
+          <div className="btn-group">
+            <button className="btn-feedback btn-agree" onClick={() => handleSignatureFeedback('agree')} disabled={loading}>Agree</button>
+            <button className="btn-feedback btn-disagree" onClick={() => handleSignatureFeedback('disagree')} disabled={loading}>Disagree</button>
           </div>
-          <p className="text-[10px] text-slate-400 mt-2 text-center">
-            Confirming a "Real" signature builds your high-fidelity Reference Profile locally.
-          </p>
         </div>
 
         {/* Visual Match Analysis */}
-        <div className="bg-slate-900/80 p-5 rounded-xl border border-slate-800 shadow-inner">
-          <h4 className="text-xs font-bold text-indigo-300 uppercase tracking-widest mb-4 flex items-center gap-2">
-            <Search className="w-4 h-4" /> Visual Match Analysis (Zoom)
-          </h4>
-          
-          <div className="grid grid-cols-2 gap-4">
-            <div className="text-center space-y-2">
-              <p className="text-[10px] text-slate-500 uppercase font-bold">Extracted from ID</p>
-              <div className="aspect-square bg-white rounded-lg border-2 border-indigo-500/30 flex items-center justify-center overflow-hidden p-2">
+        <div className="visual-analysis">
+          <h4 style={{ fontSize: '0.7rem', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Visual Match Analysis</h4>
+          <div className="image-grid">
+            <div className="image-item">
+              <p>Extracted from ID</p>
+              <div className="image-container">
                 {data.extracted_signature ? (
-                  <img src={data.extracted_signature} alt="ID Signature" className="max-w-full max-h-full object-contain filter contrast(1.2)" />
+                  <img src={data.extracted_signature} alt="ID Signature" style={{ filter: 'contrast(1.2)' }} />
                 ) : (
-                  <span className="text-xs text-slate-400 font-mono italic">No Extract</span>
+                  <span style={{ fontSize: '0.7rem', fontStyle: 'italic', color: '#475569' }}>No Extract</span>
                 )}
               </div>
             </div>
-            
-            <div className="text-center space-y-2">
-              <p className="text-[10px] text-slate-500 uppercase font-bold">Processed Submission</p>
-              <div className="aspect-square bg-white rounded-lg border-2 border-slate-700 flex items-center justify-center overflow-hidden p-2">
+            <div className="image-item">
+              <p>Processed Submission</p>
+              <div className="image-container">
                 {data.processed_submitted ? (
-                  <img src={data.processed_submitted} alt="My Drawing" className="max-w-full max-h-full object-contain" />
+                  <img src={data.processed_submitted} alt="Submission" />
                 ) : (
-                  <span className="text-xs text-slate-400 font-mono italic">No Process</span>
+                  <span style={{ fontSize: '0.7rem', fontStyle: 'italic', color: '#475569' }}>No Process</span>
                 )}
               </div>
             </div>
           </div>
         </div>
 
-        <div className="bg-slate-900/80 p-5 rounded-xl border border-slate-800 shadow-inner">
-          <h4 className="text-xs font-bold text-emerald-300 uppercase tracking-widest mb-4 flex items-center gap-2">
-            <Info className="w-4 h-4" /> What The Matcher Sees
-          </h4>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="text-center space-y-2">
-              <p className="text-[10px] text-slate-500 uppercase font-bold">ID Signature Used For Matching</p>
-              <div className="aspect-square bg-white rounded-lg border-2 border-emerald-500/30 flex items-center justify-center overflow-hidden p-2">
+        {/* What The Matcher Sees */}
+        <div className="visual-analysis">
+          <h4 style={{ fontSize: '0.7rem', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Neural Matcher View</h4>
+          <div className="image-grid">
+            <div className="image-item">
+              <p>Reference (Anchor)</p>
+              <div className="image-container" style={{ borderColor: 'rgba(16, 185, 129, 0.3)' }}>
                 {data.matcher_reference ? (
-                  <img src={data.matcher_reference} alt="Matcher reference signature" className="max-w-full max-h-full object-contain" />
+                  <img src={data.matcher_reference} alt="Reference View" />
                 ) : (
-                  <span className="text-xs text-slate-400 font-mono italic">No Matcher View</span>
+                  <span style={{ fontSize: '0.7rem', fontStyle: 'italic', color: '#475569' }}>No View</span>
                 )}
               </div>
             </div>
-
-            <div className="text-center space-y-2">
-              <p className="text-[10px] text-slate-500 uppercase font-bold">Submitted Signature Used For Matching</p>
-              <div className="aspect-square bg-white rounded-lg border-2 border-emerald-500/30 flex items-center justify-center overflow-hidden p-2">
+            <div className="image-item">
+              <p>Submitted (Normalized)</p>
+              <div className="image-container" style={{ borderColor: 'rgba(16, 185, 129, 0.3)' }}>
                 {data.matcher_submitted ? (
-                  <img src={data.matcher_submitted} alt="Matcher submitted signature" className="max-w-full max-h-full object-contain" />
+                  <img src={data.matcher_submitted} alt="Submitted View" />
                 ) : (
-                  <span className="text-xs text-slate-400 font-mono italic">No Matcher View</span>
+                  <span style={{ fontSize: '0.7rem', fontStyle: 'italic', color: '#475569' }}>No View</span>
                 )}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Complexity Analysis Overlay */}
-        <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-700/50">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
-              <Activity className="w-3 h-3" /> Complexity Metrics (Bench-Side)
-            </h4>
+        {/* Complexity Metrics */}
+        <div className="complexity-metrics">
+          <h4 style={{ fontSize: '0.65rem', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <Activity size={12} /> Complexity Metrics
+          </h4>
+          <div className="metrics-grid">
+            <div className="metric-item">
+              <p className="metric-label">Ink Mass</p>
+              <p className="metric-value">{signatureStats.inkMass} px</p>
+            </div>
+            <div className="metric-item">
+              <p className="metric-label">Junctions</p>
+              <p className="metric-value">{signatureStats.junctions}</p>
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-             <div className="bg-slate-800/30 p-2 rounded-lg border border-slate-700/30">
-               <p className="text-[9px] text-slate-500 uppercase mb-1">Ink Mass</p>
-               <p className="text-sm font-mono text-slate-300">{signatureStats.inkMass} px</p>
-             </div>
-             <div className="bg-slate-800/30 p-2 rounded-lg border border-slate-700/30">
-               <p className="text-[9px] text-slate-500 uppercase mb-1">Entropy</p>
-               <p className="text-sm font-mono text-slate-300">{signatureStats.entropy}</p>
-             </div>
-          </div>
-          <p className="text-[9px] text-slate-500 mt-2 italic">* Low complexity (e.g. doodles) will trigger a Bench Rejection.</p>
         </div>
 
-        <div className={`p-4 rounded-xl border flex gap-3 ${
-          isMatch ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-rose-500/5 border-rose-500/20'
-        }`}>
-          <div className="flex-1">
-            <p className="text-xs font-bold text-slate-300 uppercase mb-1">Result Message:</p>
-            <p className="text-sm text-slate-100">{data.message}</p>
-          </div>
+        <div style={{ padding: '1rem', borderRadius: '12px', background: isMatch ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)', border: `1px solid ${isMatch ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}` }}>
+          <p style={{ fontSize: '0.65rem', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.2rem' }}>Server Message</p>
+          <p style={{ fontSize: '0.85rem' }}>{data.message}</p>
         </div>
       </div>
     );
@@ -678,6 +634,13 @@ const App = () => {
                       ref={signatureCanvasRef}
                       width={400} 
                       height={120}
+                      onMouseDown={startDrawing}
+                      onMouseMove={draw}
+                      onMouseUp={stopDrawing}
+                      onMouseOut={stopDrawing}
+                      onTouchStart={startDrawing}
+                      onTouchMove={draw}
+                      onTouchEnd={stopDrawing}
                       style={{
                         display: 'block',
                         cursor: 'crosshair',
