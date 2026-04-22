@@ -1897,9 +1897,10 @@ def init_socketio(socketio):
             conn = get_db()
             cursor = conn.cursor()
             
-            # Fetch message history JOINED with current applicant status and applicant info
+            # Fetch message history JOINED with current applicant status for THIS provider and applicant info
             query = """
-                SELECT m.m_id, 
+                SELECT DISTINCT ON (m.m_id)
+                       m.m_id, m.applicant_no,
                        CASE 
                            WHEN m.username = (a.first_name || ' ' || a.last_name) OR m.username = a.first_name THEN a.first_name 
                            ELSE m.username 
@@ -1911,11 +1912,16 @@ def init_socketio(socketio):
                            ELSE 'Pending'
                        END as student_status
                 FROM message m
-                LEFT JOIN applicant_status s ON m.applicant_no = s.applicant_no
                 LEFT JOIN applicants a ON m.applicant_no = a.applicant_no
+                LEFT JOIN (
+                    SELECT ast.applicant_no, ast.is_accepted, sch.pro_no
+                    FROM applicant_status ast
+                    JOIN scholarships sch ON ast.scholarship_no = sch.req_no
+                    WHERE sch.pro_no = %s
+                ) s ON m.applicant_no = s.applicant_no
                 WHERE m.applicant_no = %s AND m.pro_no = %s
             """
-            params = [app_no, pro_no]
+            params = [pro_no, app_no, pro_no]
 
             # If the user is a student, we filter the history so they only see 
             # messages from their CURRENT application sessions.
@@ -1944,6 +1950,7 @@ def init_socketio(socketio):
             for msg in messages:
                 emit('message', {
                     'm_id': msg['m_id'],
+                    'applicant_no': msg['applicant_no'],
                     'username': msg['username'],
                     'message': msg['message'],
                     'timestamp': msg['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
@@ -2011,16 +2018,20 @@ def init_socketio(socketio):
             m_id = row['m_id']
             timestamp = row['timestamp']
             
-            # Fetch current status of the applicant to include in the payload
+            # Fetch current status of the applicant to include in the payload (specific to THIS provider)
             cursor.execute("""
                 SELECT CASE 
-                    WHEN is_accepted IS TRUE THEN 'Accepted'
-                    WHEN is_accepted IS FALSE THEN 'Declined'
+                    WHEN ast.is_accepted IS TRUE THEN 'Accepted'
+                    WHEN ast.is_accepted IS FALSE THEN 'Declined'
                     ELSE 'Pending'
                 END as student_status
-                FROM applicant_status 
-                WHERE applicant_no = %s
-            """, (app_no,))
+                FROM applicant_status ast
+                JOIN scholarships sch ON ast.scholarship_no = sch.req_no
+                WHERE ast.applicant_no = %s AND sch.pro_no = %s
+                ORDER BY 
+                    CASE WHEN ast.is_accepted IS TRUE THEN 1 WHEN ast.is_accepted IS NULL THEN 2 ELSE 3 END
+                LIMIT 1
+            """, (app_no, pro_no))
             status_row = cursor.fetchone()
             student_status = status_row['student_status'] if status_row else 'Pending'
             
@@ -2030,6 +2041,7 @@ def init_socketio(socketio):
 
             emit('message', {
                 'm_id': m_id,
+                'applicant_no': app_no,
                 'username': actual_username,
                 'message': message_text,
                 'room': room,

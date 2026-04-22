@@ -453,7 +453,7 @@ export default function ScholarshipDashboard({
             m_id: msg.m_id,
             studentName: msg.username,
             studentEmail: appNo,
-            applicant_no: appNo,
+            applicant_no: msg.applicant_no || appNo,
             studentStatus: msg.student_status,
             message: msg.message,
             timestamp: msg.timestamp,
