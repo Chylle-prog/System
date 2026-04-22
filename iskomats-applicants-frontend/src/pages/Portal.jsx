@@ -239,7 +239,7 @@ const Portal = () => {
     const announcementInterval = setInterval(fetchAnnouncements, 30000);
 
     // Socket.IO Integration
-    let unsubLogged, unsubMsg, unsubRoom;
+    let unsubLogged, unsubMsg, unsubRoom, unsubNotif, unsubNotifUpdate;
     const token = localStorage.getItem('authToken');
     const applicantNo = localStorage.getItem('applicantNo');
     if (token) {
@@ -318,10 +318,35 @@ const Portal = () => {
             name: data.other_name || 'Admin',
             icon: 'fa-user-tie',
             unread: 1,
-            lastMessage: 'New chat started',
+            lastMessage: 'New Chat Started',
             time: 'Just now'
           }];
         });
+      });
+
+      unsubNotif = socketService.subscribe('new_notification', (data) => {
+        const type_icons = {
+          'message': 'fa-comment-alt',
+          'announcement': 'fa-bullhorn',
+          'scholarship': 'fa-graduation-cap',
+          'result': 'fa-file-signature'
+        };
+        
+        const newNotif = {
+          ...data,
+          read: false,
+          icon: type_icons[data.type] || 'fa-bell'
+        };
+        
+        setNotifications(prev => {
+          // Avoid duplicates
+          if (prev.some(n => n.id === newNotif.id)) return prev;
+          return [newNotif, ...prev];
+        });
+      });
+
+      unsubNotifUpdate = socketService.subscribe('notification_update', () => {
+        fetchNotifications();
       });
     }
 
@@ -342,6 +367,8 @@ const Portal = () => {
       if (unsubLogged) unsubLogged();
       if (unsubMsg) unsubMsg();
       if (unsubRoom) unsubRoom();
+      if (unsubNotif) unsubNotif();
+      if (unsubNotifUpdate) unsubNotifUpdate();
       if (token) {
         socketService.disconnect();
       }
@@ -2364,25 +2391,37 @@ const Portal = () => {
                 )}
               </div>
               <div className="notification-list">
-                {notifications.map(notif => (
-                  <div 
-                    key={notif.id}
-                    className={`notification-item ${notif.read ? '' : 'unread'}`}
-                    onClick={() => handleNotificationClick(notif)}
-                  >
-                    <div className="notification-icon">
-                      <i className={`fas ${notif.icon}`}></i>
-                    </div>
-                    <div className="notification-content">
-                      <div className="notification-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        {notif.title}
-                        {!notif.read && <i className="fas fa-circle" style={{ color: 'var(--primary)', fontSize: '0.5rem' }}></i>}
+                {notifications.length > 0 ? (
+                  notifications.map(notif => (
+                    <div 
+                      key={notif.id}
+                      className={`notification-item ${notif.read ? '' : 'unread'}`}
+                      onClick={() => handleNotificationClick(notif)}
+                    >
+                      <div className="notification-icon">
+                        <i className={`fas ${notif.icon}`}></i>
                       </div>
-                      <div className="notification-message">{notif.message}</div>
-                      <div className="notification-time">{notif.time}</div>
+                      <div className="notification-content">
+                        <div className="notification-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          {notif.title}
+                          {!notif.read && <i className="fas fa-circle" style={{ color: 'var(--primary)', fontSize: '0.5rem' }}></i>}
+                        </div>
+                        <div className="notification-message">{notif.message}</div>
+                        <div className="notification-time">{notif.time}</div>
+                      </div>
                     </div>
+                  ))
+                ) : (
+                  <div className="no-messages" style={{ padding: '2rem', textAlign: 'center' }}>
+                    <i className="fas fa-bell-slash" style={{ 
+                      fontSize: '2rem', 
+                      color: 'var(--gray-3)', 
+                      marginBottom: '1rem',
+                      display: 'block'
+                    }}></i>
+                    No notifications yet
                   </div>
-                ))}
+                )}
               </div>
             </div>
           </div>

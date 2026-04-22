@@ -55,6 +55,16 @@ class SocketService {
       console.log('Joined room:', data);
       this.notify('add_room', data);
     });
+
+    this.socket.on('new_notification', (data) => {
+      console.log('Received new notification:', data);
+      this.notify('new_notification', data);
+    });
+
+    this.socket.on('notification_update', (data) => {
+      console.log('Notification update triggered:', data);
+      this.notify('notification_update', data);
+    });
   }
 
   disconnect() {
