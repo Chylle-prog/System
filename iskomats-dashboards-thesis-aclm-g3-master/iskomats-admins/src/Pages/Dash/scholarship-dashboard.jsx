@@ -3746,7 +3746,7 @@ export default function ScholarshipDashboard({
             </div>
           </div>
           <div className="flex gap-2 mt-2">
-            <span className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase ${isPending ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
+            <span className={`flex items-center justify-center px-4 py-1.5 rounded-full text-xs font-bold uppercase ${isPending ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
               {isPending ? 'Pending Review' : 'Active Student'}
             </span>
             <div className="flex gap-2 mb-4">
