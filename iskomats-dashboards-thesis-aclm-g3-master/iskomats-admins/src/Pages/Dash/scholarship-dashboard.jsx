@@ -3979,46 +3979,6 @@ export default function ScholarshipDashboard({
           </div>
         </div>
 
-        {/* VERIFICATION VIDEOS SECTION */}
-        {(a.indigency_vid_url || a.enrollment_certificate_vid_url || a.grades_vid_url) && (
-          <div className="mb-10">
-            <h3 className="bg-[#800020] text-white px-4 py-2 text-sm font-black uppercase tracking-widest mb-4 rounded-lg flex items-center gap-2">
-              Verification Videos
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 border-2 border-gray-100 rounded-lg bg-gray-50/30">
-              {a.indigency_vid_url && (
-                <div className="space-y-2">
-                  <p className="text-[10px] font-black text-[#800020] uppercase flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#800020]"></span> Indigency Video
-                  </p>
-                  <div className="aspect-video bg-black rounded-xl overflow-hidden shadow-md border-2 border-white">
-                    <video src={a.indigency_vid_url} controls muted className="w-full h-full object-contain" />
-                  </div>
-                </div>
-              )}
-              {a.enrollment_certificate_vid_url && (
-                <div className="space-y-2">
-                  <p className="text-[10px] font-black text-[#800020] uppercase flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#800020]"></span> Enrollment Video
-                  </p>
-                  <div className="aspect-video bg-black rounded-xl overflow-hidden shadow-md border-2 border-white">
-                    <video src={a.enrollment_certificate_vid_url} controls muted className="w-full h-full object-contain" />
-                  </div>
-                </div>
-              )}
-              {a.grades_vid_url && (
-                <div className="space-y-2">
-                  <p className="text-[10px] font-black text-[#800020] uppercase flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#800020]"></span> Grades/GPA Video
-                  </p>
-                  <div className="aspect-video bg-black rounded-xl overflow-hidden shadow-md border-2 border-white">
-                    <video src={a.grades_vid_url} controls muted className="w-full h-full object-contain" />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* SIGNATURE SECTION */}
         <div className="mt-12 pt-8 border-t-2 border-dashed border-gray-200">
