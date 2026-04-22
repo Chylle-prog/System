@@ -17,6 +17,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from cryptography.fernet import Fernet
 from io import BytesIO
+import time
 import traceback
 import threading
 
@@ -1322,8 +1323,15 @@ def notify_announcement_applicants(
             )
 
         recipients = cur.fetchall()
-        conn.close()
-        conn = None
+        
+        # Prefetch Google access token for reuse
+        google_access_token = None
+        if send_email_alerts:
+            try:
+                google_access_token = fetch_google_access_token()
+            except Exception as e:
+                print(f"[ANNOUNCEMENT ERROR] Failed to fetch access token for batch: {e}")
+                send_email_alerts = False
 
         provider_label = (provider_name or 'ISKOMATS').strip()
         notification_title = f"{notification_title_prefix}: {title}"
@@ -1334,21 +1342,37 @@ def notify_announcement_applicants(
 
         email_success_count = 0
         email_failure_count = 0
+        
+        print(f"[ANNOUNCEMENT BG] Notifying {len(recipients)} applicants...")
 
-        for recipient in recipients:
-            result = create_notification(
-                user_no=recipient['applicant_no'],
-                title=notification_title,
-                message=notification_message,
-                notif_type='announcement',
-                send_email=send_email_alerts,
-            )
+        for idx, recipient in enumerate(recipients):
+            try:
+                # Reuse DB connection, use pre-fetched token, and send synchronously (in this bg thread)
+                result = create_notification(
+                    user_no=recipient['applicant_no'],
+                    title=notification_title,
+                    message=notification_message,
+                    notif_type='announcement',
+                    send_email=send_email_alerts,
+                    db_conn=conn,
+                    google_access_token=google_access_token,
+                    sync_email=True
+                )
 
-            if send_email_alerts:
-                if result and result.get('email_sent'):
-                    email_success_count += 1
-                else:
-                    email_failure_count += 1
+                if send_email_alerts:
+                    if result and result.get('email_sent'):
+                        email_success_count += 1
+                    else:
+                        email_failure_count += 1
+                    
+                    # Add a small delay (200ms) to respect Gmail rate limits
+                    time.sleep(0.2)
+                
+                # Log progress
+                if (idx + 1) % 20 == 0:
+                    print(f"[ANNOUNCEMENT PROGRESS] Notified {idx+1}/{len(recipients)} recipients")
+            except Exception as row_err:
+                print(f"[ANNOUNCEMENT ERROR] Failed to notify {recipient['applicant_no']}: {row_err}")
 
         if send_email_alerts:
             print(
@@ -1358,6 +1382,8 @@ def notify_announcement_applicants(
             )
     except Exception as exc:
         print(f"[NOTIF ERROR] Failed to notify announcement recipients: {exc}", flush=True)
+        import traceback
+        traceback.print_exc()
     finally:
         if conn:
             conn.close()

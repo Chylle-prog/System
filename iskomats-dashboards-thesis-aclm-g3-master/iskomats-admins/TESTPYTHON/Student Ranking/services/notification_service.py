@@ -130,7 +130,7 @@ The ISKOMATS Team
         raise e
 
 
-def create_notification(user_no, title, message, notif_type='message', send_email=True):
+def create_notification(user_no, title, message, notif_type='message', send_email=True, db_conn=None, google_access_token=None, sync_email=False):
     """Create an applicant notification and optionally send an email alert."""
     GMAIL_SENDER_EMAIL = (
         os.environ.get('GMAIL_SENDER_EMAIL')
@@ -138,9 +138,13 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
         or os.environ.get('SMTP_EMAIL')
     )
     
-    conn = None
+    conn = db_conn
+    should_close_conn = False
     try:
-        conn = get_db()
+        if not conn:
+            conn = get_db()
+            should_close_conn = True
+            
         cur = conn.cursor()
         
         # DEBUG: Verify applicant exists first (check if foreign key will fail)
@@ -148,36 +152,27 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
         applicant_check = cur.fetchone()
         if not applicant_check:
             print(f"[NOTIF ERROR] Applicant {user_no} not found in applicants table - cannot create notification (FK constraint)")
-            conn.close()
+            if should_close_conn: conn.close()
             return {'created': False, 'email_sent': False, 'reason': 'applicant-not-found'}
         
         # 1. Insert into database
-        try:
-            cur.execute("""
-                INSERT INTO notifications (user_no, title, message, type)
-                VALUES (%s, %s, %s, %s)
-                RETURNING notif_id
-            """, (user_no, title, message, notif_type))
-            notif_result = cur.fetchone()  # Fetch the RETURNING result
-            if notif_result:
-                notif_id = notif_result['notif_id']
-                print(f"[NOTIF] Database notification created: notif_id={notif_id}, user_no={user_no}, type={notif_type}")
-            else:
-                print(f"[NOTIF ERROR] INSERT returned no result for user {user_no}")
-                conn.rollback()
-                conn.close()
-                return {'created': False, 'email_sent': False, 'reason': 'notification-insert-empty'}
-        except Exception as db_err:
-            print(f"[NOTIF ERROR] Database INSERT failed for user {user_no}: {db_err}")
-            if 'conn' in locals():
-                conn.rollback()
-            raise
+        cur.execute("""
+            INSERT INTO notifications (user_no, title, message, type)
+            VALUES (%s, %s, %s, %s)
+            RETURNING notif_id
+        """, (user_no, title, message, notif_type))
+        notif_result = cur.fetchone()  # Fetch the RETURNING result
+        if notif_result:
+            notif_id = notif_result['notif_id']
+        else:
+            print(f"[NOTIF ERROR] INSERT returned no result for user {user_no}")
+            if not db_conn: conn.rollback()
+            if should_close_conn: conn.close()
+            return {'created': False, 'email_sent': False, 'reason': 'notification-insert-empty'}
         
         # 2. Emit SocketIO event if initialized
         if _socketio:
             try:
-                # We emit to a room named after the applicant_no
-                # The student portal should join this room on login
                 room = f"applicant_{user_no}"
                 _socketio.emit('new_notification', {
                     'id': notif_id,
@@ -186,47 +181,37 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
                     'type': notif_type,
                     'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 }, room=room)
-                print(f"[NOTIF SOCKET] Broadcasted to room {room}")
             except Exception as socket_err:
                 print(f"[NOTIF SOCKET ERROR] Failed to emit: {socket_err}")
 
         if not send_email:
-            conn.commit()
-            conn.close()
+            if not db_conn: conn.commit()
+            if should_close_conn: conn.close()
             return {'created': True, 'email_sent': False, 'reason': 'email-disabled'}
 
-        # 2. Get the applicant's email address.
-        # This service stores notifications against applicants(applicant_no), so
-        # do not fall back to user_no here. Applicant ids and admin user ids can
-        # collide numerically and send mail to the wrong person.
+        # 3. Get the applicant's email address
         applicant_email_table = get_applicant_email_table(cur)
         cur.execute(f"SELECT email_address FROM {applicant_email_table} WHERE applicant_no = %s LIMIT 1", (user_no,))
         user_row = cur.fetchone()
-        conn.commit()
+        
+        if not db_conn: conn.commit()
         
         if not user_row or not user_row['email_address']:
-            print(f"[NOTIF WARN] No email found for user {user_no} - database notification created but no email sent")
-            conn.close()
+            if should_close_conn: conn.close()
             return {'created': True, 'email_sent': False, 'reason': 'email-not-found'}
             
         receiver_email = user_row['email_address']
         
-        # 3. Send Email alert via Gmail API in a background thread
+        # 4. Send Email alert via Gmail API
         if GMAIL_SENDER_EMAIL:
-            def _email_worker():
-                # Separate worker to handle Gmail API communication without blocking DB commit/HTTP response
+            def _send_email_logic(access_token=None):
                 try:
-                    # Prepare email
                     email_body = f"""Hello,
-
-You have a new notification from ISKOMATS:
-
-{title}
+\nYou have a new notification from ISKOMATS:
+\n{title}
 {message}
-
-Please log in to the portal to view more details.
-
-Best regards,
+\nPlease log in to the portal to view more details.
+\nBest regards,
 The ISKOMATS Team
 """
                     msg = MIMEText(email_body)
@@ -234,10 +219,11 @@ The ISKOMATS Team
                     msg['From'] = GMAIL_SENDER_EMAIL
                     msg['To'] = receiver_email
                     
-                    access_token = fetch_google_access_token()
                     if not access_token:
-                        print(f"[NOTIF EMAIL ERROR] No access token for {receiver_email}, skipping email.")
-                        return
+                        access_token = fetch_google_access_token()
+                    
+                    if not access_token:
+                        return False
 
                     encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
                     
@@ -252,30 +238,32 @@ The ISKOMATS Team
                     )
                     
                     with urllib_request.urlopen(email_request, timeout=30) as response:
-                        print(f"[NOTIF BG] Email sent successfully to {receiver_email}")
+                        return True
                 except Exception as email_err:
-                    print(f"[NOTIF BG ERROR] Failed to send email to {receiver_email}: {email_err}")
+                    print(f"[NOTIF EMAIL ERROR] Failed to send email to {receiver_email}: {email_err}")
+                    return False
 
-            import threading
-            thread = threading.Thread(target=_email_worker)
-            thread.daemon = True
-            thread.start()
-            
-            conn.close()
-            return {'created': True, 'email_sent': True, 'email': receiver_email, 'info': 'Sending in background'}
+            if sync_email:
+                # Synchronous send (for batch jobs that are already in a background thread)
+                _send_email_logic(google_access_token)
+                if should_close_conn: conn.close()
+                return {'created': True, 'email_sent': True, 'email': receiver_email}
+            else:
+                # Background send (for individual notifications)
+                import threading
+                thread = threading.Thread(target=lambda: _send_email_logic(google_access_token))
+                thread.daemon = True
+                thread.start()
+                
+                if should_close_conn: conn.close()
+                return {'created': True, 'email_sent': True, 'email': receiver_email, 'info': 'Sending in background'}
         else:
-            print(f"[NOTIF] GMAIL_SENDER_EMAIL not configured - notification saved but email not sent to {receiver_email if receiver_email else 'unknown'}")
-            conn.close()
+            if should_close_conn: conn.close()
             return {'created': True, 'email_sent': False, 'email': receiver_email, 'reason': 'sender-email-not-configured'}
-        
-        conn.close()
-        return {'created': True, 'email_sent': False, 'email': receiver_email, 'reason': 'email-path-not-executed'}
         
     except Exception as e:
         print(f"[NOTIF ERROR] Notification creation failed: {e}", flush=True)
-        if conn:
-            try:
-                conn.close()
-            except:
-                pass
+        if should_close_conn and conn:
+            try: conn.close()
+            except: pass
         return {'created': False, 'email_sent': False, 'reason': str(e)}
