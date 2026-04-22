@@ -38,14 +38,11 @@ def check_notifications_schema():
         for col in columns:
             print(f"Column: {col['column_name']}, Type: {col['data_type']}, Default: {col['column_default']}")
             
-        user_id = 101
-        print(f"\nChecking notifications for user {user_id}...")
-        cur.execute("SELECT notif_id, title, message, is_read, created_at, expires_at FROM notifications WHERE user_no = %s", (user_id,))
+        print("\nChecking users table...")
+        cur.execute("SELECT * FROM users")
         rows = cur.fetchall()
-        if not rows:
-            print("No notifications found.")
         for row in rows:
-            print(f"ID: {row['notif_id']}, Title: {row['title']}, Read: {row['is_read']}, Expires: {row['expires_at']}")
+            print(row)
         
         cur.close()
         conn.close()

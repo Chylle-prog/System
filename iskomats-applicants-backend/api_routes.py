@@ -4186,9 +4186,12 @@ def get_admin_announcements(current_user_id, pro_no, role):
             date_col = 'NULL'
             order_col = 'a.ann_no DESC'
 
+        include_removed = request.args.get('include_removed', 'false').lower() == 'true'
         where_clauses = []
-        if 'is_removed' in announcement_columns:
+        if 'is_removed' in announcement_columns and not include_removed:
             where_clauses.append('COALESCE(a.is_removed, FALSE) = FALSE')
+        
+        is_removed_expr = 'COALESCE(a.is_removed, FALSE)' if 'is_removed' in announcement_columns else 'FALSE'
 
         query = """
             SELECT
@@ -4198,12 +4201,14 @@ def get_admin_announcements(current_user_id, pro_no, role):
                 {date_col} AS ann_date,
                 {date_col} AS time_added,
                 COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,
+                {is_removed_expr} as is_removed,
                 {image_select}
             FROM announcements a
             LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
             {image_join}
         """.format(
             date_col=date_col,
+            is_removed_expr=is_removed_expr,
             image_select=f"ai.{primary_key_column} AS image_id, ai.img AS announcement_image_data" if primary_key_column and foreign_key_column else "NULL AS image_id, NULL AS announcement_image_data",
             image_join=f"LEFT JOIN announcement_images ai ON a.ann_no = ai.{foreign_key_column}" if primary_key_column and foreign_key_column else "",
         )
@@ -4363,12 +4368,12 @@ def create_announcement(current_user_id, pro_no, role):
         # Notify students based on send_to_all_applicants flag
         run_background_task(
             notify_announcement_applicants,
-            title,
-            message,
-            target_pro_no,
-            provider_name,
-            send_to_all_applicants,
-            True,
+            title=title,
+            message=message,
+            provider_no=target_pro_no,
+            provider_name=provider_name,
+            send_to_all_applicants=send_to_all_applicants,
+            send_email_alerts=False, # Temporarily disabled to investigate delivery issues
         )
         print(f"[ANNOUNCEMENT] Notification + email delivery started in background for announcement {ann_no}")
 

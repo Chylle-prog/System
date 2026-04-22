@@ -923,7 +923,7 @@ export default function ScholarshipDashboard({
         console.error('[ContentMain] announcementService is not defined in this scope.');
         return;
       }
-      const response = await announcementService.getAll();
+      const response = await announcementService.getAll({ include_removed: true });
       // Map backend field names to frontend field names
       const normalizedAnnouncements = (response.data || []).map(ann => ({
         id: ann.ann_no || ann.id,
@@ -1189,8 +1189,8 @@ export default function ScholarshipDashboard({
   };
 
   const filteredScholarshipPosts = useMemo(() => {
-    // For the MANAGE list, we ONLY want scholarships that are NOT removed
-    const posts = (data.scholarshipPosts || []).filter(p => !p.isRemoved);
+    // For the MANAGE list, we want all scholarships (including deleted ones, which we label)
+    const posts = (data.scholarshipPosts || []);
     if (!manageSearch) return posts;
     const search = manageSearch.toLowerCase();
     return posts.filter(post =>
@@ -2218,7 +2218,10 @@ export default function ScholarshipDashboard({
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-2">
-                            <h4 className="text-lg font-semibold text-[#800020]">{post.scholarshipName || post.title}</h4>
+                            <h4 className="text-lg font-semibold text-[#800020]">
+                              {post.scholarshipName || post.title}
+                              {(post.isRemoved || post.is_removed) && <span className="ml-2 text-red-600 italic font-normal text-sm">(Deleted)</span>}
+                            </h4>
                             {isNew && (
                               <span className="ml-2 px-2 py-0.5 rounded bg-yellow-200 text-yellow-900 text-xs font-bold">NEW</span>
                             )}
@@ -2279,6 +2282,7 @@ export default function ScholarshipDashboard({
                           <div className="flex flex-col">
                             <h4 className="text-lg font-semibold text-[#800020] flex items-center gap-2">
                               {ann.title}
+                              {(ann.is_removed || ann.isRemoved) && <span className="ml-2 text-red-600 italic font-normal text-sm">(Deleted)</span>}
                               {(() => {
                                 const createdDate = new Date(ann.time_added || ann.date || ann.dateCreated);
                                 const diffDays = (new Date() - createdDate) / (1000 * 60 * 60 * 24);

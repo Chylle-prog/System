@@ -221,8 +221,8 @@ export const scholarshipAPI = {
 // ===== ANNOUNCEMENT ENDPOINTS =====
 
 export const announcementService = {
-  getAll: () =>
-    api.get('/admin/announcements'),
+  getAll: (params = {}) =>
+    api.get('/admin/announcements', { params }),
   
   create: (announcementData) =>
     api.post('/admin/announcements', announcementData),
