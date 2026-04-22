@@ -70,8 +70,8 @@ _FACE_MODEL_LOCK = eventlet.semaphore.Semaphore(1)
 _FACE_DETECTOR = None
 _FACE_RECOGNIZER = None
 _FACE_MODEL_INIT_ERROR = None
-_FACE_MATCH_THRESHOLD = 0.40 # Unified threshold (lowered from 0.50 for better UX)
-_FACE_DETECTION_THRESHOLD = 0.25 # Lowered from 0.35 to tolerate varied lighting
+_FACE_MATCH_THRESHOLD = 0.35 # Unified threshold (lowered from 0.40 for better UX)
+_FACE_DETECTION_THRESHOLD = 0.20 # Lowered from 0.25 to tolerate varied lighting
 
 # Preload Tesseract at startup for faster first OCR (after definition)
 def _preload_tesseract():
@@ -1515,7 +1515,7 @@ def verify_face_with_id(user_photo_bytes, id_photo_bytes):
 
         # For selfies, we want the face to occupy at least 6% of the processing frame (lowered from 8%)
         user_faces = detector.detect(user_image)
-        user_face = _pick_primary_face(user_faces, 'the live photo', min_area_pct=6.0)
+        user_face = _pick_primary_face(user_faces, 'the live photo', min_area_pct=3.0)
         
         # For ID cards, the face can be quite small (no min_area)
         id_faces = detector.detect(id_image)
