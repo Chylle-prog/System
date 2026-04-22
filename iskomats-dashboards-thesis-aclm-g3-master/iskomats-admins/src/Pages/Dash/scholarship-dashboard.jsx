@@ -343,13 +343,33 @@ export default function ScholarshipDashboard({
     try {
       const response = await scholarshipAPI.getApplicants(providerKey);
       if (response.data.success) {
-        const allApplicants = response.data.applicants || [];
-        const historicalData = calculateHistoricalData(allApplicants);
+        const allApplicantsRaw = response.data.applicants || [];
+        
+        // Deduplicate applicants to avoid multiple rows for the same student (e.g. if they applied to multiple scholarships)
+        // We prioritize Accepted > Declined > Pending status for the display record
+        const applicantMap = new Map();
+        allApplicantsRaw.forEach(app => {
+          const id = String(app.applicant_no || app.id);
+          const existing = applicantMap.get(id);
+          
+          if (!existing) {
+            applicantMap.set(id, app);
+          } else {
+            const statusPriority = { 'Accepted': 3, 'Declined': 2, 'Pending': 1 };
+            if (statusPriority[app.status] > statusPriority[existing.status]) {
+              applicantMap.set(id, app);
+            }
+          }
+        });
+        
+        const uniqueApplicants = Array.from(applicantMap.values());
+        const historicalData = calculateHistoricalData(allApplicantsRaw); // Use raw data for history/stats
+        
         setData(prev => ({
           ...prev,
-          applicants: allApplicants.filter(a => a.status === 'Pending'),
-          accepted: allApplicants.filter(a => a.status === 'Accepted'),
-          declined: allApplicants.filter(a => a.status === 'Declined'),
+          applicants: uniqueApplicants.filter(a => a.status === 'Pending'),
+          accepted: uniqueApplicants.filter(a => a.status === 'Accepted'),
+          declined: uniqueApplicants.filter(a => a.status === 'Declined'),
           historicalData
         }));
       }

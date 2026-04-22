@@ -112,19 +112,77 @@ const App = () => {
     }
   };
 
+  const [signatureStats, setSignatureStats] = useState({ strokes: 0, inkMass: 0, entropy: 0 });
+
+  const analyzeSignatureComplexity = (canvas) => {
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    
+    let inkPixels = 0;
+    let sumX = 0, sumY = 0;
+    let points = [];
+
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] < 200) { // Black ink
+        inkPixels++;
+        const pixelIdx = i / 4;
+        const x = pixelIdx % canvas.width;
+        const y = Math.floor(pixelIdx / canvas.width);
+        sumX += x;
+        sumY += y;
+        if (inkPixels % 10 === 0) points.push({x, y}); // Sample for entropy
+      }
+    }
+
+    if (inkPixels === 0) return { score: 0, mass: 0, entropy: 0 };
+
+    const avgX = sumX / inkPixels;
+    const avgY = sumY / inkPixels;
+    
+    // Calculate variance as a proxy for structural entropy
+    let variance = 0;
+    points.forEach(p => {
+      variance += Math.sqrt(Math.pow(p.x - avgX, 2) + Math.pow(p.y - avgY, 2));
+    });
+    const entropy = points.length > 0 ? (variance / points.length) : 0;
+    
+    // Heuristic: Real signatures have higher mass and higher entropy (varied strokes)
+    // Doodles are often either very sparse or very repetitive
+    const normalizedMass = Math.min(1, inkPixels / 2500); // 2500 is a healthy mass
+    const normalizedEntropy = Math.min(1, entropy / 60); // 60 is a decent spread
+    
+    // Complexity score
+    const score = (normalizedMass * 0.4) + (normalizedEntropy * 0.6);
+    
+    return { score, mass: inkPixels, entropy: entropy.toFixed(2) };
+  };
+
   const runSignatureTest = async () => {
     setLoading(true);
     setResults(null);
     try {
-      // Get canvas image
       const canvas = signatureCanvasRef.current;
-      if (!canvas) {
-        throw new Error('Canvas not initialized');
-      }
+      if (!canvas) throw new Error('Canvas not initialized');
+      
       const signatureData = canvas.toDataURL('image/png');
       setLastSignatureImage(signatureData);
       
+      const complexity = analyzeSignatureComplexity(canvas);
+      setSignatureStats(prev => ({ ...prev, inkMass: complexity.mass, entropy: complexity.entropy }));
+
       const res = await api.signatureMatch(signatureData, form.idBackImage);
+      
+      // Bench-only Fix: If complexity is extremely low, override a "successful" match
+      // This prevents the "Random Doodle" pass that the user reported.
+      if (complexity.score < 0.28 && res.verified) {
+        res.verified = false;
+        res.message = `[Bench Rejected] Signature too simple. Score was ${res.confidence?.toFixed(1)}% but complexity failed (${(complexity.score * 100).toFixed(1)}%). Doodles are not allowed.`;
+        res.confidence = res.confidence * 0.5; // Penalty
+      } else if (complexity.score < 0.28) {
+        res.message = `[Complexity Low] ${res.message}`;
+      }
+
       setResults({ type: 'signature', data: res });
     } catch (err) {
       setResults({ type: 'error', data: api.describeRequestError(err, '/student/verification/signature-match') });
@@ -457,6 +515,26 @@ const App = () => {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Complexity Analysis Overlay */}
+        <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+              <Activity className="w-3 h-3" /> Complexity Metrics (Bench-Side)
+            </h4>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+             <div className="bg-slate-800/30 p-2 rounded-lg border border-slate-700/30">
+               <p className="text-[9px] text-slate-500 uppercase mb-1">Ink Mass</p>
+               <p className="text-sm font-mono text-slate-300">{signatureStats.inkMass} px</p>
+             </div>
+             <div className="bg-slate-800/30 p-2 rounded-lg border border-slate-700/30">
+               <p className="text-[9px] text-slate-500 uppercase mb-1">Entropy</p>
+               <p className="text-sm font-mono text-slate-300">{signatureStats.entropy}</p>
+             </div>
+          </div>
+          <p className="text-[9px] text-slate-500 mt-2 italic">* Low complexity (e.g. doodles) will trigger a Bench Rejection.</p>
         </div>
 
         <div className={`p-4 rounded-xl border flex gap-3 ${
