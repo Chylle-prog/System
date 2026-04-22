@@ -4385,41 +4385,61 @@ export default function ScholarshipDashboard({
                 />
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {recommended.map((s, i) => (
-                <div key={`${s.name}-${i}`} className="border-2 border-gray-200 rounded-xl p-4 bg-rose-50/40 hover:border-[#800020] hover:shadow-lg transition-all">
-                  <div className="font-bold text-[#800020] mb-2">{i + 1}. {s.name}</div>
-                  <p className="text-sm text-gray-600"><strong>Grade:</strong> {s.grade}</p>
-                  <p className="text-sm text-gray-600"><strong>Financial:</strong> {s.financial}</p>
-                  <div className="flex gap-2 mt-3">
-                    <button
-                      type="button"
-                      onClick={() => acceptRecommended(s)}
-                      className="flex-1 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold"
-                    >
-                      Accept
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => declineRecommended(s)}
-                      className="flex-1 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold"
-                    >
-                      Decline
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const idx = data.applicants.findIndex((a) => a.studentContact?.email === s.studentContact?.email || a.name === s.name);
-                        if (idx >= 0) viewApplicantFn(idx, 'all');
-                        setRecommendationModal(false);
-                      }}
-                      className="py-2 px-3 rounded-lg bg-[#800020] text-white text-sm font-semibold"
-                    >
-                      View
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="overflow-x-auto border border-gray-200 rounded-xl">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-[#800020] text-white">
+                    <th className="px-4 py-3 text-left font-bold">Rank</th>
+                    <th className="px-4 py-3 text-left font-bold">Name</th>
+                    <th className="px-4 py-3 text-left font-bold">Grade</th>
+                    <th className="px-4 py-3 text-left font-bold">Financial Status</th>
+                    <th className="px-4 py-3 text-center font-bold">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {recommended.map((s, i) => (
+                    <tr key={`${s.name}-${i}`} className="hover:bg-rose-50/30 transition-colors">
+                      <td className="px-4 py-3 font-black text-[#800020] text-lg">{i + 1}</td>
+                      <td className="px-4 py-3 font-bold text-gray-800">{s.name}</td>
+                      <td className="px-4 py-3 font-mono text-blue-700 font-bold">{s.grade}</td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100">
+                          {getFinancialStatusLabel(s.income || s.financial_income_of_parents || s.family?.grossIncome)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-2 justify-center">
+                          <button
+                            type="button"
+                            onClick={() => acceptRecommended(s)}
+                            className="px-3 py-1.5 rounded-lg bg-green-600 text-white text-[10px] font-black uppercase hover:bg-green-700 transition-colors shadow-sm"
+                          >
+                            Accept
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => declineRecommended(s)}
+                            className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-[10px] font-black uppercase hover:bg-red-700 transition-colors shadow-sm"
+                          >
+                            Decline
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const idx = data.applicants.findIndex((a) => a.studentContact?.email === s.studentContact?.email || a.name === s.name);
+                              if (idx >= 0) viewApplicantFn(idx, 'all');
+                              setRecommendationModal(false);
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-[#800020] text-white text-[10px] font-black uppercase hover:bg-[#650018] transition-colors shadow-sm"
+                          >
+                            View
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
             <div className="text-right mt-4">
               <button type="button" onClick={() => setRecommendationModal(false)} className="px-4 py-2 rounded-lg bg-gray-500 text-white font-semibold">
