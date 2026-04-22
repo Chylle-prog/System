@@ -3217,8 +3217,9 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
         semester_expr = 's.semester' if 'semester' in scholarship_columns else 'NULL'
         year_expr = 's.year' if 'year' in scholarship_columns else 'NULL'
 
+        include_removed = request.args.get('include_removed', 'false').lower() == 'true'
         where_clauses = []
-        if 'is_removed' in scholarship_columns:
+        if 'is_removed' in scholarship_columns and not include_removed:
             where_clauses.append('COALESCE(s.is_removed, FALSE) = FALSE')
         
         is_removed_expr = 'COALESCE(s.is_removed, FALSE)' if 'is_removed' in scholarship_columns else 'FALSE'
