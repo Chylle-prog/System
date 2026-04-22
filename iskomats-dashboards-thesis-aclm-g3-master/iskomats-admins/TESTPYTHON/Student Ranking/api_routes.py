@@ -3336,9 +3336,9 @@ def get_applicants(current_user_id, pro_no, role, program):
                     ({applicant_document_expr(cursor, 'id_pic', 'a', 'ad')} IS NOT NULL) as "has_id_pic",
                     {profile_picture_expr} as "has_profile_picture",
                     ({applicant_document_expr(cursor, 'signature_image_data', 'a', 'ad')} IS NOT NULL) as "has_signature",
-                    {applicant_document_expr(cursor, 'indigency_vid_url', 'a', 'ad')} as indigency_vid_url,
-                    {applicant_document_expr(cursor, 'enrollment_certificate_vid_url', 'a', 'ad')} as enrollment_certificate_vid_url,
-                    {applicant_document_expr(cursor, 'grades_vid_url', 'a', 'ad')} as grades_vid_url
+                    {applicant_document_expr(cursor, 'grades_vid_url', 'a', 'ad')} as grades_vid_url,
+                    {applicant_document_expr(cursor, 'schoolid_front_vid_url', 'a', 'ad')} as schoolid_front_vid_url,
+                    {applicant_document_expr(cursor, 'schoolid_back_vid_url', 'a', 'ad')} as schoolid_back_vid_url
             FROM applicants a
             INNER JOIN applicant_status s ON a.applicant_no = s.applicant_no
             INNER JOIN scholarships esc ON s.scholarship_no = esc.req_no
@@ -3387,6 +3387,12 @@ def get_applicants(current_user_id, pro_no, role, program):
                 a = normalize_json_object(dict(row))
                 app_no = a['id'] # 'id' is aliased from 'applicant_no'
 
+                # Resolve profile picture URL
+                if a.get('has_profile_picture'):
+                    a['profile_picture'] = url_for('admin_api.get_applicant_image', applicant_no=app_no, column_name='profile_picture', _external=True)
+                else:
+                    a['profile_picture'] = None
+
                 # Manage signature as a lazy-loaded URL too
                 if a.get('has_signature'):
                     a['signature'] = url_for('admin_api.get_applicant_image', applicant_no=app_no, column_name='signature_image_data', _external=True)
@@ -3414,12 +3420,18 @@ def get_applicants(current_user_id, pro_no, role, program):
                 if a.get('grades_vid_url'):
                     a['gradesFiles'].extend(get_applicant_media_metadata(app_no, 'grades_vid_url', True, a.get('grades_vid_url'), "Grades Video"))
                 
-                # Only include ID Front and Back images in idFiles (ID (Front & Back) field)
+                # Include ID Front, ID Back images and their verification videos in idFiles
                 id_files = []
                 if a.get('has_id_img_front'):
                     id_files.extend(get_applicant_media_metadata(app_no, 'id_img_front', True, None, "ID Front"))
+                if a.get('schoolid_front_vid_url'):
+                    id_files.extend(get_applicant_media_metadata(app_no, 'schoolid_front_vid_url', True, a.get('schoolid_front_vid_url'), "ID Front Video"))
+                
                 if a.get('has_id_img_back'):
                     id_files.extend(get_applicant_media_metadata(app_no, 'id_img_back', True, None, "ID Back"))
+                if a.get('schoolid_back_vid_url'):
+                    id_files.extend(get_applicant_media_metadata(app_no, 'schoolid_back_vid_url', True, a.get('schoolid_back_vid_url'), "ID Back Video"))
+                
                 a['idFiles'] = id_files
 
                 # Fill in ID# with school_id_no
