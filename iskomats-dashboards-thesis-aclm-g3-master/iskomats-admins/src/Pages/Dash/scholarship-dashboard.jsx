@@ -1746,12 +1746,40 @@ export default function ScholarshipDashboard({
 
   const groupMessagesByStudent = (messages) => {
     const grouped = {};
+    
+    // Seed with all known applicants so rooms show up even if no messages exist yet
+    const allKnownApplicants = [...(data.applicants || []), ...(data.accepted || []), ...(data.declined || [])];
+    allKnownApplicants.forEach(a => {
+      const key = (a.applicant_no || a.id || '').toString();
+      if (!key) return;
+      
+      const applicantRoom = a.scholarshipNo ? `${key}+${activeProviderNo}` : null;
+      
+      grouped[key] = {
+        studentName: a.name || (a.firstName ? `${a.firstName} ${a.lastName}` : 'Unknown Applicant'),
+        studentEmail: a.email || a.emailAddress,
+        studentPhone: a.mobileNumber || a.phone,
+        applicant_no: key,
+        room: applicantRoom,
+        messages: [],
+        unreadCount: 0,
+        lastMessage: {
+          timestamp: a.dateApplied || a.createdAt || new Date(0).toISOString(),
+          message: "No messages yet",
+          studentStatus: a.status || 'Pending',
+          subject: 'No conversations started yet',
+          room: applicantRoom
+        },
+      };
+    });
+
     sortMessages(messages).forEach((m) => {
-      const key = m.applicant_no || m.studentEmail || m.studentName;
+      const key = (m.applicant_no || m.studentEmail || m.studentName || '').toString();
+      if (!key) return;
+
       if (!grouped[key]) {
-        // Find actual applicant name for this ID from local data state
-        const allApplicants = [...(data.applicants || []), ...(data.accepted || []), ...(data.declined || [])];
-        const applicant = allApplicants.find(a => 
+        // Find actual applicant name for this ID from local data state if not already seeded
+        const applicant = allKnownApplicants.find(a => 
           a.applicant_no?.toString() === m.applicant_no?.toString() || 
           a.id?.toString() === m.applicant_no?.toString()
         );
@@ -1813,8 +1841,12 @@ export default function ScholarshipDashboard({
   };
 
   const sendReply = (messageId) => {
-    if (!replyText.trim() || !currentMessage?.room) return;
-    socketService.sendMessage(currentMessage.room, userName, replyText, programName);
+    const room = currentMessage?.room || currentConversation?.room || (currentConversation?.applicant_no ? `${currentConversation.applicant_no}+${activeProviderNo}` : null);
+    if (!replyText.trim() || !room) {
+      console.warn('Cannot send reply: Missing message text or room.', { room, replyText });
+      return;
+    }
+    socketService.sendMessage(room, userName, replyText, programName);
     setReplyText('');
   };
 
@@ -4145,11 +4177,24 @@ export default function ScholarshipDashboard({
                     <div
                       key={conv.studentEmail || conv.studentName}
                       onClick={() => {
-                        if (conv.messages.length > 0) {
-                          const room = conv.messages[0].room;
+                        const room = conv.room || (conv.messages.length > 0 ? conv.messages[0].room : conv.lastMessage?.room);
+                        if (room) {
                           markConversationAsRead(conv.applicant_no, room);
-                          setViewMessage({ messageId: conv.lastMessage.id, applicant_no: conv.applicant_no });
+                          setViewMessage({ 
+                            messageId: conv.lastMessage?.id || `new-${conv.applicant_no}`, 
+                            applicant_no: conv.applicant_no 
+                          });
                           socketService.loadHistory(room);
+                        } else {
+                          console.warn('No room found for conversation:', conv);
+                          // Fallback room construction if room is still missing
+                          const fallbackRoom = `${conv.applicant_no}+${activeProviderNo}`;
+                          markConversationAsRead(conv.applicant_no, fallbackRoom);
+                          setViewMessage({ 
+                            messageId: `new-${conv.applicant_no}`, 
+                            applicant_no: conv.applicant_no 
+                          });
+                          socketService.loadHistory(fallbackRoom);
                         }
                       }}
                       className={`p-4 cursor-pointer transition-colors border-l-4 ${
