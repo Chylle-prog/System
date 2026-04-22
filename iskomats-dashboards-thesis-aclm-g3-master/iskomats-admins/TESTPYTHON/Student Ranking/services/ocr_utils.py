@@ -1803,10 +1803,27 @@ def _extract_signature_from_id_back(id_img):
     if height == 0 or width == 0:
         return None
 
-    # Step 1: Targeting the student signature zone
-    lane_y0, lane_y1 = int(height * 0.25), int(height * 0.45)
-    lane_x0, lane_x1 = int(width * 0.15), int(width * 0.85)
-    roi_gray = gray[lane_y0:lane_y1, lane_x0:lane_x1]
+    # Step 1: Targeting the student signature zone (Broadened for variety in ID designs)
+    lane_y0, lane_y1 = int(height * 0.15), int(height * 0.55)
+    lane_x0, lane_x1 = int(width * 0.10), int(width * 0.90)
+    roi_gray = gray[lane_y0:lane_y1, lane_x0:lane_x1].copy()
+    
+    # NEW: OCR-Assisted Label Erasure
+    try:
+        import pytesseract
+        import re
+        ocr_data = pytesseract.image_to_data(roi_gray, output_type=pytesseract.Output.DICT, config='--psm 11')
+        for i in range(len(ocr_data['text'])):
+            text = ocr_data['text'][i].strip().lower()
+            clean_text = re.sub(r'[^a-z]', '', text)
+            if clean_text in ['signature', 'sign', 'sig', 'signatureof', 'student']:
+                tx, ty, tw, th = ocr_data['left'][i], ocr_data['top'][i], ocr_data['width'][i], ocr_data['height'][i]
+                cv2.rectangle(roi_gray, (tx-5, ty-5), (tx+tw+5, ty+th+5), (255), -1)
+                print(f"[SIGNATURE] OCR Filter: Erased label '{text}' at ROI coords ({tx},{ty})", flush=True)
+    except Exception as e:
+        print(f"[SIGNATURE] OCR pre-filter error (non-critical): {e}", flush=True)
+
+    print(f"[SIGNATURE] Extracted ROI from ID Back: shape={roi_gray.shape}, zone=y({lane_y0}:{lane_y1}), x({lane_x0}:{lane_x1})", flush=True)
     
     # Step 2: High-contrast smoothing
     norm = cv2.normalize(roi_gray, None, 0, 255, cv2.NORM_MINMAX)
@@ -1823,24 +1840,16 @@ def _extract_signature_from_id_back(id_img):
     
     for cnt in contours:
         x, y, w, h = cv2.boundingRect(cnt)
-        
-        # SIDE-MARGIN PURGE: The frame lines always sit at the edges.
-        # Handwriting is centered. 30px is a safe 'no-ink' buffer.
-        if x < 30 or (x+w) > w_idx-30: continue
+        if x < 15 or (x+w) > w_idx-15: continue
         if y < 4 or (y+h) > h_idx-4: continue
-        
         area = cv2.contourArea(cnt)
-        if area < 30: continue
-        
-        # SOLIDITY REJECTION: Printed lines are solid; handwriting is flowy/hollow.
+        if area < 25: continue
         solidity = area / float(w * h)
         aspect = max(w/h, h/w)
-        
-        # Any component that is "line-like" AND "solid" is a printed frame line.
-        if aspect > 3.0 and solidity > 0.55: continue
-            
+        if aspect > 5.0 and solidity > 0.4: continue
+        if w < 50 and h < 50 and solidity > 0.7: continue
         complexity = cv2.arcLength(cnt, True)
-        candidates.append({'box': (x, y, w, h), 'complex': complexity, 'y_mid': y + h/2})
+        candidates.append({'box': (x, y, w, h), 'complex': complexity, 'y_mid': y + h/2, 'area': area})
 
     if not candidates:
         ch, cw = int(h_idx * 0.6), int(w_idx * 0.7)
@@ -1851,13 +1860,12 @@ def _extract_signature_from_id_back(id_img):
         
     # Step 4: ANCHOR ON THE SIGNATURE
     candidates.sort(key=lambda c: c['complex'], reverse=True)
-    top_candidates = [c for c in candidates if c['y_mid'] < h_idx * 0.55]
+    top_candidates = [c for c in candidates if c['y_mid'] < h_idx * 0.65]
     anchor = top_candidates[0] if top_candidates else candidates[0]
     
-    # Vertically tighten: Only grab pieces that flow with the anchor
     final_parts = [anchor['box']]
     for c in candidates:
-        if abs(c['y_mid'] - anchor['y_mid']) < h_idx * 0.20:
+        if abs(c['y_mid'] - anchor['y_mid']) < h_idx * 0.25:
             final_parts.append(c['box'])
             
     x0 = min(b[0] for b in final_parts)
@@ -1865,7 +1873,7 @@ def _extract_signature_from_id_back(id_img):
     x1 = max(b[0] + b[2] for b in final_parts)
     y1 = max(b[1] + b[3] for b in final_parts)
     
-    pad = 4
+    pad = 8
     crop_bin = binary[max(0, y0-pad):min(h_idx, y1+pad), 
                       max(0, x0-pad):min(w_idx, x1+pad)]
     
