@@ -1191,14 +1191,13 @@ export default function ScholarshipDashboard({
   }, [data.announcements, manageSearch]);
 
   const scholarshipFilterOptions = useMemo(() => {
-    const options = (data.scholarshipPosts || []).map((post) => {
-      const value = String(post.reqNo || post.id || post.scholarshipName || post.title || '').trim();
-      let label = post.scholarshipName || post.title || 'Untitled Scholarship';
-      if (post.isRemoved || post.is_removed) {
-        label += ' (Archived)';
-      }
-      return value ? { value, label } : null;
-    }).filter(Boolean);
+    const options = (data.scholarshipPosts || [])
+      .filter((post) => !post.isRemoved && !post.is_removed)
+      .map((post) => {
+        const value = String(post.reqNo || post.id || post.scholarshipName || post.title || '').trim();
+        let label = post.scholarshipName || post.title || 'Untitled Scholarship';
+        return value ? { value, label } : null;
+      }).filter(Boolean);
 
     return [
       { value: 'deleted', label: 'Deleted Scholarships' },
