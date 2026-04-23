@@ -70,8 +70,8 @@ _FACE_MODEL_LOCK = eventlet.semaphore.Semaphore(1)
 _FACE_DETECTOR = None
 _FACE_RECOGNIZER = None
 _FACE_MODEL_INIT_ERROR = None
-_FACE_MATCH_THRESHOLD = 0.30 # Unified threshold (lowered for better UX)
-_FACE_DETECTION_THRESHOLD = 0.18 # Lowered to tolerate varied lighting
+_FACE_MATCH_THRESHOLD = 0.42 # Increased for stricter verification (preventing occlusion acceptance)
+_FACE_DETECTION_THRESHOLD = 0.40 # Increased to ensure high-quality face detection
 
 # Preload Tesseract at startup for faster first OCR (after definition)
 def _preload_tesseract():
@@ -1523,6 +1523,21 @@ def verify_face_with_id(user_photo_bytes, id_photo_bytes):
 
         user_embedding = recognizer.get_normalized_embedding(user_image, user_face.landmarks)
         id_embedding = recognizer.get_normalized_embedding(id_image, id_face.landmarks)
+
+        # Visibility Check: Ensure key landmarks are not occluded (e.g. mouth covered)
+        # Landmarks: [left_eye, right_eye, nose, left_mouth, right_mouth]
+        if hasattr(user_face, 'landmarks') and len(user_face.landmarks) >= 5:
+            lm = user_face.landmarks
+            # Calculate distance between mouth corners
+            mouth_width = np.linalg.norm(lm[3] - lm[4])
+            # Calculate distance from nose to mouth center
+            mouth_center = (lm[3] + lm[4]) / 2
+            nose_to_mouth = np.linalg.norm(lm[2] - mouth_center)
+            
+            # Heuristic: If mouth width is suspiciously small or too close to nose, it's likely occluded
+            eye_dist = np.linalg.norm(lm[0] - lm[1])
+            if mouth_width < (eye_dist * 0.35) or nose_to_mouth < (eye_dist * 0.15):
+                return False, "Your mouth or lower face seems covered. Please ensure your entire face is visible.", 0.0
 
         if user_embedding is None or id_embedding is None:
             return False, "Face embeddings could not be generated.", 0.0

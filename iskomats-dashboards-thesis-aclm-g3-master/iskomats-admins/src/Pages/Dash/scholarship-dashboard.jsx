@@ -1213,14 +1213,19 @@ export default function ScholarshipDashboard({
 
   const scholarshipFilterOptions = useMemo(() => {
     const options = (data.scholarshipPosts || [])
-      .filter(post => !(post.isRemoved || post.is_removed))
       .map((post) => {
         const value = String(post.reqNo || post.id || post.scholarshipName || post.title || '').trim();
-        const label = post.scholarshipName || post.title || 'Untitled Scholarship';
+        let label = post.scholarshipName || post.title || 'Untitled Scholarship';
+
+        if (post.isRemoved || post.is_removed) {
+          label = `${label} (Deleted)`;
+        }
+
         return value ? { value, label } : null;
       }).filter(Boolean);
 
     return [
+      { value: 'deleted', label: 'Deleted Scholarships' },
       ...options
     ];
   }, [data.scholarshipPosts]);
@@ -1272,7 +1277,6 @@ export default function ScholarshipDashboard({
     const allTrackedApplicants = [...data.applicants, ...data.accepted, ...data.declined];
 
     return (data.scholarshipPosts || [])
-      .filter(post => !(post.isRemoved || post.is_removed))
       .map((post) => {
         const scholarshipId = String(post.reqNo || post.id || '');
         const acceptedCount = Number(post.acceptedCount ?? data.accepted.filter((applicant) => matchesScholarshipSelection(applicant, scholarshipId)).length);
