@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import SignaturePad from '../components/SignaturePad';
 import VideoRecorder from '../components/VideoRecorder';
-import { applicantAPI, applicationAPI } from '../services/api';
+import { applicantAPI, applicationAPI, scholarshipAPI, verificationAPI } from '../services/api';
 
 const FIND_SCHOLARSHIP_PROFILE_KEY = 'findScholarshipProfile';
 
