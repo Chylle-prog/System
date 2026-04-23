@@ -2223,6 +2223,12 @@ def get_profile():
                 'enrollment_certificate_vid_url',
                 'schoolid_front_vid_url',
                 'schoolid_back_vid_url',
+                'indigency_verified',
+                'enrollment_verified',
+                'grades_verified',
+                'id_verified',
+                'face_verified',
+                'signature_verified',
             ]
             document_values = fetch_applicant_document_values(cur, request.user_no, media_document_fields)
 
@@ -3009,6 +3015,26 @@ def submit_application():
             conn.close()
 
 
+@student_api_bp.route('/verification-status', methods=['GET'])
+@token_required
+def get_verification_status():
+    """Returns current verification status for all documents."""
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cols = [
+                'indigency_verified', 'enrollment_verified', 'grades_verified', 
+                'id_verified', 'face_verified', 'signature_verified'
+            ]
+            row = fetch_applicant_document_values(cur, request.user_no, cols)
+            return jsonify({
+                'success': True,
+                'verified': row
+            })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
 @student_api_bp.route('/verification/ocr-check', methods=['POST'])
 @token_required
 def ocr_check():
@@ -3680,6 +3706,24 @@ def ocr_check():
         if not results:
              # Fallback message if jobs existed but pool returned nothing
              return jsonify({'verified': False, 'message': 'Verification failed to produce results. Try again later.'}), 400
+
+        # 4. Persistence: Save verification results to DB
+        if results:
+            with get_db() as conn:
+                cur = conn.cursor()
+                verification_updates = {}
+                for res in results:
+                    dtype = res.get('doc')
+                    is_verified = res.get('verified', False)
+                    if dtype == 'Indigency': verification_updates['indigency_verified'] = is_verified
+                    elif dtype == 'Enrollment': verification_updates['enrollment_verified'] = is_verified
+                    elif dtype == 'Grades': verification_updates['grades_verified'] = is_verified
+                    elif dtype == 'SchoolID': verification_updates['id_verified'] = is_verified
+                    # SchoolIDBack is often part of SchoolID verification, we can set it too or handle separately
+                
+                if verification_updates:
+                    persist_applicant_document_values(cur, request.user_no, verification_updates)
+                    conn.commit()
 
         final_msg = " | ".join([f"{r['doc']}: {r['message']}" for r in results])
         response_payload = {'verified': overall_verified, 'message': final_msg, 'results': results}

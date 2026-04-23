@@ -1496,7 +1496,15 @@ const StudentInfo = () => {
       setScholarshipName(scholarship);
     }
 
-  const loadProfile = async () => {
+    const loadProfile = async () => {
+      // RESET: Explicitly clear local verification flags to prevent stale state persistence across reloads
+      setOcrVerified(null);
+      setCoeVerified(null);
+      setGradesVerified(null);
+      setIdVerified(null);
+      setFaceVerified(null);
+      setSignatureVerified(null);
+
       try {
         setLoadingMessage({ title: 'Loading Profile', message: 'Retrieving your information to pre-fill the application...' });
         setIsInitialLoading(true);
@@ -1593,32 +1601,47 @@ const StudentInfo = () => {
           setHasOtherAssistance('No');
         }
 
+        // --- VERIFICATION STATUS SYNCHRONIZATION ---
+        // We no longer infer 'success' just from document presence. 
+        // We fetch the ground-truth status from the backend to ensure data integrity.
+        try {
+          const vStatus = await verificationAPI.getStatus();
+          if (vStatus.success && vStatus.verified) {
+            const v = vStatus.verified;
+            if (v.indigency_verified) setOcrVerified('success');
+            if (v.enrollment_verified) setCoeVerified('success');
+            if (v.grades_verified) setGradesVerified('success');
+            if (v.id_verified) setIdVerified('success');
+            if (v.face_verified) setFaceVerified('success');
+            if (v.signature_verified) setSignatureVerified('success');
+            
+            console.log('[VERIFICATION] Fresh status synced from backend:', v);
+          }
+        } catch (vErr) {
+          console.warn('[VERIFICATION] Could not fetch ground-truth status, falling back to unverified.', vErr);
+        }
+
+        // Set photo previews from profile regardless of verification status
         if (profile.indigency_doc) {
-          setOcrVerified('success');
           setPhotos(prev => ({ ...prev, mayorIndigency_photo: profile.indigency_doc }));
         }
         if (profile.id_img_front && profile.id_img_back) {
-          setIdVerified('success');
           setSchoolIdPhotos({ front: profile.id_img_front, back: profile.id_img_back });
           setPhotos(prev => ({ ...prev, id_front: profile.id_img_front, id_back: profile.id_img_back }));
         }
         if (profile.enrollment_certificate_doc) {
-          setCoeVerified('success');
           setPhotos(prev => ({ ...prev, mayorCOE_photo: profile.enrollment_certificate_doc }));
         }
         if (profile.grades_doc) {
-          setGradesVerified('success');
           setPhotos(prev => ({ ...prev, mayorGrades_photo: profile.grades_doc }));
         }
         if (profile.profile_picture) {
-          setFaceVerified('success');
           setIdPicturePreview(profile.profile_picture);
           setPhotos(prev => ({ ...prev, face_photo: profile.profile_picture }));
         }
         if (profile.signature_data) {
           setFormData(prev => ({ ...prev, applicantSignatureName: profile.signature_data }));
           setSignaturePreview(profile.signature_data);
-          setSignatureVerified('success');
         }
 
         const videoMap = {

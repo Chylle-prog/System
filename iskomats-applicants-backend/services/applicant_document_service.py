@@ -21,6 +21,12 @@ APPLICANT_DOCUMENT_COLUMNS = (
     'schoolid_front_vid_url',
     'schoolid_back_vid_url',
     'profile_picture',
+    'indigency_verified',
+    'enrollment_verified',
+    'grades_verified',
+    'id_verified',
+    'face_verified',
+    'signature_verified',
 )
 
 _TABLE_CACHE = {}

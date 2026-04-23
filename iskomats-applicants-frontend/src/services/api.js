@@ -907,7 +907,7 @@ export const verificationAPI = {
    * @returns {Promise}
    */
   getStatus: async () => {
-    return makeRequest('/verification/status', {
+    return makeRequest('/student/verification-status', {
       method: 'GET',
     });
   },
