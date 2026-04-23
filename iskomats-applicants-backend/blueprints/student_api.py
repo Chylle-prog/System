@@ -3093,11 +3093,14 @@ def ocr_check():
 
             # Fetch scholarship metadata while we still have the connection
             expected_semester = None
+            grades_sem_from_sch = None
+            grades_year_from_sch = None
             scholarship_no = data.get('scholarship_no')
             min_gpa_required = None
             if scholarship_no:
                 try:
-                    cur.execute("SELECT year, semester, gpa FROM scholarships WHERE req_no = %s", (scholarship_no,))
+                    # Select grades_sem and grades_year from scholarships table instead of relying on applicants table
+                    cur.execute("SELECT year, semester, gpa, grades_sem, grades_year FROM scholarships WHERE req_no = %s", (scholarship_no,))
                     sch = cur.fetchone()
                     if sch:
                         if sch['year']:
@@ -3109,6 +3112,9 @@ def ocr_check():
                         if sch['gpa']:
                             min_gpa_required = sch['gpa']
                             print(f"[OCR] Using scholarship-defined min GPA: {min_gpa_required}", flush=True)
+                        
+                        grades_sem_from_sch = sch.get('grades_sem')
+                        grades_year_from_sch = sch.get('grades_year')
                 except Exception as sch_err:
                     print(f"[OCR ERROR] Failed to fetch scholarship data: {sch_err}", flush=True)
         # Connection is now released back to pool — all remaining work is CPU-bound OCR
@@ -3146,8 +3152,10 @@ def ocr_check():
         expected_academic_year = str(data.get('expected_year') or data.get('expectedYear') or '').strip()
         expected_id_no = str(data.get('id_number') or data.get('idNumber') or '').strip()
         
-        grades_year = str(data.get('grades_year') or '').strip()
-        # Pull optional semester from scholarship details later in the process
+        # grades_year and grades_sem are strictly derived from the scholarship requirement
+        # to ensure verification is based on scholarship criteria.
+        grades_year = None
+        grades_sem = None
         
         print(f"[OCR-DEBUG-EXPECTED] First='{first_name}' Middle='{middle_name}' Last='{last_name}' ID='{expected_id_no}'", flush=True)
 
@@ -3155,6 +3163,12 @@ def ocr_check():
         # Apply scholarship-defined overrides if they were fetched from DB
         if 'expected_academic_year_from_sch' in locals():
             expected_academic_year = expected_academic_year_from_sch
+        
+        if 'grades_year_from_sch' in locals() and grades_year_from_sch:
+            grades_year = grades_year_from_sch
+
+        if 'grades_sem_from_sch' in locals() and grades_sem_from_sch:
+            grades_sem = grades_sem_from_sch
         
         # Pull optional semester from request (often provided by frontend in extraParams)
         expected_semester = data.get('semester') or expected_semester
