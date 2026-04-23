@@ -737,7 +737,8 @@ const StudentInfo = () => {
     parentsGrossIncome: '',
     numberOfSiblings: '',
     course: '',
-    
+    grades_sem: '',
+    grades_year: '',
     mayorCOE_photo: null,
     mayorGrades_photo: null,
     mayorIndigency_photo: null,
@@ -1127,6 +1128,9 @@ const StudentInfo = () => {
       return;
     }
 
+    const grades_sem = formData.grades_sem || '';
+    const grades_year = formData.grades_year || '';
+
     setLoadingMessage({ title: 'Scanning Grades', message: 'Verifying your Grades document and Video Content...' });
     
     try {
@@ -1135,7 +1139,9 @@ const StudentInfo = () => {
         idNumber: formData.schoolIdNumber,
         yearLevel: formData.yearLevel, 
         gpa: formData.gpa,
-        semester: formData.semester 
+        semester: formData.semester,
+        grades_sem,
+        grades_year
       }, videoUrl);
       if (success) {
         showPromptMessage('âœ… Grades verified successfully!');
@@ -1495,7 +1501,8 @@ const StudentInfo = () => {
           parentsGrossIncome: urlIncome || scholarshipSearchProfile?.income || profile.financial_income_of_parents || '',
           gpa: urlGpa || scholarshipSearchProfile?.gpa || profile.overall_gpa || '',
           numberOfSiblings: profile.sibling_no || '',
-          course: profile.course || '',
+          grades_sem: profile.grades_sem === 1 ? '1st' : profile.grades_sem === 2 ? '2nd' : (profile.grades_sem || ''),
+          grades_year: profile.grades_year || '',
           meritsAwardsReceived: profile.merits_awards_received || ''
         };
 
@@ -3509,6 +3516,28 @@ const StudentInfo = () => {
                     <option value="1st Semester">1st Semester</option>
                     <option value="2nd Semester">2nd Semester</option>
                   </select>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Semester for Grades <span style={{color: '#e74c3c'}}>*</span></label>
+                  <select name="grades_sem" value={formData.grades_sem} onChange={handleInputChange} required={currentStep === 3}>
+                    <option value="">Select Semester</option>
+                    <option value="1st">1st Semester</option>
+                    <option value="2nd">2nd Semester</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Year for Grades <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input
+                    type="text"
+                    name="grades_year"
+                    value={formData.grades_year}
+                    onChange={handleInputChange}
+                    placeholder="e.g. 2024-2025"
+                    required={currentStep === 3}
+                  />
                 </div>
               </div>
 

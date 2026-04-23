@@ -318,6 +318,8 @@ export default function ScholarshipDashboard({
     description: '', // New field
     semester: '',
     year: getDefaultAcademicYear(),
+    grades_sem: '',
+    grades_year: '',
     title: '', // For announcements
     content: '', // For announcements
     sendToAllApplicants: true
@@ -1039,6 +1041,8 @@ export default function ScholarshipDashboard({
         description: post.description || '',
         semester: post.semester || post.term || '',
         year: post.year ? normalizeAcademicYear(post.year) : getDefaultAcademicYear(),
+        grades_sem: post.grades_sem || '',
+        grades_year: post.grades_year || '',
         title: '',
         content: '',
         sendToAllApplicants: true,
@@ -2471,6 +2475,32 @@ export default function ScholarshipDashboard({
                   required
                 />
                 <p className="text-xs text-gray-500 mt-1">Use the YYYY–YYYY format (e.g., 2025–2026).</p>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-[#800020] mb-1">Semester for Grades *</label>
+                <select
+                  name="grades_sem"
+                  value={formData.grades_sem}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  required
+                >
+                  <option value="">Select Semester</option>
+                  <option value="1st">1st Semester</option>
+                  <option value="2nd">2nd Semester</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-[#800020] mb-1">Year for Grades *</label>
+                <input
+                  type="text"
+                  name="grades_year"
+                  value={formData.grades_year}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  placeholder="e.g. 2024-2025"
+                  required
+                />
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-[#800020] mb-1">Description *</label>

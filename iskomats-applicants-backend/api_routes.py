@@ -3165,6 +3165,8 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
         date_created_expr = 's.date_created' if 'date_created' in scholarship_columns else 'NULL'
         semester_expr = 's.semester' if 'semester' in scholarship_columns else 'NULL'
         year_expr = 's.year' if 'year' in scholarship_columns else 'NULL'
+        grades_sem_expr = 's.grades_sem' if 'grades_sem' in scholarship_columns else 'NULL'
+        grades_year_expr = 's.grades_year' if 'grades_year' in scholarship_columns else 'NULL'
 
         include_removed = request.args.get('include_removed', 'false').lower() == 'true'
         where_clauses = []
@@ -3180,6 +3182,7 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
                    {is_removed_expr} as "isRemoved",
                                          {description_expr} as description, {date_created_expr} as "dateCreated",
                                          {semester_expr} as semester, {year_expr} as year,
+                                         {grades_sem_expr} as grades_sem, {grades_year_expr} as grades_year,
                                          COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS TRUE) as "acceptedCount",
                                          COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS NULL) as "pendingCount",
                                          COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS FALSE) as "declinedCount"
@@ -3192,6 +3195,8 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
             date_created_expr=date_created_expr,
             semester_expr=semester_expr,
             year_expr=year_expr,
+            grades_sem_expr=grades_sem_expr,
+            grades_year_expr=grades_year_expr,
         )
         params = []
 
@@ -3231,6 +3236,10 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
             group_by_columns.append('s.semester')
         if 'year' in scholarship_columns:
             group_by_columns.append('s.year')
+        if 'grades_sem' in scholarship_columns:
+            group_by_columns.append('s.grades_sem')
+        if 'grades_year' in scholarship_columns:
+            group_by_columns.append('s.grades_year')
 
         # Add Pagination
         limit = int(request.args.get('limit', 100))
@@ -3733,8 +3742,8 @@ def create_scholarship(current_user_id, pro_no, role):
         
         # 2. Insert into scholarships table (without images)
         cursor.execute('''
-            INSERT INTO scholarships (scholarship_name, gpa, parent_finance, location, pro_no, slots, deadline, "desc", semester, year, date_created)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            INSERT INTO scholarships (scholarship_name, gpa, parent_finance, location, pro_no, slots, deadline, "desc", semester, year, grades_sem, grades_year, date_created)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             RETURNING req_no
         ''', (
             data['scholarshipName'],
@@ -3746,7 +3755,9 @@ def create_scholarship(current_user_id, pro_no, role):
             data['deadline'],
             data.get('description', ''),
             data.get('semester', ''),
-            data.get('year', '')
+            data.get('year', ''),
+            data.get('grades_sem'),
+            data.get('grades_year')
         ))
         
         new_scholarship = cursor.fetchone()
@@ -3835,7 +3846,9 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
             'deadline': 'deadline',
             'description': '"desc"',
             'year': 'year',
-            'semester': 'semester'
+            'semester': 'semester',
+            'grades_sem': 'grades_sem',
+            'grades_year': 'grades_year'
         }
         
         for json_key, db_col in field_map.items():
