@@ -1189,8 +1189,8 @@ export default function ScholarshipDashboard({
   };
 
   const filteredScholarshipPosts = useMemo(() => {
-    // For the MANAGE list, we want all scholarships (including deleted ones, which we label)
-    const posts = (data.scholarshipPosts || []);
+    // For the MANAGE list, we only want active scholarships (excluding deleted ones)
+    const posts = (data.scholarshipPosts || []).filter(post => !(post.isRemoved || post.is_removed));
     if (!manageSearch) return posts;
     const search = manageSearch.toLowerCase();
     return posts.filter(post =>
@@ -1201,7 +1201,8 @@ export default function ScholarshipDashboard({
   }, [data.scholarshipPosts, manageSearch]);
 
   const filteredAnnouncements = useMemo(() => {
-    const announcements = data.announcements || [];
+    // For the MANAGE list, we only want active announcements (excluding deleted ones)
+    const announcements = (data.announcements || []).filter(ann => !(ann.is_removed || ann.isRemoved));
     if (!manageSearch) return announcements;
     const search = manageSearch.toLowerCase();
     return announcements.filter(ann =>
@@ -1212,19 +1213,14 @@ export default function ScholarshipDashboard({
 
   const scholarshipFilterOptions = useMemo(() => {
     const options = (data.scholarshipPosts || [])
+      .filter(post => !(post.isRemoved || post.is_removed))
       .map((post) => {
         const value = String(post.reqNo || post.id || post.scholarshipName || post.title || '').trim();
-        let label = post.scholarshipName || post.title || 'Untitled Scholarship';
-
-        if (post.isRemoved || post.is_removed) {
-          label = `${label} (Deleted)`;
-        }
-
+        const label = post.scholarshipName || post.title || 'Untitled Scholarship';
         return value ? { value, label } : null;
       }).filter(Boolean);
 
     return [
-      { value: 'deleted', label: 'Deleted Scholarships' },
       ...options
     ];
   }, [data.scholarshipPosts]);
@@ -1276,6 +1272,7 @@ export default function ScholarshipDashboard({
     const allTrackedApplicants = [...data.applicants, ...data.accepted, ...data.declined];
 
     return (data.scholarshipPosts || [])
+      .filter(post => !(post.isRemoved || post.is_removed))
       .map((post) => {
         const scholarshipId = String(post.reqNo || post.id || '');
         const acceptedCount = Number(post.acceptedCount ?? data.accepted.filter((applicant) => matchesScholarshipSelection(applicant, scholarshipId)).length);
@@ -2220,7 +2217,6 @@ export default function ScholarshipDashboard({
                           <div className="flex items-center gap-2 mb-2">
                             <h4 className="text-lg font-semibold text-[#800020]">
                               {post.scholarshipName || post.title}
-                              {(post.isRemoved || post.is_removed) && <span className="ml-2 text-red-600 italic font-normal text-sm">(Deleted)</span>}
                             </h4>
                             {isNew && (
                               <span className="ml-2 px-2 py-0.5 rounded bg-yellow-200 text-yellow-900 text-xs font-bold">NEW</span>
@@ -2282,7 +2278,6 @@ export default function ScholarshipDashboard({
                           <div className="flex flex-col">
                             <h4 className="text-lg font-semibold text-[#800020] flex items-center gap-2">
                               {ann.title}
-                              {(ann.is_removed || ann.isRemoved) && <span className="ml-2 text-red-600 italic font-normal text-sm">(Deleted)</span>}
                               {(() => {
                                 const createdDate = new Date(ann.time_added || ann.date || ann.dateCreated);
                                 const diffDays = (new Date() - createdDate) / (1000 * 60 * 60 * 24);
