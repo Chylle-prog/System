@@ -3514,11 +3514,19 @@ def ocr_check():
                     
                     brgy_str = ", ".join(meta.get('detected_brgy', [])) if meta.get('detected_brgy') else "None detected"
                     status_addr = 'OK' if addr_ok else 'X'
-                    # Use a consistent format that includes the discovered data
-                    detail_msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Addr: {status_addr} (Target: {target_address or 'Missing'}, Found: {brgy_str}) | Video: {'OK' if v_video else 'X'}]"
+                    
+                    # More granular checklist for Indigency to match other documents
+                    checklist = [
+                        f"First Name: {'OK' if name_details.get('first_ok') else 'X'}",
+                        f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
+                        f"Addr: {status_addr} (Target: {target_address or 'Missing'}, Found: {brgy_str})",
+                        f"Video: {'OK' if v_video else 'X'}"
+                    ]
+                    detail_msg = f"Checklist: [{' | '.join(checklist)}]"
                     
                     score_details = {
-                        'Name Match': bool(name_ok),
+                        'First Name': bool(name_details.get('first_ok')),
+                        'Last Name': bool(name_details.get('last_ok')),
                         'Address Match': bool(addr_ok),
                         'Video Verification': bool(v_video)
                     }
