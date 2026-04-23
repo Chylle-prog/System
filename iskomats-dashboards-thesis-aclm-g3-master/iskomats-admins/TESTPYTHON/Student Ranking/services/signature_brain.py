@@ -18,6 +18,21 @@ except Exception as exc:
 # Using MobileNetV2 for its extreme efficiency on CPU
 _SIGNATURE_MODELS = {}
 
+def get_profile_weight(sample_count):
+    """
+    Returns how much to trust the profile based on number of training samples.
+    """
+    if sample_count < 3:
+        return 0.0      # Too few samples, don't use profile at all
+    elif sample_count < 10:
+        return 0.20     # 20% profile, 80% direct comparison
+    elif sample_count < 30:
+        return 0.35     # 35% profile, 65% direct comparison
+    elif sample_count < 100:
+        return 0.50     # 50/50 split
+    else:
+        return 0.65     # 65% profile, 35% direct comparison (profile is more reliable)
+
 
 def _normalize_vector(vector):
     if vector is None:
@@ -41,84 +56,115 @@ def _cosine_similarity(vector_a, vector_b):
 def _extract_ink_crop(img_np):
     gray = cv2.cvtColor(img_np, cv2.COLOR_BGR2GRAY) if len(img_np.shape) == 3 else img_np
     
-    # Simple CLAHE for contrast
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    # 1. Pre-process for clean binary - Lowered constant for faint ink (from 10 to 4)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
     enhanced = clahe.apply(gray)
-    
-    # Adaptive threshold - larger block size to avoid hollow strokes in thick signatures
     binary = cv2.adaptiveThreshold(
         enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-        cv2.THRESH_BINARY_INV, 31, 7
+        cv2.THRESH_BINARY_INV, 31, 4
     )
     
-    # Close tiny gaps but don't dilate significantly
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=1)
+    # 2. Noise Removal (Kill 'salt and pepper' dots)
+    binary = cv2.medianBlur(binary, 3)
     
-    # Remove isolated noise dots
-    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=1)
-    
-    # Find contours and filter - DON'T fill holes aggressively
+    # 3. Geometric Noise Removal (Erase boxes and straight lines)
+    # Find all components
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        print("[BRAIN] No ink detected, using full canvas.", flush=True)
-        return gray
+    h_img, w_img = binary.shape[:2]
+    
+    clean_mask = np.zeros_like(binary)
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        area = cv2.contourArea(cnt)
+        if area < 40: continue
+        
+        solidity = area / float(w * h) if w * h > 0 else 0
+        aspect = w / float(h) if h > 0 else 0
+        
+        # REJECT BOXES/LINES: 
+        # Perfect rectangles (boxes) have very high solidity (>0.8)
+        # Long lines have very high aspect ratios
+        if solidity > 0.85 and (w > w_img * 0.15 or h > h_img * 0.15):
+            continue # Likely a box border
+        if aspect > 8.0 or aspect < 0.12:
+            continue # Likely an underline or side bar
+            
+        # Complexity check: Handwriting is curvy/complex
+        peri = cv2.arcLength(cnt, True)
+        complexity = peri / (np.sqrt(area) + 1)
+        if complexity < 2.5 and solidity > 0.5:
+            continue # Likely a printed character or small geometric mark
+            
+        cv2.drawContours(clean_mask, [cnt], -1, 255, -1)
 
-    # Find bounding box of all significant contours
-    min_area = max(30, int(gray.shape[0] * gray.shape[1] * 0.0005))
-    all_x, all_y, all_w, all_h = [], [], [], []
-    
-    for contour in contours:
-        area = cv2.contourArea(contour)
-        if area < min_area:
-            continue
-        x, y, w, h = cv2.boundingRect(contour)
-        # Skip obvious underlines
-        if w > gray.shape[1] * 0.6 and h < 10:
-            continue
-        all_x.append(x)
-        all_y.append(y)
-        all_w.append(x + w)
-        all_h.append(y + h)
-    
-    if not all_x:
-        print("[BRAIN] No significant components, using full canvas.", flush=True)
+    # 3. Component Filter: Keep only the most significant strokes
+    # Printed text and noise specks are made of many tiny components.
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(clean_mask, connectivity=8)
+    if num_labels > 2: # 1 is background
+        areas = stats[1:, 4]
+        max_area = np.max(areas)
+        
+        final_mask = np.zeros_like(clean_mask)
+        for i in range(1, num_labels):
+            # Noise Floor: Ignore anything smaller than 60 pixels
+            if stats[i, 4] < 60: continue
+            
+            # Keep component if it's large enough relative to the main stroke
+            if stats[i, 4] > (max_area * 0.12) or stats[i, 4] > 800:
+                final_mask[labels == i] = 255
+        clean_mask = final_mask
+
+    # 4. Final Bounding Box on Cleaned Mask
+    coords = cv2.findNonZero(clean_mask)
+    if coords is None:
         return gray
     
-    x = min(all_x)
-    y = min(all_y)
-    w = max(all_w) - x
-    h = max(all_h) - y
-    
-    # Add padding
-    pad = max(5, int(min(w, h) * 0.1))
-    x_p, y_p = max(0, x - pad), max(0, y - pad)
-    w_p = min(gray.shape[1] - x_p, w + 2 * pad)
-    h_p = min(gray.shape[0] - y_p, h + 2 * pad)
-    
-    return gray[y_p:y_p + h_p, x_p:x_p + w_p]
+    x, y, w, h = cv2.boundingRect(coords)
+    pad = max(4, int(min(w, h) * 0.08))
+    return gray[max(0, y-pad):min(h_img, y+h+pad), 
+                max(0, x-pad):min(w_img, x+w+pad)]
 
 def _prepare_signature_canvas(img_np, size=224):
     cropped = _extract_ink_crop(img_np)
+    if cropped is None or cropped.size == 0:
+        return np.full((size, size), 255, dtype=np.uint8)
+
+    # 1. Standardize size while maintaining aspect ratio
     h_c, w_c = cropped.shape[:2]
-    if h_c == 0 or w_c == 0:
-        return None
-
-    margin = max(4, int(size * 0.04))
-    usable_size = max(8, size - (margin * 2))
-
+    usable_size = int(size * 0.82)
     if h_c > w_c:
         new_h, new_w = usable_size, max(1, int(w_c * usable_size / h_c))
-        pad_w = margin + ((usable_size - new_w) // 2)
-        pad_h = margin
     else:
-        new_h, new_w = max(1, int(h_c * usable_size / w_c)), usable_size
-        pad_h = margin + ((usable_size - new_h) // 2)
-        pad_w = margin
+        new_w, new_h = usable_size, max(1, int(h_c * usable_size / w_c))
 
     resized = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_AREA)
-    canvas = np.full((size, size), 255, dtype=np.uint8)
-    canvas[pad_h:pad_h + new_h, pad_w:pad_w + new_w] = resized
+    
+    # 2. Standardize Stroke Thickness (Distance Transform method)
+    # Binarize aggressively
+    _, binary = cv2.threshold(resized, 120, 255, cv2.THRESH_BINARY_INV)
+    
+    # Use Distance Transform to find the 'spine' of the signature
+    dist = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
+    
+    # Create a 1-pixel skeleton by taking the peaks of the distance transform
+    skeleton = np.zeros_like(binary)
+    # A simple threshold on the distance transform isn't enough, 
+    # we use a Laplacian-like peak detection
+    kernel = np.array([[-1,-1,-1], [-1,8,-1], [-1,-1,-1]], dtype=np.float32)
+    laplacian = cv2.filter2D(dist, -1, kernel)
+    skeleton[laplacian > 0] = 255
+    
+    # Now RE-THICKEN to exactly 3 pixels for the AI
+    # This makes both signatures look identical in 'boldness'
+    thick_element = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    standardized = cv2.dilate(skeleton, thick_element, iterations=1)
+    
+    # 3. Center on Canvas (White ink on Black background for AI)
+    canvas = np.zeros((size, size), dtype=np.uint8)
+    pad_h = (size - new_h) // 2
+    pad_w = (size - new_w) // 2
+    canvas[pad_h:pad_h + new_h, pad_w:pad_w + new_w] = standardized
+    
     return canvas
 
 
@@ -252,7 +298,7 @@ def calculate_neural_match(drawing_img, student_id):
         return 0.0
     
     # 1. Check Blacklist (Negative Learning)
-    # If this looks like a previously rejected scribble, penalize it.
+    # Stricter 0.75 threshold with scaling penalty
     blacklist_dir = os.path.join(os.getcwd(), 'knowledge', 'signature_profiles', 'blacklist', str(student_id))
     if os.path.exists(blacklist_dir):
         for file in os.listdir(blacklist_dir):
@@ -262,11 +308,18 @@ def calculate_neural_match(drawing_img, student_id):
             b_embedding = extract_signature_embedding(b_img)
             if b_embedding is not None:
                 sim = _cosine_similarity(current_embedding, b_embedding)
-                if sim > 0.90:  # Very high similarity to a KNOWN fake
-                    print(f"[BRAIN] Blacklist HIT ({sim:.4f}). Applying penalty.", flush=True)
-                    return -0.5  # Heavy penalty
+                if sim > 0.88:  # Raised threshold (from 0.75) to be less strict
+                    # Scale penalty: 0.88=-0.3, 0.95=-0.6, 0.99=-0.75
+                    penalty = -0.3 - (sim - 0.88) * 4
+                    print(f"[BRAIN] Blacklist HIT ({sim:.4f}). Penalty: {penalty:.2f}", flush=True)
+                    return float(penalty)
     
     # 2. Check History (Positive Learning)
+    # Verify we have enough samples before trusting the profile
+    sample_count = get_training_count(student_id)
+    if sample_count < 3:
+        return 0.0
+    
     mean_real_vector = get_mean_profile_vector(student_id)
     if mean_real_vector is None: 
         return 0.0

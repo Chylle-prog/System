@@ -1702,6 +1702,18 @@ def _isolate_signature_ink_region(signature_crop):
         # Ignore large hollow boxes - typically ID photo borders
         # Most signatures aren't perfect rectangles
         extent = area / float(w * h) if w * h > 0 else 0
+        
+        # STAR DETECTION (Specific for the ID type shown)
+        # Stars have high solidity and a very specific number of vertices
+        peri = cv2.arcLength(contour, True)
+        approx = cv2.approxPolyDP(contour, 0.02 * peri, True)
+        # A 5-pointed star often has 10 vertices (outer and inner corners)
+        if (len(approx) >= 8 and len(approx) <= 12) and extent > 0.45:
+            print(f"[SIGNATURE] Rejecting potential star: vertices={len(approx)}, solidity={extent:.2f}", flush=True)
+            continue
+
+        # Photo boxes / larger borders / solid rectangular text blocks
+        if (area / float(width * height) > 0.10 or w > width * 0.35) and extent > 0.45: continue
         if extent > 0.8 and area > (width * height * 0.08): 
             # This is likely a solid border or a printed box
             continue
@@ -1836,17 +1848,17 @@ def _extract_signature_from_id_back(id_img):
 
     print(f"[SIGNATURE] Extracted ROI from ID Back: shape={roi_gray.shape}, zone=y({lane_y0}:{lane_y1}), x({lane_x0}:{lane_x1})", flush=True)
     
-    # Step 2: High-contrast smoothing
+    # Step 2: High-contrast smoothing with INCREASED sensitivity for faint ink
     norm = cv2.normalize(roi_gray, None, 0, 255, cv2.NORM_MINMAX)
     smooth = cv2.bilateralFilter(norm, 9, 75, 75)
     
-    # Adaptive threshold - larger block size to avoid hollow strokes in thick signatures
+    # Lowered constant (from 7 to 3) to pick up faint/gray strokes on the right side
     binary = cv2.adaptiveThreshold(
         smooth, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV, 31, 7
+        cv2.THRESH_BINARY_INV, 31, 3
     )
     
-    # Step 3: Component isolation
+    # Step 3: Component isolation with STAR REJECTION
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     candidates = []
     h_idx, w_idx = binary.shape[:2]
@@ -1855,46 +1867,33 @@ def _extract_signature_from_id_back(id_img):
         x, y, w, h = cv2.boundingRect(cnt)
         
         # SIDE-MARGIN PURGE: Frames/edges
-        if x < 8 or (x+w) > w_idx-8: continue
-        if y < 4 or (y+h) > h_idx-4: continue
+        if x < 15 or (x+w) > w_idx-15: continue
+        if y < 8 or (y+h) > h_idx-8: continue
         
         area = cv2.contourArea(cnt)
-        if area < 50: continue # Slightly more aggressive noise filter
+        if area < 60: continue # Slightly more aggressive noise filter
         
         # SOLIDITY & SHAPE REJECTION: Lines, stars, and printed text blocks
         solidity = area / float(w * h) if w * h > 0 else 0
         aspect = w / float(h) if h > 0 else 0
         extent = area / float(w_idx * h_idx)
         
-        # Printed lines/underlines - signatures are rarely extremely long and flat
-        if aspect > 3.0 and h < 20: 
-            print(f"[SIGNATURE] Rejecting potential underline: aspect={aspect:.1f}, h={h}", flush=True)
-            continue
+        # REJECT PRINTED LINES: aspect > 3.0 and very thin
+        if aspect > 4.5 and h < 25: continue
         
-        # RECTANGULARITY FILTER: Catch photo boxes and "Valid Until" boxes
-        # Printed boxes have 4 corners and high solidity. 
-        # Relaxed solidity to 0.5 to catch noisy/hollow boxes.
+        # REJECT BOXES: High solidity, rectangle shape
         peri = cv2.arcLength(cnt, True)
         approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
-        if 4 <= len(approx) <= 6 and solidity > 0.5:
-             print(f"[SIGNATURE] Rejecting geometric box: corners={len(approx)}, solidity={solidity:.2f}", flush=True)
-             continue
-             
-        # Stars and solid logos
-        if 0.6 < aspect < 1.6 and solidity > 0.40:
-            continue
+        if 4 <= len(approx) <= 6 and solidity > 0.6: continue
             
-        # Photo boxes / larger borders / solid rectangular text blocks
-        if (extent > 0.10 or w > w_idx * 0.35) and solidity > 0.45: continue
+        # REJECT SMALL PRINTED LABELS (like "Signature")
+        # Handwriting is more complex (longer perimeter relative to area)
+        complexity = peri / (np.sqrt(area) + 1)
+        if complexity < 2.8 and area < 1500: continue
             
-        complexity = cv2.arcLength(cnt, True)
-        # Handwriting score: favors complexity relative to area
-        hw_score = complexity / (np.sqrt(area) + 1)
-        
         candidates.append({
             'box': (x, y, w, h), 
             'complex': complexity, 
-            'hw_score': hw_score,
             'y_mid': y + h/2, 
             'area': area
         })
@@ -1907,20 +1906,17 @@ def _extract_signature_from_id_back(id_img):
         return cv2.resize(result, (400, int(400 * ch/cw)), interpolation=cv2.INTER_LINEAR)
         
     # Step 4: ANCHOR ON THE SIGNATURE
-    # We prefer components with high hw_score in the target lane
-    candidates.sort(key=lambda c: c['hw_score'], reverse=True)
+    # We prefer complex components in the target lane
+    candidates.sort(key=lambda c: c['complex'], reverse=True)
     
     # Vertically tighten: We expect the signature to be near the top/center of our ROI
-    signature_lane = [c for c in candidates if h_idx * 0.10 < c['y_mid'] < h_idx * 0.60]
+    signature_lane = [c for c in candidates if h_idx * 0.10 < c['y_mid'] < h_idx * 0.55]
     anchor = signature_lane[0] if signature_lane else candidates[0]
     
-    # VERTICAL PURGE: Only grab pieces that are physically close to the signature cluster.
-    # Handwriting flows horizontally; printed lines/boxes sit in a separate 'lane' below.
     final_parts = []
     for c in candidates:
-        # Distance check: Components must be within 25% of the ROI height from the anchor center
-        # This prevents 'jumping' to a line or box sitting significantly below the signature.
-        if abs(c['y_mid'] - anchor['y_mid']) < h_idx * 0.25:
+        # Distance check: Components must be physically close to the anchor's vertical lane
+        if abs(c['y_mid'] - anchor['y_mid']) < h_idx * 0.20:
             final_parts.append(c['box'])
             
     if not final_parts:
@@ -1957,7 +1953,7 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
          processed_signature_img: ndarray, extracted_id_img: ndarray)
     """
     try:
-        from .signature_brain import calculate_neural_match, compare_signature_images, prepare_signature_match_view
+        from .signature_brain import calculate_neural_match, compare_signature_images, prepare_signature_match_view, get_training_count
         
         if not signature_bytes or not id_back_bytes:
             return False, "Missing signature or ID image", 0.0, None, None
@@ -1989,23 +1985,34 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
         extracted_id_preview = extracted_id_signature  # Already display-ready via single-pass extraction
         matcher_reference_view = prepare_signature_match_view(extracted_id_signature)
         
-        # Neural matching restored: System now benefits from patterns learned in the Bench
+        # Neural matching: Weighted by trust in the student's profile history
         try:
             direct_score = compare_signature_images(sig_img, extracted_id_signature)
             profile_score = calculate_neural_match(sig_img, student_id) if student_id else 0.0
 
             if profile_score > 0.0:
-                # 80/20 weighted average incorporates learning without overriding the primary ID check
-                score = (direct_score * 0.8) + (profile_score * 0.2)
-                score_source = f"direct={direct_score:.2f}, profile={profile_score:.2f}"
+                # Dynamic weighting based on sample count
+                sample_count = get_training_count(student_id) if student_id else 0
+                from .signature_brain import get_profile_weight
+                p_weight = get_profile_weight(sample_count)
+                d_weight = 1.0 - p_weight
+                
+                score = (direct_score * d_weight) + (profile_score * p_weight)
+                score_source = f"direct={direct_score:.2f} ({d_weight:.0%}), profile={profile_score:.2f} ({p_weight:.0%})"
+            elif profile_score < 0:
+                # Blacklist penalty applied
+                score = direct_score + profile_score 
+                score_source = f"direct={direct_score:.2f}, penalty={profile_score:.2f}"
             else:
                 score = direct_score
                 score_source = f"direct={direct_score:.2f}"
+            
+            print(f"[SIGNATURE] Final combined score: {score:.4f} ({score_source})", flush=True)
         except Exception as e:
             print(f"[SIGNATURE] Error in neural matching: {e}", flush=True)
             return False, f"Matching error: {str(e)}", 0.0, preview_signature, extracted_id_preview, matcher_submitted_view, matcher_reference_view
         
-        # Threshold set to 0.60 based on user preference
+        # Threshold set to 0.60 based on bench configuration
         threshold = 0.60
         is_verified = score >= threshold
         status = (
