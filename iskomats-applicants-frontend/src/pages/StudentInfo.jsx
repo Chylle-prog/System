@@ -584,10 +584,15 @@ const StudentInfo = () => {
   const renderDocumentMediaPicker = ({ 
     photoId, photoName, photoLabel, photoValue, onPhotoChange,
     videoId, videoName, videoValue, onVideoChange,
-    isUploadingVideo = false 
+    isUploadingVideo = false,
+    isVerifying = false
   }) => {
     const photoStatus = getImagePickerStatus(photoValue);
     const hasVideo = videoValue && (typeof videoValue === 'string' ? videoValue.length > 0 : true);
+    const isDisabled = isUploadingVideo || isVerifying;
+
+    const photoBtnLabel = photoLabel || 'Image';
+    const videoBtnLabel = photoLabel ? `${photoLabel} Video` : 'Video';
 
     return (
       <div style={{marginBottom: '1rem'}}>
@@ -596,9 +601,9 @@ const StudentInfo = () => {
         <div style={{display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '0.8rem'}}>
           {/* PHOTO PICKER */}
           <div style={{flex: '1', minWidth: '160px'}}>
-            <input id={photoId} type="file" name={photoName} accept="image/*" onChange={onPhotoChange} style={{display: 'none'}} />
+            <input id={photoId} type="file" name={photoName} accept="image/*" onChange={onPhotoChange} style={{display: 'none'}} disabled={isDisabled} />
             <label
-              htmlFor={photoId}
+              htmlFor={isDisabled ? undefined : photoId}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -607,18 +612,19 @@ const StudentInfo = () => {
                 padding: '0.8rem 1rem',
                 borderRadius: '14px',
                 border: '1px solid #cbd5e1',
-                background: '#fff',
-                color: '#0f172a',
-                cursor: 'pointer',
+                background: isDisabled ? '#f1f5f9' : '#fff',
+                color: isDisabled ? '#64748b' : '#0f172a',
+                cursor: isDisabled ? 'not-allowed' : 'pointer',
                 fontSize: '0.82rem',
                 fontWeight: '700',
                 boxShadow: '0 4px 12px rgba(15, 23, 42, 0.05)',
                 width: '100%',
-                transition: 'all 0.2s ease'
+                transition: 'all 0.2s ease',
+                opacity: isDisabled ? 0.6 : 1
               }}
             >
-              <i className="fas fa-image" style={{color: 'var(--primary)'}}></i>
-              {photoValue ? 'Replace Image' : 'Add Image'}
+              <i className={isVerifying ? "fas fa-spinner fa-spin" : "fas fa-image"} style={{color: isDisabled ? '#94a3b8' : 'var(--primary)'}}></i>
+              {isVerifying ? 'Verifying...' : (photoValue ? `Replace ${photoBtnLabel}` : `Add ${photoBtnLabel}`)}
             </label>
           </div>
 
@@ -636,7 +642,7 @@ const StudentInfo = () => {
                 style={{display: 'none'}} 
               />
               <label
-                htmlFor={isUploadingVideo ? undefined : videoId}
+                htmlFor={isDisabled ? undefined : videoId}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -645,19 +651,19 @@ const StudentInfo = () => {
                   padding: '0.8rem 1rem',
                   borderRadius: '14px',
                   border: '1px solid #cbd5e1',
-                  background: isUploadingVideo ? '#f1f5f9' : '#fff',
-                  color: '#0f172a',
-                  cursor: isUploadingVideo ? 'not-allowed' : 'pointer',
+                  background: isDisabled ? '#f1f5f9' : '#fff',
+                  color: isDisabled ? '#64748b' : '#0f172a',
+                  cursor: isDisabled ? 'not-allowed' : 'pointer',
                   fontSize: '0.82rem',
                   fontWeight: '700',
                   boxShadow: '0 4px 12px rgba(15, 23, 42, 0.05)',
                   width: '100%',
                   transition: 'all 0.2s ease',
-                  opacity: isUploadingVideo ? 0.7 : 1
+                  opacity: isDisabled ? 0.6 : 1
                 }}
               >
-                <i className={isUploadingVideo ? "fas fa-spinner fa-spin" : "fas fa-video"} style={{color: 'var(--primary)'}}></i>
-                {isUploadingVideo ? 'Uploading...' : (hasVideo ? 'Replace Video' : 'Add Video')}
+                <i className={isDisabled ? "fas fa-spinner fa-spin" : "fas fa-video"} style={{color: isDisabled ? '#94a3b8' : 'var(--primary)'}}></i>
+                {isUploadingVideo ? 'Uploading...' : (isVerifying ? 'Verifying...' : (hasVideo ? `Replace ${videoBtnLabel}` : `Add ${videoBtnLabel}`))}
               </label>
             </div>
           )}
@@ -1612,7 +1618,10 @@ const StudentInfo = () => {
             if (v.enrollment_verified) setCoeVerified('success');
             if (v.grades_verified) setGradesVerified('success');
             if (v.id_verified) setIdVerified('success');
-            if (v.face_verified) setFaceVerified('success');
+            if (v.face_verified) {
+              setFaceVerified('success');
+              setFaceMatchResult({ verified: true });
+            }
             if (v.signature_verified) setSignatureVerified('success');
             
             console.log('[VERIFICATION] Fresh status synced from backend:', v);
@@ -3340,7 +3349,8 @@ const StudentInfo = () => {
                     videoName: 'mayorIndigency_video',
                     videoValue: documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url,
                     onVideoChange: handleVideoUpload,
-                    isUploadingVideo: Boolean(uploadingFields['mayorIndigency_video'])
+                    isUploadingVideo: Boolean(uploadingFields['mayorIndigency_video']),
+                    isVerifying: ocrVerified === 'verifying'
                   })}
 
                   <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
@@ -3732,7 +3742,8 @@ const StudentInfo = () => {
                       videoName: 'schoolIdFront_video',
                       videoValue: documentVideos.schoolIdFront_video || userProfile?.schoolid_front_vid_url,
                       onVideoChange: handleVideoUpload,
-                      isUploadingVideo: Boolean(uploadingFields['schoolIdFront_video'])
+                      isUploadingVideo: Boolean(uploadingFields['schoolIdFront_video']),
+                      isVerifying: idVerified === 'verifying'
                     })}
 
                     <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
@@ -3789,7 +3800,8 @@ const StudentInfo = () => {
                       videoName: 'schoolIdBack_video',
                       videoValue: documentVideos.schoolIdBack_video || userProfile?.schoolid_back_vid_url,
                       onVideoChange: handleVideoUpload,
-                      isUploadingVideo: Boolean(uploadingFields['schoolIdBack_video'])
+                      isUploadingVideo: Boolean(uploadingFields['schoolIdBack_video']),
+                      isVerifying: idVerified === 'verifying'
                     })}
 
                     <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
@@ -3936,7 +3948,8 @@ const StudentInfo = () => {
                       videoName: 'mayorCOE_video',
                       videoValue: documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url,
                       onVideoChange: handleVideoUpload,
-                      isUploadingVideo: Boolean(uploadingFields['mayorCOE_video'])
+                      isUploadingVideo: Boolean(uploadingFields['mayorCOE_video']),
+                      isVerifying: coeVerified === 'verifying'
                     })}
 
                     <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
@@ -4065,7 +4078,8 @@ const StudentInfo = () => {
                         videoName: 'mayorGrades_video',
                         videoValue: documentVideos.mayorGrades_video || userProfile?.grades_vid_url,
                         onVideoChange: handleVideoUpload,
-                        isUploadingVideo: Boolean(uploadingFields['mayorGrades_video'])
+                        isUploadingVideo: Boolean(uploadingFields['mayorGrades_video']),
+                        isVerifying: gradesVerified === 'verifying'
                       })}
 
                       <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem'}}>
@@ -4278,7 +4292,7 @@ const StudentInfo = () => {
                       <div style={{width: '100%', maxWidth: '800px', margin: '0 auto'}}>
                         <div className="signature-preview-box" style={{maxWidth: '100%'}}>
                           <img src={formData.applicantSignatureName} alt="Signature" style={{maxHeight: '120px'}} />
-                          <button type="button" onClick={() => setShowSignaturePad(true)} style={{position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer'}}><i className="fas fa-undo"></i></button>
+                          {!isAnyScanning && <button type="button" onClick={() => setShowSignaturePad(true)} style={{position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer'}}><i className="fas fa-undo"></i></button>}
                         </div>
                         
                         <div style={{marginTop: '1rem'}}>
@@ -4441,7 +4455,8 @@ const StudentInfo = () => {
                       photoId: 'photo_face_photo',
                       photoName: 'face_photo',
                       photoValue: photos.face_photo || userProfile?.profile_picture,
-                      onPhotoChange: handleInputChange
+                      onPhotoChange: handleInputChange,
+                      isVerifying: faceVerified === 'verifying' || isFaceMatching
                     })}
 
                     <div style={{marginTop: '1rem', display: 'flex', justifyContent: 'center'}}>
