@@ -2469,15 +2469,18 @@ export default function ScholarshipDashboard({
               </div>
               <div>
                 <label className="block text-sm font-semibold text-[#800020] mb-1">Semester *</label>
-                <input
-                  type="number"
+                <select
                   name="semester"
                   value={formData.semester}
                   onChange={handleFormChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                  placeholder="e.g. 1"
                   required
-                />
+                >
+                  <option value="">Select Semester</option>
+                  <option value="1st">1st Semester</option>
+                  <option value="2nd">2nd Semester</option>
+                  <option value="3rd">3rd Semester</option>
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-[#800020] mb-1">Academic Year *</label>
@@ -2505,6 +2508,7 @@ export default function ScholarshipDashboard({
                   <option value="">Select Semester</option>
                   <option value="1st">1st Semester</option>
                   <option value="2nd">2nd Semester</option>
+                  <option value="3rd">3rd Semester</option>
                 </select>
               </div>
               <div>
