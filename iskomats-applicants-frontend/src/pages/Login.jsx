@@ -666,7 +666,8 @@ const Login = () => {
           font-size: 1rem;
         }
 
-        .profile-input-wrapper input {
+        .profile-input-wrapper input,
+        .profile-input-wrapper select {
           border: none;
           border-radius: 12px;
           background: rgba(255, 255, 255, 0.08);
@@ -676,6 +677,16 @@ const Login = () => {
           width: 100%;
           backdrop-filter: blur(5px);
           padding: 1rem 1.2rem 1rem 2.8rem;
+          appearance: none;
+        }
+
+        .profile-input-wrapper select {
+          cursor: pointer;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='white'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 1rem center;
+          background-size: 1.2rem;
+          padding-right: 2.5rem;
         }
 
         .profile-form-group .profile-input-wrapper input:focus,
@@ -1384,7 +1395,7 @@ const Login = () => {
                 <label>University / School</label>
                 <div className="profile-input-wrapper">
                   <i className="fas fa-university"></i>
-                  <select name="school" required style={{ width: '100%', padding: '12px 12px 12px 42px', border: '1px solid #ddd', borderRadius: '8px', background: 'white' }}>
+                  <select name="school" required style={{ width: '100%' }}>
                     <option value="">Select University / School</option>
                     <option value="De La Salle Lipa">De La Salle Lipa</option>
                     <option value="National University Lipa">National University Lipa</option>
@@ -1415,7 +1426,7 @@ const Login = () => {
                 <label>Street & Barangay</label>
                 <div className="profile-input-wrapper">
                   <i className="fas fa-map-marker-alt"></i>
-                  <select name="streetBrgy" required style={{ width: '100%', padding: '12px 12px 12px 42px', border: '1px solid #ddd', borderRadius: '8px', background: 'white' }}>
+                  <select name="streetBrgy" required style={{ width: '100%' }}>
                     <option value="">Select Barangay</option>
                     <option value="Adya">Adya</option>
                     <option value="Anilao">Anilao</option>
@@ -1497,19 +1508,19 @@ const Login = () => {
                 <div className="profile-form-group">
                   <label>Town / City</label>
                   <div className="profile-input-wrapper">
-                    <input type="text" name="townCityMunicipality" value="Lipa City" readOnly style={{ backgroundColor: '#f1f1f1', cursor: 'not-allowed' }} />
+                    <input type="text" name="townCityMunicipality" value="Lipa City" readOnly style={{ opacity: 0.8, cursor: 'not-allowed' }} />
                   </div>
                 </div>
                 <div className="profile-form-group">
                   <label>Province</label>
                   <div className="profile-input-wrapper">
-                    <input type="text" name="province" value="Batangas" readOnly style={{ backgroundColor: '#f1f1f1', cursor: 'not-allowed' }} />
+                    <input type="text" name="province" value="Batangas" readOnly style={{ opacity: 0.8, cursor: 'not-allowed' }} />
                   </div>
                 </div>
                 <div className="profile-form-group">
                   <label>Zip Code</label>
                   <div className="profile-input-wrapper">
-                    <input type="text" name="zipCode" value="4217" readOnly style={{ backgroundColor: '#f1f1f1', cursor: 'not-allowed' }} />
+                    <input type="text" name="zipCode" value="4217" readOnly style={{ opacity: 0.8, cursor: 'not-allowed' }} />
                   </div>
                 </div>
               </div>
