@@ -138,6 +138,7 @@ const STEP_FIELDS = {
   ],
   3: [
     'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'semester', 'course', 'gpa',
+    'grades_sem', 'grades_year',
     'mayorCOE_photo', 'mayorGrades_photo'
   ],
   4: [
@@ -659,6 +660,8 @@ const StudentInfo = () => {
     yearLevel: '',
     emailAddress: '',
     gpa: '',
+    grades_sem: '',
+    grades_year: '',
 
     fatherStatus: '',
     fatherName: '',
@@ -831,7 +834,7 @@ const StudentInfo = () => {
         }, 80);
       }
 
-      const { townCity, barangay, schoolName, idNumber, yearLevel, semester, gpa, course } = extraParams;
+      const { townCity, barangay, schoolName, idNumber, yearLevel, semester, gpa, course, grades_sem, grades_year } = extraParams;
       const targetBarangay = barangay || formData.barangay || '';
       const { firstName, lastName, middleName } = formData;
       const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
@@ -851,7 +854,9 @@ const StudentInfo = () => {
         reqNo,
         docType,
         targetBarangay,
-        semester
+        semester,
+        grades_sem,
+        grades_year
       );
 
       if (!silent && pInterval) clearInterval(pInterval);
@@ -986,7 +991,8 @@ const StudentInfo = () => {
     );
     const schoolName = formData.schoolName || '';
     const yearLevel = formData.yearLevel || '';
-    const semester = formData.semester || '';
+    const grades_sem = formData.grades_sem || '';
+    const grades_year = formData.grades_year || '';
     const gpa = formData.gpa || '';
     const videoUrl = formData.mayorGrades_video || documentVideos.mayorGrades_video;
 
@@ -998,15 +1004,15 @@ const StudentInfo = () => {
       showPromptMessage('⚠️ Please record and upload the Grades video first.');
       return;
     }
-    if (!schoolName || !yearLevel || !gpa) {
-      showPromptMessage('⚠️ Please complete School Name, Year Level, and GPA first.');
+    if (!schoolName || !yearLevel || !grades_sem || !grades_year || !gpa) {
+      showPromptMessage('⚠️ Please complete School Name, Year Level, Semester for Grades, Year for Grades, and GPA first.');
       return;
     }
 
     setLoadingMessage({ title: 'Scanning Grades', message: 'Verifying your Grades document and Video Content...' });
 
     try {
-      const success = await performOcrVerification('Grades', gradesDoc, { schoolName, yearLevel, semester, gpa }, videoUrl);
+      const success = await performOcrVerification('Grades', gradesDoc, { schoolName, yearLevel, grades_sem, grades_year, gpa }, videoUrl);
       if (success) {
         showPromptMessage('✅ Grades verified successfully!');
       } else {
@@ -1341,7 +1347,9 @@ const StudentInfo = () => {
           parentsGrossIncome: urlIncome || scholarshipSearchProfile?.income || profile.financial_income_of_parents || '',
           gpa: urlGpa || scholarshipSearchProfile?.gpa || profile.overall_gpa || '',
           numberOfSiblings: profile.sibling_no || '',
-          course: profile.course || ''
+          course: profile.course || '',
+          grades_sem: profile.grades_sem || '',
+          grades_year: profile.grades_year || ''
         };
 
         if (scholarshipSearchProfile?.street_brgy || profile.street_brgy || profile.streetBarangay) {
@@ -3311,6 +3319,28 @@ const StudentInfo = () => {
                   <div className="form-group">
                     <label>General Weighted Average / GPA <span style={{ color: '#e74c3c' }}>*</span></label>
                     <input type="number" name="gpa" value={formData.gpa} onChange={handleInputChange} placeholder="85 or 1.75" step="0.01" required={currentStep === 3} />
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Semester for Grades <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <select name="grades_sem" value={formData.grades_sem} onChange={handleInputChange} required={currentStep === 3}>
+                      <option value="">Select Semester</option>
+                      <option value="1st">1st Semester</option>
+                      <option value="2nd">2nd Semester</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Year for Grades <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <input
+                      type="text"
+                      name="grades_year"
+                      value={formData.grades_year}
+                      onChange={handleInputChange}
+                      placeholder="e.g. 2024-2025"
+                      required={currentStep === 3}
+                    />
                   </div>
                 </div>
 

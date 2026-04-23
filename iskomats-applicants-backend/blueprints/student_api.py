@@ -3105,6 +3105,10 @@ def ocr_check():
         expected_academic_year = str(data.get('expected_year') or data.get('expectedYear') or '').strip()
         expected_id_no = str(data.get('id_number') or data.get('idNumber') or '').strip()
         
+        # New: Specific semester and year for Grades document verification
+        grades_sem = str(data.get('grades_sem') or '').strip()
+        grades_year = str(data.get('grades_year') or '').strip()
+        
         print(f"[OCR-DEBUG-EXPECTED] First='{first_name}' Middle='{middle_name}' Last='{last_name}' ID='{expected_id_no}'", flush=True)
 
 
@@ -3149,6 +3153,8 @@ def ocr_check():
             'indigency_doc': _hash_verification_source(indigency_doc_param or applicant.get('indigency_doc')),
             'enrollment_doc': _hash_verification_source(enrollment_doc_param or applicant.get('enrollment_certificate_doc')),
             'grades_doc': _hash_verification_source(grades_doc_param or applicant.get('grades_doc')),
+            'grades_sem': grades_sem,
+            'grades_year': grades_year,
             'video_url': str(data.get('video_url') or '').strip(),
             'video_url_back': str(data.get('video_url_back') or '').strip(),
             'indigency_video': str(data.get('mayorIndigency_video') or applicant.get('indigency_vid_url') or '').strip(),
@@ -3353,9 +3359,13 @@ def ocr_check():
                 year_level_ok, _ = year_level_matches_text(expected_year_level, raw)
                 
                 if doc_type in ['Enrollment', 'Grades']:
+                    # Prioritize specific grades_sem/year for Grades documents
+                    target_expected_year = grades_year if (doc_type == 'Grades' and grades_year) else expected_academic_year
+                    target_expected_semester = grades_sem if (doc_type == 'Grades' and grades_sem) else expected_semester
+
                     year_label = extract_school_year_from_text(raw)
                     semester_label = extract_semester_from_text(raw)
-                    normalized_expected_semester = normalize_semester_label(expected_semester)
+                    normalized_expected_semester = normalize_semester_label(target_expected_semester)
                     normalized_semester_label = normalize_semester_label(semester_label)
                     
                     raw_preview = raw[:200].replace('\n', ' ')
@@ -3366,8 +3376,8 @@ def ocr_check():
                     # Year check: only pass if (v_is_true and (matches or no_expected_value))
                     if not v:
                         year_only_ok = False
-                    elif expected_academic_year:
-                        year_only_ok = academic_year_matches_expected(year_label, expected_academic_year)
+                    elif target_expected_year:
+                        year_only_ok = academic_year_matches_expected(year_label, target_expected_year)
                     else:
                         year_only_ok = True
                         
@@ -3415,7 +3425,7 @@ def ocr_check():
                         checklist = [c for c in checklist if c is not None]
                         msg = f"Checklist: [{' | '.join(checklist)}]"
                         if not v:
-                            msg += f" (Checked vs F:'{first_name}' L:'{last_name}' ID:'{expected_id_no}' Lvl:'{expected_year_level}' Y:'{expected_academic_year}')"
+                            msg += f" (Checked vs F:'{first_name}' L:'{last_name}' ID:'{expected_id_no}' Lvl:'{expected_year_level}' Y:'{target_expected_year}')"
                         return {'doc': 'Enrollment', 'verified': v, 'message': msg + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video, 'score_details': score_details}
                     elif doc_type == 'Grades':
                         gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
