@@ -3971,19 +3971,11 @@ export default function ScholarshipDashboard({
               <p className="font-bold text-gray-800">{a.year || 'N/A'}</p>
             </div>
 
-            <div className="p-4 border-t border-r border-gray-100">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Semester</p>
-              <p className="font-bold text-gray-800">{a.semester || 'N/A'}</p>
-            </div>
             <div className="p-4 border-t border-gray-100">
               <p className="text-[10px] font-black text-gray-400 uppercase mb-1">School Sector</p>
               <p className="font-bold text-gray-800">{a.schoolSector || 'N/A'}</p>
             </div>
 
-            <div className="p-4 border-t border-r border-gray-100 col-span-2">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Semester for Grades</p>
-              <p className="font-bold text-gray-800">{a.grades_sem || 'N/A'}</p>
-            </div>
             <div className="p-4 border-t border-gray-100 col-span-2">
               <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Year for Grades</p>
               <p className="font-bold text-gray-800">{a.grades_year || 'N/A'}</p>

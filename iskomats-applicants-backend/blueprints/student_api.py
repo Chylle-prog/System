@@ -2442,7 +2442,7 @@ def update_profile():
                 'motherOccupation': 'mother_occupation', 'parentsGrossIncome': 'financial_income_of_parents',
                 'gpa': 'overall_gpa', 'numberOfSiblings': 'sibling_no', 'course': 'course',
                 'meritsAwardsReceived': 'merits_awards_received',
-                'semester': 'semester', 'grades_sem': 'grades_sem', 'grades_year': 'grades_year'
+                'grades_year': 'grades_year'
             }
 
             document_field_mapping = {
@@ -3120,9 +3120,8 @@ def ocr_check():
         expected_academic_year = str(data.get('expected_year') or data.get('expectedYear') or '').strip()
         expected_id_no = str(data.get('id_number') or data.get('idNumber') or '').strip()
         
-        # New: Specific semester and year for Grades document verification
-        grades_sem = str(data.get('grades_sem') or '').strip()
         grades_year = str(data.get('grades_year') or '').strip()
+        # Pull optional semester from scholarship details later in the process
         
         print(f"[OCR-DEBUG-EXPECTED] First='{first_name}' Middle='{middle_name}' Last='{last_name}' ID='{expected_id_no}'", flush=True)
 

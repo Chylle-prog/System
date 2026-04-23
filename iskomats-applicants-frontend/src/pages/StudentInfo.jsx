@@ -722,7 +722,6 @@ const StudentInfo = () => {
     yearLevel: '',
     emailAddress: '',
     gpa: '',
-    semester: '',
     meritsAwardsReceived: '',
     
     fatherStatus: '',
@@ -738,7 +737,6 @@ const StudentInfo = () => {
     parentsGrossIncome: '',
     numberOfSiblings: '',
     course: '',
-    grades_sem: '',
     grades_year: '',
     mayorCOE_photo: null,
     mayorGrades_photo: null,
@@ -1074,9 +1072,9 @@ const StudentInfo = () => {
     const idNumber = formData.schoolIdNumber || '';
     const yearLevel = formData.yearLevel || '';
     const course = formData.course || '';
-    const semester = formData.semester || '';
     const videoUrl = formData.mayorCOE_video || documentVideos.mayorCOE_video;
     const year = formData.year || '';
+    const semester = scholarshipDetails?.semester || '';
 
     if (!coeDoc) {
       showPromptMessage('⚠️ Please upload your Certificate of Enrollment first.');
@@ -1086,8 +1084,8 @@ const StudentInfo = () => {
       showPromptMessage('⚠️ Please record and upload the COE video first.');
       return;
     }
-    if (!schoolName || !idNumber || !yearLevel || !course || !semester || !year) {
-      showPromptMessage('⚠️ Please complete School Name, ID, Year, Course, Sem, and Academic Year first.');
+    if (!schoolName || !idNumber || !yearLevel || !course || !year || !semester) {
+      showPromptMessage('⚠️ Please complete School Name, ID, Year, Course, and Academic Year first.');
       return;
     }
 
@@ -1133,22 +1131,21 @@ const StudentInfo = () => {
     const yearLevel = formData.yearLevel || '';
     const gpa = formData.gpa || '';
     const videoUrl = formData.mayorGrades_video || documentVideos.mayorGrades_video;
+    const grades_sem = scholarshipDetails?.grades_sem || '';
+    const grades_year = formData.grades_year || '';
 
     if (!gradesDoc) {
-      showPromptMessage('âš ï¸ Please upload your Grades document first.');
+      showPromptMessage('⚠️ Please upload your Grades document first.');
       return;
     }
     if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
-      showPromptMessage('âš ï¸ Please record and upload the Grades video first.');
+      showPromptMessage('⚠️ Please record and upload the Grades video first.');
       return;
     }
-    if (!schoolName || !idNumber || !yearLevel || !gpa || !formData.semester) {
-      showPromptMessage('âš ï¸ Please complete School Name, School ID Number, Year Level, GPA, and Semester first.');
+    if (!schoolName || !idNumber || !yearLevel || !gpa) {
+      showPromptMessage('⚠️ Please complete School Name, School ID Number, Year Level, and GPA first.');
       return;
     }
-
-    const grades_sem = formData.grades_sem || '';
-    const grades_year = formData.grades_year || '';
 
     setLoadingMessage({ title: 'Scanning Grades', message: 'Verifying your Grades document and Video Content...' });
     
@@ -1549,7 +1546,6 @@ const StudentInfo = () => {
           parentsGrossIncome: urlIncome || scholarshipSearchProfile?.income || profile.financial_income_of_parents || '',
           gpa: urlGpa || scholarshipSearchProfile?.gpa || profile.overall_gpa || '',
           numberOfSiblings: profile.sibling_no || '',
-          grades_sem: profile.grades_sem === 1 ? '1st' : profile.grades_sem === 2 ? '2nd' : (profile.grades_sem || ''),
           grades_year: profile.grades_year || '',
           meritsAwardsReceived: profile.merits_awards_received || ''
         };
@@ -2188,25 +2184,11 @@ const StudentInfo = () => {
           return;
         }
 
-        // COE Semester/Year
-        const normReqSem = String(scholarshipDetails.semester || '').replace(/st|nd|rd|th| Semester/gi, '');
-        const normAppSem = String(formData.semester || '').replace(/st|nd|rd|th| Semester/gi, '');
-        if (normReqSem && normAppSem && normReqSem !== normAppSem) {
-          showPromptMessage(`âš ï¸  Ineligible: Your Current Semester (${formData.semester}) does not match the requirement.`);
-          return;
-        }
         if (scholarshipDetails.year && formData.year && scholarshipDetails.year !== formData.year) {
           showPromptMessage(`âš ï¸  Ineligible: Your Academic Year (${formData.year}) does not match the requirement.`);
           return;
         }
 
-        // Grades Semester/Year
-        const normReqGradesSem = String(scholarshipDetails.grades_sem || '').replace(/st|nd|rd|th| Semester/gi, '');
-        const normAppGradesSem = String(formData.grades_sem || '').replace(/st|nd|rd|th| Semester/gi, '');
-        if (normReqGradesSem && normAppGradesSem && normReqGradesSem !== normAppGradesSem) {
-          showPromptMessage(`âš ï¸  Ineligible: Your Grades Semester (${formData.grades_sem}) does not match the requirement.`);
-          return;
-        }
         if (scholarshipDetails.grades_year && formData.grades_year && scholarshipDetails.grades_year !== formData.grades_year) {
           showPromptMessage(`âš ï¸  Ineligible: Your Grades Year (${formData.grades_year}) does not match the requirement.`);
           return;
@@ -3605,14 +3587,6 @@ const StudentInfo = () => {
                 <div className="form-group">
                   <label>Course/Program <span style={{color: '#e74c3c'}}>*</span></label>
                   <input type="text" name="course" value={formData.course} onChange={handleInputChange} placeholder="B.S. Information Technology" required={currentStep === 3} />
-                </div>
-                <div className="form-group">
-                  <label>Current Semester <span style={{color: '#e74c3c'}}>*</span></label>
-                  <select name="semester" value={formData.semester} onChange={handleInputChange} required={currentStep === 3}>
-                    <option value="">Select Semester</option>
-                    <option value="1st Semester">1st Semester</option>
-                    <option value="2nd Semester">2nd Semester</option>
-                  </select>
                 </div>
                 <div className="form-group">
                   <label>Current Academic Year <span style={{color: '#e74c3c'}}>*</span></label>
