@@ -144,15 +144,24 @@ def get_applicant_media_metadata(applicant_no, column_name, has_data, data_value
     is_video = column_name.endswith('_vid_url') if column_name else False
     media_type = 'video/mp4' if is_video else 'image/jpeg'
     
+    # ALWAYS use the proxy endpoint if encryption is available to ensure decryption
+    # This allows the server to fetch from Supabase (even if it's a URL) and decrypt before serving.
+    if _fernet:
+        return [{
+            'src': url_for('admin_api.get_applicant_image', applicant_no=applicant_no, column_name=column_name, _external=True),
+            'type': media_type,
+            'name': f"{name} (Secure Proxy)"
+        }]
+
     if is_video and data_value:
-        # For video URLs, use the URL directly from database (normalized to current project)
+        # Fallback for unencrypted videos
         return [{
             'src': normalize_supabase_url(data_value),
             'type': media_type,
             'name': f"{name}"
         }]
     elif not is_video:
-        # For binary image/document data, use lazy-loading endpoint
+        # Fallback for unencrypted images
         return [{
             'src': url_for('admin_api.get_applicant_image', applicant_no=applicant_no, column_name=column_name, _external=True),
             'type': media_type,
@@ -321,6 +330,13 @@ def get_mime_type(data):
             return 'image/heic'
         elif brand in [b'mif1', b'msf1', b'heif', b'heix']:
             return 'image/heif'
+        elif brand in [b'mp41', b'mp42', b'isom', b'avc1']:
+            return 'video/mp4'
+        elif brand == b'qt  ':
+            return 'video/quicktime'
+    # Matroska / WebM
+    elif data[:4] == b'\x1a\x45\xdf\xa3':
+        return 'video/webm'
     # SVG
     elif data[:5].lower() == b'<svg ' or data[:14].lower() == b'<?xml version=':
         return 'image/svg+xml'
@@ -3419,6 +3435,12 @@ def get_applicants(current_user_id, pro_no, role, program):
                     a['signature'] = url_for('admin_api.get_applicant_image', applicant_no=app_no, column_name='signature_image_data', _external=True)
                 else:
                     a['signature'] = None
+
+                # Proxy profile picture too
+                if a.get('has_profile_picture'):
+                    a['profile_picture'] = url_for('admin_api.get_applicant_image', applicant_no=app_no, column_name='profile_picture', _external=True)
+                else:
+                    a['profile_picture'] = None
                 
                 # Ensure income is float (might be Decimal from DB)
                 if a.get('income') is not None:
@@ -4106,7 +4128,9 @@ def get_applicant_image(applicant_no, column_name):
     allowed_columns = [
         'indigency_doc', 'enrollment_certificate_doc', 'grades_doc', 
         'id_img_front', 'id_img_back', 'profile_picture',
-        'profile_pic', 'signature_image_data'
+        'profile_pic', 'signature_image_data',
+        'id_vid_url', 'indigency_vid_url', 'grades_vid_url',
+        'enrollment_certificate_vid_url', 'schoolid_front_vid_url', 'schoolid_back_vid_url'
     ]
     if column_name not in allowed_columns:
         return jsonify({'message': 'Invalid column name'}), 400
@@ -4129,8 +4153,26 @@ def get_applicant_image(applicant_no, column_name):
         if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
             from flask import redirect
             normalized_url = normalize_supabase_url(data)
-            print(f"[APPLICANT IMAGE] Redirecting {column_name} (Applicant {applicant_no}) to cloud URL: {normalized_url[:60]}...", flush=True)
-            return redirect(normalized_url)
+            
+            # If encryption is active, we MUST fetch the data ourselves and decrypt it
+            # instead of redirecting the browser to the encrypted file in Supabase.
+            if _fernet:
+                import requests
+                print(f"[APPLICANT IMAGE] Fetching and decrypting cloud URL for {column_name}: {normalized_url[:60]}...", flush=True)
+                try:
+                    resp = requests.get(normalized_url, timeout=30)
+                    if resp.status_code == 200:
+                        data = resp.content
+                        # Fall through to decryption logic below
+                    else:
+                        print(f"[APPLICANT IMAGE] Failed to fetch cloud URL: {resp.status_code}")
+                        return redirect(normalized_url) # Fallback to redirect if fetch fails
+                except Exception as e:
+                    print(f"[APPLICANT IMAGE] Request error: {e}")
+                    return redirect(normalized_url)
+            else:
+                print(f"[APPLICANT IMAGE] Redirecting {column_name} (Applicant {applicant_no}) to cloud URL: {normalized_url[:60]}...", flush=True)
+                return redirect(normalized_url)
 
         # Convert memoryview to bytes if needed
         if hasattr(data, 'tobytes'):
@@ -4147,18 +4189,14 @@ def get_applicant_image(applicant_no, column_name):
                 else:
                     data = bytes(str(data), 'utf-8')
             
-        # Handle encryption for signature (Only for binary data)
-        # Note: We already checked for Cloud URLs above and redirected, so remaining signatures are legacy binaries
-        if column_name == 'signature_image_data':
-            if not _fernet:
-                return jsonify({'message': 'Encryption not configured'}), 500
+        # Handle decryption for all fields if encrypted
+        if _fernet and data and isinstance(data, (bytes, bytearray)) and data.startswith(b'gAAAA'):
             try:
-                # Only decrypt if it looks like encrypted binary (usually longer than a few bytes)
-                if len(data) > 16:
-                    data = _fernet.decrypt(data)
+                data = _fernet.decrypt(data)
+                print(f"[APPLICANT IMAGE] Decrypted {column_name} (Applicant {applicant_no})", flush=True)
             except Exception as e:
-                print(f"[APPLICANT IMAGE] Failed to decrypt signature: {e}")
-                # Don't fail if decryption fails, might not be encrypted
+                print(f"[APPLICANT IMAGE] Failed to decrypt {column_name}: {e}")
+                # Don't fail if decryption fails, might not be encrypted correctly
         
         # Detect image type from magic bytes
         mime_type = get_mime_type(data)

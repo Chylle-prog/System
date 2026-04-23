@@ -1,4 +1,5 @@
 import base64
+from cryptography.fernet import Fernet
 from collections import OrderedDict
 import eventlet.tpool
 from eventlet import GreenPool
@@ -20,6 +21,17 @@ from functools import wraps
 import jwt
 from cryptography.fernet import Fernet
 from flask import Blueprint, jsonify, request, url_for
+# Encryption setup (matches api_routes.py)
+_ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
+_fernet = None
+if _ENCRYPTION_KEY:
+    try:
+        if isinstance(_ENCRYPTION_KEY, str):
+            _ENCRYPTION_KEY = _ENCRYPTION_KEY.encode()
+        _fernet = Fernet(_ENCRYPTION_KEY)
+    except Exception as e:
+        print(f"[STUDENT_API] Failed to initialize Fernet: {e}")
+
 from flask_bcrypt import Bcrypt
 
 import cv2
@@ -580,6 +592,23 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
         }
 
         folder = folder_map.get(field_name, 'others')
+        # Encrypt data before upload if encryption is configured
+        if _fernet:
+            try:
+                # Standardize to bytes
+                if hasattr(image_data, 'tobytes'):
+                    image_data = image_data.tobytes()
+                elif hasattr(image_data, 'read'):
+                    image_data = image_data.read()
+                
+                # Only encrypt if it's not already encrypted (to avoid double encryption if re-uploading)
+                # Fernet tokens start with b'gAAAA'
+                if not (isinstance(image_data, (bytes, bytearray)) and image_data.startswith(b'gAAAA')):
+                    image_data = _fernet.encrypt(bytes(image_data))
+                    print(f"[STORAGE] Encrypted {field_name} before upload", flush=True)
+            except Exception as e:
+                print(f"[STORAGE WARNING] Encryption failed for {field_name}, uploading raw: {e}", flush=True)
+
         bucket_name = get_storage_bucket()
         supabase = get_supabase_client()
         if not supabase:
@@ -2326,16 +2355,43 @@ def get_applicant_document(field_name):
                 
                 # If it's already a URL or Data URI, return it directly or wrapped
                 if value.startswith('http') or value.startswith('data:'):
-                    return jsonify({
-                        'fieldName': field_name,
-                        'data': normalize_supabase_url(value) if value.startswith('http') else value
-                    })
+                    # If it's an encrypted cloud URL, we must fetch and decrypt it
+                    if _fernet and value.startswith('http'):
+                        import requests
+                        try:
+                            resp = requests.get(value, timeout=30)
+                            if resp.status_code == 200:
+                                value = resp.content
+                                # Fall through to binary handling and decryption below
+                            else:
+                                return jsonify({
+                                    'fieldName': field_name,
+                                    'data': normalize_supabase_url(value)
+                                })
+                        except Exception:
+                            return jsonify({
+                                'fieldName': field_name,
+                                'data': normalize_supabase_url(value)
+                            })
+                    else:
+                        return jsonify({
+                            'fieldName': field_name,
+                            'data': normalize_supabase_url(value) if value.startswith('http') else value
+                        })
                 # Fallback for plain strings
                 value = value.encode('utf-8')
             elif hasattr(value, 'tobytes'):
                 value = value.tobytes()
             else:
                 value = bytes(value)
+
+            # Handle decryption for all fields if encrypted
+            if _fernet and value and value.startswith(b'gAAAA'):
+                try:
+                    value = _fernet.decrypt(value)
+                    print(f"[DOCUMENT] Decrypted {field_name}", flush=True)
+                except Exception as e:
+                    print(f"[DOCUMENT] Failed to decrypt {field_name}: {e}", flush=True)
                 
             # Determine mime type
             mime_type = 'image/jpeg'
@@ -2390,6 +2446,13 @@ def get_applicant_document_raw(field_name):
                 value = value.tobytes()
             else:
                 value = bytes(value)
+
+            # Handle decryption if encrypted
+            if _fernet and value and value.startswith(b'gAAAA'):
+                try:
+                    value = _fernet.decrypt(value)
+                except Exception as e:
+                    print(f"[DOCUMENT RAW] Decryption failed for {field_name}: {e}", flush=True)
 
             mime_type = 'image/jpeg'
             if field_name == 'signature_image_data' or value.startswith(b'\x89PNG'):
