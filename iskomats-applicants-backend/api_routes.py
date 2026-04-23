@@ -1620,6 +1620,8 @@ def initialize_auto_chat_rooms():
                 pro_no INTEGER,
                 room VARCHAR(50),
                 username VARCHAR(255) NOT NULL,
+                sender_id INTEGER,
+                is_student_sender BOOLEAN,
                 message TEXT NOT NULL,
                 timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             )
@@ -1869,6 +1871,7 @@ def init_socketio(socketio):
                            ELSE m.username 
                        END as username,
                        m.message, m.timestamp,
+                       m.sender_id, m.is_student_sender,
                        CASE 
                            WHEN s.is_accepted = 'Accepted' THEN 'Accepted'
                            WHEN s.is_accepted = 'Rejected' THEN 'Rejected'
@@ -1910,6 +1913,8 @@ def init_socketio(socketio):
                 emit('message', {
                     'm_id': msg['m_id'],
                     'username': msg['username'],
+                    'sender_id': msg['sender_id'],
+                    'is_student_sender': msg['is_student_sender'],
                     'message': msg['message'],
                     'timestamp': msg['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
                     'room': room,
@@ -1968,10 +1973,10 @@ def init_socketio(socketio):
             
             # Insert message with explicit IDs and correct username
             cursor.execute("""
-                INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp)
-                VALUES (%s, %s, %s, %s, %s, NOW())
+                INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp, sender_id, is_student_sender)
+                VALUES (%s, %s, %s, %s, %s, NOW(), %s, %s)
                 RETURNING m_id, timestamp
-            """, (app_no, pro_no, room, actual_username, message_text))
+            """, (app_no, pro_no, room, actual_username, message_text, sender_id, is_student_sender))
             row = cursor.fetchone()
             m_id = row['m_id']
             timestamp = row['timestamp']
@@ -1997,6 +2002,7 @@ def init_socketio(socketio):
             emit('message', {
                 'm_id': m_id,
                 'username': actual_username,
+                'sender_id': sender_id,
                 'message': message_text,
                 'room': room,
                 'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S'),

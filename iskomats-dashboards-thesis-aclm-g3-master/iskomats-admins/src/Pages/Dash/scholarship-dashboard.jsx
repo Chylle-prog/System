@@ -4378,38 +4378,39 @@ export default function ScholarshipDashboard({
               </div>
 
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                {currentConversationMessages.map((msg) => (
-                  <div key={msg.id} className="space-y-2">
-                    <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-semibold text-gray-900 text-sm">{msg.studentName}</span>
-                        <span className="text-xs text-gray-500 flex items-center gap-1">
-                          <FaClock className="text-[10px]" /> {formatDate(msg.timestamp)}
-                        </span>
-                      </div>
-                      <p className="text-gray-700 whitespace-pre-wrap text-sm">{msg.message}</p>
-                      <div className="mt-2 flex items-center justify-end gap-2">
-                        <button type="button" onClick={() => toggleStar(msg.id)} className={`p-2 rounded-lg hover:bg-gray-100 ${msg.starred ? 'text-yellow-500' : 'text-gray-400'}`}>
-                          <FaStar />
-                        </button>
+                {currentConversationMessages.map((msg) => {
+                  const isFromMe = msg.is_student_sender === false;
+                  return (
+                    <div key={msg.id} className={`flex ${isFromMe ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[80%] rounded-2xl p-4 shadow-sm border ${
+                        isFromMe 
+                          ? 'bg-[#800020] text-white border-[#800020]' 
+                          : 'bg-gray-50 text-gray-900 border-gray-200'
+                      }`}>
+                        <div className="flex items-center justify-between mb-2 gap-8">
+                          <span className={`font-semibold text-xs ${isFromMe ? 'text-white/90' : 'text-[#800020]'}`}>
+                            {isFromMe ? 'Me' : (msg.studentName || msg.username || 'Applicant')}
+                          </span>
+                          <span className={`text-[10px] flex items-center gap-1 ${isFromMe ? 'text-white/70' : 'text-gray-500'}`}>
+                            <FaClock className="text-[10px]" /> {formatDate(msg.timestamp)}
+                          </span>
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.message}</p>
+                        {!isFromMe && (
+                          <div className="mt-2 flex items-center justify-end">
+                            <button 
+                              type="button" 
+                              onClick={() => toggleStar(msg.id)} 
+                              className={`p-1.5 rounded-lg transition-colors ${msg.starred ? 'text-yellow-500 bg-yellow-50' : 'text-gray-300 hover:bg-gray-100'}`}
+                            >
+                              <FaStar size={12} />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
-
-                    {msg.replies && msg.replies.length > 0 && (
-                      <div className="ml-8 space-y-2">
-                        {msg.replies.map((r) => (
-                          <div key={r.id} className="bg-[#800020] text-white rounded-2xl p-4">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="font-semibold text-sm">{r.from}</span>
-                              <span className="text-xs text-white/70">{formatDate(r.timestamp)}</span>
-                            </div>
-                            <p className="text-sm whitespace-pre-wrap">{r.text}</p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
                 <div ref={inboxMessagesEndRef} />
               </div>
 

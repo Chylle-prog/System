@@ -314,7 +314,7 @@ const Portal = () => {
             sender: msg.username,
             message: msg.message,
             time: msg.timestamp,
-            type: msg.username === applicantNo ? 'sent' : 'received'
+            type: String(msg.sender_id) === String(applicantNo) ? 'sent' : 'received'
           };
           
           return {
