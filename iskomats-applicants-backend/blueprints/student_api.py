@@ -171,53 +171,69 @@ def format_academic_period(expected_year, expected_semester=None):
 
 
 def gpa_matches_text(raw_text, expected_gpa):
-    # Normalize expected GPA
-    match = re.search(r'\d+(?:\.\d+)?', str(expected_gpa or ''))
-    if not match:
+    # 1. Normalize expected GPA as a string to preserve precision
+    expected_str = str(expected_gpa or '').strip()
+    match_expected = re.search(r'\d+(?:\.\d+)?', expected_str)
+    if not match_expected:
         return True, None, []
-
-    expected_value = float(match.group(0))
+    
+    expected_digits = match_expected.group(0).replace(',', '.') # e.g. "3.54"
     raw_text_str = str(raw_text or '')
     
-    # 1. Find all numbers in the text for absolute fallback
-    # Robust numeric search: handles spaces like "3. 548"
-    raw_numbers = []
-    # This regex looks for digits possibly separated by a dot and spaces
-    for num_match in re.finditer(r'\b(\d+\s*[\.\,]\s*\d+|\d+)\b', raw_text_str):
-        try:
-            val_str = num_match.group(1).replace(' ', '').replace(',', '.')
-            val = float(val_str)
-            # Keep numbers that look like grades/GPAs (1.0-5.0 or 70-100)
-            if 1.0 <= val <= 5.0 or 70.0 <= val <= 100.0:
-                raw_numbers.append(val)
-        except: continue
+    # Homoglyphs for number correction
+    HOMOGLYPHS = {'s': '5', 'o': '0', 'z': '2', 'b': '8', 'i': '1', 'l': '1', 't': '7'}
 
-    # 2. Specifically look for GPA labels
-    gpa_candidates = []
-    # Updated patterns to allow for OCR-induced spaces: (\d+\s*[\.\,]\s*\d+)
+    def clean_num(s):
+        s = s.replace(' ', '').replace(',', '.').lower()
+        for char, sub in HOMOGLYPHS.items():
+            s = s.replace(char, sub)
+        return s
+
+    # 2. Extract all potential numbers from text
+    # Support spaces like "3. 54"
+    num_pattern = r'\b(\d+\s*[\.\,]\s*[a-zA-Z0-9]+|[a-zA-Z0-9]+)\b'
+    
+    candidates = []
+    # a. Check labeled sections first (GPA, GWA, etc)
     gpa_patterns = [
-        r'g\s*\.?\s*p\s*\.?\s*a\s*\.?\s*[:=]?\s*(\d+\s*[\.\,]\s*\d+|\d+)',
-        r'general\s+weighted\s+average\s*[:=]?\s*(\d+\s*[\.\,]\s*\d+|\d+)',
-        r'g\s*w\s*a\s*[:=]?\s*(\d+\s*[\.\,]\s*\d+|\d+)',
-        r'q\s*p\s*a\s*[:=]?\s*(\d+\s*[\.\,]\s*\d+|\d+)',
-        r'(?:final|semestral|total|gen|term|period|weighted)\s+(?:grade|average|avg|rating|gwa|gpa)\s*[:=]?\s*(\d+\s*[\.\,]\s*\d+|\d+)',
-        r'\b(?:avg|average|rating|weighted\s*avg|gwa|gpa)\s*[:=]?\s*(\d+\s*[\.\,]\s*\d+|\d+)',
-        r'weighted\s+ave\s*[:=]?\s*(\d+\s*[\.\,]\s*\d+|\d+)',
-        r'current\s+gpa\s*[:=]?\s*(\d+\s*[\.\,]\s*\d+|\d+)',
-        r'cumulative\s+gpa\s*[:=]?\s*(\d+\s*[\.\,]\s*\d+|\d+)'
+        r'g\s*\.?\s*p\s*\.?\s*a\s*\.?\s*[:=]?\s*([a-zA-Z0-9]+\s*[\.\,]\s*[a-zA-Z0-9]+|[a-zA-Z0-9]+)',
+        r'weighted\s*average\s*[:=]?\s*([a-zA-Z0-9]+\s*[\.\,]\s*[a-zA-Z0-9]+|[a-zA-Z0-9]+)',
+        r'g\s*w\s*a\s*[:=]?\s*([a-zA-Z0-9]+\s*[\.\,]\s*[a-zA-Z0-9]+|[a-zA-Z0-9]+)',
+        r'q\s*p\s*a\s*[:=]?\s*([a-zA-Z0-9]+\s*[\.\,]\s*[a-zA-Z0-9]+|[a-zA-Z0-9]+)',
+        r'\b(?:avg|average|rating|weighted\s*avg|gwa|gpa)\s*[:=]?\s*([a-zA-Z0-9]+\s*[\.\,]\s*[a-zA-Z0-9]+|[a-zA-Z0-9]+)'
     ]
     
     for pattern in gpa_patterns:
-        for labeled_match in re.finditer(pattern, raw_text_str, re.IGNORECASE):
-            try:
-                # Capture the string, remove spaces/commas, then convert to float
-                raw_num_str = labeled_match.group(1).replace(' ', '').replace(',', '.')
-                # Basic cleaning of the captured number (handle 's' as '5', 'o' as '0')
-                clean_num_str = raw_num_str.lower().replace('s', '5').replace('o', '0').replace('z', '2').replace('b', '8')
-                gpa_candidates.append(float(clean_num_str))
-            except: continue
+        for m in re.finditer(pattern, raw_text_str, re.IGNORECASE):
+            candidates.append(clean_num(m.group(1)))
+            
+    # b. Absolute fallback: all words that look like numbers
+    for m in re.finditer(num_pattern, raw_text_str):
+        c = clean_num(m.group(1))
+        if c not in candidates:
+            candidates.append(c)
 
-    candidate_numbers = gpa_candidates + [num for num in raw_numbers if num not in gpa_candidates]
+    # 3. Apply the "Precision Match" rule
+    # Rule: If applicant wrote 3.5, accept 3.54676 (startswith)
+    # Rule: If applicant wrote 3.54, fail 3.45
+    target_clean = clean_num(expected_digits)
+    
+    for c in candidates:
+        if c.startswith(target_clean):
+            return True, expected_digits, [c]
+            
+    # 4. Fallback for float matching (legacy support for percentage scales)
+    try:
+        expected_val = float(target_clean)
+        for c in candidates:
+            try:
+                c_val = float(c)
+                if abs(c_val - expected_val) < 0.001:
+                    return True, expected_digits, [c]
+            except: continue
+    except: pass
+
+    return False, None, candidates
 
     def normalize_to_percent(val):
         """Converts point scales (1.0-5.0) to approx percentage (70-100)."""
