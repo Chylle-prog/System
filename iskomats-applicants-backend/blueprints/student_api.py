@@ -2573,7 +2573,9 @@ def update_profile():
                 duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, potential_duplicate)
                 if len(duplicate_ids) > 1 and request.user_no > min(duplicate_ids):
                     main_id = min(duplicate_ids)
-                    cur.execute("SELECT email_address FROM applicants WHERE applicant_no = %s", (main_id,))
+                    # Correctly fetch email from the auth table, not the applicant data table
+                    app_email_table = get_applicant_email_table(cur)
+                    cur.execute(f"SELECT email_address FROM {app_email_table} WHERE applicant_no = %s", (main_id,))
                     main_email_row = cur.fetchone()
                     main_email = main_email_row['email_address'] if main_email_row else "your original account"
                     
