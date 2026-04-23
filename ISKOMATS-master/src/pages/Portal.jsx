@@ -63,6 +63,29 @@ const getAnnouncementPreview = (message) => {
   return `${normalized.slice(0, 177)}...`;
 };
 
+const formatToLocalTime = (dateStr) => {
+  if (!dateStr) return '';
+  
+  // If it's a string like "2026-04-23 20:11:34", browsers treat it as local time.
+  // We assume the backend sends UTC, so we normalize to ISO format with 'Z'.
+  let normalized = dateStr;
+  if (typeof dateStr === 'string' && dateStr.includes(' ') && !dateStr.includes('T') && !dateStr.includes('Z')) {
+    normalized = dateStr.replace(' ', 'T') + 'Z';
+  }
+  
+  const date = new Date(normalized);
+  if (isNaN(date.getTime())) return dateStr;
+  
+  return date.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+};
+
 const Portal = () => {
   const navigate = useNavigate();
   const { logout: authLogout, userProfile: globalProfile } = useAuth();
@@ -1547,6 +1570,7 @@ const Portal = () => {
           display: flex;
           flex-direction: column;
           align-items: center;
+          height: 100%;
         }
 
         .menu-card:hover {
@@ -1569,6 +1593,7 @@ const Portal = () => {
           margin-bottom: 2rem;
           font-size: 0.9rem;
           line-height: 1.6;
+          flex: 1;
         }
 
         .menu-btn {
@@ -1792,22 +1817,29 @@ const Portal = () => {
         }
 
         .requirements-list li {
-          padding: 0.4rem 0;
-          padding-left: 1.5rem;
+          padding: 0.6rem 0;
+          padding-left: 2.2rem;
           position: relative;
           color: var(--text-soft);
-          font-size: 0.9rem;
-          line-height: 1.4;
+          font-size: 0.95rem;
+          line-height: 1.5;
         }
 
         .requirements-list li::before {
           content: '✓';
           position: absolute;
           left: 0;
-          top: 0.4rem;
+          top: 0.5rem;
           color: var(--primary);
-          font-weight: bold;
-          font-size: 0.8rem;
+          background: var(--accent-soft);
+          width: 1.4rem;
+          height: 1.4rem;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 800;
+          font-size: 0.75rem;
         }
 
         @media (max-width: 1024px) {
@@ -2368,7 +2400,7 @@ const Portal = () => {
                         {!notif.read && <i className="fas fa-circle" style={{ color: 'var(--primary)', fontSize: '0.5rem' }}></i>}
                       </div>
                       <div className="notification-message">{notif.message}</div>
-                      <div className="notification-time">{notif.time}</div>
+                      <div className="notification-time">{formatToLocalTime(notif.time)}</div>
                     </div>
                   </div>
                 ))}
@@ -2720,7 +2752,7 @@ const Portal = () => {
                         </div>
                         <span style={{fontSize: '0.75rem', color: 'var(--text-soft)', background: 'var(--gray-2)', padding: '0.25rem 0.75rem', borderRadius: '20px', fontWeight: '600'}}>
                           <i className="far fa-clock" style={{marginRight: '5px'}}></i>
-                          {ann.time_added ? new Date(ann.time_added).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Recent'}
+                          {ann.time_added ? formatToLocalTime(ann.time_added) : 'Recent'}
                         </span>
                       </div>
                       <p style={{marginBottom: '1rem', color: 'var(--text-soft)', fontSize: '0.95rem', lineHeight: '1.6', display: '-webkit-box', WebkitLineClamp: '3', WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
