@@ -235,55 +235,24 @@ def gpa_matches_text(raw_text, expected_gpa):
 
     return False, None, candidates
 
-    def normalize_to_percent(val):
-        """Converts point scales (1.0-5.0) to approx percentage (70-100)."""
-        if 70.0 <= val <= 100.0: return val
-        # 4.0 Scale (e.g. DLSL, US Schools) where 4.0 is 100%
-        if 1.0 <= val <= 4.0:
-            # Approx linear mapping: 4.0->99, 3.0->87, 2.0->80, 1.0->75
-            return 75.0 + (val - 1.0) * 8.0
-        # 5.0 Scale (e.g. UP, most PH public) where 1.0 is 100%, 3.0 is passing, 5.0 is failing
-        if 1.0 <= val <= 5.0:
-            # 1.0->99, 3.0->75, 5.0->50
-            return 100.0 - (val - 1.0) * 12.5
+def normalize_to_percent(val):
+    """Converts point scales (1.0-5.0) to approx percentage (70-100)."""
+    try:
+        val = float(val)
+    except:
         return val
 
-    exp_norm = normalize_to_percent(expected_value)
+    if 70.0 <= val <= 100.0: return val
+    # 4.0 Scale (e.g. DLSL, US Schools) where 4.0 is 100%
+    if 1.0 <= val <= 4.0:
+        # Approx linear mapping: 4.0->99, 3.0->87, 2.0->80, 1.0->75
+        return 75.0 + (val - 1.0) * 8.0
+    # 5.0 Scale (e.g. UP, most PH public) where 1.0 is 100%, 3.0 is passing, 5.0 is failing
+    if 1.0 <= val <= 5.0:
+        # 1.0->99, 3.0->75, 5.0->50
+        return 100.0 - (val - 1.0) * 12.5
+    return val
 
-    # 4. Decision Logic: Prioritize labeled candidates
-    # If we found explicit labels (GPA/GWA), we match only against them.
-    if gpa_candidates:
-        msg_prefix = "[GPA LABELED]"
-        for number in gpa_candidates:
-            # Stricter absolute check
-            if abs(number - expected_value) <= 0.02:
-                return True, number, gpa_candidates
-            
-            num_norm = normalize_to_percent(number)
-            if 70 <= num_norm <= 100 and 70 <= exp_norm <= 100:
-                # Stricter percentage buffer
-                if abs(num_norm - exp_norm) <= 0.5:
-                    return True, number, gpa_candidates
-        
-        print(f"{msg_prefix} Found labeled GPA but mismatched expected {expected_value}. Candidates: {gpa_candidates}", flush=True)
-        return False, gpa_candidates[0], gpa_candidates
-
-    # Only if no GPA/GWA labels were found, fallback to raw numeric scanning
-    # CRITICAL: We skip common low numbers (1, 2, 3, 4) in transcripts as they are usually credits/units
-    for number in raw_numbers:
-        # If it's a common credit value and doesn't exactly match our target to 0.01, ignore it
-        if number in [1.0, 2.0, 3.0, 4.0, 5.0] and abs(number - expected_value) > 0.01:
-            continue
-
-        if abs(number - expected_value) <= 0.02:
-            return True, number, raw_numbers
-        
-        num_norm = normalize_to_percent(number)
-        if 70 <= num_norm <= 100 and 70 <= exp_norm <= 100:
-            if abs(num_norm - exp_norm) <= 0.5: 
-                return True, number, raw_numbers
-
-    return False, None, raw_numbers
 
 
 def get_announcement_image_columns(cursor):
@@ -2736,10 +2705,28 @@ def submit_application():
         # In this system, req_no (passed from frontend) is the primary scholarship identifier
         scholarship_id = req_no
         
-        # Verify the scholarship exists
-        cur.execute('SELECT req_no FROM scholarships WHERE req_no = %s', (scholarship_id,))
-        if not cur.fetchone():
+        # Verify the scholarship exists and check GPA requirement
+        cur.execute('SELECT scholarship_name, gpa FROM scholarships WHERE req_no = %s', (scholarship_id,))
+        scholarship = cur.fetchone()
+        if not scholarship:
             return jsonify({'message': 'Scholarship not found'}), 404
+            
+        min_gpa_required = scholarship.get('gpa')
+        applicant_gpa = get_unified_val('gpa') or applicant.get('overall_gpa')
+        
+        if min_gpa_required and applicant_gpa:
+            try:
+                student_gpa_val = float(applicant_gpa)
+                # Normalize if mismatch in scales (Scholarship usually uses 0-100, student might use 1.0-5.0)
+                if min_gpa_required > 10 and student_gpa_val < 10:
+                    student_gpa_val = normalize_to_percent(student_gpa_val)
+                
+                if student_gpa_val < float(min_gpa_required):
+                    return jsonify({
+                        'message': f"Your GPA ({applicant_gpa}) does not meet the minimum requirement of {min_gpa_required} for {scholarship['scholarship_name']}."
+                    }), 400
+            except (ValueError, TypeError):
+                pass
 
         preliminary_identity = build_restriction_identity_from_applicant(applicant, source_data=request_payload)
         if preliminary_identity:
@@ -3081,9 +3068,10 @@ def ocr_check():
             # Fetch scholarship metadata while we still have the connection
             expected_semester = None
             scholarship_no = data.get('scholarship_no')
+            min_gpa_required = None
             if scholarship_no:
                 try:
-                    cur.execute("SELECT year, semester FROM scholarships WHERE req_no = %s", (scholarship_no,))
+                    cur.execute("SELECT year, semester, gpa FROM scholarships WHERE req_no = %s", (scholarship_no,))
                     sch = cur.fetchone()
                     if sch:
                         if sch['year']:
@@ -3092,8 +3080,11 @@ def ocr_check():
                         if sch['semester']:
                             expected_semester = sch['semester']
                             print(f"[OCR] Using scholarship-defined semester: {expected_semester}", flush=True)
+                        if sch['gpa']:
+                            min_gpa_required = sch['gpa']
+                            print(f"[OCR] Using scholarship-defined min GPA: {min_gpa_required}", flush=True)
                 except Exception as sch_err:
-                    print(f"[OCR ERROR] Failed to fetch scholarship year: {sch_err}", flush=True)
+                    print(f"[OCR ERROR] Failed to fetch scholarship data: {sch_err}", flush=True)
         # Connection is now released back to pool — all remaining work is CPU-bound OCR
 
         # 2. Resolve parameters (multipart files prioritize over payload/JSON)
@@ -3457,7 +3448,27 @@ def ocr_check():
                         
                         # Removal: Year level verification is disabled to prevent common OCR mismatches for Grades
                         year_level_ok = True
-                        data_verified = name_ok and id_ok and year_only_ok and gpa_ok and school_ok and semester_ok
+                        
+                        # GPA Requirement Check
+                        gpa_compliant = True
+                        gpa_error_msg = ""
+                        if min_gpa_required and expected_gpa:
+                            try:
+                                # Convert both to float for comparison
+                                # Handle PH scales: If min_gpa is > 5 (e.g. 85), and student is < 5 (e.g. 1.75), we use normalize_to_percent
+                                student_gpa_val = float(expected_gpa)
+                                if min_gpa_required > 10 and student_gpa_val < 10:
+                                    # Normalize to percentage scale
+                                    student_gpa_val = normalize_to_percent(student_gpa_val)
+                                
+                                # Higher is better for percentages, Lower is better for PH 1.0-5.0 scale
+                                # But normalize_to_percent converts everything to "Higher is Better" (70-100)
+                                if student_gpa_val < float(min_gpa_required):
+                                    gpa_compliant = False
+                                    gpa_error_msg = f" (Required: {min_gpa_required}+, Found/Typed: {expected_gpa})"
+                            except: pass
+
+                        data_verified = name_ok and id_ok and year_only_ok and gpa_ok and school_ok and semester_ok and gpa_compliant
                         v = v and data_verified and v_video
                         
                         if school_name and not school_ok:
@@ -3470,7 +3481,7 @@ def ocr_check():
                             f"Last Name: {'OK' if name_details.get('last_ok') else 'X'}",
                             f"ID: {'OK' if id_ok else 'X'}",
                             f"School: {'OK' if school_ok else 'X'}",
-                            f"GPA: {'OK' if gpa_ok else 'X'}",
+                            f"GPA: {'OK' if gpa_ok else 'X'}{gpa_error_msg}",
                             f"Level: {'OK' if year_level_ok else 'X'}",
                             f"Year: {'OK' if year_only_ok else 'X'}",
                             f"Sem: {'OK' if semester_ok else 'X'}",
@@ -3483,13 +3494,18 @@ def ocr_check():
                             'ID Number': id_ok,
                             'School': school_ok,
                             'GPA Match': gpa_ok,
+                            'GPA Requirement': gpa_compliant,
                             'Grade Level': year_level_ok,
                             'Academic Year': year_only_ok,
                             'Semester': semester_ok,
                             'Video Verification': v_video
                         }
                         checklist = [c for c in checklist if c is not None]
-                        return {'doc': 'Grades', 'verified': v, 'message': f"Checklist: [{' | '.join(checklist)}]" + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video, 'score_details': score_details}
+                        final_msg = f"Checklist: [{' | '.join(checklist)}]"
+                        if not gpa_compliant:
+                            final_msg = f"GPA does not meet the minimum requirement of {min_gpa_required}. " + final_msg
+                        
+                        return {'doc': 'Grades', 'verified': v, 'message': final_msg + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video, 'score_details': score_details}
 
                 elif doc_type == 'Indigency':
                     name_ok = meta.get('name_ok', False)

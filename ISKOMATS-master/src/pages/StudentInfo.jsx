@@ -471,6 +471,7 @@ const StudentInfo = () => {
   const cameraTimeoutRef = useRef(null);
 
   const [showSignaturePad, setShowSignaturePad] = useState(false);
+  const [scholarshipDetails, setScholarshipDetails] = useState(null);
   const [lockedNameFields, setLockedNameFields] = useState({
     firstName: false,
     middleName: false,
@@ -878,6 +879,14 @@ const StudentInfo = () => {
         }
 
         setVerified('failed');
+        
+        // Handle specific GPA requirement failure
+        if (result.score_details && result.score_details['GPA Requirement'] === false) {
+           const gpaMsg = result.message || 'Your GPA does not meet the minimum requirement for this scholarship.';
+           setStatus(gpaMsg);
+           return false;
+        }
+
         const finalFailMsg = result.message || 'Verification failed. Please ensure your document is clear and all details (Name, ID, Year) are correct.';
         setStatus(finalFailMsg);
         return false;
@@ -1456,6 +1465,18 @@ const StudentInfo = () => {
         if (Object.keys(loadedVideos).length > 0) {
           setDocumentVideos(prev => ({ ...prev, ...loadedVideos }));
         }
+        // --- SCHOLARSHIP DETAILS FETCH ---
+        const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
+        if (reqNo) {
+          try {
+            const details = await scholarshipAPI.getById(reqNo);
+            setScholarshipDetails(details);
+            console.log('[SCHOLARSHIP] Loaded requirements:', details);
+          } catch (e) {
+            console.warn('[SCHOLARSHIP] Could not load scholarship details:', e);
+          }
+        }
+
       } catch (err) {
         console.warn('Could not pre-fill from profile:', err.message);
       } finally {
@@ -2097,6 +2118,28 @@ const StudentInfo = () => {
     if (!signaturePreview && !drawnSignature) {
       showPromptMessage('⚠️ Please either upload a signature photo or draw your signature.');
       return;
+    }
+
+    // --- GPA Requirement Check ---
+    if (scholarshipDetails && scholarshipDetails.gpa && formData.gpa) {
+      const minGpa = parseFloat(scholarshipDetails.gpa);
+      const studentGpa = parseFloat(formData.gpa);
+      
+      if (!isNaN(minGpa) && !isNaN(studentGpa)) {
+        // Simple heuristic: if requirement is point-scale (e.g. 1-5) and student is percentage, or vice versa,
+        // we might need to normalize, but usually PH systems use 1-100 for scholarships or 1-5.
+        // For now, follow the backend's logic: if minGpa > 10 and student < 10, normalize student.
+        let studentNorm = studentGpa;
+        if (minGpa > 10 && studentGpa < 10) {
+            // Point scale to percentage (1.0->99, 3.0->75, 5.0->50)
+            studentNorm = 100.0 - (studentGpa - 1.0) * 12.5;
+        }
+
+        if (studentNorm < minGpa) {
+          showPromptMessage(`⚠️ Your GPA (${formData.gpa}) does not meet the minimum requirement of ${minGpa} for ${scholarshipName}.`);
+          return;
+        }
+      }
     }
 
     let reqNo = searchParams.get('reqNo');
