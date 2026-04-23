@@ -3808,7 +3808,7 @@ export default function ScholarshipDashboard({
                 <img
                   src={f.src}
                   alt="Document"
-                  className="w-full h-28 object-cover group-hover:scale-105 transition-transform"
+                  className="w-full h-28 object-contain bg-gray-100 group-hover:scale-105 transition-transform"
                   onClick={() => setImageModalSrc(f.src)}
                   onError={(e) => {
                     e.target.src = 'https://i.imgur.com/2h7z2S.jpg';
