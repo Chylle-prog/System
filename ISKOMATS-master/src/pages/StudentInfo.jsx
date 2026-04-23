@@ -41,6 +41,37 @@ const SCHOOLS = [
   "ICT-ED"
 ];
 
+const COURSES = [
+  "AB Communication",
+  "Associate in Computer Technology",
+  "Bachelor of Elementary Education",
+  "Bachelor of Forensic Science",
+  "Bachelor of Secondary Education",
+  "BS Accountancy",
+  "BS Accounting Information System",
+  "BS Architecture",
+  "BS Biology",
+  "BS Computer Engineering",
+  "BS Computer Science",
+  "BS Electrical Engineering",
+  "BS Electronics Engineering",
+  "BS Entertainment and Multimedia Computing",
+  "BS Entrepreneurship",
+  "BS Hospitality Management",
+  "BS Industrial Engineering",
+  "BS Information Technology",
+  "BS Legal Management",
+  "BS Management Technology",
+  "BS Nursing",
+  "BS Psychology",
+  "BS Tourism Management",
+  "BSBA Financial Management",
+  "BSBA Marketing Management",
+  "Certificate in Entrepreneurship",
+  "Cookery NC II (Culinary Arts)",
+  "JURIS DOCTOR PROGRAM"
+];
+
 
 const normalizeSelectValue = (value, options) => {
   if (!value) return '';
@@ -1357,7 +1388,7 @@ const StudentInfo = () => {
           parentsGrossIncome: urlIncome || scholarshipSearchProfile?.income || profile.financial_income_of_parents || '',
           gpa: urlGpa || scholarshipSearchProfile?.gpa || profile.overall_gpa || '',
           numberOfSiblings: profile.sibling_no || '',
-          course: profile.course || '',
+          course: normalizeSelectValue(profile.course, COURSES),
           grades_sem: profile.grades_sem === 1 ? '1st' : profile.grades_sem === 2 ? '2nd' : (profile.grades_sem || ''),
           grades_year: profile.grades_year || ''
         };
@@ -3358,7 +3389,20 @@ const StudentInfo = () => {
                 <div className="form-row">
                   <div className="form-group">
                     <label>Course/Program <span style={{ color: '#e74c3c' }}>*</span></label>
-                    <input type="text" name="course" value={formData.course} onChange={handleInputChange} placeholder="B.S. Information Technology" required={currentStep === 3} />
+                    <select 
+                      name="course" 
+                      value={formData.course} 
+                      onChange={handleInputChange} 
+                      required={currentStep === 3}
+                    >
+                      <option value="">Select Course/Program</option>
+                      {COURSES.map(course => (
+                        <option key={course} value={course}>{course}</option>
+                      ))}
+                      {!COURSES.includes(formData.course) && formData.course && (
+                        <option value={formData.course}>{formData.course}</option>
+                      )}
+                    </select>
                   </div>
                   <div className="form-group">
                     <label>General Weighted Average / GPA <span style={{ color: '#e74c3c' }}>*</span></label>
