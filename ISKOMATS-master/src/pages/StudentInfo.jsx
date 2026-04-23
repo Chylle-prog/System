@@ -1335,6 +1335,7 @@ const StudentInfo = () => {
           schoolSector: profile.school_sector || '',
           mobileNumber: profile.mobile_no || '',
           yearLevel: profile.year_lvl || '',
+          semester: profile.semester === 1 ? '1st' : profile.semester === 2 ? '2nd' : (profile.semester || ''),
           emailAddress: profile.email || user,
           fatherStatus: profile.father_status === true ? 'Living' : profile.father_status === false ? 'Deceased' : '',
           fatherName: profile.father_name || '',
@@ -1348,7 +1349,7 @@ const StudentInfo = () => {
           gpa: urlGpa || scholarshipSearchProfile?.gpa || profile.overall_gpa || '',
           numberOfSiblings: profile.sibling_no || '',
           course: profile.course || '',
-          grades_sem: profile.grades_sem || '',
+          grades_sem: profile.grades_sem === 1 ? '1st' : profile.grades_sem === 2 ? '2nd' : (profile.grades_sem || ''),
           grades_year: profile.grades_year || ''
         };
 

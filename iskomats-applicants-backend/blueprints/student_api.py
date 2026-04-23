@@ -2457,6 +2457,7 @@ def update_profile():
                 'motherOccupation': 'mother_occupation', 'parentsGrossIncome': 'financial_income_of_parents',
                 'gpa': 'overall_gpa', 'numberOfSiblings': 'sibling_no', 'course': 'course',
                 'meritsAwardsReceived': 'merits_awards_received',
+                'semester': 'semester', 'grades_sem': 'grades_sem', 'grades_year': 'grades_year'
             }
 
             document_field_mapping = {
@@ -2472,9 +2473,16 @@ def update_profile():
             for frontend_key, db_col in field_mapping.items():
                 if frontend_key in data:
                     value = data[frontend_key]
-                    # school_id_no is an INTEGER column — coerce safely
-                    if db_col == 'school_id_no':
+                    # Integer columns — coerce safely
+                    if db_col in ('school_id_no', 'semester', 'grades_sem', 'grades_year'):
                         try:
+                            if isinstance(value, str):
+                                # Handle "1st", "2nd" etc for semesters
+                                if '1' in value: value = 1
+                                elif '2' in value: value = 2
+                                # Handle "2024-2025" for year (take first year)
+                                elif '-' in value: value = value.split('-')[0]
+                                
                             value = int(value) if value not in (None, '', 'null') else None
                         except (ValueError, TypeError):
                             value = None
