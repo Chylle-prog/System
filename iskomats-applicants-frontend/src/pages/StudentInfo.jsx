@@ -517,6 +517,7 @@ const StudentInfo = () => {
   const [idVerified, setIdVerified] = useState(null); 
   const [idStatus, setIdStatus] = useState('');
   const [scanProgress, setScanProgress] = useState(0); // 0-100 progress for scanning animations
+  const [scholarshipDetails, setScholarshipDetails] = useState(null);
 
   const idPictureInputRef = useRef(null);
   const signatureInputRef = useRef(null);
@@ -1075,28 +1076,46 @@ const StudentInfo = () => {
     const course = formData.course || '';
     const semester = formData.semester || '';
     const videoUrl = formData.mayorCOE_video || documentVideos.mayorCOE_video;
+    const year = formData.year || '';
 
     if (!coeDoc) {
-      showPromptMessage('âš ï¸ Please upload your Certificate of Enrollment first.');
+      showPromptMessage('⚠️ Please upload your Certificate of Enrollment first.');
       return;
     }
     if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
-      showPromptMessage('âš ï¸ Please record and upload the COE video first.');
+      showPromptMessage('⚠️ Please record and upload the COE video first.');
       return;
     }
-    if (!schoolName || !idNumber || !yearLevel || !course || !semester) {
-      showPromptMessage('âš ï¸ Please complete School Name, School ID Number, Year Level, Course, and Semester first.');
+    if (!schoolName || !idNumber || !yearLevel || !course || !semester || !year) {
+      showPromptMessage('⚠️ Please complete School Name, ID, Year, Course, Sem, and Academic Year first.');
       return;
     }
 
     setLoadingMessage({ title: 'Scanning COE', message: 'Verifying your Certificate of Enrollment and Video Content...' });
     
     try {
-      const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, idNumber, yearLevel, course, semester }, videoUrl);
+      const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, idNumber, yearLevel, course, semester, year }, videoUrl);
       if (success) {
-        showPromptMessage('âœ… COE verified successfully!');
+        // Eligibility check
+        if (scholarshipDetails) {
+          const normalizedReqSem = String(scholarshipDetails.semester || '').replace(/st|nd|rd|th| Semester/gi, '');
+          const normalizedAppSem = String(semester || '').replace(/st|nd|rd|th| Semester/gi, '');
+          
+          if (normalizedReqSem && normalizedAppSem && normalizedReqSem !== normalizedAppSem) {
+            setCoeVerified('failed');
+            showPromptMessage(`❌ Verification Error: Your Current Semester (${semester}) does not match the scholarship requirement (${scholarshipDetails.semester}).`);
+            return;
+          }
+          
+          if (scholarshipDetails.year && year && scholarshipDetails.year !== year) {
+            setCoeVerified('failed');
+            showPromptMessage(`❌ Verification Error: Your Academic Year (${year}) does not match the scholarship requirement (${scholarshipDetails.year}).`);
+            return;
+          }
+        }
+        showPromptMessage('✅ COE verified successfully!');
       } else {
-        showPromptMessage('âŒ COE verification failed.');
+        showPromptMessage('❌ COE verification failed.');
       }
     } catch (err) {
       console.error('Scan Error:', err);
@@ -1144,9 +1163,36 @@ const StudentInfo = () => {
         grades_year
       }, videoUrl);
       if (success) {
+        const applicantGpa = parseFloat(formData.gpa);
+        const minRequired = scholarshipDetails?.minGpa ? parseFloat(scholarshipDetails.minGpa) : 0;
+        
+        if (minRequired > 0 && applicantGpa < minRequired) {
+          setGradesVerified('failed');
+          showPromptMessage(`â Œ Verification Error: Your GPA (${applicantGpa}) does not meet the minimum requirement (${minRequired}) for this scholarship.`);
+          return;
+        }
+
+        // Semester and Year check for Grades
+        if (scholarshipDetails) {
+          const normalizedReqGradesSem = String(scholarshipDetails.grades_sem || '').replace(/st|nd|rd|th| Semester/gi, '');
+          const normalizedAppGradesSem = String(formData.grades_sem || '').replace(/st|nd|rd|th| Semester/gi, '');
+          
+          if (normalizedReqGradesSem && normalizedAppGradesSem && normalizedReqGradesSem !== normalizedAppGradesSem) {
+            setGradesVerified('failed');
+            showPromptMessage(`â Œ Verification Error: The Semester for Grades (${formData.grades_sem}) does not match the requirement (${scholarshipDetails.grades_sem}).`);
+            return;
+          }
+          
+          if (scholarshipDetails.grades_year && formData.grades_year && scholarshipDetails.grades_year !== formData.grades_year) {
+            setGradesVerified('failed');
+            showPromptMessage(`â Œ Verification Error: The Year for Grades (${formData.grades_year}) does not match the requirement (${scholarshipDetails.grades_year}).`);
+            return;
+          }
+        }
+
         showPromptMessage('âœ… Grades verified successfully!');
       } else {
-        showPromptMessage('âŒ Grades verification failed.');
+        showPromptMessage('â Œ Grades verification failed.');
       }
     } catch (err) {
       console.error('Scan Error:', err);
@@ -1180,19 +1226,19 @@ const StudentInfo = () => {
     }
 
     if (!idFront || !idBack) {
-      showPromptMessage('âš ï¸ Please upload both front and back of your School ID first.');
+      showPromptMessage('âš ï¸  Please upload both front and back of your School ID first.');
       return;
     }
     if (!frontVideoUrl || typeof frontVideoUrl !== 'string' || !frontVideoUrl.startsWith('http')) {
-      showPromptMessage('âš ï¸ Please record and upload the front School ID video first.');
+      showPromptMessage('âš ï¸  Please record and upload the front School ID video first.');
       return;
     }
     if (!backVideoUrl || typeof backVideoUrl !== 'string' || !backVideoUrl.startsWith('http')) {
-      showPromptMessage('âš ï¸ Please record and upload the back School ID video first.');
+      showPromptMessage('âš ï¸  Please record and upload the back School ID video first.');
       return;
     }
     if (!formData.schoolName || !formData.schoolIdNumber || !formData.yearLevel) {
-      showPromptMessage('âš ï¸ Please complete School Name, School ID Number, and Year Level first.');
+      showPromptMessage('âš ï¸  Please complete School Name, School ID Number, and Year Level first.');
       return;
     }
 
@@ -1214,7 +1260,7 @@ const StudentInfo = () => {
       if (success) {
         showPromptMessage('âœ… Front & Back ID verified successfully!');
       } else {
-        showPromptMessage('âŒ Front & Back ID verification failed.');
+        showPromptMessage('â Œ Front & Back ID verification failed.');
       }
     } catch (err) {
       console.error('Scan Error:', err);
@@ -1341,6 +1387,8 @@ const StudentInfo = () => {
       await applicantAPI.updateProfile(payload);
     }
   };
+
+
 
   useEffect(() => {
     const fontAwesomeLink = document.createElement('link');
@@ -1596,6 +1644,20 @@ const StudentInfo = () => {
         
         if (Object.keys(loadedVideos).length > 0) {
           setDocumentVideos(prev => ({ ...prev, ...loadedVideos }));
+        }
+
+        // Fetch scholarship requirements
+        const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
+        if (reqNo) {
+          try {
+            const res = await scholarshipAPI.getByProgram('all', { req_no: reqNo });
+            if (res.data.success && res.data.scholarships?.length > 0) {
+               setScholarshipDetails(res.data.scholarships[0]);
+               console.log('[SCHOLARSHIP] Loaded requirements:', res.data.scholarships[0]);
+            }
+          } catch (e) {
+            console.warn('[SCHOLARSHIP] Could not load scholarship details:', e);
+          }
         }
       } catch (err) {
         console.warn('Could not pre-fill from profile:', err.message);
@@ -2019,7 +2081,7 @@ const StudentInfo = () => {
       setSignatureStatus('');
       setDrawnSignature(dataUrl);
     } else {
-      showPromptMessage('âš ï¸ Please provide a signature first.');
+      showPromptMessage('âš ï¸  Please provide a signature first.');
     }
   };
 
@@ -2034,7 +2096,7 @@ const StudentInfo = () => {
   const handleNextStep = async (e) => {
     if (e) e.preventDefault();
     if (isAnyScanning) {
-      showPromptMessage('âš ï¸ Please wait for individual verification to complete before proceeding.');
+      showPromptMessage('âš ï¸  Please wait for individual verification to complete before proceeding.');
       return;
     }
     const pendingUploads = Object.values(uploadingFields);
@@ -2077,43 +2139,78 @@ const StudentInfo = () => {
     // --- Manual File Requirement Checks ---
     if (currentStep === 1) {
       if (!idPicturePreview) {
-        showPromptMessage('âš ï¸ Please upload your 2x2 ID Picture.');
+        showPromptMessage('âš ï¸  Please upload your 2x2 ID Picture.');
         return;
       }
       if (!photos.mayorIndigency_photo && !formData.mayorIndigency_photo && !userProfile?.indigency_doc) {
-        showPromptMessage('âš ï¸ Please upload your Certificate of Indigency.');
+        showPromptMessage('âš ï¸  Please upload your Certificate of Indigency.');
         return;
       }
       if (!isStep1DocumentsVerified) {
-        showPromptMessage('âš ï¸ Please verify your Certificate of Indigency before proceeding to the next step.');
+        showPromptMessage('âš ï¸  Please verify your Certificate of Indigency before proceeding to the next step.');
         return;
       }
     }
 
     if (currentStep === 3) {
       if ((!schoolIdPhotos.front && !userProfile?.id_img_front) || (!schoolIdPhotos.back && !userProfile?.id_img_back)) {
-        showPromptMessage('âš ï¸ Please upload both Front and Back of your ID.');
+        showPromptMessage('âš ï¸  Please upload both Front and Back of your ID.');
         return;
       }
       if (!photos.mayorCOE_photo && !formData.mayorCOE_photo && !userProfile?.enrollment_certificate_doc) {
-        showPromptMessage('âš ï¸ Please upload your Certificate of Enrollment.');
+        showPromptMessage('âš ï¸  Please upload your Certificate of Enrollment.');
         return;
       }
       if (!photos.mayorGrades_photo && !formData.mayorGrades_photo && !userProfile?.grades_doc) {
-        showPromptMessage('âš ï¸ Please upload your Grades document.');
+        showPromptMessage('âš ï¸  Please upload your Grades document.');
         return;
       }
       if (idVerified !== 'success') {
-        showPromptMessage('âš ï¸ Please verify your Front & Back ID before proceeding to the next step.');
+        showPromptMessage('âš ï¸  Please verify your Front & Back ID before proceeding to the next step.');
         return;
       }
       if (coeVerified !== 'success') {
-        showPromptMessage('âš ï¸ Please verify your Certificate of Enrollment before proceeding to the next step.');
+        showPromptMessage('âš ï¸  Please verify your Certificate of Enrollment before proceeding to the next step.');
         return;
       }
       if (gradesVerified !== 'success') {
-        showPromptMessage('âš ï¸ Please verify your Grades document before proceeding to the next step.');
+        showPromptMessage('âš ï¸  Please verify your Grades document before proceeding to the next step.');
         return;
+      }
+
+      // Final Eligibility Check
+      if (scholarshipDetails) {
+        // GPA
+        const applicantGpa = parseFloat(formData.gpa);
+        const minRequired = scholarshipDetails.minGpa ? parseFloat(scholarshipDetails.minGpa) : 0;
+        if (minRequired > 0 && applicantGpa < minRequired) {
+          showPromptMessage(`âš ï¸  Ineligible: Your GPA (${applicantGpa}) is below the required ${minRequired}.`);
+          return;
+        }
+
+        // COE Semester/Year
+        const normReqSem = String(scholarshipDetails.semester || '').replace(/st|nd|rd|th| Semester/gi, '');
+        const normAppSem = String(formData.semester || '').replace(/st|nd|rd|th| Semester/gi, '');
+        if (normReqSem && normAppSem && normReqSem !== normAppSem) {
+          showPromptMessage(`âš ï¸  Ineligible: Your Current Semester (${formData.semester}) does not match the requirement.`);
+          return;
+        }
+        if (scholarshipDetails.year && formData.year && scholarshipDetails.year !== formData.year) {
+          showPromptMessage(`âš ï¸  Ineligible: Your Academic Year (${formData.year}) does not match the requirement.`);
+          return;
+        }
+
+        // Grades Semester/Year
+        const normReqGradesSem = String(scholarshipDetails.grades_sem || '').replace(/st|nd|rd|th| Semester/gi, '');
+        const normAppGradesSem = String(formData.grades_sem || '').replace(/st|nd|rd|th| Semester/gi, '');
+        if (normReqGradesSem && normAppGradesSem && normReqGradesSem !== normAppGradesSem) {
+          showPromptMessage(`âš ï¸  Ineligible: Your Grades Semester (${formData.grades_sem}) does not match the requirement.`);
+          return;
+        }
+        if (scholarshipDetails.grades_year && formData.grades_year && scholarshipDetails.grades_year !== formData.grades_year) {
+          showPromptMessage(`âš ï¸  Ineligible: Your Grades Year (${formData.grades_year}) does not match the requirement.`);
+          return;
+        }
       }
     }
 
@@ -3516,6 +3613,17 @@ const StudentInfo = () => {
                     <option value="1st Semester">1st Semester</option>
                     <option value="2nd Semester">2nd Semester</option>
                   </select>
+                </div>
+                <div className="form-group">
+                  <label>Current Academic Year <span style={{color: '#e74c3c'}}>*</span></label>
+                  <input
+                    type="text"
+                    name="year"
+                    value={formData.year}
+                    onChange={handleInputChange}
+                    placeholder="e.g. 2025-2026"
+                    required={currentStep === 3}
+                  />
                 </div>
               </div>
 

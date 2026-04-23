@@ -3169,9 +3169,15 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
         grades_year_expr = 's.grades_year' if 'grades_year' in scholarship_columns else 'NULL'
 
         include_removed = request.args.get('include_removed', 'false').lower() == 'true'
+        req_no_filter = request.args.get('req_no')
+        
         where_clauses = []
         if 'is_removed' in scholarship_columns and not include_removed:
             where_clauses.append('COALESCE(s.is_removed, FALSE) = FALSE')
+        
+        if req_no_filter:
+            where_clauses.append('s.req_no = %s')
+            # Note: We'll add this to params later
         
         is_removed_expr = 'COALESCE(s.is_removed, FALSE)' if 'is_removed' in scholarship_columns else 'FALSE'
         
