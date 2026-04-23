@@ -1631,7 +1631,7 @@ def initialize_auto_chat_rooms():
             SELECT DISTINCT ast.applicant_no, s.pro_no 
             FROM applicant_status ast
             JOIN scholarships s ON ast.scholarship_no = s.req_no
-            WHERE ast.is_accepted IS NULL OR ast.is_accepted IS TRUE
+            WHERE ast.is_accepted = 'Pending' OR ast.is_accepted = 'Accepted' OR ast.is_accepted IS NULL
         """)
         pairs = cursor.fetchall()
         
@@ -1747,13 +1747,13 @@ def init_socketio(socketio):
                         SELECT DISTINCT ast.applicant_no, s.pro_no 
                         FROM applicant_status ast
                         JOIN scholarships s ON ast.scholarship_no = s.req_no
-                        WHERE s.pro_no = %s AND (ast.is_accepted IS NULL OR ast.is_accepted IS TRUE)
+                        WHERE s.pro_no = %s AND (ast.is_accepted = 'Pending' OR ast.is_accepted = 'Accepted' OR ast.is_accepted IS NULL)
                         UNION
                         SELECT DISTINCT m.applicant_no, m.pro_no
                         FROM message m
                         JOIN scholarships sch ON m.pro_no = sch.pro_no
                         LEFT JOIN applicant_status ast ON (m.applicant_no = ast.applicant_no AND ast.scholarship_no = sch.req_no)
-                        WHERE m.pro_no = %s AND (ast.is_accepted IS NULL OR ast.is_accepted IS TRUE)
+                        WHERE m.pro_no = %s AND (ast.is_accepted = 'Pending' OR ast.is_accepted = 'Accepted' OR ast.is_accepted IS NULL)
                     """, (pro_no, pro_no))
                     relevant_pairs = cursor.fetchall()
                     rooms = [f"{p['applicant_no']}+{p['pro_no']}" for p in relevant_pairs]
@@ -1764,7 +1764,7 @@ def init_socketio(socketio):
                         FROM message m
                         LEFT JOIN scholarships s ON m.pro_no = s.pro_no
                         LEFT JOIN applicant_status ast ON (m.applicant_no = ast.applicant_no AND ast.scholarship_no = s.req_no)
-                        WHERE m.room IS NOT NULL AND (ast.is_accepted IS NULL OR ast.is_accepted IS TRUE)
+                        WHERE m.room IS NOT NULL AND (ast.is_accepted = 'Pending' OR ast.is_accepted = 'Accepted' OR ast.is_accepted IS NULL)
                     """)
                     rooms = [row['room'] for row in cursor.fetchall()]
             else:
@@ -1870,8 +1870,9 @@ def init_socketio(socketio):
                        END as username,
                        m.message, m.timestamp,
                        CASE 
-                           WHEN s.is_accepted IS TRUE THEN 'Accepted'
-                           WHEN s.is_accepted IS FALSE THEN 'Declined'
+                           WHEN s.is_accepted = 'Accepted' THEN 'Accepted'
+                           WHEN s.is_accepted = 'Rejected' THEN 'Rejected'
+                           WHEN s.is_accepted = 'Cancelled' THEN 'Cancelled'
                            ELSE 'Pending'
                        END as student_status
                 FROM message m
@@ -1978,8 +1979,9 @@ def init_socketio(socketio):
             # Fetch current status of the applicant to include in the payload
             cursor.execute("""
                 SELECT CASE 
-                    WHEN is_accepted IS TRUE THEN 'Accepted'
-                    WHEN is_accepted IS FALSE THEN 'Declined'
+                    WHEN is_accepted = 'Accepted' THEN 'Accepted'
+                    WHEN is_accepted = 'Rejected' THEN 'Rejected'
+                    WHEN is_accepted = 'Cancelled' THEN 'Cancelled'
                     ELSE 'Pending'
                 END as student_status
                 FROM applicant_status 
@@ -2629,8 +2631,10 @@ def get_accounts(current_user_id, pro_no, role):
                     COALESCE(s.scholarship_name, 'Unassigned') AS scholarship,
                     s.pro_no AS provider_no,
                     CASE
-                        WHEN ast.is_accepted IS TRUE THEN 'Accepted'
-                        WHEN ast.is_accepted IS FALSE THEN 'Rejected'
+                        WHEN ast.is_accepted = 'Accepted' THEN 'Accepted'
+                        WHEN ast.is_accepted = 'Rejected' THEN 'Rejected'
+                        WHEN ast.is_accepted = 'Cancelled' THEN 'Cancelled'
+                        ELSE 'Pending'
                         ELSE 'Pending'
                     END AS status,
                     {joined_expr} AS joined,
@@ -3189,9 +3193,9 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
                                          {description_expr} as description, {date_created_expr} as "dateCreated",
                                          {semester_expr} as semester, {year_expr} as year,
                                          {grades_sem_expr} as grades_sem, {grades_year_expr} as grades_year,
-                                         COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS TRUE) as "acceptedCount",
-                                         COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS NULL) as "pendingCount",
-                                         COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS FALSE) as "declinedCount"
+                                         COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted = 'Accepted') as "acceptedCount",
+                                         COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted = 'Pending' OR ast.is_accepted IS NULL) as "pendingCount",
+                                         COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted = 'Rejected') as "declinedCount"
             FROM scholarships s
             LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
                         LEFT JOIN applicant_status ast ON ast.scholarship_no = s.req_no
@@ -3338,8 +3342,9 @@ def get_applicants(current_user_id, pro_no, role, program):
                    s.is_accepted, s.scholarship_no as "scholarshipNo", p.provider_name as program,
                    e.email_address as email,
                    CASE 
-                       WHEN s.is_accepted = True THEN 'Accepted'
-                       WHEN s.is_accepted = False THEN 'Declined'
+                       WHEN s.is_accepted = 'Accepted' THEN 'Accepted'
+                       WHEN s.is_accepted = 'Rejected' THEN 'Rejected'
+                       WHEN s.is_accepted = 'Cancelled' THEN 'Cancelled'
                        ELSE 'Pending'
                    END as status,
                    esc.scholarship_name as "scholarshipName",
@@ -3375,7 +3380,7 @@ def get_applicants(current_user_id, pro_no, role, program):
         else:
             # For 'all' view, typically admin only wants accepted scholars as per request
             # But the endpoint is shared, so let's default to accepted if 'all' is requested for now
-            query += ' AND s.is_accepted = True'
+            query += " AND s.is_accepted = 'Accepted'"
         
         if filters.get('search'):
             query += ' AND (a.first_name ILIKE %s OR a.last_name ILIKE %s OR e.email_address ILIKE %s)'
@@ -3489,11 +3494,11 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
             conn.close()
             return jsonify({'success': False, 'message': 'Unauthorized'}), 403
 
-        if status_row['slots'] is not None and status_row['is_accepted'] is not True:
+        if status_row['slots'] is not None and status_row['is_accepted'] != 'Accepted':
             cursor.execute(
                 '''SELECT COUNT(*) AS accepted_count
                    FROM applicant_status
-                   WHERE scholarship_no = %s AND is_accepted = TRUE''',
+                   WHERE scholarship_no = %s AND is_accepted = 'Accepted' ''',
                 (scholarship_no,)
             )
             accepted_count = cursor.fetchone()['accepted_count']
@@ -3505,14 +3510,14 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
         # Update applicant status
         cursor.execute(
             '''UPDATE applicant_status 
-               SET is_accepted = True, status_updated = CURRENT_DATE
+               SET is_accepted = 'Accepted', status_updated = CURRENT_DATE
                WHERE applicant_no = %s AND scholarship_no = %s''',
             (applicant_no, scholarship_no)
         )
 
         # Auto-decline other applications for the same applicant
         cursor.execute(
-            "SELECT s.scholarship_name, s.req_no FROM applicant_status ast JOIN scholarships s ON ast.scholarship_no = s.req_no WHERE ast.applicant_no = %s AND ast.scholarship_no != %s AND (ast.is_accepted IS NULL OR ast.is_accepted = TRUE)",
+            "SELECT s.scholarship_name, s.req_no FROM applicant_status ast JOIN scholarships s ON ast.scholarship_no = s.req_no WHERE ast.applicant_no = %s AND ast.scholarship_no != %s AND (ast.is_accepted = 'Pending' OR ast.is_accepted IS NULL OR ast.is_accepted = 'Accepted')",
             (applicant_no, scholarship_no)
         )
         declined_scholarships = cursor.fetchall()
@@ -3520,7 +3525,7 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
         cursor.execute(
             """
             UPDATE applicant_status
-            SET is_accepted = FALSE
+            SET is_accepted = 'Cancelled'
             WHERE applicant_no = %s AND scholarship_no != %s
             """,
             (applicant_no, scholarship_no),
@@ -3592,7 +3597,7 @@ def decline_applicant(current_user_id, pro_no, role, applicant_no):
         # Update applicant status
         cursor.execute(
             '''UPDATE applicant_status 
-               SET is_accepted = False, status_updated = CURRENT_DATE
+               SET is_accepted = 'Rejected', status_updated = CURRENT_DATE
                WHERE applicant_no = %s AND scholarship_no = %s''',
             (applicant_no, scholarship_no)
         )
@@ -3652,7 +3657,7 @@ def cancel_applicant(current_user_id, pro_no, role, applicant_no):
         # Update applicant status back to NULL (pending review)
         cursor.execute(
             '''UPDATE applicant_status 
-               SET is_accepted = NULL, status_updated = CURRENT_DATE
+               SET is_accepted = 'Pending', status_updated = CURRENT_DATE
                WHERE applicant_no = %s AND scholarship_no = %s''',
             (applicant_no, scholarship_no)
         )

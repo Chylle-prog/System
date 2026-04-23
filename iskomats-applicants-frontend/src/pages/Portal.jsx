@@ -1704,6 +1704,11 @@ const Portal = () => {
           color: var(--danger);
         }
 
+        .status-cancelled {
+          background: #f1f5f9;
+          color: #64748b;
+        }
+
         .cancel-btn {
           background: transparent;
           border: 1.5px solid var(--danger);
@@ -2709,8 +2714,9 @@ const Portal = () => {
                   </div>
                 ) : (
                   [...applications].reverse().map((app, index) => {
-                    const badgeClass = app.status === 'Approved' ? 'status-approved' :
-                                     app.status === 'Rejected' ? 'status-rejected' : 'status-pending';
+                    const badgeClass = app.status === 'Accepted' ? 'status-approved' :
+                                     app.status === 'Rejected' ? 'status-rejected' :
+                                     app.status === 'Cancelled' ? 'status-cancelled' : 'status-pending';
                     
                     return (
                       <div key={app.scholarship_no} className="application-item">

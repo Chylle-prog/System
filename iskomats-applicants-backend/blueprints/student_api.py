@@ -896,7 +896,7 @@ def get_scholarship_restriction(scope, scholarship_no):
     ]
     active_accepted_rows = [
         row for row in applications
-        if row['applicant_no'] in current_applicant_ids and row['is_accepted'] is True and scholarship_is_active_record(row, today=today)
+        if row['applicant_no'] in current_applicant_ids and row['is_accepted'] == 'Accepted' and scholarship_is_active_record(row, today=today)
     ]
     subject = describe_identity_subject(scope)
 
@@ -911,10 +911,10 @@ def get_scholarship_restriction(scope, scholarship_no):
         )
         status_label = 'applied for'
         reason = 'family-existing-same-scholarship'
-        if prior_row['is_accepted'] is True:
+        if prior_row['is_accepted'] == 'Accepted':
             status_label = 'already has an accepted application for'
             reason = 'family-accepted-same-scholarship'
-        elif prior_row['is_accepted'] is None:
+        elif prior_row['is_accepted'] == 'Pending' or prior_row['is_accepted'] is None:
             status_label = 'has already applied for'
             reason = 'family-pending-same-scholarship'
 
@@ -927,7 +927,7 @@ def get_scholarship_restriction(scope, scholarship_no):
             'blocking_application': prior_row,
         }
 
-    same_scholarship_row = next((row for row in self_related_rows if row['is_accepted'] is True), None)
+    same_scholarship_row = next((row for row in self_related_rows if row['is_accepted'] == 'Accepted'), None)
     if same_scholarship_row:
         return {
             'already_applied': True,
@@ -938,7 +938,7 @@ def get_scholarship_restriction(scope, scholarship_no):
             'blocking_application': same_scholarship_row,
         }
 
-    same_scholarship_row = next((row for row in self_related_rows if row['is_accepted'] is None), None)
+    same_scholarship_row = next((row for row in self_related_rows if row['is_accepted'] == 'Pending' or row['is_accepted'] is None), None)
     if same_scholarship_row:
         return {
             'already_applied': True,
@@ -2032,7 +2032,7 @@ def get_rankings():
             
             cur.execute("""
                 SELECT s.*, p.provider_name,
-                       COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS TRUE) AS accepted_count
+                       COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted = 'Accepted') AS accepted_count
                 FROM scholarships s
                 LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
                 LEFT JOIN applicant_status ast ON ast.scholarship_no = s.req_no
@@ -2750,9 +2750,9 @@ def submit_application():
                 cur.execute(
                     """
                     INSERT INTO applicant_status (scholarship_no, applicant_no, is_accepted, created_at)
-                    VALUES (%s, %s, FALSE, NOW())
+                    VALUES (%s, %s, 'Rejected', NOW())
                     ON CONFLICT (scholarship_no, applicant_no)
-                    DO UPDATE SET is_accepted = FALSE, created_at = applicant_status.created_at
+                    DO UPDATE SET is_accepted = 'Rejected', created_at = applicant_status.created_at
                     """,
                     (scholarship_id, current_user_id),
                 )
@@ -2991,9 +2991,9 @@ def submit_application():
         cur.execute(
             """
             INSERT INTO applicant_status (scholarship_no, applicant_no, is_accepted, created_at)
-            VALUES (%s, %s, NULL, NOW())
+            VALUES (%s, %s, 'Pending', NOW())
             ON CONFLICT (scholarship_no, applicant_no) 
-            DO UPDATE SET created_at = EXCLUDED.created_at, is_accepted = NULL
+            DO UPDATE SET created_at = EXCLUDED.created_at, is_accepted = 'Pending'
             """,
             (scholarship_id, current_user_id),
         )
@@ -3761,10 +3761,11 @@ def cancel_application(scholarship_no):
             if not cur.fetchone():
                 return jsonify({'message': 'Application not found or does not belong to you'}), 404
 
-            # Remove the application
+            # Mark the application as Cancelled
             cur.execute(
                 """
-                DELETE FROM applicant_status
+                UPDATE applicant_status
+                SET is_accepted = 'Cancelled', status_updated = CURRENT_DATE
                 WHERE scholarship_no = %s AND applicant_no = %s
                 """,
                 (scholarship_no, request.user_no),
@@ -3800,8 +3801,9 @@ def get_my_applications():
                     s.deadline,
                     s.pro_no,
                     CASE
-                        WHEN ast.is_accepted = TRUE THEN 'Approved'
-                        WHEN ast.is_accepted = FALSE THEN 'Rejected'
+                        WHEN ast.is_accepted = 'Accepted' THEN 'Accepted'
+                        WHEN ast.is_accepted = 'Rejected' THEN 'Rejected'
+                        WHEN ast.is_accepted = 'Cancelled' THEN 'Cancelled'
                         ELSE 'Pending'
                     END as status,
                     ast.status_updated
@@ -3869,7 +3871,7 @@ def update_application_status(req_no):
                     JOIN scholarship_providers sp ON s.pro_no = sp.pro_no
                     WHERE ast.applicant_no = %s 
                     AND ast.scholarship_no != %s 
-                    AND (ast.is_accepted IS NULL OR ast.is_accepted = TRUE)
+                    AND (ast.is_accepted = 'Pending' OR ast.is_accepted IS NULL OR ast.is_accepted = 'Accepted')
                     """,
                     (applicant_no, req_no)
                 )
@@ -3878,7 +3880,7 @@ def update_application_status(req_no):
                 cur.execute(
                     """
                     UPDATE applicant_status
-                    SET is_accepted = FALSE
+                    SET is_accepted = 'Cancelled'
                     WHERE applicant_no = %s AND scholarship_no != %s
                     """,
                     (applicant_no, req_no),

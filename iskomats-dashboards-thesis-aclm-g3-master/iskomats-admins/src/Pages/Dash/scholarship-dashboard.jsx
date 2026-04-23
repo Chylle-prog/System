@@ -208,7 +208,8 @@ const optimizeImageFile = (file) => new Promise((resolve) => {
 const initialDashboardData = {
   applicants: [],
   accepted: [],
-  declined: [],
+  rejected: [],
+  cancelled: [],
   inbox: [], // Add later (Missing Schema)
   scholarshipPosts: [], // Add later (Missing Schema)
   announcements: [],
@@ -357,7 +358,7 @@ export default function ScholarshipDashboard({
           if (!existing) {
             applicantMap.set(id, app);
           } else {
-            const statusPriority = { 'Accepted': 3, 'Declined': 2, 'Pending': 1 };
+            const statusPriority = { 'Accepted': 4, 'Rejected': 3, 'Cancelled': 2, 'Pending': 1 };
             if (statusPriority[app.status] > statusPriority[existing.status]) {
               applicantMap.set(id, app);
             }
@@ -371,7 +372,8 @@ export default function ScholarshipDashboard({
           ...prev,
           applicants: uniqueApplicants.filter(a => a.status === 'Pending'),
           accepted: uniqueApplicants.filter(a => a.status === 'Accepted'),
-          declined: uniqueApplicants.filter(a => a.status === 'Declined'),
+          rejected: uniqueApplicants.filter(a => a.status === 'Rejected' || a.status === 'Declined'),
+          cancelled: uniqueApplicants.filter(a => a.status === 'Cancelled'),
           historicalData
         }));
       }
@@ -523,8 +525,10 @@ export default function ScholarshipDashboard({
 
             if (update.newStatus === 'Accepted') {
               newData.accepted = [...newData.accepted, applicantToMove];
-            } else if (update.newStatus === 'Declined') {
-              newData.declined = [...newData.declined, applicantToMove];
+            } else if (update.newStatus === 'Rejected' || update.newStatus === 'Declined') {
+              newData.rejected = [...newData.rejected, applicantToMove];
+            } else if (update.newStatus === 'Cancelled') {
+              newData.cancelled = [...newData.cancelled, applicantToMove];
             }
 
             // Recalculate historical data
@@ -626,10 +630,12 @@ export default function ScholarshipDashboard({
       const dateStr = a.dateApplied || a.createdAt;
       const date = new Date(dateStr);
       const month = date.toLocaleString('default', { month: 'short', year: 'numeric' });
-      if (!monthlyData[month]) monthlyData[month] = { month, applications: 0, accepted: 0, declined: 0 };
+      if (!monthlyData[month]) monthlyData[month] = { month, applications: 0, accepted: 0, rejected: 0, cancelled: 0 };
       monthlyData[month].applications++;
       if (a.status === 'Accepted') monthlyData[month].accepted++;
-      if (a.status === 'Declined') monthlyData[month].declined++;
+      if (a.status === 'Rejected' || a.status === 'Declined') monthlyData[month].rejected++;
+      if (a.status === 'Cancelled') monthlyData[month].cancelled++;
+      if (a.status === 'Cancelled') monthlyData[month].cancelled++;
 
       // Course
       const course = a.course || 'Unknown';
@@ -1345,12 +1351,14 @@ export default function ScholarshipDashboard({
   const stats = useMemo(() => {
     const filteredPending = data.applicants.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
     const filteredAccepted = data.accepted.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
-    const filteredDeclined = data.declined.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
-    const total = filteredPending.length + filteredAccepted.length + filteredDeclined.length;
+    const filteredRejected = data.rejected.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
+    const filteredCancelled = data.cancelled.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
+    const total = filteredPending.length + filteredAccepted.length + filteredRejected.length + filteredCancelled.length;
     return {
       total,
       accepted: filteredAccepted.length,
-      declined: filteredDeclined.length,
+      rejected: filteredRejected.length,
+      cancelled: filteredCancelled.length,
       pending: filteredPending.length,
     };
   }, [analyticsScholarshipFilter, data]);
@@ -1358,12 +1366,14 @@ export default function ScholarshipDashboard({
   const filteredReportApplicants = useMemo(() => {
     const pending = data.applicants.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
     const accepted = data.accepted.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
-    const declined = data.declined.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
+    const rejected = data.rejected.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
+    const cancelled = data.cancelled.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
     return {
       pending,
       accepted,
-      declined,
-      all: [...pending, ...accepted, ...declined],
+      rejected,
+      cancelled,
+      all: [...pending, ...accepted, ...rejected, ...cancelled],
     };
   }, [analyticsScholarshipFilter, data]);
 
@@ -1406,10 +1416,10 @@ export default function ScholarshipDashboard({
       chartInstance.current = new Chart(ctx, {
         type: 'doughnut',
         data: {
-          labels: ['Accepted', 'Declined', 'Pending'],
+          labels: ['Accepted', 'Rejected', 'Cancelled', 'Pending'],
           datasets: [{
-            data: [stats.accepted, stats.declined, stats.pending],
-            backgroundColor: ['#198754', '#dc3545', '#ffc107'],
+            data: [stats.accepted, stats.rejected || 0, stats.cancelled || 0, stats.pending],
+            backgroundColor: ['#198754', '#dc3545', '#6c757d', '#ffc107'],
             borderWidth: 2,
             borderColor: '#fff',
           }],
@@ -1442,10 +1452,17 @@ export default function ScholarshipDashboard({
               tension: 0.4
             },
             {
-              label: 'Declined',
-              data: filteredHistoricalData.monthlyApplications.map(m => m.declined),
+              label: 'Rejected',
+              data: filteredHistoricalData.monthlyApplications.map(m => m.rejected),
               borderColor: '#dc3545',
               backgroundColor: 'rgba(220, 53, 69, 0.1)',
+              tension: 0.4
+            },
+            {
+              label: 'Cancelled',
+              data: filteredHistoricalData.monthlyApplications.map(m => m.cancelled),
+              borderColor: '#6c757d',
+              backgroundColor: 'rgba(108, 117, 125, 0.1)',
               tension: 0.4
             }
           ]
@@ -2647,12 +2664,14 @@ export default function ScholarshipDashboard({
       });
     };
 
-    const pendingTagged = prioritizeProcessingApplicants(filterList(data.applicants)).map((a) => ({ ...a, _listType: 'all', _listIdx: data.applicants.indexOf(a) }));
+    const pendingTagged = prioritizeProcessingApplicants(filterList(data.applicants)).map((a) => ({ ...a, _listType: 'pending', _listIdx: data.applicants.indexOf(a) }));
     const acceptedTagged = filterList(data.accepted).map((a, i) => ({ ...a, _listType: 'accepted', _listIdx: data.accepted.indexOf(a) }));
-    const declinedTagged = filterList(data.declined).map((a, i) => ({ ...a, _listType: 'declined', _listIdx: data.declined.indexOf(a) }));
-    const allList = [...pendingTagged, ...acceptedTagged, ...declinedTagged];
+    const rejectedTagged = filterList(data.rejected).map((a, i) => ({ ...a, _listType: 'rejected', _listIdx: data.rejected.indexOf(a) }));
+    const cancelledTagged = filterList(data.cancelled).map((a, i) => ({ ...a, _listType: 'cancelled', _listIdx: data.cancelled.indexOf(a) }));
+    const allList = [...pendingTagged, ...acceptedTagged, ...rejectedTagged, ...cancelledTagged];
     const acceptedList = acceptedTagged;
-    const declinedList = declinedTagged;
+    const rejectedList = rejectedTagged;
+    const cancelledList = cancelledTagged;
 
     return (
       <section className="bg-white p-8 rounded-2xl shadow-md border border-gray-50">
@@ -2669,7 +2688,7 @@ export default function ScholarshipDashboard({
 
         <div className="flex flex-wrap gap-2 mb-4 justify-between items-center">
           <div className="flex gap-2">
-            {['all', 'pending', 'accepted', 'declined'].map((t) => (
+            {['all', 'pending', 'accepted', 'rejected', 'cancelled'].map((t) => (
               <button
                 key={t}
                 type="button"
@@ -2680,7 +2699,8 @@ export default function ScholarshipDashboard({
                 {t === 'pending' && <FaClock />}
                 {t === 'all' && <FaUsers />}
                 {t === 'accepted' && <FaCheckCircle />}
-                {t === 'declined' && <FaTimesCircle />}
+                {t === 'rejected' && <FaTimesCircle />}
+                {t === 'cancelled' && <FaTrashAlt />}
                 {t === 'pending' ? 'Pending' : t === 'all' ? 'All Applicants' : t.charAt(0).toUpperCase() + t.slice(1)}
               </button>
             ))}
@@ -2769,8 +2789,8 @@ export default function ScholarshipDashboard({
 
               {trackTab === 'all' &&
                 allList.map((a, i) => {
-                  const statusColors = { all: 'bg-yellow-100 text-yellow-700', accepted: 'bg-green-100 text-green-700', declined: 'bg-red-100 text-red-700' };
-                  const statusLabels = { all: 'Pending', accepted: 'Accepted', declined: 'Declined' };
+                  const statusColors = { pending: 'bg-yellow-100 text-yellow-700', accepted: 'bg-green-100 text-green-700', rejected: 'bg-red-100 text-red-700', cancelled: 'bg-gray-100 text-gray-700' };
+                  const statusLabels = { pending: 'Pending', accepted: 'Accepted', rejected: 'Rejected', cancelled: 'Cancelled' };
                   const processingState = getApplicantProcessingState(a);
                   return (
                     <tr key={`all-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
@@ -2780,7 +2800,7 @@ export default function ScholarshipDashboard({
                           <div className="font-semibold">{a.name}</div>
                           {processingState && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
                         </div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusColors[a._listType]}`}>{statusLabels[a._listType]}</span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusColors[a._listType] || 'bg-yellow-100 text-yellow-700'}`}>{statusLabels[a._listType] || 'Pending'}</span>
                       </td>
                       <td className="px-4 py-3">{a.grade}</td>
                       <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
@@ -2821,11 +2841,11 @@ export default function ScholarshipDashboard({
                   );
                 })}
 
-              {trackTab === 'declined' &&
-                declinedList.map((a) => {
+              {trackTab === 'rejected' &&
+                rejectedList.map((a) => {
                   const idx = a._listIdx;
                   return (
-                    <tr key={`declined-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
+                    <tr key={`rejected-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className="px-4 py-3 flex items-center gap-2">
                         {a.name}
                         {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
@@ -2836,7 +2856,31 @@ export default function ScholarshipDashboard({
                       <td className="px-4 py-3 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
                       <td className="px-4 py-3">
                         <div className="flex gap-1">
-                          <button type="button" onClick={() => viewApplicantFn(idx, 'declined')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
+                          <button type="button" onClick={() => viewApplicantFn(idx, 'all')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
+                            View
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+              {trackTab === 'cancelled' &&
+                cancelledList.map((a) => {
+                  const idx = a._listIdx;
+                  return (
+                    <tr key={`cancelled-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
+                      <td className="px-4 py-3 flex items-center gap-2">
+                        {a.name}
+                        {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
+                      </td>
+                      <td className="px-4 py-3">{a.grade}</td>
+                      <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                      <td className="px-4 py-3 text-xs">{a.school}</td>
+                      <td className="px-4 py-3 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-1">
+                          <button type="button" onClick={() => viewApplicantFn(idx, 'all')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
                             View
                           </button>
                         </div>
@@ -2971,7 +3015,10 @@ export default function ScholarshipDashboard({
     // Create workbook and append sheets
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, acceptedWS, 'Accepted Scholars');
-    XLSX.utils.book_append_sheet(wb, declinedWS, 'Declined-Cancelled');
+    const rejectedWS = XLSX.utils.json_to_sheet(formatTracking(data.rejected));
+    const cancelledWS = XLSX.utils.json_to_sheet(formatTracking(data.cancelled));
+    XLSX.utils.book_append_sheet(wb, rejectedWS, 'Rejected Applicants');
+    XLSX.utils.book_append_sheet(wb, cancelledWS, 'Cancelled Applications');
     XLSX.utils.book_append_sheet(wb, pendingWS, 'Pending Applicants');
     XLSX.utils.book_append_sheet(wb, locationWS, 'Location Statistics');
     XLSX.utils.book_append_sheet(wb, courseWS, 'Course Distribution');
@@ -2985,16 +3032,16 @@ export default function ScholarshipDashboard({
 
   const renderReports = () => {
     const historicalData = filteredHistoricalData;
-    const { pending: filteredPending, accepted: filteredAccepted, declined: filteredDeclined, all: filteredApplicants } = filteredReportApplicants;
+    const { pending: filteredPending, accepted: filteredAccepted, rejected: filteredRejected, cancelled: filteredCancelled, all: filteredApplicants } = filteredReportApplicants;
     const monthlyStats = generateMonthlyStats(filteredApplicants);
 
     const kpiCards = [
       { label: 'Total Applicants', value: filteredApplicants.length.toLocaleString(), trend: '+12.5%', color: 'blue' },
       { label: 'New Applicants', value: filteredPending.length.toLocaleString(), trend: '+5.2%', color: 'green' },
       { label: 'Accepted', value: filteredAccepted.length.toLocaleString(), trend: '+8.1%', color: 'purple' },
-      { label: 'Declined', value: filteredDeclined.length.toLocaleString(), trend: '-2.4%', color: 'red' },
+      { label: 'Rejected', value: filteredRejected.length.toLocaleString(), trend: '-2.4%', color: 'red' },
+      { label: 'Cancelled', value: filteredCancelled.length.toLocaleString(), trend: '0.0%', color: 'gray' },
       { label: 'Avg. Processing', value: `${historicalData.performanceMetrics.averageProcessingTime}d`, trend: '-0.5d', color: 'amber' },
-      { label: 'Completion Rate', value: `${historicalData.performanceMetrics.applicationCompletionRate}%`, trend: '+1.2%', color: 'indigo' },
     ];
 
     return (
@@ -3455,10 +3502,16 @@ export default function ScholarshipDashboard({
                       ACCEPTED
                     </button>
                     <button
-                      onClick={() => setReportTab('declined')}
-                      className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${reportTab === 'declined' ? 'bg-red-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                      onClick={() => setReportTab('rejected')}
+                      className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${reportTab === 'rejected' ? 'bg-red-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
                     >
-                      DECLINED
+                      REJECTED
+                    </button>
+                    <button
+                      onClick={() => setReportTab('cancelled')}
+                      className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${reportTab === 'cancelled' ? 'bg-slate-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                    >
+                      CANCELLED
                     </button>
                   </div>
                 </div>
@@ -3504,20 +3557,20 @@ export default function ScholarshipDashboard({
                     </div>
                   )}
 
-                  {/* Declined Applicants */}
-                  {reportTab === 'declined' && (
+                  {/* Rejected Applicants */}
+                  {reportTab === 'rejected' && (
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
                       <h5 className="text-sm font-black text-red-600 uppercase mb-4 flex items-center gap-2">
-                        <FaTimesCircle /> Declined / Cancelled ({filteredDeclined.length})
+                        <FaTimesCircle /> Rejected Applicants ({filteredRejected.length})
                       </h5>
                       <div className="overflow-x-auto max-h-72">
                         <table className="w-full text-left text-xs border-collapse">
                           <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact & Address</th></tr></thead>
                           <tbody className="divide-y divide-gray-100">
-                            {filteredDeclined.map((a) => (
+                            {filteredRejected.map((a) => (
                               <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50"><td className="p-3 font-bold text-gray-800">{a.name}</td><td className="p-3">{a.grade}</td><td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td><td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {a.municipality || 'N/A'}</td></tr>
                             ))}
-                            {filteredDeclined.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-gray-400 italic">No declined applicants found for this scholarship</td></tr>}
+                            {filteredRejected.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-gray-400 italic">No rejected applicants found for this scholarship</td></tr>}
                           </tbody>
                         </table>
                       </div>
@@ -3551,7 +3604,7 @@ export default function ScholarshipDashboard({
           <div className="grid grid-cols-4 gap-4 mb-10">
             <div className="border-2 border-gray-100 p-4 rounded-2xl text-center">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Total Applicants</p>
-              <h4 className="text-2xl font-black text-gray-900">{data.applicants.length + data.accepted.length + data.declined.length}</h4>
+              <h4 className="text-2xl font-black text-gray-900">{data.applicants.length + data.accepted.length + data.rejected.length + data.cancelled.length}</h4>
             </div>
             <div className="border-2 border-gray-100 p-4 rounded-2xl text-center">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Acceptance Rate</p>
@@ -3589,7 +3642,8 @@ export default function ScholarshipDashboard({
                       <td className="border p-3 font-semibold">{m.month}</td>
                       <td className="border p-3">{m.applications}</td>
                       <td className="border p-3 text-green-700">{m.accepted}</td>
-                      <td className="border p-3 text-red-700">{m.declined}</td>
+                      <td className="border p-3 text-red-700">{m.rejected}</td>
+                      <td className="border p-3 text-gray-600">{m.cancelled}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -3733,7 +3787,7 @@ export default function ScholarshipDashboard({
             </section>
 
             <section className="print-break-before">
-              <h5 className="text-sm font-black text-[#800020] uppercase mb-4 border-l-4 border-[#800020] pl-3">Declined / Cancelled Applicants</h5>
+              <h5 className="text-sm font-black text-[#800020] uppercase mb-4 border-l-4 border-[#800020] pl-3">Rejected / Cancelled Applicants</h5>
               <table className="w-full text-xs border-collapse">
                 <thead>
                   <tr className="bg-gray-50">
@@ -3744,7 +3798,7 @@ export default function ScholarshipDashboard({
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredDeclined.map((a) => (
+                  {filteredRejected.concat(filteredCancelled).map((a) => (
                     <tr key={a.id || a.applicant_no || a.name}>
                       <td className="border p-2 font-bold">{a.name}</td>
                       <td className="border p-2">{a.grade}</td>
@@ -4259,8 +4313,8 @@ export default function ScholarshipDashboard({
                         }
                       }}
                       className={`p-4 cursor-pointer transition-colors border-l-4 ${isActive
-                          ? 'bg-blue-100 border-l-4 border-[#800020] shadow-sm'
-                          : `border-l-4 border-transparent hover:bg-blue-50/50 ${conv.unreadCount > 0 ? 'bg-blue-50/30' : ''}`
+                        ? 'bg-blue-100 border-l-4 border-[#800020] shadow-sm'
+                        : `border-l-4 border-transparent hover:bg-blue-50/50 ${conv.unreadCount > 0 ? 'bg-blue-50/30' : ''}`
                         }`}
                     >
                       <div className="flex items-start gap-3">
@@ -4386,7 +4440,7 @@ export default function ScholarshipDashboard({
               <div className="text-center px-6">
                 <FaInbox className="text-6xl text-gray-300 mx-auto mb-4" />
                 <h3 className="text-xl font-bold text-gray-800 mb-2">Select a conversation</h3>
-                <p className="text-gray-500">All applicants (pending/accepted/declined) can message here.</p>
+                <p className="text-gray-500">All applicants (pending/accepted/rejected/cancelled) can message here.</p>
               </div>
             </div>
           )}
