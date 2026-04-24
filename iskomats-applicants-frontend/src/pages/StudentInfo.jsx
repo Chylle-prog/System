@@ -4376,21 +4376,12 @@ const StudentInfo = () => {
                         <div style={{ fontSize: '0.65rem', color: '#3b82f6', fontWeight: '800', background: '#eff6ff', padding: '3px 8px', borderRadius: '6px' }}>PHOTO</div>
                       </div>
 
-                      {renderDocumentMediaPicker({
-                        photoId: 'photo_face_photo',
-                        photoName: 'face_photo',
-                        photoValue: photos.face_photo || userProfile?.profile_picture,
-                        onPhotoChange: handleInputChange,
-                        isVerifying: faceVerified === 'verifying' || isFaceMatching
-                      })}
+                      <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1rem', textAlign: 'center' }}>Take a live photo using your camera to verify your identity.</p>
 
                       <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
                         <div style={{ border: '2px solid #fff', borderRadius: '15px', width: '220px', height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e1e8f0', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)' }}>
-                          {photos.face_photo ? (
-                            <>
-                              <img src={photos.face_photo} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Face Verification" />
-                              <button type="button" onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); }} style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><i className="fas fa-times"></i></button>
-                            </>
+                           {photos.face_photo ? (
+                            <img src={photos.face_photo} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Face Verification" />
                           ) : (
                             <button type="button" onClick={openCamera} style={{ border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
                               <i className="fas fa-camera" style={{ fontSize: '2rem' }}></i>
