@@ -1297,7 +1297,7 @@ export default function ScholarshipDashboard({
 
     const selectedOption = scholarshipFilterOptions.find((option) => option.value === selectedValue);
     const selectedValues = [selectedValue, selectedOption?.label]
-      .filter(Boolean)
+      .filter(v => v !== undefined && v !== null && v !== '')
       .map((value) => String(value).toLowerCase());
 
     const applicantValues = [
@@ -1315,10 +1315,12 @@ export default function ScholarshipDashboard({
       applicant.scholarship,
       applicant.scholarshipTitle,
     ]
-      .filter(Boolean)
+      .filter(v => v !== undefined && v !== null && v !== '')
       .map((value) => String(value).toLowerCase());
 
-    return selectedValues.some((value) => applicantValues.includes(value));
+    return selectedValues.some((value) => 
+      applicantValues.some(appVal => String(appVal || '').toLowerCase() === String(value).toLowerCase())
+    );
   };
 
   const scholarshipFinderResults = useMemo(() => {
@@ -1702,8 +1704,15 @@ export default function ScholarshipDashboard({
 
   const recommendStudents = () => {
     const count = parseInt(recommendCount) || 10;
-    const filteredApplicants = (data.applicants || []).filter(a => matchesScholarshipSelection(a, trackScholarshipFilter));
-    const top = [...filteredApplicants].sort((a, b) => b.grade - a.grade).slice(0, count);
+    const allPending = data.applicants || [];
+    
+    // Exact same filtering logic as the Track list
+    const filteredApplicants = allPending.filter(a => matchesScholarshipSelection(a, trackScholarshipFilter));
+    
+    const top = [...filteredApplicants]
+      .sort((a, b) => (Number(b.grade) || 0) - (Number(a.grade) || 0))
+      .slice(0, count);
+      
     setRecommended(top);
     setRecommendationModal(true);
   };
@@ -4606,10 +4615,14 @@ export default function ScholarshipDashboard({
                   autoFocus
                   value={recommendCount}
                   onChange={(e) => {
-                    setRecommendCount(e.target.value);
-                    // Recalculate recommendations with new count
-                    const count = parseInt(e.target.value) || 10;
-                    const top = [...(data.applicants || [])].sort((a, b) => b.grade - a.grade).slice(0, count);
+                    const newCount = e.target.value;
+                    setRecommendCount(newCount);
+                    const count = parseInt(newCount) || 10;
+                    const allPending = data.applicants || [];
+                    const filteredApplicants = allPending.filter(a => matchesScholarshipSelection(a, trackScholarshipFilter));
+                    const top = [...filteredApplicants]
+                      .sort((a, b) => (Number(b.grade) || 0) - (Number(a.grade) || 0))
+                      .slice(0, count);
                     setRecommended(top);
                   }}
                   className="w-16 text-center text-lg font-black bg-transparent border-none outline-none text-[#800020]"
