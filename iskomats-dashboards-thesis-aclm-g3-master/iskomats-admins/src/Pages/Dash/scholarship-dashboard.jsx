@@ -4046,8 +4046,16 @@ export default function ScholarshipDashboard({
             </div>
           </div>
           <div className="flex gap-2 mt-2">
-            <span className={`flex items-center justify-center px-4 py-1.5 rounded-full text-xs font-bold uppercase ${isPending ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
-              {isPending ? 'Pending Review' : 'Active Student'}
+            <span className={`flex items-center justify-center px-4 py-1.5 rounded-full text-xs font-bold uppercase ${
+              listType === 'accepted' ? 'bg-green-100 text-green-700' :
+              listType === 'rejected' ? 'bg-red-100 text-red-700' :
+              listType === 'cancelled' ? 'bg-gray-100 text-gray-700' :
+              'bg-yellow-100 text-yellow-700'
+            }`}>
+              {listType === 'accepted' ? 'Accepted' :
+               listType === 'rejected' ? 'Rejected' :
+               listType === 'cancelled' ? 'Cancelled' :
+               'Pending Review'}
             </span>
             <div className="flex gap-2 mb-4">
               <button

@@ -20,8 +20,6 @@ from functools import wraps
 
 import jwt
 from flask import Blueprint, jsonify, request, url_for
-from services.crypto_service import get_fernet, decrypt_if_encrypted
-_fernet = get_fernet()
 
 from flask_bcrypt import Bcrypt
 
@@ -582,22 +580,6 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
         }
 
         folder = folder_map.get(field_name, 'others')
-        # Encrypt data before upload if encryption is configured
-        if _fernet:
-            try:
-                # Standardize to bytes
-                if hasattr(image_data, 'tobytes'):
-                    image_data = image_data.tobytes()
-                elif hasattr(image_data, 'read'):
-                    image_data = image_data.read()
-                
-                # Only encrypt if it's not already encrypted (to avoid double encryption if re-uploading)
-                # Fernet tokens start with b'gAAAA'
-                if not (isinstance(image_data, (bytes, bytearray)) and image_data.startswith(b'gAAAA')):
-                    image_data = _fernet.encrypt(bytes(image_data))
-                    print(f"[STORAGE] Encrypted {field_name} before upload", flush=True)
-            except Exception as e:
-                print(f"[STORAGE WARNING] Encryption failed for {field_name}, uploading raw: {e}", flush=True)
 
         bucket_name = get_storage_bucket()
         supabase = get_supabase_client()
@@ -2350,31 +2332,12 @@ def get_applicant_document(field_name):
                 # Normalize Supabase URLs to current project
                 value = normalize_supabase_url(value)
                 
-                # If it's already a URL or Data URI, return it directly or wrapped
+                # If it's already a URL or Data URI, return it directly
                 if value.startswith('http') or value.startswith('data:'):
-                    # If it's an encrypted cloud URL, we must fetch and decrypt it
-                    if _fernet and value.startswith('http'):
-                        import requests
-                        try:
-                            resp = requests.get(value, timeout=30)
-                            if resp.status_code == 200:
-                                value = resp.content
-                                # Fall through to binary handling and decryption below
-                            else:
-                                return jsonify({
-                                    'fieldName': field_name,
-                                    'data': normalize_supabase_url(value)
-                                })
-                        except Exception:
-                            return jsonify({
-                                'fieldName': field_name,
-                                'data': normalize_supabase_url(value)
-                            })
-                    else:
-                        return jsonify({
-                            'fieldName': field_name,
-                            'data': normalize_supabase_url(value) if value.startswith('http') else value
-                        })
+                    return jsonify({
+                        'fieldName': field_name,
+                        'data': value
+                    })
                 # Fallback for plain strings (e.g. base64 stored as text)
                 if isinstance(value, str):
                     value = value.encode('utf-8')
@@ -2385,16 +2348,6 @@ def get_applicant_document(field_name):
                 value = value.tobytes()
             else:
                 value = bytes(value)
-
-            # Handle decryption for all fields if encrypted
-            if value:
-                try:
-                    old_len = len(value)
-                    value = decrypt_if_encrypted(value)
-                    if len(value) != old_len:
-                        print(f"[DOCUMENT] Decrypted {field_name}", flush=True)
-                except Exception as e:
-                    print(f"[DOCUMENT] Failed to decrypt {field_name}: {e}", flush=True)
                 
             # Determine mime type
             mime_type = 'image/jpeg'
@@ -2444,36 +2397,14 @@ def get_applicant_document_raw(field_name):
             
             if isinstance(value, str):
                 if value.startswith('http'):
-                    # If it's a URL, we need to decide if we proxy it (decrypt) or redirect
-                    if _fernet:
-                        import requests
-                        try:
-                            resp = requests.get(normalize_supabase_url(value), timeout=30)
-                            if resp.status_code == 200:
-                                value = resp.content
-                                # Continue to decryption below
-                            else:
-                                from flask import redirect
-                                return redirect(normalize_supabase_url(value))
-                        except Exception:
-                            from flask import redirect
-                            return redirect(normalize_supabase_url(value))
-                    else:
-                        from flask import redirect
-                        return redirect(normalize_supabase_url(value))
+                    from flask import redirect
+                    return redirect(normalize_supabase_url(value))
                 else:
                     value = value.encode('utf-8')
             elif hasattr(value, 'tobytes'):
                 value = value.tobytes()
             else:
                 value = bytes(value)
-
-            # Handle decryption if encrypted
-            if value:
-                try:
-                    value = decrypt_if_encrypted(value)
-                except Exception as e:
-                    print(f"[DOCUMENT RAW] Decryption failed for {field_name}: {e}", flush=True)
 
             mime_type = 'image/jpeg'
             if field_name == 'signature_image_data' or value.startswith(b'\x89PNG'):

@@ -1,4 +1,4 @@
-import { encryptDocument } from './CryptoService';
+
 
 // Upload profile picture to Supabase Storage and return public URL
 export const uploadProfilePicture = async (file) => {
@@ -8,14 +8,11 @@ export const uploadProfilePicture = async (file) => {
   const contentType = file?.type || 'image/jpeg';
   const objectPath = `profile_pictures/${applicantNo}-${currentUser}${ext}`;
 
-  // Encrypt before upload
-  const encryptedFile = await encryptDocument(file);
-
   const uploadResult = await supabase.storage
     .from('document_images')
-    .upload(objectPath, encryptedFile, {
+    .upload(objectPath, file, {
       upsert: true,
-      contentType: 'application/octet-stream', // Use binary stream for encrypted data
+      contentType: contentType,
       cacheControl: '60',
     });
 
@@ -112,14 +109,11 @@ const uploadRequirementVideoDirect = async (fieldName, file, onProgress) => {
   const contentType = file?.type || (ext === '.webm' ? 'video/webm' : 'video/mp4');
   const objectPath = `videos/${folder}/${applicantNo}-${currentUser}/${fieldName}${ext}`;
 
-  // Encrypt before upload
-  const encryptedFile = await encryptDocument(file);
-
   const uploadResult = await supabase.storage
     .from('document_videos')
-    .upload(objectPath, encryptedFile, {
+    .upload(objectPath, file, {
       upsert: true,
-      contentType: 'application/octet-stream',
+      contentType: contentType,
       cacheControl: '60',
       onUploadProgress: (p) => {
         if (!onProgress) return;
@@ -174,45 +168,8 @@ const warmBackendConnection = async ({ force = false } = {}) => {
 };
 
 const resolveApplicantDocumentForDisplay = async (fieldName, value) => {
-  if (!value || typeof value !== 'string') {
-    return value;
-  }
-
-  if (value.startsWith('data:') || value.startsWith('blob:')) {
-    return value;
-  }
-
-  if (!value.startsWith('/api') && !value.startsWith('http')) {
-    return value;
-  }
-
-  try {
-    const result = await makeRequest(`/student/applicant/document/${fieldName}`, {
-      method: 'GET',
-    });
-    
-    if (result?.data && result.data.startsWith('data:video/')) {
-      // Convert large video data URIs to Blob URLs to prevent memory/rendering issues
-      try {
-        const arr = result.data.split(',');
-        const mime = arr[0].match(/:(.*?);/)[1];
-        const bstr = atob(arr[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) u8arr[n] = bstr.charCodeAt(n);
-        const blob = new Blob([u8arr], { type: mime });
-        return URL.createObjectURL(blob);
-      } catch (e) {
-        console.warn(`[VIDEO-BLOB] Failed to convert data URI to Blob for ${fieldName}`, e);
-        return result.data;
-      }
-    }
-    
-    return result?.data || value;
-  } catch (error) {
-    console.warn(`Failed to resolve applicant document for display: ${fieldName}`, error);
-    return value;
-  }
+  // Encryption is disabled. Return the URL directly.
+  return value;
 };
 
 // Helper function to get stored auth token
@@ -619,8 +576,7 @@ export const applicantAPI = {
    */
   uploadFaceImage: async (faceImageFile) => {
     const formData = new FormData();
-    const encrypted = await encryptDocument(faceImageFile);
-    formData.append('face_image', encrypted);
+    formData.append('face_image', faceImageFile);
     
     return makeRequest('/student/applicant/upload-face', {
       method: 'POST',
@@ -660,10 +616,8 @@ export const applicantAPI = {
    */
   uploadIdFrontBack: async (frontFile, backFile) => {
     const formData = new FormData();
-    const encFront = await encryptDocument(frontFile);
-    const encBack = await encryptDocument(backFile);
-    formData.append('id_front', encFront);
-    formData.append('id_back',  encBack);
+    formData.append('id_front', frontFile);
+    formData.append('id_back',  backFile);
 
     const url   = `${API_BASE_URL}/student/applicant/upload-id-front-back`;
     const token = getAuthToken();
@@ -685,8 +639,7 @@ export const applicantAPI = {
     const encryptedFormData = new FormData();
     for (const [key, value] of formData.entries()) {
       if (value instanceof Blob || (typeof File !== 'undefined' && value instanceof File)) {
-        const encrypted = await encryptDocument(value);
-        encryptedFormData.append(key, encrypted);
+        encryptedFormData.append(key, value);
       } else {
         encryptedFormData.append(key, value);
       }
@@ -732,8 +685,7 @@ export const applicantAPI = {
         }
       }
 
-      const encrypted = await encryptDocument(blob);
-      fData.append(fieldName, encrypted);
+      fData.append(fieldName, blob);
     };
     
     // Add document data (handling both base64 strings and potential Blob/Files)
