@@ -229,7 +229,8 @@ const decodeTokenPayload = (token) => {
 
 const getRequestErrorMessage = (error, fallbackMessage) => {
   if (error.response?.data?.message) {
-    return `${fallbackMessage}: ${error.response.data.message}`;
+    const errorType = error.response.data.error_type ? ` [${error.response.data.error_type}]` : '';
+    return `${fallbackMessage}: ${error.response.data.message}${errorType}`;
   }
 
   if (error.code === 'ECONNABORTED') {
@@ -1033,9 +1034,17 @@ export default function ScholarshipDashboard({
       }
     });
 
+    // Listen for real-time notifications
+    const unsubNotifications = socketService.onAnnouncementNotification((data) => {
+      console.log('[NOTIFICATION] Received announcement notification:', data);
+      // Show an alert for the new announcement
+      alert(`📢 ${data.title}\n\n${data.message}`);
+    });
+
     return () => {
       unsubScholarships();
       unsubAnnouncements();
+      unsubNotifications();
     };
   }, [section, providerKey]);
 

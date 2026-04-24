@@ -550,10 +550,6 @@ const StudentInfo = () => {
     const hasVideo = videoValue && (typeof videoValue === 'string' ? videoValue.length > 0 : true);
     const isDisabled = isUploadingVideo || isVerifying;
 
-    const handleCameraClick = () => {
-      openCamera(photoName);
-    };
-
     const photoBtnLabel = photoLabel || 'Image';
     const videoBtnLabel = photoLabel ? `${photoLabel} Video` : 'Video';
 
@@ -590,37 +586,6 @@ const StudentInfo = () => {
               <i className={isVerifying ? "fas fa-spinner fa-spin" : "fas fa-file-upload"} style={{ color: isDisabled ? '#94a3b8' : 'var(--primary)' }}></i>
               {isVerifying ? 'Verifying...' : (photoValue ? 'Replace' : 'Upload')}
             </label>
-          </div>
-
-          {/* CAMERA PICKER */}
-          <div style={{ flex: '1', minWidth: '140px' }}>
-            <button
-              type="button"
-              onClick={handleCameraClick}
-              disabled={isDisabled}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                padding: '0.8rem 0.5rem',
-                borderRadius: '14px',
-                border: '1px solid #cbd5e1',
-                background: isDisabled ? '#f1f5f9' : '#fff',
-                color: isDisabled ? '#64748b' : '#0f172a',
-                cursor: isDisabled ? 'not-allowed' : 'pointer',
-                fontSize: '0.8rem',
-                fontWeight: '700',
-                boxShadow: '0 4px 12px rgba(15, 23, 42, 0.05)',
-                width: '100%',
-                transition: 'all 0.2s ease',
-                opacity: isDisabled ? 0.6 : 1
-              }}
-              title="Capture from camera"
-            >
-              <i className="fas fa-camera" style={{ color: isDisabled ? '#94a3b8' : 'var(--primary)' }}></i>
-              {photoValue ? 'Retake' : 'Camera'}
-            </button>
           </div>
 
           {/* VIDEO PICKER */}

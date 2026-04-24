@@ -45,6 +45,18 @@ class SocketService {
       this._notifyHandlers('applicant_status_update', data);
     });
 
+    this.socket.on('scholarship_update', (data) => {
+      this._notifyHandlers('scholarship_update', data);
+    });
+
+    this.socket.on('announcement_update', (data) => {
+      this._notifyHandlers('announcement_update', data);
+    });
+
+    this.socket.on('announcement_notification', (data) => {
+      this._notifyHandlers('announcement_notification', data);
+    });
+
     this.socket.on('error', (data) => {
       this._notifyHandlers('error', data);
     });
@@ -78,6 +90,10 @@ class SocketService {
 
   onAnnouncementUpdate(callback) {
     return this.subscribe('announcement_update', callback);
+  }
+
+  onAnnouncementNotification(callback) {
+    return this.subscribe('announcement_notification', callback);
   }
 
   unsubscribe(event, callback) {
