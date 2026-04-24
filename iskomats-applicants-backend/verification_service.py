@@ -87,7 +87,7 @@ async def health_check():
     return {"status": "healthy", "service": "iskomats-verification-fastapi", "timestamp": time.time()}
 
 @app.post("/verify/id")
-async def api_verify_id(req: IDVerificationRequest):
+def api_verify_id(req: IDVerificationRequest):
     """
     Wraps the existing verify_id_with_ocr function.
     Maintains all existing tweaks and regex logic.
@@ -132,7 +132,7 @@ async def api_verify_id(req: IDVerificationRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/verify/document")
-async def api_verify_document(req: DocumentVerificationRequest):
+def api_verify_document(req: DocumentVerificationRequest):
     """
     Handles specialized verification for Enrollment, Grades, and Indigency.
     Ported directly from student_api.py run_ocr_check logic.

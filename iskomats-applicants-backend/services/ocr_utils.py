@@ -1210,30 +1210,18 @@ def extract_document_text(image_bytes, max_width=1600, prefer_fast_layout=False,
 
     with OCR_SEMAPHORE:
         try:
-            # Enrollment/other structured documents can use a faster single-block OCR path.
-            if prefer_fast_layout:
-                primary_psm = 6
-                skip_pass2 = True
+            if not is_id_back and not prefer_fast_layout and h > 600:
+                h_mid = h // 2
+                zone_top = img[0:h_mid, :]
+                zone_bot = img[h_mid:h, :]
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=2) as zone_executor:
+                    f_top = zone_executor.submit(_run_tesseract_on_image, zone_top, psm=3, skip_pass2=True)
+                    f_bot = zone_executor.submit(_run_tesseract_on_image, zone_bot, psm=3, skip_pass2=True)
+                    text = f"{f_top.result()}\n{f_bot.result()}"
             else:
-                primary_psm = 3
-                skip_pass2 = False
-
-            text = _run_tesseract_on_image(img, psm=primary_psm, skip_pass2=skip_pass2)
-            
-            # Optimization: Skip header pass if primary_psm is already 6. 
-            # PSM 6 on the entire image captures headers perfectly. A second PSM 6 pass is completely redundant.
-            needs_header = (primary_psm != 6)
-
-            if not is_id_back and needs_header:
-                header_height = max(int(img.shape[0] * 0.28), 1)
-                header_img = img[:header_height, :]
-                header_text = _run_tesseract_on_image(header_img, psm=6, skip_pass2=True)
-
-                if header_text.strip():
-                    normalized_text = normalize_for_ocr(text)
-                    normalized_header = normalize_for_ocr(header_text)
-                    if normalized_header and normalized_header not in normalized_text:
-                        text = f"{header_text.strip()}\n{text}".strip()
+                psm = 6 if prefer_fast_layout else 3
+                text = _run_tesseract_on_image(img, psm=psm, skip_pass2=prefer_fast_layout)
             
             # ID backs often have very sparse text (stickers).
             # If PSM3 didn't get much, try PSM11 (Sparse) and PSM6 (Uniform)
@@ -1249,6 +1237,11 @@ def extract_document_text(image_bytes, max_width=1600, prefer_fast_layout=False,
                 if len(text_block.strip()) > len(best_pass.strip()):
                     best_pass = text_block
                 text = best_pass
+            
+            _cache_set(cache_key, (text, None))
+            return text, None
+        except Exception as e:
+            return "", f"OCR error: {str(e)}"
         finally:
             clear_heavy_memory()
 
