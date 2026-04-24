@@ -646,7 +646,7 @@ const Login = () => {
           font-size: 1rem;
         }
 
-        .profile-input-wrapper input {
+        .profile-input-wrapper input, .profile-input-wrapper select {
           width: 100%;
           padding: 1rem 1.2rem 1rem 2.8rem;
           border: 1px solid rgba(255, 255, 255, 0.3);
@@ -655,16 +655,18 @@ const Login = () => {
           background: rgba(255, 255, 255, 0.1);
           color: white;
           transition: var(--transition);
+          appearance: none;
         }
 
-        .profile-input-wrapper input:focus {
+        .profile-input-wrapper input:focus, .profile-input-wrapper select:focus {
           outline: none;
           border-color: var(--primary);
           background: white;
+          color: var(--text-dark);
           box-shadow: 0 0 0 4px rgba(79, 13, 0, 0.08);
         }
 
-        .profile-input-wrapper input:focus + i {
+        .profile-input-wrapper input:focus + i, .profile-input-wrapper select:focus + i {
           color: var(--primary);
         }
 
@@ -1370,7 +1372,22 @@ const Login = () => {
                 <label>University / School</label>
                 <div className="profile-input-wrapper">
                   <i className="fas fa-university"></i>
-                    <input type="text" name="school" placeholder="Enter University / School" required />
+                  <select name="school" required>
+                    <option value="" disabled selected>Select University / School</option>
+                    <option value="DLSL/De La Salle Lipa">DLSL/De La Salle Lipa</option>
+                    <option value="NU/National University Lipa">NU/National University Lipa</option>
+                    <option value="Batangas State University">Batangas State University</option>
+                    <option value="Kolehiyo ng Lungsod ng Lipa">Kolehiyo ng Lungsod ng Lipa</option>
+                    <option value="Philippine State College of Aeronautics">Philippine State College of Aeronautics</option>
+                    <option value="Lipa City Colleges">Lipa City Colleges</option>
+                    <option value="University of Batangas">University of Batangas</option>
+                    <option value="New Era University">New Era University</option>
+                    <option value="Batangas College of Arts and Sciences">Batangas College of Arts and Sciences</option>
+                    <option value="Royal British College">Royal British College</option>
+                    <option value="STI Academic Center">STI Academic Center</option>
+                    <option value="AMA Computer College">AMA Computer College</option>
+                    <option value="ICT-ED">ICT-ED</option>
+                  </select>
                 </div>
               </div>
 

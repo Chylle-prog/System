@@ -3200,7 +3200,7 @@ export default function ScholarshipDashboard({
       { label: 'Accepted', value: filteredAccepted.length.toLocaleString(), trend: '+8.1%', color: 'purple' },
       { label: 'Rejected', value: filteredRejected.length.toLocaleString(), trend: '-2.4%', color: 'red' },
       { label: 'Cancelled', value: filteredCancelled.length.toLocaleString(), trend: '0.0%', color: 'gray' },
-      { label: 'Avg. Processing', value: `${historicalData.performanceMetrics.averageProcessingTime}d`, trend: '-0.5d', color: 'amber' },
+      { label: 'Avg. Processing', value: `${historicalData.performanceMetrics?.averageProcessingTime || 0}d`, trend: '-0.5d', color: 'amber' },
     ];
 
     return (
@@ -3369,11 +3369,11 @@ export default function ScholarshipDashboard({
                 <div className="space-y-3">
                   <div className="flex items-center justify-between border-b border-white/10 pb-2">
                     <span className="text-xs font-bold text-rose-200">Top Barangay</span>
-                    <span className="font-black">{historicalData.locationStats[0]?.location || 'N/A'}</span>
+                    <span className="font-black">{historicalData.locationStats?.[0]?.location || 'N/A'}</span>
                   </div>
                   <div className="flex items-center justify-between border-b border-white/10 pb-2">
                     <span className="text-xs font-bold text-rose-200">Leading Source</span>
-                    <span className="font-black text-xs truncate max-w-[120px]">{historicalData.schoolStats[0]?.school || 'N/A'}</span>
+                    <span className="font-black text-xs truncate max-w-[120px]">{historicalData.schoolStats?.[0]?.school || 'N/A'}</span>
                   </div>
                 </div>
               </div>
@@ -3403,9 +3403,9 @@ export default function ScholarshipDashboard({
               <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100 flex flex-col justify-center">
                 <h4 className="text-[#800020] font-black text-xl mb-3">Academic Partner Insights</h4>
                 <p className="text-gray-700 leading-relaxed mb-4">
-                  {historicalData.schoolStats.length > 0 ? (
+                  {historicalData.schoolStats?.length > 0 ? (
                     <>
-                      Current data shows that <strong>{historicalData.schoolStats[0].school}</strong> remains the primary source of applicants for the {scholarshipLabel}, contributing to {historicalData.schoolStats[0].percentage}% of the total application volume.
+                      Current data shows that <strong>{historicalData.schoolStats[0]?.school}</strong> remains the primary source of applicants for the {scholarshipLabel}, contributing to {historicalData.schoolStats[0]?.percentage}% of the total application volume.
                     </>
                   ) : (
                     "No school distribution data available yet."
@@ -3414,7 +3414,7 @@ export default function ScholarshipDashboard({
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-white p-4 rounded-xl border border-blue-100">
                     <p className="text-[10px] font-black text-gray-400 uppercase">Top Institution</p>
-                    <p className="font-bold text-gray-800 truncate text-xs">{historicalData.schoolStats[0]?.school || 'N/A'}</p>
+                    <p className="font-bold text-gray-800 truncate text-xs">{historicalData.schoolStats?.[0]?.school || 'N/A'}</p>
                   </div>
                   <div className="bg-white p-4 rounded-xl border border-blue-100">
                     <p className="text-[10px] font-black text-gray-400 uppercase">Institutional Diversity</p>

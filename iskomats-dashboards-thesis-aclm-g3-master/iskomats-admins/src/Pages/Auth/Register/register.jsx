@@ -93,7 +93,7 @@ const Register = () => {
       // Check if email already exists and what account type it is
       // Pass 'admin' to only check for conflicts with admin accounts
       const checkResponse = await authAPI.checkEmail(formData.email, 'admin');
-      
+
       // If email is not available for admin registration, reject it
       if (checkResponse.data && checkResponse.data.available === false) {
         setFormData({
@@ -103,7 +103,7 @@ const Register = () => {
         });
         return;
       }
-      
+
       // If we get here, email is available for admin registration
       // (whether or not it exists as an applicant account)
 
@@ -325,7 +325,7 @@ const Register = () => {
                     I agree to the terms and conditions of the Iskomats Scholarship Program.
                   </span>
                 </label>
-                
+
                 {/* Button */}
                 <button
                   type="submit"
