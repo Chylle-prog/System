@@ -899,16 +899,16 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
                 # -- PARALLELIZE SUB-SCANS for IDs ONLY (Optimization #6) ---
                 from concurrent.futures import ThreadPoolExecutor
                 with ThreadPoolExecutor(max_workers=3) as sub_executor:
-                    # 1. Start full image scan (PSM 6 is MUCH faster for ID blocks)
-                    best_future = sub_executor.submit(_run_tesseract_on_image, img, psm=6, skip_pass2=True)
+                    # 1. Start full image scan (PSM 6 is good for ID blocks)
+                    best_future = sub_executor.submit(_run_tesseract_on_image, img, psm=6, skip_pass2=False)
                     
                     # 2. Start column sub-scans
                     h_total, w_total = img.shape[:2]
-                    header_h, left_w = int(h_total * 0.35), int(w_total * 0.52)
+                    header_h, left_w = int(h_total * 0.45), int(w_total * 0.55) # Slightly wider crop for headers
                     l_c, r_c = img[:header_h, :left_w], img[:header_h, left_w:]
                     
-                    left_future = sub_executor.submit(_run_tesseract_on_image, l_c, psm=6, skip_pass2=True)
-                    right_future = sub_executor.submit(_run_tesseract_on_image, r_c, psm=6, skip_pass2=True)
+                    left_future = sub_executor.submit(_run_tesseract_on_image, l_c, psm=6, skip_pass2=False)
+                    right_future = sub_executor.submit(_run_tesseract_on_image, r_c, psm=6, skip_pass2=False)
                     
                     # SEQUENTIAL ACQUISITION for Early-Exit
                     best_text = best_future.result()
