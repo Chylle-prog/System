@@ -4039,10 +4039,18 @@ def get_applicant_image(applicant_no, column_name):
 
             row = fetch_applicant_document_values(cursor, applicant_no, [column_name])
         
-        if not row or not row[column_name]:
-            return jsonify({'message': 'Image not found'}), 404
+            if not row or not row.get(column_name):
+                return jsonify({'message': 'Image not found'}), 404
         
-        data = row[column_name]
+            data = row[column_name]
+        
+            # Materialize memoryview to bytes BEFORE closing the connection,
+            # since psycopg2 memoryview objects reference the connection buffer
+            # and become invalid after the connection context exits.
+            if hasattr(data, 'tobytes'):
+                data = data.tobytes()
+            elif isinstance(data, memoryview):
+                data = bytes(data)
         
         # --- CLOUD STORAGE REDIRECT (Optimization #8) ---
         # If the data is a string starting with http, it's a cloud URL. Redirect instead of serving bytes.
@@ -4070,16 +4078,11 @@ def get_applicant_image(applicant_no, column_name):
                 print(f"[APPLICANT IMAGE] Redirecting {column_name} (Applicant {applicant_no}) to cloud URL: {normalized_url[:60]}...", flush=True)
                 return redirect(normalized_url)
 
-        # Convert memoryview to bytes if needed
-        if hasattr(data, 'tobytes'):
-            data = data.tobytes()
-        elif not isinstance(data, (bytes, bytearray)):
-            # If it's a string but doesn't start with http, it might be a base64 encoded string or a raw value
-            # Only convert to bytes if it's not already binary
+        # Convert to bytes if not already
+        if not isinstance(data, (bytes, bytearray)):
             try:
                 data = bytes(data)
             except (TypeError, ValueError):
-                # Fallback: if it's a string, encode it
                 if isinstance(data, str):
                     data = data.encode('utf-8')
                 else:
@@ -4105,7 +4108,9 @@ def get_applicant_image(applicant_no, column_name):
         )
         
     except Exception as e:
-        print(f"[APPLICANT IMAGE] Error: {str(e)}")
+        print(f"[APPLICANT IMAGE] Error serving {column_name} for applicant {applicant_no}: {str(e)}", flush=True)
+        import traceback
+        traceback.print_exc()
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
 # ===== UTILITY ENDPOINTS =====
