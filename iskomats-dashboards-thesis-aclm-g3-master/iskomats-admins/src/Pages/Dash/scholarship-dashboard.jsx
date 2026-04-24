@@ -2993,7 +2993,7 @@ export default function ScholarshipDashboard({
                       <td className="px-4 py-3 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
                       <td className="px-4 py-3">
                         <div className="flex gap-1">
-                          <button type="button" onClick={() => viewApplicantFn(idx, 'all')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
+                          <button type="button" onClick={() => viewApplicantFn(idx, 'rejected')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
                             View
                           </button>
                         </div>
@@ -3020,7 +3020,7 @@ export default function ScholarshipDashboard({
                       <td className="px-4 py-3 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
                       <td className="px-4 py-3">
                         <div className="flex gap-1">
-                          <button type="button" onClick={() => viewApplicantFn(idx, 'all')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
+                          <button type="button" onClick={() => viewApplicantFn(idx, 'cancelled')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
                             View
                           </button>
                         </div>

@@ -4274,16 +4274,7 @@ def upload_video():
             # Override extension and content_type because faststart_video_stream forces .mp4 output
             ext = '.mp4'
             content_type = 'video/mp4'
-        # --- ENCRYPTION (Infrastructure Preparation) ---
-        if _fernet:
-            try:
-                # Only encrypt if not already encrypted
-                if not (isinstance(video_bytes, (bytes, bytearray)) and video_bytes.startswith(b'gAAAA')):
-                    video_bytes = _fernet.encrypt(bytes(video_bytes))
-                    file_size = len(video_bytes)
-                    print(f"[VIDEO-UPLOAD] Encrypted {field_name} before upload", flush=True)
-            except Exception as e:
-                print(f"[VIDEO-UPLOAD WARNING] Encryption failed for {field_name}, uploading raw: {e}", flush=True)
+        # Encryption removed
 
         try:
             from supabase import create_client
