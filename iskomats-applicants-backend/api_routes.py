@@ -1280,21 +1280,19 @@ def notify_announcement_applicants(
     send_email_alerts=True,
     notification_title_prefix='New Announcement',
 ):
-    conn = None
+    print(f"[ANNOUNCEMENT NOTIF] Starting task: title='{title}', pro_no={provider_no}, all={send_to_all_applicants}", flush=True)
+    recipients = []
     try:
         with get_db() as conn:
             cur = conn.cursor()
-
             if send_to_all_applicants:
+                print("[ANNOUNCEMENT NOTIF] Fetching ALL verified applicants", flush=True)
                 applicant_email_table = get_applicant_email_table(cur)
                 cur.execute(
-                    f"""
-                    SELECT DISTINCT applicant_no
-                    FROM {applicant_email_table}
-                    WHERE is_verified = TRUE AND applicant_no IS NOT NULL
-                    """
+                    f"SELECT DISTINCT applicant_no FROM {applicant_email_table} WHERE is_verified = TRUE AND applicant_no IS NOT NULL"
                 )
             else:
+                print(f"[ANNOUNCEMENT NOTIF] Fetching applicants for provider {provider_no}", flush=True)
                 cur.execute(
                     """
                     SELECT DISTINCT ast.applicant_no
@@ -1304,53 +1302,50 @@ def notify_announcement_applicants(
                     """,
                     (provider_no,),
                 )
-
             recipients = cur.fetchall()
-            print(f"[ANNOUNCEMENT NOTIF] Found {len(recipients)} recipients for announcement")
+        
+        # Connection is now closed (outside the with block)
+        print(f"[ANNOUNCEMENT NOTIF] Found {len(recipients)} recipients. Starting notification loop...", flush=True)
 
-            provider_label = (provider_name or 'ISKOMATS').strip()
-            notification_title = f"{notification_title_prefix}: {title}"
-            notification_message = message[:100] + ('...' if len(message) > 100 else '')
+        provider_label = (provider_name or 'ISKOMATS').strip()
+        notification_title = f"{notification_title_prefix}: {title}"
+        notification_message = message[:100] + ('...' if len(message) > 100 else '')
 
-            if provider_label and provider_label.lower() != 'iskomats':
-                notification_message = f"{provider_label}: {notification_message}"
+        if provider_label and provider_label.lower() != 'iskomats':
+            notification_message = f"{provider_label}: {notification_message}"
 
-            email_success_count = 0
-            email_failure_count = 0
+        email_success_count = 0
+        email_failure_count = 0
 
-            for recipient in recipients:
-                app_no = recipient['applicant_no']
-                print(f"[ANNOUNCEMENT NOTIF] Processing user {app_no}")
+        for recipient in recipients:
+            app_no = recipient['applicant_no']
+            try:
+                # Each call to create_notification handles its own connection and commit
                 result = create_notification(
                     user_no=app_no,
                     title=notification_title,
                     message=notification_message,
                     notif_type='announcement',
                     send_email=send_email_alerts,
-                    db_conn=conn, # Use the shared connection
                 )
+                
+                # Force a UI refresh for the student portal via socket
+                safe_emit('notification_update', {'user_no': app_no}, broadcast=True)
 
                 if send_email_alerts:
                     if result and result.get('email_sent'):
                         email_success_count += 1
                     else:
-                        print(f"[ANNOUNCEMENT NOTIF] Email failed for user {app_no}: {result.get('reason')}")
                         email_failure_count += 1
+            except Exception as inner_e:
+                print(f"[ANNOUNCEMENT NOTIF ERROR] Failed for user {app_no}: {inner_e}", flush=True)
 
-            # CRITICAL: Commit the transaction so notifications are actually saved!
-            conn.commit()
+        print(f"[ANNOUNCEMENT NOTIF] Task finished. Emails: {email_success_count} success, {email_failure_count} failure", flush=True)
 
-            if send_email_alerts:
-                print(
-                    f"[ANNOUNCEMENT EMAIL] Notification email dispatch finished for provider {provider_no}: "
-                    f"sent={email_success_count}, failed={email_failure_count}",
-                    flush=True,
-                )
     except Exception as exc:
-        print(f"[NOTIF ERROR] Failed to notify announcement recipients: {exc}", flush=True)
-    finally:
-        if conn:
-            conn.close()
+        print(f"[ANNOUNCEMENT NOTIF CRITICAL ERROR] {exc}", flush=True)
+        import traceback
+        traceback.print_exc()
 
 
 def ensure_admin_activity_log_table(cursor):
