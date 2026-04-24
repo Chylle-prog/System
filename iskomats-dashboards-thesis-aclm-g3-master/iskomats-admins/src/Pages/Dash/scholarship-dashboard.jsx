@@ -240,6 +240,7 @@ const initialDashboardData = {
   applicants: [],
   accepted: [],
   rejected: [],
+  declined: [],
   cancelled: [],
   inbox: [], // Add later (Missing Schema)
   scholarshipPosts: [], // Add later (Missing Schema)
@@ -406,7 +407,8 @@ export default function ScholarshipDashboard({
           ...prev,
           applicants: uniqueApplicants.filter(a => a.status === 'Pending'),
           accepted: uniqueApplicants.filter(a => a.status === 'Accepted'),
-          rejected: uniqueApplicants.filter(a => a.status === 'Rejected' || a.status === 'Declined'),
+          rejected: uniqueApplicants.filter(a => a.status === 'Rejected'),
+          declined: uniqueApplicants.filter(a => a.status === 'Declined' || a.status === 'Rejected'),
           cancelled: uniqueApplicants.filter(a => a.status === 'Cancelled'),
           historicalData
         }));
@@ -566,7 +568,7 @@ export default function ScholarshipDashboard({
             }
 
             // Recalculate historical data
-            const allApplicants = [...newData.applicants, ...newData.accepted, ...newData.declined];
+            const allApplicants = [...(newData.applicants || []), ...(newData.accepted || []), ...(newData.rejected || []), ...(newData.declined || []), ...(newData.cancelled || [])];
             newData.historicalData = calculateHistoricalData(allApplicants);
           }
 
@@ -863,7 +865,9 @@ export default function ScholarshipDashboard({
         ...prev,
         applicants: newApplicants,
         accepted: newAccepted,
+        rejected: requestedStatus === 'Rejected' ? [...prev.rejected, { ...applicant, status: 'Rejected' }] : prev.rejected,
         declined: newDeclined,
+        cancelled: requestedStatus === 'Cancelled' ? [...prev.cancelled, { ...applicant, status: 'Cancelled' }] : prev.cancelled,
       };
     });
 
@@ -1318,14 +1322,20 @@ export default function ScholarshipDashboard({
 
   const scholarshipFinderResults = useMemo(() => {
     const search = normalizeFinderText(finderSearch);
-    const allTrackedApplicants = [...data.applicants, ...data.accepted, ...data.declined];
+    const allTrackedApplicants = [
+      ...(data.applicants || []),
+      ...(data.accepted || []),
+      ...(data.rejected || []),
+      ...(data.declined || []),
+      ...(data.cancelled || [])
+    ];
 
     return (data.scholarshipPosts || [])
       .map((post) => {
         const scholarshipId = String(post.reqNo || post.id || '');
-        const acceptedCount = Number(post.acceptedCount ?? data.accepted.filter((applicant) => matchesScholarshipSelection(applicant, scholarshipId)).length);
-        const pendingCount = Number(post.pendingCount ?? data.applicants.filter((applicant) => matchesScholarshipSelection(applicant, scholarshipId)).length);
-        const declinedCount = Number(post.declinedCount ?? data.declined.filter((applicant) => matchesScholarshipSelection(applicant, scholarshipId)).length);
+        const acceptedCount = Number(post.acceptedCount ?? (data.accepted || []).filter((applicant) => matchesScholarshipSelection(applicant, scholarshipId)).length);
+        const pendingCount = Number(post.pendingCount ?? (data.applicants || []).filter((applicant) => matchesScholarshipSelection(applicant, scholarshipId)).length);
+        const declinedCount = Number(post.declinedCount ?? (data.declined || data.rejected || []).filter((applicant) => matchesScholarshipSelection(applicant, scholarshipId)).length);
         const totalApplicants = Number(post.totalApplicants ?? (acceptedCount + pendingCount + declinedCount));
         const slotLimit = Number(post.slots ?? 0);
         const availableSlots = post.availableSlots ?? Math.max(slotLimit - acceptedCount, 0);
@@ -1691,7 +1701,7 @@ export default function ScholarshipDashboard({
 
   const recommendStudents = () => {
     const count = parseInt(recommendCount) || 10;
-    const top = [...data.applicants].sort((a, b) => b.grade - a.grade).slice(0, count);
+    const top = [...(data.applicants || [])].sort((a, b) => b.grade - a.grade).slice(0, count);
     setRecommended(top);
     setRecommendationModal(true);
   };
@@ -1827,7 +1837,13 @@ export default function ScholarshipDashboard({
     const grouped = {};
 
     // Seed with all known applicants so rooms show up even if no messages exist yet
-    const allKnownApplicants = [...(data.applicants || []), ...(data.accepted || []), ...(data.declined || [])];
+    const allKnownApplicants = [
+      ...(data.applicants || []),
+      ...(data.accepted || []),
+      ...(data.rejected || []),
+      ...(data.declined || []),
+      ...(data.cancelled || [])
+    ];
     allKnownApplicants.forEach(a => {
       const key = (a.applicant_no || a.id || '').toString();
       if (!key) return;
@@ -4630,7 +4646,7 @@ export default function ScholarshipDashboard({
                     setRecommendCount(e.target.value);
                     // Recalculate recommendations with new count
                     const count = parseInt(e.target.value) || 10;
-                    const top = [...data.applicants].sort((a, b) => b.grade - a.grade).slice(0, count);
+                    const top = [...(data.applicants || [])].sort((a, b) => b.grade - a.grade).slice(0, count);
                     setRecommended(top);
                   }}
                   className="w-16 text-center text-lg font-black bg-transparent border-none outline-none text-[#800020]"
