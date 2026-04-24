@@ -2,18 +2,18 @@ import re
 import difflib
 
 HARD_CODED_SCHOOL_NAMES = [
-    'DLSL/De La Salle Lipa',
-    'NU/National University Lipa',
-    'Batangas State University',
-    'Kolehiyo ng Lungsod ng Lipa',
-    'Philippine State College of Aeronautics',
-    'Lipa City Colleges',
-    'University of Batangas',
-    'New Era University',
-    'Batangas College of Arts and Sciences',
-    'Royal British College',
-    'STI Academic Center',
-    'AMA Computer College',
+    'DLSL/De La Salle Lipa/De La Salle',
+    'NU/National University Lipa/National University',
+    'Batangas State University/BatSU',
+    'Kolehiyo ng Lungsod ng Lipa/KLL',
+    'Philippine State College of Aeronautics/PhilSCA',
+    'Lipa City Colleges/LCC',
+    'University of Batangas/UB',
+    'New Era University/NEU',
+    'Batangas College of Arts and Sciences/BCAS',
+    'Royal British College/RBC',
+    'STI Academic Center/STI',
+    'AMA Computer College/AMA',
     'ICT-ED'
 ]
 

@@ -532,7 +532,7 @@ def gpa_matches_text(raw_text, expected_gpa):
         return s
 
     # 2. Extract all potential numbers from text
-    num_pattern = r'\b(\d+\s*[\.\,]\s*[a-zA-Z0-9]+|[a-zA-Z0-9]+)\b'
+    num_pattern = r'\b(\d+\s*[\.\,]\s*[a-zA-Z0-9]{1,4}|[a-zA-Z0-9]{1,5})\b'
     
     candidates = []
     # a. Check labeled sections first (GPA, GWA, etc)
@@ -546,28 +546,37 @@ def gpa_matches_text(raw_text, expected_gpa):
     
     for pattern in gpa_patterns:
         for m in re.finditer(pattern, raw_text_str, re.IGNORECASE):
-            candidates.append(clean_num(m.group(1)))
+            val = clean_num(m.group(1))
+            if val and val not in candidates:
+                candidates.append(val)
             
     # b. Absolute fallback: all words that look like numbers
     for m in re.finditer(num_pattern, raw_text_str):
         c = clean_num(m.group(1))
-        if c not in candidates:
-            candidates.append(c)
+        # Filter for things that look like GPA (usually between 1 and 100)
+        try:
+            f_c = float(c)
+            if 1.0 <= f_c <= 100.0 and c not in candidates:
+                candidates.append(c)
+        except: continue
 
-    # 3. Apply the "Precision Match" rule
+    # 3. Apply the "Robust Match" rule
     target_clean = clean_num(expected_digits)
     
     for c in candidates:
-        if c.startswith(target_clean):
-            return True, expected_digits, [c]
+        # Check both directions for prefix matching (handles user truncation AND OCR truncation)
+        if c.startswith(target_clean) or target_clean.startswith(c):
+            if len(c) >= 2 and len(target_clean) >= 2: # Avoid matching single digits
+                return True, expected_digits, [c]
             
-    # 4. Fallback for float matching
+    # 4. Fallback for float matching with expanded tolerance (0.05)
     try:
         expected_val = float(target_clean)
         for c in candidates:
             try:
                 c_val = float(c)
-                if abs(c_val - expected_val) < 0.001:
+                # 0.05 tolerance handles common rounding/truncation (e.g. 3.43 vs 3.4375)
+                if abs(c_val - expected_val) < 0.05:
                     return True, expected_digits, [c]
             except: continue
     except: pass
