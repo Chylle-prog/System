@@ -78,7 +78,7 @@ def call_fastapi_verify_document(image_bytes, doc_type, first_name, middle_name,
         response = requests.post(
             f"{VERIFICATION_SERVICE_URL}/verify/document",
             json=payload,
-            timeout=45
+            timeout=60
         )
         
         logger.info(f"[VERIF-CLIENT] FastAPI response status: {response.status_code}")

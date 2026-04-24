@@ -239,8 +239,22 @@ def api_verify_document(req: DocumentVerificationRequest):
             
         elif doc_type == 'SchoolIDBack':
             raw_t, _ = extract_document_text(image_bytes, is_id_back=True)
-            v_t = bool(raw_t and raw_t.strip())
-            msg = 'Verified' if v_t else 'Unable to read school ID back text'
+            
+            # Extract and validate academic year from back ID
+            ay_ok = True
+            found_ay = None
+            if req.expected_academic_year:
+                found_ay = extract_school_year_from_text(raw_t)
+                ay_ok = academic_year_matches_expected(found_ay, req.expected_academic_year)
+            
+            v_t = bool(raw_t and raw_t.strip() and ay_ok)
+            msg = 'Back ID verified' if v_t else 'Verification failed'
+            if not ay_ok:
+                msg += " (Year mismatch)"
+            elif not raw_t or not raw_t.strip():
+                msg = "Unable to read school ID back text"
+                
+            meta = {'ay_ok': ay_ok, 'detected_year': found_ay}
             
         elif doc_type == 'Indigency':
             # TWEAK: High res (1200) and 85% crop for certificates
