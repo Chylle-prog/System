@@ -1306,6 +1306,7 @@ def notify_announcement_applicants(
                 )
 
             recipients = cur.fetchall()
+            print(f"[ANNOUNCEMENT NOTIF] Found {len(recipients)} recipients for announcement")
 
             provider_label = (provider_name or 'ISKOMATS').strip()
             notification_title = f"{notification_title_prefix}: {title}"
@@ -1318,19 +1319,26 @@ def notify_announcement_applicants(
             email_failure_count = 0
 
             for recipient in recipients:
+                app_no = recipient['applicant_no']
+                print(f"[ANNOUNCEMENT NOTIF] Processing user {app_no}")
                 result = create_notification(
-                    user_no=recipient['applicant_no'],
+                    user_no=app_no,
                     title=notification_title,
                     message=notification_message,
                     notif_type='announcement',
                     send_email=send_email_alerts,
+                    db_conn=conn, # Use the shared connection
                 )
 
                 if send_email_alerts:
                     if result and result.get('email_sent'):
                         email_success_count += 1
                     else:
+                        print(f"[ANNOUNCEMENT NOTIF] Email failed for user {app_no}: {result.get('reason')}")
                         email_failure_count += 1
+
+            # CRITICAL: Commit the transaction so notifications are actually saved!
+            conn.commit()
 
             if send_email_alerts:
                 print(

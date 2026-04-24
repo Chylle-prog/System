@@ -188,6 +188,7 @@ def _create_notification_internal(conn, user_no, title, message, notif_type='mes
         if _socketio:
             try:
                 room = f"applicant_{user_no}"
+                print(f"[NOTIF SOCKET] Emitting 'new_notification' to room {room} for notif {notif_id}")
                 _socketio.emit('new_notification', {
                     'id': notif_id,
                     'title': title,
@@ -195,8 +196,11 @@ def _create_notification_internal(conn, user_no, title, message, notif_type='mes
                     'type': notif_type,
                     'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 }, room=room)
+                print(f"[NOTIF SOCKET] Emit successful for user {user_no}")
             except Exception as socket_err:
                 print(f"[NOTIF SOCKET ERROR] Failed to emit: {socket_err}")
+        else:
+            print(f"[NOTIF SOCKET SKIP] _socketio not initialized - cannot send real-time alert to user {user_no}")
 
         if not send_email:
             if commit: conn.commit()
