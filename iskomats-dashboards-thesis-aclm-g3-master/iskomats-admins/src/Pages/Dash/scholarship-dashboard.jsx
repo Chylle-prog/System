@@ -2518,7 +2518,7 @@ export default function ScholarshipDashboard({
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-[#800020] mb-1">Semester *</label>
+                <label className="block text-sm font-semibold text-[#800020] mb-1">Semester for ID and COE *</label>
                 <select
                   name="semester"
                   value={formData.semester}
@@ -2533,7 +2533,7 @@ export default function ScholarshipDashboard({
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-[#800020] mb-1">Academic Year *</label>
+                <label className="block text-sm font-semibold text-[#800020] mb-1">Academic Year for ID and COE*</label>
                 <input
                   type="text"
                   name="year"
@@ -2572,34 +2572,6 @@ export default function ScholarshipDashboard({
                   placeholder="e.g. 2024-2025"
                   required
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-[#800020] mb-1">Course/Program Requirement *</label>
-                <select
-                  name="course"
-                  value={formData.course}
-                  onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 font-bold text-[#800020]"
-                  required
-                >
-                  <option value="All">All Courses</option>
-                  {COURSES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-[#800020] mb-1">Program Type *</label>
-                <select
-                  name="program_type"
-                  value={formData.program_type}
-                  onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 font-bold text-[#800020]"
-                  required
-                >
-                  <option value="All">All Programs</option>
-                  <option value="LGU">LGU (Local)</option>
-                  <option value="CHED">CHED (National)</option>
-                  <option value="Private">Private Provider</option>
-                </select>
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-[#800020] mb-1">Description *</label>
@@ -4488,11 +4460,10 @@ export default function ScholarshipDashboard({
                   const isFromMe = msg.is_student_sender === false;
                   return (
                     <div key={msg.id} className={`flex ${isFromMe ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[80%] rounded-2xl p-4 shadow-sm border ${
-                        isFromMe 
-                          ? 'bg-[#800020] text-white border-[#800020]' 
-                          : 'bg-gray-50 text-gray-900 border-gray-200'
-                      }`}>
+                      <div className={`max-w-[80%] rounded-2xl p-4 shadow-sm border ${isFromMe
+                        ? 'bg-[#800020] text-white border-[#800020]'
+                        : 'bg-gray-50 text-gray-900 border-gray-200'
+                        }`}>
                         <div className="flex items-center justify-between mb-2 gap-8">
                           <span className={`font-semibold text-xs ${isFromMe ? 'text-white/90' : 'text-[#800020]'}`}>
                             {isFromMe ? 'Me' : (msg.studentName || msg.username || 'Applicant')}
@@ -4504,9 +4475,9 @@ export default function ScholarshipDashboard({
                         <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.message}</p>
                         {!isFromMe && (
                           <div className="mt-2 flex items-center justify-end">
-                            <button 
-                              type="button" 
-                              onClick={() => toggleStar(msg.id)} 
+                            <button
+                              type="button"
+                              onClick={() => toggleStar(msg.id)}
                               className={`p-1.5 rounded-lg transition-colors ${msg.starred ? 'text-yellow-500 bg-yellow-50' : 'text-gray-300 hover:bg-gray-100'}`}
                             >
                               <FaStar size={12} />
