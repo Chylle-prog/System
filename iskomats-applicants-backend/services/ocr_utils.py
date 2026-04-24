@@ -574,7 +574,13 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
     if target_first_name or target_middle_name or target_last_name:
         def check_name_part(name_part, is_middle=False, strictness=0.85):
             if not name_part: return True, 1.0
-            n_words = [w.strip() for w in normalize_for_ocr(name_part).split() if len(w.strip()) >= 2]
+            # 1.a Title Filtering: Ignore common titles that might be in profile but not on documents
+            titles_to_ignore = {'governor', 'honorable', 'hon', 'mayor', 'dr', 'doctor', 'mr', 'ms', 'mrs', 'atty', 'attorney'}
+            n_words = [w.strip() for w in normalize_for_ocr(name_part).split() if len(w.strip()) >= 2 and w.strip() not in titles_to_ignore]
+            if not n_words: 
+                # Fallback to unfiltered if everything was a title (e.g. name is just "Mr. X")
+                n_words = [w.strip() for w in normalize_for_ocr(name_part).split() if len(w.strip()) >= 2]
+            
             if not n_words: n_words = [w.strip() for w in normalize_for_ocr(name_part).split() if w.strip()]
             f_count = 0
             
@@ -646,8 +652,8 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
                     if m in all_ocr_words:
                         return True, 1.0
 
-            # Higher bar for verification success: 0.7 for Indigency, 0.80 for others
-            return p_ratio >= (0.7 if is_indigency else 0.80), p_ratio
+            # Higher bar for verification success: 0.6 for Indigency (lenient for certificates), 0.80 for others
+            return p_ratio >= (0.6 if is_indigency else 0.80), p_ratio
 
         first_ok, first_ratio = check_name_part(target_first_name, is_middle=False)
         middle_ok, middle_ratio = check_name_part(target_middle_name, is_middle=True)
@@ -729,8 +735,14 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
     detected_brgy = []
     if is_indigency:
         # Search for words following "Barangay" or "Brgy"
-        brgy_matches = re.findall(r'(?:barangay|brgy)\.?\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)?)', ocr_text, re.IGNORECASE)
+        # Lenient regex: catches Barangay Bolbok, BRGY. 12, Barangay SAN JOSE
+        brgy_matches = re.findall(r'(?:barangay|brgy)\.?\s+([A-Z0-9][A-Za-z0-9]+(?:\s+[A-Z0-9][A-Za-z0-9]+)?)', ocr_text, re.IGNORECASE)
         detected_brgy = list(set([m.strip() for m in brgy_matches if len(m.strip()) > 2]))
+        
+        # If explicitly looking for a target address and we found it but regex missed it (e.g. no "Brgy" prefix)
+        # add the target to the feedback list so the user sees it was detected.
+        if target_address and a_verified and not any(normalize_for_ocr(target_address) in normalize_for_ocr(b) for b in detected_brgy):
+            detected_brgy.append(target_address)
 
     # 2.8 School Name Matching — delegated to school_utils for consistent logic
     school_ok = True
