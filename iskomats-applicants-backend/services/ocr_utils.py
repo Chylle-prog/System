@@ -998,20 +998,11 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             return False, f"Image quality issue: {quality_reason}", "", 0.0
         
         # Simple resize to ensure minimum resolution for OCR
-        target_w = 1600 # Slightly higher for better detail
-        if w < target_w or w > (target_w + 500):
-            scale = target_w / w
-            img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
-            h, w = img.shape[:2]
-            print(f"[OCR-DIAG] Resized to {w}x{h}", flush=True)
-            
-        # Center Crop: REDUCED to 98% (Only remove very edge artifacts)
-        if not is_indigency:
-            cw, ch = int(w * 0.98), int(h * 0.98)
-            x0, y0 = (w - cw) // 2, (h - ch) // 2
-            img = img[y0:y0+ch, x0:x0+cw]
-            h, w = img.shape[:2]
-            print(f"[OCR-DIAG] Mild center crop to {w}x{h}", flush=True)
+        # SIMPLE RELIABLE PREPROCESSING (Matches stable pre-FastAPI path)
+        if w > 1400: # Standardize but don't over-resize
+            scale = 1400 / w
+            img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+            print(f"[OCR-DIAG] Standardized to {img.shape[1]}x{img.shape[0]}", flush=True)
     except Exception as e:
         return False, f"Preprocessing error: {str(e)}", "", {'name_ok': False, 'addr_ok': False, 'error': str(e)}
 
@@ -1023,109 +1014,54 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
     best_text = ""
     print(f"[OCR] Processing ID Verification for {expected_first_name} {expected_last_name}...", flush=True)
     
-    with OCR_SEMAPHORE:
-        try:
-            t_start = time.time()
-            # Indigency Turbo Path (Optimization #7): Parallel Dual-Zone Scanning
-            if is_indigency:
-                h_total = img.shape[0]
-                # Zone 1: Top 55% (Usually contains header and student name)
-                # Zone 2: Middle-to-Bottom 60% (Catch barangay and body text)
-                zone1 = img[:int(h_total * 0.55), :]
-                zone2 = img[int(h_total * 0.40):, :]  # Overlap at 40-55%
-                
-                from concurrent.futures import ThreadPoolExecutor
-                with ThreadPoolExecutor(max_workers=2) as fast_executor:
-                    f1 = fast_executor.submit(_run_tesseract_on_image, zone1, psm=6, skip_pass2=True)
-                    f2 = fast_executor.submit(_run_tesseract_on_image, zone2, psm=6, skip_pass2=True)
-                    
-                    t1, t2 = f1.result(), f2.result()
-                    
-                # Combine but check specifically
-                for fast_text in [t1, t2, f"{t1}\n{t2}"]:
-                    name_v, addr_v, found_kw, ratio, meta = _perform_text_matching(fast_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
-                    if name_v and addr_v:
-                        print(f"[OCR PERF] SUCCESS (Early Exit zone1+zone2) after {time.time() - t_start:.2f}s", flush=True)
-                        details = {'name_ok': True, 'addr_ok': True, 'name_ratio': ratio, 'keywords': found_kw, 'fast_path': True, 'detected_brgy': meta.get('detected_brgy', [])}
-                        return True, "Verified", fast_text, details
+    try:
+        t_start = time.time()
+        
+        # ═══ STABLE SCANNING PATHS (Matches pre-FastAPI baseline) ═══
+        if is_indigency:
+            # Parallel Dual-Zone Scanning for Certificates
+            h_total = img.shape[0]
+            z1 = img[:int(h_total * 0.55), :]
+            z2 = img[int(h_total * 0.40):, :]
             
-                # If zone 1 alone didn't do it, combine zone 1 and 2. 
-                best_text = f"{t1}\n{t2}"
-            else:
-                # -- ADAPTIVE MULTI-ZONE SCANNING (Aligned with Indigency Path) --
-                from concurrent.futures import ThreadPoolExecutor
-                h_total = img.shape[0]
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=2) as fast_executor:
+                f1 = fast_executor.submit(_run_tesseract_on_image, z1, psm=6, skip_pass2=True)
+                f2 = fast_executor.submit(_run_tesseract_on_image, z2, psm=6, skip_pass2=True)
+                t1, t2 = f1.result(), f2.result()
+            best_text = f"{t1}\n{t2}"
+        else:
+            # High-Resolution Full Scan for IDs
+            with OCR_SEMAPHORE:
+                best_text = _run_tesseract_on_image(img, psm=3, label="StableScan")
                 
-                # Divide ID into 3 overlapping horizontal zones:
-                # Top: Headers/Name, Middle: ID Number/Course, Bottom: Details/Signatures
-                z1 = img[:int(h_total * 0.50), :]
-                z2 = img[int(h_total * 0.35):int(h_total * 0.75), :]
-                z3 = img[int(h_total * 0.60):, :]
-                
-                with ThreadPoolExecutor(max_workers=4) as sub_executor:
-                    # Use PSM 3 (Automatic) for full image - much more robust than PSM 6 for IDs
-                    full_future = sub_executor.submit(_run_tesseract_on_image, img, psm=3, label="Full")
-                    z1_future = sub_executor.submit(_run_tesseract_on_image, z1, psm=6, label="Top")
-                    z2_future = sub_executor.submit(_run_tesseract_on_image, z2, psm=6, label="Mid")
-                    z3_future = sub_executor.submit(_run_tesseract_on_image, z3, psm=6, label="Bot")
-                    
-                    t_full = full_future.result()
-                    t1, t2, t3 = z1_future.result(), z2_future.result(), z3_future.result()
-                    
-                best_text = f"{t_full}\n{t1}\n{t2}\n{t3}"
-                
-                # Check result
-                name_ok, addr_ok, found_kw, score, meta = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
-                
-                if not (name_ok and addr_ok):
-                    # Robust sparse fallback
-                    print(f"[OCR] Name/Addr not found, trying sparse PSM 11 fallback...", flush=True)
-                    psm11_text = _run_tesseract_on_image(img, psm=11, label="Sparse")
-                    best_text = f"{best_text}\n{psm11_text}"
-                    # Final re-match with fallback text
-                    name_ok, addr_ok, found_kw, score, meta = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
-                
-                # --- FINAL HAIL MARY: EasyOCR (Only for SchoolIDs that failed Tesseract) ---
-                if not is_indigency and not (name_ok and meta.get('id_ok')):
-                    try:
-                        print(f"[OCR] Tesseract failed Name/ID. Triggering EasyOCR Hail Mary...", flush=True)
-                        import easyocr
-                        reader = easyocr.Reader(['en'], gpu=False) # No GPU for stability
-                        # Run on the original grayscale image
-                        results = reader.readtext(img, detail=0)
-                        easy_text = "\n".join(results)
-                        if easy_text.strip():
-                            print(f"[OCR] EasyOCR extracted {len(easy_text)} chars", flush=True)
-                            best_text = f"{best_text}\n---\n{easy_text}"
-                            # Re-match with combined intelligence
-                            name_ok, addr_ok, found_kw, score, meta = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
-                    except Exception as easy_e:
-                        print(f"[OCR] EasyOCR Error: {easy_e}", flush=True)
-                    finally:
-                        clear_heavy_memory()
-                
-                if name_ok:
-                    print(f"[OCR PERF] SUCCESS after {time.time() - t_start:.2f}s", flush=True)
-                    # Parity: Ensure all matched flags are in details
-                    return True, "Verified", best_text, {
-                        'name_ok': True, 
-                        'addr_ok': addr_ok, 
-                        'id_ok': meta.get('id_ok', True),
-                        'school_ok': meta.get('school_ok', True),
-                        'name_ratio': score, 
-                        'keywords': found_kw
-                    }
-
-
-            # t_end moved up into early-exit block or handled naturally
-
-            t_end = time.time()
-            print(f"[OCR PERF] Total ID OCR time (w/ Column-Split): {t_end - t_start:.3f}s", flush=True)
-        except Exception as e:
-            print(f"[OCR] PSM3 error: {e}", flush=True)
-            best_text = ""
-        finally:
-            clear_heavy_memory()
+            # Perform verification
+            name_v, addr_v, found_kw, score, meta = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
+            
+            if not name_v:
+                # Sparse fallback for fragmented ID text
+                with OCR_SEMAPHORE:
+                    spare_text = _run_tesseract_on_image(img, psm=11, label="Sparse")
+                    if spare_text.strip():
+                        best_text = f"{best_text}\n{spare_text}"
+        
+        # Match again for final result and early exit
+        name_v, addr_v, found_kw, score, meta = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
+        
+        if name_v:
+            print(f"[OCR PERF] SUCCESS in {time.time() - t_start:.2f}s", flush=True)
+            return True, "Verified", best_text, {
+                'name_ok': True, 
+                'addr_ok': addr_v, 
+                'id_ok': meta.get('id_ok', True),
+                'school_ok': meta.get('school_ok', True),
+                'name_ratio': score, 
+                'keywords': found_kw
+            }
+    except Exception as e:
+        print(f"[OCR] Scanning error: {e}", flush=True)
+    finally:
+        clear_heavy_memory()
     
     # ═══ DEEP DIAGNOSTIC: What did OCR actually extract? ═══
     text_len = len(best_text) if best_text else 0
