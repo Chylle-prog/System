@@ -3153,16 +3153,19 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
             grades_sem_expr = 's.grades_sem' if 'grades_sem' in scholarship_columns else 'NULL'
             grades_year_expr = 's.grades_year' if 'grades_year' in scholarship_columns else 'NULL'
 
-            include_removed = request.args.get('include_removed', 'false').lower() == 'true'
-            req_no_filter = request.args.get('req_no')
-            
+            params = []
             where_clauses = []
-            if 'is_removed' in scholarship_columns and not include_removed:
-                where_clauses.append('COALESCE(s.is_removed, FALSE) = FALSE')
             
+            # 1. Base Filters (Scholarship ID)
+            req_no_filter = request.args.get('req_no')
             if req_no_filter:
                 where_clauses.append('s.req_no = %s')
-                # Note: We'll add this to params later
+                params.append(req_no_filter)
+
+            include_removed = request.args.get('include_removed', 'false').lower() == 'true'
+            
+            if 'is_removed' in scholarship_columns and not include_removed:
+                where_clauses.append('COALESCE(s.is_removed, FALSE) = FALSE')
         
             is_removed_expr = 'COALESCE(s.is_removed, FALSE)' if 'is_removed' in scholarship_columns else 'FALSE'
             
@@ -3189,7 +3192,6 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
                 grades_sem_expr=grades_sem_expr,
                 grades_year_expr=grades_year_expr,
             )
-            params = []
 
             if where_clauses:
                 query += ' WHERE ' + ' AND '.join(where_clauses)
@@ -3247,10 +3249,15 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
             result = []
             for row in rows:
                 scholarship = dict(row)
+                def safe_int(val, default=0):
+                    if val is None: return default
+                    try: return int(val)
+                    except: return default
+
                 slots = scholarship.get('slots')
-                accepted_count = int(scholarship.get('acceptedCount') or 0)
-                pending_count = int(scholarship.get('pendingCount') or 0)
-                declined_count = int(scholarship.get('declinedCount') or 0)
+                accepted_count = safe_int(scholarship.get('acceptedCount'))
+                pending_count = safe_int(scholarship.get('pendingCount'))
+                declined_count = safe_int(scholarship.get('declinedCount'))
 
                 scholarship['acceptedCount'] = accepted_count
                 scholarship['pendingCount'] = pending_count
@@ -3261,18 +3268,24 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
                     scholarship['availableSlots'] = None
                     scholarship['isFull'] = False
                 else:
-                    scholarship['availableSlots'] = max(int(slots) - accepted_count, 0)
-                    scholarship['isFull'] = accepted_count >= int(slots)
+                    scholarship['availableSlots'] = max(safe_int(slots) - accepted_count, 0)
+                    scholarship['isFull'] = accepted_count >= safe_int(slots)
 
                 result.append(scholarship)
 
             return jsonify({'success': True, 'scholarships': result}), 200
     
     except Exception as e:
-        print(f"[SCHOLARSHIP API] Error: {str(e)}")
+        print(f"[SCHOLARSHIP API] CRITICAL ERROR: {str(e)}")
         import traceback
         traceback.print_exc()
-        return jsonify({'message': f'Error: {str(e)}'}), 500
+        # Return more diagnostic info in the 500 response to help debugging
+        return jsonify({
+            'success': False,
+            'message': f'Server Error: {str(e)}',
+            'error_type': type(e).__name__,
+            'traceback': traceback.format_exc().splitlines()[-3:] # Last few lines of traceback
+        }), 500
 
 
 @api_bp.route('/applicants/<program>', methods=['GET'])
@@ -3441,9 +3454,15 @@ def get_applicants(current_user_id, pro_no, role, program):
         return jsonify({'success': True, 'applicants': result}), 200
     
     except Exception as e:
-        print(f"[APPLICANTS API] Error while loading applicants for program='{program}': {e}", flush=True)
+        print(f"[APPLICANTS API] CRITICAL ERROR loading applicants for program='{program}': {e}", flush=True)
+        import traceback
         traceback.print_exc()
-        return jsonify({'message': f'Error: {str(e)}'}), 500
+        return jsonify({
+            'success': False,
+            'message': f'Server Error: {str(e)}',
+            'error_type': type(e).__name__,
+            'traceback': traceback.format_exc().splitlines()[-3:]
+        }), 500
 
 @api_bp.route('/applicants/<int:applicant_no>/accept', methods=['POST'])
 @token_required
@@ -3749,10 +3768,15 @@ def create_scholarship(current_user_id, pro_no, role):
             }), 201
         
     except Exception as e:
-        print(f"[SCHOLARSHIP CREATE] Error: {str(e)}")
+        print(f"[SCHOLARSHIP CREATE] CRITICAL ERROR: {str(e)}")
         import traceback
         traceback.print_exc()
-        return jsonify({'message': f'Error: {str(e)}'}), 500
+        return jsonify({
+            'success': False,
+            'message': f'Server Error: {str(e)}',
+            'error_type': type(e).__name__,
+            'traceback': traceback.format_exc().splitlines()[-3:]
+        }), 500
 
 @api_bp.route('/scholarships/<int:req_no>', methods=['PUT'])
 @token_required
@@ -4100,18 +4124,37 @@ def get_applicant_image(applicant_no, column_name):
         # Detect image type from magic bytes
         mime_type = get_mime_type(data)
         
-        return send_file(
-            BytesIO(data),
-            mimetype=mime_type,
-            as_attachment=False,
-            download_name=f'applicant_{applicant_no}_{column_name}.png'
-        )
-        
+        # Final conversion check for BytesIO
+        if not isinstance(data, (bytes, bytearray)):
+            print(f"[APPLICANT IMAGE] Data for {column_name} is still not bytes (type: {type(data)}). Attempting final conversion.")
+            try:
+                if isinstance(data, str):
+                    data = data.encode('utf-8')
+                else:
+                    data = bytes(str(data), 'utf-8')
+            except:
+                return jsonify({'message': f'Invalid data format for {column_name}'}), 500
+
+        try:
+            return send_file(
+                BytesIO(data),
+                mimetype=mime_type,
+                as_attachment=False,
+                download_name=f'applicant_{applicant_no}_{column_name}.png'
+            )
+        except Exception as e:
+            print(f"[APPLICANT IMAGE] send_file failed: {e}")
+            return jsonify({'message': f'Failed to serve image: {str(e)}'}), 500
+
     except Exception as e:
-        print(f"[APPLICANT IMAGE] Error serving {column_name} for applicant {applicant_no}: {str(e)}", flush=True)
+        print(f"[APPLICANT IMAGE] CRITICAL ERROR serving {column_name} for applicant {applicant_no}: {str(e)}", flush=True)
         import traceback
         traceback.print_exc()
-        return jsonify({'message': f'Error: {str(e)}'}), 500
+        return jsonify({
+            'success': False,
+            'message': f'Internal Image Error: {str(e)}',
+            'error_type': type(e).__name__
+        }), 500
 
 # ===== UTILITY ENDPOINTS =====
 
