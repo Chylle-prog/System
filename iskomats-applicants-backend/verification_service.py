@@ -68,12 +68,6 @@ class FaceVerificationRequest(BaseModel):
     id_image_base64: str = Field(..., alias="idImage")
     live_face_base64: str = Field(..., alias="liveFace")
 
-class DocumentVerificationRequest(BaseVerificationRequest):
-    image_base64: str = Field(..., alias="image")
-    document_type: str = Field(..., alias="docType") # 'grades', 'coe', 'indigency'
-    expected_gpa: Optional[float] = Field(None, alias="expectedGpa")
-    expected_year: Optional[str] = Field(None, alias="expectedYear")
-    expected_semester: Optional[str] = Field(None, alias="expectedSemester")
 
 # --- ENDPOINTS ---
 

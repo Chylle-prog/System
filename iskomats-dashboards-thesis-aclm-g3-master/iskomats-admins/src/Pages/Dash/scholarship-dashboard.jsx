@@ -518,6 +518,7 @@ export default function ScholarshipDashboard({
             message: msg.message,
             timestamp: msg.timestamp,
             read: isActiveRoom || isAdminMessage,
+            is_student_sender: !isAdminMessage,
             room: msg.room
           };
 
@@ -4457,7 +4458,7 @@ export default function ScholarshipDashboard({
 
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 {currentConversationMessages.map((msg) => {
-                  const isFromMe = msg.is_student_sender === false;
+                  const isFromMe = msg.is_student_sender === false || adminSenderAliases.has(normalizeProviderIdentity(msg.username || msg.studentName));
                   return (
                     <div key={msg.id} className={`flex ${isFromMe ? 'justify-end' : 'justify-start'}`}>
                       <div className={`max-w-[80%] rounded-2xl p-4 shadow-sm border ${isFromMe
