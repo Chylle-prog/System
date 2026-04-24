@@ -1266,7 +1266,14 @@ def notify_all_applicants(title, message, notif_type='scholarship'):
 
 
 def run_background_task(target, *args, **kwargs):
-    worker = threading.Thread(target=target, args=args, kwargs=kwargs, daemon=True)
+    from flask import current_app
+    app = current_app._get_current_object()
+    
+    def context_target(*a, **kw):
+        with app.app_context():
+            target(*a, **kw)
+            
+    worker = threading.Thread(target=context_target, args=args, kwargs=kwargs, daemon=True)
     worker.start()
     return worker
 
@@ -2084,8 +2091,32 @@ def init_socketio(socketio):
                 'timestamp': data.get('timestamp')
             }, broadcast=True, include_self=False)
         except Exception as e:
-            print(f"Error broadcasting applicant declination: {e}")
             emit('error', {'msg': f'Failed to broadcast declination: {str(e)}'})
+
+    @socketio.on('scholarship_update')
+    def on_scholarship_update(data):
+        """Handle scholarship updates from admin dashboard"""
+        try:
+            # Broadcast to all other connected clients
+            emit('scholarship_update', data, broadcast=True, include_self=False)
+        except Exception as e:
+            print(f"Error broadcasting scholarship update: {e}")
+
+    @socketio.on('announcement_update')
+    def on_announcement_update(data):
+        """Handle announcement updates from admin dashboard"""
+        try:
+            # Broadcast to all other connected clients
+            emit('announcement_update', data, broadcast=True, include_self=False)
+            
+            # Also emit a notification for the dashboard UI alert
+            emit('announcement_notification', {
+                'title': f"New Announcement: {data.get('program', 'ISKOMATS')}",
+                'message': f"A new announcement was {data.get('action', 'created')} by {data.get('adminName', 'an Admin')}.",
+                'program': data.get('program')
+            }, broadcast=True, include_self=True)
+        except Exception as e:
+            print(f"Error broadcasting announcement update: {e}")
 
 # Initial check on module load removed as it's handled in init_socketio
 # create_message_table()
