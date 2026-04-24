@@ -3394,8 +3394,8 @@ def get_applicants(current_user_id, pro_no, role, program):
                    s.is_accepted, s.scholarship_no as "scholarshipNo", p.provider_name as program,
                    e.email_address as email,
                    CASE 
-                       WHEN s.is_accepted = True THEN 'Accepted'
-                       WHEN s.is_accepted = False THEN 'Declined'
+                       WHEN s.is_accepted = 'Accepted' THEN 'Accepted'
+                       WHEN s.is_accepted = 'Rejected' THEN 'Declined'
                        ELSE 'Pending'
                    END as status,
                    esc.scholarship_name as "scholarshipName",
@@ -3435,7 +3435,7 @@ def get_applicants(current_user_id, pro_no, role, program):
         else:
             # For 'all' view, typically admin only wants accepted scholars as per request
             # But the endpoint is shared, so let's default to accepted if 'all' is requested for now
-            query += ' AND s.is_accepted = True'
+            query += " AND s.is_accepted = 'Accepted'"
         
         if filters.get('search'):
             query += ' AND (a.first_name ILIKE %s OR a.last_name ILIKE %s OR e.email_address ILIKE %s)'
