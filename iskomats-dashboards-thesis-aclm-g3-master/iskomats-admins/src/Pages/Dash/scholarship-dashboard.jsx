@@ -101,12 +101,12 @@ const DecryptedMedia = ({ src, type, className, controls = false, onClick = null
 const ACADEMIC_YEAR_PATTERN = /^\d{4}[-–—]\d{4}$/;
 
 const autoAdjustColumnWidths = (data) => {
-  if (!data || !data.length) return [];
+  if (!data || !data.length || !data[0]) return [];
   const keys = Object.keys(data[0]);
   return keys.map(key => {
     let maxLen = key.length;
     data.forEach(row => {
-      const val = row[key] ? String(row[key]) : '';
+      const val = (row && row[key]) ? String(row[key]) : '';
       if (val.length > maxLen) maxLen = val.length;
     });
     return { wch: maxLen + 4 }; // Add padding
@@ -477,16 +477,11 @@ export default function ScholarshipDashboard({
 
   const loadScholarships = async (showAlert = true) => {
     try {
-      console.log(`Loading scholarships for program: ${providerKey}`);
       const response = await scholarshipAPI.getByProgram(providerKey, { include_removed: true });
-      console.log('Full API Response:', response);
-      console.log('Response data:', response.data);
 
       if (response.data && response.data.success) {
-        console.log('Scholarships from API:', response.data.scholarships);
-        console.log('Number of scholarships:', response.data.scholarships ? response.data.scholarships.length : 0);
-
         const scopedScholarships = (response.data.scholarships || []).filter((post) => {
+          if (!post) return false;
           const postProviderNo = Number(post?.proNo ?? post?.pro_no);
           if (activeProviderNo !== null && Number.isFinite(postProviderNo)) {
             return postProviderNo === activeProviderNo;
@@ -497,7 +492,7 @@ export default function ScholarshipDashboard({
           );
 
           if (!postProviderName) {
-            return true;
+            return false;
           }
 
           return activeProviderNames.some((name) => postProviderName.includes(name) || name.includes(postProviderName));
@@ -507,19 +502,12 @@ export default function ScholarshipDashboard({
           ...prev,
           scholarshipPosts: scopedScholarships
         }));
-      } else {
+      } else if (showAlert) {
         console.error('API response not successful:', response.data);
-        if (showAlert) {
-          alert(`Failed to load scholarships: ${response.data?.message || 'Unknown error'}`);
-        }
+        alert(`Failed to load scholarships: ${response.data?.message || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Failed to load scholarships:', error);
-      console.error('Error response:', error.response?.data);
-      console.error('Error message:', error.message);
-      if (error.response?.data?.error) {
-        console.error('Backend traceback:', error.response.data.error);
-      }
       if (showAlert) {
         alert(getRequestErrorMessage(error, 'Error loading scholarships'));
       }
@@ -732,16 +720,19 @@ export default function ScholarshipDashboard({
     const locations = {};
     const schools = {};
 
-    applicants.forEach(a => {
+    (applicants || []).forEach(a => {
+      if (!a) return;
       // Monthly
       const dateStr = a.dateApplied || a.createdAt;
       const date = new Date(dateStr);
-      const month = date.toLocaleString('default', { month: 'short', year: 'numeric' });
+      let month = 'Unknown';
+      if (!isNaN(date.getTime())) {
+        month = date.toLocaleString('default', { month: 'short', year: 'numeric' });
+      }
       if (!monthlyData[month]) monthlyData[month] = { month, applications: 0, accepted: 0, rejected: 0, cancelled: 0 };
       monthlyData[month].applications++;
       if (a.status === 'Accepted') monthlyData[month].accepted++;
       if (a.status === 'Rejected' || a.status === 'Declined') monthlyData[month].rejected++;
-      if (a.status === 'Cancelled') monthlyData[month].cancelled++;
       if (a.status === 'Cancelled') monthlyData[month].cancelled++;
 
       // Course
@@ -1772,23 +1763,13 @@ export default function ScholarshipDashboard({
     const count = parseInt(recommendCount) || 10;
     const allPending = data.applicants || [];
     
-    console.log('[RECOMMEND] Generating recommendations:', {
-      pendingCount: allPending.length,
-      filter: trackScholarshipFilter,
-      requestedCount: count
-    });
-    
     // Exact same filtering logic as the Track list
     const filteredApplicants = allPending.filter(a => matchesScholarshipSelection(a, trackScholarshipFilter));
-    
-    console.log('[RECOMMEND] Filtered applicants:', filteredApplicants.length);
     
     const top = [...filteredApplicants]
       .sort((a, b) => (Number(b.grade) || 0) - (Number(a.grade) || 0))
       .slice(0, count);
       
-    console.log('[RECOMMEND] Top applicants selected:', top.length);
-    
     setRecommended(top);
     setRecommendationModal(true);
   };
