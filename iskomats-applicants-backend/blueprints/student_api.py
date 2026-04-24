@@ -688,30 +688,34 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
         return None
 
 
+from services.crypto_utils import decrypt_if_encrypted
+
 def resolve_verification_image_bytes(image_data):
     if not image_data:
         return None
+    
+    raw_bytes = None
     if isinstance(image_data, memoryview):
-        return image_data.tobytes()
-    if isinstance(image_data, (bytes, bytearray)):
-        return bytes(image_data)
-    if not isinstance(image_data, str):
-        return None
+        raw_bytes = image_data.tobytes()
+    elif isinstance(image_data, (bytes, bytearray)):
+        raw_bytes = bytes(image_data)
+    elif isinstance(image_data, str):
+        normalized = image_data.strip()
+        if not normalized:
+            return None
+            
+        decoded = decode_base64(normalized)
+        if decoded:
+            raw_bytes = decoded
+        elif normalized.startswith('http'):
+            target_url = normalize_supabase_url(normalized)
+            if is_trusted_storage_url(target_url):
+                content, _error = fetch_video_bytes_from_url(target_url)
+                raw_bytes = content
 
-    normalized = image_data.strip()
-    if not normalized:
-        return None
-
-    decoded = decode_base64(normalized)
-    if decoded:
-        return decoded
-
-    # If it's a URL, normalize it and fetch bytes
-    if normalized.startswith('http'):
-        target_url = normalize_supabase_url(normalized)
-        if is_trusted_storage_url(target_url):
-            content, _error = fetch_video_bytes_from_url(target_url)
-            return content
+    if raw_bytes:
+        # Decrypt if the frontend encrypted it before upload
+        return decrypt_if_encrypted(raw_bytes)
 
     return None
 

@@ -36,10 +36,67 @@ import {
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 import { adminAPI, scholarshipAPI, announcementService, warmBackendConnection } from '../../services/api';
+import { decryptUrl } from '../../services/CryptoService';
 import socketService from '../../services/socket';
 import iskomatsLogo from '../../assets/logo.png';
 
 Chart.register(...registerables);
+
+/**
+ * Helper component to handle encrypted images and videos in the dossier
+ */
+const DecryptedMedia = ({ src, type, className, controls = false, onClick = null, alt = "Document" }) => {
+  const [decryptedSrc, setDecryptedSrc] = useState(src);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let objectUrl = null;
+    const load = async () => {
+      if (src && typeof src === 'string' && src.startsWith('http')) {
+        const decrypted = await decryptUrl(src, type);
+        setDecryptedSrc(decrypted);
+        if (decrypted && typeof decrypted === 'string' && decrypted.startsWith('blob:')) {
+          objectUrl = decrypted;
+        }
+      } else {
+        setDecryptedSrc(src);
+      }
+      setIsLoading(false);
+    };
+    load();
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [src, type]);
+
+  if (isLoading) {
+    return (
+      <div className={`${className} bg-gray-100 animate-pulse flex items-center justify-center`}>
+        <FaSpinner className="animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  if (type && type.startsWith('image')) {
+    return (
+      <img 
+        src={decryptedSrc} 
+        alt={alt} 
+        className={className} 
+        onClick={onClick}
+        onError={(e) => { e.target.src = 'https://i.imgur.com/2h7z2S.jpg'; }}
+      />
+    );
+  }
+  
+  return (
+    <video 
+      src={decryptedSrc} 
+      controls={controls} 
+      className={className} 
+    />
+  );
+};
 
 const ACADEMIC_YEAR_PATTERN = /^\d{4}[-–—]\d{4}$/;
 
@@ -3960,19 +4017,13 @@ export default function ScholarshipDashboard({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {files.map((f, idx) => (
             <div key={idx} className="relative group cursor-pointer border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all">
-              {f.type.startsWith('image') ? (
-                <img
-                  src={f.src}
-                  alt="Document"
-                  className="w-full h-28 object-contain bg-gray-100 group-hover:scale-105 transition-transform"
-                  onClick={() => setImageModalSrc(f.src)}
-                  onError={(e) => {
-                    e.target.src = 'https://i.imgur.com/2h7z2S.jpg';
-                  }}
-                />
-              ) : f.type.startsWith('video') ? (
-                <video src={f.src} controls className="w-full h-28 object-contain rounded-lg" />
-              ) : null}
+              <DecryptedMedia
+                src={f.src}
+                type={f.type}
+                className="w-full h-28 object-contain bg-gray-100 group-hover:scale-105 transition-transform"
+                controls={true}
+                onClick={() => setImageModalSrc(f.src)}
+              />
               <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] py-0.5 text-center font-bold">
                 {f.type.startsWith('image') ? 'IMAGE' : 'VIDEO'}
               </div>
@@ -3988,7 +4039,7 @@ export default function ScholarshipDashboard({
           <div className="flex items-center gap-6">
             <div className="w-20 h-20 rounded-2xl bg-gray-50 border-2 border-gray-100 p-1 shadow-sm overflow-hidden flex-shrink-0">
               {a.profile_picture ? (
-                <img src={a.profile_picture} alt="Avatar" className="w-full h-full object-cover rounded-xl" />
+                <DecryptedMedia src={a.profile_picture} type="image/jpeg" className="w-full h-full object-cover rounded-xl" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-gray-200 text-gray-400">
                   <FaUsers className="text-2xl" />
@@ -4261,9 +4312,9 @@ export default function ScholarshipDashboard({
             <div className="max-w-xs w-full">
               <div className="border-b-2 border-gray-300 mb-2 h-20 flex items-center justify-center overflow-hidden">
                 {a.signature ? (
-                  <img
+                  <DecryptedMedia
                     src={a.signature}
-                    alt="Digital Signature"
+                    type="image/png"
                     className="max-h-full cursor-zoom-in hover:scale-110 transition-transform"
                     onClick={() => setImageModalSrc(a.signature)}
                   />
@@ -4717,7 +4768,11 @@ export default function ScholarshipDashboard({
       {imageModalSrc && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80" onClick={() => setImageModalSrc(null)}>
           <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-            <img src={imageModalSrc} alt="Full size" className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl" />
+            <DecryptedMedia 
+              src={imageModalSrc} 
+              type="image/jpeg" 
+              className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl" 
+            />
             <button type="button" onClick={() => setImageModalSrc(null)} className="absolute top-3 right-3 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-[#800020]">×</button>
           </div>
         </div>

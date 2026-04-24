@@ -1,3 +1,5 @@
+import { encryptDocument } from './CryptoService';
+
 // Upload profile picture to Supabase Storage and return public URL
 export const uploadProfilePicture = async (file) => {
   const applicantNo = sanitizeStorageSegment(localStorage.getItem('applicantNo'), 'unknown-applicant');
@@ -6,11 +8,14 @@ export const uploadProfilePicture = async (file) => {
   const contentType = file?.type || 'image/jpeg';
   const objectPath = `profile_pictures/${applicantNo}-${currentUser}${ext}`;
 
+  // Encrypt before upload
+  const encryptedFile = await encryptDocument(file);
+
   const uploadResult = await supabase.storage
     .from('document_images')
-    .upload(objectPath, file, {
+    .upload(objectPath, encryptedFile, {
       upsert: true,
-      contentType,
+      contentType: 'application/octet-stream', // Use binary stream for encrypted data
       cacheControl: '60',
     });
 
@@ -107,11 +112,14 @@ const uploadRequirementVideoDirect = async (fieldName, file, onProgress) => {
   const contentType = file?.type || (ext === '.webm' ? 'video/webm' : 'video/mp4');
   const objectPath = `videos/${folder}/${applicantNo}-${currentUser}/${fieldName}${ext}`;
 
+  // Encrypt before upload
+  const encryptedFile = await encryptDocument(file);
+
   const uploadResult = await supabase.storage
     .from('document_videos')
-    .upload(objectPath, file, {
+    .upload(objectPath, encryptedFile, {
       upsert: true,
-      contentType,
+      contentType: 'application/octet-stream',
       cacheControl: '60',
       onUploadProgress: (p) => {
         if (!onProgress) return;
@@ -134,7 +142,7 @@ const uploadRequirementVideoDirect = async (fieldName, file, onProgress) => {
     success: true,
     publicUrl: data.publicUrl,
     originalSize: file.size,
-    convertedSize: file.size,
+    convertedSize: encryptedFile.size,
     transport: 'supabase-direct',
   };
 };
@@ -588,7 +596,8 @@ export const applicantAPI = {
    */
   uploadFaceImage: async (faceImageFile) => {
     const formData = new FormData();
-    formData.append('face_image', faceImageFile);
+    const encrypted = await encryptDocument(faceImageFile);
+    formData.append('face_image', encrypted);
     
     return makeRequest('/student/applicant/upload-face', {
       method: 'POST',
@@ -628,8 +637,10 @@ export const applicantAPI = {
    */
   uploadIdFrontBack: async (frontFile, backFile) => {
     const formData = new FormData();
-    formData.append('id_front', frontFile);
-    formData.append('id_back',  backFile);
+    const encFront = await encryptDocument(frontFile);
+    const encBack = await encryptDocument(backFile);
+    formData.append('id_front', encFront);
+    formData.append('id_back',  encBack);
 
     const url   = `${API_BASE_URL}/student/applicant/upload-id-front-back`;
     const token = getAuthToken();
@@ -647,7 +658,18 @@ export const applicantAPI = {
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    const response = await fetch(url, { method: 'POST', headers, body: formData });
+    // Encrypt any Files/Blobs in the FormData before final submission
+    const encryptedFormData = new FormData();
+    for (const [key, value] of formData.entries()) {
+      if (value instanceof Blob || (typeof File !== 'undefined' && value instanceof File)) {
+        const encrypted = await encryptDocument(value);
+        encryptedFormData.append(key, encrypted);
+      } else {
+        encryptedFormData.append(key, value);
+      }
+    }
+
+    const response = await fetch(url, { method: 'POST', headers, body: encryptedFormData });
     const data = await response.json();
     if (!response.ok) throw new Error(data.message || `Upload error: ${response.status}`);
     return data;
@@ -667,18 +689,8 @@ export const applicantAPI = {
   ocrCheck: async (idFront = null, idBack = null, indigencyDoc = null, townCity = null, enrollmentDoc = null, grades_doc = null, firstName = null, lastName = null, middleName = null, schoolName = null, idNumber = null, yearLevel = null, gpa = null, course = null, videoUrl = null, scholarshipNo = null, targetDoc = null, barangay = null, semester = null) => {
     const fData = new FormData();
 
-    const appendDocumentIfNeeded = (fieldName, value) => {
+    const appendDocumentIfNeeded = async (fieldName, value) => {
       if (!value) {
-        return;
-      }
-
-      if (typeof File !== 'undefined' && value instanceof File) {
-        fData.append(fieldName, value);
-        return;
-      }
-
-      if (value instanceof Blob) {
-        fData.append(fieldName, value);
         return;
       }
 
@@ -686,15 +698,27 @@ export const applicantAPI = {
         return;
       }
 
-      fData.append(fieldName, value);
+      let blob = value;
+      if (typeof value === 'string') {
+        // Convert base64 to blob
+        try {
+          const res = await fetch(value);
+          blob = await res.blob();
+        } catch (e) {
+          console.warn(`[OCR-ENCRYPT] Failed to convert ${fieldName} to blob:`, e);
+        }
+      }
+
+      const encrypted = await encryptDocument(blob);
+      fData.append(fieldName, encrypted);
     };
     
     // Add document data (handling both base64 strings and potential Blob/Files)
-    appendDocumentIfNeeded('id_front', idFront);
-    appendDocumentIfNeeded('id_back', idBack);
-    appendDocumentIfNeeded('indigency_doc', indigencyDoc);
-    appendDocumentIfNeeded('enrollment_doc', enrollmentDoc);
-    appendDocumentIfNeeded('grades_doc', grades_doc);
+    await appendDocumentIfNeeded('id_front', idFront);
+    await appendDocumentIfNeeded('id_back', idBack);
+    await appendDocumentIfNeeded('indigency_doc', indigencyDoc);
+    await appendDocumentIfNeeded('enrollment_doc', enrollmentDoc);
+    await appendDocumentIfNeeded('grades_doc', grades_doc);
     
     // Add metadata
     fData.append('town_city', townCity || '');
