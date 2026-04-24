@@ -164,10 +164,8 @@ async def api_verify_document(req: DocumentVerificationRequest):
             if req.expected_school_name:
                 school_ok, _, _ = school_name_matches_text(raw_t, req.expected_school_name)
                 
-            # 3. Year Level Check
+            # 3. Year Level Check (Disabled as per Flask parity)
             year_lvl_ok = True
-            if req.expected_year_level:
-                year_lvl_ok, _ = year_level_matches_text(req.expected_year_level, raw_t)
                 
             # 4. Course Check
             course_ok = True
@@ -186,10 +184,15 @@ async def api_verify_document(req: DocumentVerificationRequest):
                 found_sem = extract_semester_from_text(raw_t)
                 sem_ok = (normalize_semester_label(found_sem) == normalize_semester_label(req.expected_semester))
             
-            v_t = name_ok and school_ok and year_lvl_ok and course_ok and ay_ok and sem_ok
-            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | School: {'OK' if school_ok else 'X'} | Year: {'OK' if ay_ok else 'X'} | Sem: {'OK' if sem_ok else 'X'} | Level: {'OK' if year_lvl_ok else 'X'} | Course: {'OK' if course_ok else 'X'}]"
+            # 7. ID Check (New: Parity with Flask)
+            id_ok = True
+            if req.expected_id_no:
+                id_ok, _ = student_id_no_matches_text(req.expected_id_no, raw_t)
+
+            v_t = name_ok and school_ok and year_lvl_ok and course_ok and ay_ok and sem_ok and id_ok
+            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | School: {'OK' if school_ok else 'X'} | ID: {'OK' if id_ok else 'X'} | Year: {'OK' if ay_ok else 'X'} | Sem: {'OK' if sem_ok else 'X'} | Level: {'OK' if year_lvl_ok else 'X'} | Course: {'OK' if course_ok else 'X'}]"
             if v_t: msg = "Verified"
-            meta = {'name_ok': name_ok, 'school_ok': school_ok, 'ay_ok': ay_ok, 'sem_ok': sem_ok, 'year_lvl_ok': year_lvl_ok, 'course_ok': course_ok, 'name_details': name_details}
+            meta = {'name_ok': name_ok, 'school_ok': school_ok, 'id_ok': id_ok, 'ay_ok': ay_ok, 'sem_ok': sem_ok, 'year_lvl_ok': year_lvl_ok, 'course_ok': course_ok, 'name_details': name_details}
         
         elif doc_type == 'Grades':
             raw_t, _ = extract_document_text(image_bytes, max_width=1200, prefer_fast_layout=False, crop_percent=1.0)
