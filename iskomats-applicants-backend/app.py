@@ -348,6 +348,19 @@ if __name__ == '__main__':
         APP_READY = True
         print(f"[STARTUP] App initialization complete. Listening on {host}:{port}", flush=True)
         
+        # Start the FastAPI Verification Service in the background
+        import subprocess
+        fastapi_port = "8001"
+        print(f"[STARTUP] Starting FastAPI Verification Service concurrently on port {fastapi_port}...", flush=True)
+        try:
+            fastapi_process = subprocess.Popen(
+                [sys.executable, "-m", "uvicorn", "verification_service:app", "--host", "0.0.0.0", "--port", fastapi_port],
+                stdout=sys.stdout,
+                stderr=sys.stderr
+            )
+        except Exception as e:
+            print(f"[STARTUP ERROR] Failed to start FastAPI service: {e}", flush=True)
+        
         socketio.run(app, 
                     debug=False, 
                     port=port, 

@@ -1702,7 +1702,8 @@ export default function ScholarshipDashboard({
 
   const recommendStudents = () => {
     const count = parseInt(recommendCount) || 10;
-    const top = [...(data.applicants || [])].sort((a, b) => b.grade - a.grade).slice(0, count);
+    const filteredApplicants = (data.applicants || []).filter(a => matchesScholarshipSelection(a, trackScholarshipFilter));
+    const top = [...filteredApplicants].sort((a, b) => b.grade - a.grade).slice(0, count);
     setRecommended(top);
     setRecommendationModal(true);
   };
@@ -2733,13 +2734,15 @@ export default function ScholarshipDashboard({
       <section className="bg-white p-8 rounded-2xl shadow-md border border-gray-50">
         <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
           <h3 className="text-xl font-semibold text-[#800020]">{trackTitle}</h3>
-          <button
-            type="button"
-            onClick={recommendStudents}
-            className="px-4 py-2 rounded-lg bg-[#800020] text-white font-semibold flex items-center gap-2 hover:bg-[#650018] transition-colors"
-          >
-            <FaRobot /> Recommended Student Applicants
-          </button>
+          {trackScholarshipFilter !== 'all' && trackScholarshipFilter !== 'deleted' && (
+            <button
+              type="button"
+              onClick={recommendStudents}
+              className="px-4 py-2 rounded-lg bg-[#800020] text-white font-semibold flex items-center gap-2 hover:bg-[#650018] transition-colors"
+            >
+              <FaRobot /> Recommended Student Applicants
+            </button>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2 mb-4 justify-between items-center">
@@ -2791,18 +2794,6 @@ export default function ScholarshipDashboard({
             {scholarshipFilterOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
-              </option>
-            ))}
-          </select>
-          <select
-            value={courseTrackFilter}
-            onChange={(e) => setCourseTrackFilter(e.target.value)}
-            className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none font-bold text-[#800020] shadow-sm focus:ring-2 focus:ring-[#800020] transition-all"
-          >
-            <option value="all">All Courses</option>
-            {COURSES.map((course) => (
-              <option key={course} value={course}>
-                {course}
               </option>
             ))}
           </select>
