@@ -12,8 +12,8 @@ import multiprocessing as mp
 import re
 import difflib
 import hashlib
-import eventlet.tpool
-import eventlet.semaphore
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from collections import OrderedDict
 from project_config import get_performance_config
 
@@ -21,6 +21,21 @@ from project_config import get_performance_config
 _perf = get_performance_config()
 _ocr_concurrency = _perf['ocr_concurrency']
 _threads_per_proc = str(_perf['threads_per_process'])
+
+# Environment-aware execution helper
+def _run_ocr_command(func, *args, **kwargs):
+    """Executes OCR in a thread-safe way, aware of both Flask (eventlet) and FastAPI (standard) envs."""
+    try:
+        import eventlet.patcher
+        if eventlet.patcher.is_monkey_patched('os'):
+            import eventlet.tpool
+            return eventlet.tpool.execute(func, *args, **kwargs)
+    except ImportError:
+        pass
+    return func(*args, **kwargs)
+
+# Global concurrency control
+OCR_SEMAPHORE = threading.Semaphore(_ocr_concurrency)
 
 # ─── Environment hints for threading & memory ──────────────────────────────────
 # Force limited execution for heavy ML (ONNX/UniFace) 
@@ -31,9 +46,6 @@ os.environ["OPENBLAS_NUM_THREADS"] = _threads_per_proc
 os.environ["VECLIB_MAXIMUM_THREADS"] = _threads_per_proc
 os.environ["NUMEXPR_NUM_THREADS"] = _threads_per_proc
 cv2.setNumThreads(int(_threads_per_proc)) 
-
-# Global OCR Concurrency Control: Adaptive based on plan
-OCR_SEMAPHORE = eventlet.semaphore.Semaphore(_ocr_concurrency)
 
 
 def clear_heavy_memory():
@@ -66,7 +78,7 @@ except Exception:
 _OCR_CACHE = OrderedDict()
 _OCR_CACHE_SIZE_LIMIT = 200
 _CACHE_METRICS = {'hits': 0, 'misses': 0}
-_FACE_MODEL_LOCK = eventlet.semaphore.Semaphore(1)
+_FACE_MODEL_LOCK = threading.Semaphore(1)
 _FACE_DETECTOR = None
 _FACE_RECOGNIZER = None
 _FACE_MODEL_INIT_ERROR = None
@@ -250,7 +262,7 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False, label
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
     
     # OEM 1 (LSTM-only) is significantly faster than Legacy mode
-    text1 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 1')
+    text1 = _run_ocr_command(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 1')
     
     # Pass in fast mode only if we already have sufficient text density
     if skip_pass2 and len(text1.strip()) > 15:
@@ -267,7 +279,7 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False, label
             # CLAHE helps with uneven lighting
             gray_clahe = _CLAHE.apply(gray)
             binary = cv2.adaptiveThreshold(gray_clahe, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 10)
-            text2 = eventlet.tpool.execute(pytesseract.image_to_string, binary, config=f'--psm {psm} --oem 1')
+            text2 = _run_ocr_command(pytesseract.image_to_string, binary, config=f'--psm {psm} --oem 1')
             if text2.strip() and text2.strip() not in results:
                 results.append(text2.strip())
         except:
@@ -280,7 +292,7 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False, label
             sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
             sharpened = cv2.filter2D(gray, -1, sharpen_kernel)
             _, thresh = cv2.threshold(sharpened, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            text3 = eventlet.tpool.execute(pytesseract.image_to_string, thresh, config=f'--psm {psm} --oem 1')
+            text3 = _run_ocr_command(pytesseract.image_to_string, thresh, config=f'--psm {psm} --oem 1')
             if text3.strip(): results.append(text3.strip())
         except:
             pass
@@ -295,7 +307,7 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False, label
             diff = cv2.normalize(diff, None, 0, 255, cv2.NORM_MINMAX)
             _, binary_bg = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
             
-            text_bg = eventlet.tpool.execute(pytesseract.image_to_string, binary_bg, config=f'--psm {psm} --oem 1')
+            text_bg = _run_ocr_command(pytesseract.image_to_string, binary_bg, config=f'--psm {psm} --oem 1')
             if text_bg.strip() and text_bg.strip() not in results:
                 results.append(text_bg.strip())
         except Exception as e:
@@ -305,7 +317,7 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False, label
     if needs_fallbacks or (strategies and _preprocess_strategy_white_on_dark in strategies):
         try:
             binary_wd = _preprocess_strategy_white_on_dark(img)
-            text_wd = eventlet.tpool.execute(pytesseract.image_to_string, binary_wd, config=f'--psm {psm} --oem 1')
+            text_wd = _run_ocr_command(pytesseract.image_to_string, binary_wd, config=f'--psm {psm} --oem 1')
             if text_wd.strip() and text_wd.strip() not in results:
                 results.append(text_wd.strip())
         except Exception as e:
@@ -317,7 +329,7 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False, label
             if strat_fn in [_preprocess_strategy_b, _preprocess_strategy_white_on_dark]: continue # Already did them
             try:
                 processed = strat_fn(img)
-                txt = eventlet.tpool.execute(pytesseract.image_to_string, processed, config=f'--psm {psm} --oem 1')
+                txt = _run_ocr_command(pytesseract.image_to_string, processed, config=f'--psm {psm} --oem 1')
                 if txt.strip(): results.append(txt.strip())
             except Exception as e:
                 print(f"[OCR] Strategy error: {e}", flush=True)
@@ -325,7 +337,7 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False, label
     # PSM 11 Fallback: Sparse text detection. Great for grabbing text that PSM 3 skips due to column layouts.
     if not skip_pass2 and len("\n".join(results).strip()) < 15:
         try:
-            txt11 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config='--psm 11 --oem 1')
+            txt11 = _run_ocr_command(pytesseract.image_to_string, gray, config='--psm 11 --oem 1')
             if txt11.strip() and txt11.strip() not in results:
                 results.append(txt11.strip())
         except:
