@@ -226,7 +226,7 @@ bcrypt = Bcrypt()
 # ===== JWT CONFIG =====
 # Use common secret key logic
 SECRET_KEY = os.environ.get('SECRET_KEY', 'development-key-replace-in-production')
-TOKEN_EXPIRY = 24  # hours
+TOKEN_EXPIRY = 720  # hours (30 days)
 PASSWORD_RESET_EXPIRY_MINUTES = int(os.environ.get('PASSWORD_RESET_EXPIRY_MINUTES', '30'))
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://iskomats-admin.surge.sh').rstrip('/')
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')

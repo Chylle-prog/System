@@ -1420,7 +1420,7 @@ def student_login():
                 return jsonify({'message': 'Account has been suspended. Please contact the administrator.', 'suspended': True}), 403
  
         payload = {
-            'exp': datetime.utcnow() + timedelta(days=7),
+            'exp': datetime.utcnow() + timedelta(days=1),
             'iat': datetime.utcnow(),
             'user_no': user['applicant_no'],
         }
@@ -1599,7 +1599,7 @@ def student_verify_email():
 
         # 4. Generate session token
         payload = {
-            'exp': datetime.utcnow() + timedelta(days=7),
+            'exp': datetime.utcnow() + timedelta(days=1),
             'iat': datetime.utcnow(),
             'user_no': applicant_no,
         }
@@ -1801,7 +1801,7 @@ def student_google_login():
         token_payload = {
             'user_no': user['applicant_no'],
             'email': user['email_address'],
-            'exp': datetime.utcnow() + timedelta(days=7)
+            'exp': datetime.utcnow() + timedelta(days=1)
         }
         jwt_token = jwt.encode(token_payload, SECRET_KEY, algorithm='HS256')
 
