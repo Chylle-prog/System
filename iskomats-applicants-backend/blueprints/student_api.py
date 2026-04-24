@@ -3356,8 +3356,8 @@ def ocr_check():
                         'Indigency': {'sample_positions': [0.35, 0.75], 'max_width': 540, 'allow_alt_pass': False, 'fallback_text_length': 15},
                         'Enrollment': {'sample_positions': [0.4, 0.65], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 45},
                         'Grades': {'sample_positions': [0.4, 0.65], 'max_width': 700, 'allow_alt_pass': True, 'fallback_text_length': 45},
-                        'SchoolID': {'sample_positions': [0.35, 0.65], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 15},
-                        'SchoolIDBack': {'sample_positions': [0.35, 0.65], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 10},
+                        'SchoolID': {'sample_positions': [0.35, 0.65], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 20},
+                        'SchoolIDBack': {'sample_positions': [0.35, 0.65], 'max_width': 540, 'allow_alt_pass': True, 'fallback_text_length': 15},
                     }
                     scan_opt = scan_options.get(doc_type, scan_options['Enrollment'])
 
@@ -3365,8 +3365,6 @@ def ocr_check():
                         'Indigency': ['Indigency', 'Certificate', 'Barangay', 'Indigent', 'Residency', 'Clearance', 'Resident', 'Office', 'Official'],
                         'Enrollment': ['Enrollment', 'Enrolment', 'Certificate', 'COE', 'COR', 'Registered', 'Registration', 'Reg', 'Matriculation', 'Assessment', 'Billing', 'Semester', 'Sem', 'School'],
                         'Grades': ['Grades', 'Grade', 'Transcript', 'Record', 'Evaluation', 'Rating', 'Units', 'Credit', 'Sem', 'GPA', 'Report', 'Card', 'Academic', 'TOR', 'Checklist'],
-                        'SchoolID': ['Student', 'ID', 'Card', 'Identity', 'School', 'College', 'University', 'Number'],
-                        'SchoolIDBack': ['SY', 'School Year', 'Academic', 'Valid', 'Until', 'Date', 'Expiry', 'Signature'],
                     }
                     
                     # Optimization: Pass URL directly to avoid redundant downloads

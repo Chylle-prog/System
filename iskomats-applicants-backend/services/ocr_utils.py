@@ -1280,7 +1280,7 @@ def _ocr_video_frame(processed_frame, allow_alt_pass=True, keywords=None, is_add
         # For address verification (Indigency), we need continuous lines. PSM 6 (Uniform Block) is fastest and most reliable.
         # For general keywords, PSM 11 (Sparse Text) is fast.
         psm = 6 if is_address_verification else (11 if keywords else 3)
-        text = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config=f'--psm {psm} --oem 1')
+        text = _run_ocr_command(pytesseract.image_to_string, processed_frame, config=f'--psm {psm} --oem 1')
 
         # Smart Exit: If keywords provided and found, and we don't strictly need a full address paragraph, exit early.
         if keywords and not is_address_verification and any(k.lower() in text.lower() for k in keywords):
@@ -1288,7 +1288,7 @@ def _ocr_video_frame(processed_frame, allow_alt_pass=True, keywords=None, is_add
 
         # Only run fallback pass if Pass 1 was relatively poor (< 12 chars)
         if allow_alt_pass and len(text.strip()) < 12:
-            text_alt = eventlet.tpool.execute(pytesseract.image_to_string, processed_frame, config='--psm 6 --oem 1')
+            text_alt = _run_ocr_command(pytesseract.image_to_string, processed_frame, config='--psm 6 --oem 1')
             if len(text_alt.strip()) > len(text.strip()):
                 text = text_alt
 
