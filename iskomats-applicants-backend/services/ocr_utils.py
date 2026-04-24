@@ -2304,8 +2304,8 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
         
         # Neural matching restored: System now benefits from patterns learned in the Bench
         try:
-            direct_score = compare_signature_images(sig_img, extracted_id_signature)
-            profile_score = calculate_neural_match(sig_img, student_id) if student_id else 0.0
+            direct_score, sig_embedding = compare_signature_images(sig_img, extracted_id_signature)
+            profile_score = calculate_neural_match(sig_img, student_id, current_embedding=sig_embedding) if student_id else 0.0
 
             if profile_score > 0.0:
                 # 80/20 weighted average incorporates learning without overriding the primary ID check
