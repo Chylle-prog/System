@@ -3561,11 +3561,11 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
             conn.close()
             return jsonify({'success': False, 'message': 'Unauthorized'}), 403
 
-        if status_row['slots'] is not None and status_row['is_accepted'] is not True:
+        if status_row['slots'] is not None and status_row['is_accepted'] != 'Accepted':
             cursor.execute(
                 '''SELECT COUNT(*) AS accepted_count
                    FROM applicant_status
-                   WHERE scholarship_no = %s AND is_accepted = TRUE''',
+                   WHERE scholarship_no = %s AND is_accepted = 'Accepted' ''',
                 (scholarship_no,)
             )
             accepted_count = cursor.fetchone()['accepted_count']
@@ -3577,14 +3577,14 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
         # Update applicant status
         cursor.execute(
             '''UPDATE applicant_status 
-               SET is_accepted = True, status_updated = CURRENT_DATE
+               SET is_accepted = 'Accepted', status_updated = CURRENT_DATE
                WHERE applicant_no = %s AND scholarship_no = %s''',
             (applicant_no, scholarship_no)
         )
 
         # Auto-decline other applications for the same applicant
         cursor.execute(
-            "SELECT s.scholarship_name, s.req_no FROM applicant_status ast JOIN scholarships s ON ast.scholarship_no = s.req_no WHERE ast.applicant_no = %s AND ast.scholarship_no != %s AND (ast.is_accepted IS NULL OR ast.is_accepted = TRUE)",
+            "SELECT s.scholarship_name, s.req_no FROM applicant_status ast JOIN scholarships s ON ast.scholarship_no = s.req_no WHERE ast.applicant_no = %s AND ast.scholarship_no != %s AND (ast.is_accepted IS NULL OR ast.is_accepted = 'Pending' OR ast.is_accepted = 'Accepted')",
             (applicant_no, scholarship_no)
         )
         declined_scholarships = cursor.fetchall()
@@ -3592,7 +3592,7 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
         cursor.execute(
             """
             UPDATE applicant_status
-            SET is_accepted = FALSE
+            SET is_accepted = 'Rejected'
             WHERE applicant_no = %s AND scholarship_no != %s
             """,
             (applicant_no, scholarship_no),
@@ -3664,7 +3664,7 @@ def decline_applicant(current_user_id, pro_no, role, applicant_no):
         # Update applicant status
         cursor.execute(
             '''UPDATE applicant_status 
-               SET is_accepted = False, status_updated = CURRENT_DATE
+               SET is_accepted = 'Rejected', status_updated = CURRENT_DATE
                WHERE applicant_no = %s AND scholarship_no = %s''',
             (applicant_no, scholarship_no)
         )
