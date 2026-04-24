@@ -1987,8 +1987,12 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
         
         # Neural matching: Weighted by trust in the student's profile history
         try:
-            direct_score = compare_signature_images(sig_img, extracted_id_signature)
-            profile_score = calculate_neural_match(sig_img, student_id) if student_id else 0.0
+            # OPTIMIZATION: Extract submitted signature embedding exactly once
+            from .signature_brain import extract_signature_embedding
+            submitted_neural_vec = extract_signature_embedding(sig_img)
+
+            direct_score = compare_signature_images(sig_img, extracted_id_signature, pre_extracted_submitted=submitted_neural_vec)
+            profile_score = calculate_neural_match(sig_img, student_id, pre_extracted_embedding=submitted_neural_vec) if student_id else 0.0
 
             if profile_score > 0.0:
                 # Dynamic weighting based on sample count

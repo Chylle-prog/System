@@ -14,9 +14,10 @@ except Exception as exc:
     TENSORFLOW_AVAILABLE = False
     print(f"[BRAIN] TensorFlow unavailable, using OpenCV fallback: {exc}", flush=True)
 
-# --- GLOBAL MODEL CACHE ---
-# Using MobileNetV2 for its extreme efficiency on CPU
+# --- GLOBAL CACHES ---
 _SIGNATURE_MODELS = {}
+_PROFILE_CACHE = {}   # { student_id: mean_vector }
+_BLACKLIST_CACHE = {} # { student_id: [vector1, vector2, ...] }
 
 def get_profile_weight(sample_count):
     """
@@ -215,6 +216,9 @@ def extract_signature_embedding(img_np):
     Converts a signature image into a 1280-D "Neural Fingerprint" vector.
     Now with Translation & Scale Invariance via Auto-Cropping.
     """
+    if img_np is None or img_np.size == 0:
+        return None
+
     try:
         if not TENSORFLOW_AVAILABLE:
             print("[BRAIN] Using classical OpenCV signature embedding.", flush=True)
@@ -244,6 +248,9 @@ def get_mean_profile_vector(student_id):
     Loads ALL confirmed 'Real' signatures for a student and calculates their
     statistical centroid (Mean Vector). This is the "Learning" component.
     """
+    if student_id in _PROFILE_CACHE:
+        return _PROFILE_CACHE[student_id]
+
     try:
         history_dir = os.path.join(os.getcwd(), 'knowledge', 'signature_profiles', 'history', str(student_id))
         if not os.path.exists(history_dir):
@@ -251,8 +258,12 @@ def get_mean_profile_vector(student_id):
             master_profile = os.path.join(os.getcwd(), 'knowledge', 'signature_profiles', f"{student_id}.png")
             if os.path.exists(master_profile):
                 img = cv2.imread(master_profile)
-                print(f"[BRAIN] Using master profile for {student_id}", flush=True)
-                return extract_signature_embedding(img)
+                if img is not None:
+                    print(f"[BRAIN] Using master profile for {student_id}", flush=True)
+                    vec = extract_signature_embedding(img)
+                    if vec is not None:
+                        _PROFILE_CACHE[student_id] = vec
+                    return vec
             return None
             
         embeddings = []
@@ -262,60 +273,55 @@ def get_mean_profile_vector(student_id):
         for file in files:
             file_path = os.path.join(history_dir, file)
             img = cv2.imread(file_path)
-            if img is None:
-                print(f"[BRAIN] Failed to load {file}", flush=True)
-                continue
+            if img is None: continue
             embedding = extract_signature_embedding(img)
             if embedding is not None:
                 embeddings.append(embedding)
-                print(f"[BRAIN] Loaded {file}: shape {embedding.shape}, norm {np.linalg.norm(embedding):.4f}", flush=True)
-            else:
-                print(f"[BRAIN] Failed to extract from {file}", flush=True)
         
         if not embeddings:
-            print(f"[BRAIN] No valid embeddings!", flush=True)
             return None
         
         # Calculate the Centroid (Mean Vector)
         mean_vector = np.mean(embeddings, axis=0)
-        # Re-normalize after averaging (averaging normalized vectors can reduce magnitude)
         normalized_mean = _normalize_vector(mean_vector)
-        if normalized_mean is None:
-            return None
-        print(f"[BRAIN] Mean vector: {len(embeddings)} samples, final norm {np.linalg.norm(normalized_mean):.6f}", flush=True)
+        if normalized_mean is not None:
+            _PROFILE_CACHE[student_id] = normalized_mean
         return normalized_mean
     except Exception as e:
         print(f"[BRAIN] Mean vector calculation failed: {e}", flush=True)
         return None
 
-def calculate_neural_match(drawing_img, student_id):
+def calculate_neural_match(drawing_img, student_id, pre_extracted_embedding=None):
     """
     Matches a new drawing against the student's statistical neural history.
     Now also checks the BLACKLIST to penalize known 'Fake' patterns.
     """
-    current_embedding = extract_signature_embedding(drawing_img)
+    current_embedding = pre_extracted_embedding if pre_extracted_embedding is not None else extract_signature_embedding(drawing_img)
     if current_embedding is None: 
         return 0.0
     
     # 1. Check Blacklist (Negative Learning)
-    # Stricter 0.75 threshold with scaling penalty
-    blacklist_dir = os.path.join(os.getcwd(), 'knowledge', 'signature_profiles', 'blacklist', str(student_id))
-    if os.path.exists(blacklist_dir):
-        for file in os.listdir(blacklist_dir):
-            if not file.endswith('.png'): continue
-            b_img = cv2.imread(os.path.join(blacklist_dir, file))
-            if b_img is None: continue
-            b_embedding = extract_signature_embedding(b_img)
-            if b_embedding is not None:
-                sim = _cosine_similarity(current_embedding, b_embedding)
-                if sim > 0.88:  # Raised threshold (from 0.75) to be less strict
-                    # Scale penalty: 0.88=-0.3, 0.95=-0.6, 0.99=-0.75
-                    penalty = -0.3 - (sim - 0.88) * 4
-                    print(f"[BRAIN] Blacklist HIT ({sim:.4f}). Penalty: {penalty:.2f}", flush=True)
-                    return float(penalty)
+    if student_id:
+        if student_id not in _BLACKLIST_CACHE:
+            _BLACKLIST_CACHE[student_id] = []
+            blacklist_dir = os.path.join(os.getcwd(), 'knowledge', 'signature_profiles', 'blacklist', str(student_id))
+            if os.path.exists(blacklist_dir):
+                for file in os.listdir(blacklist_dir):
+                    if not file.endswith('.png'): continue
+                    b_img = cv2.imread(os.path.join(blacklist_dir, file))
+                    if b_img is None: continue
+                    b_embedding = extract_signature_embedding(b_img)
+                    if b_embedding is not None:
+                        _BLACKLIST_CACHE[student_id].append(b_embedding)
+        
+        for b_embedding in _BLACKLIST_CACHE[student_id]:
+            sim = _cosine_similarity(current_embedding, b_embedding)
+            if sim > 0.88:
+                penalty = -0.3 - (sim - 0.88) * 4
+                print(f"[BRAIN] Blacklist HIT ({sim:.4f}). Penalty: {penalty:.2f}", flush=True)
+                return float(penalty)
     
     # 2. Check History (Positive Learning)
-    # Verify we have enough samples before trusting the profile
     sample_count = get_training_count(student_id)
     if sample_count < 3:
         return 0.0
@@ -325,32 +331,21 @@ def calculate_neural_match(drawing_img, student_id):
         return 0.0
     
     similarity = _cosine_similarity(current_embedding, mean_real_vector)
-    print(f"[BRAIN] Profile similarity: {similarity:.6f}", flush=True)
     return float(similarity)
 
-
-def compare_signature_images(submitted_img, reference_img):
+def compare_signature_images(submitted_img, reference_img, pre_extracted_submitted=None):
     """
     Compare a submitted signature directly against a reference signature crop.
-    Returns a cosine-similarity score from 0.0 to 1.0.
     """
-    submitted_embedding = extract_signature_embedding(submitted_img)
+    submitted_embedding = pre_extracted_submitted if pre_extracted_submitted is not None else extract_signature_embedding(submitted_img)
     if submitted_embedding is None:
-        print("[BRAIN] Submitted signature embedding is None", flush=True)
         return 0.0
 
     reference_embedding = extract_signature_embedding(reference_img)
     if reference_embedding is None:
-        print("[BRAIN] Reference signature embedding is None", flush=True)
         return 0.0
 
     similarity = _cosine_similarity(submitted_embedding, reference_embedding)
-    print(
-        f"[BRAIN] Direct signature similarity: {similarity:.6f} "
-        f"(submitted norm: {np.linalg.norm(submitted_embedding):.6f}, "
-        f"reference norm: {np.linalg.norm(reference_embedding):.6f})",
-        flush=True,
-    )
     return float(similarity)
 
 def get_training_count(student_id):

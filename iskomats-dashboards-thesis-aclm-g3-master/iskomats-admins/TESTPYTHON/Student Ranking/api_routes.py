@@ -512,8 +512,13 @@ def ensure_verification_columns():
         cur.close()
         conn.close()
         print("[MIGRATION] Email table verification columns ensured")
-    except Exception as e:
-        print(f"[MIGRATION ERROR] Failed to ensure verification columns: {e}")
+    finally:
+        if 'cur' in locals() and cur:
+            try: cur.close()
+            except: pass
+        if 'conn' in locals() and conn:
+            try: conn.close()
+            except: pass
 
 # Run migration on startup
 try:
