@@ -2885,11 +2885,14 @@ def submit_application():
                     if id_front_bytes:
                         town_city = form_data.get('townCity') or applicant.get('town_city_municipality', '')
                         full_name = f"{applicant.get('first_name', '')} {applicant.get('last_name', '')}"
-                        print(f"[SUBMIT] Scheduling OCR for {full_name}...")
+                        from services.verification_client import call_fastapi_verify_id
+                        print(f"[SUBMIT] Scheduling FASTAPI OCR for {full_name}...")
                         verification_tasks['ocr'] = executor.submit(
-                            verify_id_with_ocr, 
+                            call_fastapi_verify_id, 
                             image_bytes=id_front_bytes,
-                            expected_name=full_name,
+                            first_name=applicant.get('first_name', ''),
+                            middle_name=applicant.get('middle_name', ''),
+                            last_name=applicant.get('last_name', ''),
                             expected_address=town_city
                         )
 
@@ -3371,51 +3374,18 @@ def ocr_check():
                 # Connection already released back to pool by context manager above
 
                 def run_ocr_check():
-                    if doc_type == 'Enrollment':
-                        # Use multi-pass OCR for complex COR layouts
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1200, prefer_fast_layout=False, crop_percent=1.0)
-                        v_t = bool(raw_t and len(raw_t.strip()) > 15)
-                        return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text (verify lighting)'), raw_t, {}
-                    elif doc_type == 'Grades':
-                        # High resolution and Auto Layout (PSM 3) required for academic tables
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=1200, prefer_fast_layout=False, crop_percent=1.0)
-                        v_t = bool(raw_t and raw_t.strip())
-                        return v_t, extraction_error or ('Verified' if v_t else 'Unable to read document text'), raw_t, {}
-                    elif doc_type == 'SchoolIDBack':
-                        raw_t, extraction_error = extract_document_text(doc_bytes, is_id_back=True)
-                        v_t = bool(raw_t and raw_t.strip())
-                        return v_t, extraction_error or ('Verified' if v_t else 'Unable to read school ID back text'), raw_t, {}
-                    elif doc_type == 'Indigency':
-                        # Restored capture range: many certificates place name/address in the middle-bottom.
-                        raw_t, extraction_error = extract_document_text(doc_bytes, max_width=800, prefer_fast_layout=True, crop_percent=0.85)
-                        name_ok, name_ratio, name_details = student_name_matches_text(raw_t, first_name, middle_name, last_name, is_indigency=True)
-                        # Perform matching to detect Barangays even if target_address is empty for feedback
-                        _, addr_ok, found_keywords, _, detect_meta = _perform_text_matching(raw_t, None, None, None, target_address, is_indigency=True)
-                        found_kw = found_keywords
-                        detected_brgys = detect_meta.get('detected_brgy', [])
-                        # In Indigency, address is mandatory for a 'verified' result
-                        if not target_address:
-                            addr_ok = False
-                        meta = {'name_ok': name_ok, 'addr_ok': addr_ok, 'name_ratio': name_ratio, 'keywords': found_kw, 'detected_brgy': detected_brgys}
-                        v_t = name_ok and addr_ok
-                        msg = 'Verified' if v_t else 'Verification failed'
-                        brgy_str = ", ".join(detected_brgys) if detected_brgys else "None detected"
-                        status_addr = 'OK' if addr_ok else 'X'
-                        f_name_ok = name_details.get('first_ok', False)
-                        l_name_ok = name_details.get('last_ok', False)
-                        msg = f"Checklist: [First: {'OK' if f_name_ok else 'X'} | Last: {'OK' if l_name_ok else 'X'} | Addr: {status_addr} (Target: {target_address or 'Missing'}, Found: {brgy_str})]"
-                        return v_t, extraction_error or msg, raw_t, meta
-                    else:
-                        # Always return a 4-tuple for unknown doc types
-                        result = verify_id_with_ocr(doc_bytes, first_name, middle_name, last_name, target_address, expected_id_no=expected_id_no if doc_type != 'Indigency' else None, expected_school_name=school_name)
-                        # If result is already a 4-tuple, return as is
-                        if isinstance(result, tuple) and len(result) == 4:
-                            return result
-                        # Otherwise, pad to 4-tuple
-                        elif isinstance(result, tuple) and len(result) == 3:
-                            return (*result, {})
-                        else:
-                            return False, 'Unknown error', '', {}
+                    from services.verification_client import call_fastapi_verify_document
+                    # Offload the entire tweaked logic to FastAPI
+                    return call_fastapi_verify_document(
+                        doc_bytes, doc_type, first_name, middle_name, last_name,
+                        expected_address=target_address,
+                        expected_id_no=expected_id_no if doc_type != 'Indigency' else None,
+                        expected_school_name=school_name,
+                        expected_gpa=expected_gpa,
+                        expected_year_level=expected_year_level,
+                        expected_academic_year=expected_academic_year,
+                        expected_semester=expected_semester
+                    )
 
                 # ─── PARALLEL EXECUTION (Concurrency) ───
                 import time
@@ -4134,16 +4104,9 @@ def face_match():
     try:
         face_bytes = resolve_verification_image_bytes(face_image_data)
         id_bytes = resolve_verification_image_bytes(id_image_data)
-
-        if not face_bytes or not id_bytes:
-            return jsonify({'verified': False, 'message': 'Invalid image format. Must be base64 or a trusted Supabase storage URL.'}), 400
-
-        # Face match can take 10-20s on first load due to model init
-        # Use tpool.execute to avoid blocking the main Eventlet loop, 
-        # which prevents timeouts and 'CORS issues' caused by dropped connections.
-        verified, message, confidence = eventlet.tpool.execute(
-            verify_face_with_id, face_bytes, id_bytes
-        )
+        from services.verification_client import call_fastapi_verify_face
+        verified, message, confidence = call_fastapi_verify_face(id_bytes, face_bytes)
+        
         return jsonify({
             'verified': verified,
             'message': message,
