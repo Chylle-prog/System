@@ -3389,7 +3389,8 @@ def ocr_check():
                         expected_gpa=expected_gpa,
                         expected_year_level=expected_year_level,
                         expected_academic_year=expected_academic_year,
-                        expected_semester=expected_semester
+                        expected_semester=expected_semester,
+                        course=course
                     )
 
                 # ─── PARALLEL EXECUTION (Concurrency) ───
@@ -3491,7 +3492,6 @@ def ocr_check():
                             f"School: {'OK' if school_ok else 'X'}",
                             f"Level: {'OK' if year_level_ok else 'X'}",
                             f"Year: {'OK' if year_only_ok else 'X'}",
-                            f"Sem: {'OK' if semester_ok else 'X'}",
                             f"Course: {'OK' if course_ok else 'X'}",
                             f"Video: {'OK' if v_video else 'X'}"
                         ]
@@ -3512,9 +3512,11 @@ def ocr_check():
                         if not v:
                             msg += f" (Checked vs F:'{first_name}' L:'{last_name}' ID:'{expected_id_no}' Lvl:'{expected_year_level}' Y:'{target_expected_year}')"
                         return {'doc': 'Enrollment', 'verified': v, 'message': msg + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video, 'score_details': score_details}
+                    
                     elif doc_type == 'Grades':
                         gpa_ok, _, _ = gpa_matches_text(raw, expected_gpa)
                         id_ok, _ = student_id_no_matches_text(expected_id_no, raw) if expected_id_no else (True, None)
+                        course_ok, _ = course_matches_text(course, raw) if course else (True, None)
                         
                         # Removal: Year level verification is disabled to prevent common OCR mismatches for Grades
                         year_level_ok = True
@@ -3554,7 +3556,7 @@ def ocr_check():
                             f"GPA: {'OK' if gpa_ok else 'X'}{gpa_error_msg}",
                             f"Level: {'OK' if year_level_ok else 'X'}",
                             f"Year: {'OK' if year_only_ok else 'X'}",
-                            f"Sem: {'OK' if semester_ok else 'X'}",
+                            f"Course: {'OK' if course_ok else 'X'}",
                             f"Video: {'OK' if v_video else 'X'}"
                         ]
                         score_details = {

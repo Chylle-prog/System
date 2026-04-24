@@ -69,7 +69,8 @@ def call_fastapi_verify_document(image_bytes, doc_type, first_name, middle_name,
             "gpa": str(kwargs.get('expected_gpa', '')),
             "yearLevel": kwargs.get('expected_year_level'),
             "academicYear": kwargs.get('expected_academic_year'),
-            "semester": kwargs.get('expected_semester')
+            "semester": kwargs.get('expected_semester'),
+            "course": kwargs.get('course')
         }
 
         response = requests.post(

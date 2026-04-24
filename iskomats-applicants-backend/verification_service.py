@@ -14,8 +14,15 @@ from services.ocr_utils import (
     verify_id_with_ocr, 
     verify_face_with_id,
     _perform_text_matching,
-    extract_document_text
+    extract_document_text,
+    student_name_matches_text,
+    year_level_matches_text,
+    course_matches_text,
+    gpa_matches_text,
+    academic_year_matches_expected,
+    extract_school_year_from_text
 )
+from services.school_utils import school_name_matches_text
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO)
@@ -63,6 +70,7 @@ class DocumentVerificationRequest(BaseVerificationRequest):
     expected_year_level: Optional[str] = Field(None, alias="yearLevel")
     expected_academic_year: Optional[str] = Field(None, alias="academicYear")
     expected_semester: Optional[str] = Field(None, alias="semester")
+    expected_course: Optional[str] = Field(None, alias="course")
 
 class FaceVerificationRequest(BaseModel):
     id_image_base64: str = Field(..., alias="idImage")
@@ -143,20 +151,62 @@ async def api_verify_document(req: DocumentVerificationRequest):
         meta = {}
 
         if doc_type == 'Enrollment':
-            # TWEAK: High res (1200) and slow layout for complex CORs
             raw_t, _ = extract_document_text(image_bytes, max_width=1200, prefer_fast_layout=False, crop_percent=1.0)
+            
+            # 1. Name Check
             name_ok, name_ratio, name_details = student_name_matches_text(raw_t, req.first_name, req.middle_name, req.last_name)
-            v_t = name_ok and bool(raw_t and len(raw_t.strip()) > 15)
-            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Content: OK]" if not v_t else "Verified"
-            meta = {'name_ok': name_ok, 'name_details': name_details}
+            
+            # 2. School Check
+            school_ok = True
+            if req.expected_school_name:
+                school_ok, _, _ = school_name_matches_text(raw_t, req.expected_school_name)
+                
+            # 3. Year Level Check
+            year_lvl_ok = True
+            if req.expected_year_level:
+                year_lvl_ok, _ = year_level_matches_text(req.expected_year_level, raw_t)
+                
+            # 4. Course Check
+            course_ok = True
+            if req.expected_course:
+                course_ok, _ = course_matches_text(req.expected_course, raw_t)
+            
+            v_t = name_ok and school_ok and year_lvl_ok and course_ok
+            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | School: {'OK' if school_ok else 'X'} | Year: {'OK' if year_lvl_ok else 'X'} | Course: {'OK' if course_ok else 'X'}]"
+            if v_t: msg = "Verified"
+            meta = {'name_ok': name_ok, 'school_ok': school_ok, 'year_lvl_ok': year_lvl_ok, 'course_ok': course_ok, 'name_details': name_details}
         
         elif doc_type == 'Grades':
-            # TWEAK: High res (1200) for dense tables
             raw_t, _ = extract_document_text(image_bytes, max_width=1200, prefer_fast_layout=False, crop_percent=1.0)
+            
+            # 1. Name Check
             name_ok, name_ratio, name_details = student_name_matches_text(raw_t, req.first_name, req.middle_name, req.last_name)
-            v_t = name_ok and bool(raw_t and len(raw_t.strip()) > 5)
-            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Content: OK]" if not v_t else "Verified"
-            meta = {'name_ok': name_ok, 'name_details': name_details}
+            
+            # 2. School Check
+            school_ok = True
+            if req.expected_school_name:
+                school_ok, _, _ = school_name_matches_text(raw_t, req.expected_school_name)
+                
+            # 3. GPA Check
+            gpa_ok = True
+            if req.expected_gpa:
+                gpa_ok, _, _ = gpa_matches_text(raw_t, req.expected_gpa)
+                
+            # 4. Academic Year Check
+            ay_ok = True
+            if req.expected_academic_year:
+                found_ay = extract_school_year_from_text(raw_t)
+                ay_ok = academic_year_matches_expected(found_ay, req.expected_academic_year)
+
+            # 5. Course Check
+            course_ok = True
+            if req.expected_course:
+                course_ok, _ = course_matches_text(req.expected_course, raw_t)
+
+            v_t = name_ok and school_ok and gpa_ok and ay_ok and course_ok
+            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | School: {'OK' if school_ok else 'X'} | GPA: {'OK' if gpa_ok else 'X'} | Year: {'OK' if ay_ok else 'X'} | Course: {'OK' if course_ok else 'X'}]"
+            if v_t: msg = "Verified"
+            meta = {'name_ok': name_ok, 'school_ok': school_ok, 'gpa_ok': gpa_ok, 'ay_ok': ay_ok, 'course_ok': course_ok, 'name_details': name_details}
             
         elif doc_type == 'SchoolIDBack':
             raw_t, _ = extract_document_text(image_bytes, is_id_back=True)

@@ -1539,7 +1539,7 @@ const StudentInfo = () => {
           gpa: urlGpa || scholarshipSearchProfile?.gpa || profile.overall_gpa || '',
           numberOfSiblings: profile.sibling_no || '',
           grades_year: profile.grades_year || '',
-          course: normalizeSelectValue(profile.course, COURSES),
+          course: profile.course || '',
           meritsAwardsReceived: profile.merits_awards_received || ''
         };
 

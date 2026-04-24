@@ -482,6 +482,114 @@ def course_matches_text(target_course, text):
             
     return False, None
 
+def gpa_matches_text(raw_text, expected_gpa):
+    """
+    Validates if the expected GPA (float or string) exists in the OCR text.
+    Handles various labels (GPA, GWA, QPA) and precision variations.
+    """
+    # 1. Normalize expected GPA as a string to preserve precision
+    expected_str = str(expected_gpa or '').strip()
+    match_expected = re.search(r'\d+(?:\.\d+)?', expected_str)
+    if not match_expected:
+        return True, None, []
+    
+    expected_digits = match_expected.group(0).replace(',', '.') # e.g. "3.54"
+    raw_text_str = str(raw_text or '')
+    
+    # Homoglyphs for number correction
+    HOMOGLYPHS = {'s': '5', 'o': '0', 'z': '2', 'b': '8', 'i': '1', 'l': '1', 't': '7'}
+
+    def clean_num(s):
+        s = s.replace(' ', '').replace(',', '.').lower()
+        for char, sub in HOMOGLYPHS.items():
+            s = s.replace(char, sub)
+        return s
+
+    # 2. Extract all potential numbers from text
+    num_pattern = r'\b(\d+\s*[\.\,]\s*[a-zA-Z0-9]+|[a-zA-Z0-9]+)\b'
+    
+    candidates = []
+    # a. Check labeled sections first (GPA, GWA, etc)
+    gpa_patterns = [
+        r'g\s*\.?\s*p\s*\.?\s*a\s*\.?\s*[:=]?\s*([a-zA-Z0-9]+\s*[\.\,]\s*[a-zA-Z0-9]+|[a-zA-Z0-9]+)',
+        r'weighted\s*average\s*[:=]?\s*([a-zA-Z0-9]+\s*[\.\,]\s*[a-zA-Z0-9]+|[a-zA-Z0-9]+)',
+        r'g\s*w\s*a\s*[:=]?\s*([a-zA-Z0-9]+\s*[\.\,]\s*[a-zA-Z0-9]+|[a-zA-Z0-9]+)',
+        r'q\s*p\s*a\s*[:=]?\s*([a-zA-Z0-9]+\s*[\.\,]\s*[a-zA-Z0-9]+|[a-zA-Z0-9]+)',
+        r'\b(?:avg|average|rating|weighted\s*avg|gwa|gpa)\s*[:=]?\s*([a-zA-Z0-9]+\s*[\.\,]\s*[a-zA-Z0-9]+|[a-zA-Z0-9]+)'
+    ]
+    
+    for pattern in gpa_patterns:
+        for m in re.finditer(pattern, raw_text_str, re.IGNORECASE):
+            candidates.append(clean_num(m.group(1)))
+            
+    # b. Absolute fallback: all words that look like numbers
+    for m in re.finditer(num_pattern, raw_text_str):
+        c = clean_num(m.group(1))
+        if c not in candidates:
+            candidates.append(c)
+
+    # 3. Apply the "Precision Match" rule
+    target_clean = clean_num(expected_digits)
+    
+    for c in candidates:
+        if c.startswith(target_clean):
+            return True, expected_digits, [c]
+            
+    # 4. Fallback for float matching
+    try:
+        expected_val = float(target_clean)
+        for c in candidates:
+            try:
+                c_val = float(c)
+                if abs(c_val - expected_val) < 0.001:
+                    return True, expected_digits, [c]
+            except: continue
+    except: pass
+
+    return False, None, candidates
+
+def normalize_to_percent(val):
+    """Converts GPA-scale values (e.g. 1.0-5.0) to percentage-scale (e.g. 75-100) if needed."""
+    try:
+        v = float(val)
+        if 1.0 <= v <= 5.0:
+            # Simple inverse mapping for common PH university scales (1.0 = 100, 3.0 = 75)
+            return 100 - (v - 1.0) * 12.5
+        return v
+    except:
+        return 0
+
+def academic_year_matches_expected(found_year, expected_year):
+    """
+    Validates if the detected year in document matches the expected academic year.
+    Supports ranges (2024-2025) and single years.
+    """
+    if not expected_year: return True
+    if not found_year: return False
+
+    # Normalize found and expected to digit lists
+    found_years = [int(y) for y in re.findall(r'20\d{2}', str(found_year))]
+    # Handle both hyphen and Unicode dashes
+    expected_str = str(expected_year).replace('–', '-').replace('—', '-')
+    expected_years = [int(y) for y in re.findall(r'20\d{2}', expected_str)]
+
+    if not found_years or not expected_years: return False
+
+    # Check for direct year match
+    for f in found_years:
+        if f in expected_years:
+            return True
+            
+    # Range check
+    if len(expected_years) >= 2:
+        min_exp, max_exp = min(expected_years), max(expected_years)
+        return any(min_exp <= y <= max_exp for y in found_years)
+    
+    # Target check
+    latest_found = max(found_years)
+    target_year = expected_years[0]
+    return latest_found >= target_year
+
 
 def student_id_no_matches_text(target_id, text):
     """
