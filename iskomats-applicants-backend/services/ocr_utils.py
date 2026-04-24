@@ -599,11 +599,11 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
                     if re.search(rf'\b{re.escape(check_word)}\b', norm_txt):
                         f_count += 1; found = True; break
                     elif check_word in norm_txt:
-                        # If it's a substring, check if it's a nearly identical word
                         for ocr_w in all_ocr_words:
                             if check_word in ocr_w or ocr_w in check_word:
                                 len_diff = abs(len(ocr_w) - len(check_word))
-                                if len_diff <= 2 and len_diff <= (max(len(ocr_w), len(check_word)) * 0.2):
+                                # For Indigency, allow much larger length differences (merged words in OCR)
+                                if is_indigency or (len_diff <= 2 and len_diff <= (max(len(ocr_w), len(check_word)) * 0.2)):
                                     f_count += 1; found = True; break
                         if found: break
                     
@@ -636,11 +636,22 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
             p_ratio = f_count / len(n_words) if n_words else 0
             
             # Ultimate Space-Stripped Fallback for Names
-            if p_ratio < (0.7 if is_indigency else 0.80):
-                clean_name_part = "".join(filter(str.isalnum, str(name_part))).lower()
+            if p_ratio < (0.6 if is_indigency else 0.80):
+                # Filter titles out of the clean name part too
+                raw_name_words = normalize_for_ocr(name_part).split()
+                filtered_name_words = [w for w in raw_name_words if w not in titles_to_ignore]
+                if not filtered_name_words: filtered_name_words = raw_name_words
+                
+                clean_name_part = "".join(filter(str.isalnum, "".join(filtered_name_words)))
                 clean_text = "".join(filter(str.isalnum, str(norm_txt)))
-                if len(clean_name_part) >= 4 and clean_name_part in clean_text:
+                
+                if len(clean_name_part) >= 3 and clean_name_part in clean_text:
                     return True, 1.0
+                
+                # Final word-by-word substring check for Indigency
+                if is_indigency and n_words:
+                    if any(w in norm_txt for w in n_words):
+                        return True, 0.7
                     
             # For middle names, allow initial-based fallback
             if is_middle and n_words and p_ratio < (0.7 if is_indigency else 0.80):
