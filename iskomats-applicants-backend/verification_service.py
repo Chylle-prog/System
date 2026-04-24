@@ -238,7 +238,8 @@ def api_verify_document(req: DocumentVerificationRequest):
             meta = {'name_ok': name_ok, 'school_ok': school_ok, 'gpa_ok': gpa_ok, 'ay_ok': ay_ok, 'sem_ok': sem_ok, 'id_ok': id_ok, 'course_ok': course_ok, 'name_details': name_details}
             
         elif doc_type == 'SchoolIDBack':
-            raw_t, _ = extract_document_text(image_bytes, is_id_back=True)
+            # Use prefer_fast_layout=True to trigger the faster PSM 6 path
+            raw_t, _ = extract_document_text(image_bytes, is_id_back=True, prefer_fast_layout=True)
             
             # Extract and validate academic year from back ID
             ay_ok = True

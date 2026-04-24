@@ -1210,17 +1210,21 @@ def extract_document_text(image_bytes, max_width=1600, prefer_fast_layout=False,
 
     with OCR_SEMAPHORE:
         try:
-            if not is_id_back and not prefer_fast_layout and h > 600:
+            if not prefer_fast_layout and h > 500:
+                # Parallel Split Scan: Divide ID/Document into zones for concurrent processing
                 h_mid = h // 2
                 zone_top = img[0:h_mid, :]
                 zone_bot = img[h_mid:h, :]
+                
                 from concurrent.futures import ThreadPoolExecutor
                 with ThreadPoolExecutor(max_workers=2) as zone_executor:
-                    f_top = zone_executor.submit(_run_tesseract_on_image, zone_top, psm=3, skip_pass2=True)
-                    f_bot = zone_executor.submit(_run_tesseract_on_image, zone_bot, psm=3, skip_pass2=True)
+                    # For IDs, use PSM 6 (Uniform Block) as it's MUCH faster than PSM 3 (Auto Layout)
+                    psm_to_use = 6 if is_id_back else 3
+                    f_top = zone_executor.submit(_run_tesseract_on_image, zone_top, psm=psm_to_use, skip_pass2=True)
+                    f_bot = zone_executor.submit(_run_tesseract_on_image, zone_bot, psm=psm_to_use, skip_pass2=True)
                     text = f"{f_top.result()}\n{f_bot.result()}"
             else:
-                psm = 6 if prefer_fast_layout else 3
+                psm = 6 if (prefer_fast_layout or is_id_back) else 3
                 text = _run_tesseract_on_image(img, psm=psm, skip_pass2=prefer_fast_layout)
             
             # ID backs often have very sparse text (stickers).
