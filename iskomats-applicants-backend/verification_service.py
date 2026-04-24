@@ -21,7 +21,9 @@ from services.ocr_utils import (
     course_matches_text,
     gpa_matches_text,
     academic_year_matches_expected,
-    extract_school_year_from_text
+    extract_school_year_from_text,
+    extract_semester_from_text,
+    normalize_semester_label
 )
 from services.school_utils import school_name_matches_text
 
@@ -170,12 +172,24 @@ async def api_verify_document(req: DocumentVerificationRequest):
             # 4. Course Check
             course_ok = True
             if req.expected_course:
-                course_ok, _ = course_matches_text(req.expected_course, raw_t)
+                course_ok, _ = course_matches_text(raw_t, req.expected_course)
+                
+            # 5. Academic Year Check
+            ay_ok = True
+            if req.expected_academic_year:
+                found_ay = extract_school_year_from_text(raw_t)
+                ay_ok = academic_year_matches_expected(found_ay, req.expected_academic_year)
+                
+            # 6. Semester Check
+            sem_ok = True
+            if req.expected_semester:
+                found_sem = extract_semester_from_text(raw_t)
+                sem_ok = (normalize_semester_label(found_sem) == normalize_semester_label(req.expected_semester))
             
-            v_t = name_ok and school_ok and year_lvl_ok and course_ok
-            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | School: {'OK' if school_ok else 'X'} | Year: {'OK' if year_lvl_ok else 'X'} | Course: {'OK' if course_ok else 'X'}]"
+            v_t = name_ok and school_ok and year_lvl_ok and course_ok and ay_ok and sem_ok
+            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | School: {'OK' if school_ok else 'X'} | Year: {'OK' if ay_ok else 'X'} | Sem: {'OK' if sem_ok else 'X'} | Level: {'OK' if year_lvl_ok else 'X'} | Course: {'OK' if course_ok else 'X'}]"
             if v_t: msg = "Verified"
-            meta = {'name_ok': name_ok, 'school_ok': school_ok, 'year_lvl_ok': year_lvl_ok, 'course_ok': course_ok, 'name_details': name_details}
+            meta = {'name_ok': name_ok, 'school_ok': school_ok, 'ay_ok': ay_ok, 'sem_ok': sem_ok, 'year_lvl_ok': year_lvl_ok, 'course_ok': course_ok, 'name_details': name_details}
         
         elif doc_type == 'Grades':
             raw_t, _ = extract_document_text(image_bytes, max_width=1200, prefer_fast_layout=False, crop_percent=1.0)
@@ -207,12 +221,18 @@ async def api_verify_document(req: DocumentVerificationRequest):
             # 6. Course Check
             course_ok = True
             if req.expected_course:
-                course_ok, _ = course_matches_text(req.expected_course, raw_t)
+                course_ok, _ = course_matches_text(raw_t, req.expected_course)
 
-            v_t = name_ok and school_ok and gpa_ok and ay_ok and id_ok and course_ok
-            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | School: {'OK' if school_ok else 'X'} | GPA: {'OK' if gpa_ok else 'X'} | Year: {'OK' if ay_ok else 'X'} | ID: {'OK' if id_ok else 'X'} | Course: {'OK' if course_ok else 'X'}]"
+            # 7. Semester Check
+            sem_ok = True
+            if req.expected_semester:
+                found_sem = extract_semester_from_text(raw_t)
+                sem_ok = (normalize_semester_label(found_sem) == normalize_semester_label(req.expected_semester))
+
+            v_t = name_ok and school_ok and gpa_ok and ay_ok and id_ok and course_ok and sem_ok
+            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | School: {'OK' if school_ok else 'X'} | GPA: {'OK' if gpa_ok else 'X'} | Year: {'OK' if ay_ok else 'X'} | Sem: {'OK' if sem_ok else 'X'} | ID: {'OK' if id_ok else 'X'} | Course: {'OK' if course_ok else 'X'}]"
             if v_t: msg = "Verified"
-            meta = {'name_ok': name_ok, 'school_ok': school_ok, 'gpa_ok': gpa_ok, 'ay_ok': ay_ok, 'id_ok': id_ok, 'course_ok': course_ok, 'name_details': name_details}
+            meta = {'name_ok': name_ok, 'school_ok': school_ok, 'gpa_ok': gpa_ok, 'ay_ok': ay_ok, 'sem_ok': sem_ok, 'id_ok': id_ok, 'course_ok': course_ok, 'name_details': name_details}
             
         elif doc_type == 'SchoolIDBack':
             raw_t, _ = extract_document_text(image_bytes, is_id_back=True)

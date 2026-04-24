@@ -3187,6 +3187,9 @@ def ocr_check():
                             print(f"[OCR] Using scholarship-defined min GPA: {min_gpa_required}", flush=True)
                         
                         grades_sem_from_sch = sch.get('grades_sem')
+                        if grades_sem_from_sch == 1: grades_sem_from_sch = "1st"
+                        elif grades_sem_from_sch == 2: grades_sem_from_sch = "2nd"
+                        
                         grades_year_from_sch = sch.get('grades_year')
                 except Exception as sch_err:
                     print(f"[OCR ERROR] Failed to fetch scholarship data: {sch_err}", flush=True)
@@ -3388,8 +3391,8 @@ def ocr_check():
                         expected_school_name=school_name,
                         expected_gpa=expected_gpa,
                         expected_year_level=expected_year_level,
-                        expected_academic_year=expected_academic_year,
-                        expected_semester=expected_semester,
+                        expected_academic_year=grades_year if (doc_type == 'Grades' and grades_year) else expected_academic_year,
+                        expected_semester=grades_sem if (doc_type == 'Grades' and grades_sem) else expected_semester,
                         course=course
                     )
 
@@ -3712,6 +3715,16 @@ def ocr_check():
             has_vid = bool(v_url and isinstance(v_url, str) and v_url.startswith('http'))
 
             if has_img:
+                # Validation: For Grades, mandatory fields must be filled
+                if dtype == 'Grades':
+                    if not grades_year or not grades_sem:
+                        if target_doc == 'Grades':
+                            return jsonify({
+                                'verified': False, 
+                                'message': 'Verification failed: The "Year for Grades" and "Semester for Grades" requirements are missing for this scholarship. Please contact the administrator.'
+                            }), 400
+                        continue # Skip this document in bulk verification
+
                 if has_vid:
                     jobs.append((dtype, param, db_val))
                 elif target_doc == dtype:
