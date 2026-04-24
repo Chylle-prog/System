@@ -113,7 +113,12 @@ const uploadRequirementVideoDirect = async (fieldName, file, onProgress) => {
       upsert: true,
       contentType,
       cacheControl: '60',
-      onUploadProgress: (p) => onProgress && onProgress(Math.round((p.loaded / (p.total || 1)) * 100))
+      onUploadProgress: (p) => {
+        if (!onProgress) return;
+        const percent = Math.round((p.loaded / (p.total || 1)) * 100);
+        // Ensure we show at least 1% immediately so it doesn't look stuck at 0
+        onProgress(Math.max(1, Math.min(99, percent)));
+      }
     });
 
   if (uploadResult.error) {
@@ -285,6 +290,51 @@ const makeRequest = async (endpoint, options = {}) => {
     console.error(`API Error [${endpoint}]:`, error);
     throw error;
   }
+};
+
+/**
+ * Enhanced upload helper using XMLHttpRequest to support real-time progress tracking
+ */
+const uploadWithProgress = async (endpoint, formData, onProgress) => {
+  const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = `${baseUrl}${cleanEndpoint}`;
+  const token = getAuthToken();
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable && onProgress) {
+        const percent = Math.round((e.loaded / e.total) * 100);
+        // Cap at 99% until server actually confirms success
+        onProgress(Math.max(1, Math.min(99, percent)));
+      }
+    });
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const response = JSON.parse(xhr.responseText);
+          if (onProgress) onProgress(100);
+          resolve(response);
+        } catch (e) {
+          resolve({ success: true, publicUrl: xhr.responseText });
+        }
+      } else {
+        reject(new Error(`Upload failed with status ${xhr.status}`));
+      }
+    });
+
+    xhr.addEventListener('error', () => reject(new Error('Network Error during upload')));
+    xhr.addEventListener('abort', () => reject(new Error('Upload aborted')));
+
+    xhr.open('POST', url);
+    if (token) {
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    }
+    xhr.send(formData);
+  });
 };
 
 /**
@@ -727,10 +777,7 @@ export const applicantAPI = {
         formData.append('field_name', fieldName);
 
         console.log('[VIDEO-UPLOAD] Sending to backend for upload fallback...');
-        response = await makeRequest('/student/videos/convert-and-upload', {
-          method: 'POST',
-          body: formData
-        });
+        response = await uploadWithProgress('/student/videos/convert-and-upload', formData, onProgress);
       }
 
       if (!response.success) {
