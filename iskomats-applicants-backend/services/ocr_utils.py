@@ -1495,14 +1495,17 @@ def extract_school_year_from_text(text):
     # Stricter matching: Usually preceded by labels or in a specific block
     # Look for patterns with optional SY/Year/School labels nearby (within 30 chars)
     year_patterns = [
-        r'(?:sy|s\.y\.|year|school\s+year|academic\s+year|school\s+year\s+sem)\s*[:=]?\s*(20\d{2})[-/\s]+(20\d{2})', # Labelled
-        r'\b(20\d{2})[-/\s]+(20\d{2})\b' # Raw fallback
+        r'(?:sy|s\.y\.|year|school\s+year|academic\s+year|school\s+year\s+sem)\s*[:=]?\s*(20\d{2})[-/\s]+(20\d{2})', # Labelled Range
+        r'(?:sy|s\.y\.|year|school\s+year|academic\s+year|school\s+year\s+sem)\s*[:=]?\s*(20\d{2})\b', # Labelled Single
+        r'\b(20\d{2})[-/\s]+(20\d{2})\b' # Raw fallback Range
     ]
     
     for pattern in year_patterns:
         match = re.search(pattern, compact_text, re.IGNORECASE)
         if match:
-            return f"{match.group(1)}-{match.group(2)}"
+            res = f"{match.group(1)}-{match.group(2)}" if len(match.groups()) > 1 else match.group(1)
+            print(f"[OCR-YEAR-DIAG] Found year via pattern '{pattern}': {res}", flush=True)
+            return res
 
     # Priority B: Keyword Proximity
     # Handles "Valid Until: 2025", "SY 2026", "School Year Sem 2025-2026"

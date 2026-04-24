@@ -214,7 +214,6 @@ def gpa_matches_text(raw_text, expected_gpa):
         r'q\s*p\s*a\s*[:=]?\s*([a-zA-Z0-9]+\s*[\.\,]\s*[a-zA-Z0-9]+|[a-zA-Z0-9]+)',
         r'\b(?:avg|average|rating|weighted\s*avg|gwa|gpa)\s*[:=]?\s*([a-zA-Z0-9]+\s*[\.\,]\s*[a-zA-Z0-9]+|[a-zA-Z0-9]+)'
     ]
-    
     for pattern in gpa_patterns:
         for m in re.finditer(pattern, raw_text_str, re.IGNORECASE):
             candidates.append(clean_num(m.group(1)))
@@ -3462,18 +3461,14 @@ def ocr_check():
                     print(f"[OCR-YEAR] Doc={doc_type} extracted_year='{year_label}' expected_year='{expected_academic_year}' extracted_sem='{semester_label}' expected_sem='{expected_semester}'", flush=True)
                     print(f"[OCR-NAME] First='{first_name}' (OK={name_details.get('first_ok')}) Middle='{middle_name}' (OK={name_details.get('middle_ok')}) Last='{last_name}' (OK={name_details.get('last_ok')})", flush=True)
                     
-                    # Year check: only pass if (v_is_true and (matches or no_expected_value))
-                    if not v:
-                        year_only_ok = False
-                    elif target_expected_year:
+                    # Year check
+                    if target_expected_year:
                         year_only_ok = academic_year_matches_expected(year_label, target_expected_year)
                     else:
                         year_only_ok = True
                         
-                    # Semester check: similar logic
-                    if not v:
-                        semester_ok = False
-                    elif normalized_expected_semester:
+                    # Semester check
+                    if normalized_expected_semester:
                         semester_ok = (normalized_expected_semester == normalized_semester_label)
                     else:
                         semester_ok = True
@@ -3495,6 +3490,7 @@ def ocr_check():
                             f"School: {'OK' if school_ok else 'X'}",
                             f"Level: {'OK' if year_level_ok else 'X'}",
                             f"Year: {'OK' if year_only_ok else 'X'}",
+                            f"Sem: {'OK' if semester_ok else 'X'}",
                             f"Course: {'OK' if course_ok else 'X'}",
                             f"Video: {'OK' if v_video else 'X'}"
                         ]
