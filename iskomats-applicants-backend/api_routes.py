@@ -3779,24 +3779,16 @@ def create_scholarship(current_user_id, pro_no, role):
         if role != 'Admin' and target_pro_no is None:
              return jsonify({'message': 'User not associated with a scholarship provider'}), 403
         
-        # 2. Insert into scholarships table (without images)
         cursor.execute('''
-            INSERT INTO scholarships (scholarship_name, gpa, parent_finance, location, pro_no, slots, deadline, "desc", semester, year, grades_sem, grades_year, date_created)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            INSERT INTO scholarships (scholarship_name, gpa, parent_finance, location, pro_no, slots, deadline, "desc", semester, year, grades_sem, grades_year, course, program_type, date_created)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_DATE)
             RETURNING req_no
         ''', (
-            data['scholarshipName'],
-            data['minGpa'],
-            data['parentFinance'],
-            data['location'],
-            target_pro_no,
-            data['slots'],
-            data['deadline'],
-            data.get('description', ''),
-            data.get('semester', ''),
-            data.get('year', ''),
-            data.get('grades_sem'),
-            data.get('grades_year')
+            data.get('scholarshipName'), data.get('minGpa'), data.get('parentFinance'),
+            data.get('location'), target_pro_no, data.get('slots'), data.get('deadline'),
+            data.get('description'), data.get('semester'), data.get('year'),
+            data.get('grades_sem'), data.get('grades_year'), data.get('course', 'All'),
+            data.get('program_type', 'All')
         ))
         
         new_scholarship = cursor.fetchone()
@@ -3872,33 +3864,19 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
         if not is_admin and sch_row['pro_no'] is None and resolved_provider_no is not None:
             cursor.execute("UPDATE scholarships SET pro_no = %s WHERE req_no = %s", (resolved_provider_no, req_no))
              
-        # 4. Process field updates (excluding images)
-        update_fields = []
-        params = []
-        
-        field_map = {
-            'scholarshipName': 'scholarship_name',
-            'minGpa': 'gpa',
-            'parentFinance': 'parent_finance',
-            'location': 'location',
-            'slots': 'slots',
-            'deadline': 'deadline',
-            'description': '"desc"',
-            'year': 'year',
-            'semester': 'semester',
-            'grades_sem': 'grades_sem',
-            'grades_year': 'grades_year'
-        }
-        
-        for json_key, db_col in field_map.items():
-            if json_key in data:
-                update_fields.append(f"{db_col} = %s")
-                params.append(data[json_key])
-
-        if update_fields:
-            params.append(req_no)
-            query = f"UPDATE scholarships SET {', '.join(update_fields)} WHERE req_no = %s"
-            cursor.execute(query, params)
+        cursor.execute('''
+            UPDATE scholarships 
+            SET scholarship_name = %s, gpa = %s, parent_finance = %s, location = %s, slots = %s, 
+                deadline = %s, "desc" = %s, semester = %s, year = %s, grades_sem = %s, grades_year = %s,
+                course = %s, program_type = %s
+            WHERE req_no = %s
+        ''', (
+            data.get('scholarshipName'), data.get('minGpa'), data.get('parentFinance'),
+            data.get('location'), data.get('slots'), data.get('deadline'),
+            data.get('description'), data.get('semester'), data.get('year'),
+            data.get('grades_sem'), data.get('grades_year'), data.get('course', 'All'),
+            data.get('program_type', 'All'), req_no
+        ))
         
         conn.commit()
         cursor.close()

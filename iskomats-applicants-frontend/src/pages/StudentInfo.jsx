@@ -168,7 +168,7 @@ const STEP_FIELDS = {
     'parentsGrossIncome', 'numberOfSiblings'
   ],
   3: [
-    'meritsAwardsReceived', 'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course', 'gpa', 'semester',
+    'meritsAwardsReceived', 'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course', 'gpa', 'year', 'semester', 'grades_year', 'grades_sem',
     'mayorCOE_photo', 'mayorGrades_photo'
   ],
   4: [
@@ -774,7 +774,10 @@ const StudentInfo = () => {
     parentsGrossIncome: '',
     numberOfSiblings: '',
     course: '',
+    year: '',
+    semester: '',
     grades_year: '',
+    grades_sem: '',
     mayorCOE_photo: null,
     mayorGrades_photo: null,
     mayorIndigency_photo: null,
@@ -3677,6 +3680,15 @@ const StudentInfo = () => {
                     required={currentStep === 3}
                   />
                 </div>
+                <div className="form-group">
+                  <label>Current Semester <span style={{color: '#e74c3c'}}>*</span></label>
+                  <select name="semester" value={formData.semester} onChange={handleInputChange} required={currentStep === 3}>
+                    <option value="">Select Semester</option>
+                    <option value="1st">1st Semester</option>
+                    <option value="2nd">2nd Semester</option>
+                    <option value="3rd">3rd Semester</option>
+                  </select>
+                </div>
               </div>
 
               <div className="form-row">
@@ -3686,6 +3698,7 @@ const StudentInfo = () => {
                     <option value="">Select Semester</option>
                     <option value="1st">1st Semester</option>
                     <option value="2nd">2nd Semester</option>
+                    <option value="3rd">3rd Semester</option>
                   </select>
                 </div>
                 <div className="form-group">

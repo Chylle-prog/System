@@ -102,6 +102,37 @@ const normalizeAcademicYear = (value) => {
   return rawValue.replace(/[^\d\-–—]/g, '').replace(/[\-–—]{1,}/g, '–');
 };
 
+const COURSES = [
+  "AB Communication",
+  "Associate in Computer Technology",
+  "Bachelor of Elementary Education",
+  "Bachelor of Forensic Science",
+  "Bachelor of Secondary Education",
+  "BS Accountancy",
+  "BS Accounting Information System",
+  "BS Architecture",
+  "BS Biology",
+  "BS Computer Engineering",
+  "BS Computer Science",
+  "BS Electrical Engineering",
+  "BS Electronics Engineering",
+  "BS Entertainment and Multimedia Computing",
+  "BS Entrepreneurship",
+  "BS Hospitality Management",
+  "BS Industrial Engineering",
+  "BS Information Technology",
+  "BS Legal Management",
+  "BS Management Technology",
+  "BS Nursing",
+  "BS Psychology",
+  "BS Tourism Management",
+  "BSBA Financial Management",
+  "BSBA Marketing Management",
+  "Certificate in Entrepreneurship",
+  "Cookery NC II (Culinary Arts)",
+  "JURIS DOCTOR PROGRAM"
+];
+
 const isValidAcademicYear = (value) => ACADEMIC_YEAR_PATTERN.test(normalizeAcademicYear(value));
 
 const normalizeProviderIdentity = (value) => String(value || '').toLowerCase().trim();
@@ -321,10 +352,13 @@ export default function ScholarshipDashboard({
     year: getDefaultAcademicYear(),
     grades_sem: '',
     grades_year: '',
+    course: 'All',
+    program_type: 'All',
     title: '', // For announcements
     content: '', // For announcements
     sendToAllApplicants: true
   });
+  const [courseTrackFilter, setCourseTrackFilter] = useState('all');
   const pieRef = useRef(null);
   const lineChartRef = useRef(null);
   const barChartRef = useRef(null);
@@ -2523,6 +2557,34 @@ export default function ScholarshipDashboard({
                   required
                 />
               </div>
+              <div>
+                <label className="block text-sm font-semibold text-[#800020] mb-1">Course/Program Requirement *</label>
+                <select
+                  name="course"
+                  value={formData.course}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 font-bold text-[#800020]"
+                  required
+                >
+                  <option value="All">All Courses</option>
+                  {COURSES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-[#800020] mb-1">Program Type *</label>
+                <select
+                  name="program_type"
+                  value={formData.program_type}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 font-bold text-[#800020]"
+                  required
+                >
+                  <option value="All">All Programs</option>
+                  <option value="LGU">LGU (Local)</option>
+                  <option value="CHED">CHED (National)</option>
+                  <option value="Private">Private Provider</option>
+                </select>
+              </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-[#800020] mb-1">Description *</label>
                 <textarea
@@ -2663,8 +2725,9 @@ export default function ScholarshipDashboard({
           (a.address && a.address.toLowerCase().includes(search)) ||
           (a.mobileNumber && a.mobileNumber.toLowerCase().includes(search));
         const matchesScholarship = matchesScholarshipSelection(a, trackScholarshipFilter);
+        const matchesCourse = courseTrackFilter === 'all' || a.course === courseTrackFilter;
 
-        return matchesSearch && matchesScholarship;
+        return matchesSearch && matchesScholarship && matchesCourse;
       });
     };
 
@@ -2742,6 +2805,18 @@ export default function ScholarshipDashboard({
               </option>
             ))}
           </select>
+          <select
+            value={courseTrackFilter}
+            onChange={(e) => setCourseTrackFilter(e.target.value)}
+            className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none font-bold text-[#800020] shadow-sm focus:ring-2 focus:ring-[#800020] transition-all"
+          >
+            <option value="all">All Courses</option>
+            {COURSES.map((course) => (
+              <option key={course} value={course}>
+                {course}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="overflow-y-auto rounded-xl border border-gray-200" style={{ maxHeight: 'calc(100vh - 500px)' }}>
@@ -2751,7 +2826,7 @@ export default function ScholarshipDashboard({
                 <th className="px-4 py-3 text-left font-semibold">Name</th>
                 <th className="px-4 py-3 text-left font-semibold">Grade</th>
                 <th className="px-4 py-3 text-left font-semibold">Financial</th>
-                <th className="px-4 py-3 text-left font-semibold">School</th>
+                <th className="px-4 py-3 text-left font-semibold">School & Course</th>
                 <th className="px-4 py-3 text-left font-semibold">Contact & Address</th>
                 <th className="px-4 py-3 text-left font-semibold">Action</th>
               </tr>
@@ -2772,7 +2847,10 @@ export default function ScholarshipDashboard({
                       </td>
                       <td className="px-4 py-3">{a.grade}</td>
                       <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
-                      <td className="px-4 py-3 text-xs">{a.school}</td>
+                      <td className="px-4 py-3 text-xs">
+                        <div className="font-bold text-[#800020]">{a.school}</div>
+                        <div className="text-[10px] text-gray-500 font-medium">{a.course || 'No Course Provided'}</div>
+                      </td>
                       <td className="px-4 py-3 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-between gap-3">
@@ -2808,7 +2886,10 @@ export default function ScholarshipDashboard({
                       </td>
                       <td className="px-4 py-3">{a.grade}</td>
                       <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
-                      <td className="px-4 py-3 text-xs">{a.school}</td>
+                      <td className="px-4 py-3 text-xs">
+                        <div className="font-bold text-[#800020]">{a.school}</div>
+                        <div className="text-[10px] text-gray-500 font-medium">{a.course || 'No Course Provided'}</div>
+                      </td>
                       <td className="px-4 py-3 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-between gap-3">
@@ -2832,7 +2913,10 @@ export default function ScholarshipDashboard({
                       </td>
                       <td className="px-4 py-3">{a.grade}</td>
                       <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
-                      <td className="px-4 py-3 text-xs">{a.school}</td>
+                      <td className="px-4 py-3 text-xs">
+                        <div className="font-bold text-[#800020]">{a.school}</div>
+                        <div className="text-[10px] text-gray-500 font-medium">{a.course || 'No Course Provided'}</div>
+                      </td>
                       <td className="px-4 py-3 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
                       <td className="px-4 py-3">
                         <div className="flex gap-1">
@@ -2856,7 +2940,10 @@ export default function ScholarshipDashboard({
                       </td>
                       <td className="px-4 py-3">{a.grade}</td>
                       <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
-                      <td className="px-4 py-3 text-xs">{a.school}</td>
+                      <td className="px-4 py-3 text-xs">
+                        <div className="font-bold text-[#800020]">{a.school}</div>
+                        <div className="text-[10px] text-gray-500 font-medium">{a.course || 'No Course Provided'}</div>
+                      </td>
                       <td className="px-4 py-3 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
                       <td className="px-4 py-3">
                         <div className="flex gap-1">
@@ -2880,7 +2967,10 @@ export default function ScholarshipDashboard({
                       </td>
                       <td className="px-4 py-3">{a.grade}</td>
                       <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
-                      <td className="px-4 py-3 text-xs">{a.school}</td>
+                      <td className="px-4 py-3 text-xs">
+                        <div className="font-bold text-[#800020]">{a.school}</div>
+                        <div className="text-[10px] text-gray-500 font-medium">{a.course || 'No Course Provided'}</div>
+                      </td>
                       <td className="px-4 py-3 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
                       <td className="px-4 py-3">
                         <div className="flex gap-1">

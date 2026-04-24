@@ -24,6 +24,7 @@ const Profile = () => {
     townCityMunicipality: 'Lipa City',
     province: 'Batangas',
     zipCode: '4217',
+    course: '',
     profile_picture: null
   });
 
@@ -113,6 +114,7 @@ const Profile = () => {
         townCityMunicipality: userProfile.town_city_municipality || userProfile.townCity || 'Lipa City',
         province: userProfile.province || 'Batangas',
         zipCode: userProfile.zip_code || userProfile.zipCode || '4217',
+        course: userProfile.course || '',
         profile_picture: userProfile.profile_picture || null
       });
     } else if (currentUser) {
@@ -129,6 +131,7 @@ const Profile = () => {
         townCityMunicipality: 'Lipa City',
         province: 'Batangas',
         zipCode: '4217',
+        course: '',
         profile_picture: null
       });
     }
@@ -196,6 +199,7 @@ const Profile = () => {
         townCity: formData.townCityMunicipality,
         province: formData.province,
         zipCode: formData.zipCode,
+        course: formData.course,
         profile_picture: finalProfilePictureUrl
       };
 
@@ -215,6 +219,7 @@ const Profile = () => {
         town_city_municipality: formData.townCityMunicipality,
         province: formData.province,
         zip_code: formData.zipCode,
+        course: formData.course,
         profile_picture: formData.profile_picture || userProfile?.profile_picture || null
       };
 
@@ -1029,6 +1034,15 @@ const Profile = () => {
                   style={{ backgroundColor: '#f4f6fa', cursor: 'not-allowed', color: '#666' }}
                 />
               </div>
+              <div className="form-group">
+                <label>Course / Program</label>
+                <input
+                  type="text"
+                  value={userProfile?.course || 'Not specified'}
+                  disabled
+                  style={{ backgroundColor: '#f4f6fa', cursor: 'not-allowed', color: '#666' }}
+                />
+              </div>
               <button className="edit-profile-btn" onClick={showEditProfile} style={{ width: 'auto', marginTop: '1rem' }}>
                 <i className="fas fa-edit" style={{ marginRight: '8px' }}></i> Edit Profile
               </button>
@@ -1276,6 +1290,18 @@ const Profile = () => {
                     style={{ backgroundColor: '#f0f0f0', cursor: 'not-allowed', color: '#666' }}
                     required
                   />
+                </div>
+                <div className="form-group">
+                  <label>Course / Program *</label>
+                  <select
+                    name="course"
+                    value={formData.course}
+                    onChange={handleInputChange}
+                    required
+                  >
+                    <option value="">Select Course</option>
+                    {["AB Communication", "Associate in Computer Technology", "Bachelor of Elementary Education", "Bachelor of Forensic Science", "Bachelor of Secondary Education", "BS Accountancy", "BS Accounting Information System", "BS Architecture", "BS Biology", "BS Computer Engineering", "BS Computer Science", "BS Electrical Engineering", "BS Electronics Engineering", "BS Entertainment and Multimedia Computing", "BS Entrepreneurship", "BS Hospitality Management", "BS Industrial Engineering", "BS Information Technology", "BS Legal Management", "BS Management Technology", "BS Nursing", "BS Psychology", "BS Tourism Management", "BSBA Financial Management", "BSBA Marketing Management", "Certificate in Entrepreneurship", "Cookery NC II (Culinary Arts)", "JURIS DOCTOR PROGRAM"].map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
                 </div>
                 <button type="submit" className="submit-btn">
                   {userProfile ? 'Update Profile →' : 'Create Profile →'}
