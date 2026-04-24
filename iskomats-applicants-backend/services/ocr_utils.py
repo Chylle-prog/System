@@ -709,9 +709,9 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
             if not n_words: n_words = [w.strip() for w in normalize_for_ocr(name_part).split() if w.strip()]
             f_count = 0
             
-            # Lenient threshold for names to handle minor OCR misreads, especially on Indigency
-            # LOWERED: 0.65 for Indigency, 0.70 for SchoolID to handle stylized fonts/backgrounds
-            effective_threshold = 0.65 if is_indigency else 0.70
+            # Lenient threshold for names to handle minor OCR misreads
+            # REDUCED FURTHER: 0.60 for Indigency, 0.65 for SchoolID to maximize recovery of noisy IDs
+            effective_threshold = 0.60 if is_indigency else 0.65
             
             for word in n_words:
                 # For middle names, also accept just the first letter (initial)
@@ -982,11 +982,20 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             return False, f"Image quality issue: {quality_reason}", "", 0.0
         
         # Simple resize to ensure minimum resolution for OCR
-        target_w = 1500 
+        target_w = 1600 # Slightly higher for better detail
         if w < target_w or w > (target_w + 500):
             scale = target_w / w
             img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
-            print(f"[OCR-DIAG] Resized to {img.shape[1]}x{img.shape[0]}", flush=True)
+            h, w = img.shape[:2]
+            print(f"[OCR-DIAG] Resized to {w}x{h}", flush=True)
+            
+        # Center Crop: 92% of image to remove noisy borders/backgrounds (common in student IDs)
+        if not is_indigency:
+            cw, ch = int(w * 0.92), int(h * 0.92)
+            x0, y0 = (w - cw) // 2, (h - ch) // 2
+            img = img[y0:y0+ch, x0:x0+cw]
+            h, w = img.shape[:2]
+            print(f"[OCR-DIAG] Center cropped to {w}x{h}", flush=True)
     except Exception as e:
         return False, f"Preprocessing error: {str(e)}", "", {'name_ok': False, 'addr_ok': False, 'error': str(e)}
 
@@ -1027,62 +1036,52 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
                 # If zone 1 alone didn't do it, combine zone 1 and 2. 
                 best_text = f"{t1}\n{t2}"
             else:
-                # -- PARALLELIZE SUB-SCANS for IDs ONLY (Optimization #6) ---
+                # -- ADAPTIVE MULTI-ZONE SCANNING (Aligned with Indigency Path) --
                 from concurrent.futures import ThreadPoolExecutor
-                with ThreadPoolExecutor(max_workers=3) as sub_executor:
-                    # 1. Start full image scan (PSM 6 is good for ID blocks)
-                    best_future = sub_executor.submit(_run_tesseract_on_image, img, psm=6, skip_pass2=False, label="Full")
+                h_total = img.shape[0]
+                
+                # Divide ID into 3 overlapping horizontal zones:
+                # Top: Headers/Name, Middle: ID Number/Course, Bottom: Details/Signatures
+                z1 = img[:int(h_total * 0.50), :]
+                z2 = img[int(h_total * 0.35):int(h_total * 0.75), :]
+                z3 = img[int(h_total * 0.60):, :]
+                
+                with ThreadPoolExecutor(max_workers=4) as sub_executor:
+                    # Use PSM 3 (Automatic) for full image - much more robust than PSM 6 for IDs
+                    full_future = sub_executor.submit(_run_tesseract_on_image, img, psm=3, label="Full")
+                    z1_future = sub_executor.submit(_run_tesseract_on_image, z1, psm=6, label="Top")
+                    z2_future = sub_executor.submit(_run_tesseract_on_image, z2, psm=6, label="Mid")
+                    z3_future = sub_executor.submit(_run_tesseract_on_image, z3, psm=6, label="Bot")
                     
-                    # 2. Start column sub-scans
-                    h_total, w_total = img.shape[:2]
-                    # FULL HEIGHT COLUMN SCAN: Some IDs have info lower down
-                    left_w = int(w_total * 0.55) 
-                    l_c, r_c = img[:, :left_w], img[:, left_w:]
+                    t_full = full_future.result()
+                    t1, t2, t3 = z1_future.result(), z2_future.result(), z3_future.result()
                     
-                    left_future = sub_executor.submit(_run_tesseract_on_image, l_c, psm=6, skip_pass2=False, label="Left")
-                    right_future = sub_executor.submit(_run_tesseract_on_image, r_c, psm=6, skip_pass2=False, label="Right")
-                    
-                    # SEQUENTIAL ACQUISITION for Early-Exit
-                    best_text = best_future.result()
-                    name_ok, addr_ok, found_kw, _, _ = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
-                    
-                    if not (name_ok and addr_ok):
-                        l_t, r_t = left_future.result(), right_future.result()
-                        best_text = f"{best_text}\n---\n{l_t}\n---\n{r_t}"
-                        
-                        # Check again with column text
-                        name_ok, addr_ok, found_kw, _, _ = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
-                        
-                        if not (name_ok and addr_ok):
-                            # --- ROBUST FALLBACKS ---
-                            # Try PSM 11 (Sparse text, good for IDs with floating text blocks)
-                            print(f"[OCR] Trying PSM 11 Sparse Text Fallback...", flush=True)
-                            psm11_text = _run_tesseract_on_image(img, psm=11, label="PSM11")
-                            best_text = f"{best_text}\n---\n{psm11_text}"
-                            
-                            # Check again
-                            name_ok, addr_ok, found_kw, _, _ = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
-                            
-                            if not (name_ok and addr_ok):
-                                print(f"[OCR] Trying Robust PSM 3 (Automatic) Fallback...", flush=True)
-                                psm3_text = _run_tesseract_on_image(img, psm=3, label="PSM3")
-                                best_text = f"{best_text}\n---\n{psm3_text}"
-                    else:
-                        print(f"[OCR PERF] ID SUCCESS (Fast Path) in {time.time() - t_start:.2f}s", flush=True)
+                best_text = f"{t_full}\n{t1}\n{t2}\n{t3}"
+                
+                # Check result
+                name_ok, addr_ok, found_kw, score, meta = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
+                
+                if not (name_ok and addr_ok):
+                    # Robust sparse fallback
+                    print(f"[OCR] Name/Addr not found, trying sparse PSM 11 fallback...", flush=True)
+                    psm11_text = _run_tesseract_on_image(img, psm=11, label="Sparse")
+                    best_text = f"{best_text}\n{psm11_text}"
+                    # Final re-match with fallback text
+                    name_ok, addr_ok, found_kw, score, meta = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
+                else:
+                    print(f"[OCR PERF] ID SUCCESS after {time.time() - t_start:.2f}s", flush=True)
 
-                    name_v, addr_v, found_kw, score, meta = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
-                    
-                    if name_v:
-                        print(f"[OCR PERF] SUCCESS after {time.time() - t_start:.2f}s", flush=True)
-                        # Parity: Ensure all matched flags are in details
-                        return True, "Verified", best_text, {
-                            'name_ok': True, 
-                            'addr_ok': addr_v, 
-                            'id_ok': meta.get('id_ok', True),
-                            'school_ok': meta.get('school_ok', True),
-                            'name_ratio': score, 
-                            'keywords': found_kw
-                        }
+                if name_ok:
+                    print(f"[OCR PERF] SUCCESS after {time.time() - t_start:.2f}s", flush=True)
+                    # Parity: Ensure all matched flags are in details
+                    return True, "Verified", best_text, {
+                        'name_ok': True, 
+                        'addr_ok': addr_ok, 
+                        'id_ok': meta.get('id_ok', True),
+                        'school_ok': meta.get('school_ok', True),
+                        'name_ratio': score, 
+                        'keywords': found_kw
+                    }
 
 
             # t_end moved up into early-exit block or handled naturally
