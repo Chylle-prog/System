@@ -252,7 +252,15 @@ def _preprocess_strategy_white_on_dark(img):
     inverted = cv2.bitwise_not(diff)
     _, binary = cv2.threshold(inverted, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return binary
-    # OEM 1 (LSTM-only) is significantly faster than Legacy mode
+def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False, label=""):
+    """Internal helper to run OCR on an already decoded/resized image with specified strategies."""
+    if img is None: return ""
+    results = []
+    
+    # Pass 1: Raw Grayscale (Best for modern LSTM Tesseract)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+    
+    # OEM 1 (LSTM-only) is significantly faster than Legacy mode
     text1 = _run_ocr_command(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 1')
     results.append(text1.strip())
     
@@ -1031,8 +1039,12 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             z2 = img[int(h_total * 0.40):, :]
             
             with ThreadPoolExecutor(max_workers=2) as fast_executor:
-                f1 = fast_executor.submit(_run_tesseract_on_image, z1, psm=6, skip_pass2=True)
-                f2 = fast_executor.submit(_run_tesseract_on_image, z2, psm=6, skip_pass2=True)
+                def run_with_sem(func, *args, **kwargs):
+                    with OCR_SEMAPHORE:
+                        return func(*args, **kwargs)
+                
+                f1 = fast_executor.submit(run_with_sem, _run_tesseract_on_image, z1, psm=3, skip_pass2=True, label="IndigencyZ1")
+                f2 = fast_executor.submit(run_with_sem, _run_tesseract_on_image, z2, psm=3, skip_pass2=True, label="IndigencyZ2")
                 t1, t2 = f1.result(), f2.result()
             best_text = f"{t1}\n{t2}"
         else:
@@ -1056,20 +1068,26 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
                 t1, t2, t3 = f1.result(), f2.result(), f3.result()
             
             best_text = f"{t1}\n{t2}\n{t3}"
+        
+        # ═══ FALLBACK: Match and retry if parallel pass was insufficient ═══
+        name_v, addr_v, found_kw, score, meta = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
+        
+        if not name_v:
+            # If parallel zones failed, run a High-Resolution Full Scan with full fallbacks (Pass 2, 3, 4)
+            with OCR_SEMAPHORE:
+                deep_text = _run_tesseract_on_image(img, psm=3, label='DeepScan')
+                if deep_text.strip():
+                    best_text = f"{best_text}\n{deep_text}"
             
-            # Perform verification check on the parallel results
+            # Re-match after deep scan
             name_v, addr_v, found_kw, score, meta = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
             
-            if not name_v:
-                # If parallel zones failed, run a High-Resolution Full Scan with fallbacks
-                with OCR_SEMAPHORE:
-                    best_text = f"{best_text}\n{_run_tesseract_on_image(img, psm=3, label='DeepScan')}"
-                
-            # One more fallback for IDs if still not verified: PSM 6 (Uniform Block)
-            name_v_now, _, _, _, _ = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
-            if not name_v_now:
-                with OCR_SEMAPHORE:
-                    best_text = f"{best_text}\n{_run_tesseract_on_image(img, psm=6, label='Block')}"
+        if not is_indigency and not name_v:
+            # Final fallback for IDs only: PSM 6 (Uniform Block)
+            with OCR_SEMAPHORE:
+                block_text = _run_tesseract_on_image(img, psm=6, label='Block')
+                if block_text.strip():
+                    best_text = f"{best_text}\n{block_text}"
         
         # Match again for final result and early exit
         name_v, addr_v, found_kw, score, meta = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
@@ -1218,6 +1236,13 @@ def extract_document_text(image_bytes, max_width=1600, prefer_fast_layout=False,
                     futures = [zone_executor.submit(run_z, z, i) for i, z in enumerate(zones)]
                     results = [f.result() for f in futures]
                     text = "\n".join(results)
+                    
+                # If zone scan was very poor, fallback to full image scan with fallbacks
+                if len(text.strip()) < 30:
+                    with OCR_SEMAPHORE:
+                        full_text = _run_tesseract_on_image(img, psm=3, skip_pass2=False, label="FullDocFallback")
+                        if full_text.strip():
+                            text = f"{text}\n{full_text}"
             else:
                 psm = 6 if (prefer_fast_layout or is_id_back) else 3
                 text = _run_tesseract_on_image(img, psm=psm, skip_pass2=prefer_fast_layout)
