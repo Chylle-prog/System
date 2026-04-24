@@ -170,7 +170,7 @@ def api_verify_document(req: DocumentVerificationRequest):
             # 4. Course Check
             course_ok = True
             if req.expected_course:
-                course_ok, _ = course_matches_text(raw_t, req.expected_course)
+                course_ok, _ = course_matches_text(req.expected_course, raw_t)
                 
             # 5. Academic Year Check
             ay_ok = True
@@ -224,7 +224,7 @@ def api_verify_document(req: DocumentVerificationRequest):
             # 6. Course Check
             course_ok = True
             if req.expected_course:
-                course_ok, _ = course_matches_text(raw_t, req.expected_course)
+                course_ok, _ = course_matches_text(req.expected_course, raw_t)
 
             # 7. Semester Check
             sem_ok = True
