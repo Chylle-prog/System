@@ -60,7 +60,7 @@ const normalizeSelectValue = (value, options) => {
   const valueContainsOption = options.find(opt => normalized.includes(opt.toLowerCase()));
   if (valueContainsOption) return valueContainsOption;
   
-  return '';
+  return value;
 };
 
 const normalizeGuideVideoUrl = (value) => {

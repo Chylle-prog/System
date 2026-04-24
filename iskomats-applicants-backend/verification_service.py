@@ -198,15 +198,20 @@ async def api_verify_document(req: DocumentVerificationRequest):
                 found_ay = extract_school_year_from_text(raw_t)
                 ay_ok = academic_year_matches_expected(found_ay, req.expected_academic_year)
 
-            # 5. Course Check
+            # 5. ID Check (New: Parity with Flask)
+            id_ok = True
+            if req.expected_id_no:
+                id_ok, _ = student_id_no_matches_text(req.expected_id_no, raw_t)
+
+            # 6. Course Check
             course_ok = True
             if req.expected_course:
                 course_ok, _ = course_matches_text(req.expected_course, raw_t)
 
-            v_t = name_ok and school_ok and gpa_ok and ay_ok and course_ok
-            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | School: {'OK' if school_ok else 'X'} | GPA: {'OK' if gpa_ok else 'X'} | Year: {'OK' if ay_ok else 'X'} | Course: {'OK' if course_ok else 'X'}]"
+            v_t = name_ok and school_ok and gpa_ok and ay_ok and id_ok and course_ok
+            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | School: {'OK' if school_ok else 'X'} | GPA: {'OK' if gpa_ok else 'X'} | Year: {'OK' if ay_ok else 'X'} | ID: {'OK' if id_ok else 'X'} | Course: {'OK' if course_ok else 'X'}]"
             if v_t: msg = "Verified"
-            meta = {'name_ok': name_ok, 'school_ok': school_ok, 'gpa_ok': gpa_ok, 'ay_ok': ay_ok, 'course_ok': course_ok, 'name_details': name_details}
+            meta = {'name_ok': name_ok, 'school_ok': school_ok, 'gpa_ok': gpa_ok, 'ay_ok': ay_ok, 'id_ok': id_ok, 'course_ok': course_ok, 'name_details': name_details}
             
         elif doc_type == 'SchoolIDBack':
             raw_t, _ = extract_document_text(image_bytes, is_id_back=True)
@@ -231,7 +236,7 @@ async def api_verify_document(req: DocumentVerificationRequest):
         elif doc_type == 'SchoolID':
             v_t, msg, raw_t, meta = verify_id_with_ocr(
                 image_bytes, req.first_name, req.middle_name, req.last_name, 
-                expected_address=req.expected_address, 
+                expected_address=None, # DO NOT pass address for ID to avoid mis-triggering Indigency scanning logic
                 expected_id_no=req.expected_id_no, 
                 expected_school_name=req.expected_school_name
             )
@@ -240,7 +245,7 @@ async def api_verify_document(req: DocumentVerificationRequest):
             # Fallback for unknown types
             v_t, msg, raw_t, meta = verify_id_with_ocr(
                 image_bytes, req.first_name, req.middle_name, req.last_name, 
-                expected_address=req.expected_address, 
+                expected_address=None, 
                 expected_id_no=req.expected_id_no, 
                 expected_school_name=req.expected_school_name
             )
@@ -248,7 +253,7 @@ async def api_verify_document(req: DocumentVerificationRequest):
         return {
             "success": v_t,
             "message": msg,
-            "detected_text": raw_t[:1000] if raw_t else "",
+            "detected_text": raw_t[:2000] if raw_t else "",
             "meta": meta,
             "performance": {"total_time": time.time() - start_time}
         }

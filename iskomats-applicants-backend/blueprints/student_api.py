@@ -3644,6 +3644,11 @@ def ocr_check():
                         if not name_ok: msg += f" (Name mismatch)"
                         if not id_ok: msg += f" (ID mismatch)"
                         if not school_ok: msg += f" (School mismatch)"
+                        
+                        # DIAGNOSTIC: Log why it failed
+                        print(f"[OCR-FAILURE-DIAG] doc={doc_type} name_ok={name_ok} id_ok={id_ok} school_ok={school_ok}", flush=True)
+                        print(f"[OCR-FAILURE-DIAG] Expected: name='{first_name} {last_name}' id='{expected_id_no}' school='{school_name}'", flush=True)
+                        print(f"[OCR-FAILURE-DIAG] Raw Text Found (first 500 chars): {raw[:500] if raw else 'EMPTY'}", flush=True)
 
                     return {'doc': 'SchoolID', 'verified': v, 'message': msg + t_str, 'raw_text': raw, 'video_verified': v_video, 'video_message': msg_video, 'score_details': score_details}
 
