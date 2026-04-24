@@ -246,9 +246,21 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False, label
             # CLAHE helps with uneven lighting
             gray_clahe = _CLAHE.apply(gray)
             binary = cv2.adaptiveThreshold(gray_clahe, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 10)
-            text2 = eventlet.tpool.execute(pytesseract.image_to_string, binary, config=f'--psm {psm}')
+            text2 = eventlet.tpool.execute(pytesseract.image_to_string, binary, config=f'--psm {psm} --oem 1')
             if text2.strip() and text2.strip() not in results:
                 results.append(text2.strip())
+        except:
+            pass
+    
+    # Pass 3: Sharpened High-Contrast (Great for small/blurry ID text)
+    if needs_fallbacks:
+        try:
+            # Simple sharpening kernel
+            sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+            sharpened = cv2.filter2D(gray, -1, sharpen_kernel)
+            _, thresh = cv2.threshold(sharpened, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            text3 = eventlet.tpool.execute(pytesseract.image_to_string, thresh, config=f'--psm {psm} --oem 1')
+            if text3.strip(): results.append(text3.strip())
         except:
             pass
     
@@ -262,7 +274,7 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False, label
             diff = cv2.normalize(diff, None, 0, 255, cv2.NORM_MINMAX)
             _, binary_bg = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
             
-            text_bg = eventlet.tpool.execute(pytesseract.image_to_string, binary_bg, config=f'--psm {psm}')
+            text_bg = eventlet.tpool.execute(pytesseract.image_to_string, binary_bg, config=f'--psm {psm} --oem 1')
             if text_bg.strip() and text_bg.strip() not in results:
                 results.append(text_bg.strip())
         except Exception as e:
@@ -274,7 +286,7 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False, label
             if strat_fn == _preprocess_strategy_b: continue # Already did it
             try:
                 processed = strat_fn(img)
-                txt = eventlet.tpool.execute(pytesseract.image_to_string, processed, config=f'--psm {psm}')
+                txt = eventlet.tpool.execute(pytesseract.image_to_string, processed, config=f'--psm {psm} --oem 1')
                 if txt.strip(): results.append(txt.strip())
             except Exception as e:
                 print(f"[OCR] Strategy error: {e}", flush=True)
@@ -993,13 +1005,13 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             h, w = img.shape[:2]
             print(f"[OCR-DIAG] Resized to {w}x{h}", flush=True)
             
-        # Center Crop: 92% of image to remove noisy borders/backgrounds (common in student IDs)
+        # Center Crop: REDUCED to 98% (Only remove very edge artifacts)
         if not is_indigency:
-            cw, ch = int(w * 0.92), int(h * 0.92)
+            cw, ch = int(w * 0.98), int(h * 0.98)
             x0, y0 = (w - cw) // 2, (h - ch) // 2
             img = img[y0:y0+ch, x0:x0+cw]
             h, w = img.shape[:2]
-            print(f"[OCR-DIAG] Center cropped to {w}x{h}", flush=True)
+            print(f"[OCR-DIAG] Mild center crop to {w}x{h}", flush=True)
     except Exception as e:
         return False, f"Preprocessing error: {str(e)}", "", {'name_ok': False, 'addr_ok': False, 'error': str(e)}
 
@@ -1072,9 +1084,26 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
                     best_text = f"{best_text}\n{psm11_text}"
                     # Final re-match with fallback text
                     name_ok, addr_ok, found_kw, score, meta = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
-                else:
-                    print(f"[OCR PERF] ID SUCCESS after {time.time() - t_start:.2f}s", flush=True)
-
+                
+                # --- FINAL HAIL MARY: EasyOCR (Only for SchoolIDs that failed Tesseract) ---
+                if not is_indigency and not (name_ok and meta.get('id_ok')):
+                    try:
+                        print(f"[OCR] Tesseract failed Name/ID. Triggering EasyOCR Hail Mary...", flush=True)
+                        import easyocr
+                        reader = easyocr.Reader(['en'], gpu=False) # No GPU for stability
+                        # Run on the original grayscale image
+                        results = reader.readtext(img, detail=0)
+                        easy_text = "\n".join(results)
+                        if easy_text.strip():
+                            print(f"[OCR] EasyOCR extracted {len(easy_text)} chars", flush=True)
+                            best_text = f"{best_text}\n---\n{easy_text}"
+                            # Re-match with combined intelligence
+                            name_ok, addr_ok, found_kw, score, meta = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
+                    except Exception as easy_e:
+                        print(f"[OCR] EasyOCR Error: {easy_e}", flush=True)
+                    finally:
+                        clear_heavy_memory()
+                
                 if name_ok:
                     print(f"[OCR PERF] SUCCESS after {time.time() - t_start:.2f}s", flush=True)
                     # Parity: Ensure all matched flags are in details
