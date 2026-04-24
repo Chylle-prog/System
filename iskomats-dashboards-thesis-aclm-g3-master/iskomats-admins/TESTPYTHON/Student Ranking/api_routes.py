@@ -1658,18 +1658,32 @@ def initialize_auto_chat_rooms():
                 pro_no INTEGER,
                 room VARCHAR(50),
                 username VARCHAR(255) NOT NULL,
+                sender_id INTEGER,
+                is_student_sender BOOLEAN,
                 message TEXT NOT NULL,
                 timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_message_app_pro ON message(applicant_no, pro_no)")
         
+        # Migration check: add new columns to existing table
+        cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'message'")
+        existing_columns = [row['column_name'] for row in cursor.fetchall()]
+        
+        if 'sender_id' not in existing_columns:
+            print("[MIGRATION] Adding missing column sender_id to message as INTEGER", flush=True)
+            cursor.execute("ALTER TABLE message ADD COLUMN sender_id INTEGER")
+            
+        if 'is_student_sender' not in existing_columns:
+            print("[MIGRATION] Adding missing column is_student_sender to message as BOOLEAN", flush=True)
+            cursor.execute("ALTER TABLE message ADD COLUMN is_student_sender BOOLEAN")
+        
         # Get all valid applicant-provider pairs
         cursor.execute("""
             SELECT DISTINCT ast.applicant_no, s.pro_no 
             FROM applicant_status ast
             JOIN scholarships s ON ast.scholarship_no = s.req_no
-            WHERE ast.is_accepted IS NULL OR ast.is_accepted IS TRUE
+            WHERE COALESCE(ast.is_accepted, 'Pending') IN ('Pending', 'Accepted')
         """)
         pairs = cursor.fetchall()
         
@@ -1785,13 +1799,13 @@ def init_socketio(socketio):
                         SELECT DISTINCT ast.applicant_no, s.pro_no 
                         FROM applicant_status ast
                         JOIN scholarships s ON ast.scholarship_no = s.req_no
-                        WHERE s.pro_no = %s AND (ast.is_accepted IS NULL OR ast.is_accepted IS TRUE)
+                        WHERE s.pro_no = %s AND COALESCE(ast.is_accepted, 'Pending') IN ('Pending', 'Accepted')
                         UNION
                         SELECT DISTINCT m.applicant_no, m.pro_no
                         FROM message m
                         JOIN scholarships sch ON m.pro_no = sch.pro_no
                         LEFT JOIN applicant_status ast ON (m.applicant_no = ast.applicant_no AND ast.scholarship_no = sch.req_no)
-                        WHERE m.pro_no = %s AND (ast.is_accepted IS NULL OR ast.is_accepted IS TRUE)
+                        WHERE m.pro_no = %s AND COALESCE(ast.is_accepted, 'Pending') IN ('Pending', 'Accepted')
                     """, (pro_no, pro_no))
                     relevant_pairs = cursor.fetchall()
                     rooms = [f"{p['applicant_no']}+{p['pro_no']}" for p in relevant_pairs]
@@ -1802,7 +1816,7 @@ def init_socketio(socketio):
                         FROM message m
                         LEFT JOIN scholarships s ON m.pro_no = s.pro_no
                         LEFT JOIN applicant_status ast ON (m.applicant_no = ast.applicant_no AND ast.scholarship_no = s.req_no)
-                        WHERE m.room IS NOT NULL AND (ast.is_accepted IS NULL OR ast.is_accepted IS TRUE)
+                        WHERE m.room IS NOT NULL AND COALESCE(ast.is_accepted, 'Pending') IN ('Pending', 'Accepted')
                     """)
                     rooms = [row['room'] for row in cursor.fetchall()]
             else:
@@ -1901,15 +1915,16 @@ def init_socketio(socketio):
             
             # Fetch message history JOINED with current applicant status for THIS provider and applicant info
             query = """
-                SELECT m.m_id, m.applicant_no,
+                SELECT m.m_id, m.applicant_no, m.sender_id, m.is_student_sender,
                        CASE 
                            WHEN m.username = (a.first_name || ' ' || a.last_name) OR m.username = a.first_name THEN a.first_name 
                            ELSE m.username 
                        END as username,
                        m.message, m.timestamp,
                        CASE 
-                           WHEN s.is_accepted IS TRUE THEN 'Accepted'
-                           WHEN s.is_accepted IS FALSE THEN 'Declined'
+                           WHEN s.is_accepted = 'Accepted' THEN 'Accepted'
+                           WHEN s.is_accepted = 'Rejected' THEN 'Declined'
+                           WHEN s.is_accepted = 'Cancelled' THEN 'Cancelled'
                            ELSE 'Pending'
                        END as student_status
                 FROM message m
@@ -1920,7 +1935,7 @@ def init_socketio(socketio):
                     JOIN scholarships sch ON ast.scholarship_no = sch.req_no
                     WHERE sch.pro_no = %s
                     ORDER BY ast.applicant_no, 
-                             CASE WHEN ast.is_accepted IS TRUE THEN 1 WHEN ast.is_accepted IS NULL THEN 2 ELSE 3 END
+                             CASE WHEN ast.is_accepted = 'Accepted' THEN 1 WHEN ast.is_accepted IS NULL OR ast.is_accepted = 'Pending' THEN 2 ELSE 3 END
                 ) s ON m.applicant_no = s.applicant_no
                 WHERE m.applicant_no = %s AND m.pro_no = %s
             """
@@ -1955,6 +1970,8 @@ def init_socketio(socketio):
                     'm_id': msg['m_id'],
                     'applicant_no': msg['applicant_no'],
                     'username': msg['username'],
+                    'sender_id': msg['sender_id'],
+                    'is_student_sender': msg['is_student_sender'],
                     'message': msg['message'],
                     'timestamp': msg['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
                     'room': room,
@@ -2013,10 +2030,10 @@ def init_socketio(socketio):
             
             # Insert message with explicit IDs and correct username
             cursor.execute("""
-                INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp)
-                VALUES (%s, %s, %s, %s, %s, NOW())
+                INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp, sender_id, is_student_sender)
+                VALUES (%s, %s, %s, %s, %s, NOW(), %s, %s)
                 RETURNING m_id, timestamp
-            """, (app_no, pro_no, room, actual_username, message_text))
+            """, (app_no, pro_no, room, actual_username, message_text, sender_id, is_student_sender))
             row = cursor.fetchone()
             m_id = row['m_id']
             timestamp = row['timestamp']
@@ -2024,15 +2041,16 @@ def init_socketio(socketio):
             # Fetch current status of the applicant to include in the payload (specific to THIS provider)
             cursor.execute("""
                 SELECT CASE 
-                    WHEN ast.is_accepted IS TRUE THEN 'Accepted'
-                    WHEN ast.is_accepted IS FALSE THEN 'Declined'
+                    WHEN ast.is_accepted = 'Accepted' THEN 'Accepted'
+                    WHEN ast.is_accepted = 'Rejected' THEN 'Declined'
+                    WHEN ast.is_accepted = 'Cancelled' THEN 'Cancelled'
                     ELSE 'Pending'
                 END as student_status
                 FROM applicant_status ast
                 JOIN scholarships sch ON ast.scholarship_no = sch.req_no
                 WHERE ast.applicant_no = %s AND sch.pro_no = %s
                 ORDER BY 
-                    CASE WHEN ast.is_accepted IS TRUE THEN 1 WHEN ast.is_accepted IS NULL THEN 2 ELSE 3 END
+                    CASE WHEN ast.is_accepted = 'Accepted' THEN 1 WHEN ast.is_accepted IS NULL OR ast.is_accepted = 'Pending' THEN 2 ELSE 3 END
                 LIMIT 1
             """, (app_no, pro_no))
             status_row = cursor.fetchone()
@@ -2046,6 +2064,8 @@ def init_socketio(socketio):
                 'm_id': m_id,
                 'applicant_no': app_no,
                 'username': actual_username,
+                'sender_id': sender_id,
+                'is_student_sender': is_student_sender,
                 'message': message_text,
                 'room': room,
                 'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
@@ -2680,8 +2700,8 @@ def get_accounts(current_user_id, pro_no, role):
                     COALESCE(s.scholarship_name, 'Unassigned') AS scholarship,
                     s.pro_no AS provider_no,
                     CASE
-                        WHEN ast.is_accepted IS TRUE THEN 'Accepted'
-                        WHEN ast.is_accepted IS FALSE THEN 'Rejected'
+                        WHEN ast.is_accepted = 'Accepted' THEN 'Accepted'
+                        WHEN ast.is_accepted = 'Rejected' THEN 'Rejected'
                         ELSE 'Pending'
                     END AS status,
                     {joined_expr} AS joined,
@@ -3231,9 +3251,9 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
                    {is_removed_expr} as "isRemoved",
                                          {description_expr} as description, {date_created_expr} as "dateCreated",
                                          {semester_expr} as semester, {year_expr} as year,
-                                         COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS TRUE) as "acceptedCount",
-                                         COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS NULL) as "pendingCount",
-                                         COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS FALSE) as "declinedCount"
+                                         COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted = 'Accepted') as "acceptedCount",
+                                         COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS NULL OR ast.is_accepted = 'Pending') as "pendingCount",
+                                         COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted = 'Rejected') as "declinedCount"
             FROM scholarships s
             LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
                         LEFT JOIN applicant_status ast ON ast.scholarship_no = s.req_no

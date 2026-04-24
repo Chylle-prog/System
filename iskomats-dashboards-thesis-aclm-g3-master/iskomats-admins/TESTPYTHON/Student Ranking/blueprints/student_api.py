@@ -849,7 +849,7 @@ def get_scholarship_restriction(scope, scholarship_no):
     ]
     active_accepted_rows = [
         row for row in applications
-        if row['applicant_no'] in current_applicant_ids and row['is_accepted'] is True and scholarship_is_active_record(row, today=today)
+        if row['applicant_no'] in current_applicant_ids and row['is_accepted'] == 'Accepted' and scholarship_is_active_record(row, today=today)
     ]
     subject = describe_identity_subject(scope)
 
@@ -864,10 +864,10 @@ def get_scholarship_restriction(scope, scholarship_no):
         )
         status_label = 'applied for'
         reason = 'family-existing-same-scholarship'
-        if prior_row['is_accepted'] is True:
+        if prior_row['is_accepted'] == 'Accepted':
             status_label = 'already has an accepted application for'
             reason = 'family-accepted-same-scholarship'
-        elif prior_row['is_accepted'] is None:
+        elif prior_row['is_accepted'] is None or prior_row['is_accepted'] == 'Pending':
             status_label = 'has already applied for'
             reason = 'family-pending-same-scholarship'
 
@@ -880,7 +880,7 @@ def get_scholarship_restriction(scope, scholarship_no):
             'blocking_application': prior_row,
         }
 
-    same_scholarship_row = next((row for row in self_related_rows if row['is_accepted'] is True), None)
+    same_scholarship_row = next((row for row in self_related_rows if row['is_accepted'] == 'Accepted'), None)
     if same_scholarship_row:
         return {
             'already_applied': True,
@@ -891,7 +891,7 @@ def get_scholarship_restriction(scope, scholarship_no):
             'blocking_application': same_scholarship_row,
         }
 
-    same_scholarship_row = next((row for row in self_related_rows if row['is_accepted'] is None), None)
+    same_scholarship_row = next((row for row in self_related_rows if row['is_accepted'] is None or row['is_accepted'] == 'Pending'), None)
     if same_scholarship_row:
         return {
             'already_applied': True,
@@ -1961,7 +1961,7 @@ def get_rankings():
             
             cur.execute("""
                 SELECT s.*, p.provider_name,
-                       COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted IS TRUE) AS accepted_count
+                       COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted = 'Accepted') AS accepted_count
                 FROM scholarships s
                 LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
                 LEFT JOIN applicant_status ast ON ast.scholarship_no = s.req_no
