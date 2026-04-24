@@ -220,6 +220,27 @@ def _preprocess_strategy_c(img):
     _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return binary
 
+def _preprocess_strategy_white_on_dark(img):
+    """
+    Specialized strategy for white/light text on dark backgrounds.
+    Estimated background via MORPH_OPEN (removes light text), then diffs and inverts.
+    """
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+    gray = _CLAHE.apply(gray)
+    
+    # 1. Background estimation (remove bright text from dark background)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (41, 41))
+    bg = cv2.morphologyEx(gray, cv2.MORPH_OPEN, kernel)
+    
+    # 2. Highlight text and normalize
+    diff = cv2.absdiff(gray, bg)
+    diff = cv2.normalize(diff, None, 0, 255, cv2.NORM_MINMAX)
+    
+    # 3. Invert to get Black-on-White (Tesseract preference)
+    inverted = cv2.bitwise_not(diff)
+    _, binary = cv2.threshold(inverted, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    return binary
+
 def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False, label=""):
     """Internal helper to run OCR on an already decoded/resized image with specified strategies."""
     if img is None: return ""
@@ -267,7 +288,7 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False, label
     # Pass 3: Background Removal (Strategy B) - Crucial for IDs with colored backgrounds/patterns
     if needs_fallbacks or (strategies and _preprocess_strategy_b in strategies):
         try:
-            # Background subtraction via closing morphology
+            # Background subtraction via closing morphology (Best for dark text on colored bg)
             kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (51, 51))
             bg = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
             diff = cv2.absdiff(gray, bg)
@@ -280,10 +301,20 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False, label
         except Exception as e:
             print(f"[OCR] Strategy B error: {e}", flush=True)
 
+    # Pass 4: White-on-Dark Inversion (Strategy Specialized for Light text on Green/Blue/Dark IDs)
+    if needs_fallbacks or (strategies and _preprocess_strategy_white_on_dark in strategies):
+        try:
+            binary_wd = _preprocess_strategy_white_on_dark(img)
+            text_wd = eventlet.tpool.execute(pytesseract.image_to_string, binary_wd, config=f'--psm {psm} --oem 1')
+            if text_wd.strip() and text_wd.strip() not in results:
+                results.append(text_wd.strip())
+        except Exception as e:
+            print(f"[OCR] White-on-Dark strategy error: {e}", flush=True)
+
     # If primary failed or multiple strategies requested, try any remaining fallbacks
     if strategies:
         for strat_fn in strategies:
-            if strat_fn == _preprocess_strategy_b: continue # Already did it
+            if strat_fn in [_preprocess_strategy_b, _preprocess_strategy_white_on_dark]: continue # Already did them
             try:
                 processed = strat_fn(img)
                 txt = eventlet.tpool.execute(pytesseract.image_to_string, processed, config=f'--psm {psm} --oem 1')
@@ -319,7 +350,7 @@ def _run_tesseract(image_bytes, fast_mode=True):
         if fast_mode:
             return _run_tesseract_on_image(img, psm=3)
         else:
-            return _run_tesseract_on_image(img, psm=3, strategies=[_preprocess_strategy_b, _preprocess_strategy_c])
+            return _run_tesseract_on_image(img, psm=3, strategies=[_preprocess_strategy_b, _preprocess_strategy_white_on_dark, _preprocess_strategy_c])
     except Exception as e:
         print(f"[OCR] Error: {e}", flush=True)
         return ""
@@ -1039,11 +1070,19 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             name_v, addr_v, found_kw, score, meta = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
             
             if not name_v:
-                # Sparse fallback for fragmented ID text
+                # Fallback 1: Sparse fallback for fragmented ID text
                 with OCR_SEMAPHORE:
                     spare_text = _run_tesseract_on_image(img, psm=11, label="Sparse")
                     if spare_text.strip():
                         best_text = f"{best_text}\n{spare_text}"
+                
+                # Fallback 2: Uniform Block fallback (Great for IDs with structured but non-columnar text)
+                name_v_fallback, _, _, _, _ = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
+                if not name_v_fallback:
+                    with OCR_SEMAPHORE:
+                        block_text = _run_tesseract_on_image(img, psm=6, label="Block")
+                        if block_text.strip():
+                            best_text = f"{best_text}\n{block_text}"
         
         # Match again for final result and early exit
         name_v, addr_v, found_kw, score, meta = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
