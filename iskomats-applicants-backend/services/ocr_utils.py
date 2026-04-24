@@ -16,6 +16,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from collections import OrderedDict
 from project_config import get_performance_config
+from .crypto_service import decrypt_if_encrypted
 
 # Get performance profile
 _perf = get_performance_config()
@@ -1338,7 +1339,15 @@ def verify_video_content(video_data, keywords, expected_address=None, sample_pos
             r = requests.get(video_data, timeout=20)
             if r.status_code == 200:
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
-                    tmp.write(r.content)
+                    # Decrypt if encrypted before writing to temp file
+                    decrypted_content = decrypt_if_encrypted(r.content)
+                    tmp.write(decrypted_content)
+                    tmp_path = tmp.name
+            elif isinstance(video_data, str) and video_data.startswith('data:'):
+                import base64
+                header, encoded = video_data.split(',', 1)
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
+                    tmp.write(base64.b64decode(encoded))
                     tmp_path = tmp.name
             else:
                 tmp_path = video_data # Fallback

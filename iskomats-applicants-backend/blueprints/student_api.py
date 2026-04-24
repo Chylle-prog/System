@@ -19,18 +19,9 @@ from datetime import datetime, timedelta
 from functools import wraps
 
 import jwt
-from cryptography.fernet import Fernet
 from flask import Blueprint, jsonify, request, url_for
-# Encryption setup (matches api_routes.py)
-_ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
-_fernet = None
-if _ENCRYPTION_KEY:
-    try:
-        if isinstance(_ENCRYPTION_KEY, str):
-            _ENCRYPTION_KEY = _ENCRYPTION_KEY.encode()
-        _fernet = Fernet(_ENCRYPTION_KEY)
-    except Exception as e:
-        print(f"[STUDENT_API] Failed to initialize Fernet: {e}")
+from .crypto_service import get_fernet, decrypt_if_encrypted
+_fernet = get_fernet()
 
 from flask_bcrypt import Bcrypt
 
@@ -2333,7 +2324,9 @@ def get_applicant_document(field_name):
     """
     allowed_fields = [
         'profile_picture', 'signature_image_data', 'id_img_front', 'id_img_back',
-        'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic'
+        'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic',
+        'id_vid_url', 'indigency_vid_url', 'grades_vid_url', 'enrollment_certificate_vid_url',
+        'schoolid_front_vid_url', 'schoolid_back_vid_url'
     ]
     
     if field_name not in allowed_fields:
@@ -2394,10 +2387,12 @@ def get_applicant_document(field_name):
                 value = bytes(value)
 
             # Handle decryption for all fields if encrypted
-            if _fernet and value and value.startswith(b'gAAAA'):
+            if value:
                 try:
-                    value = _fernet.decrypt(value)
-                    print(f"[DOCUMENT] Decrypted {field_name}", flush=True)
+                    old_len = len(value)
+                    value = decrypt_if_encrypted(value)
+                    if len(value) != old_len:
+                        print(f"[DOCUMENT] Decrypted {field_name}", flush=True)
                 except Exception as e:
                     print(f"[DOCUMENT] Failed to decrypt {field_name}: {e}", flush=True)
                 
@@ -2405,9 +2400,9 @@ def get_applicant_document(field_name):
             mime_type = 'image/jpeg'
             if field_name == 'signature_image_data':
                 mime_type = 'image/png'
+            elif 'vid_url' in field_name:
+                mime_type = 'video/mp4'
             elif field_name == 'grades_doc' or field_name == 'enrollment_certificate_doc':
-                # It might be a PDF, but most are images. JPEG is a safe default for binary,
-                # but we could refine this if we had a mime-type sniffer here.
                 pass
                 
             # Optimization: Return as Base64 string so frontend can easily use it in data URI
@@ -2430,7 +2425,9 @@ def get_applicant_document_raw(field_name):
     """Returns raw bytes with correct Content-Type for direct <img> usage."""
     allowed_fields = [
         'profile_picture', 'signature_image_data', 'id_img_front', 'id_img_back',
-        'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic'
+        'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic',
+        'id_vid_url', 'indigency_vid_url', 'grades_vid_url', 'enrollment_certificate_vid_url',
+        'schoolid_front_vid_url', 'schoolid_back_vid_url'
     ]
     if field_name not in allowed_fields:
         return "Invalid field", 400
@@ -2447,24 +2444,42 @@ def get_applicant_document_raw(field_name):
             
             if isinstance(value, str):
                 if value.startswith('http'):
-                    from flask import redirect
-                    return redirect(normalize_supabase_url(value))
-                value = value.encode('utf-8')
+                    # If it's a URL, we need to decide if we proxy it (decrypt) or redirect
+                    if _fernet:
+                        import requests
+                        try:
+                            resp = requests.get(normalize_supabase_url(value), timeout=30)
+                            if resp.status_code == 200:
+                                value = resp.content
+                                # Continue to decryption below
+                            else:
+                                from flask import redirect
+                                return redirect(normalize_supabase_url(value))
+                        except Exception:
+                            from flask import redirect
+                            return redirect(normalize_supabase_url(value))
+                    else:
+                        from flask import redirect
+                        return redirect(normalize_supabase_url(value))
+                else:
+                    value = value.encode('utf-8')
             elif hasattr(value, 'tobytes'):
                 value = value.tobytes()
             else:
                 value = bytes(value)
 
             # Handle decryption if encrypted
-            if _fernet and value and value.startswith(b'gAAAA'):
+            if value:
                 try:
-                    value = _fernet.decrypt(value)
+                    value = decrypt_if_encrypted(value)
                 except Exception as e:
                     print(f"[DOCUMENT RAW] Decryption failed for {field_name}: {e}", flush=True)
 
             mime_type = 'image/jpeg'
             if field_name == 'signature_image_data' or value.startswith(b'\x89PNG'):
                 mime_type = 'image/png'
+            elif 'vid_url' in field_name or value.startswith(b'ftyp') or value.startswith(b'\x00\x00\x00\x18ftyp'):
+                mime_type = 'video/mp4'
                 
             from flask import make_response
             response = make_response(value)

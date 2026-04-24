@@ -1239,8 +1239,9 @@ const StudentInfo = () => {
     const dataUrlToBlob = (dataUrl) => {
       try {
         const arr = dataUrl.split(',');
-        const mime = arr[0].match(/:(.*?);/)[1];
-        const bstr = atob(arr[1]);
+        const match = arr[0].match(/:(.*?);/);
+        const mime = match ? match[1] : 'video/mp4';
+        const bstr = atob(arr[1] || '');
         let n = bstr.length;
         const u8arr = new Uint8Array(n);
         while (n--) u8arr[n] = bstr.charCodeAt(n);
@@ -1593,12 +1594,22 @@ const StudentInfo = () => {
         };
 
         const loadedVideos = {};
-        Object.entries(videoMap).forEach(([dbField, stateField]) => {
+        const videoPromises = Object.entries(videoMap).map(async ([dbField, stateField]) => {
           if (profile[dbField]) {
-            loadedVideos[stateField] = profile[dbField];
-            setFormData(prev => ({ ...prev, [stateField]: profile[dbField] }));
+            try {
+              // Decrypt and resolve via backend proxy
+              const resolved = await applicantAPI.resolveDocument(dbField, profile[dbField]);
+              loadedVideos[stateField] = resolved;
+              setFormData(prev => ({ ...prev, [stateField]: resolved }));
+            } catch (err) {
+              console.warn(`[VIDEO] Failed to resolve ${dbField}:`, err);
+              loadedVideos[stateField] = profile[dbField];
+              setFormData(prev => ({ ...prev, [stateField]: profile[dbField] }));
+            }
           }
         });
+
+        await Promise.all(videoPromises);
 
         if (Object.keys(loadedVideos).length > 0) {
           setDocumentVideos(prev => ({ ...prev, ...loadedVideos }));
@@ -1609,9 +1620,12 @@ const StudentInfo = () => {
         if (reqNo) {
           try {
             const res = await scholarshipAPI.getByProgram('all', { req_no: reqNo });
-            if (res.data.success && res.data.scholarships?.length > 0) {
-              setScholarshipDetails(res.data.scholarships[0]);
-              console.log('[SCHOLARSHIP] Loaded requirements:', res.data.scholarships[0]);
+            if (res?.data?.success && Array.isArray(res?.data?.scholarships) && res.data.scholarships.length > 0) {
+              const scholarshipData = res.data.scholarships[0];
+              if (scholarshipData) {
+                setScholarshipDetails(scholarshipData);
+                console.log('[SCHOLARSHIP] Loaded requirements:', scholarshipData);
+              }
             }
           } catch (e) {
             console.warn('[SCHOLARSHIP] Could not load scholarship details:', e);

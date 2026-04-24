@@ -190,6 +190,24 @@ const resolveApplicantDocumentForDisplay = async (fieldName, value) => {
     const result = await makeRequest(`/student/applicant/document/${fieldName}`, {
       method: 'GET',
     });
+    
+    if (result?.data && result.data.startsWith('data:video/')) {
+      // Convert large video data URIs to Blob URLs to prevent memory/rendering issues
+      try {
+        const arr = result.data.split(',');
+        const mime = arr[0].match(/:(.*?);/)[1];
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) u8arr[n] = bstr.charCodeAt(n);
+        const blob = new Blob([u8arr], { type: mime });
+        return URL.createObjectURL(blob);
+      } catch (e) {
+        console.warn(`[VIDEO-BLOB] Failed to convert data URI to Blob for ${fieldName}`, e);
+        return result.data;
+      }
+    }
+    
     return result?.data || value;
   } catch (error) {
     console.warn(`Failed to resolve applicant document for display: ${fieldName}`, error);
@@ -536,6 +554,11 @@ export const scholarshipAPI = {
  */
 
 export const applicantAPI = {
+  /**
+   * Resolve a document for display (proxies through backend for decryption)
+   */
+  resolveDocument: resolveApplicantDocumentForDisplay,
+
   /**
    * Get current user's profile
    * @returns {Promise}
