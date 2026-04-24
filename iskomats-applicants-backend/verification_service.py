@@ -163,24 +163,17 @@ async def api_verify_document(req: DocumentVerificationRequest):
             v_t = bool(raw_t and raw_t.strip())
             msg = 'Verified' if v_t else 'Unable to read school ID back text'
             
-        elif doc_type == 'Indigency':
-            # TWEAK: High res (1200) and 85% crop for certificates
-            raw_t, _ = extract_document_text(image_bytes, max_width=1200, prefer_fast_layout=False, crop_percent=0.85)
-            name_ok, name_ratio, name_details = student_name_matches_text(raw_t, req.first_name, req.middle_name, req.last_name, is_indigency=True)
-            _, addr_ok, found_keywords, _, detect_meta = _perform_text_matching(raw_t, None, None, None, req.expected_address, is_indigency=True)
-            
-            detected_brgys = detect_meta.get('detected_brgy', [])
-            addr_final_ok = addr_ok if req.expected_address else False
-            
-            v_t = name_ok and addr_final_ok
-            brgy_str = ", ".join(detected_brgys) if detected_brgys else "None detected"
-            status_addr = 'OK' if addr_final_ok else 'X'
-            msg = f"Checklist: [First: {'OK' if name_details.get('first_ok') else 'X'} | Last: {'OK' if name_details.get('last_ok') else 'X'} | Addr: {status_addr} (Target: {req.expected_address or 'Missing'}, Found: {brgy_str})]"
-            meta = {'name_ok': name_ok, 'addr_ok': addr_final_ok, 'name_ratio': name_ratio, 'keywords': found_keywords, 'detected_brgy': detected_brgys}
-            
+        elif doc_type == 'SchoolID':
+            v_t, msg, raw_t, meta = verify_id_with_ocr(
+                image_bytes, req.first_name, req.middle_name, req.last_name, 
+                expected_address=req.expected_address, 
+                expected_id_no=req.expected_id_no, 
+                expected_school_name=req.expected_school_name
+            )
+
         else:
-            # Fallback for ID Front or unknown types
-            v_t, msg, raw_t, _ = verify_id_with_ocr(
+            # Fallback for unknown types
+            v_t, msg, raw_t, meta = verify_id_with_ocr(
                 image_bytes, req.first_name, req.middle_name, req.last_name, 
                 expected_address=req.expected_address, 
                 expected_id_no=req.expected_id_no, 

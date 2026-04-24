@@ -220,7 +220,7 @@ def _preprocess_strategy_c(img):
     _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return binary
 
-def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
+def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False, label=""):
     """Internal helper to run OCR on an already decoded/resized image with specified strategies."""
     if img is None: return ""
     results = []
@@ -228,22 +228,22 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
     # Pass 1: Raw Grayscale (Best for modern LSTM Tesseract)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
     
-    t1 = time.time()
     # OEM 1 (LSTM-only) is significantly faster than Legacy mode
     text1 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config=f'--psm {psm} --oem 1')
-    t1_end = time.time()
     
     # Pass in fast mode only if we already have sufficient text density
-    if skip_pass2 and len(text1.strip()) > 10:
+    if skip_pass2 and len(text1.strip()) > 15:
         return text1.strip()
         
     results.append(text1.strip())
         
     # Pass 2: Adaptive Thresholding (Fails on white-on-dark, but great for shadows on paper)
-    needs_fallbacks = len(text1.strip()) < 8 and not skip_pass2
+    # We lowered the threshold to 5 chars to ensure we try harder for IDs
+    needs_fallbacks = len(text1.strip()) < 10 and not skip_pass2
     
     if needs_fallbacks:
         try:
+            # CLAHE helps with uneven lighting
             gray_clahe = _CLAHE.apply(gray)
             binary = cv2.adaptiveThreshold(gray_clahe, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 10)
             text2 = eventlet.tpool.execute(pytesseract.image_to_string, binary, config=f'--psm {psm}')
@@ -252,9 +252,26 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
         except:
             pass
     
-    # If primary failed or multiple strategies requested, try fallbacks
-    if strategies and needs_fallbacks:
+    # Pass 3: Background Removal (Strategy B) - Crucial for IDs with colored backgrounds/patterns
+    if needs_fallbacks or (strategies and _preprocess_strategy_b in strategies):
+        try:
+            # Background subtraction via closing morphology
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (51, 51))
+            bg = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
+            diff = cv2.absdiff(gray, bg)
+            diff = cv2.normalize(diff, None, 0, 255, cv2.NORM_MINMAX)
+            _, binary_bg = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            
+            text_bg = eventlet.tpool.execute(pytesseract.image_to_string, binary_bg, config=f'--psm {psm}')
+            if text_bg.strip() and text_bg.strip() not in results:
+                results.append(text_bg.strip())
+        except Exception as e:
+            print(f"[OCR] Strategy B error: {e}", flush=True)
+
+    # If primary failed or multiple strategies requested, try any remaining fallbacks
+    if strategies:
         for strat_fn in strategies:
+            if strat_fn == _preprocess_strategy_b: continue # Already did it
             try:
                 processed = strat_fn(img)
                 txt = eventlet.tpool.execute(pytesseract.image_to_string, processed, config=f'--psm {psm}')
@@ -263,7 +280,7 @@ def _run_tesseract_on_image(img, psm=3, strategies=None, skip_pass2=False):
                 print(f"[OCR] Strategy error: {e}", flush=True)
                 
     # PSM 11 Fallback: Sparse text detection. Great for grabbing text that PSM 3 skips due to column layouts.
-    if not skip_pass2:
+    if not skip_pass2 and len("\n".join(results).strip()) < 15:
         try:
             txt11 = eventlet.tpool.execute(pytesseract.image_to_string, gray, config='--psm 11 --oem 1')
             if txt11.strip() and txt11.strip() not in results:
@@ -837,14 +854,12 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             print(f"[QUALITY REJECT] {quality_reason}", flush=True)
             return False, f"Image quality issue: {quality_reason}", "", 0.0
         
-        # Optimize resizing for IDs (Increased resolution for better small-text extraction)
+        # Ensure minimum resolution for IDs (1500px width is ideal for small text)
         h, w = img.shape[:2]
-        # IDs are small and text is clear but dense. 
-        # Certificates (Indigency) also need high resolution.
-        target_w = 1200
-        if w > target_w:
+        target_w = 1500 
+        if w < target_w or w > (target_w + 200):
             scale = target_w / w
-            img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LANCZOS4)
+            img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
     except Exception as e:
         return False, f"Preprocessing error: {str(e)}", "", {'name_ok': False, 'addr_ok': False, 'error': str(e)}
 
@@ -854,8 +869,7 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
         doc_keywords = ['Indigency', 'Indigent', 'Resident', 'Residency', 'Certification', 'Certificate', 'Barangay', 'Office', 'Barangay Hall']
 
     best_text = ""
-    best_ratio = 0.0
-    print(f"[OCR] Running PSM3 verification...", flush=True)
+    print(f"[OCR] Processing ID Verification for {expected_first_name} {expected_last_name}...", flush=True)
     
     with OCR_SEMAPHORE:
         try:
@@ -868,7 +882,6 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
                 zone1 = img[:int(h_total * 0.55), :]
                 zone2 = img[int(h_total * 0.40):, :]  # Overlap at 40-55%
                 
-                print(f"[OCR] Running Indigency Dual-Zone Parallel Fast-Path...", flush=True)
                 from concurrent.futures import ThreadPoolExecutor
                 with ThreadPoolExecutor(max_workers=2) as fast_executor:
                     f1 = fast_executor.submit(_run_tesseract_on_image, zone1, psm=6, skip_pass2=True)
@@ -884,31 +897,24 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
                         details = {'name_ok': True, 'addr_ok': True, 'name_ratio': ratio, 'keywords': found_kw, 'fast_path': True, 'detected_brgy': meta.get('detected_brgy', [])}
                         return True, "Verified", fast_text, details
             
-            # --- Indigency PASS 1: Zone 1 Early Exit ---
-            if is_indigency:
-                name_v_z1, addr_v_z1, _, _, _ = _perform_text_matching(t1, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
-                if name_v_z1 and addr_v_z1:
-                    print(f"[OCR PERF] SUCCESS (Early Exit Zone 1) after {time.time() - t_start:.2f}s", flush=True)
-                    return True, "Verified", t1, {'name_ok': True, 'addr_ok': True, 'fast_path': True}
-                
                 # If zone 1 alone didn't do it, combine zone 1 and 2. 
-                # There is NO NEED to run column splits for Certificates!
                 best_text = f"{t1}\n{t2}"
-                print(f"[OCR PERF] Indigency Total OCR time (Dual-Zone): {time.time() - t_start:.3f}s", flush=True)
             else:
                 # -- PARALLELIZE SUB-SCANS for IDs ONLY (Optimization #6) ---
                 from concurrent.futures import ThreadPoolExecutor
                 with ThreadPoolExecutor(max_workers=3) as sub_executor:
                     # 1. Start full image scan (PSM 6 is good for ID blocks)
-                    best_future = sub_executor.submit(_run_tesseract_on_image, img, psm=6, skip_pass2=False)
+                    best_future = sub_executor.submit(_run_tesseract_on_image, img, psm=6, skip_pass2=False, label="Full")
                     
                     # 2. Start column sub-scans
                     h_total, w_total = img.shape[:2]
-                    header_h, left_w = int(h_total * 0.45), int(w_total * 0.55) # Slightly wider crop for headers
+                    # INCREASED ZONE HEIGHT: Some IDs have info lower down (e.g. 65% height)
+                    header_h = int(h_total * 0.65)
+                    left_w = int(w_total * 0.55) 
                     l_c, r_c = img[:header_h, :left_w], img[:header_h, left_w:]
                     
-                    left_future = sub_executor.submit(_run_tesseract_on_image, l_c, psm=6, skip_pass2=False)
-                    right_future = sub_executor.submit(_run_tesseract_on_image, r_c, psm=6, skip_pass2=False)
+                    left_future = sub_executor.submit(_run_tesseract_on_image, l_c, psm=6, skip_pass2=False, label="Left")
+                    right_future = sub_executor.submit(_run_tesseract_on_image, r_c, psm=6, skip_pass2=False, label="Right")
                     
                     # SEQUENTIAL ACQUISITION for Early-Exit
                     best_text = best_future.result()
@@ -918,11 +924,15 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
                         l_t, r_t = left_future.result(), right_future.result()
                         best_text = f"{best_text}\n---\n{l_t}\n---\n{r_t}"
                         
-                        # --- ROBUST FALLBACK (Optimization #8): PSM 3 (Automatic) ---
-                        # If PSM 6 (fast) didn't catch the core info, run a single high-quality automatic scan
-                        print(f"[OCR] PSM 6 failed to verify ID. Trying Robust PSM 3 Fallback...", flush=True)
-                        psm3_text = _run_tesseract_on_image(img, psm=3)
-                        best_text = f"{best_text}\n---\n{psm3_text}"
+                        # Check again with column text
+                        name_ok, addr_ok, found_kw, _, _ = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
+                        
+                        if not (name_ok and addr_ok):
+                            # --- ROBUST FALLBACK (Optimization #8): PSM 3 (Automatic) ---
+                            # If PSM 6 (fast) didn't catch the core info, run a single high-quality automatic scan
+                            print(f"[OCR] PSM 6 failed to verify ID. Trying Robust PSM 3 Fallback...", flush=True)
+                            psm3_text = _run_tesseract_on_image(img, psm=3, label="PSM3")
+                            best_text = f"{best_text}\n---\n{psm3_text}"
                     else:
                         print(f"[OCR PERF] ID SUCCESS (Fast Path) in {time.time() - t_start:.2f}s", flush=True)
 
