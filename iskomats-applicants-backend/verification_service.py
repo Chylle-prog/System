@@ -160,8 +160,8 @@ async def api_verify_document(req: DocumentVerificationRequest):
             msg = 'Verified' if v_t else 'Unable to read school ID back text'
             
         elif doc_type == 'Indigency':
-            # TWEAK: 85% crop and fast layout for certificates
-            raw_t, _ = extract_document_text(image_bytes, max_width=800, prefer_fast_layout=True, crop_percent=0.85)
+            # TWEAK: 85% crop and normal layout (PSM 3) for certificates to avoid mixing columns
+            raw_t, _ = extract_document_text(image_bytes, max_width=800, prefer_fast_layout=False, crop_percent=0.85)
             name_ok, name_ratio, name_details = student_name_matches_text(raw_t, req.first_name, req.middle_name, req.last_name, is_indigency=True)
             _, addr_ok, found_keywords, _, detect_meta = _perform_text_matching(raw_t, None, None, None, req.expected_address, is_indigency=True)
             

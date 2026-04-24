@@ -584,8 +584,8 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
             if not n_words: n_words = [w.strip() for w in normalize_for_ocr(name_part).split() if w.strip()]
             f_count = 0
             
-            # Slightly more lenient threshold for names (0.85) to handle minor OCR misreads
-            effective_threshold = 0.85
+            # Lenient threshold for names to handle minor OCR misreads, especially on Indigency
+            effective_threshold = 0.75 if is_indigency else 0.80
             
             for word in n_words:
                 # For middle names, also accept just the first letter (initial)
