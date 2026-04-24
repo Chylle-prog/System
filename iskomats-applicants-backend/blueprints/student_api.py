@@ -2380,7 +2380,8 @@ def get_applicant_document(field_name):
                             'data': normalize_supabase_url(value) if value.startswith('http') else value
                         })
                 # Fallback for plain strings (e.g. base64 stored as text)
-                value = value.encode('utf-8')
+                if isinstance(value, str):
+                    value = value.encode('utf-8')
             elif isinstance(value, (bytes, bytearray)):
                 # Already binary (e.g. fetched from cloud URL or raw DB bytes)
                 pass
