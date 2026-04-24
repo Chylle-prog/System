@@ -2738,338 +2738,338 @@ def submit_application():
             return jsonify({'message': 'Requirement number (req_no) is missing'}), 400
         req_no = int(req_no)
 
-        conn = get_db()
-        cur = conn.cursor()
-        has_profile_picture_column = applicant_has_column(cur, 'profile_picture')
+        with get_db() as conn:
+            cur = conn.cursor()
+            has_profile_picture_column = applicant_has_column(cur, 'profile_picture')
         
-        # Ensure the created_at support column exists only once per process.
-        ensure_applicant_status_created_at_column(cur)
-        conn.commit()
+            # Ensure the created_at support column exists only once per process.
+            ensure_applicant_status_created_at_column(cur)
+            conn.commit()
         
-        # Get applicant data
-        cur.execute('SELECT * FROM applicants WHERE applicant_no = %s', (current_user_id,))
-        applicant = cur.fetchone()
-        if not applicant:
-            return jsonify({'message': 'Applicant profile not found'}), 404
-        document_values = fetch_applicant_document_values(
-            cur,
-            current_user_id,
-            [
-                'signature_image_data',
-                'id_img_front',
-                'id_img_back',
-                'enrollment_certificate_doc',
-                'grades_doc',
-                'indigency_doc',
-                'id_pic',
-                'id_vid_url',
-                'indigency_vid_url',
-                'grades_vid_url',
-                'enrollment_certificate_vid_url',
-                'schoolid_front_vid_url',
-                'schoolid_back_vid_url',
-            ],
-        )
-        if document_values:
-            applicant.update(document_values)
-        
-        # In this system, req_no (passed from frontend) is the primary scholarship identifier
-        scholarship_id = req_no
-        
-        # Verify the scholarship exists and check GPA requirement
-        cur.execute('SELECT scholarship_name, gpa FROM scholarships WHERE req_no = %s', (scholarship_id,))
-        scholarship = cur.fetchone()
-        if not scholarship:
-            return jsonify({'message': 'Scholarship not found'}), 404
-            
-        min_gpa_required = scholarship.get('gpa')
-        applicant_gpa = get_unified_val('gpa') or applicant.get('overall_gpa')
-        
-        if min_gpa_required and applicant_gpa:
-            try:
-                student_gpa_val = float(applicant_gpa)
-                # Normalize if mismatch in scales (Scholarship usually uses 0-100, student might use 1.0-5.0)
-                if min_gpa_required > 10 and student_gpa_val < 10:
-                    student_gpa_val = normalize_to_percent(student_gpa_val)
-                
-                if student_gpa_val < float(min_gpa_required):
-                    return jsonify({
-                        'message': f"Your GPA ({applicant_gpa}) does not meet the minimum requirement of {min_gpa_required} for {scholarship['scholarship_name']}."
-                    }), 400
-            except (ValueError, TypeError):
-                pass
-
-        preliminary_identity = build_restriction_identity_from_applicant(applicant, source_data=request_payload)
-        if preliminary_identity:
-            cur.execute(
-                'SELECT pg_advisory_xact_lock(hashtext(%s), %s)',
-                (preliminary_identity['identity_key'], scholarship_id),
+            # Get applicant data
+            cur.execute('SELECT * FROM applicants WHERE applicant_no = %s', (current_user_id,))
+            applicant = cur.fetchone()
+            if not applicant:
+                return jsonify({'message': 'Applicant profile not found'}), 404
+            document_values = fetch_applicant_document_values(
+                cur,
+                current_user_id,
+                [
+                    'signature_image_data',
+                    'id_img_front',
+                    'id_img_back',
+                    'enrollment_certificate_doc',
+                    'grades_doc',
+                    'indigency_doc',
+                    'id_pic',
+                    'id_vid_url',
+                    'indigency_vid_url',
+                    'grades_vid_url',
+                    'enrollment_certificate_vid_url',
+                    'schoolid_front_vid_url',
+                    'schoolid_back_vid_url',
+                ],
             )
+            if document_values:
+                applicant.update(document_values)
+        
+            # In this system, req_no (passed from frontend) is the primary scholarship identifier
+            scholarship_id = req_no
+        
+            # Verify the scholarship exists and check GPA requirement
+            cur.execute('SELECT scholarship_name, gpa FROM scholarships WHERE req_no = %s', (scholarship_id,))
+            scholarship = cur.fetchone()
+            if not scholarship:
+                return jsonify({'message': 'Scholarship not found'}), 404
+            
+            min_gpa_required = scholarship.get('gpa')
+            applicant_gpa = get_unified_val('gpa') or applicant.get('overall_gpa')
+        
+            if min_gpa_required and applicant_gpa:
+                try:
+                    student_gpa_val = float(applicant_gpa)
+                    # Normalize if mismatch in scales (Scholarship usually uses 0-100, student might use 1.0-5.0)
+                    if min_gpa_required > 10 and student_gpa_val < 10:
+                        student_gpa_val = normalize_to_percent(student_gpa_val)
+                
+                    if student_gpa_val < float(min_gpa_required):
+                        return jsonify({
+                            'message': f"Your GPA ({applicant_gpa}) does not meet the minimum requirement of {min_gpa_required} for {scholarship['scholarship_name']}."
+                        }), 400
+                except (ValueError, TypeError):
+                    pass
 
-        restriction_scope = get_identity_restriction_scope(cur, applicant, source_data=request_payload)
-        restriction = get_scholarship_restriction(restriction_scope, scholarship_id)
-        if restriction['blocked']:
-            if restriction['auto_reject']:
+            preliminary_identity = build_restriction_identity_from_applicant(applicant, source_data=request_payload)
+            if preliminary_identity:
                 cur.execute(
-                    """
-                    INSERT INTO applicant_status (scholarship_no, applicant_no, is_accepted, created_at)
-                    VALUES (%s, %s, 'Rejected', NOW())
-                    ON CONFLICT (scholarship_no, applicant_no)
-                    DO UPDATE SET is_accepted = 'Rejected', created_at = applicant_status.created_at
-                    """,
-                    (scholarship_id, current_user_id),
+                    'SELECT pg_advisory_xact_lock(hashtext(%s), %s)',
+                    (preliminary_identity['identity_key'], scholarship_id),
                 )
-                conn.commit()
-            response_payload = {
-                'message': restriction['message'],
-                'restriction_reason': restriction['reason'],
+
+            restriction_scope = get_identity_restriction_scope(cur, applicant, source_data=request_payload)
+            restriction = get_scholarship_restriction(restriction_scope, scholarship_id)
+            if restriction['blocked']:
+                if restriction['auto_reject']:
+                    cur.execute(
+                        """
+                        INSERT INTO applicant_status (scholarship_no, applicant_no, is_accepted, created_at)
+                        VALUES (%s, %s, 'Rejected', NOW())
+                        ON CONFLICT (scholarship_no, applicant_no)
+                        DO UPDATE SET is_accepted = 'Rejected', created_at = applicant_status.created_at
+                        """,
+                        (scholarship_id, current_user_id),
+                    )
+                    conn.commit()
+                response_payload = {
+                    'message': restriction['message'],
+                    'restriction_reason': restriction['reason'],
+                }
+                if restriction['auto_reject']:
+                    response_payload['status'] = 'Rejected'
+                return jsonify(response_payload), 409
+
+            # ── Data Preparation ──────────────────────────────────────────────────
+            def get_doc_bytes(key, db_field):
+                # Try file upload first
+                if key in files_data:
+                    return files_data[key].read()
+                # Try base64 from form or json
+                val = get_unified_val(key)
+                if val and isinstance(val, str) and not val.startswith('http') and (val.startswith('data:') or len(val) > 100):
+                    return decode_base64(val)
+                # Try existing database value
+                existing = applicant.get(db_field)
+                if existing and not isinstance(existing, str):
+                    return db_bytes(existing)
+                return None
+
+            id_front_bytes = get_doc_bytes('id_front', 'id_img_front')
+            id_back_bytes = get_doc_bytes('id_back', 'id_img_back')
+            face_photo_bytes = get_doc_bytes('face_photo', 'face_photo')
+        
+            profile_pic_bytes = None
+            profile_pic_url = None
+        
+            if has_profile_picture_column:
+                raw_url = get_unified_val('profile_picture') or get_unified_val('profilePicture')
+                if isinstance(raw_url, str) and (raw_url.startswith('http') or raw_url.startswith('https')):
+                    profile_pic_url = raw_url
+                else:
+                    profile_pic_bytes = get_doc_bytes('profile_picture', 'profile_picture')
+        
+            signature_bytes = get_doc_bytes('signature_data', 'signature_image_data')
+
+            doc_keys = ['mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo', 'mayorValidID_photo']
+            doc_column_map = {
+                'mayorCOE_photo': 'enrollment_certificate_doc',
+                'mayorGrades_photo': 'grades_doc',
+                'mayorIndigency_photo': 'indigency_doc',
+                'mayorValidID_photo': 'id_pic',
             }
-            if restriction['auto_reject']:
-                response_payload['status'] = 'Rejected'
-            return jsonify(response_payload), 409
 
-        # ── Data Preparation ──────────────────────────────────────────────────
-        def get_doc_bytes(key, db_field):
-            # Try file upload first
-            if key in files_data:
-                return files_data[key].read()
-            # Try base64 from form or json
-            val = get_unified_val(key)
-            if val and isinstance(val, str) and not val.startswith('http') and (val.startswith('data:') or len(val) > 100):
-                return decode_base64(val)
-            # Try existing database value
-            existing = applicant.get(db_field)
-            if existing and not isinstance(existing, str):
-                return db_bytes(existing)
-            return None
+            doc_bytes = {}
+            for k in doc_keys:
+                doc_bytes[k] = get_doc_bytes(k, doc_column_map[k])
 
-        id_front_bytes = get_doc_bytes('id_front', 'id_img_front')
-        id_back_bytes = get_doc_bytes('id_back', 'id_img_back')
-        face_photo_bytes = get_doc_bytes('face_photo', 'face_photo')
+            # ── OCR & VIDEO VERIFICATION (PARALLEL) ───────────────────────────────
+            ocr_ok = True
+            ocr_status = "Verification skipped"
         
-        profile_pic_bytes = None
-        profile_pic_url = None
-        
-        if has_profile_picture_column:
-            raw_url = get_unified_val('profile_picture') or get_unified_val('profilePicture')
-            if isinstance(raw_url, str) and (raw_url.startswith('http') or raw_url.startswith('https')):
-                profile_pic_url = raw_url
-            else:
-                profile_pic_bytes = get_doc_bytes('profile_picture', 'profile_picture')
-        
-        signature_bytes = get_doc_bytes('signature_data', 'signature_image_data')
-
-        doc_keys = ['mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo', 'mayorValidID_photo']
-        doc_column_map = {
-            'mayorCOE_photo': 'enrollment_certificate_doc',
-            'mayorGrades_photo': 'grades_doc',
-            'mayorIndigency_photo': 'indigency_doc',
-            'mayorValidID_photo': 'id_pic',
-        }
-
-        doc_bytes = {}
-        for k in doc_keys:
-            doc_bytes[k] = get_doc_bytes(k, doc_column_map[k])
-
-        # ── OCR & VIDEO VERIFICATION (PARALLEL) ───────────────────────────────
-        ocr_ok = True
-        ocr_status = "Verification skipped"
-        
-        if not skip_verify:
-            try:
-                from concurrent.futures import ThreadPoolExecutor
-                verification_tasks = {}
-                # Expand worker pool to allow true simultaneous background downloading and validation
-                with ThreadPoolExecutor(max_workers=10) as executor:
-                    # 1. OCR Identity Check
-                    if id_front_bytes:
-                        town_city = form_data.get('townCity') or applicant.get('town_city_municipality', '')
-                        full_name = f"{applicant.get('first_name', '')} {applicant.get('last_name', '')}"
-                        from services.verification_client import call_fastapi_verify_id
-                        print(f"[SUBMIT] Scheduling FASTAPI OCR for {full_name}...")
-                        verification_tasks['ocr'] = executor.submit(
-                            call_fastapi_verify_id, 
-                            image_bytes=id_front_bytes,
-                            first_name=applicant.get('first_name', ''),
-                            middle_name=applicant.get('middle_name', ''),
-                            last_name=applicant.get('last_name', ''),
-                            expected_address=town_city
-                        )
-
-                    # 2. Video OCR Validations
-                    video_requirements = {
-                        'mayorIndigency_video': ['Indigency', 'Barangay', 'Certificate', 'Resident'],
-                        'mayorGrades_video': ['Grades', 'Grade', 'Transcript', 'Records', 'Units', 'Unit', 'Subject', 'GPA', 'Evaluation', 'Academic', 'Semester'],
-                        'mayorCOE_video': ['Enrollment', 'Enrolment', 'Certificate', 'Registration', 'Registered', 'College', 'Enrolled', 'COE', 'Semester']
-                    }
-                    def _threaded_verify(v_url, kws, addr, upl_bytes):
-                        data_bytes = upl_bytes
-                        if not data_bytes and v_url:
-                            data_bytes, _ = fetch_video_bytes_from_url(v_url)
-                        if not data_bytes: return False, "Video inaccessible."
-                        return verify_video_content(data_bytes, kws, addr)
-
-                    for field, keywords in video_requirements.items():
-                        v_bytes = None
-                        video_file = request.files.get(field)
-                        if video_file:
-                            v_bytes = video_file.read()
-                            video_file.seek(0)
-                        
-                        video_url = form_data.get(field)
-                        if v_bytes or (isinstance(video_url, str) and video_url.startswith('http')):
-                            expected_addr = form_data.get('townCity') or applicant.get('town_city_municipality', '') if field == 'mayorIndigency_video' else None
-                            verification_tasks[f'video_{field}'] = executor.submit(
-                                _threaded_verify, video_url, keywords, expected_addr, v_bytes
+            if not skip_verify:
+                try:
+                    from concurrent.futures import ThreadPoolExecutor
+                    verification_tasks = {}
+                    # Expand worker pool to allow true simultaneous background downloading and validation
+                    with ThreadPoolExecutor(max_workers=10) as executor:
+                        # 1. OCR Identity Check
+                        if id_front_bytes:
+                            town_city = form_data.get('townCity') or applicant.get('town_city_municipality', '')
+                            full_name = f"{applicant.get('first_name', '')} {applicant.get('last_name', '')}"
+                            from services.verification_client import call_fastapi_verify_id
+                            print(f"[SUBMIT] Scheduling FASTAPI OCR for {full_name}...")
+                            verification_tasks['ocr'] = executor.submit(
+                                call_fastapi_verify_id, 
+                                image_bytes=id_front_bytes,
+                                first_name=applicant.get('first_name', ''),
+                                middle_name=applicant.get('middle_name', ''),
+                                last_name=applicant.get('last_name', ''),
+                                expected_address=town_city
                             )
 
-                    # --- GATHER RESULTS ---
-                    if 'ocr' in verification_tasks:
-                        ocr_ok, ocr_status, _, _ = verification_tasks['ocr'].result()
-                        print(f"[SUBMIT] OCR Result: {ocr_status}")
+                        # 2. Video OCR Validations
+                        video_requirements = {
+                            'mayorIndigency_video': ['Indigency', 'Barangay', 'Certificate', 'Resident'],
+                            'mayorGrades_video': ['Grades', 'Grade', 'Transcript', 'Records', 'Units', 'Unit', 'Subject', 'GPA', 'Evaluation', 'Academic', 'Semester'],
+                            'mayorCOE_video': ['Enrollment', 'Enrolment', 'Certificate', 'Registration', 'Registered', 'College', 'Enrolled', 'COE', 'Semester']
+                        }
+                        def _threaded_verify(v_url, kws, addr, upl_bytes):
+                            data_bytes = upl_bytes
+                            if not data_bytes and v_url:
+                                data_bytes, _ = fetch_video_bytes_from_url(v_url)
+                            if not data_bytes: return False, "Video inaccessible."
+                            return verify_video_content(data_bytes, kws, addr)
 
-                    for key in verification_tasks:
-                        if key.startswith('video_'):
-                            is_valid, v_msg = verification_tasks[key].result()
-                            if not is_valid:
-                                print(f"[SUBMIT] ❌ Video Validation Failed ({key}): {v_msg}")
-                                return jsonify({'message': f'Invalid Video Content: {v_msg}'}), 400
-                            print(f"[SUBMIT] ✅ Video Validated ({key}): {v_msg}")
+                        for field, keywords in video_requirements.items():
+                            v_bytes = None
+                            video_file = request.files.get(field)
+                            if video_file:
+                                v_bytes = video_file.read()
+                                video_file.seek(0)
+                        
+                            video_url = form_data.get(field)
+                            if v_bytes or (isinstance(video_url, str) and video_url.startswith('http')):
+                                expected_addr = form_data.get('townCity') or applicant.get('town_city_municipality', '') if field == 'mayorIndigency_video' else None
+                                verification_tasks[f'video_{field}'] = executor.submit(
+                                    _threaded_verify, video_url, keywords, expected_addr, v_bytes
+                                )
 
-            except Exception as ai_err:
-                import traceback
-                traceback.print_exc()
-                print(f"[SUBMIT] Parallel Verification Exception: {str(ai_err)}")
-                return jsonify({
-                    'message': f'Verification service error: {str(ai_err)}. Please ensure your photos are clear and try again.',
-                    'verification_status': f"Error: {str(ai_err)}"
-                }), 400
+                        # --- GATHER RESULTS ---
+                        if 'ocr' in verification_tasks:
+                            ocr_ok, ocr_status, _, _ = verification_tasks['ocr'].result()
+                            print(f"[SUBMIT] OCR Result: {ocr_status}")
 
-        # ── UPDATE APPLICANT PROFILE ──────────────────────────────────────────
-        updates = []
-        params = []
+                        for key in verification_tasks:
+                            if key.startswith('video_'):
+                                is_valid, v_msg = verification_tasks[key].result()
+                                if not is_valid:
+                                    print(f"[SUBMIT] ❌ Video Validation Failed ({key}): {v_msg}")
+                                    return jsonify({'message': f'Invalid Video Content: {v_msg}'}), 400
+                                print(f"[SUBMIT] ✅ Video Validated ({key}): {v_msg}")
 
-        def add_update(column_name, value):
-            updates.append(f'{column_name} = %s')
-            params.append(value)
+                except Exception as ai_err:
+                    import traceback
+                    traceback.print_exc()
+                    print(f"[SUBMIT] Parallel Verification Exception: {str(ai_err)}")
+                    return jsonify({
+                        'message': f'Verification service error: {str(ai_err)}. Please ensure your photos are clear and try again.',
+                        'verification_status': f"Error: {str(ai_err)}"
+                    }), 400
 
-        field_mapping = {
-            'lastName': 'last_name', 'firstName': 'first_name', 'middleName': 'middle_name',
-            'dateOfBirth': 'birthdate', 'streetBarangay': 'street_brgy', 'townCity': 'town_city_municipality',
-            'province': 'province', 'zipCode': 'zip_code', 'sex': 'sex', 'citizenship': 'citizenship',
-            'schoolIdNumber': 'school_id_no', 'schoolName': 'school', 'schoolAddress': 'school_address',
-            'schoolSector': 'school_sector', 'mobileNumber': 'mobile_no', 'yearLevel': 'year_lvl',
-            'parentsGrossIncome': 'financial_income_of_parents', 'course': 'course',
-            'fatherPhoneNumber': 'father_phone_no', 'motherPhoneNumber': 'mother_phone_no',
-            'fatherOccupation': 'father_occupation', 'motherOccupation': 'mother_occupation',
-            'meritsAwardsReceived': 'merits_awards_received',
-        }
+            # ── UPDATE APPLICANT PROFILE ──────────────────────────────────────────
+            updates = []
+            params = []
 
-        document_field_mapping = {
-            'id_vid_url': 'id_vid_url',
-            'face_video': 'id_vid_url',
-            'mayorIndigency_video': 'indigency_vid_url',
-            'mayorGrades_video': 'grades_vid_url',
-            'mayorCOE_video': 'enrollment_certificate_vid_url',
-            'schoolIdFront_video': 'schoolid_front_vid_url',
-            'schoolIdBack_video': 'schoolid_back_vid_url',
-        }
+            def add_update(column_name, value):
+                updates.append(f'{column_name} = %s')
+                params.append(value)
 
-        for form_key, db_col in field_mapping.items():
-            if form_key in request_payload:
-                value = request_payload[form_key]
-                # school_id_no is an INTEGER column — coerce safely
-                if db_col == 'school_id_no':
-                    try:
-                        value = int(value) if value not in (None, '', 'null') else None
-                    except (ValueError, TypeError):
-                        value = None
-                add_update(db_col, value)
+            field_mapping = {
+                'lastName': 'last_name', 'firstName': 'first_name', 'middleName': 'middle_name',
+                'dateOfBirth': 'birthdate', 'streetBarangay': 'street_brgy', 'townCity': 'town_city_municipality',
+                'province': 'province', 'zipCode': 'zip_code', 'sex': 'sex', 'citizenship': 'citizenship',
+                'schoolIdNumber': 'school_id_no', 'schoolName': 'school', 'schoolAddress': 'school_address',
+                'schoolSector': 'school_sector', 'mobileNumber': 'mobile_no', 'yearLevel': 'year_lvl',
+                'parentsGrossIncome': 'financial_income_of_parents', 'course': 'course',
+                'fatherPhoneNumber': 'father_phone_no', 'motherPhoneNumber': 'mother_phone_no',
+                'fatherOccupation': 'father_occupation', 'motherOccupation': 'mother_occupation',
+                'meritsAwardsReceived': 'merits_awards_received',
+            }
 
-        if 'fatherName' in request_payload:
-            add_update('father_name', normalize_parent_full_name(request_payload.get('fatherName')))
+            document_field_mapping = {
+                'id_vid_url': 'id_vid_url',
+                'face_video': 'id_vid_url',
+                'mayorIndigency_video': 'indigency_vid_url',
+                'mayorGrades_video': 'grades_vid_url',
+                'mayorCOE_video': 'enrollment_certificate_vid_url',
+                'schoolIdFront_video': 'schoolid_front_vid_url',
+                'schoolIdBack_video': 'schoolid_back_vid_url',
+            }
 
-        if 'motherName' in request_payload:
-            add_update('mother_name', normalize_parent_full_name(request_payload.get('motherName')))
+            for form_key, db_col in field_mapping.items():
+                if form_key in request_payload:
+                    value = request_payload[form_key]
+                    # school_id_no is an INTEGER column — coerce safely
+                    if db_col == 'school_id_no':
+                        try:
+                            value = int(value) if value not in (None, '', 'null') else None
+                        except (ValueError, TypeError):
+                            value = None
+                    add_update(db_col, value)
 
-        if 'fatherStatus' in request_payload:
-            father_status = parse_parent_status(request_payload.get('fatherStatus'))
-            if father_status is not None:
-                add_update('father_status', father_status)
+            if 'fatherName' in request_payload:
+                add_update('father_name', normalize_parent_full_name(request_payload.get('fatherName')))
 
-        if 'motherStatus' in request_payload:
-            mother_status = parse_parent_status(request_payload.get('motherStatus'))
-            if mother_status is not None:
-                add_update('mother_status', mother_status)
+            if 'motherName' in request_payload:
+                add_update('mother_name', normalize_parent_full_name(request_payload.get('motherName')))
 
-        document_updates = {}
-        for form_key, db_col in document_field_mapping.items():
-            if form_key in request_payload:
-                document_updates[db_col] = request_payload[form_key]
+            if 'fatherStatus' in request_payload:
+                father_status = parse_parent_status(request_payload.get('fatherStatus'))
+                if father_status is not None:
+                    add_update('father_status', father_status)
 
-        binary_map = {
-            'id_img_front': id_front_bytes,
-            'id_img_back': id_back_bytes,
-            'profile_picture': profile_pic_bytes,
-            'signature_image_data': signature_bytes,
-            'enrollment_certificate_doc': doc_bytes['mayorCOE_photo'],
-            'grades_doc': doc_bytes['mayorGrades_photo'],
-            'indigency_doc': doc_bytes['mayorIndigency_photo'],
-            'id_pic': doc_bytes['mayorValidID_photo'] or face_photo_bytes,
-        }
+            if 'motherStatus' in request_payload:
+                mother_status = parse_parent_status(request_payload.get('motherStatus'))
+                if mother_status is not None:
+                    add_update('mother_status', mother_status)
 
-        for column_name, value in binary_map.items():
-            # If we already have a URL (from profile_pic_url etc), use it directly
-            if column_name == 'profile_picture' and profile_pic_url:
-                if has_profile_picture_column:
-                    updates.append(f'{column_name} = %s')
-                    params.append(profile_pic_url)
-                else:
-                    document_updates[column_name] = profile_pic_url
-                continue
+            document_updates = {}
+            for form_key, db_col in document_field_mapping.items():
+                if form_key in request_payload:
+                    document_updates[db_col] = request_payload[form_key]
 
-            if value is not None:
-                print(f"[SUBMIT] Processing {column_name}: {len(value) if isinstance(value, (bytes, bytearray)) else 'scalar'} data. Cloud? {use_storage()}", flush=True)
-                try:
-                    url = upload_image_to_storage(value, current_user_id, column_name, is_update=False)
-                    if url:
-                        print(f"[SUBMIT] SUCCESS: {column_name} uploaded to {url[:50]}...", flush=True)
-                        if column_name == 'profile_picture' and has_profile_picture_column:
-                            updates.append(f'{column_name} = %s')
-                            params.append(url)
-                        else:
-                            document_updates[column_name] = url
+            binary_map = {
+                'id_img_front': id_front_bytes,
+                'id_img_back': id_back_bytes,
+                'profile_picture': profile_pic_bytes,
+                'signature_image_data': signature_bytes,
+                'enrollment_certificate_doc': doc_bytes['mayorCOE_photo'],
+                'grades_doc': doc_bytes['mayorGrades_photo'],
+                'indigency_doc': doc_bytes['mayorIndigency_photo'],
+                'id_pic': doc_bytes['mayorValidID_photo'] or face_photo_bytes,
+            }
+
+            for column_name, value in binary_map.items():
+                # If we already have a URL (from profile_pic_url etc), use it directly
+                if column_name == 'profile_picture' and profile_pic_url:
+                    if has_profile_picture_column:
+                        updates.append(f'{column_name} = %s')
+                        params.append(profile_pic_url)
                     else:
-                        print(f"[SUBMIT] ERROR: Cloud upload failed for {column_name}. Refusing BYTEA fallback.", flush=True)
-                        raise ValueError(f"Failed to upload {column_name} to cloud storage.")
-                except Exception as e:
-                    print(f"[SUBMIT] CRITICAL STORAGE ERROR for {column_name}: {e}", flush=True)
-                    raise ValueError(f"Storage System Error: {str(e)}")
+                        document_updates[column_name] = profile_pic_url
+                    continue
 
-        if updates:
-            sql = f"UPDATE applicants SET {', '.join(updates)} WHERE applicant_no = %s"
-            params.append(current_user_id)
-            cur.execute(sql, tuple(params))
-        if document_updates:
-            persist_applicant_document_values(cur, current_user_id, document_updates)
+                if value is not None:
+                    print(f"[SUBMIT] Processing {column_name}: {len(value) if isinstance(value, (bytes, bytearray)) else 'scalar'} data. Cloud? {use_storage()}", flush=True)
+                    try:
+                        url = upload_image_to_storage(value, current_user_id, column_name, is_update=False)
+                        if url:
+                            print(f"[SUBMIT] SUCCESS: {column_name} uploaded to {url[:50]}...", flush=True)
+                            if column_name == 'profile_picture' and has_profile_picture_column:
+                                updates.append(f'{column_name} = %s')
+                                params.append(url)
+                            else:
+                                document_updates[column_name] = url
+                        else:
+                            print(f"[SUBMIT] ERROR: Cloud upload failed for {column_name}. Refusing BYTEA fallback.", flush=True)
+                            raise ValueError(f"Failed to upload {column_name} to cloud storage.")
+                    except Exception as e:
+                        print(f"[SUBMIT] CRITICAL STORAGE ERROR for {column_name}: {e}", flush=True)
+                        raise ValueError(f"Storage System Error: {str(e)}")
 
-        # ── CREATE/UPDATE STATUS ──────────────────────────────────────────────
-        cur.execute(
-            """
-            INSERT INTO applicant_status (scholarship_no, applicant_no, is_accepted, created_at)
-            VALUES (%s, %s, 'Pending', NOW())
-            ON CONFLICT (scholarship_no, applicant_no) 
-            DO UPDATE SET created_at = EXCLUDED.created_at, is_accepted = 'Pending'
-            """,
-            (scholarship_id, current_user_id),
-        )
+            if updates:
+                sql = f"UPDATE applicants SET {', '.join(updates)} WHERE applicant_no = %s"
+                params.append(current_user_id)
+                cur.execute(sql, tuple(params))
+            if document_updates:
+                persist_applicant_document_values(cur, current_user_id, document_updates)
 
-        conn.commit()
-        print(f"[SUBMIT] Application successful for User {current_user_id} in {time.time() - start_time:.2f}s")
-        return jsonify({
-            'message': 'Application submitted successfully',
-            'ocr_status': ocr_status
-        }), 201
+            # ── CREATE/UPDATE STATUS ──────────────────────────────────────────────
+            cur.execute(
+                """
+                INSERT INTO applicant_status (scholarship_no, applicant_no, is_accepted, created_at)
+                VALUES (%s, %s, 'Pending', NOW())
+                ON CONFLICT (scholarship_no, applicant_no) 
+                DO UPDATE SET created_at = EXCLUDED.created_at, is_accepted = 'Pending'
+                """,
+                (scholarship_id, current_user_id),
+            )
+
+            conn.commit()
+            print(f"[SUBMIT] Application successful for User {current_user_id} in {time.time() - start_time:.2f}s")
+            return jsonify({
+                'message': 'Application submitted successfully',
+                'ocr_status': ocr_status
+            }), 201
 
     except Exception as exc:
         traceback.print_exc()

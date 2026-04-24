@@ -139,12 +139,28 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
     )
     
     conn = db_conn
-    should_close_conn = False
     try:
+        # Use a local context manager if no connection provided, 
+        # but keep the logic compatible with an external connection.
         if not conn:
-            conn = get_db()
-            should_close_conn = True
+            with get_db() as local_conn:
+                return _create_notification_internal(local_conn, user_no, title, message, notif_type, send_email, google_access_token, sync_email, commit=True)
+        else:
+            return _create_notification_internal(conn, user_no, title, message, notif_type, send_email, google_access_token, sync_email, commit=False)
             
+    except Exception as e:
+        print(f"[NOTIF ERROR] Notification creation failed: {e}", flush=True)
+        return {'created': False, 'email_sent': False, 'reason': str(e)}
+
+def _create_notification_internal(conn, user_no, title, message, notif_type='message', send_email=True, google_access_token=None, sync_email=False, commit=True):
+    """Internal helper for notification creation with an active connection."""
+    GMAIL_SENDER_EMAIL = (
+        os.environ.get('GMAIL_SENDER_EMAIL')
+        or os.environ.get('SMTP_SENDER_EMAIL')
+        or os.environ.get('SMTP_EMAIL')
+    )
+    
+    try:
         cur = conn.cursor()
         
         # DEBUG: Verify applicant exists first (check if foreign key will fail)
@@ -152,7 +168,6 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
         applicant_check = cur.fetchone()
         if not applicant_check:
             print(f"[NOTIF ERROR] Applicant {user_no} not found in applicants table - cannot create notification (FK constraint)")
-            if should_close_conn: conn.close()
             return {'created': False, 'email_sent': False, 'reason': 'applicant-not-found'}
         
         # 1. Insert into database
@@ -161,13 +176,12 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
             VALUES (%s, %s, %s, %s, NOW() + INTERVAL '10 days')
             RETURNING notif_id
         """, (user_no, title, message, notif_type))
-        notif_result = cur.fetchone()  # Fetch the RETURNING result
+        notif_result = cur.fetchone()
         if notif_result:
             notif_id = notif_result['notif_id']
         else:
             print(f"[NOTIF ERROR] INSERT returned no result for user {user_no}")
-            if not db_conn: conn.rollback()
-            if should_close_conn: conn.close()
+            if commit: conn.rollback()
             return {'created': False, 'email_sent': False, 'reason': 'notification-insert-empty'}
         
         # 2. Emit SocketIO event if initialized
@@ -185,8 +199,7 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
                 print(f"[NOTIF SOCKET ERROR] Failed to emit: {socket_err}")
 
         if not send_email:
-            if not db_conn: conn.commit()
-            if should_close_conn: conn.close()
+            if commit: conn.commit()
             return {'created': True, 'email_sent': False, 'reason': 'email-disabled'}
 
         # 3. Get the applicant's email address
@@ -194,10 +207,9 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
         cur.execute(f"SELECT email_address FROM {applicant_email_table} WHERE applicant_no = %s LIMIT 1", (user_no,))
         user_row = cur.fetchone()
         
-        if not db_conn: conn.commit()
+        if commit: conn.commit()
         
         if not user_row or not user_row['email_address']:
-            if should_close_conn: conn.close()
             return {'created': True, 'email_sent': False, 'reason': 'email-not-found'}
             
         receiver_email = user_row['email_address']
@@ -248,26 +260,20 @@ The ISKOMATS Team
                     return False
 
             if sync_email:
-                # Synchronous send (for batch jobs that are already in a background thread)
                 _send_email_logic(google_access_token)
-                if should_close_conn: conn.close()
                 return {'created': True, 'email_sent': True, 'email': receiver_email}
             else:
-                # Background send (for individual notifications)
                 import threading
                 thread = threading.Thread(target=lambda: _send_email_logic(google_access_token))
                 thread.daemon = True
                 thread.start()
-                
-                if should_close_conn: conn.close()
                 return {'created': True, 'email_sent': True, 'email': receiver_email, 'info': 'Sending in background'}
         else:
-            if should_close_conn: conn.close()
             return {'created': True, 'email_sent': False, 'email': receiver_email, 'reason': 'sender-email-not-configured'}
-        
+            
     except Exception as e:
-        print(f"[NOTIF ERROR] Notification creation failed: {e}", flush=True)
-        if should_close_conn and conn:
-            try: conn.close()
+        if commit: 
+            try: conn.rollback()
             except: pass
-        return {'created': False, 'email_sent': False, 'reason': str(e)}
+        raise e
+

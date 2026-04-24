@@ -50,14 +50,13 @@ def on_blueprint_init(state):
     with state.app.app_context():
         try:
             from project_config import get_db
-            conn = get_db()
-            cur = conn.cursor()
-            ensure_schema_integrity(cur)
-            ensure_admin_activity_log_table(cur)
-            conn.commit()
-            cur.close()
-            conn.close()
-            print("[BACKEND] Admin schema initialization complete.")
+            with get_db() as conn:
+                cur = conn.cursor()
+                ensure_schema_integrity(cur)
+                ensure_admin_activity_log_table(cur)
+                conn.commit()
+                cur.close()
+                print("[BACKEND] Admin schema initialization complete.")
         except Exception as e:
             print(f"[BACKEND] Admin schema migration skipped or failed: {e}")
 
@@ -568,29 +567,25 @@ def token_required(f):
             current_user_id, pro_no, role = _decode_request_token()
             
             # Real-time synchronization check: Verify if the account is locked in the database
-            conn = get_db()
-            cursor = conn.cursor()
-            user_email_table = get_user_email_table(cursor)
-            applicant_email_table = get_applicant_email_table(cursor)
+            with get_db() as conn:
+                cursor = conn.cursor()
+                user_email_table = get_user_email_table(cursor)
+                applicant_email_table = get_applicant_email_table(cursor)
             
-            # Check either user_no (for admins) or applicant_no (for scholars)
-            if role and (role.lower() == 'scholar' or role.lower() == 'user'):
-                cursor.execute(f"SELECT is_locked FROM {applicant_email_table} WHERE applicant_no = %s", (current_user_id,))
-            else:
-                cursor.execute(f"SELECT is_locked FROM {user_email_table} WHERE user_no = %s", (current_user_id,))
+                # Check either user_no (for admins) or applicant_no (for scholars)
+                if role and (role.lower() == 'scholar' or role.lower() == 'user'):
+                    cursor.execute(f"SELECT is_locked FROM {applicant_email_table} WHERE applicant_no = %s", (current_user_id,))
+                else:
+                    cursor.execute(f"SELECT is_locked FROM {user_email_table} WHERE user_no = %s", (current_user_id,))
             
-            lock_record = cursor.fetchone()
-            if lock_record and lock_record.get('is_locked'):
-                cursor.close()
-                conn.close()
+                lock_record = cursor.fetchone()
+                if lock_record and lock_record.get('is_locked'):
+                    cursor = None
+                    conn = None
+                    return jsonify({'message': 'Account has been suspended. Please contact the administrator.', 'suspended': True}), 403
+                
                 cursor = None
                 conn = None
-                return jsonify({'message': 'Account has been suspended. Please contact the administrator.', 'suspended': True}), 403
-                
-            cursor.close()
-            conn.close()
-            cursor = None
-            conn = None
             
         except (ValueError, KeyError) as e:
             return jsonify({'message': str(e)}), 401
@@ -924,78 +919,68 @@ def send_school_verification_dispatch(current_user_id, pro_no, role, applicant_n
         if scholarship_no is None:
             return jsonify({'success': False, 'message': 'scholarshipNo is required'}), 400
 
-        conn = get_db()
-        cursor = conn.cursor()
-        applicant_row = load_applicant_verification_context(cursor, applicant_no, scholarship_no)
+        with get_db() as conn:
+            cursor = conn.cursor()
+            applicant_row = load_applicant_verification_context(cursor, applicant_no, scholarship_no)
 
-        if not applicant_row:
-            cursor.close()
-            conn.close()
-            return jsonify({'success': False, 'message': 'Applicant record not found for this scholarship'}), 404
+            if not applicant_row:
+                return jsonify({'success': False, 'message': 'Applicant record not found for this scholarship'}), 404
 
-        if role != 'Admin' and applicant_row['pro_no'] != pro_no:
-            cursor.close()
-            conn.close()
-            return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+            if role != 'Admin' and applicant_row['pro_no'] != pro_no:
+                return jsonify({'success': False, 'message': 'Unauthorized'}), 403
 
-        school_email = resolve_school_verification_email(applicant_row.get('school'))
-        if not school_email:
-            cursor.close()
-            conn.close()
-            return jsonify({
-                'success': False,
-                'message': f"No verification email is configured yet for {applicant_row.get('school') or 'this school'}. Currently only DLSL is supported.",
-            }), 400
+            school_email = resolve_school_verification_email(applicant_row.get('school'))
+            if not school_email:
+                return jsonify({
+                    'success': False,
+                    'message': f"No verification email is configured yet for {applicant_row.get('school') or 'this school'}. Currently only DLSL is supported.",
+                }), 400
 
-        applicant_name = build_applicant_full_name(applicant_row) or f"Applicant #{applicant_no}"
+            applicant_name = build_applicant_full_name(applicant_row) or f"Applicant #{applicant_no}"
         
-        # Clean up initial connection
-        cursor.close()
-        conn.close()
+            # Clean up initial connection
 
-        def _background_dispatch():
-            bg_conn = None
-            bg_cursor = None
-            try:
-                bg_conn = get_db()
-                bg_cursor = bg_conn.cursor()
-                
-                print(f"[BG_DISPATCH] Fetching documents for school verification: Applicant #{applicant_no}", flush=True)
-                document_values = fetch_applicant_document_values(
-                    bg_cursor,
-                    applicant_no,
-                    ['enrollment_certificate_doc', 'grades_doc', 'id_img_front', 'id_img_back']
-                )
-
-                front_id = document_values.get('id_img_front')
-                back_id = document_values.get('id_img_back')
-                enrollment_doc = document_values.get('enrollment_certificate_doc')
-                grades_doc = document_values.get('grades_doc')
-
-                attachment_specs = [
-                    ('enrollment_certificate', enrollment_doc),
-                    ('grades_report', grades_doc),
-                    ('school_id_front', front_id),
-                    ('school_id_back', back_id),
-                ]
-                
-                attachments = []
-                for label, raw_content in attachment_specs:
-                    if not raw_content:
-                        continue
-                    content_bytes = coerce_binary_bytes(raw_content)
-                    mime_type = get_mime_type(content_bytes)
-                    extension = guess_extension_for_mime(mime_type)
-                    attachments.append(
-                        create_email_attachment(
-                            f"{applicant_name.replace(' ', '_').lower()}_{label}.{extension}",
-                            content_bytes,
-                            mime_type,
+            def _background_dispatch():
+                try:
+                    with get_db() as bg_conn:
+                        bg_cursor = bg_conn.cursor()
+                    
+                        print(f"[BG_DISPATCH] Fetching documents for school verification: Applicant #{applicant_no}", flush=True)
+                        document_values = fetch_applicant_document_values(
+                            bg_cursor,
+                            applicant_no,
+                            ['enrollment_certificate_doc', 'grades_doc', 'id_img_front', 'id_img_back']
                         )
-                    )
 
-                subject = f"School Verification Request - {applicant_name}"
-                body = f"""Hello,
+                        front_id = document_values.get('id_img_front')
+                        back_id = document_values.get('id_img_back')
+                        enrollment_doc = document_values.get('enrollment_certificate_doc')
+                        grades_doc = document_values.get('grades_doc')
+
+                        attachment_specs = [
+                            ('enrollment_certificate', enrollment_doc),
+                            ('grades_report', grades_doc),
+                            ('school_id_front', front_id),
+                            ('school_id_back', back_id),
+                        ]
+                
+                        attachments = []
+                        for label, raw_content in attachment_specs:
+                            if not raw_content:
+                                continue
+                            content_bytes = coerce_binary_bytes(raw_content)
+                            mime_type = get_mime_type(content_bytes)
+                            extension = guess_extension_for_mime(mime_type)
+                            attachments.append(
+                                create_email_attachment(
+                                    f"{applicant_name.replace(' ', '_').lower()}_{label}.{extension}",
+                                    content_bytes,
+                                    mime_type,
+                                )
+                            )
+
+                        subject = f"School Verification Request - {applicant_name}"
+                        body = f"""Hello,
 
 Please help verify the attached applicant records for {applicant_name}.
 
@@ -1016,16 +1001,13 @@ Please review the documents and respond to this email with your verification fin
 Best regards,
 ISKOMATS Admin
 """
-                print(f"[BG_DISPATCH] Sending school verification email to {school_email}...", flush=True)
-                send_gmail_message(school_email, subject, body, attachments=attachments)
-                print(f"[BG_DISPATCH] Successfully sent school verification email for #{applicant_no}", flush=True)
+                        print(f"[BG_DISPATCH] Sending school verification email to {school_email}...", flush=True)
+                        send_gmail_message(school_email, subject, body, attachments=attachments)
+                        print(f"[BG_DISPATCH] Successfully sent school verification email for #{applicant_no}", flush=True)
 
-            except Exception as bg_e:
-                print(f"[BG_DISPATCH ERROR] Failed to dispatch school verification: {bg_e}", flush=True)
-                traceback.print_exc()
-            finally:
-                if bg_cursor: bg_cursor.close()
-                if bg_conn: bg_conn.close()
+                except Exception as bg_e:
+                    print(f"[BG_DISPATCH ERROR] Failed to dispatch school verification: {bg_e}", flush=True)
+                    traceback.print_exc()
 
         # Start the background threat for data-heavy operations
         threading.Thread(target=_background_dispatch, daemon=True).start()
@@ -1059,35 +1041,35 @@ def send_indigency_verification_dispatch(current_user_id, pro_no, role, applican
         if scholarship_no is None:
             return jsonify({'success': False, 'message': 'scholarshipNo is required'}), 400
 
-        conn = get_db()
-        cursor = conn.cursor()
-        applicant_row = load_applicant_verification_context(cursor, applicant_no, scholarship_no)
+        with get_db() as conn:
+            cursor = conn.cursor()
+            applicant_row = load_applicant_verification_context(cursor, applicant_no, scholarship_no)
 
-        if not applicant_row:
-            return jsonify({'success': False, 'message': 'Applicant record not found for this scholarship'}), 404
+            if not applicant_row:
+                return jsonify({'success': False, 'message': 'Applicant record not found for this scholarship'}), 404
 
-        if role != 'Admin' and applicant_row['pro_no'] != pro_no:
-            return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+            if role != 'Admin' and applicant_row['pro_no'] != pro_no:
+                return jsonify({'success': False, 'message': 'Unauthorized'}), 403
 
-        document_values = fetch_applicant_document_values(cursor, applicant_no, ['indigency_doc'])
-        indigency_doc = document_values.get('indigency_doc')
-        if not indigency_doc:
-            return jsonify({'success': False, 'message': 'Missing required document: Indigency Proof'}), 400
+            document_values = fetch_applicant_document_values(cursor, applicant_no, ['indigency_doc'])
+            indigency_doc = document_values.get('indigency_doc')
+            if not indigency_doc:
+                return jsonify({'success': False, 'message': 'Missing required document: Indigency Proof'}), 400
 
-        applicant_name = build_applicant_full_name(applicant_row) or f"Applicant #{applicant_no}"
-        indigency_bytes = coerce_binary_bytes(indigency_doc)
-        indigency_mime = get_mime_type(indigency_bytes)
-        indigency_extension = guess_extension_for_mime(indigency_mime)
-        attachments = [
-            create_email_attachment(
-                f"{applicant_name.replace(' ', '_').lower()}_indigency_proof.{indigency_extension}",
-                indigency_bytes,
-                indigency_mime,
-            )
-        ]
+            applicant_name = build_applicant_full_name(applicant_row) or f"Applicant #{applicant_no}"
+            indigency_bytes = coerce_binary_bytes(indigency_doc)
+            indigency_mime = get_mime_type(indigency_bytes)
+            indigency_extension = guess_extension_for_mime(indigency_mime)
+            attachments = [
+                create_email_attachment(
+                    f"{applicant_name.replace(' ', '_').lower()}_indigency_proof.{indigency_extension}",
+                    indigency_bytes,
+                    indigency_mime,
+                )
+            ]
 
-        subject = f"Indigency Verification Request - {applicant_name}"
-        body = f"""Hello,
+            subject = f"Indigency Verification Request - {applicant_name}"
+            body = f"""Hello,
 
 Please help verify the attached indigency document for {applicant_name}.
 
@@ -1155,51 +1137,50 @@ def send_announcement_emails(
         return False
     
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        applicant_email_table = get_applicant_email_table(cur)
+        with get_db() as conn:
+            cur = conn.cursor()
+            applicant_email_table = get_applicant_email_table(cur)
         
-        # Get applicants based on send_to_all flag
-        if send_to_all:
-            # Send to ALL verified students in the system
-            # We join with applicants to get names if they exist
-            cur.execute(f"""
-                SELECT DISTINCT e.applicant_no, a.first_name, a.last_name, e.email_address
-                FROM {applicant_email_table} e
-                LEFT JOIN applicants a ON e.applicant_no = a.applicant_no
-                WHERE e.is_verified = TRUE AND e.email_address IS NOT NULL
-            """)
-        else:
-            # Send only to applicants who applied to this provider's scholarships
-            cur.execute(f"""
-                SELECT DISTINCT a.applicant_no, a.first_name, a.last_name, COALESCE(e.email_address, a.email) AS email_address
-                FROM applicants a
-                INNER JOIN applicant_status ast ON a.applicant_no = ast.applicant_no
-                INNER JOIN scholarships s ON ast.scholarship_no = s.req_no
-                LEFT JOIN {applicant_email_table} e ON a.applicant_no = e.applicant_no
-                WHERE s.pro_no = %s AND COALESCE(e.email_address, a.email) IS NOT NULL
-            """, (provider_no,))
+            # Get applicants based on send_to_all flag
+            if send_to_all:
+                # Send to ALL verified students in the system
+                # We join with applicants to get names if they exist
+                cur.execute(f"""
+                    SELECT DISTINCT e.applicant_no, a.first_name, a.last_name, e.email_address
+                    FROM {applicant_email_table} e
+                    LEFT JOIN applicants a ON e.applicant_no = a.applicant_no
+                    WHERE e.is_verified = TRUE AND e.email_address IS NOT NULL
+                """)
+            else:
+                # Send only to applicants who applied to this provider's scholarships
+                cur.execute(f"""
+                    SELECT DISTINCT a.applicant_no, a.first_name, a.last_name, COALESCE(e.email_address, a.email) AS email_address
+                    FROM applicants a
+                    INNER JOIN applicant_status ast ON a.applicant_no = ast.applicant_no
+                    INNER JOIN scholarships s ON ast.scholarship_no = s.req_no
+                    LEFT JOIN {applicant_email_table} e ON a.applicant_no = e.applicant_no
+                    WHERE s.pro_no = %s AND COALESCE(e.email_address, a.email) IS NOT NULL
+                """, (provider_no,))
         
-        applicants = cur.fetchall()
-        conn.close()
+            applicants = cur.fetchall()
         
-        if not applicants:
-            print(f"[EMAIL INFO] No applicants found to send announcement, provider {provider_no}")
-            return True
+            if not applicants:
+                print(f"[EMAIL INFO] No applicants found to send announcement, provider {provider_no}")
+                return True
         
-        print(f"[EMAIL BACKGROUND] Starting email batch job for announcement - {len(applicants)} recipients")
+            print(f"[EMAIL BACKGROUND] Starting email batch job for announcement - {len(applicants)} recipients")
         
-        provider_label = provider_name or 'ISKOMATS'
-        access_token = fetch_google_access_token()
-        success_count = 0
-        fail_count = 0
+            provider_label = provider_name or 'ISKOMATS'
+            access_token = fetch_google_access_token()
+            success_count = 0
+            fail_count = 0
         
-        for idx, applicant in enumerate(applicants):
-            try:
-                email_address = applicant['email_address']
-                first_name = applicant['first_name'] or 'Applicant'
+            for idx, applicant in enumerate(applicants):
+                try:
+                    email_address = applicant['email_address']
+                    first_name = applicant['first_name'] or 'Applicant'
                 
-                body = f"""Hello {first_name},
+                    body = f"""Hello {first_name},
 
 {intro_prefix} {provider_label}:
 
@@ -1214,35 +1195,35 @@ Best regards,
 ISKOMATS Team
 """
                 
-                # Create proper MIME email using MIMEText
-                msg = MIMEText(body)
-                msg['Subject'] = f'{subject_prefix} {provider_label}'
-                msg['From'] = GMAIL_SENDER_EMAIL
-                msg['To'] = email_address
+                    # Create proper MIME email using MIMEText
+                    msg = MIMEText(body)
+                    msg['Subject'] = f'{subject_prefix} {provider_label}'
+                    msg['From'] = GMAIL_SENDER_EMAIL
+                    msg['To'] = email_address
+                    
+                    encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
+                    gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
+                    gmail_request = urllib_request.Request(
+                        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+                        data=gmail_request_body,
+                        headers={
+                            'Authorization': f'Bearer {access_token}',
+                            'Content-Type': 'application/json',
+                        },
+                        method='POST',
+                    )
+                    
+                    with urllib_request.urlopen(gmail_request, timeout=30) as response:
+                        response.read()
+                    success_count += 1
+                    
+                    # Log progress every 10 emails
+                    if (idx + 1) % 10 == 0:
+                        print(f"[EMAIL BACKGROUND] Progress: {idx + 1}/{len(applicants)} emails sent")
                 
-                encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
-                gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
-                gmail_request = urllib_request.Request(
-                    'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
-                    data=gmail_request_body,
-                    headers={
-                        'Authorization': f'Bearer {access_token}',
-                        'Content-Type': 'application/json',
-                    },
-                    method='POST',
-                )
-                
-                with urllib_request.urlopen(gmail_request, timeout=30) as response:
-                    response.read()
-                success_count += 1
-                
-                # Log progress every 10 emails
-                if (idx + 1) % 10 == 0:
-                    print(f"[EMAIL BACKGROUND] Progress: {idx + 1}/{len(applicants)} emails sent")
-                
-            except Exception as e:
-                print(f"[EMAIL ERROR] Failed to send to {applicant['email_address']}: {str(e)}", flush=True)
-                fail_count += 1
+                except Exception as e:
+                    print(f"[EMAIL ERROR] Failed to send to {applicant['email_address']}: {str(e)}", flush=True)
+                    fail_count += 1
         
         print(f"[EMAIL COMPLETE] Sent {success_count}/{len(applicants)} announcement emails (failed: {fail_count}) for provider {provider_no}", flush=True)
         return True
@@ -1257,27 +1238,26 @@ def notify_all_applicants(title, message, notif_type='scholarship'):
     """Send an in-app notification to all applicants."""
     conn = None
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        applicant_email_table = get_applicant_email_table(cur)
-        cur.execute(
-            f"""
-            SELECT DISTINCT applicant_no
-            FROM {applicant_email_table}
-            WHERE is_verified = TRUE AND applicant_no IS NOT NULL
-            """
-        )
-        applicants = cur.fetchall()
-        conn.close()
-        conn = None
-
-        for applicant in applicants:
-            create_notification(
-                user_no=applicant['applicant_no'],
-                title=title,
-                message=message,
-                notif_type=notif_type,
+        with get_db() as conn:
+            cur = conn.cursor()
+            applicant_email_table = get_applicant_email_table(cur)
+            cur.execute(
+                f"""
+                SELECT DISTINCT applicant_no
+                FROM {applicant_email_table}
+                WHERE is_verified = TRUE AND applicant_no IS NOT NULL
+                """
             )
+            applicants = cur.fetchall()
+            conn = None
+
+            for applicant in applicants:
+                create_notification(
+                    user_no=applicant['applicant_no'],
+                    title=title,
+                    message=message,
+                    notif_type=notif_type,
+                )
     except Exception as exc:
         print(f"[NOTIF ERROR] Failed to notify applicants: {exc}")
     finally:
@@ -1302,64 +1282,63 @@ def notify_announcement_applicants(
 ):
     conn = None
     try:
-        conn = get_db()
-        cur = conn.cursor()
+        with get_db() as conn:
+            cur = conn.cursor()
 
-        if send_to_all_applicants:
-            applicant_email_table = get_applicant_email_table(cur)
-            cur.execute(
-                f"""
-                SELECT DISTINCT applicant_no
-                FROM {applicant_email_table}
-                WHERE is_verified = TRUE AND applicant_no IS NOT NULL
-                """
-            )
-        else:
-            cur.execute(
-                """
-                SELECT DISTINCT ast.applicant_no
-                FROM applicant_status ast
-                JOIN scholarships s ON ast.scholarship_no = s.req_no
-                WHERE s.pro_no = %s
-                """,
-                (provider_no,),
-            )
+            if send_to_all_applicants:
+                applicant_email_table = get_applicant_email_table(cur)
+                cur.execute(
+                    f"""
+                    SELECT DISTINCT applicant_no
+                    FROM {applicant_email_table}
+                    WHERE is_verified = TRUE AND applicant_no IS NOT NULL
+                    """
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT DISTINCT ast.applicant_no
+                    FROM applicant_status ast
+                    JOIN scholarships s ON ast.scholarship_no = s.req_no
+                    WHERE s.pro_no = %s
+                    """,
+                    (provider_no,),
+                )
 
-        recipients = cur.fetchall()
-        conn.close()
-        conn = None
+            recipients = cur.fetchall()
+            conn = None
 
-        provider_label = (provider_name or 'ISKOMATS').strip()
-        notification_title = f"{notification_title_prefix}: {title}"
-        notification_message = message[:100] + ('...' if len(message) > 100 else '')
+            provider_label = (provider_name or 'ISKOMATS').strip()
+            notification_title = f"{notification_title_prefix}: {title}"
+            notification_message = message[:100] + ('...' if len(message) > 100 else '')
 
-        if provider_label and provider_label.lower() != 'iskomats':
-            notification_message = f"{provider_label}: {notification_message}"
+            if provider_label and provider_label.lower() != 'iskomats':
+                notification_message = f"{provider_label}: {notification_message}"
 
-        email_success_count = 0
-        email_failure_count = 0
+            email_success_count = 0
+            email_failure_count = 0
 
-        for recipient in recipients:
-            result = create_notification(
-                user_no=recipient['applicant_no'],
-                title=notification_title,
-                message=notification_message,
-                notif_type='announcement',
-                send_email=send_email_alerts,
-            )
+            for recipient in recipients:
+                result = create_notification(
+                    user_no=recipient['applicant_no'],
+                    title=notification_title,
+                    message=notification_message,
+                    notif_type='announcement',
+                    send_email=send_email_alerts,
+                )
+
+                if send_email_alerts:
+                    if result and result.get('email_sent'):
+                        email_success_count += 1
+                    else:
+                        email_failure_count += 1
 
             if send_email_alerts:
-                if result and result.get('email_sent'):
-                    email_success_count += 1
-                else:
-                    email_failure_count += 1
-
-        if send_email_alerts:
-            print(
-                f"[ANNOUNCEMENT EMAIL] Notification email dispatch finished for provider {provider_no}: "
-                f"sent={email_success_count}, failed={email_failure_count}",
-                flush=True,
-            )
+                print(
+                    f"[ANNOUNCEMENT EMAIL] Notification email dispatch finished for provider {provider_no}: "
+                    f"sent={email_success_count}, failed={email_failure_count}",
+                    flush=True,
+                )
     except Exception as exc:
         print(f"[NOTIF ERROR] Failed to notify announcement recipients: {exc}", flush=True)
     finally:
@@ -1574,40 +1553,40 @@ def _record_admin_activity_worker(
     cursor = None
 
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        ensure_admin_activity_log_table(cursor)
+        with get_db() as conn:
+            cursor = conn.cursor()
+            ensure_admin_activity_log_table(cursor)
 
-        actor_context = None
-        if actor_user_no:
-            actor_context = fetch_actor_context(cursor, actor_user_no)
+            actor_context = None
+            if actor_user_no:
+                actor_context = fetch_actor_context(cursor, actor_user_no)
 
-        resolved_provider_no = provider_no if provider_no is not None else (actor_context['provider_no'] if actor_context else None)
+            resolved_provider_no = provider_no if provider_no is not None else (actor_context['provider_no'] if actor_context else None)
 
-        cursor.execute(
-            """
-            INSERT INTO admin_activity_logs (
-                actor_user_no,
-                action,
-                target_type,
-                target_id,
-                target_label,
-                provider_no,
-                status
+            cursor.execute(
+                """
+                INSERT INTO admin_activity_logs (
+                    actor_user_no,
+                    action,
+                    target_type,
+                    target_id,
+                    target_label,
+                    provider_no,
+                    status
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    actor_user_no,
+                    action,
+                    target_type,
+                    str(target_id) if target_id is not None else None,
+                    target_label,
+                    resolved_provider_no,
+                    (status or 'success').lower(),
+                ),
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                actor_user_no,
-                action,
-                target_type,
-                str(target_id) if target_id is not None else None,
-                target_label,
-                resolved_provider_no,
-                (status or 'success').lower(),
-            ),
-        )
-        conn.commit()
+            conn.commit()
     except Exception as exc:
         if conn:
             conn.rollback()
@@ -1733,107 +1712,105 @@ def init_socketio(socketio):
                 return
 
             # Identify name and provider for chat
-            conn = get_db()
-            cursor = conn.cursor()
+            with get_db() as conn:
+                cursor = conn.cursor()
             
-            # For providers/admins, check users table
-            cursor.execute("SELECT user_name, pro_no FROM users WHERE user_no = %s", (user_id,))
-            user_row = cursor.fetchone()
-            username = user_row['user_name'] if user_row else None
-            pro_no = user_row['pro_no'] if user_row else None
+                # For providers/admins, check users table
+                cursor.execute("SELECT user_name, pro_no FROM users WHERE user_no = %s", (user_id,))
+                user_row = cursor.fetchone()
+                username = user_row['user_name'] if user_row else None
+                pro_no = user_row['pro_no'] if user_row else None
 
-            # For students, check applicants table
-            if not username or user_role == 'student':
-                cursor.execute("SELECT first_name FROM applicants WHERE applicant_no = %s", (user_id,))
-                app_row = cursor.fetchone()
-                if app_row:
-                    username = app_row['first_name']
-                    print(f"DEBUG Chat Login: Found student '{username}'")
+                # For students, check applicants table
+                if not username or user_role == 'student':
+                    cursor.execute("SELECT first_name FROM applicants WHERE applicant_no = %s", (user_id,))
+                    app_row = cursor.fetchone()
+                    if app_row:
+                        username = app_row['first_name']
+                        print(f"DEBUG Chat Login: Found student '{username}'")
             
-            if not username:
-                username = f"User {user_id}"
-                print(f"DEBUG Chat Login: User name not found, using default '{username}'")
+                if not username:
+                    username = f"User {user_id}"
+                    print(f"DEBUG Chat Login: User name not found, using default '{username}'")
             
-            # Find rooms for this user
-            rooms = []
-            admin_roles = ['admin', 'vilma', 'africa', 'tulong']
-            if user_role in admin_roles:
-                # Provider room format: applicant_id+pro_no
-                if pro_no:
-                    # Find all relevant scholarships for this provider, excluding those where they were declined FOR THIS PROVIDER
+                # Find rooms for this user
+                rooms = []
+                admin_roles = ['admin', 'vilma', 'africa', 'tulong']
+                if user_role in admin_roles:
+                    # Provider room format: applicant_id+pro_no
+                    if pro_no:
+                        # Find all relevant scholarships for this provider, excluding those where they were declined FOR THIS PROVIDER
+                        cursor.execute("""
+                            SELECT DISTINCT ast.applicant_no, s.pro_no 
+                            FROM applicant_status ast
+                            JOIN scholarships s ON ast.scholarship_no = s.req_no
+                            WHERE s.pro_no = %s AND (ast.is_accepted = 'Pending' OR ast.is_accepted = 'Accepted' OR ast.is_accepted IS NULL)
+                            UNION
+                            SELECT DISTINCT m.applicant_no, m.pro_no
+                            FROM message m
+                            JOIN scholarships sch ON m.pro_no = sch.pro_no
+                            LEFT JOIN applicant_status ast ON (m.applicant_no = ast.applicant_no AND ast.scholarship_no = sch.req_no)
+                            WHERE m.pro_no = %s AND (ast.is_accepted = 'Pending' OR ast.is_accepted = 'Accepted' OR ast.is_accepted IS NULL)
+                        """, (pro_no, pro_no))
+                        relevant_pairs = cursor.fetchall()
+                        rooms = [f"{p['applicant_no']}+{p['pro_no']}" for p in relevant_pairs]
+                    else:
+                        # Super admin - can see all rooms with messages, excluding those explicitly declined
+                        cursor.execute("""
+                            SELECT DISTINCT m.room 
+                            FROM message m
+                            LEFT JOIN scholarships s ON m.pro_no = s.pro_no
+                            LEFT JOIN applicant_status ast ON (m.applicant_no = ast.applicant_no AND ast.scholarship_no = s.req_no)
+                            WHERE m.room IS NOT NULL AND (ast.is_accepted = 'Pending' OR ast.is_accepted = 'Accepted' OR ast.is_accepted IS NULL)
+                        """)
+                        rooms = [row['room'] for row in cursor.fetchall()]
+                else:
+                    # Student (Scholar) room format: applicant_id+pro_no
+                    # Find all scholarships student applied to OR has messages for
                     cursor.execute("""
                         SELECT DISTINCT ast.applicant_no, s.pro_no 
                         FROM applicant_status ast
                         JOIN scholarships s ON ast.scholarship_no = s.req_no
-                        WHERE s.pro_no = %s AND (ast.is_accepted = 'Pending' OR ast.is_accepted = 'Accepted' OR ast.is_accepted IS NULL)
+                        WHERE ast.applicant_no = %s
                         UNION
-                        SELECT DISTINCT m.applicant_no, m.pro_no
-                        FROM message m
-                        JOIN scholarships sch ON m.pro_no = sch.pro_no
-                        LEFT JOIN applicant_status ast ON (m.applicant_no = ast.applicant_no AND ast.scholarship_no = sch.req_no)
-                        WHERE m.pro_no = %s AND (ast.is_accepted = 'Pending' OR ast.is_accepted = 'Accepted' OR ast.is_accepted IS NULL)
-                    """, (pro_no, pro_no))
-                    relevant_pairs = cursor.fetchall()
-                    rooms = [f"{p['applicant_no']}+{p['pro_no']}" for p in relevant_pairs]
-                else:
-                    # Super admin - can see all rooms with messages, excluding those explicitly declined
-                    cursor.execute("""
-                        SELECT DISTINCT m.room 
-                        FROM message m
-                        LEFT JOIN scholarships s ON m.pro_no = s.pro_no
-                        LEFT JOIN applicant_status ast ON (m.applicant_no = ast.applicant_no AND ast.scholarship_no = s.req_no)
-                        WHERE m.room IS NOT NULL AND (ast.is_accepted = 'Pending' OR ast.is_accepted = 'Accepted' OR ast.is_accepted IS NULL)
-                    """)
-                    rooms = [row['room'] for row in cursor.fetchall()]
-            else:
-                # Student (Scholar) room format: applicant_id+pro_no
-                # Find all scholarships student applied to OR has messages for
-                cursor.execute("""
-                    SELECT DISTINCT ast.applicant_no, s.pro_no 
-                    FROM applicant_status ast
-                    JOIN scholarships s ON ast.scholarship_no = s.req_no
-                    WHERE ast.applicant_no = %s
-                    UNION
-                    SELECT DISTINCT applicant_no, pro_no
-                    FROM message
-                    WHERE applicant_no = %s
-                """, (user_id, user_id))
-                student_pairs = cursor.fetchall()
-                rooms = [f"{p['applicant_no']}+{p['pro_no']}" for p in student_pairs]
-                print(f"DEBUG Chat Login: Studentrooms={rooms}")
+                        SELECT DISTINCT applicant_no, pro_no
+                        FROM message
+                        WHERE applicant_no = %s
+                    """, (user_id, user_id))
+                    student_pairs = cursor.fetchall()
+                    rooms = [f"{p['applicant_no']}+{p['pro_no']}" for p in student_pairs]
+                    print(f"DEBUG Chat Login: Studentrooms={rooms}")
             
-            for room in rooms:
-                join_room(room)
+                for room in rooms:
+                    join_room(room)
             
-            # Personal Notification Room for students
-            if user_role == 'student':
-                personal_room = f"applicant_{user_id}"
-                join_room(personal_room)
-                print(f"DEBUG Socket: Student joined notification room '{personal_room}'")
+                # Personal Notification Room for students
+                if user_role == 'student':
+                    personal_room = f"applicant_{user_id}"
+                    join_room(personal_room)
+                    print(f"DEBUG Socket: Student joined notification room '{personal_room}'")
             
-            # Attach provider names to rooms for the frontend
-            rooms_with_names = []
-            for room in rooms:
-                try:
-                    pro_no_for_room = int(room.split('+')[1]) if '+' in room else None
-                    if pro_no_for_room:
-                        cursor.execute("SELECT provider_name FROM scholarship_providers WHERE pro_no = %s", (pro_no_for_room,))
-                        prov = cursor.fetchone()
-                        provider_label = prov['provider_name'] if prov else f"Provider {pro_no_for_room}"
-                    else:
-                        provider_label = "Admin"
-                except Exception:
-                    provider_label = room
-                rooms_with_names.append({'room': room, 'provider_name': provider_label})
+                # Attach provider names to rooms for the frontend
+                rooms_with_names = []
+                for room in rooms:
+                    try:
+                        pro_no_for_room = int(room.split('+')[1]) if '+' in room else None
+                        if pro_no_for_room:
+                            cursor.execute("SELECT provider_name FROM scholarship_providers WHERE pro_no = %s", (pro_no_for_room,))
+                            prov = cursor.fetchone()
+                            provider_label = prov['provider_name'] if prov else f"Provider {pro_no_for_room}"
+                        else:
+                            provider_label = "Admin"
+                    except Exception:
+                        provider_label = room
+                    rooms_with_names.append({'room': room, 'provider_name': provider_label})
             
-            emit('logged_in', {
-                'name': username,
-                'id': user_id,
-                'role': user_role,
-                'rooms': rooms_with_names
-            })
-            cursor.close()
-            conn.close()
+                emit('logged_in', {
+                    'name': username,
+                    'id': user_id,
+                    'role': user_role,
+                    'rooms': rooms_with_names
+                })
         except Exception as e:
             emit('error', {'msg': f'Authentication failed: {str(e)}'})
 
@@ -1851,20 +1828,18 @@ def init_socketio(socketio):
         join_room(room)
         
         # Get applicant name for UI
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT first_name, last_name FROM applicants WHERE applicant_no = %s", (applicant_id,))
-        app = cursor.fetchone()
-        other_name = app['first_name'] if app else f"Applicant {applicant_id}"
-        cursor.close()
-        conn.close()
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT first_name, last_name FROM applicants WHERE applicant_no = %s", (applicant_id,))
+            app = cursor.fetchone()
+            other_name = app['first_name'] if app else f"Applicant {applicant_id}"
 
-        emit('add_room', {
-            'room': room,
-            'applicant_no': applicant_id,
-            'pro_no': pro_no,
-            'other_name': other_name
-        })
+            emit('add_room', {
+                'room': room,
+                'applicant_no': applicant_id,
+                'pro_no': pro_no,
+                'other_name': other_name
+            })
 
     @socketio.on('load_history')
     def on_load_history(data):
@@ -1876,68 +1851,66 @@ def init_socketio(socketio):
             # Parse IDs from room format "app_no+pro_no"
             app_no, pro_no = map(int, room.split('+'))
             
-            conn = get_db()
-            cursor = conn.cursor()
+            with get_db() as conn:
+                cursor = conn.cursor()
             
-            # Fetch message history JOINED with current applicant status and applicant info
-            query = """
-                SELECT m.m_id, 
-                       CASE 
-                           WHEN m.username = (a.first_name || ' ' || a.last_name) OR m.username = a.first_name THEN a.first_name 
-                           ELSE m.username 
-                       END as username,
-                       m.message, m.timestamp,
-                       m.sender_id, m.is_student_sender,
-                       CASE 
-                           WHEN s.is_accepted = 'Accepted' THEN 'Accepted'
-                           WHEN s.is_accepted = 'Rejected' THEN 'Rejected'
-                           WHEN s.is_accepted = 'Cancelled' THEN 'Cancelled'
-                           ELSE 'Pending'
-                       END as student_status
-                FROM message m
-                LEFT JOIN applicant_status s ON m.applicant_no = s.applicant_no
-                LEFT JOIN applicants a ON m.applicant_no = a.applicant_no
-                WHERE m.applicant_no = %s AND m.pro_no = %s
-            """
-            params = [app_no, pro_no]
+                # Fetch message history JOINED with current applicant status and applicant info
+                query = """
+                    SELECT m.m_id, 
+                           CASE 
+                               WHEN m.username = (a.first_name || ' ' || a.last_name) OR m.username = a.first_name THEN a.first_name 
+                               ELSE m.username 
+                           END as username,
+                           m.message, m.timestamp,
+                           m.sender_id, m.is_student_sender,
+                           CASE 
+                               WHEN s.is_accepted = 'Accepted' THEN 'Accepted'
+                               WHEN s.is_accepted = 'Rejected' THEN 'Rejected'
+                               WHEN s.is_accepted = 'Cancelled' THEN 'Cancelled'
+                               ELSE 'Pending'
+                           END as student_status
+                    FROM message m
+                    LEFT JOIN applicant_status s ON m.applicant_no = s.applicant_no
+                    LEFT JOIN applicants a ON m.applicant_no = a.applicant_no
+                    WHERE m.applicant_no = %s AND m.pro_no = %s
+                """
+                params = [app_no, pro_no]
 
-            # If the user is a student, we filter the history so they only see 
-            # messages from their CURRENT application sessions.
-            if session.get('role') == 'student':
-                # Get the oldest creation date among active applications for this provider
-                cursor.execute("""
-                    SELECT MIN(created_at) as session_start
-                    FROM applicant_status ast
-                    JOIN scholarships sch ON ast.scholarship_no = sch.req_no
-                    WHERE ast.applicant_no = %s AND sch.pro_no = %s
-                """, (app_no, pro_no))
-                row = cursor.fetchone()
-                session_start = row.get('session_start') if row else None
+                # If the user is a student, we filter the history so they only see 
+                # messages from their CURRENT application sessions.
+                if session.get('role') == 'student':
+                    # Get the oldest creation date among active applications for this provider
+                    cursor.execute("""
+                        SELECT MIN(created_at) as session_start
+                        FROM applicant_status ast
+                        JOIN scholarships sch ON ast.scholarship_no = sch.req_no
+                        WHERE ast.applicant_no = %s AND sch.pro_no = %s
+                    """, (app_no, pro_no))
+                    row = cursor.fetchone()
+                    session_start = row.get('session_start') if row else None
                 
-                if session_start:
-                    query += " AND m.timestamp >= %s"
-                    params.append(session_start)
-                else:
-                    # If no active application exists, don't show any history to the student
-                    query += " AND 1=0"
+                    if session_start:
+                        query += " AND m.timestamp >= %s"
+                        params.append(session_start)
+                    else:
+                        # If no active application exists, don't show any history to the student
+                        query += " AND 1=0"
             
-            query += " ORDER BY m.timestamp ASC LIMIT 100"
-            cursor.execute(query, tuple(params))
-            messages = cursor.fetchall()
+                query += " ORDER BY m.timestamp ASC LIMIT 100"
+                cursor.execute(query, tuple(params))
+                messages = cursor.fetchall()
             
-            for msg in messages:
-                emit('message', {
-                    'm_id': msg['m_id'],
-                    'username': msg['username'],
-                    'sender_id': msg['sender_id'],
-                    'is_student_sender': msg['is_student_sender'],
-                    'message': msg['message'],
-                    'timestamp': msg['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
-                    'room': room,
-                    'student_status': msg['student_status']
-                })
-            cursor.close()
-            conn.close()
+                for msg in messages:
+                    emit('message', {
+                        'm_id': msg['m_id'],
+                        'username': msg['username'],
+                        'sender_id': msg['sender_id'],
+                        'is_student_sender': msg['is_student_sender'],
+                        'message': msg['message'],
+                        'timestamp': msg['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
+                        'room': room,
+                        'student_status': msg['student_status']
+                    })
         except Exception as e:
             print(f"Error loading history: {e}")
 
@@ -1956,92 +1929,90 @@ def init_socketio(socketio):
             # Parse IDs from room format "app_no+pro_no"
             app_no, pro_no = map(int, room.split('+'))
             
-            conn = get_db()
-            cursor = conn.cursor()
-            sender_role = (session.get('role') or '').lower()
-            is_student_sender = sender_role == 'student'
+            with get_db() as conn:
+                cursor = conn.cursor()
+                sender_role = (session.get('role') or '').lower()
+                is_student_sender = sender_role == 'student'
             
-            # Determine the sender's actual name from the database
-            actual_username = username
+                # Determine the sender's actual name from the database
+                actual_username = username
             
-            if is_student_sender:
-                cursor.execute("SELECT first_name FROM applicants WHERE applicant_no = %s", (sender_id,))
-                applicant_sender = cursor.fetchone()
-                if applicant_sender and applicant_sender.get('first_name'):
-                    actual_username = applicant_sender['first_name']
+                if is_student_sender:
+                    cursor.execute("SELECT first_name FROM applicants WHERE applicant_no = %s", (sender_id,))
+                    applicant_sender = cursor.fetchone()
+                    if applicant_sender and applicant_sender.get('first_name'):
+                        actual_username = applicant_sender['first_name']
+                    else:
+                        actual_username = username or f"Applicant {sender_id}"
                 else:
-                    actual_username = username or f"Applicant {sender_id}"
-            else:
+                    cursor.execute("""
+                        SELECT COALESCE(sp.provider_name, u.user_name) AS sender_name
+                        FROM users u
+                        LEFT JOIN scholarship_providers sp ON u.pro_no = sp.pro_no
+                        WHERE u.user_no = %s
+                        LIMIT 1
+                    """, (sender_id,))
+                    admin_sender = cursor.fetchone()
+                    if admin_sender and admin_sender.get('sender_name'):
+                        actual_username = admin_sender['sender_name']
+                    elif username:
+                        actual_username = username
+                    else:
+                        actual_username = f"Provider {pro_no}"
+            
+                # Insert message with explicit IDs and correct username
                 cursor.execute("""
-                    SELECT COALESCE(sp.provider_name, u.user_name) AS sender_name
-                    FROM users u
-                    LEFT JOIN scholarship_providers sp ON u.pro_no = sp.pro_no
-                    WHERE u.user_no = %s
-                    LIMIT 1
-                """, (sender_id,))
-                admin_sender = cursor.fetchone()
-                if admin_sender and admin_sender.get('sender_name'):
-                    actual_username = admin_sender['sender_name']
-                elif username:
-                    actual_username = username
-                else:
-                    actual_username = f"Provider {pro_no}"
+                    INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp, sender_id, is_student_sender)
+                    VALUES (%s, %s, %s, %s, %s, NOW(), %s, %s)
+                    RETURNING m_id, timestamp
+                """, (app_no, pro_no, room, actual_username, message_text, sender_id, is_student_sender))
+                row = cursor.fetchone()
+                m_id = row['m_id']
+                timestamp = row['timestamp']
             
-            # Insert message with explicit IDs and correct username
-            cursor.execute("""
-                INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp, sender_id, is_student_sender)
-                VALUES (%s, %s, %s, %s, %s, NOW(), %s, %s)
-                RETURNING m_id, timestamp
-            """, (app_no, pro_no, room, actual_username, message_text, sender_id, is_student_sender))
-            row = cursor.fetchone()
-            m_id = row['m_id']
-            timestamp = row['timestamp']
+                # Fetch current status of the applicant to include in the payload
+                cursor.execute("""
+                    SELECT CASE 
+                        WHEN is_accepted = 'Accepted' THEN 'Accepted'
+                        WHEN is_accepted = 'Rejected' THEN 'Rejected'
+                        WHEN is_accepted = 'Cancelled' THEN 'Cancelled'
+                        ELSE 'Pending'
+                    END as student_status
+                    FROM applicant_status 
+                    WHERE applicant_no = %s
+                """, (app_no,))
+                status_row = cursor.fetchone()
+                student_status = status_row['student_status'] if status_row else 'Pending'
             
-            # Fetch current status of the applicant to include in the payload
-            cursor.execute("""
-                SELECT CASE 
-                    WHEN is_accepted = 'Accepted' THEN 'Accepted'
-                    WHEN is_accepted = 'Rejected' THEN 'Rejected'
-                    WHEN is_accepted = 'Cancelled' THEN 'Cancelled'
-                    ELSE 'Pending'
-                END as student_status
-                FROM applicant_status 
-                WHERE applicant_no = %s
-            """, (app_no,))
-            status_row = cursor.fetchone()
-            student_status = status_row['student_status'] if status_row else 'Pending'
-            
-            conn.commit()
-            cursor.close()
-            conn.close()
+                conn.commit()
 
-            emit('message', {
-                'm_id': m_id,
-                'username': actual_username,
-                'sender_id': sender_id,
-                'message': message_text,
-                'room': room,
-                'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-                'student_status': student_status
-            }, to=room)
+                emit('message', {
+                    'm_id': m_id,
+                    'username': actual_username,
+                    'sender_id': sender_id,
+                    'message': message_text,
+                    'room': room,
+                    'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+                    'student_status': student_status
+                }, to=room)
             
-            # Trigger applicant notification and email only for admin/provider-originated messages.
-            if not is_student_sender:
-                try:
-                    notification_result = create_notification(
-                        user_no=app_no,
-                        title=f"New Message from {actual_username}",
-                        message=message_text[:100] + ('...' if len(message_text) > 100 else ''),
-                        notif_type='message',
-                        send_email=True,
-                    )
-                    print(
-                        f"[MESSAGE NOTIF] applicant_no={app_no}, room={room}, created={notification_result.get('created')}, "
-                        f"email_sent={notification_result.get('email_sent')}, reason={notification_result.get('reason', 'ok')}",
-                        flush=True,
-                    )
-                except Exception as e:
-                    print(f"[NOTIF ERROR] Failed to trigger message notification: {e}")
+                # Trigger applicant notification and email only for admin/provider-originated messages.
+                if not is_student_sender:
+                    try:
+                        notification_result = create_notification(
+                            user_no=app_no,
+                            title=f"New Message from {actual_username}",
+                            message=message_text[:100] + ('...' if len(message_text) > 100 else ''),
+                            notif_type='message',
+                            send_email=True,
+                        )
+                        print(
+                            f"[MESSAGE NOTIF] applicant_no={app_no}, room={room}, created={notification_result.get('created')}, "
+                            f"email_sent={notification_result.get('email_sent')}, reason={notification_result.get('reason', 'ok')}",
+                            flush=True,
+                        )
+                    except Exception as e:
+                        print(f"[NOTIF ERROR] Failed to trigger message notification: {e}")
         except Exception as e:
             print(f"Error saving message: {e}")
 
@@ -2413,74 +2384,68 @@ def forgot_password():
 
     try:
         normalized_email = data['email'].strip()
-        conn = get_db()
-        cursor = conn.cursor()
-        user_email_table = get_user_email_table(cursor)
-        applicant_email_table = get_applicant_email_table(cursor)
+        with get_db() as conn:
+            cursor = conn.cursor()
+            user_email_table = get_user_email_table(cursor)
+            applicant_email_table = get_applicant_email_table(cursor)
         
 
-        # Check if email exists as a USER account ONLY (user_no must be set, applicant_no must be NULL)
-        cursor.execute(
-            f'''
-            SELECT e.user_no, e.email_address, u.user_name, u.pro_no, p.provider_name
-            FROM {user_email_table} e
-            JOIN users u ON e.user_no = u.user_no
-            LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
-            WHERE e.email_address ILIKE %s
-            AND e.user_no IS NOT NULL
-            LIMIT 1
-            ''',
-            (normalized_email,),
-        )
-        user = cursor.fetchone()
-
-        if user:
-            # User account found - send password reset email
-            # User account found - send password reset email (Offloaded to background)
-            reset_token = generate_password_reset_token(
-                user['user_no'],
-                user['email_address'],
-                user['provider_name'],
-                user['pro_no'],
-            )
-            reset_url = f"{FRONTEND_URL}/reset-password/{reset_token}"
-            run_background_task(send_password_reset_email, user['email_address'], reset_url, user['provider_name'])
-            return jsonify({'message': 'If an account exists with this email, a password reset link has been sent'}), 200
-        else:
-            # No user account found - check if it's an applicant-only or non-existent
+            # Check if email exists as a USER account ONLY (user_no must be set, applicant_no must be NULL)
             cursor.execute(
                 f'''
-                SELECT e.applicant_no, e.is_verified
-                FROM {applicant_email_table} e
+                SELECT e.user_no, e.email_address, u.user_name, u.pro_no, p.provider_name
+                FROM {user_email_table} e
+                JOIN users u ON e.user_no = u.user_no
+                LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
                 WHERE e.email_address ILIKE %s
+                AND e.user_no IS NOT NULL
                 LIMIT 1
                 ''',
                 (normalized_email,),
             )
-            existing_email = cursor.fetchone()
-            
-            if existing_email:
-                # Email exists but only as applicant (user_no is NULL)
-                # If not verified, treat as non-existent for password reset
-                if not existing_email.get('is_verified', False):
-                    print(f"[FORGOT PASSWORD] Email {normalized_email} is applicant but not verified. Blocking reset.")
-                    cursor.close()
-                    conn.close()
-                    return jsonify({'message': 'Account does not exist', 'success': False}), 404
-                else:
-                    print(f"[FORGOT PASSWORD] Email {normalized_email} is applicant and verified, but not a user account.")
-            else:
-                # Email doesn't exist in system at all
-                print(f"[FORGOT PASSWORD] No account found for email: {normalized_email}")
-            
-            cursor.close()
-            conn.close()
-            
-            # Return error message - account does not exist
-            return jsonify({'message': 'Account does not exist', 'success': False}), 404
+            user = cursor.fetchone()
 
-        cursor.close()
-        conn.close()
+            if user:
+                # User account found - send password reset email
+                # User account found - send password reset email (Offloaded to background)
+                reset_token = generate_password_reset_token(
+                    user['user_no'],
+                    user['email_address'],
+                    user['provider_name'],
+                    user['pro_no'],
+                )
+                reset_url = f"{FRONTEND_URL}/reset-password/{reset_token}"
+                run_background_task(send_password_reset_email, user['email_address'], reset_url, user['provider_name'])
+                return jsonify({'message': 'If an account exists with this email, a password reset link has been sent'}), 200
+            else:
+                # No user account found - check if it's an applicant-only or non-existent
+                cursor.execute(
+                    f'''
+                    SELECT e.applicant_no, e.is_verified
+                    FROM {applicant_email_table} e
+                    WHERE e.email_address ILIKE %s
+                    LIMIT 1
+                    ''',
+                    (normalized_email,),
+                )
+                existing_email = cursor.fetchone()
+            
+                if existing_email:
+                    # Email exists but only as applicant (user_no is NULL)
+                    # If not verified, treat as non-existent for password reset
+                    if not existing_email.get('is_verified', False):
+                        print(f"[FORGOT PASSWORD] Email {normalized_email} is applicant but not verified. Blocking reset.")
+                        return jsonify({'message': 'Account does not exist', 'success': False}), 404
+                    else:
+                        print(f"[FORGOT PASSWORD] Email {normalized_email} is applicant and verified, but not a user account.")
+                else:
+                    # Email doesn't exist in system at all
+                    print(f"[FORGOT PASSWORD] No account found for email: {normalized_email}")
+            
+            
+                # Return error message - account does not exist
+                return jsonify({'message': 'Account does not exist', 'success': False}), 404
+
     except Exception as e:
         print(f"[FORGOT PASSWORD ENDPOINT ERROR] {str(e)}", flush=True)
         return jsonify({'message': f'Failed to send password reset email: {str(e)}'}), 500
@@ -2497,34 +2462,32 @@ def reset_password():
         payload = decode_password_reset_token(data['token'])
         password_hash = bcrypt.generate_password_hash(data['newPassword']).decode('utf-8')
 
-        conn = get_db()
-        cursor = conn.cursor()
-        user_email_table = get_user_email_table(cursor)
-        cursor.execute(
-            f'''
-            UPDATE {user_email_table}
-            SET password_hash = %s
-            WHERE user_no = %s AND email_address ILIKE %s
-            RETURNING user_em_no
-            ''',
-            (password_hash, payload['user_no'], payload['email']),
-        )
-        updated = cursor.fetchone()
-        conn.commit()
-        cursor.close()
-        conn.close()
+        with get_db() as conn:
+            cursor = conn.cursor()
+            user_email_table = get_user_email_table(cursor)
+            cursor.execute(
+                f'''
+                UPDATE {user_email_table}
+                SET password_hash = %s
+                WHERE user_no = %s AND email_address ILIKE %s
+                RETURNING user_em_no
+                ''',
+                (password_hash, payload['user_no'], payload['email']),
+            )
+            updated = cursor.fetchone()
+            conn.commit()
 
-        if not updated:
-            return jsonify({'message': 'Password reset token is invalid'}), 400
+            if not updated:
+                return jsonify({'message': 'Password reset token is invalid'}), 400
 
-        record_admin_activity(
-            actor_user_no=payload['user_no'],
-            action='Change Password',
-            target_type='Auth',
-            provider_no=payload.get('pro_no'),
-            status='success',
-        )
-        return jsonify({'message': 'Password reset successfully'}), 200
+            record_admin_activity(
+                actor_user_no=payload['user_no'],
+                action='Change Password',
+                target_type='Auth',
+                provider_no=payload.get('pro_no'),
+                status='success',
+            )
+            return jsonify({'message': 'Password reset successfully'}), 200
     except jwt.ExpiredSignatureError:
         return jsonify({'message': 'Password reset link has expired'}), 400
     except jwt.InvalidTokenError:
@@ -2544,52 +2507,44 @@ def verify_email():
         email = data.get('email', '').strip()
         code = data.get('verificationCode', '').strip()
         
-        conn = get_db()
-        cursor = conn.cursor()
-        user_email_table = get_user_email_table(cursor)
+        with get_db() as conn:
+            cursor = conn.cursor()
+            user_email_table = get_user_email_table(cursor)
         
-        # Check if email exists and code matches
-        cursor.execute(
-            f"SELECT user_no, verification_code, is_verified FROM {user_email_table} WHERE email_address ILIKE %s",
-            (email,)
-        )
-        result = cursor.fetchone()
+            # Check if email exists and code matches
+            cursor.execute(
+                f"SELECT user_no, verification_code, is_verified FROM {user_email_table} WHERE email_address ILIKE %s",
+                (email,)
+            )
+            result = cursor.fetchone()
         
-        if not result:
-            cursor.close()
-            conn.close()
-            return jsonify({'message': 'Email not found'}), 404
+            if not result:
+                return jsonify({'message': 'Email not found'}), 404
         
-        user_no, stored_code, is_verified = result['user_no'], result['verification_code'], result.get('is_verified', False)
+            user_no, stored_code, is_verified = result['user_no'], result['verification_code'], result.get('is_verified', False)
         
-        # Check if already verified
-        if is_verified:
-            cursor.close()
-            conn.close()
+            # Check if already verified
+            if is_verified:
+                return jsonify({
+                    'message': 'Email is already verified',
+                    'success': True
+                }), 200
+        
+            # Check if code matches
+            if not stored_code or stored_code != code:
+                return jsonify({'message': 'Verification code is incorrect'}), 400
+        
+            # Mark email as verified
+            cursor.execute(
+                f"UPDATE {user_email_table} SET is_verified = TRUE, verification_code = NULL WHERE email_address ILIKE %s",
+                (email,)
+            )
+            conn.commit()
+        
             return jsonify({
-                'message': 'Email is already verified',
+                'message': 'Email verified successfully',
                 'success': True
             }), 200
-        
-        # Check if code matches
-        if not stored_code or stored_code != code:
-            cursor.close()
-            conn.close()
-            return jsonify({'message': 'Verification code is incorrect'}), 400
-        
-        # Mark email as verified
-        cursor.execute(
-            f"UPDATE {user_email_table} SET is_verified = TRUE, verification_code = NULL WHERE email_address ILIKE %s",
-            (email,)
-        )
-        conn.commit()
-        cursor.close()
-        conn.close()
-        
-        return jsonify({
-            'message': 'Email verified successfully',
-            'success': True
-        }), 200
     except Exception as e:
         return jsonify({'message': f'Failed to verify email: {str(e)}'}), 500
 
@@ -2601,105 +2556,103 @@ def get_accounts(current_user_id, pro_no, role):
     """Get all user accounts"""
     try:
         filters = request.args
-        conn = get_db()
-        cursor = conn.cursor()
-        user_email_table = get_user_email_table(cursor)
-        applicant_email_table = get_applicant_email_table(cursor)
+        with get_db() as conn:
+            cursor = conn.cursor()
+            user_email_table = get_user_email_table(cursor)
+            applicant_email_table = get_applicant_email_table(cursor)
 
-        cursor.execute(
+            cursor.execute(
+                '''
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name = 'applicant_status' AND column_name = 'status_updated'
+                ) AS has_status_updated
+                '''
+            )
+            has_status_updated = cursor.fetchone()['has_status_updated']
+            joined_expr = 'COALESCE(ast.status_updated, NOW())::date' if has_status_updated else 'NULL::date'
+            status_column = ', status_updated' if has_status_updated else ''
+            applicant_order = 'status_updated DESC' if has_status_updated else 'stat_no DESC'
+
+            query = f'''
+                SELECT *
+                FROM (
+                    SELECT
+                        'admin-' || ue.user_em_no::text AS id,
+                        ue.email_address AS email,
+                        COALESCE(u.user_name, p.provider_name, 'Unknown') AS name,
+                        COALESCE(u.user_name, p.provider_name, 'Unknown') AS first_name,
+                        '' AS last_name,
+                        'admin' AS role,
+                        'Admin' AS type,
+                        COALESCE(p.provider_name, 'All') AS scholarship,
+                        p.pro_no AS provider_no,
+                        'Registered' AS status,
+                        NULL::date AS joined,
+                        COALESCE(ue.is_locked, FALSE) AS locked
+                    FROM {user_email_table} ue
+                    LEFT JOIN users u ON ue.user_no = u.user_no
+                    LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
+
+                    UNION ALL
+
+                    SELECT
+                        'applicant-' || ae.app_em_no::text AS id,
+                        ae.email_address AS email,
+                        COALESCE(NULLIF(TRIM(COALESCE(a.first_name, '') || ' ' || COALESCE(a.last_name, '')), ''), 'Unknown') AS name,
+                        COALESCE(a.first_name, 'Unknown') AS first_name,
+                        COALESCE(a.last_name, '') AS last_name,
+                        'scholar' AS role,
+                        'Applicant' AS type,
+                        COALESCE(s.scholarship_name, 'Unassigned') AS scholarship,
+                        s.pro_no AS provider_no,
+                        CASE
+                            WHEN ast.is_accepted = 'Accepted' THEN 'Accepted'
+                            WHEN ast.is_accepted = 'Rejected' THEN 'Rejected'
+                            WHEN ast.is_accepted = 'Cancelled' THEN 'Cancelled'
+                            ELSE 'Pending'
+                            ELSE 'Pending'
+                        END AS status,
+                        {joined_expr} AS joined,
+                        COALESCE(ae.is_locked, FALSE) AS locked
+                    FROM {applicant_email_table} ae
+                    LEFT JOIN applicants a ON ae.applicant_no = a.applicant_no
+                    LEFT JOIN (
+                        SELECT applicant_no, scholarship_no, is_accepted{status_column},
+                               ROW_NUMBER() OVER(PARTITION BY applicant_no ORDER BY {applicant_order}) as rn
+                        FROM applicant_status
+                    ) ast ON a.applicant_no = ast.applicant_no AND ast.rn = 1
+                    LEFT JOIN scholarships s ON ast.scholarship_no = s.req_no
+                    WHERE COALESCE(s.is_removed, FALSE) = FALSE OR s.req_no IS NULL
+                ) accounts
+                WHERE 1=1
             '''
-            SELECT EXISTS (
-                SELECT 1
-                FROM information_schema.columns
-                WHERE table_name = 'applicant_status' AND column_name = 'status_updated'
-            ) AS has_status_updated
-            '''
-        )
-        has_status_updated = cursor.fetchone()['has_status_updated']
-        joined_expr = 'COALESCE(ast.status_updated, NOW())::date' if has_status_updated else 'NULL::date'
-        status_column = ', status_updated' if has_status_updated else ''
-        applicant_order = 'status_updated DESC' if has_status_updated else 'stat_no DESC'
+            params = []
+        
+            # Isolation: If not superadmin, only show accounts related to this provider
+            if role != 'Admin':
+                query += ' AND provider_no = %s'
+                params.append(pro_no)
+        
+            if filters.get('role'):
+                role_filter = filters['role'].lower()
+                if role_filter == 'admin':
+                    query += " AND role = 'admin'"
+                elif role_filter == 'scholar':
+                    query += " AND role = 'scholar'"
+        
+            if filters.get('search'):
+                query += ' AND (email ILIKE %s OR name ILIKE %s OR scholarship ILIKE %s OR id ILIKE %s)'
+                search_term = f"%{filters['search']}%"
+                params.extend([search_term, search_term, search_term, search_term])
 
-        query = f'''
-            SELECT *
-            FROM (
-                SELECT
-                    'admin-' || ue.user_em_no::text AS id,
-                    ue.email_address AS email,
-                    COALESCE(u.user_name, p.provider_name, 'Unknown') AS name,
-                    COALESCE(u.user_name, p.provider_name, 'Unknown') AS first_name,
-                    '' AS last_name,
-                    'admin' AS role,
-                    'Admin' AS type,
-                    COALESCE(p.provider_name, 'All') AS scholarship,
-                    p.pro_no AS provider_no,
-                    'Registered' AS status,
-                    NULL::date AS joined,
-                    COALESCE(ue.is_locked, FALSE) AS locked
-                FROM {user_email_table} ue
-                LEFT JOIN users u ON ue.user_no = u.user_no
-                LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
-
-                UNION ALL
-
-                SELECT
-                    'applicant-' || ae.app_em_no::text AS id,
-                    ae.email_address AS email,
-                    COALESCE(NULLIF(TRIM(COALESCE(a.first_name, '') || ' ' || COALESCE(a.last_name, '')), ''), 'Unknown') AS name,
-                    COALESCE(a.first_name, 'Unknown') AS first_name,
-                    COALESCE(a.last_name, '') AS last_name,
-                    'scholar' AS role,
-                    'Applicant' AS type,
-                    COALESCE(s.scholarship_name, 'Unassigned') AS scholarship,
-                    s.pro_no AS provider_no,
-                    CASE
-                        WHEN ast.is_accepted = 'Accepted' THEN 'Accepted'
-                        WHEN ast.is_accepted = 'Rejected' THEN 'Rejected'
-                        WHEN ast.is_accepted = 'Cancelled' THEN 'Cancelled'
-                        ELSE 'Pending'
-                        ELSE 'Pending'
-                    END AS status,
-                    {joined_expr} AS joined,
-                    COALESCE(ae.is_locked, FALSE) AS locked
-                FROM {applicant_email_table} ae
-                LEFT JOIN applicants a ON ae.applicant_no = a.applicant_no
-                LEFT JOIN (
-                    SELECT applicant_no, scholarship_no, is_accepted{status_column},
-                           ROW_NUMBER() OVER(PARTITION BY applicant_no ORDER BY {applicant_order}) as rn
-                    FROM applicant_status
-                ) ast ON a.applicant_no = ast.applicant_no AND ast.rn = 1
-                LEFT JOIN scholarships s ON ast.scholarship_no = s.req_no
-                WHERE COALESCE(s.is_removed, FALSE) = FALSE OR s.req_no IS NULL
-            ) accounts
-            WHERE 1=1
-        '''
-        params = []
+            query += ' ORDER BY name ASC, id ASC'
         
-        # Isolation: If not superadmin, only show accounts related to this provider
-        if role != 'Admin':
-            query += ' AND provider_no = %s'
-            params.append(pro_no)
+            cursor.execute(query, params)
+            accounts = cursor.fetchall()
         
-        if filters.get('role'):
-            role_filter = filters['role'].lower()
-            if role_filter == 'admin':
-                query += " AND role = 'admin'"
-            elif role_filter == 'scholar':
-                query += " AND role = 'scholar'"
-        
-        if filters.get('search'):
-            query += ' AND (email ILIKE %s OR name ILIKE %s OR scholarship ILIKE %s OR id ILIKE %s)'
-            search_term = f"%{filters['search']}%"
-            params.extend([search_term, search_term, search_term, search_term])
-
-        query += ' ORDER BY name ASC, id ASC'
-        
-        cursor.execute(query, params)
-        accounts = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        
-        return jsonify({'success': True, 'accounts': accounts}), 200
+            return jsonify({'success': True, 'accounts': accounts}), 200
     
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
@@ -2715,110 +2668,106 @@ def create_account(current_user_id, pro_no, role):
         return jsonify({'message': 'Missing required fields'}), 400
     
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        user_email_table = get_user_email_table(cursor)
-        applicant_email_table = get_applicant_email_table(cursor)
+        with get_db() as conn:
+            cursor = conn.cursor()
+            user_email_table = get_user_email_table(cursor)
+            applicant_email_table = get_applicant_email_table(cursor)
 
-        normalized_email = data['email'].strip()
-        cursor.execute(f"SELECT user_em_no FROM {user_email_table} WHERE email_address ILIKE %s LIMIT 1", (normalized_email,))
-        existing_admin = cursor.fetchone()
-        cursor.execute(f"SELECT app_em_no FROM {applicant_email_table} WHERE email_address ILIKE %s LIMIT 1", (normalized_email,))
-        existing_applicant = cursor.fetchone()
-        if existing_admin or existing_applicant:
-            cursor.close()
-            conn.close()
-            return jsonify({'message': 'Email already exists'}), 409
+            normalized_email = data['email'].strip()
+            cursor.execute(f"SELECT user_em_no FROM {user_email_table} WHERE email_address ILIKE %s LIMIT 1", (normalized_email,))
+            existing_admin = cursor.fetchone()
+            cursor.execute(f"SELECT app_em_no FROM {applicant_email_table} WHERE email_address ILIKE %s LIMIT 1", (normalized_email,))
+            existing_applicant = cursor.fetchone()
+            if existing_admin or existing_applicant:
+                return jsonify({'message': 'Email already exists'}), 409
 
-        password_hash = bcrypt.generate_password_hash(data['password']).decode('utf-8')
+            password_hash = bcrypt.generate_password_hash(data['password']).decode('utf-8')
         
-        account_role = data.get('role', 'scholar').lower()
+            account_role = data.get('role', 'scholar').lower()
         
-        # 1. Find or create scholarship provider based on 'scholarship' field or 'role'
-        provider_name = data.get('scholarship', data.get('role', 'All'))
-        cursor.execute("SELECT pro_no FROM scholarship_providers WHERE provider_name ILIKE %s", (provider_name,))
-        provider = cursor.fetchone()
+            # 1. Find or create scholarship provider based on 'scholarship' field or 'role'
+            provider_name = data.get('scholarship', data.get('role', 'All'))
+            cursor.execute("SELECT pro_no FROM scholarship_providers WHERE provider_name ILIKE %s", (provider_name,))
+            provider = cursor.fetchone()
         
-        if not provider:
-            cursor.execute("INSERT INTO scholarship_providers (provider_name) VALUES (%s) RETURNING pro_no", (provider_name,))
-            target_provider_no = cursor.fetchone()['pro_no']
-        else:
-            target_provider_no = provider['pro_no']
+            if not provider:
+                cursor.execute("INSERT INTO scholarship_providers (provider_name) VALUES (%s) RETURNING pro_no", (provider_name,))
+                target_provider_no = cursor.fetchone()['pro_no']
+            else:
+                target_provider_no = provider['pro_no']
             
-        full_name = f"{data['firstName']} {data['lastName']}"
-        account_id = None
+            full_name = f"{data['firstName']} {data['lastName']}"
+            account_id = None
         
-        if account_role == 'admin':
-            # 2a. Insert into users table
-            cursor.execute(
-                "INSERT INTO users (pro_no, user_name) VALUES (%s, %s) RETURNING user_no",
-                (target_provider_no, full_name)
-            )
-            user_no = cursor.fetchone()['user_no']
+            if account_role == 'admin':
+                # 2a. Insert into users table
+                cursor.execute(
+                    "INSERT INTO users (pro_no, user_name) VALUES (%s, %s) RETURNING user_no",
+                    (target_provider_no, full_name)
+                )
+                user_no = cursor.fetchone()['user_no']
             
-            # 3a. Insert into user auth table
-            cursor.execute(
-                f"INSERT INTO {user_email_table} (email_address, password_hash, user_no, is_verified) VALUES (%s, %s, %s, TRUE) RETURNING user_em_no",
-                (normalized_email, password_hash, user_no)
-            )
-            account_id = make_account_identifier('admin', cursor.fetchone()['user_em_no'])
-        else:
-            # 2b. Insert into applicants table
-            cursor.execute(
-                "INSERT INTO applicants (first_name, last_name) VALUES (%s, %s) RETURNING applicant_no",
-                (data['firstName'], data['lastName'])
-            )
-            applicant_no = cursor.fetchone()['applicant_no']
+                # 3a. Insert into user auth table
+                cursor.execute(
+                    f"INSERT INTO {user_email_table} (email_address, password_hash, user_no, is_verified) VALUES (%s, %s, %s, TRUE) RETURNING user_em_no",
+                    (normalized_email, password_hash, user_no)
+                )
+                account_id = make_account_identifier('admin', cursor.fetchone()['user_em_no'])
+            else:
+                # 2b. Insert into applicants table
+                cursor.execute(
+                    "INSERT INTO applicants (first_name, last_name) VALUES (%s, %s) RETURNING applicant_no",
+                    (data['firstName'], data['lastName'])
+                )
+                applicant_no = cursor.fetchone()['applicant_no']
             
-            # Optional: Link to a specific scholarship if provided
-            scholarship_name = data.get('scholarship')
-            if scholarship_name and scholarship_name not in ['All', 'Admin']:
-                cursor.execute("SELECT req_no FROM scholarships WHERE scholarship_name ILIKE %s", (scholarship_name,))
-                sch = cursor.fetchone()
-                if sch:
-                     cursor.execute(
-                         "INSERT INTO applicant_status (applicant_no, scholarship_no) VALUES (%s, %s)",
-                         (applicant_no, sch['req_no'])
-                     )
+                # Optional: Link to a specific scholarship if provided
+                scholarship_name = data.get('scholarship')
+                if scholarship_name and scholarship_name not in ['All', 'Admin']:
+                    cursor.execute("SELECT req_no FROM scholarships WHERE scholarship_name ILIKE %s", (scholarship_name,))
+                    sch = cursor.fetchone()
+                    if sch:
+                         cursor.execute(
+                             "INSERT INTO applicant_status (applicant_no, scholarship_no) VALUES (%s, %s)",
+                             (applicant_no, sch['req_no'])
+                         )
             
-            # 3b. Insert into applicant auth table
-            cursor.execute(
-                f"INSERT INTO {applicant_email_table} (email_address, password_hash, applicant_no) VALUES (%s, %s, %s) RETURNING app_em_no",
-                (normalized_email, password_hash, applicant_no)
-            )
-            account_id = make_account_identifier('applicant', cursor.fetchone()['app_em_no'])
+                # 3b. Insert into applicant auth table
+                cursor.execute(
+                    f"INSERT INTO {applicant_email_table} (email_address, password_hash, applicant_no) VALUES (%s, %s, %s) RETURNING app_em_no",
+                    (normalized_email, password_hash, applicant_no)
+                )
+                account_id = make_account_identifier('applicant', cursor.fetchone()['app_em_no'])
         
-        conn.commit()
-        cursor.close()
-        conn.close()
+            conn.commit()
 
-        audit_provider_no = target_provider_no
-        record_admin_activity(
-            actor_user_no=current_user_id,
-            action='Account Created',
-            target_type='Admin' if account_role == 'admin' else 'Applicant',
-            target_id=account_id,
-            target_label=full_name,
-            provider_no=audit_provider_no,
-            status='success',
-        )
+            audit_provider_no = target_provider_no
+            record_admin_activity(
+                actor_user_no=current_user_id,
+                action='Account Created',
+                target_type='Admin' if account_role == 'admin' else 'Applicant',
+                target_id=account_id,
+                target_label=full_name,
+                provider_no=audit_provider_no,
+                status='success',
+            )
         
-        # Real-time synchronization: Notify connected admins
-        safe_emit('account_change', {'action': 'created', 'account_id': account_id}, broadcast=True)
+            # Real-time synchronization: Notify connected admins
+            safe_emit('account_change', {'action': 'created', 'account_id': account_id}, broadcast=True)
         
-        return jsonify({'success': True, 'account': {
-            'id': account_id,
-            'email': normalized_email,
-            'name': full_name,
-            'first_name': data['firstName'],
-            'last_name': data['lastName'],
-            'role': account_role,
-            'type': 'Admin' if account_role == 'admin' else 'Applicant',
-            'scholarship': provider_name if account_role == 'admin' else data.get('scholarship', 'Unassigned'),
-            'status': 'Registered' if account_role == 'admin' else 'Pending',
-            'joined': datetime.utcnow().date().isoformat(),
-            'locked': False,
-        }}), 201
+            return jsonify({'success': True, 'account': {
+                'id': account_id,
+                'email': normalized_email,
+                'name': full_name,
+                'first_name': data['firstName'],
+                'last_name': data['lastName'],
+                'role': account_role,
+                'type': 'Admin' if account_role == 'admin' else 'Applicant',
+                'scholarship': provider_name if account_role == 'admin' else data.get('scholarship', 'Unassigned'),
+                'status': 'Registered' if account_role == 'admin' else 'Pending',
+                'joined': datetime.utcnow().date().isoformat(),
+                'locked': False,
+            }}), 201
     
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
@@ -2833,59 +2782,55 @@ def update_account(current_user_id, pro_no, role, account_id):
     data = request.get_json()
     
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        account_context = fetch_account_activity_context(cursor, account_id)
+        with get_db() as conn:
+            cursor = conn.cursor()
+            account_context = fetch_account_activity_context(cursor, account_id)
         
-        if not account_context:
-            cursor.close()
-            conn.close()
-            return jsonify({'message': 'Account not found'}), 404
+            if not account_context:
+                return jsonify({'message': 'Account not found'}), 404
         
-        if account_context['user_no']:
-            # Update user table
-            if 'name' in data or 'firstName' in data or 'lastName' in data:
-                name = data.get('name') or f"{data.get('firstName', '')} {data.get('lastName', '')}".strip()
-                if name:
-                    cursor.execute("UPDATE users SET user_name = %s WHERE user_no = %s", (name, account_context['user_no']))
-        elif account_context['applicant_no'] and ('name' in data or 'firstName' in data or 'lastName' in data):
-            full_name = data.get('name') or f"{data.get('firstName', '')} {data.get('lastName', '')}".strip()
-            name_parts = full_name.split()
-            if len(name_parts) >= 2:
-                cursor.execute(
-                    "UPDATE applicants SET first_name = %s, last_name = %s WHERE applicant_no = %s",
-                    (' '.join(name_parts[:-1]), name_parts[-1], account_context['applicant_no'])
-                )
+            if account_context['user_no']:
+                # Update user table
+                if 'name' in data or 'firstName' in data or 'lastName' in data:
+                    name = data.get('name') or f"{data.get('firstName', '')} {data.get('lastName', '')}".strip()
+                    if name:
+                        cursor.execute("UPDATE users SET user_name = %s WHERE user_no = %s", (name, account_context['user_no']))
+            elif account_context['applicant_no'] and ('name' in data or 'firstName' in data or 'lastName' in data):
+                full_name = data.get('name') or f"{data.get('firstName', '')} {data.get('lastName', '')}".strip()
+                name_parts = full_name.split()
+                if len(name_parts) >= 2:
+                    cursor.execute(
+                        "UPDATE applicants SET first_name = %s, last_name = %s WHERE applicant_no = %s",
+                        (' '.join(name_parts[:-1]), name_parts[-1], account_context['applicant_no'])
+                    )
                     
-        target_table = get_user_email_table(cursor) if account_context['account_type'] == 'Admin' else get_applicant_email_table(cursor)
-        id_column = 'user_em_no' if account_context['account_type'] == 'Admin' else 'app_em_no'
+            target_table = get_user_email_table(cursor) if account_context['account_type'] == 'Admin' else get_applicant_email_table(cursor)
+            id_column = 'user_em_no' if account_context['account_type'] == 'Admin' else 'app_em_no'
 
-        # Update auth table
-        if 'email' in data:
-            cursor.execute(f"UPDATE {target_table} SET email_address = %s WHERE {id_column} = %s", (data['email'], account_context['email_id']))
-        if 'password' in data and data['password']:
-            password_hash = bcrypt.generate_password_hash(data['password']).decode('utf-8')
-            cursor.execute(f"UPDATE {target_table} SET password_hash = %s WHERE {id_column} = %s", (password_hash, account_context['email_id']))
+            # Update auth table
+            if 'email' in data:
+                cursor.execute(f"UPDATE {target_table} SET email_address = %s WHERE {id_column} = %s", (data['email'], account_context['email_id']))
+            if 'password' in data and data['password']:
+                password_hash = bcrypt.generate_password_hash(data['password']).decode('utf-8')
+                cursor.execute(f"UPDATE {target_table} SET password_hash = %s WHERE {id_column} = %s", (password_hash, account_context['email_id']))
             
-        conn.commit()
-        cursor.close()
-        conn.close()
+            conn.commit()
 
-        updated_name = data.get('name') or account_context['name']
-        record_admin_activity(
-            actor_user_no=current_user_id,
-            action='Profile Update',
-            target_type=account_context['account_type'],
-            target_id=account_id,
-            target_label=updated_name,
-            provider_no=account_context['provider_no'],
-            status='success',
-        )
+            updated_name = data.get('name') or account_context['name']
+            record_admin_activity(
+                actor_user_no=current_user_id,
+                action='Profile Update',
+                target_type=account_context['account_type'],
+                target_id=account_id,
+                target_label=updated_name,
+                provider_no=account_context['provider_no'],
+                status='success',
+            )
         
-        # Real-time synchronization: Notify connected admins
-        safe_emit('account_change', {'action': 'updated', 'account_id': account_id}, broadcast=True)
+            # Real-time synchronization: Notify connected admins
+            safe_emit('account_change', {'action': 'updated', 'account_id': account_id}, broadcast=True)
         
-        return jsonify({'success': True, 'message': 'Account updated'}), 200
+            return jsonify({'success': True, 'message': 'Account updated'}), 200
     
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
@@ -2895,49 +2840,45 @@ def update_account(current_user_id, pro_no, role, account_id):
 def delete_account(current_user_id, pro_no, role, account_id):
     """Delete user account"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        account_context = fetch_account_activity_context(cursor, account_id)
-        if not account_context:
-            cursor.close()
-            conn.close()
-            return jsonify({'message': 'Account not found'}), 404
+        with get_db() as conn:
+            cursor = conn.cursor()
+            account_context = fetch_account_activity_context(cursor, account_id)
+            if not account_context:
+                return jsonify({'message': 'Account not found'}), 404
         
-        if account_context['account_type'] == 'Admin':
-            target_table = get_user_email_table(cursor)
-            id_column = 'user_em_no'
-        else:
-            target_table = get_applicant_email_table(cursor)
-            id_column = 'app_em_no'
+            if account_context['account_type'] == 'Admin':
+                target_table = get_user_email_table(cursor)
+                id_column = 'user_em_no'
+            else:
+                target_table = get_applicant_email_table(cursor)
+                id_column = 'app_em_no'
 
-        cursor.execute(f'DELETE FROM {target_table} WHERE {id_column} = %s RETURNING {id_column}', (account_context['email_id'],))
-        deleted = cursor.fetchone()
+            cursor.execute(f'DELETE FROM {target_table} WHERE {id_column} = %s RETURNING {id_column}', (account_context['email_id'],))
+            deleted = cursor.fetchone()
         
-        if deleted and account_context['user_no']:
-            # Also delete from users table
-            cursor.execute('DELETE FROM users WHERE user_no = %s', (account_context['user_no'],))
+            if deleted and account_context['user_no']:
+                # Also delete from users table
+                cursor.execute('DELETE FROM users WHERE user_no = %s', (account_context['user_no'],))
             
-        conn.commit()
-        cursor.close()
-        conn.close()
+            conn.commit()
         
-        if not deleted:
-            return jsonify({'message': 'Account not found'}), 404
+            if not deleted:
+                return jsonify({'message': 'Account not found'}), 404
 
-        record_admin_activity(
-            actor_user_no=current_user_id,
-            action='Account Deleted',
-            target_type=account_context['account_type'],
-            target_id=account_id,
-            target_label=account_context['name'],
-            provider_no=account_context['provider_no'],
-            status='success',
-        )
+            record_admin_activity(
+                actor_user_no=current_user_id,
+                action='Account Deleted',
+                target_type=account_context['account_type'],
+                target_id=account_id,
+                target_label=account_context['name'],
+                provider_no=account_context['provider_no'],
+                status='success',
+            )
         
-        # Real-time synchronization: Notify connected admins
-        safe_emit('account_change', {'action': 'deleted', 'account_id': account_id}, broadcast=True)
+            # Real-time synchronization: Notify connected admins
+            safe_emit('account_change', {'action': 'deleted', 'account_id': account_id}, broadcast=True)
         
-        return jsonify({'success': True, 'message': 'Account deleted'}), 200
+            return jsonify({'success': True, 'message': 'Account deleted'}), 200
     
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
@@ -2951,47 +2892,43 @@ def toggle_account_lock(current_user_id, pro_no, role, account_id):
         return jsonify({'message': 'Missing locked field'}), 400
     
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        account_context = fetch_account_activity_context(cursor, account_id)
-        if not account_context:
-            cursor.close()
-            conn.close()
-            return jsonify({'message': 'Account not found'}), 404
+        with get_db() as conn:
+            cursor = conn.cursor()
+            account_context = fetch_account_activity_context(cursor, account_id)
+            if not account_context:
+                return jsonify({'message': 'Account not found'}), 404
         
-        target_table = get_user_email_table(cursor) if account_context['account_type'] == 'Admin' else get_applicant_email_table(cursor)
-        id_column = 'user_em_no' if account_context['account_type'] == 'Admin' else 'app_em_no'
+            target_table = get_user_email_table(cursor) if account_context['account_type'] == 'Admin' else get_applicant_email_table(cursor)
+            id_column = 'user_em_no' if account_context['account_type'] == 'Admin' else 'app_em_no'
 
-        cursor.execute(f'''
-            UPDATE {target_table}
-            SET is_locked = %s
-            WHERE {id_column} = %s
-            RETURNING {id_column}
-        ''', (data['locked'], account_context['email_id']))
+            cursor.execute(f'''
+                UPDATE {target_table}
+                SET is_locked = %s
+                WHERE {id_column} = %s
+                RETURNING {id_column}
+            ''', (data['locked'], account_context['email_id']))
         
-        result = cursor.fetchone()
-        conn.commit()
-        cursor.close()
-        conn.close()
+            result = cursor.fetchone()
+            conn.commit()
         
-        if not result:
-            return jsonify({'message': 'Account not found'}), 404
+            if not result:
+                return jsonify({'message': 'Account not found'}), 404
         
-        status = 'locked' if data['locked'] else 'unlocked'
-        record_admin_activity(
-            actor_user_no=current_user_id,
-            action='Account Locked' if data['locked'] else 'Account Unlocked',
-            target_type=account_context['account_type'],
-            target_id=account_id,
-            target_label=account_context['name'],
-            provider_no=account_context['provider_no'],
-            status='success',
-        )
+            status = 'locked' if data['locked'] else 'unlocked'
+            record_admin_activity(
+                actor_user_no=current_user_id,
+                action='Account Locked' if data['locked'] else 'Account Unlocked',
+                target_type=account_context['account_type'],
+                target_id=account_id,
+                target_label=account_context['name'],
+                provider_no=account_context['provider_no'],
+                status='success',
+            )
         
-        # Real-time synchronization: Notify connected admins
-        safe_emit('account_change', {'action': status, 'account_id': account_id}, broadcast=True)
+            # Real-time synchronization: Notify connected admins
+            safe_emit('account_change', {'action': status, 'account_id': account_id}, broadcast=True)
         
-        return jsonify({'success': True, 'message': f'Account {status}'}), 200
+            return jsonify({'success': True, 'message': f'Account {status}'}), 200
     
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
@@ -3001,88 +2938,86 @@ def toggle_account_lock(current_user_id, pro_no, role, account_id):
 def get_statistics(current_user_id, pro_no, role):
     """Get dashboard statistics"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        user_email_table = get_user_email_table(cursor)
-        applicant_email_table = get_applicant_email_table(cursor)
+        with get_db() as conn:
+            cursor = conn.cursor()
+            user_email_table = get_user_email_table(cursor)
+            applicant_email_table = get_applicant_email_table(cursor)
         
-        if role != 'Admin':
-            # Get total users related to this provider
-            cursor.execute(f'''
-                SELECT (
-                    (SELECT COUNT(DISTINCT ue.user_em_no)
-                     FROM {user_email_table} ue
-                     LEFT JOIN users u ON ue.user_no = u.user_no
-                     WHERE u.pro_no = %s) +
-                    (SELECT COUNT(DISTINCT ae.app_em_no)
-                     FROM {applicant_email_table} ae
-                     WHERE ae.applicant_no IN (
+            if role != 'Admin':
+                # Get total users related to this provider
+                cursor.execute(f'''
+                    SELECT (
+                        (SELECT COUNT(DISTINCT ue.user_em_no)
+                         FROM {user_email_table} ue
+                         LEFT JOIN users u ON ue.user_no = u.user_no
+                         WHERE u.pro_no = %s) +
+                        (SELECT COUNT(DISTINCT ae.app_em_no)
+                         FROM {applicant_email_table} ae
+                         WHERE ae.applicant_no IN (
+                            SELECT applicant_no FROM applicant_status ast 
+                            JOIN scholarships s ON ast.scholarship_no = s.req_no 
+                            WHERE s.pro_no = %s
+                         ))
+                    ) as total
+                ''', (pro_no, pro_no))
+                total_users = cursor.fetchone()['total']
+            
+                by_role = [
+                    {'role': 'admin', 'count': 0},
+                    {'role': 'scholar', 'count': 0},
+                ]
+                cursor.execute(f'''
+                    SELECT COUNT(DISTINCT ue.user_em_no) as count
+                    FROM {user_email_table} ue
+                    LEFT JOIN users u ON ue.user_no = u.user_no
+                    WHERE u.pro_no = %s
+                ''', (pro_no,))
+                by_role[0]['count'] = cursor.fetchone()['count']
+                cursor.execute(f'''
+                    SELECT COUNT(DISTINCT ae.app_em_no) as count
+                    FROM {applicant_email_table} ae
+                    WHERE ae.applicant_no IN (
                         SELECT applicant_no FROM applicant_status ast 
                         JOIN scholarships s ON ast.scholarship_no = s.req_no 
                         WHERE s.pro_no = %s
-                     ))
-                ) as total
-            ''', (pro_no, pro_no))
-            total_users = cursor.fetchone()['total']
+                    )
+                ''', (pro_no,))
+                by_role[1]['count'] = cursor.fetchone()['count']
             
-            by_role = [
-                {'role': 'admin', 'count': 0},
-                {'role': 'scholar', 'count': 0},
-            ]
-            cursor.execute(f'''
-                SELECT COUNT(DISTINCT ue.user_em_no) as count
-                FROM {user_email_table} ue
-                LEFT JOIN users u ON ue.user_no = u.user_no
-                WHERE u.pro_no = %s
-            ''', (pro_no,))
-            by_role[0]['count'] = cursor.fetchone()['count']
-            cursor.execute(f'''
-                SELECT COUNT(DISTINCT ae.app_em_no) as count
-                FROM {applicant_email_table} ae
-                WHERE ae.applicant_no IN (
-                    SELECT applicant_no FROM applicant_status ast 
+                # Get total applications for this provider
+                cursor.execute('''
+                    SELECT COUNT(DISTINCT ast.applicant_no) as total 
+                    FROM applicant_status ast 
                     JOIN scholarships s ON ast.scholarship_no = s.req_no 
                     WHERE s.pro_no = %s
-                )
-            ''', (pro_no,))
-            by_role[1]['count'] = cursor.fetchone()['count']
-            
-            # Get total applications for this provider
-            cursor.execute('''
-                SELECT COUNT(DISTINCT ast.applicant_no) as total 
-                FROM applicant_status ast 
-                JOIN scholarships s ON ast.scholarship_no = s.req_no 
-                WHERE s.pro_no = %s
-            ''', (pro_no,))
-            total_applicants = cursor.fetchone()['total']
-        else:
-            # Superadmin gets everything
-            cursor.execute(f'SELECT (SELECT COUNT(*) FROM {user_email_table}) + (SELECT COUNT(*) FROM {applicant_email_table}) as total')
-            total_users = cursor.fetchone()['total']
+                ''', (pro_no,))
+                total_applicants = cursor.fetchone()['total']
+            else:
+                # Superadmin gets everything
+                cursor.execute(f'SELECT (SELECT COUNT(*) FROM {user_email_table}) + (SELECT COUNT(*) FROM {applicant_email_table}) as total')
+                total_users = cursor.fetchone()['total']
 
-            cursor.execute(f'SELECT COUNT(*) as count FROM {user_email_table}')
-            admin_count = cursor.fetchone()['count']
-            cursor.execute(f'SELECT COUNT(*) as count FROM {applicant_email_table}')
-            applicant_count = cursor.fetchone()['count']
-            by_role = [
-                {'role': 'admin', 'count': admin_count},
-                {'role': 'scholar', 'count': applicant_count},
-            ]
+                cursor.execute(f'SELECT COUNT(*) as count FROM {user_email_table}')
+                admin_count = cursor.fetchone()['count']
+                cursor.execute(f'SELECT COUNT(*) as count FROM {applicant_email_table}')
+                applicant_count = cursor.fetchone()['count']
+                by_role = [
+                    {'role': 'admin', 'count': admin_count},
+                    {'role': 'scholar', 'count': applicant_count},
+                ]
             
-            cursor.execute('SELECT COUNT(*) as total FROM applicants')
-            total_applicants = cursor.fetchone()['total']
+                cursor.execute('SELECT COUNT(*) as total FROM applicants')
+                total_applicants = cursor.fetchone()['total']
         
-        cursor.close()
-        conn.close()
         
-        return jsonify({
-            'success': True,
-            'statistics': {
-                'totalUsers': total_users,
-                'usersByRole': by_role,
-                'totalApplicants': total_applicants
-            }
-        }), 200
+            return jsonify({
+                'success': True,
+                'statistics': {
+                    'totalUsers': total_users,
+                    'usersByRole': by_role,
+                    'totalApplicants': total_applicants
+                }
+            }), 200
     
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
@@ -3676,21 +3611,19 @@ def create_applicant(current_user_id, pro_no, role, program):
     data = request.get_json()
     
     try:
-        conn = get_db()
-        cursor = conn.cursor()
+        with get_db() as conn:
+            cursor = conn.cursor()
         
-        cursor.execute(
-            '''INSERT INTO applicants (program, first_name, last_name, email, phone, status, created_at)
-               VALUES (%s, %s, %s, %s, %s, 'Pending', NOW())
-               RETURNING *''',
-            (program.lower(), data['firstName'], data['lastName'], data['email'], data.get('phone', ''))
-        )
-        applicant = cursor.fetchone()
-        conn.commit()
-        cursor.close()
-        conn.close()
+            cursor.execute(
+                '''INSERT INTO applicants (program, first_name, last_name, email, phone, status, created_at)
+                   VALUES (%s, %s, %s, %s, %s, 'Pending', NOW())
+                   RETURNING *''',
+                (program.lower(), data['firstName'], data['lastName'], data['email'], data.get('phone', ''))
+            )
+            applicant = cursor.fetchone()
+            conn.commit()
         
-        return jsonify({'success': True, 'applicant': applicant}), 201
+            return jsonify({'success': True, 'applicant': applicant}), 201
     
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
@@ -3700,25 +3633,23 @@ def create_applicant(current_user_id, pro_no, role, program):
 def get_rankings(current_user_id, pro_no, role, program):
     """Get rankings for a program"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
+        with get_db() as conn:
+            cursor = conn.cursor()
         
-        # Isolation: If not superadmin, only show rankings for this provider
-        if role != 'Admin':
-            cursor.execute(
-                'SELECT r.* FROM rankings r JOIN scholarships s ON r.scholarship_no = s.req_no WHERE s.pro_no = %s ORDER BY r.rank ASC',
-                (pro_no,)
-            )
-        else:
-            cursor.execute(
-                'SELECT * FROM rankings WHERE program ILIKE %s ORDER BY rank ASC',
-                (f"%{program}%",)
-            )
-        rankings = cursor.fetchall()
-        cursor.close()
-        conn.close()
+            # Isolation: If not superadmin, only show rankings for this provider
+            if role != 'Admin':
+                cursor.execute(
+                    'SELECT r.* FROM rankings r JOIN scholarships s ON r.scholarship_no = s.req_no WHERE s.pro_no = %s ORDER BY r.rank ASC',
+                    (pro_no,)
+                )
+            else:
+                cursor.execute(
+                    'SELECT * FROM rankings WHERE program ILIKE %s ORDER BY rank ASC',
+                    (f"%{program}%",)
+                )
+            rankings = cursor.fetchall()
         
-        return jsonify({'success': True, 'rankings': rankings}), 200
+            return jsonify({'success': True, 'rankings': rankings}), 200
     
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
@@ -3741,57 +3672,55 @@ def create_scholarship(current_user_id, pro_no, role):
         return jsonify({'message': 'Missing required fields'}), 400
     
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        target_pro_no, provider_name = resolve_provider_context(cursor, current_user_id, role, pro_no)
-        provider_label = provider_name if str(provider_name or '').strip().lower() != 'all' else 'ISKOMATS'
+        with get_db() as conn:
+            cursor = conn.cursor()
+            target_pro_no, provider_name = resolve_provider_context(cursor, current_user_id, role, pro_no)
+            provider_label = provider_name if str(provider_name or '').strip().lower() != 'all' else 'ISKOMATS'
         
-        # Isolation: Use pro_no from token if not superadmin
-        if role != 'Admin' and target_pro_no is None:
-             return jsonify({'message': 'User not associated with a scholarship provider'}), 403
+            # Isolation: Use pro_no from token if not superadmin
+            if role != 'Admin' and target_pro_no is None:
+                 return jsonify({'message': 'User not associated with a scholarship provider'}), 403
         
-        cursor.execute('''
-            INSERT INTO scholarships (scholarship_name, gpa, parent_finance, location, pro_no, slots, deadline, "desc", semester, year, grades_sem, grades_year, course, program_type, date_created)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_DATE)
-            RETURNING req_no
-        ''', (
-            data.get('scholarshipName'), data.get('minGpa'), data.get('parentFinance'),
-            data.get('location'), target_pro_no, data.get('slots'), data.get('deadline'),
-            data.get('description'), data.get('semester'), data.get('year'),
-            data.get('grades_sem'), data.get('grades_year'), data.get('course', 'All'),
-            data.get('program_type', 'All')
-        ))
+            cursor.execute('''
+                INSERT INTO scholarships (scholarship_name, gpa, parent_finance, location, pro_no, slots, deadline, "desc", semester, year, grades_sem, grades_year, course, program_type, date_created)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_DATE)
+                RETURNING req_no
+            ''', (
+                data.get('scholarshipName'), data.get('minGpa'), data.get('parentFinance'),
+                data.get('location'), target_pro_no, data.get('slots'), data.get('deadline'),
+                data.get('description'), data.get('semester'), data.get('year'),
+                data.get('grades_sem'), data.get('grades_year'), data.get('course', 'All'),
+                data.get('program_type', 'All')
+            ))
         
-        new_scholarship = cursor.fetchone()
-        req_no = new_scholarship['req_no']
+            new_scholarship = cursor.fetchone()
+            req_no = new_scholarship['req_no']
 
-        conn.commit()
-        cursor.close()
-        conn.close()
+            conn.commit()
 
-        run_background_task(
-            notify_all_applicants,
-            title=f"New Scholarship Posted: {data['scholarshipName']}",
-            message=f"{provider_label} posted a new scholarship opportunity. Deadline: {data['deadline']}.",
-            notif_type='scholarship',
-        )
+            run_background_task(
+                notify_all_applicants,
+                title=f"New Scholarship Posted: {data['scholarshipName']}",
+                message=f"{provider_label} posted a new scholarship opportunity. Deadline: {data['deadline']}.",
+                notif_type='scholarship',
+            )
 
-        run_background_task(
-            send_announcement_emails,
-            title=f"New Scholarship: {data['scholarshipName']}",
-            message=f"{provider_label} has posted a new scholarship opportunity with a deadline on {data['deadline']}.",
-            provider_no=target_pro_no,
-            provider_name=provider_label,
-            send_to_all=True,
-            subject_prefix='New Scholarship opportunity from',
-            intro_prefix='A new scholarship opportunity has been posted by',
-        )
+            run_background_task(
+                send_announcement_emails,
+                title=f"New Scholarship: {data['scholarshipName']}",
+                message=f"{provider_label} has posted a new scholarship opportunity with a deadline on {data['deadline']}.",
+                provider_no=target_pro_no,
+                provider_name=provider_label,
+                send_to_all=True,
+                subject_prefix='New Scholarship opportunity from',
+                intro_prefix='A new scholarship opportunity has been posted by',
+            )
         
-        return jsonify({
-            'success': True, 
-            'message': 'Scholarship created successfully',
-            'id': req_no
-        }), 201
+            return jsonify({
+                'success': True, 
+                'message': 'Scholarship created successfully',
+                'id': req_no
+            }), 201
         
     except Exception as e:
         print(f"[SCHOLARSHIP CREATE] Error: {str(e)}")
@@ -3806,72 +3735,70 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
     data = request.get_json()
     
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        resolved_provider_no, resolved_provider_name = resolve_provider_context(cursor, current_user_id, role, pro_no)
+        with get_db() as conn:
+            cursor = conn.cursor()
+            resolved_provider_no, resolved_provider_name = resolve_provider_context(cursor, current_user_id, role, pro_no)
         
-        is_admin = (role == 'Admin')
+            is_admin = (role == 'Admin')
         
-        # 2. Check scholarship ownership
-        cursor.execute(
-            """
-            SELECT s.pro_no, s.scholarship_name, p.provider_name
-            FROM scholarships s
-            LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
-            WHERE s.req_no = %s
-            """,
-            (req_no,)
-        )
-        sch_row = cursor.fetchone()
-        if not sch_row:
-            return jsonify({'message': 'Scholarship not found'}), 404
-        display_provider_name = sch_row['provider_name'] or (resolved_provider_name if str(resolved_provider_name or '').strip().lower() != 'all' else None) or 'ISKOMATS'
+            # 2. Check scholarship ownership
+            cursor.execute(
+                """
+                SELECT s.pro_no, s.scholarship_name, p.provider_name
+                FROM scholarships s
+                LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
+                WHERE s.req_no = %s
+                """,
+                (req_no,)
+            )
+            sch_row = cursor.fetchone()
+            if not sch_row:
+                return jsonify({'message': 'Scholarship not found'}), 404
+            display_provider_name = sch_row['provider_name'] or (resolved_provider_name if str(resolved_provider_name or '').strip().lower() != 'all' else None) or 'ISKOMATS'
             
-        # Allow update if user is Admin OR pro_no matches OR if existing scholarship has NO pro_no
-        if not is_admin and sch_row['pro_no'] is not None and resolved_provider_no is not None and sch_row['pro_no'] != resolved_provider_no:
-            return jsonify({'message': 'Unauthorized'}), 401
+            # Allow update if user is Admin OR pro_no matches OR if existing scholarship has NO pro_no
+            if not is_admin and sch_row['pro_no'] is not None and resolved_provider_no is not None and sch_row['pro_no'] != resolved_provider_no:
+                return jsonify({'message': 'Unauthorized'}), 401
 
-        # 3. Handle orphaned scholarships
-        if not is_admin and sch_row['pro_no'] is None and resolved_provider_no is not None:
-            cursor.execute("UPDATE scholarships SET pro_no = %s WHERE req_no = %s", (resolved_provider_no, req_no))
+            # 3. Handle orphaned scholarships
+            if not is_admin and sch_row['pro_no'] is None and resolved_provider_no is not None:
+                cursor.execute("UPDATE scholarships SET pro_no = %s WHERE req_no = %s", (resolved_provider_no, req_no))
              
-        cursor.execute('''
-            UPDATE scholarships 
-            SET scholarship_name = %s, gpa = %s, parent_finance = %s, location = %s, slots = %s, 
-                deadline = %s, "desc" = %s, semester = %s, year = %s, grades_sem = %s, grades_year = %s,
-                course = %s, program_type = %s
-            WHERE req_no = %s
-        ''', (
-            data.get('scholarshipName'), data.get('minGpa'), data.get('parentFinance'),
-            data.get('location'), data.get('slots'), data.get('deadline'),
-            data.get('description'), data.get('semester'), data.get('year'),
-            data.get('grades_sem'), data.get('grades_year'), data.get('course', 'All'),
-            data.get('program_type', 'All'), req_no
-        ))
+            cursor.execute('''
+                UPDATE scholarships 
+                SET scholarship_name = %s, gpa = %s, parent_finance = %s, location = %s, slots = %s, 
+                    deadline = %s, "desc" = %s, semester = %s, year = %s, grades_sem = %s, grades_year = %s,
+                    course = %s, program_type = %s
+                WHERE req_no = %s
+            ''', (
+                data.get('scholarshipName'), data.get('minGpa'), data.get('parentFinance'),
+                data.get('location'), data.get('slots'), data.get('deadline'),
+                data.get('description'), data.get('semester'), data.get('year'),
+                data.get('grades_sem'), data.get('grades_year'), data.get('course', 'All'),
+                data.get('program_type', 'All'), req_no
+            ))
         
-        conn.commit()
-        cursor.close()
-        conn.close()
+            conn.commit()
 
-        run_background_task(
-            notify_all_applicants,
-            title=f"Scholarship Updated: {data.get('scholarshipName', sch_row['scholarship_name'])}",
-            message=f"{display_provider_name} updated scholarship details. Check the latest post for changes.",
-            notif_type='scholarship',
-        )
+            run_background_task(
+                notify_all_applicants,
+                title=f"Scholarship Updated: {data.get('scholarshipName', sch_row['scholarship_name'])}",
+                message=f"{display_provider_name} updated scholarship details. Check the latest post for changes.",
+                notif_type='scholarship',
+            )
 
-        run_background_task(
-            send_announcement_emails,
-            title=f"Updated Scholarship: {data.get('scholarshipName', sch_row['scholarship_name'])}",
-            message=f"{display_provider_name} has updated the details for a scholarship. Please check the portal for latest requirements and deadlines.",
-            provider_no=resolved_provider_no,
-            provider_name=display_provider_name,
-            send_to_all=True,
-            subject_prefix='Updated Scholarship from',
-            intro_prefix='A scholarship has been updated by',
-        )
+            run_background_task(
+                send_announcement_emails,
+                title=f"Updated Scholarship: {data.get('scholarshipName', sch_row['scholarship_name'])}",
+                message=f"{display_provider_name} has updated the details for a scholarship. Please check the portal for latest requirements and deadlines.",
+                provider_no=resolved_provider_no,
+                provider_name=display_provider_name,
+                send_to_all=True,
+                subject_prefix='Updated Scholarship from',
+                intro_prefix='A scholarship has been updated by',
+            )
         
-        return jsonify({'success': True, 'message': 'Scholarship updated'}), 200
+            return jsonify({'success': True, 'message': 'Scholarship updated'}), 200
     
     except Exception as e:
         print(f"[SCHOLARSHIP UPDATE] Error: {str(e)}")
@@ -3886,39 +3813,39 @@ def delete_scholarship(current_user_id, pro_no, role, req_no):
     conn = None
     cursor = None
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        ensure_schema_integrity(cursor)
+        with get_db() as conn:
+            cursor = conn.cursor()
+            ensure_schema_integrity(cursor)
         
-        is_superadmin = ((role or '').strip().lower() == 'admin')
-        resolved_provider_no, _ = resolve_provider_context(cursor, current_user_id, role, pro_no)
+            is_superadmin = ((role or '').strip().lower() == 'admin')
+            resolved_provider_no, _ = resolve_provider_context(cursor, current_user_id, role, pro_no)
         
-        # 2. Check scholarship ownership
-        cursor.execute("SELECT pro_no, scholarship_name FROM scholarships WHERE req_no = %s", (req_no,))
-        sch_row = cursor.fetchone()
-        if not sch_row:
-            return jsonify({'message': 'Scholarship not found'}), 404
+            # 2. Check scholarship ownership
+            cursor.execute("SELECT pro_no, scholarship_name FROM scholarships WHERE req_no = %s", (req_no,))
+            sch_row = cursor.fetchone()
+            if not sch_row:
+                return jsonify({'message': 'Scholarship not found'}), 404
             
-        # Allow delete if user is Admin OR pro_no matches OR if existing scholarship has NO pro_no
-        scholarship_provider_no = get_row_value(sch_row, 'pro_no')
-        scholarship_name = get_row_value(sch_row, 'scholarship_name')
+            # Allow delete if user is Admin OR pro_no matches OR if existing scholarship has NO pro_no
+            scholarship_provider_no = get_row_value(sch_row, 'pro_no')
+            scholarship_name = get_row_value(sch_row, 'scholarship_name')
 
-        if not is_superadmin and scholarship_provider_no is not None and resolved_provider_no is not None and scholarship_provider_no != resolved_provider_no:
-            return jsonify({'message': 'Unauthorized'}), 401
+            if not is_superadmin and scholarship_provider_no is not None and resolved_provider_no is not None and scholarship_provider_no != resolved_provider_no:
+                return jsonify({'message': 'Unauthorized'}), 401
             
-        cursor.execute("UPDATE scholarships SET is_removed = TRUE WHERE req_no = %s", (req_no,))
+            cursor.execute("UPDATE scholarships SET is_removed = TRUE WHERE req_no = %s", (req_no,))
         
-        conn.commit()
-        record_admin_activity(
-            actor_user_no=current_user_id,
-            action='delete_scholarship',
-            target_type='scholarship',
-            target_id=req_no,
-            target_label=scholarship_name,
-            provider_no=resolved_provider_no,
-        )
+            conn.commit()
+            record_admin_activity(
+                actor_user_no=current_user_id,
+                action='delete_scholarship',
+                target_type='scholarship',
+                target_id=req_no,
+                target_label=scholarship_name,
+                provider_no=resolved_provider_no,
+            )
         
-        return jsonify({'success': True, 'message': 'Scholarship removed'}), 200
+            return jsonify({'success': True, 'message': 'Scholarship removed'}), 200
         
     except Exception as e:
         print(f"[SCHOLARSHIP DELETE] Error deleting scholarship {req_no}: {e}", flush=True)
@@ -3941,57 +3868,55 @@ def delete_scholarship(current_user_id, pro_no, role, req_no):
 def get_announcement_image(image_id):
     """Get announcement image as binary file."""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        primary_key_column, _ = get_entity_image_columns(cursor, entity='announcement')
+        with get_db() as conn:
+            cursor = conn.cursor()
+            primary_key_column, _ = get_entity_image_columns(cursor, entity='announcement')
         
-        # Get image from database
-        cursor.execute(f"SELECT img FROM announcement_images WHERE {primary_key_column} = %s", (image_id,))
-        row = cursor.fetchone()
-        cursor.close()
-        conn.close()
+            # Get image from database
+            cursor.execute(f"SELECT img FROM announcement_images WHERE {primary_key_column} = %s", (image_id,))
+            row = cursor.fetchone()
         
-        if not row or not row['img']:
-            return jsonify({'message': 'Image not found'}), 404
+            if not row or not row['img']:
+                return jsonify({'message': 'Image not found'}), 404
         
-        data = row['img']
+            data = row['img']
         
-        # --- CLOUD STORAGE REDIRECT ---
-        if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
-            from flask import redirect
-            from services.applicant_document_service import normalize_supabase_url
-            normalized_url = normalize_supabase_url(data)
-            print(f"[ANN IMAGE] Redirecting {image_id} to cloud URL: {normalized_url[:60]}...", flush=True)
-            return redirect(normalized_url)
+            # --- CLOUD STORAGE REDIRECT ---
+            if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
+                from flask import redirect
+                from services.applicant_document_service import normalize_supabase_url
+                normalized_url = normalize_supabase_url(data)
+                print(f"[ANN IMAGE] Redirecting {image_id} to cloud URL: {normalized_url[:60]}...", flush=True)
+                return redirect(normalized_url)
 
-        encrypted_img = data
+            encrypted_img = data
         
-        # Convert memoryview to bytes if needed
-        if hasattr(encrypted_img, 'tobytes'):
-            encrypted_img = encrypted_img.tobytes()
-        elif not isinstance(encrypted_img, bytes):
-            encrypted_img = bytes(encrypted_img)
+            # Convert memoryview to bytes if needed
+            if hasattr(encrypted_img, 'tobytes'):
+                encrypted_img = encrypted_img.tobytes()
+            elif not isinstance(encrypted_img, bytes):
+                encrypted_img = bytes(encrypted_img)
         
-        # Decrypt with Fernet
-        if not _fernet:
-            return jsonify({'message': 'Encryption not configured'}), 500
+            # Decrypt with Fernet
+            if not _fernet:
+                return jsonify({'message': 'Encryption not configured'}), 500
         
-        try:
-            decrypted_img = _fernet.decrypt(encrypted_img)
-        except Exception as decrypt_error:
-            print(f"[IMAGE ENDPOINT] Failed to decrypt image {image_id}: {decrypt_error}")
-            return jsonify({'message': 'Failed to decrypt image'}), 500
+            try:
+                decrypted_img = _fernet.decrypt(encrypted_img)
+            except Exception as decrypt_error:
+                print(f"[IMAGE ENDPOINT] Failed to decrypt image {image_id}: {decrypt_error}")
+                return jsonify({'message': 'Failed to decrypt image'}), 500
         
-        # Detect image type from magic bytes
-        mime_type = get_mime_type(decrypted_img)
+            # Detect image type from magic bytes
+            mime_type = get_mime_type(decrypted_img)
         
-        # Return as binary file
-        return send_file(
-            BytesIO(decrypted_img),
-            mimetype=mime_type,
-            as_attachment=False,
-            download_name=f'announcement_image_{image_id}.png'
-        )
+            # Return as binary file
+            return send_file(
+                BytesIO(decrypted_img),
+                mimetype=mime_type,
+                as_attachment=False,
+                download_name=f'announcement_image_{image_id}.png'
+            )
         
     except Exception as e:
         print(f"[IMAGE ENDPOINT] Error: {str(e)}")
@@ -4005,65 +3930,63 @@ def get_announcement_image_by_index(ann_no, idx):
     """Get announcement image by announcement id and index."""
     entity = request.args.get('entity', 'announcement')
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        primary_key_column, foreign_key_column = get_entity_image_columns(cursor, entity)
+        with get_db() as conn:
+            cursor = conn.cursor()
+            primary_key_column, foreign_key_column = get_entity_image_columns(cursor, entity)
         
-        cursor.execute(
-            f"""
-            SELECT {primary_key_column}, img
-            FROM announcement_images
-            WHERE {foreign_key_column} = %s
-            ORDER BY {primary_key_column}
-            OFFSET %s LIMIT 1
-            """,
-            (ann_no, idx),
-        )
-        row = cursor.fetchone()
-        cursor.close()
-        conn.close()
+            cursor.execute(
+                f"""
+                SELECT {primary_key_column}, img
+                FROM announcement_images
+                WHERE {foreign_key_column} = %s
+                ORDER BY {primary_key_column}
+                OFFSET %s LIMIT 1
+                """,
+                (ann_no, idx),
+            )
+            row = cursor.fetchone()
         
-        if not row or not row['img']:
-            return jsonify({'message': f'Image not found for announcement {ann_no} at index {idx}'}), 404
+            if not row or not row['img']:
+                return jsonify({'message': f'Image not found for announcement {ann_no} at index {idx}'}), 404
         
-        data = row['img']
+            data = row['img']
         
-        # --- CLOUD STORAGE REDIRECT ---
-        if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
-            from flask import redirect
-            from services.applicant_document_service import normalize_supabase_url
-            normalized_url = normalize_supabase_url(data)
-            print(f"[ANN INDEX ENDPOINT] Redirecting {ann_no}/{idx} to cloud URL: {normalized_url[:60]}...", flush=True)
-            return redirect(normalized_url)
+            # --- CLOUD STORAGE REDIRECT ---
+            if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
+                from flask import redirect
+                from services.applicant_document_service import normalize_supabase_url
+                normalized_url = normalize_supabase_url(data)
+                print(f"[ANN INDEX ENDPOINT] Redirecting {ann_no}/{idx} to cloud URL: {normalized_url[:60]}...", flush=True)
+                return redirect(normalized_url)
 
-        encrypted_img = data
+            encrypted_img = data
         
-        # Convert memoryview to bytes if needed
-        if hasattr(encrypted_img, 'tobytes'):
-            encrypted_img = encrypted_img.tobytes()
-        elif not isinstance(encrypted_img, bytes):
-            encrypted_img = bytes(encrypted_img)
+            # Convert memoryview to bytes if needed
+            if hasattr(encrypted_img, 'tobytes'):
+                encrypted_img = encrypted_img.tobytes()
+            elif not isinstance(encrypted_img, bytes):
+                encrypted_img = bytes(encrypted_img)
         
-        # Decrypt with Fernet
-        if not _fernet:
-            return jsonify({'message': 'Encryption not configured'}), 500
+            # Decrypt with Fernet
+            if not _fernet:
+                return jsonify({'message': 'Encryption not configured'}), 500
         
-        try:
-            decrypted_img = _fernet.decrypt(encrypted_img)
-        except Exception as decrypt_error:
-            print(f"[IMAGE ENDPOINT] Failed to decrypt image for announcement {ann_no} at index {idx}: {decrypt_error}")
-            return jsonify({'message': 'Failed to decrypt image'}), 500
+            try:
+                decrypted_img = _fernet.decrypt(encrypted_img)
+            except Exception as decrypt_error:
+                print(f"[IMAGE ENDPOINT] Failed to decrypt image for announcement {ann_no} at index {idx}: {decrypt_error}")
+                return jsonify({'message': 'Failed to decrypt image'}), 500
         
-        # Detect image type from magic bytes
-        mime_type = get_mime_type(decrypted_img)
+            # Detect image type from magic bytes
+            mime_type = get_mime_type(decrypted_img)
         
-        # Return as binary file
-        return send_file(
-            BytesIO(decrypted_img),
-            mimetype=mime_type,
-            as_attachment=False,
-            download_name=f'announcement_{ann_no}_image_{idx}.png'
-        )
+            # Return as binary file
+            return send_file(
+                BytesIO(decrypted_img),
+                mimetype=mime_type,
+                as_attachment=False,
+                download_name=f'announcement_{ann_no}_image_{idx}.png'
+            )
         
     except Exception as e:
         print(f"[IMAGE ENDPOINT] Error: {str(e)}")
@@ -4177,116 +4100,114 @@ def get_current_user_info(current_user_id, pro_no, role):
 @token_required
 def get_admin_announcements(current_user_id, pro_no, role):
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        resolved_provider_no, _ = resolve_provider_context(cur, current_user_id, role, pro_no)
-        is_super_admin = (role or '').strip().lower() == 'admin'
-        try:
-            primary_key_column, foreign_key_column = get_entity_image_columns(cur, 'announcement')
-        except Exception:
-            primary_key_column, foreign_key_column = None, None
+        with get_db() as conn:
+            cur = conn.cursor()
+            resolved_provider_no, _ = resolve_provider_context(cur, current_user_id, role, pro_no)
+            is_super_admin = (role or '').strip().lower() == 'admin'
+            try:
+                primary_key_column, foreign_key_column = get_entity_image_columns(cur, 'announcement')
+            except Exception:
+                primary_key_column, foreign_key_column = None, None
 
-        announcement_columns = get_table_columns(cur, 'announcements')
+            announcement_columns = get_table_columns(cur, 'announcements')
 
-        if 'time_added' in announcement_columns:
-            date_col = 'a.time_added'
-            order_col = 'a.time_added DESC'
-        elif 'status_updated' in announcement_columns:
-            date_col = 'a.status_updated'
-            order_col = 'a.status_updated DESC'
-        elif 'ann_date' in announcement_columns:
-            date_col = 'a.ann_date'
-            order_col = 'a.ann_date DESC'
-        else:
-            date_col = 'NULL'
-            order_col = 'a.ann_no DESC'
-
-        include_removed = request.args.get('include_removed', 'false').lower() == 'true'
-        where_clauses = []
-        if 'is_removed' in announcement_columns and not include_removed:
-            where_clauses.append('COALESCE(a.is_removed, FALSE) = FALSE')
-        
-        is_removed_expr = 'COALESCE(a.is_removed, FALSE)' if 'is_removed' in announcement_columns else 'FALSE'
-
-        query = """
-            SELECT
-                a.ann_no,
-                a.ann_title,
-                a.ann_message,
-                {date_col} AS ann_date,
-                {date_col} AS time_added,
-                COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,
-                {is_removed_expr} as is_removed,
-                {image_select}
-            FROM announcements a
-            LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
-            {image_join}
-        """.format(
-            date_col=date_col,
-            is_removed_expr=is_removed_expr,
-            image_select=f"ai.{primary_key_column} AS image_id, ai.img AS announcement_image_data" if primary_key_column and foreign_key_column else "NULL AS image_id, NULL AS announcement_image_data",
-            image_join=f"LEFT JOIN announcement_images ai ON a.ann_no = ai.{foreign_key_column}" if primary_key_column and foreign_key_column else "",
-        )
-        params = []
-
-        if where_clauses:
-            query += ' WHERE ' + ' AND '.join(where_clauses)
-
-        if not is_super_admin:
-            if resolved_provider_no is None:
-                cur.close()
-                conn.close()
-                return jsonify({'message': 'User not associated with a scholarship provider'}), 403
-            query += (' AND ' if where_clauses else ' WHERE ') + 'a.pro_no = %s'
-            params.append(resolved_provider_no)
-
-        if primary_key_column and foreign_key_column:
-            query += f' ORDER BY {order_col}, ai.{primary_key_column}'
-        else:
-            query += f' ORDER BY {order_col}, a.ann_no DESC'
-        cur.execute(query, params)
-        rows = cur.fetchall()
-
-        announcements = {}
-        for row in rows:
-            row_dict = dict(row)
-            ann_no = row_dict['ann_no']
-            image_id = row_dict.pop('image_id', None)
-            ann_date = row_dict.get('ann_date')
-
-            if ann_date and hasattr(ann_date, 'isoformat'):
-                row_dict['created_at'] = ann_date.isoformat()
-            elif ann_date:
-                row_dict['created_at'] = str(ann_date)
+            if 'time_added' in announcement_columns:
+                date_col = 'a.time_added'
+                order_col = 'a.time_added DESC'
+            elif 'status_updated' in announcement_columns:
+                date_col = 'a.status_updated'
+                order_col = 'a.status_updated DESC'
+            elif 'ann_date' in announcement_columns:
+                date_col = 'a.ann_date'
+                order_col = 'a.ann_date DESC'
             else:
-                row_dict['created_at'] = None
+                date_col = 'NULL'
+                order_col = 'a.ann_no DESC'
 
-            if ann_no not in announcements:
-                announcements[ann_no] = {
-                    **row_dict,
-                    'announcementImages': [],
-                }
+            include_removed = request.args.get('include_removed', 'false').lower() == 'true'
+            where_clauses = []
+            if 'is_removed' in announcement_columns and not include_removed:
+                where_clauses.append('COALESCE(a.is_removed, FALSE) = FALSE')
+        
+            is_removed_expr = 'COALESCE(a.is_removed, FALSE)' if 'is_removed' in announcement_columns else 'FALSE'
 
-            if image_id is not None:
-                img_data_val = row_dict.get('announcement_image_data')
-                
-                # Check for cloud URL directly in result set
-                if isinstance(img_data_val, str) and img_data_val.startswith('http'):
-                    image_url = normalize_supabase_url(img_data_val)
+            query = """
+                SELECT
+                    a.ann_no,
+                    a.ann_title,
+                    a.ann_message,
+                    {date_col} AS ann_date,
+                    {date_col} AS time_added,
+                    COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,
+                    {is_removed_expr} as is_removed,
+                    {image_select}
+                FROM announcements a
+                LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
+                {image_join}
+            """.format(
+                date_col=date_col,
+                is_removed_expr=is_removed_expr,
+                image_select=f"ai.{primary_key_column} AS image_id, ai.img AS announcement_image_data" if primary_key_column and foreign_key_column else "NULL AS image_id, NULL AS announcement_image_data",
+                image_join=f"LEFT JOIN announcement_images ai ON a.ann_no = ai.{foreign_key_column}" if primary_key_column and foreign_key_column else "",
+            )
+            params = []
+
+            if where_clauses:
+                query += ' WHERE ' + ' AND '.join(where_clauses)
+
+            if not is_super_admin:
+                if resolved_provider_no is None:
+                    cur.close()
+                    return jsonify({'message': 'User not associated with a scholarship provider'}), 403
+                query += (' AND ' if where_clauses else ' WHERE ') + 'a.pro_no = %s'
+                params.append(resolved_provider_no)
+
+            if primary_key_column and foreign_key_column:
+                query += f' ORDER BY {order_col}, ai.{primary_key_column}'
+            else:
+                query += f' ORDER BY {order_col}, a.ann_no DESC'
+            cur.execute(query, params)
+            rows = cur.fetchall()
+
+            announcements = {}
+            for row in rows:
+                row_dict = dict(row)
+                ann_no = row_dict['ann_no']
+                image_id = row_dict.pop('image_id', None)
+                ann_date = row_dict.get('ann_date')
+
+                if ann_date and hasattr(ann_date, 'isoformat'):
+                    row_dict['created_at'] = ann_date.isoformat()
+                elif ann_date:
+                    row_dict['created_at'] = str(ann_date)
                 else:
-                    image_url = url_for(
-                        'admin_api.get_announcement_image_by_index',
-                        ann_no=ann_no,
-                        idx=len(announcements[ann_no]['announcementImages']),
-                        entity='announcement',
-                        _external=True,
-                    )
-                
-                announcements[ann_no]['announcementImages'].append(image_url)
+                    row_dict['created_at'] = None
 
-        cur.close()
-        conn.close()
-        return jsonify(list(announcements.values())), 200
+                if ann_no not in announcements:
+                    announcements[ann_no] = {
+                        **row_dict,
+                        'announcementImages': [],
+                    }
+
+                if image_id is not None:
+                    img_data_val = row_dict.get('announcement_image_data')
+                
+                    # Check for cloud URL directly in result set
+                    if isinstance(img_data_val, str) and img_data_val.startswith('http'):
+                        image_url = normalize_supabase_url(img_data_val)
+                    else:
+                        image_url = url_for(
+                            'admin_api.get_announcement_image_by_index',
+                            ann_no=ann_no,
+                            idx=len(announcements[ann_no]['announcementImages']),
+                            entity='announcement',
+                            _external=True,
+                        )
+                
+                    announcements[ann_no]['announcementImages'].append(image_url)
+
+            cur.close()
+            return jsonify(list(announcements.values())), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 
@@ -4318,81 +4239,81 @@ def create_announcement(current_user_id, pro_no, role):
         return jsonify({'message': 'Title and content are required'}), 400
         
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        target_pro_no, provider_name = resolve_provider_context(cur, current_user_id, role, pro_no)
+        with get_db() as conn:
+            cur = conn.cursor()
+            target_pro_no, provider_name = resolve_provider_context(cur, current_user_id, role, pro_no)
 
-        if role != 'Admin' and target_pro_no is None:
-            return jsonify({'message': 'User not associated with a scholarship provider'}), 403
+            if role != 'Admin' and target_pro_no is None:
+                return jsonify({'message': 'User not associated with a scholarship provider'}), 403
         
-        cur.execute("""
-            INSERT INTO announcements (ann_title, ann_message, pro_no, time_added)
-            VALUES (%s, %s, %s, %s)
-            RETURNING ann_no
-        """, (title, message, target_pro_no, time_added))
-        ann_no = cur.fetchone()['ann_no']
+            cur.execute("""
+                INSERT INTO announcements (ann_title, ann_message, pro_no, time_added)
+                VALUES (%s, %s, %s, %s)
+                RETURNING ann_no
+            """, (title, message, target_pro_no, time_added))
+            ann_no = cur.fetchone()['ann_no']
 
-        # Handle images (support both JSON base64 and Multipart files)
-        image_attachments = []
+            # Handle images (support both JSON base64 and Multipart files)
+            image_attachments = []
         
-        # 1. New Multipart File Uploads
-        if request.files:
-            # Sort keys to maintain order if needed
-            for file_key in sorted(request.files.keys()):
-                if file_key.startswith('image_'):
-                    file = request.files[file_key]
-                    if file:
-                        image_attachments.append(file.read())
+            # 1. New Multipart File Uploads
+            if request.files:
+                # Sort keys to maintain order if needed
+                for file_key in sorted(request.files.keys()):
+                    if file_key.startswith('image_'):
+                        file = request.files[file_key]
+                        if file:
+                            image_attachments.append(file.read())
         
-        # 2. Base64 images from JSON
-        if 'announcementImages' in data and isinstance(data['announcementImages'], list):
-            for image_data in data['announcementImages']:
-                url = image_data.get('url') if isinstance(image_data, dict) else image_data
-                if url and isinstance(url, str) and url.startswith('data:'):
-                    img_bytes = base64_to_bytes(url)
-                    if img_bytes:
-                        image_attachments.append(img_bytes)
+            # 2. Base64 images from JSON
+            if 'announcementImages' in data and isinstance(data['announcementImages'], list):
+                for image_data in data['announcementImages']:
+                    url = image_data.get('url') if isinstance(image_data, dict) else image_data
+                    if url and isinstance(url, str) and url.startswith('data:'):
+                        img_bytes = base64_to_bytes(url)
+                        if img_bytes:
+                            image_attachments.append(img_bytes)
 
-        if image_attachments:
-            _, foreign_key_column = get_entity_image_columns(cur, 'announcement')
-            for i, img_bytes in enumerate(image_attachments):
-                # Upload to Supabase bucket 'announcement_images'
-                file_path = f"ann_{ann_no}_img_{i}_{int(datetime.now().timestamp())}.jpg"
-                url = upload_to_supabase(img_bytes, 'announcement_images', file_path)
+            if image_attachments:
+                _, foreign_key_column = get_entity_image_columns(cur, 'announcement')
+                for i, img_bytes in enumerate(image_attachments):
+                    # Upload to Supabase bucket 'announcement_images'
+                    file_path = f"ann_{ann_no}_img_{i}_{int(datetime.now().timestamp())}.jpg"
+                    url = upload_to_supabase(img_bytes, 'announcement_images', file_path)
                 
-                if url:
-                    cur.execute(
-                        f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
-                        (ann_no, url)
-                    )
-                else:
-                    print(f"[ANNOUNCEMENT ERROR] Storage failed for image {i}. Check Supabase credentials/bucket.", flush=True)
-                    raise ValueError("Failed to upload announcement image to cloud storage bucket 'announcement_images'.")
+                    if url:
+                        cur.execute(
+                            f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
+                            (ann_no, url)
+                        )
+                    else:
+                        print(f"[ANNOUNCEMENT ERROR] Storage failed for image {i}. Check Supabase credentials/bucket.", flush=True)
+                        raise ValueError("Failed to upload announcement image to cloud storage bucket 'announcement_images'.")
 
-        conn.commit()
+            conn.commit()
         
-        record_admin_activity(
-            actor_user_no=current_user_id,
-            action='create_announcement',
-            target_type='announcement',
-            target_id=ann_no,
-            target_label=title,
-            provider_no=target_pro_no
-        )
+            record_admin_activity(
+                actor_user_no=current_user_id,
+                action='create_announcement',
+                target_type='announcement',
+                target_id=ann_no,
+                target_label=title,
+                provider_no=target_pro_no
+            )
         
-        # Notify students based on send_to_all_applicants flag
-        run_background_task(
-            notify_announcement_applicants,
-            title=title,
-            message=message,
-            provider_no=target_pro_no,
-            provider_name=provider_name,
-            send_to_all_applicants=send_to_all_applicants,
-            send_email_alerts=False, # Temporarily disabled to investigate delivery issues
-        )
-        print(f"[ANNOUNCEMENT] Notification + email delivery started in background for announcement {ann_no}")
+            # Notify students based on send_to_all_applicants flag
+            run_background_task(
+                notify_announcement_applicants,
+                title=title,
+                message=message,
+                provider_no=target_pro_no,
+                provider_name=provider_name,
+                send_to_all_applicants=send_to_all_applicants,
+                send_email_alerts=False, # Temporarily disabled to investigate delivery issues
+            )
+            print(f"[ANNOUNCEMENT] Notification + email delivery started in background for announcement {ann_no}")
 
-        return jsonify({'message': 'Announcement created', 'ann_no': ann_no}), 201
+            return jsonify({'message': 'Announcement created', 'ann_no': ann_no}), 201
     except Exception as e:
         if 'conn' in locals() and conn:
             conn.rollback()
@@ -4434,133 +4355,133 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
         return jsonify({'message': 'Title and content are required'}), 400
         
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        resolved_provider_no, resolved_provider_name = resolve_provider_context(cur, current_user_id, role, pro_no)
-        primary_key_column, foreign_key_column = get_entity_image_columns(cur, 'announcement')
-        cur.execute("SELECT pro_no FROM announcements WHERE ann_no = %s", (ann_no,))
-        announcement_row = cur.fetchone()
-        if not announcement_row:
-            return jsonify({'message': 'Announcement not found'}), 404
-        target_provider_no = resolved_provider_no if resolved_provider_no is not None else announcement_row['pro_no']
-        target_provider_name = resolved_provider_name
-        if (not target_provider_name or str(target_provider_name).strip().lower() == 'all') and target_provider_no is not None:
-            cur.execute("SELECT provider_name FROM scholarship_providers WHERE pro_no = %s", (target_provider_no,))
-            provider_row = cur.fetchone()
-            if provider_row and provider_row.get('provider_name'):
-                target_provider_name = provider_row['provider_name']
+        with get_db() as conn:
+            cur = conn.cursor()
+            resolved_provider_no, resolved_provider_name = resolve_provider_context(cur, current_user_id, role, pro_no)
+            primary_key_column, foreign_key_column = get_entity_image_columns(cur, 'announcement')
+            cur.execute("SELECT pro_no FROM announcements WHERE ann_no = %s", (ann_no,))
+            announcement_row = cur.fetchone()
+            if not announcement_row:
+                return jsonify({'message': 'Announcement not found'}), 404
+            target_provider_no = resolved_provider_no if resolved_provider_no is not None else announcement_row['pro_no']
+            target_provider_name = resolved_provider_name
+            if (not target_provider_name or str(target_provider_name).strip().lower() == 'all') and target_provider_no is not None:
+                cur.execute("SELECT provider_name FROM scholarship_providers WHERE pro_no = %s", (target_provider_no,))
+                provider_row = cur.fetchone()
+                if provider_row and provider_row.get('provider_name'):
+                    target_provider_name = provider_row['provider_name']
         
-        # Check ownership unless super admin
-        if role.lower() != 'admin':
-            if announcement_row['pro_no'] != resolved_provider_no:
-                return jsonify({'message': 'Unauthorized to update this announcement'}), 403
+            # Check ownership unless super admin
+            if role.lower() != 'admin':
+                if announcement_row['pro_no'] != resolved_provider_no:
+                    return jsonify({'message': 'Unauthorized to update this announcement'}), 403
         
-        cur.execute("""
-            UPDATE announcements 
-            SET ann_title = %s, ann_message = %s
-            WHERE ann_no = %s
-        """, (title, message, ann_no))
+            cur.execute("""
+                UPDATE announcements 
+                SET ann_title = %s, ann_message = %s
+                WHERE ann_no = %s
+            """, (title, message, ann_no))
 
-        # Optimized image update: Avoid downloading and re-uploading binary blobs
-        # 1. Map existing images to their primary keys
-        cur.execute(
-            f"SELECT {primary_key_column} FROM announcement_images WHERE {foreign_key_column} = %s ORDER BY {primary_key_column}",
-            (ann_no,)
-        )
-        existing_ids = [row[primary_key_column] for row in cur.fetchall()]
+            # Optimized image update: Avoid downloading and re-uploading binary blobs
+            # 1. Map existing images to their primary keys
+            cur.execute(
+                f"SELECT {primary_key_column} FROM announcement_images WHERE {foreign_key_column} = %s ORDER BY {primary_key_column}",
+                (ann_no,)
+            )
+            existing_ids = [row[primary_key_column] for row in cur.fetchall()]
         
-        # 2. Build instructions for the new sequence (either raw bytes or an existing ID)
-        new_sequence = []
+            # 2. Build instructions for the new sequence (either raw bytes or an existing ID)
+            new_sequence = []
         
-        # Process existing URLs and base64 from JSON
-        if 'announcementImages' in data and isinstance(data['announcementImages'], list):
-            for image_val in data['announcementImages']:
-                url = image_val.get('url') if isinstance(image_val, dict) else image_val
-                if not isinstance(url, str):
-                    continue
+            # Process existing URLs and base64 from JSON
+            if 'announcementImages' in data and isinstance(data['announcementImages'], list):
+                for image_val in data['announcementImages']:
+                    url = image_val.get('url') if isinstance(image_val, dict) else image_val
+                    if not isinstance(url, str):
+                        continue
                 
-                if url.startswith('data:'):
-                    img_bytes = base64_to_bytes(url)
-                    if img_bytes:
-                        new_sequence.append(img_bytes)
-                elif url.startswith('http'):
-                    # Preserve existing cloud URLs
-                    new_sequence.append(url)
-                elif '/announcement-image/' in url:
-                    try:
-                        # Extract the index from the URL (last part of the path)
-                        # Remove query params if any
-                        clean_url = url.split('?')[0]
-                        idx_str = clean_url.split('/')[-1]
-                        idx = int(idx_str)
-                        if 0 <= idx < len(existing_ids):
-                            new_sequence.append(existing_ids[idx])
-                    except:
-                        pass
+                    if url.startswith('data:'):
+                        img_bytes = base64_to_bytes(url)
+                        if img_bytes:
+                            new_sequence.append(img_bytes)
+                    elif url.startswith('http'):
+                        # Preserve existing cloud URLs
+                        new_sequence.append(url)
+                    elif '/announcement-image/' in url:
+                        try:
+                            # Extract the index from the URL (last part of the path)
+                            # Remove query params if any
+                            clean_url = url.split('?')[0]
+                            idx_str = clean_url.split('/')[-1]
+                            idx = int(idx_str)
+                            if 0 <= idx < len(existing_ids):
+                                new_sequence.append(existing_ids[idx])
+                        except:
+                            pass
         
-        # 3. Process new Multipart File Uploads
-        if request.files:
-            for file_key in sorted(request.files.keys()):
-                if file_key.startswith('image_'):
-                    file = request.files[file_key]
-                    if file:
-                        new_sequence.append(file.read())
+            # 3. Process new Multipart File Uploads
+            if request.files:
+                for file_key in sorted(request.files.keys()):
+                    if file_key.startswith('image_'):
+                        file = request.files[file_key]
+                        if file:
+                            new_sequence.append(file.read())
 
-        # 4. Sync image table using a temporary staging table to avoid DB round-trips for blobs
-        cur.execute("CREATE TEMP TABLE temp_ann_imgs (img text)")
-        for i, item in enumerate(new_sequence):
-            if isinstance(item, bytes):
-                # New image - ALWAYS cloud storage for announcements
-                file_path = f"ann_{ann_no}_upd_{i}_{int(datetime.now().timestamp())}.jpg"
-                try:
-                    url = upload_to_supabase(item, 'announcement_images', file_path)
-                    if url:
-                        cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (url,))
-                    else:
-                        print(f"[ANNOUNCEMENT UPDATE] Cloud storage failed for image {i}. Falling back to Base64 to prevent 500.", flush=True)
+            # 4. Sync image table using a temporary staging table to avoid DB round-trips for blobs
+            cur.execute("CREATE TEMP TABLE temp_ann_imgs (img text)")
+            for i, item in enumerate(new_sequence):
+                if isinstance(item, bytes):
+                    # New image - ALWAYS cloud storage for announcements
+                    file_path = f"ann_{ann_no}_upd_{i}_{int(datetime.now().timestamp())}.jpg"
+                    try:
+                        url = upload_to_supabase(item, 'announcement_images', file_path)
+                        if url:
+                            cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (url,))
+                        else:
+                            print(f"[ANNOUNCEMENT UPDATE] Cloud storage failed for image {i}. Falling back to Base64 to prevent 500.", flush=True)
+                            b64 = base64.b64encode(item).decode('utf-8')
+                            cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (f"data:image/jpeg;base64,{b64}",))
+                    except Exception as e:
+                        print(f"[ANNOUNCEMENT UPDATE] Cloud upload error: {e}", flush=True)
                         b64 = base64.b64encode(item).decode('utf-8')
                         cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (f"data:image/jpeg;base64,{b64}",))
-                except Exception as e:
-                    print(f"[ANNOUNCEMENT UPDATE] Cloud upload error: {e}", flush=True)
-                    b64 = base64.b64encode(item).decode('utf-8')
-                    cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (f"data:image/jpeg;base64,{b64}",))
-            else:
-                # Existing image (either a URL string or an ID int)
-                if isinstance(item, str) and item.startswith('http'):
-                    cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (item,))
                 else:
-                    # Copy from DB (might be BYTEA or URL)
-                    cur.execute(f"INSERT INTO temp_ann_imgs (img) SELECT img FROM announcement_images WHERE {primary_key_column} = %s", (item,))
+                    # Existing image (either a URL string or an ID int)
+                    if isinstance(item, str) and item.startswith('http'):
+                        cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (item,))
+                    else:
+                        # Copy from DB (might be BYTEA or URL)
+                        cur.execute(f"INSERT INTO temp_ann_imgs (img) SELECT img FROM announcement_images WHERE {primary_key_column} = %s", (item,))
         
-        # Replace the original image set
-        cur.execute(f"DELETE FROM announcement_images WHERE {foreign_key_column} = %s", (ann_no,))
-        cur.execute(f"INSERT INTO announcement_images ({foreign_key_column}, img) SELECT %s, img FROM temp_ann_imgs", (ann_no,))
-        cur.execute("DROP TABLE temp_ann_imgs")
+            # Replace the original image set
+            cur.execute(f"DELETE FROM announcement_images WHERE {foreign_key_column} = %s", (ann_no,))
+            cur.execute(f"INSERT INTO announcement_images ({foreign_key_column}, img) SELECT %s, img FROM temp_ann_imgs", (ann_no,))
+            cur.execute("DROP TABLE temp_ann_imgs")
 
-        conn.commit()
+            conn.commit()
         
-        record_admin_activity(
-            actor_user_no=current_user_id,
-            action='update_announcement',
-            target_type='announcement',
-            target_id=ann_no,
-            target_label=title,
-            provider_no=resolved_provider_no
-        )
-
-        if should_notify:
-            run_background_task(
-                notify_announcement_applicants,
-                title,
-                message,
-                target_provider_no,
-                target_provider_name,
-                send_to_all_applicants,
-                True,
-                notification_title_prefix='Announcement Updated',
+            record_admin_activity(
+                actor_user_no=current_user_id,
+                action='update_announcement',
+                target_type='announcement',
+                target_id=ann_no,
+                target_label=title,
+                provider_no=resolved_provider_no
             )
+
+            if should_notify:
+                run_background_task(
+                    notify_announcement_applicants,
+                    title,
+                    message,
+                    target_provider_no,
+                    target_provider_name,
+                    send_to_all_applicants,
+                    True,
+                    notification_title_prefix='Announcement Updated',
+                )
         
-        return jsonify({'message': 'Announcement updated', 'ann_no': ann_no}), 200
+            return jsonify({'message': 'Announcement updated', 'ann_no': ann_no}), 200
     except Exception as e:
         if 'conn' in locals() and conn:
             conn.rollback()
@@ -4583,48 +4504,48 @@ def delete_announcement(current_user_id, pro_no, role, ann_no):
     conn = None
     cur = None
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        ensure_schema_integrity(cur)
-        resolved_provider_no, _ = resolve_provider_context(cur, current_user_id, role, pro_no)
+        with get_db() as conn:
+            cur = conn.cursor()
+            ensure_schema_integrity(cur)
+            resolved_provider_no, _ = resolve_provider_context(cur, current_user_id, role, pro_no)
         
-        # Check ownership unless super admin
-        if role.lower() != 'admin':
-            cur.execute("SELECT pro_no, ann_title FROM announcements WHERE ann_no = %s", (ann_no,))
-            row = cur.fetchone()
-            if not row:
-                return jsonify({'message': 'Announcement not found'}), 404
-            if get_row_value(row, 'pro_no') != resolved_provider_no:
-                return jsonify({'message': 'Unauthorized to delete this announcement'}), 403
-            title = get_row_value(row, 'ann_title', 'Unknown')
-        else:
-            cur.execute("SELECT ann_title FROM announcements WHERE ann_no = %s", (ann_no,))
-            row = cur.fetchone()
-            title = get_row_value(row, 'ann_title', 'Unknown')
+            # Check ownership unless super admin
+            if role.lower() != 'admin':
+                cur.execute("SELECT pro_no, ann_title FROM announcements WHERE ann_no = %s", (ann_no,))
+                row = cur.fetchone()
+                if not row:
+                    return jsonify({'message': 'Announcement not found'}), 404
+                if get_row_value(row, 'pro_no') != resolved_provider_no:
+                    return jsonify({'message': 'Unauthorized to delete this announcement'}), 403
+                title = get_row_value(row, 'ann_title', 'Unknown')
+            else:
+                cur.execute("SELECT ann_title FROM announcements WHERE ann_no = %s", (ann_no,))
+                row = cur.fetchone()
+                title = get_row_value(row, 'ann_title', 'Unknown')
 
-        try:
-            _, foreign_key_column = get_entity_image_columns(cur, 'announcement')
-        except Exception:
-            foreign_key_column = None
+            try:
+                _, foreign_key_column = get_entity_image_columns(cur, 'announcement')
+            except Exception:
+                foreign_key_column = None
 
-        if foreign_key_column:
-            # We don't delete images for soft-deleted announcements to retain history
-            pass
+            if foreign_key_column:
+                # We don't delete images for soft-deleted announcements to retain history
+                pass
                 
-        # Soft-delete the announcement
-        cur.execute("UPDATE announcements SET is_removed = TRUE WHERE ann_no = %s", (ann_no,))
-        conn.commit()
+            # Soft-delete the announcement
+            cur.execute("UPDATE announcements SET is_removed = TRUE WHERE ann_no = %s", (ann_no,))
+            conn.commit()
         
-        record_admin_activity(
-            actor_user_no=current_user_id,
-            action='delete_announcement',
-            target_type='announcement',
-            target_id=ann_no,
-            target_label=title,
-            provider_no=resolved_provider_no
-        )
+            record_admin_activity(
+                actor_user_no=current_user_id,
+                action='delete_announcement',
+                target_type='announcement',
+                target_id=ann_no,
+                target_label=title,
+                provider_no=resolved_provider_no
+            )
         
-        return jsonify({'message': 'Announcement deleted'}), 200
+            return jsonify({'message': 'Announcement deleted'}), 200
     except Exception as e:
         print(f"[ANNOUNCEMENT DELETE] Error deleting announcement {ann_no}: {e}", flush=True)
         traceback.print_exc()
