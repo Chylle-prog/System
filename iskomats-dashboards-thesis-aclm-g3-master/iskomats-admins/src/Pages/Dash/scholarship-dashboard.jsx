@@ -1833,7 +1833,7 @@ export default function ScholarshipDashboard({
   };
 
   const acceptApplicant = async () => {
-    if (!viewApplicant || viewApplicant.listType !== 'all') return;
+    if (!viewApplicant || (viewApplicant.listType !== 'all' && viewApplicant.listType !== 'pending')) return;
     const { index } = viewApplicant;
     const applicant = data.applicants[index];
     if (!applicant) return;
@@ -1863,7 +1863,7 @@ export default function ScholarshipDashboard({
   };
 
   const declineApplicant = async () => {
-    if (!viewApplicant || viewApplicant.listType !== 'all') return;
+    if (!viewApplicant || (viewApplicant.listType !== 'all' && viewApplicant.listType !== 'pending')) return;
     const { index } = viewApplicant;
     const applicant = data.applicants[index];
     if (!applicant) return;
@@ -3968,10 +3968,12 @@ export default function ScholarshipDashboard({
     const { listType, index } = viewApplicant;
 
     // Use 'a' as the applicant object throughout
-    const list = listType === 'all' ? data.applicants : data[listType];
+    // 'all' and 'pending' both refer to data.applicants (pending applicants list)
+    const list = (listType === 'all' || listType === 'pending') ? data.applicants : data[listType];
+    if (!list) return null;
     const a = list[index];
     if (!a) return null;
-    const isPending = listType === 'all';
+    const isPending = listType === 'all' || listType === 'pending';
     const dispatchKey = getApplicantDispatchKey(a);
 
     // Normalize family data for display
