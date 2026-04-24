@@ -20,7 +20,7 @@ from functools import wraps
 
 import jwt
 from flask import Blueprint, jsonify, request, url_for
-from .crypto_service import get_fernet, decrypt_if_encrypted
+from services.crypto_service import get_fernet, decrypt_if_encrypted
 _fernet = get_fernet()
 
 from flask_bcrypt import Bcrypt
