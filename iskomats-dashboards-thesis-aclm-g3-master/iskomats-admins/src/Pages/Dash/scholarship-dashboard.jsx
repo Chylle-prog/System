@@ -3038,12 +3038,12 @@ export default function ScholarshipDashboard({
         'Course': app.course
       }));
 
-      const activeScholarship = trackScholarshipFilter !== 'all'
-        ? data.scholarshipPosts.find(p => (p.reqNo || p.id) === trackScholarshipFilter)?.scholarshipName || scholarshipLabel
-        : scholarshipLabel;
+      const activeScholarshipName = trackScholarshipFilter === 'all'
+        ? 'All scholarship types'
+        : (scholarshipFilterOptions.find(o => o.value === trackScholarshipFilter)?.label || scholarshipLabel);
 
       const addHeaderToSheet = (list, sheetName) => {
-        const ws = XLSX.utils.aoa_to_sheet([[activeScholarship], [`Report: ${sheetName}`], [`Generated: ${new Date().toLocaleString()}`], []]);
+        const ws = XLSX.utils.aoa_to_sheet([[sidebarTitle, activeScholarshipName], [`Report: ${sheetName}`], [`Generated: ${new Date().toLocaleString()}`], []]);
         const formattedData = formatTracking(list);
         XLSX.utils.sheet_add_json(ws, formattedData, { origin: 'A5' });
 
@@ -3073,7 +3073,7 @@ export default function ScholarshipDashboard({
     }));
 
     const activeScholarshipName = analyticsScholarshipFilter === 'all'
-      ? scholarshipLabel
+      ? 'All scholarship types'
       : (scholarshipFilterOptions.find(o => o.value === analyticsScholarshipFilter)?.label || scholarshipLabel);
 
     const createSheetWithHeader = (list, title) => {

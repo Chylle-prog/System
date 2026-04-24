@@ -1923,7 +1923,7 @@ def init_socketio(socketio):
                        m.message, m.timestamp,
                        CASE 
                            WHEN s.is_accepted = 'Accepted' THEN 'Accepted'
-                           WHEN s.is_accepted = 'Rejected' THEN 'Declined'
+                           WHEN s.is_accepted = 'Rejected' THEN 'Rejected'
                            WHEN s.is_accepted = 'Cancelled' THEN 'Cancelled'
                            ELSE 'Pending'
                        END as student_status
@@ -2042,7 +2042,7 @@ def init_socketio(socketio):
             cursor.execute("""
                 SELECT CASE 
                     WHEN ast.is_accepted = 'Accepted' THEN 'Accepted'
-                    WHEN ast.is_accepted = 'Rejected' THEN 'Declined'
+                    WHEN ast.is_accepted = 'Rejected' THEN 'Rejected'
                     WHEN ast.is_accepted = 'Cancelled' THEN 'Cancelled'
                     ELSE 'Pending'
                 END as student_status
@@ -3395,7 +3395,8 @@ def get_applicants(current_user_id, pro_no, role, program):
                    e.email_address as email,
                    CASE 
                        WHEN s.is_accepted = 'Accepted' THEN 'Accepted'
-                       WHEN s.is_accepted = 'Rejected' THEN 'Declined'
+                       WHEN s.is_accepted = 'Rejected' THEN 'Rejected'
+                       WHEN s.is_accepted = 'Cancelled' THEN 'Cancelled'
                        ELSE 'Pending'
                    END as status,
                    esc.scholarship_name as "scholarshipName",
