@@ -323,6 +323,7 @@ const StudentInfo = () => {
     mayorIndigency_photo: null,
     mayorValidID_photo: null
   });
+  const [activeCameraField, setActiveCameraField] = useState('face_photo');
 
   const invalidateVerificationState = (docType, reason) => {
     const message = `Invalid: ${reason}. Please run the scan again.`;
@@ -549,6 +550,10 @@ const StudentInfo = () => {
     const hasVideo = videoValue && (typeof videoValue === 'string' ? videoValue.length > 0 : true);
     const isDisabled = isUploadingVideo || isVerifying;
 
+    const handleCameraClick = () => {
+      openCamera(photoName);
+    };
+
     const photoBtnLabel = photoLabel || 'Image';
     const videoBtnLabel = photoLabel ? `${photoLabel} Video` : 'Video';
 
@@ -558,7 +563,7 @@ const StudentInfo = () => {
 
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '0.8rem' }}>
           {/* PHOTO PICKER */}
-          <div style={{ flex: '1', minWidth: '160px' }}>
+          <div style={{ flex: '1', minWidth: '140px' }}>
             <input id={photoId} type="file" name={photoName} accept="image/*" onChange={onPhotoChange} style={{ display: 'none' }} disabled={isDisabled} />
             <label
               htmlFor={isDisabled ? undefined : photoId}
@@ -567,23 +572,55 @@ const StudentInfo = () => {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '8px',
-                padding: '0.8rem 1rem',
+                padding: '0.8rem 0.5rem',
                 borderRadius: '14px',
                 border: '1px solid #cbd5e1',
                 background: isDisabled ? '#f1f5f9' : '#fff',
                 color: isDisabled ? '#64748b' : '#0f172a',
                 cursor: isDisabled ? 'not-allowed' : 'pointer',
-                fontSize: '0.82rem',
+                fontSize: '0.8rem',
                 fontWeight: '700',
                 boxShadow: '0 4px 12px rgba(15, 23, 42, 0.05)',
                 width: '100%',
                 transition: 'all 0.2s ease',
                 opacity: isDisabled ? 0.6 : 1
               }}
+              title="Upload from device"
             >
-              <i className={isVerifying ? "fas fa-spinner fa-spin" : "fas fa-image"} style={{ color: isDisabled ? '#94a3b8' : 'var(--primary)' }}></i>
-              {isVerifying ? 'Verifying...' : (photoValue ? `Replace ${photoBtnLabel}` : `Add ${photoBtnLabel}`)}
+              <i className={isVerifying ? "fas fa-spinner fa-spin" : "fas fa-file-upload"} style={{ color: isDisabled ? '#94a3b8' : 'var(--primary)' }}></i>
+              {isVerifying ? 'Verifying...' : (photoValue ? 'Replace' : 'Upload')}
             </label>
+          </div>
+
+          {/* CAMERA PICKER */}
+          <div style={{ flex: '1', minWidth: '140px' }}>
+            <button
+              type="button"
+              onClick={handleCameraClick}
+              disabled={isDisabled}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                padding: '0.8rem 0.5rem',
+                borderRadius: '14px',
+                border: '1px solid #cbd5e1',
+                background: isDisabled ? '#f1f5f9' : '#fff',
+                color: isDisabled ? '#64748b' : '#0f172a',
+                cursor: isDisabled ? 'not-allowed' : 'pointer',
+                fontSize: '0.8rem',
+                fontWeight: '700',
+                boxShadow: '0 4px 12px rgba(15, 23, 42, 0.05)',
+                width: '100%',
+                transition: 'all 0.2s ease',
+                opacity: isDisabled ? 0.6 : 1
+              }}
+              title="Capture from camera"
+            >
+              <i className="fas fa-camera" style={{ color: isDisabled ? '#94a3b8' : 'var(--primary)' }}></i>
+              {photoValue ? 'Retake' : 'Camera'}
+            </button>
           </div>
 
           {/* VIDEO PICKER */}
@@ -1676,7 +1713,8 @@ const StudentInfo = () => {
 
 
 
-  const openCamera = async () => {
+  const openCamera = async (fieldName = 'face_photo') => {
+    setActiveCameraField(fieldName);
     setShowCameraModal(true);
     setCameraInitializing(true);
     setCameraError(null);
@@ -1775,10 +1813,13 @@ const StudentInfo = () => {
     }
 
     const dataUrl = finalCanvas.toDataURL('image/jpeg', 0.8);
-    setPhotos(prev => ({ ...prev, face_photo: dataUrl }));
-    setFaceVerificationPreview(dataUrl);
-    setFaceVerified(null);
-
+    setPhotos(prev => ({ ...prev, [activeCameraField]: dataUrl }));
+    
+    if (activeCameraField === 'face_photo') {
+      setFaceVerificationPreview(dataUrl);
+      setFaceVerified(null);
+    }
+    
     closeCamera();
   };
 
@@ -4351,13 +4392,64 @@ const StudentInfo = () => {
                       <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1rem', textAlign: 'center' }}>Take a live photo using your camera to verify your identity.</p>
 
                       <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
-                        <div style={{ border: '2px solid #fff', borderRadius: '15px', width: '220px', height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e1e8f0', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)' }}>
+                        <div style={{ 
+                          border: '2px solid #fff', 
+                          borderRadius: '15px', 
+                          width: '220px', 
+                          height: '240px', 
+                          display: 'flex', 
+                          flexDirection: 'column',
+                          alignItems: 'center', 
+                          justifyContent: 'center', 
+                          background: '#e1e8f0', 
+                          position: 'relative', 
+                          overflow: 'hidden', 
+                          boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)',
+                          padding: photos.face_photo ? '0' : '1.5rem'
+                        }}>
                           {photos.face_photo ? (
-                            <img src={photos.face_photo} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Face Verification" />
+                            <>
+                              <img src={photos.face_photo} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Face Verification" />
+                              <div style={{ position: 'absolute', bottom: '10px', left: '0', right: '0', display: 'flex', justifyContent: 'center', gap: '8px', padding: '0 10px' }}>
+                                <button 
+                                  type="button" 
+                                  onClick={() => openCamera('face_photo')} 
+                                  style={{ background: 'rgba(255,255,255,0.9)', color: 'var(--primary)', border: 'none', borderRadius: '10px', padding: '6px 12px', fontSize: '0.75rem', fontWeight: '800', cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '5px' }}
+                                >
+                                  <i className="fas fa-camera"></i> Retake
+                                </button>
+                                <button 
+                                  type="button" 
+                                  onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); }} 
+                                  style={{ background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', borderRadius: '10px', padding: '6px 12px', fontSize: '0.75rem', fontWeight: '800', cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '5px' }}
+                                >
+                                  <i className="fas fa-trash"></i> Remove
+                                </button>
+                              </div>
+                            </>
                           ) : (
-                            <button type="button" onClick={openCamera} style={{ border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                              <i className="fas fa-camera" style={{ fontSize: '2rem' }}></i>
-                              <span style={{ fontSize: '0.8rem', fontWeight: '700' }}>Capture</span>
+                            <button 
+                              type="button" 
+                              onClick={() => openCamera('face_photo')} 
+                              style={{ 
+                                border: '2px solid var(--primary)', 
+                                background: 'white', 
+                                color: 'var(--primary)', 
+                                cursor: 'pointer', 
+                                display: 'flex', 
+                                flexDirection: 'column', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                                gap: '12px',
+                                padding: '1.5rem',
+                                borderRadius: '18px',
+                                width: '100%',
+                                transition: 'all 0.2s ease'
+                              }}
+                              className="hover-pop"
+                            >
+                              <i className="fas fa-camera" style={{ fontSize: '2.5rem' }}></i>
+                              <span style={{ fontSize: '0.9rem', fontWeight: '800', textTransform: 'uppercase' }}>Open Camera</span>
                             </button>
                           )}
                         </div>
@@ -4513,7 +4605,7 @@ const StudentInfo = () => {
               <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.8)', color: 'white', padding: '2rem' }}>
                 <i className="fas fa-exclamation-triangle" style={{ fontSize: '2rem', marginBottom: '1rem', color: '#ffcc00' }}></i>
                 <p>{cameraError.message}</p>
-                <button onClick={openCamera} className="submit-btn" style={{ marginTop: '1rem', padding: '0.5rem 1.5rem', height: 'auto' }}>Retry</button>
+                <button onClick={() => openCamera(activeCameraField)} className="submit-btn" style={{ marginTop: '1rem', padding: '0.5rem 1.5rem', height: 'auto' }}>Retry</button>
               </div>
             )}
           </div>
