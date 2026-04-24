@@ -173,7 +173,7 @@ const STEP_FIELDS = {
     'mayorCOE_photo', 'mayorGrades_photo'
   ],
   4: [
-    'privacyConsent', 'dataCertifyConsent',
+    'dataCertifyConsent',
     'applicantSignatureName', 'dateAccomplished'
   ]
 };
@@ -718,7 +718,6 @@ const StudentInfo = () => {
     schoolIdFront_video: null,
     schoolIdBack_video: null,
 
-    privacyConsent: false,
     dataCertifyConsent: false,
     applicantSignatureName: '',
     dateAccomplished: ''
@@ -1709,7 +1708,7 @@ const StudentInfo = () => {
   const isStep1Complete = STEP_FIELDS[1].every(field => formData[field]);
   const isStep2Complete = STEP_FIELDS[2].every(field => formData[field]);
   const isStep3DocumentsVerified = idVerified === 'success' && coeVerified === 'success' && gradesVerified === 'success';
-  const isStep4Complete = formData.privacyConsent && formData.dataCertifyConsent && (drawnSignature || formData.applicantSignatureName) && signatureVerified === 'success';
+  const isStep4Complete = formData.dataCertifyConsent && (drawnSignature || formData.applicantSignatureName) && signatureVerified === 'success';
 
   const [hasInteracted, setHasInteracted] = useState(false);
 
@@ -2137,10 +2136,6 @@ const StudentInfo = () => {
       return;
     }
 
-    if (!formData.privacyConsent) {
-      showPromptMessage('⚠️ Please accept the Privacy Policy to proceed.');
-      return;
-    }
     if (!formData.dataCertifyConsent) {
       showPromptMessage('⚠️ Please certify that the information provided is correct.');
       return;
@@ -3913,10 +3908,6 @@ const StudentInfo = () => {
                   <div style={{ fontSize: '0.85rem', color: '#555', lineHeight: '1.6', maxHeight: '150px', overflowY: 'auto', paddingRight: '10px', marginBottom: '1rem' }}>
                     I hereby certify that all information provided in this application is true and correct to the best of my knowledge and belief. I understand that any false statement or simulation of information shall be a ground for the reproduction or cancellation of my scholarship. I also authorize the scholarship committee to verify the information provided herein.
                   </div>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#333', cursor: 'pointer', fontWeight: '600' }}>
-                    <input type="checkbox" name="privacyConsent" checked={formData.privacyConsent} onChange={handleInputChange} style={{ width: '18px', height: '18px' }} required={currentStep === 4} />
-                    I agree to the terms and conditions
-                  </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#333', cursor: 'pointer', fontWeight: '600', marginTop: '10px' }}>
                     <input type="checkbox" name="dataCertifyConsent" checked={formData.dataCertifyConsent} onChange={handleInputChange} style={{ width: '18px', height: '18px' }} required={currentStep === 4} />
                     I certify that the information provided is correct

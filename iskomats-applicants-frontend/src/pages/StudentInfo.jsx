@@ -143,7 +143,7 @@ const STEP_FIELDS = {
     'mayorCOE_photo', 'mayorGrades_photo'
   ],
   4: [
-    'privacyConsent', 'dataCertifyConsent',
+    'dataCertifyConsent',
     'applicantSignatureName', 'dateAccomplished'
   ]
 };
@@ -748,7 +748,6 @@ const StudentInfo = () => {
     mayorCOE_video: null,
     face_video: null,
 
-    privacyConsent: false,
     dataCertifyConsent: false,
     applicantSignatureName: '',
     dateAccomplished: ''
@@ -765,7 +764,7 @@ const StudentInfo = () => {
         try {
           const res = await applicationAPI.checkSibling(parseInt(reqNo), formData);
           if (res.blocked) {
-            showPromptMessage(`?? Restriction Notice: ${res.message}`);
+            showPromptMessage(`Restriction Notice: ${res.message}`);
           }
         } catch (err) {
           console.error("Early sibling check failed:", err);
@@ -1867,7 +1866,7 @@ const StudentInfo = () => {
   const isStep1Complete = STEP_FIELDS[1].every(field => formData[field]);
   const isStep2Complete = STEP_FIELDS[2].every(field => formData[field]);
   const isStep3DocumentsVerified = idVerified === 'success' && coeVerified === 'success' && gradesVerified === 'success';
-  const isStep4Complete = formData.privacyConsent && formData.dataCertifyConsent && (drawnSignature || formData.applicantSignatureName) && signatureVerified === 'success';
+  const isStep4Complete = formData.dataCertifyConsent && (drawnSignature || formData.applicantSignatureName) && signatureVerified === 'success';
 
   const [hasInteracted, setHasInteracted] = useState(false);
 
@@ -2310,10 +2309,6 @@ const StudentInfo = () => {
       return;
     }
 
-    if (!formData.privacyConsent) {
-      showPromptMessage('Please accept the Privacy Policy to proceed.');
-      return;
-    }
     if (!formData.dataCertifyConsent) {
       showPromptMessage('Please certify that the information provided is correct.');
       return;
@@ -4173,10 +4168,6 @@ const StudentInfo = () => {
                   <div style={{ fontSize: '0.85rem', color: '#555', lineHeight: '1.6', maxHeight: '150px', overflowY: 'auto', paddingRight: '10px', marginBottom: '1rem' }}>
                     I hereby certify that all information provided in this application is true and correct to the best of my knowledge and belief. I understand that any false statement or simulation of information shall be a ground for the reproduction or cancellation of my scholarship. I also authorize the scholarship committee to verify the information provided herein.
                   </div>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#333', cursor: 'pointer', fontWeight: '600' }}>
-                    <input type="checkbox" name="privacyConsent" checked={formData.privacyConsent} onChange={handleInputChange} style={{ width: '18px', height: '18px' }} required={currentStep === 4} />
-                    I agree to the terms and conditions
-                  </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#333', cursor: 'pointer', fontWeight: '600', marginTop: '10px' }}>
                     <input type="checkbox" name="dataCertifyConsent" checked={formData.dataCertifyConsent} onChange={handleInputChange} style={{ width: '18px', height: '18px' }} required={currentStep === 4} />
                     I certify that the information provided is correct
@@ -4380,7 +4371,7 @@ const StudentInfo = () => {
 
                       <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
                         <div style={{ border: '2px solid #fff', borderRadius: '15px', width: '220px', height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e1e8f0', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)' }}>
-                           {photos.face_photo ? (
+                          {photos.face_photo ? (
                             <img src={photos.face_photo} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Face Verification" />
                           ) : (
                             <button type="button" onClick={openCamera} style={{ border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>

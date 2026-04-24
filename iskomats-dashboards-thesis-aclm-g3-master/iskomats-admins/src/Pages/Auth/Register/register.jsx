@@ -26,8 +26,7 @@ const Register = () => {
     showPassword: false,
     showConfirmPassword: false,
     isLoading: false,
-    error: "",
-    agreement: false
+    error: ""
   });
   const [providers, setProviders] = useState([]);
   const [isLoadingProviders, setIsLoadingProviders] = useState(true);
@@ -80,14 +79,6 @@ const Register = () => {
       return;
     }
 
-    if (!formData.agreement) {
-      setFormData({
-        ...formData,
-        error: "Please agree to the terms and conditions",
-        isLoading: false
-      });
-      return;
-    }
 
     try {
       // Check if email already exists and what account type it is
@@ -313,18 +304,6 @@ const Register = () => {
                   </div>
                 </div>
 
-                <label className="flex items-start gap-3 text-sm text-white/90">
-                  <input
-                    type="checkbox"
-                    name="agreement"
-                    checked={formData.agreement}
-                    onChange={handleChange}
-                    className="mt-1 h-4 w-4 rounded border-white/30 bg-white/10 text-red-600 focus:ring-red-400"
-                  />
-                  <span>
-                    I agree to the terms and conditions of the Iskomats Scholarship Program.
-                  </span>
-                </label>
 
                 {/* Button */}
                 <button
