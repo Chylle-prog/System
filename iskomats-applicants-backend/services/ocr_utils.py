@@ -800,12 +800,18 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
         if is_indigency:
             n_verified = first_ok and last_ok
         else:
-            n_verified = first_ok and middle_ok and last_ok
+            # Relaxed: Middle name is optional for verification if not found, 
+            # as many IDs only show initial or omit it entirely.
+            n_verified = first_ok and last_ok
+            if target_middle_name and not middle_ok:
+                # If middle name was provided but not found, we still pass if first/last are strong
+                # but we'll flag it in meta.
+                pass 
             
         # Store detailed results in meta for UI transparency
         meta['name_details'] = {
             'first_ok': first_ok,
-            'middle_ok': middle_ok,
+            'middle_ok': middle_ok or not target_middle_name, # Treat as OK if not found but first/last are good
             'last_ok': last_ok,
             'first_ratio': first_ratio,
             'middle_ratio': middle_ratio,
@@ -956,18 +962,27 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
         
         if img is None: 
             return False, "Invalid image format", "", 0.0
+            
+        # --- THOROUGH PREPROCESSING ---
+        # 1. Resize to higher resolution for better OCR on small text
+        h, w = img.shape[:2]
+        target_w = 1800 # Increased from 1500
+        if w < target_w:
+            scale = target_w / w
+            img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
+            
+        # 2. Contrast Enhancement (CLAHE)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        img = clahe.apply(img)
+        
+        # 3. Sharpening
+        kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+        img = cv2.filter2D(img, -1, kernel)
         
         is_good, quality_reason = assess_image_quality(img)
         if not is_good:
             print(f"[QUALITY REJECT] {quality_reason}", flush=True)
             return False, f"Image quality issue: {quality_reason}", "", 0.0
-        
-        # Ensure minimum resolution for IDs (1500px width is ideal for small text)
-        h, w = img.shape[:2]
-        target_w = 1500 
-        if w < target_w or w > (target_w + 200):
-            scale = target_w / w
-            img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
     except Exception as e:
         return False, f"Preprocessing error: {str(e)}", "", {'name_ok': False, 'addr_ok': False, 'error': str(e)}
 
@@ -1016,10 +1031,9 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
                     
                     # 2. Start column sub-scans
                     h_total, w_total = img.shape[:2]
-                    # INCREASED ZONE HEIGHT: Some IDs have info lower down (e.g. 65% height)
-                    header_h = int(h_total * 0.65)
+                    # FULL HEIGHT COLUMN SCAN: Some IDs have info lower down
                     left_w = int(w_total * 0.55) 
-                    l_c, r_c = img[:header_h, :left_w], img[:header_h, left_w:]
+                    l_c, r_c = img[:, :left_w], img[:, left_w:]
                     
                     left_future = sub_executor.submit(_run_tesseract_on_image, l_c, psm=6, skip_pass2=False, label="Left")
                     right_future = sub_executor.submit(_run_tesseract_on_image, r_c, psm=6, skip_pass2=False, label="Right")
@@ -1036,11 +1050,19 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
                         name_ok, addr_ok, found_kw, _, _ = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
                         
                         if not (name_ok and addr_ok):
-                            # --- ROBUST FALLBACK (Optimization #8): PSM 3 (Automatic) ---
-                            # If PSM 6 (fast) didn't catch the core info, run a single high-quality automatic scan
-                            print(f"[OCR] PSM 6 failed to verify ID. Trying Robust PSM 3 Fallback...", flush=True)
-                            psm3_text = _run_tesseract_on_image(img, psm=3, label="PSM3")
-                            best_text = f"{best_text}\n---\n{psm3_text}"
+                            # --- ROBUST FALLBACKS ---
+                            # Try PSM 11 (Sparse text, good for IDs with floating text blocks)
+                            print(f"[OCR] Trying PSM 11 Sparse Text Fallback...", flush=True)
+                            psm11_text = _run_tesseract_on_image(img, psm=11, label="PSM11")
+                            best_text = f"{best_text}\n---\n{psm11_text}"
+                            
+                            # Check again
+                            name_ok, addr_ok, found_kw, _, _ = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
+                            
+                            if not (name_ok and addr_ok):
+                                print(f"[OCR] Trying Robust PSM 3 (Automatic) Fallback...", flush=True)
+                                psm3_text = _run_tesseract_on_image(img, psm=3, label="PSM3")
+                                best_text = f"{best_text}\n---\n{psm3_text}"
                     else:
                         print(f"[OCR PERF] ID SUCCESS (Fast Path) in {time.time() - t_start:.2f}s", flush=True)
 
@@ -1096,7 +1118,7 @@ def student_name_matches_text(ocr_text, first_name, middle_name, last_name, is_i
     return name_ok, match_ratio, meta.get('name_details', {})
 
 
-def extract_document_text(image_bytes, max_width=_MAX_OCR_WIDTH, is_id_back=False, prefer_fast_layout=False, crop_percent=None):
+def extract_document_text(image_bytes, max_width=1600, prefer_fast_layout=False, crop_percent=None, is_id_back=False):
     """
     Fast OCR text extraction for non-identity documents like COE and grades.
     Added is_id_back flag for ultra-fast extraction (skips header bands).
