@@ -1280,33 +1280,44 @@ def notify_announcement_applicants(
     send_email_alerts=True,
     notification_title_prefix='New Announcement',
 ):
-    print(f"[ANNOUNCEMENT NOTIF] Starting task: title='{title}', pro_no={provider_no}, all={send_to_all_applicants}", flush=True)
+    log_path = os.path.join(os.getcwd(), 'announcement_dispatch.log')
+    def log(msg):
+        with open(log_path, 'a') as f:
+            f.write(f"[{datetime.now()}] {msg}\n")
+        print(msg, flush=True)
+
+    log(f"[ANNOUNCEMENT NOTIF] Starting task: title='{title}', pro_no={provider_no}, all={send_to_all_applicants}")
     recipients = []
     try:
+        log(f"[ANNOUNCEMENT NOTIF] Task started. send_to_all={send_to_all_applicants}, provider={provider_no}")
         with get_db() as conn:
             cur = conn.cursor()
             if send_to_all_applicants:
-                print("[ANNOUNCEMENT NOTIF] Fetching ALL verified applicants", flush=True)
+                log("[ANNOUNCEMENT NOTIF] Mode: Global. Fetching all verified applicants.")
                 applicant_email_table = get_applicant_email_table(cur)
+                # Ensure we get all applicants who have verified email accounts
                 cur.execute(
                     f"SELECT DISTINCT applicant_no FROM {applicant_email_table} WHERE is_verified = TRUE AND applicant_no IS NOT NULL"
                 )
             else:
-                print(f"[ANNOUNCEMENT NOTIF] Fetching applicants for provider {provider_no}", flush=True)
+                log(f"[ANNOUNCEMENT NOTIF] Mode: Provider-specific ({provider_no}).")
                 cur.execute(
                     """
                     SELECT DISTINCT ast.applicant_no
                     FROM applicant_status ast
                     JOIN scholarships s ON ast.scholarship_no = s.req_no
-                    WHERE s.pro_no = %s
+                    WHERE s.pro_no = %s AND ast.applicant_no IS NOT NULL
                     """,
                     (provider_no,),
                 )
             recipients = cur.fetchall()
-        
-        # Connection is now closed (outside the with block)
-        print(f"[ANNOUNCEMENT NOTIF] Found {len(recipients)} recipients. Starting notification loop...", flush=True)
+            
+        if not recipients:
+            log(f"[ANNOUNCEMENT NOTIF WARNING] No recipients found for announcement.")
+            return
 
+        log(f"[ANNOUNCEMENT NOTIF] Found {len(recipients)} recipients. Processing notifications...")
+        
         provider_label = (provider_name or 'ISKOMATS').strip()
         notification_title = f"{notification_title_prefix}: {title}"
         notification_message = message[:100] + ('...' if len(message) > 100 else '')
@@ -1317,9 +1328,19 @@ def notify_announcement_applicants(
         email_success_count = 0
         email_failure_count = 0
 
+        # Connection is now closed (outside the with block)
         for recipient in recipients:
-            app_no = recipient['applicant_no']
             try:
+                # Handle both dict and tuple results
+                if hasattr(recipient, 'get'):
+                    app_no = recipient.get('applicant_no')
+                elif isinstance(recipient, dict):
+                    app_no = recipient.get('applicant_no')
+                else:
+                    app_no = recipient[0]
+
+                if not app_no: continue
+
                 # Each call to create_notification handles its own connection and commit
                 result = create_notification(
                     user_no=app_no,
@@ -1330,20 +1351,23 @@ def notify_announcement_applicants(
                 )
                 
                 # Force a UI refresh for the student portal via socket
-                safe_emit('notification_update', {'user_no': app_no}, broadcast=True)
+                try:
+                    safe_emit('notification_update', {'user_no': app_no}, broadcast=True)
+                except: pass
 
+                log(f"[ANNOUNCEMENT NOTIF SUCCESS] Notification created for user {app_no}. Email: {result.get('email_sent')}")
                 if send_email_alerts:
                     if result and result.get('email_sent'):
                         email_success_count += 1
                     else:
                         email_failure_count += 1
             except Exception as inner_e:
-                print(f"[ANNOUNCEMENT NOTIF ERROR] Failed for user {app_no}: {inner_e}", flush=True)
-
-        print(f"[ANNOUNCEMENT NOTIF] Task finished. Emails: {email_success_count} success, {email_failure_count} failure", flush=True)
+                log(f"[ANNOUNCEMENT NOTIF ERROR] Failed for user {app_no}: {inner_e}")
+                
+        log(f"[ANNOUNCEMENT NOTIF] Task completed. Total Recipients: {len(recipients)}, Email Success: {email_success_count}, Failure: {email_failure_count}")
 
     except Exception as exc:
-        print(f"[ANNOUNCEMENT NOTIF CRITICAL ERROR] {exc}", flush=True)
+        log(f"[ANNOUNCEMENT NOTIF CRITICAL FAILURE] {exc}")
         import traceback
         traceback.print_exc()
 
@@ -4304,6 +4328,7 @@ def create_announcement(current_user_id, pro_no, role):
             )
         
             # Notify students based on send_to_all_applicants flag
+            print(f"[ANNOUNCEMENT] Dispatching background notifications for ann_no {ann_no} (SendToAll: {send_to_all_applicants})", flush=True)
             run_background_task(
                 notify_announcement_applicants,
                 title=title,
@@ -4313,7 +4338,7 @@ def create_announcement(current_user_id, pro_no, role):
                 send_to_all_applicants=send_to_all_applicants,
                 send_email_alerts=True,
             )
-            print(f"[ANNOUNCEMENT] Notification + email delivery started in background for announcement {ann_no}")
+            print(f"[ANNOUNCEMENT] Background delivery task queued successfully.")
 
             return jsonify({'message': 'Announcement created', 'ann_no': ann_no}), 201
     except Exception as e:
