@@ -509,9 +509,12 @@ const Portal = () => {
           const parts = room.id.split('+');
           if (parts.length < 2) return true; // Keep unidentified room formats
           
-          const roomProNo = parseInt(parts[1]);
+          const roomProNo = parts.length > 1 ? parseInt(parts[1]) : null;
           // Check if any application matches this provider
-          return applications.some(app => Number(app.pro_no) === roomProNo || Number(app.provider_no) === roomProNo);
+          return applications.some(app => 
+            (roomProNo !== null) && 
+            (Number(app.pro_no) === roomProNo || Number(app.provider_no) === roomProNo)
+          );
         });
         
         // Only update if something was actually filtered out to avoid loops

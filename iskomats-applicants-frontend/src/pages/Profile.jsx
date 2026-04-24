@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { applicantAPI, uploadProfilePicture } from '../services/api';
+import { SCHOOLS, BARANGAYS } from '../utils/constants';
 
 const Profile = () => {
   const navigate = useNavigate();
@@ -238,7 +239,7 @@ const Profile = () => {
         setShowSuccessModal(false);
         setShowEditForm(false);
         setShowLoadingOverlay(false);
-        
+
         // Redirect new users to portal after first profile setup
         if (isNewProfile) {
           navigate('/portal');
@@ -944,110 +945,110 @@ const Profile = () => {
 
               <div className="profile-details">
 
-              <div className="form-group">
-                <label>First name</label>
-                <input
-                  type="text"
-                  value={userProfile.first_name || ''}
-                  disabled
-                  style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
-                />
+                <div className="form-group">
+                  <label>First name</label>
+                  <input
+                    type="text"
+                    value={userProfile.first_name || ''}
+                    disabled
+                    style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Middle name</label>
+                  <input
+                    type="text"
+                    value={userProfile.middle_name || ''}
+                    disabled
+                    style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Last name</label>
+                  <input
+                    type="text"
+                    value={userProfile.last_name || ''}
+                    disabled
+                    style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Birthdate</label>
+                  <input
+                    type="text"
+                    value={formatBirthdate(userProfile.birthdate)}
+                    disabled
+                    style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>University / School</label>
+                  <input
+                    type="text"
+                    value={userProfile.school || ''}
+                    disabled
+                    style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Phone number</label>
+                  <input
+                    type="tel"
+                    value={userProfile.mobile_no || ''}
+                    disabled
+                    style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Street / Barangay</label>
+                  <input
+                    type="text"
+                    value={userProfile.street_brgy || ''}
+                    disabled
+                    style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Town / City / Municipality</label>
+                  <input
+                    type="text"
+                    value={userProfile ? (userProfile.town_city_municipality || userProfile.townCity || 'Lipa City') : 'Lipa City'}
+                    disabled
+                    style={{ backgroundColor: '#f4f6fa', cursor: 'not-allowed', color: '#666' }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Province</label>
+                  <input
+                    type="text"
+                    value={userProfile?.province || 'Batangas'}
+                    disabled
+                    style={{ backgroundColor: '#f4f6fa', cursor: 'not-allowed', color: '#666' }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Zip Code</label>
+                  <input
+                    type="text"
+                    value={userProfile ? (userProfile.zip_code || userProfile.zipCode || '4217') : '4217'}
+                    disabled
+                    style={{ backgroundColor: '#f4f6fa', cursor: 'not-allowed', color: '#666' }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Course / Program</label>
+                  <input
+                    type="text"
+                    value={userProfile?.course || 'Not specified'}
+                    disabled
+                    style={{ backgroundColor: '#f4f6fa', cursor: 'not-allowed', color: '#666' }}
+                  />
+                </div>
+                <button className="edit-profile-btn" onClick={showEditProfile} style={{ width: 'auto', marginTop: '1rem' }}>
+                  <i className="fas fa-edit" style={{ marginRight: '8px' }}></i> Edit Profile
+                </button>
               </div>
-              <div className="form-group">
-                <label>Middle name</label>
-                <input
-                  type="text"
-                  value={userProfile.middle_name || ''}
-                  disabled
-                  style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
-                />
-              </div>
-              <div className="form-group">
-                <label>Last name</label>
-                <input
-                  type="text"
-                  value={userProfile.last_name || ''}
-                  disabled
-                  style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
-                />
-              </div>
-              <div className="form-group">
-                <label>Birthdate</label>
-                <input
-                  type="text"
-                  value={formatBirthdate(userProfile.birthdate)}
-                  disabled
-                  style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
-                />
-              </div>
-              <div className="form-group">
-                <label>University / School</label>
-                <input
-                  type="text"
-                  value={userProfile.school || ''}
-                  disabled
-                  style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
-                />
-              </div>
-              <div className="form-group">
-                <label>Phone number</label>
-                <input
-                  type="tel"
-                  value={userProfile.mobile_no || ''}
-                  disabled
-                  style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
-                />
-              </div>
-              <div className="form-group">
-                <label>Street / Barangay</label>
-                <input
-                  type="text"
-                  value={userProfile.street_brgy || ''}
-                  disabled
-                  style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
-                />
-              </div>
-              <div className="form-group">
-                <label>Town / City / Municipality</label>
-                <input
-                  type="text"
-                  value={userProfile ? (userProfile.town_city_municipality || userProfile.townCity || 'Lipa City') : 'Lipa City'}
-                  disabled
-                  style={{ backgroundColor: '#f4f6fa', cursor: 'not-allowed', color: '#666' }}
-                />
-              </div>
-              <div className="form-group">
-                <label>Province</label>
-                <input
-                  type="text"
-                  value={userProfile?.province || 'Batangas'}
-                  disabled
-                  style={{ backgroundColor: '#f4f6fa', cursor: 'not-allowed', color: '#666' }}
-                />
-              </div>
-              <div className="form-group">
-                <label>Zip Code</label>
-                <input
-                  type="text"
-                  value={userProfile ? (userProfile.zip_code || userProfile.zipCode || '4217') : '4217'}
-                  disabled
-                  style={{ backgroundColor: '#f4f6fa', cursor: 'not-allowed', color: '#666' }}
-                />
-              </div>
-              <div className="form-group">
-                <label>Course / Program</label>
-                <input
-                  type="text"
-                  value={userProfile?.course || 'Not specified'}
-                  disabled
-                  style={{ backgroundColor: '#f4f6fa', cursor: 'not-allowed', color: '#666' }}
-                />
-              </div>
-              <button className="edit-profile-btn" onClick={showEditProfile} style={{ width: 'auto', marginTop: '1rem' }}>
-                <i className="fas fa-edit" style={{ marginRight: '8px' }}></i> Edit Profile
-              </button>
             </div>
-          </div>
           )}
 
           {/* Profile Edit Form */}
@@ -1055,7 +1056,7 @@ const Profile = () => {
             <div className="form-section active">
               <h2>{userProfile ? 'Edit Profile' : 'Complete Profile'}</h2>
               {error && <div style={{ color: 'var(--danger)', marginBottom: '1rem', padding: '0.8rem', backgroundColor: 'var(--danger-bg)', borderRadius: '8px' }}>{error}</div>}
-              
+
               <div className="profile-picture-upload">
                 <div className="profile-pic" style={{ width: '120px', height: '120px', position: 'relative' }}>
                   {formData.profile_picture ? (
@@ -1063,32 +1064,32 @@ const Profile = () => {
                   ) : (
                     <i className="fas fa-user"></i>
                   )}
-                  <div style={{ 
-                    position: 'absolute', 
-                    bottom: 0, 
-                    left: 0, 
-                    right: 0, 
-                    background: 'rgba(0,0,0,0.5)', 
-                    color: 'white', 
-                    fontSize: '0.7rem', 
+                  <div style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    background: 'rgba(0,0,0,0.5)',
+                    color: 'white',
+                    fontSize: '0.7rem',
                     padding: '4px 0',
-                    cursor: 'pointer' 
+                    cursor: 'pointer'
                   }}>
                     <i className="fas fa-camera"></i> Change
                   </div>
-                  <input 
-                    type="file" 
-                    accept="image/*" 
+                  <input
+                    type="file"
+                    accept="image/*"
                     onChange={handleProfilePictureUpload}
-                    style={{ 
-                      position: 'absolute', 
-                      top: 0, 
-                      left: 0, 
-                      width: '100%', 
-                      height: '100%', 
-                      opacity: 0, 
-                      cursor: 'pointer' 
-                    }} 
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: '100%',
+                      opacity: 0,
+                      cursor: 'pointer'
+                    }}
                   />
                 </div>
                 <div style={{ textAlign: 'left' }}>
@@ -1149,19 +1150,9 @@ const Profile = () => {
                     required
                   >
                     <option value="">Select School</option>
-                    <option value="DLSL/De La Salle Lipa">DLSL/De La Salle Lipa</option>
-                    <option value="NU/National University Lipa">NU/National University Lipa</option>
-                    <option value="Batangas State University">Batangas State University</option>
-                    <option value="Kolehiyo ng Lungsod ng Lipa">Kolehiyo ng Lungsod ng Lipa</option>
-                    <option value="Philippine State College of Aeronautics">Philippine State College of Aeronautics</option>
-                    <option value="Lipa City Colleges">Lipa City Colleges</option>
-                    <option value="University of Batangas">University of Batangas</option>
-                    <option value="New Era University">New Era University</option>
-                    <option value="Batangas College of Arts and Sciences">Batangas College of Arts and Sciences</option>
-                    <option value="Royal British College">Royal British College</option>
-                    <option value="STI Academic Center">STI Academic Center</option>
-                    <option value="AMA Computer College">AMA Computer College</option>
-                    <option value="ICT-ED">ICT-ED</option>
+                    {SCHOOLS.map(school => (
+                      <option key={school} value={school}>{school}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="form-group">
@@ -1184,78 +1175,9 @@ const Profile = () => {
                     required
                   >
                     <option value="">Select Barangay</option>
-                    <option value="Adya">Adya</option>
-                    <option value="Anilao">Anilao</option>
-                    <option value="Anilao-Labac">Anilao-Labac</option>
-                    <option value="Antipolo del Norte">Antipolo del Norte</option>
-                    <option value="Antipolo del Sur">Antipolo del Sur</option>
-                    <option value="Bagong Pook">Bagong Pook</option>
-                    <option value="Balintawak">Balintawak</option>
-                    <option value="Banaybanay">Banaybanay</option>
-                    <option value="Bolbok">Bolbok</option>
-                    <option value="Bugtong na Pulo">Bugtong na Pulo</option>
-                    <option value="Bulacnin">Bulacnin</option>
-                    <option value="Bulaklakan">Bulaklakan</option>
-                    <option value="Calamias">Calamias</option>
-                    <option value="Cumba">Cumba</option>
-                    <option value="Dagatan">Dagatan</option>
-                    <option value="Duhatan">Duhatan</option>
-                    <option value="Halang">Halang</option>
-                    <option value="Inosloban">Inosloban</option>
-                    <option value="Kayumanggi">Kayumanggi</option>
-                    <option value="Latag">Latag</option>
-                    <option value="Lodlod">Lodlod</option>
-                    <option value="Lumbang">Lumbang</option>
-                    <option value="Mabini">Mabini</option>
-                    <option value="Malagonlong">Malagonlong</option>
-                    <option value="Malitlit">Malitlit</option>
-                    <option value="Marauoy">Marauoy</option>
-                    <option value="Mataas na Lupa">Mataas na Lupa</option>
-                    <option value="Munting Pulo">Munting Pulo</option>
-                    <option value="Pagolingin Bata">Pagolingin Bata</option>
-                    <option value="Pagolingin East">Pagolingin East</option>
-                    <option value="Pagolingin West">Pagolingin West</option>
-                    <option value="Pangao">Pangao</option>
-                    <option value="Pinagkawitan">Pinagkawitan</option>
-                    <option value="Pinagtongulan">Pinagtongulan</option>
-                    <option value="Plaridel">Plaridel</option>
-                    <option value="Poblacion Barangay 1">Poblacion Barangay 1</option>
-                    <option value="Poblacion Barangay 2">Poblacion Barangay 2</option>
-                    <option value="Poblacion Barangay 3">Poblacion Barangay 3</option>
-                    <option value="Poblacion Barangay 4">Poblacion Barangay 4</option>
-                    <option value="Poblacion Barangay 5">Poblacion Barangay 5</option>
-                    <option value="Poblacion Barangay 6">Poblacion Barangay 6</option>
-                    <option value="Poblacion Barangay 7">Poblacion Barangay 7</option>
-                    <option value="Poblacion Barangay 8">Poblacion Barangay 8</option>
-                    <option value="Poblacion Barangay 9">Poblacion Barangay 9</option>
-                    <option value="Poblacion Barangay 9-A">Poblacion Barangay 9-A</option>
-                    <option value="Poblacion Barangay 10">Poblacion Barangay 10</option>
-                    <option value="Poblacion Barangay 11">Poblacion Barangay 11</option>
-                    <option value="Poblacion Barangay 12">Poblacion Barangay 12</option>
-                    <option value="Pusil">Pusil</option>
-                    <option value="Quezon">Quezon</option>
-                    <option value="Rizal">Rizal</option>
-                    <option value="Sabang">Sabang</option>
-                    <option value="Sampaguita">Sampaguita</option>
-                    <option value="San Benito">San Benito</option>
-                    <option value="San Carlos">San Carlos</option>
-                    <option value="San Celestino">San Celestino</option>
-                    <option value="San Francisco">San Francisco</option>
-                    <option value="San Guillermo">San Guillermo</option>
-                    <option value="San Isidro">San Isidro</option>
-                    <option value="San Jose">San Jose</option>
-                    <option value="San Lucas">San Lucas</option>
-                    <option value="San Salvador">San Salvador</option>
-                    <option value="San Sebastian (Balagbag)">San Sebastian (Balagbag)</option>
-                    <option value="Santo Niño">Santo Niño</option>
-                    <option value="Santo Toribio">Santo Toribio</option>
-                    <option value="Sico">Sico</option>
-                    <option value="Talisay">Talisay</option>
-                    <option value="Tambo">Tambo</option>
-                    <option value="Tangob">Tangob</option>
-                    <option value="Tanguay">Tanguay</option>
-                    <option value="Tibig">Tibig</option>
-                    <option value="Tipacan">Tipacan</option>
+                    {BARANGAYS.map(brgy => (
+                      <option key={brgy} value={brgy}>{brgy}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="form-group">
@@ -1314,7 +1236,7 @@ const Profile = () => {
       {/* Modal success pop-up */}
       <div className={`success-modal ${showSuccessModal ? 'active' : ''}`}>
         <div className="modal-content">
-          <h3 style={{color: 'var(--success)'}}>Profile Updated!</h3>
+          <h3 style={{ color: 'var(--success)' }}>Profile Updated!</h3>
           <p>Your profile has been successfully saved.</p>
         </div>
       </div>

@@ -1420,7 +1420,7 @@ def student_login():
                 return jsonify({'message': 'Account has been suspended. Please contact the administrator.', 'suspended': True}), 403
  
         payload = {
-            'exp': datetime.utcnow() + timedelta(days=1),
+            'exp': datetime.utcnow() + timedelta(hours=24),
             'iat': datetime.utcnow(),
             'user_no': user['applicant_no'],
         }
@@ -1599,7 +1599,7 @@ def student_verify_email():
 
         # 4. Generate session token
         payload = {
-            'exp': datetime.utcnow() + timedelta(days=1),
+            'exp': datetime.utcnow() + timedelta(hours=24),
             'iat': datetime.utcnow(),
             'user_no': applicant_no,
         }
@@ -1801,7 +1801,7 @@ def student_google_login():
         token_payload = {
             'user_no': user['applicant_no'],
             'email': user['email_address'],
-            'exp': datetime.utcnow() + timedelta(days=1)
+            'exp': datetime.utcnow() + timedelta(hours=24)
         }
         jwt_token = jwt.encode(token_payload, SECRET_KEY, algorithm='HS256')
 
@@ -4328,6 +4328,16 @@ def upload_video():
             # Override extension and content_type because faststart_video_stream forces .mp4 output
             ext = '.mp4'
             content_type = 'video/mp4'
+        # --- ENCRYPTION (Infrastructure Preparation) ---
+        if _fernet:
+            try:
+                # Only encrypt if not already encrypted
+                if not (isinstance(video_bytes, (bytes, bytearray)) and video_bytes.startswith(b'gAAAA')):
+                    video_bytes = _fernet.encrypt(bytes(video_bytes))
+                    file_size = len(video_bytes)
+                    print(f"[VIDEO-UPLOAD] Encrypted {field_name} before upload", flush=True)
+            except Exception as e:
+                print(f"[VIDEO-UPLOAD WARNING] Encryption failed for {field_name}, uploading raw: {e}", flush=True)
 
         try:
             from supabase import create_client

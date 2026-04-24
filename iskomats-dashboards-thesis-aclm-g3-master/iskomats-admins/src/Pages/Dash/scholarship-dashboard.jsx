@@ -3405,7 +3405,7 @@ export default function ScholarshipDashboard({
                 <p className="text-gray-700 leading-relaxed mb-4">
                   {historicalData.schoolStats?.length > 0 ? (
                     <>
-                      Current data shows that <strong>{historicalData.schoolStats[0]?.school}</strong> remains the primary source of applicants for the {scholarshipLabel}, contributing to {historicalData.schoolStats[0]?.percentage}% of the total application volume.
+                      Current data shows that <strong>{historicalData.schoolStats?.[0]?.school}</strong> remains the primary source of applicants for the {scholarshipLabel}, contributing to {historicalData.schoolStats?.[0]?.percentage}% of the total application volume.
                     </>
                   ) : (
                     "No school distribution data available yet."
