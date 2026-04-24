@@ -3329,9 +3329,8 @@ def get_applicants(current_user_id, pro_no, role, program):
                 query += ' AND p.provider_name ILIKE %s'
                 params.append(f"%{program}%")
             else:
-                # For 'all' view, typically admin only wants accepted scholars as per request
-                # But the endpoint is shared, so let's default to accepted if 'all' is requested for now
-                query += " AND s.is_accepted = 'Accepted'"
+                # Superadmins can see all applicants in the 'all' view
+                pass
             
             if filters.get('search'):
                 query += ' AND (a.first_name ILIKE %s OR a.last_name ILIKE %s OR e.email_address ILIKE %s)'

@@ -710,7 +710,8 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
             f_count = 0
             
             # Lenient threshold for names to handle minor OCR misreads, especially on Indigency
-            effective_threshold = 0.75 if is_indigency else 0.80
+            # LOWERED: 0.65 for Indigency, 0.70 for SchoolID to handle stylized fonts/backgrounds
+            effective_threshold = 0.65 if is_indigency else 0.70
             
             for word in n_words:
                 # For middle names, also accept just the first letter (initial)
@@ -771,7 +772,15 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
                 clean_text = "".join(filter(str.isalnum, str(norm_txt)))
                 
                 if len(clean_name_part) >= 3 and clean_name_part in clean_text:
+                    print(f"[OCR-MATCH-DEBUG] SUCCESS: Ultimate fallback matched '{clean_name_part}' in text", flush=True)
                     return True, 1.0
+                
+                # Check for reversed name parts (e.g. "Last, First" vs "First Last")
+                if not is_middle and len(filtered_name_words) >= 2:
+                    reversed_name = "".join(filter(str.isalnum, "".join(reversed(filtered_name_words))))
+                    if reversed_name in clean_text:
+                        print(f"[OCR-MATCH-DEBUG] SUCCESS: Reversed name fallback matched '{reversed_name}'", flush=True)
+                        return True, 1.0
                 
                 # Final word-by-word substring check for Indigency
                 if is_indigency and n_words:
@@ -962,27 +971,22 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
         
         if img is None: 
             return False, "Invalid image format", "", 0.0
-            
-        # --- THOROUGH PREPROCESSING ---
-        # 1. Resize to higher resolution for better OCR on small text
-        h, w = img.shape[:2]
-        target_w = 1800 # Increased from 1500
-        if w < target_w:
-            scale = target_w / w
-            img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
-            
-        # 2. Contrast Enhancement (CLAHE)
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-        img = clahe.apply(img)
         
-        # 3. Sharpening
-        kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
-        img = cv2.filter2D(img, -1, kernel)
+        # Log input image stats for diagnostics
+        h, w = img.shape[:2]
+        print(f"[OCR-DIAG] Input image dimensions: {w}x{h}, dtype={img.dtype}, bytes={len(image_bytes)}", flush=True)
         
         is_good, quality_reason = assess_image_quality(img)
         if not is_good:
             print(f"[QUALITY REJECT] {quality_reason}", flush=True)
             return False, f"Image quality issue: {quality_reason}", "", 0.0
+        
+        # Simple resize to ensure minimum resolution for OCR
+        target_w = 1500 
+        if w < target_w or w > (target_w + 500):
+            scale = target_w / w
+            img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
+            print(f"[OCR-DIAG] Resized to {img.shape[1]}x{img.shape[0]}", flush=True)
     except Exception as e:
         return False, f"Preprocessing error: {str(e)}", "", {'name_ok': False, 'addr_ok': False, 'error': str(e)}
 
@@ -1070,7 +1074,15 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
                     
                     if name_v:
                         print(f"[OCR PERF] SUCCESS after {time.time() - t_start:.2f}s", flush=True)
-                        return True, "Verified", best_text, {'name_ok': True, 'addr_ok': addr_v, 'name_ratio': score, 'keywords': found_kw}
+                        # Parity: Ensure all matched flags are in details
+                        return True, "Verified", best_text, {
+                            'name_ok': True, 
+                            'addr_ok': addr_v, 
+                            'id_ok': meta.get('id_ok', True),
+                            'school_ok': meta.get('school_ok', True),
+                            'name_ratio': score, 
+                            'keywords': found_kw
+                        }
 
 
             # t_end moved up into early-exit block or handled naturally
@@ -1083,8 +1095,29 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
         finally:
             clear_heavy_memory()
     
-    
+    # ═══ DEEP DIAGNOSTIC: What did OCR actually extract? ═══
+    text_len = len(best_text) if best_text else 0
+    text_preview = (best_text or '').replace('\n', ' | ')[:600]
+    print(f"[OCR-DEEP-DIAG] ═══════════════════════════════════════════", flush=True)
+    print(f"[OCR-DEEP-DIAG] OCR text length: {text_len} chars", flush=True)
+    print(f"[OCR-DEEP-DIAG] OCR text preview: {text_preview}", flush=True)
+    print(f"[OCR-DEEP-DIAG] Expected First: '{expected_first_name}'", flush=True)
+    print(f"[OCR-DEEP-DIAG] Expected Middle: '{expected_middle_name}'", flush=True)
+    print(f"[OCR-DEEP-DIAG] Expected Last: '{expected_last_name}'", flush=True)
+    print(f"[OCR-DEEP-DIAG] Expected ID: '{expected_id_no}'", flush=True)
+    print(f"[OCR-DEEP-DIAG] Expected School: '{expected_school_name}'", flush=True)
+    print(f"[OCR-DEEP-DIAG] Expected Address: '{expected_address}'", flush=True)
+    print(f"[OCR-DEEP-DIAG] is_indigency: {is_indigency}", flush=True)
+    print(f"[OCR-DEEP-DIAG] ═══════════════════════════════════════════", flush=True)
+
     name_v, addr_v, found_kw, best_ratio, meta = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
+    
+    # Log match results
+    print(f"[OCR-DEEP-DIAG] Match results: name_v={name_v}, addr_v={addr_v}, ratio={best_ratio:.2f}", flush=True)
+    nd = meta.get('name_details', {})
+    print(f"[OCR-DEEP-DIAG] Name breakdown: first_ok={nd.get('first_ok')}, middle_ok={nd.get('middle_ok')}, last_ok={nd.get('last_ok')}", flush=True)
+    print(f"[OCR-DEEP-DIAG] Name ratios: first={nd.get('first_ratio', 0):.2f}, middle={nd.get('middle_ratio', 0):.2f}, last={nd.get('last_ratio', 0):.2f}", flush=True)
+    
     details = {
         'name_ok': name_v,
         'addr_ok': addr_v,

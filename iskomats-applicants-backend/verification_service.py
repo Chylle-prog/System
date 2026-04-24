@@ -16,6 +16,7 @@ from services.ocr_utils import (
     _perform_text_matching,
     extract_document_text,
     student_name_matches_text,
+    student_id_no_matches_text,
     year_level_matches_text,
     course_matches_text,
     gpa_matches_text,
@@ -234,12 +235,14 @@ async def api_verify_document(req: DocumentVerificationRequest):
             meta = {'name_ok': name_ok, 'addr_ok': addr_final_ok, 'name_ratio': name_ratio, 'keywords': found_keywords, 'detected_brgy': detected_brgys}
             
         elif doc_type == 'SchoolID':
+            logger.info(f"[FASTAPI-DIAG] SchoolID verify called with: first='{req.first_name}', middle='{req.middle_name}', last='{req.last_name}', id_no='{req.expected_id_no}', school='{req.expected_school_name}', image_bytes={len(image_bytes)}")
             v_t, msg, raw_t, meta = verify_id_with_ocr(
                 image_bytes, req.first_name, req.middle_name, req.last_name, 
                 expected_address=None, # DO NOT pass address for ID to avoid mis-triggering Indigency scanning logic
                 expected_id_no=req.expected_id_no, 
                 expected_school_name=req.expected_school_name
             )
+            logger.info(f"[FASTAPI-DIAG] SchoolID result: v_t={v_t}, msg='{msg}', raw_text_len={len(raw_t) if raw_t else 0}")
 
         else:
             # Fallback for unknown types

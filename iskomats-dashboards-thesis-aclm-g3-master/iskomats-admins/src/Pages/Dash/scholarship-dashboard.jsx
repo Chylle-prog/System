@@ -650,6 +650,19 @@ export default function ScholarshipDashboard({
     return true;
   };
 
+  // Sync recommendations when applicants or filter changes
+  useEffect(() => {
+    if (recommendationModal && data.applicants.length > 0) {
+      const count = parseInt(recommendCount) || 10;
+      const allPending = data.applicants || [];
+      const filteredApplicants = allPending.filter(a => matchesScholarshipSelection(a, trackScholarshipFilter));
+      const top = [...filteredApplicants]
+        .sort((a, b) => (Number(b.grade) || 0) - (Number(a.grade) || 0))
+        .slice(0, count);
+      setRecommended(top);
+    }
+  }, [data.applicants, trackScholarshipFilter, recommendCount, recommendationModal]);
+
   const calculateHistoricalData = (applicants) => {
     // Attempt to get the current expected limit from the active scholarship post if any
     const activePost = data.scholarshipPosts?.find(p => p.status === 'Active' || p.status === 'Ongoing');
@@ -1296,35 +1309,27 @@ export default function ScholarshipDashboard({
     }
 
     const selectedOption = scholarshipFilterOptions.find((option) => option.value === selectedValue);
-    const selectedValues = [selectedValue, selectedOption?.label]
-      .filter(v => v !== undefined && v !== null && v !== '')
-      .map((value) => String(value).toLowerCase());
+    
+    // Exact ID matching
+    const applicantReqNo = String(applicant.reqNo || applicant.req_no || applicant.request_no || applicant.scholarshipNo || applicant.scholarship_no || '').toLowerCase();
+    const selectedReqNo = String(selectedValue || '').toLowerCase();
+    
+    if (selectedReqNo && applicantReqNo === selectedReqNo) {
+      return true;
+    }
 
-    const applicantValues = [
-      applicant.appliedScholarshipId,
-      applicant.reqNo,
-      applicant.req_no,
-      applicant.request_no,
-      applicant.scholarshipId,
-      applicant.scholarship_id,
-      applicant.scholarshipNo,
-      applicant.scholarship_no,
-      applicant.scholarshipName,
-      applicant.scholarship_name,
-      applicant.appliedScholarship,
-      applicant.scholarship,
-      applicant.scholarshipTitle,
-    ]
-      .filter(v => v !== undefined && v !== null && v !== '')
-      .map((value) => String(value).toLowerCase());
+    // Name matching (more flexible)
+    const applicantScholarshipName = String(applicant.scholarshipName || applicant.scholarship_name || applicant.appliedScholarship || applicant.scholarship || applicant.scholarshipTitle || '').toLowerCase();
+    const selectedLabel = String(selectedOption?.label || '').toLowerCase();
 
-    return selectedValues.some((value) => 
-      applicantValues.some(appVal => {
-        const aVal = String(appVal || '').toLowerCase();
-        const sVal = String(value || '').toLowerCase();
-        return aVal === sVal || (aVal !== '' && sVal !== '' && (aVal.includes(sVal) || sVal.includes(aVal)));
-      })
-    );
+    if (selectedLabel && applicantScholarshipName) {
+      // Avoid partial matches for numeric-like names but allow for descriptive names
+      if (applicantScholarshipName === selectedLabel || applicantScholarshipName.includes(selectedLabel) || selectedLabel.includes(applicantScholarshipName)) {
+        return true;
+      }
+    }
+
+    return false;
   };
 
   const scholarshipFinderResults = useMemo(() => {
@@ -1710,13 +1715,23 @@ export default function ScholarshipDashboard({
     const count = parseInt(recommendCount) || 10;
     const allPending = data.applicants || [];
     
+    console.log('[RECOMMEND] Generating recommendations:', {
+      pendingCount: allPending.length,
+      filter: trackScholarshipFilter,
+      requestedCount: count
+    });
+    
     // Exact same filtering logic as the Track list
     const filteredApplicants = allPending.filter(a => matchesScholarshipSelection(a, trackScholarshipFilter));
+    
+    console.log('[RECOMMEND] Filtered applicants:', filteredApplicants.length);
     
     const top = [...filteredApplicants]
       .sort((a, b) => (Number(b.grade) || 0) - (Number(a.grade) || 0))
       .slice(0, count);
       
+    console.log('[RECOMMEND] Top applicants selected:', top.length);
+    
     setRecommended(top);
     setRecommendationModal(true);
   };

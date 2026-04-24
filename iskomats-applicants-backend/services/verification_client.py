@@ -73,21 +73,30 @@ def call_fastapi_verify_document(image_bytes, doc_type, first_name, middle_name,
             "course": kwargs.get('course')
         }
 
+        logger.info(f"[VERIF-CLIENT] Sending to FastAPI: docType={doc_type}, first='{first_name}', last='{last_name}', image_bytes={len(image_bytes)}, school='{kwargs.get('expected_school_name')}', idNo='{kwargs.get('expected_id_no')}'")
+
         response = requests.post(
             f"{VERIFICATION_SERVICE_URL}/verify/document",
             json=payload,
             timeout=45
         )
         
+        logger.info(f"[VERIF-CLIENT] FastAPI response status: {response.status_code}")
+        
         if response.status_code == 200:
             res_data = response.json()
+            detected_text = res_data.get("detected_text", "")
+            logger.info(f"[VERIF-CLIENT] FastAPI result: success={res_data.get('success')}, msg='{res_data.get('message', '')[:100]}', text_len={len(detected_text)}")
+            if not detected_text:
+                logger.warning(f"[VERIF-CLIENT] WARNING: FastAPI returned EMPTY detected_text for {doc_type}!")
             # Returns 4-tuple to match Flask's internal run_ocr_check expectation
             return (
                 res_data.get("success"),
                 res_data.get("message"),
-                res_data.get("detected_text"),
+                detected_text,
                 res_data.get("meta", {})
             )
+        logger.error(f"[VERIF-CLIENT] FastAPI returned error status {response.status_code}: {response.text[:200]}")
         return False, f"Document Service Error: {response.status_code}", "", {}
     except Exception as e:
         logger.error(f"Document Verification Service Unavailable: {str(e)}")
