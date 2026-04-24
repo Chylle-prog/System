@@ -1293,15 +1293,14 @@ const Profile = () => {
                 </div>
                 <div className="form-group">
                   <label>Course / Program *</label>
-                  <select
+                  <input
+                    type="text"
                     name="course"
                     value={formData.course}
                     onChange={handleInputChange}
+                    placeholder="e.g. BS Information Technology"
                     required
-                  >
-                    <option value="">Select Course</option>
-                    {["AB Communication", "Associate in Computer Technology", "Bachelor of Elementary Education", "Bachelor of Forensic Science", "Bachelor of Secondary Education", "BS Accountancy", "BS Accounting Information System", "BS Architecture", "BS Biology", "BS Computer Engineering", "BS Computer Science", "BS Electrical Engineering", "BS Electronics Engineering", "BS Entertainment and Multimedia Computing", "BS Entrepreneurship", "BS Hospitality Management", "BS Industrial Engineering", "BS Information Technology", "BS Legal Management", "BS Management Technology", "BS Nursing", "BS Psychology", "BS Tourism Management", "BSBA Financial Management", "BSBA Marketing Management", "Certificate in Entrepreneurship", "Cookery NC II (Culinary Arts)", "JURIS DOCTOR PROGRAM"].map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
+                  />
                 </div>
                 <button type="submit" className="submit-btn">
                   {userProfile ? 'Update Profile →' : 'Create Profile →'}

@@ -41,36 +41,7 @@ const SCHOOLS = [
   "ICT-ED"
 ];
 
-const COURSES = [
-  "AB Communication",
-  "Associate in Computer Technology",
-  "Bachelor of Elementary Education",
-  "Bachelor of Forensic Science",
-  "Bachelor of Secondary Education",
-  "BS Accountancy",
-  "BS Accounting Information System",
-  "BS Architecture",
-  "BS Biology",
-  "BS Computer Engineering",
-  "BS Computer Science",
-  "BS Electrical Engineering",
-  "BS Electronics Engineering",
-  "BS Entertainment and Multimedia Computing",
-  "BS Entrepreneurship",
-  "BS Hospitality Management",
-  "BS Industrial Engineering",
-  "BS Information Technology",
-  "BS Legal Management",
-  "BS Management Technology",
-  "BS Nursing",
-  "BS Psychology",
-  "BS Tourism Management",
-  "BSBA Financial Management",
-  "BSBA Marketing Management",
-  "Certificate in Entrepreneurship",
-  "Cookery NC II (Culinary Arts)",
-  "JURIS DOCTOR PROGRAM"
-];
+// COURSES array removed as per user request to change to normal text field
 
 
 const normalizeSelectValue = (value, options) => {
@@ -168,7 +139,7 @@ const STEP_FIELDS = {
     'parentsGrossIncome', 'numberOfSiblings'
   ],
   3: [
-    'meritsAwardsReceived', 'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course', 'gpa', 'year', 'semester', 'grades_year', 'grades_sem',
+    'meritsAwardsReceived', 'schoolIdNumber', 'schoolName', 'schoolAddress', 'schoolSector', 'yearLevel', 'course', 'gpa', 'year', 'grades_year',
     'mayorCOE_photo', 'mayorGrades_photo'
   ],
   4: [
@@ -448,17 +419,6 @@ const StudentInfo = () => {
 
     if (fieldName === 'course') {
       invalidateVerificationState('Enrollment', 'course changed');
-      return;
-    }
-
-    if (fieldName === 'gpa') {
-      invalidateVerificationState('Grades', 'GPA changed');
-      return;
-    }
-
-    if (fieldName === 'semester') {
-      invalidateVerificationState('Enrollment', 'semester changed');
-      invalidateVerificationState('Grades', 'semester changed');
     }
   };
   
@@ -775,9 +735,7 @@ const StudentInfo = () => {
     numberOfSiblings: '',
     course: '',
     year: '',
-    semester: '',
     grades_year: '',
-    grades_sem: '',
     mayorCOE_photo: null,
     mayorGrades_photo: null,
     mayorIndigency_photo: null,
@@ -1114,7 +1072,7 @@ const StudentInfo = () => {
     const course = formData.course || '';
     const videoUrl = formData.mayorCOE_video || documentVideos.mayorCOE_video;
     const year = formData.year || '';
-    const semester = scholarshipDetails?.semester || '';
+    const semester = ''; // Semester removed from frontend
 
     if (!coeDoc) {
       showPromptMessage('⚠️ Please upload your Certificate of Enrollment first.');
@@ -1124,7 +1082,7 @@ const StudentInfo = () => {
       showPromptMessage('⚠️ Please record and upload the COE video first.');
       return;
     }
-    if (!schoolName || !idNumber || !yearLevel || !course || !year || !semester) {
+    if (!schoolName || !idNumber || !yearLevel || !course || !year) {
       showPromptMessage('⚠️ Please complete School Name, ID, Year, Course, and Academic Year first.');
       return;
     }
@@ -1136,14 +1094,7 @@ const StudentInfo = () => {
       if (success) {
         // Eligibility check
         if (scholarshipDetails) {
-          const normalizedReqSem = String(scholarshipDetails.semester || '').replace(/st|nd|rd|th| Semester/gi, '');
-          const normalizedAppSem = String(semester || '').replace(/st|nd|rd|th| Semester/gi, '');
-          
-          if (normalizedReqSem && normalizedAppSem && normalizedReqSem !== normalizedAppSem) {
-            setCoeVerified('failed');
-            showPromptMessage(`❌ Verification Error: Your Current Semester (${semester}) does not match the scholarship requirement (${scholarshipDetails.semester}).`);
-            return;
-          }
+          /* Semester check removed */
           
           if (scholarshipDetails.year && year && scholarshipDetails.year !== year) {
             setCoeVerified('failed');
@@ -1171,7 +1122,7 @@ const StudentInfo = () => {
     const yearLevel = formData.yearLevel || '';
     const gpa = formData.gpa || '';
     const videoUrl = formData.mayorGrades_video || documentVideos.mayorGrades_video;
-    const grades_sem = scholarshipDetails?.grades_sem || '';
+    const grades_sem = ''; // Semester for Grades removed
     const grades_year = formData.grades_year || '';
 
     if (!gradesDoc) {
@@ -1195,7 +1146,7 @@ const StudentInfo = () => {
         idNumber: formData.schoolIdNumber,
         yearLevel: formData.yearLevel, 
         gpa: formData.gpa,
-        semester: formData.semester,
+        semester: '',
         grades_sem,
         grades_year
       }, videoUrl);
@@ -1211,14 +1162,7 @@ const StudentInfo = () => {
 
         // Semester and Year check for Grades
         if (scholarshipDetails) {
-          const normalizedReqGradesSem = String(scholarshipDetails.grades_sem || '').replace(/st|nd|rd|th| Semester/gi, '');
-          const normalizedAppGradesSem = String(formData.grades_sem || '').replace(/st|nd|rd|th| Semester/gi, '');
-          
-          if (normalizedReqGradesSem && normalizedAppGradesSem && normalizedReqGradesSem !== normalizedAppGradesSem) {
-            setGradesVerified('failed');
-            showPromptMessage(`â Œ Verification Error: The Semester for Grades (${formData.grades_sem}) does not match the requirement (${scholarshipDetails.grades_sem}).`);
-            return;
-          }
+          /* Grades Semester check removed */
           
           if (scholarshipDetails.grades_year && formData.grades_year && scholarshipDetails.grades_year !== formData.grades_year) {
             setGradesVerified('failed');
@@ -3654,20 +3598,14 @@ const StudentInfo = () => {
               <div className="form-row">
                 <div className="form-group">
                   <label>Course/Program <span style={{color: '#e74c3c'}}>*</span></label>
-                  <select 
+                  <input 
+                    type="text"
                     name="course" 
                     value={formData.course} 
                     onChange={handleInputChange} 
+                    placeholder="e.g. BS Information Technology"
                     required={currentStep === 3}
-                  >
-                    <option value="">Select Course/Program</option>
-                    {COURSES.map(course => (
-                      <option key={course} value={course}>{course}</option>
-                    ))}
-                    {!COURSES.includes(formData.course) && formData.course && (
-                      <option value={formData.course}>{formData.course}</option>
-                    )}
-                  </select>
+                  />
                 </div>
                 <div className="form-group">
                   <label>Current Academic Year <span style={{color: '#e74c3c'}}>*</span></label>
@@ -3680,27 +3618,9 @@ const StudentInfo = () => {
                     required={currentStep === 3}
                   />
                 </div>
-                <div className="form-group">
-                  <label>Current Semester <span style={{color: '#e74c3c'}}>*</span></label>
-                  <select name="semester" value={formData.semester} onChange={handleInputChange} required={currentStep === 3}>
-                    <option value="">Select Semester</option>
-                    <option value="1st">1st Semester</option>
-                    <option value="2nd">2nd Semester</option>
-                    <option value="3rd">3rd Semester</option>
-                  </select>
-                </div>
               </div>
 
               <div className="form-row">
-                <div className="form-group">
-                  <label>Semester for Grades <span style={{color: '#e74c3c'}}>*</span></label>
-                  <select name="grades_sem" value={formData.grades_sem} onChange={handleInputChange} required={currentStep === 3}>
-                    <option value="">Select Semester</option>
-                    <option value="1st">1st Semester</option>
-                    <option value="2nd">2nd Semester</option>
-                    <option value="3rd">3rd Semester</option>
-                  </select>
-                </div>
                 <div className="form-group">
                   <label>Year for Grades <span style={{color: '#e74c3c'}}>*</span></label>
                   <input
@@ -3712,9 +3632,6 @@ const StudentInfo = () => {
                     required={currentStep === 3}
                   />
                 </div>
-              </div>
-
-              <div className="form-row">
                 <div className="form-group">
                   <label>General Weighted Average / GPA <span style={{color: '#e74c3c'}}>*</span></label>
                   <input type="number" name="gpa" value={formData.gpa} onChange={handleInputChange} placeholder="85 or 1.75" step="0.01" required={currentStep === 3} />
