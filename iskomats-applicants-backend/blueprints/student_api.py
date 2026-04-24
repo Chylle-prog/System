@@ -619,16 +619,16 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
         if is_update:
             try:
                 from services.applicant_document_service import fetch_applicant_document_values
-                conn = get_db()
-                with conn.cursor() as cur:
-                    existing_results = fetch_applicant_document_values(cur, applicant_no, [field_name])
-                    old_url = existing_results.get(field_name)
-                    
-                    if old_url and isinstance(old_url, str) and old_url.startswith('http'):
-                        if f"{bucket_name}/" in old_url:
-                            old_path = old_url.split(f"{bucket_name}/")[-1]
-                            print(f"[STORAGE] Cleanup: Removing old file {old_path}", flush=True)
-                            supabase.storage.from_(bucket_name).remove([old_path])
+                with get_db() as conn:
+                    with conn.cursor() as cur:
+                        existing_results = fetch_applicant_document_values(cur, applicant_no, [field_name])
+                        old_url = existing_results.get(field_name)
+                        
+                        if old_url and isinstance(old_url, str) and old_url.startswith('http'):
+                            if f"{bucket_name}/" in old_url:
+                                old_path = old_url.split(f"{bucket_name}/")[-1]
+                                print(f"[STORAGE] Cleanup: Removing old file {old_path}", flush=True)
+                                supabase.storage.from_(bucket_name).remove([old_path])
             except Exception as clean_err:
                 print(f"[STORAGE WARNING] Cleanup failed for {field_name}: {clean_err}", flush=True)
 
