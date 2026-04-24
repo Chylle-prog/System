@@ -1395,12 +1395,22 @@ const Login = () => {
                   <label>University / School</label>
                   <div className="profile-input-wrapper">
                     <i className="fas fa-university"></i>
-                    <input 
-                      type="text" 
-                      name="school" 
-                      placeholder="e.g. De La Salle Lipa" 
-                      required 
-                    />
+                    <select name="school" required style={{ width: '100%' }}>
+                      <option value="">Select School</option>
+                      <option value="DLSL/De La Salle Lipa">DLSL/De La Salle Lipa</option>
+                      <option value="NU/National University Lipa">NU/National University Lipa</option>
+                      <option value="Batangas State University">Batangas State University</option>
+                      <option value="Kolehiyo ng Lungsod ng Lipa">Kolehiyo ng Lungsod ng Lipa</option>
+                      <option value="Philippine State College of Aeronautics">Philippine State College of Aeronautics</option>
+                      <option value="Lipa City Colleges">Lipa City Colleges</option>
+                      <option value="University of Batangas">University of Batangas</option>
+                      <option value="New Era University">New Era University</option>
+                      <option value="Batangas College of Arts and Sciences">Batangas College of Arts and Sciences</option>
+                      <option value="Royal British College">Royal British College</option>
+                      <option value="STI Academic Center">STI Academic Center</option>
+                      <option value="AMA Computer College">AMA Computer College</option>
+                      <option value="ICT-ED">ICT-ED</option>
+                    </select>
                   </div>
                 </div>
 
