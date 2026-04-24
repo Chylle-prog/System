@@ -48,12 +48,17 @@ Chart.register(...registerables);
 const DecryptedMedia = ({ src, type, className, controls = false, onClick = null, alt = "Document" }) => {
   const [decryptedSrc, setDecryptedSrc] = useState(src);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     let objectUrl = null;
+    setHasError(false);
     const load = async () => {
       if (src && typeof src === 'string' && src.startsWith('http')) {
         const decrypted = await decryptUrl(src, type);
+        if (!decrypted) {
+          setHasError(true);
+        }
         setDecryptedSrc(decrypted);
         if (decrypted && typeof decrypted === 'string' && decrypted.startsWith('blob:')) {
           objectUrl = decrypted;
@@ -77,6 +82,15 @@ const DecryptedMedia = ({ src, type, className, controls = false, onClick = null
     );
   }
 
+  if (hasError || !decryptedSrc) {
+    return (
+      <div className={`${className} bg-gray-100 flex flex-col items-center justify-center text-gray-400`} onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default', minHeight: '60px' }}>
+        <FaUsers className="text-xl mb-1" />
+        <span className="text-[9px] font-bold uppercase tracking-wider">Unavailable</span>
+      </div>
+    );
+  }
+
   if (type && type.startsWith('image')) {
     return (
       <img 
@@ -84,7 +98,7 @@ const DecryptedMedia = ({ src, type, className, controls = false, onClick = null
         alt={alt} 
         className={className} 
         onClick={onClick}
-        onError={(e) => { e.target.src = 'https://i.imgur.com/2h7z2S.jpg'; }}
+        onError={() => setHasError(true)}
       />
     );
   }

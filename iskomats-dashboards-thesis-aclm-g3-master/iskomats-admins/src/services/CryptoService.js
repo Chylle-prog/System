@@ -53,12 +53,15 @@ export const decryptUrl = async (url, type = 'image/jpeg') => {
   if (!url || typeof url !== 'string' || !url.startsWith('http')) return url;
   try {
     const response = await fetch(url);
-    if (!response.ok) return url;
+    if (!response.ok) {
+      console.warn(`[CRYPTO] Failed to fetch media (HTTP ${response.status}):`, url);
+      return null;
+    }
     const blob = await response.blob();
     const decryptedBlob = await decryptDocument(blob, type);
     return URL.createObjectURL(decryptedBlob);
   } catch (error) {
     console.warn('[CRYPTO] Failed to fetch and decrypt URL:', url, error);
-    return url;
+    return null;
   }
 };
