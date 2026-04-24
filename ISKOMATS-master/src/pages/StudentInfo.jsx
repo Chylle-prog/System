@@ -10,7 +10,7 @@ const BARANGAYS = [
   "Adya", "Anilao", "Anilao-Labac", "Antipolo del Norte", "Antipolo del Sur",
   "Bagong Pook", "Balintawak", "Banaybanay", "Bolbok", "Bugtong na Pulo",
   "Bulacnin", "Bulaklakan", "Calamias", "Cumba", "Dagatan", "Duhatan",
-  "Halang", "Inosloban", "Kayumanggi", "Latag", "Lodlod", "Lumbang",
+  "Halang", "Inosluban", "Kayumanggi", "Latag", "Lodlod", "Lumbang",
   "Mabini", "Malagonlong", "Malitlit", "Marauoy", "Mataas na Lupa",
   "Munting Pulo", "Pagolingin Bata", "Pagolingin East", "Pagolingin West",
   "Pangao", "Pinagkawitan", "Pinagtongulan", "Plaridel",
@@ -909,12 +909,12 @@ const StudentInfo = () => {
         }
 
         setVerified('failed');
-        
+
         // Handle specific GPA requirement failure
         if (result.score_details && result.score_details['GPA Requirement'] === false) {
-           const gpaMsg = result.message || 'Your GPA does not meet the minimum requirement for this scholarship.';
-           setStatus(gpaMsg);
-           return false;
+          const gpaMsg = result.message || 'Your GPA does not meet the minimum requirement for this scholarship.';
+          setStatus(gpaMsg);
+          return false;
         }
 
         const finalFailMsg = result.message || 'Verification failed. Please ensure your document is clear and all details (Name, ID, Year) are correct.';
@@ -2150,15 +2150,15 @@ const StudentInfo = () => {
     if (scholarshipDetails && scholarshipDetails.gpa && formData.gpa) {
       const minGpa = parseFloat(scholarshipDetails.gpa);
       const studentGpa = parseFloat(formData.gpa);
-      
+
       if (!isNaN(minGpa) && !isNaN(studentGpa)) {
         // Simple heuristic: if requirement is point-scale (e.g. 1-5) and student is percentage, or vice versa,
         // we might need to normalize, but usually PH systems use 1-100 for scholarships or 1-5.
         // For now, follow the backend's logic: if minGpa > 10 and student < 10, normalize student.
         let studentNorm = studentGpa;
         if (minGpa > 10 && studentGpa < 10) {
-            // Point scale to percentage (1.0->99, 3.0->75, 5.0->50)
-            studentNorm = 100.0 - (studentGpa - 1.0) * 12.5;
+          // Point scale to percentage (1.0->99, 3.0->75, 5.0->50)
+          studentNorm = 100.0 - (studentGpa - 1.0) * 12.5;
         }
 
         if (studentNorm < minGpa) {
@@ -3384,10 +3384,10 @@ const StudentInfo = () => {
                 <div className="form-row">
                   <div className="form-group">
                     <label>Course/Program <span style={{ color: '#e74c3c' }}>*</span></label>
-                    <select 
-                      name="course" 
-                      value={formData.course} 
-                      onChange={handleInputChange} 
+                    <select
+                      name="course"
+                      value={formData.course}
+                      onChange={handleInputChange}
                       required={currentStep === 3}
                     >
                       <option value="">Select Course/Program</option>

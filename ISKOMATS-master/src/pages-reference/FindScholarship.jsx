@@ -18,7 +18,7 @@ const FindScholarship = () => {
   const [scholarshipMatches, setScholarshipMatches] = useState([]);
   const [successBanner, setSuccessBanner] = useState('');
   const [incomeLevel, setIncomeLevel] = useState('');
-  
+
   // Photo states
   const [photos, setPhotos] = useState({
     front: null,
@@ -42,7 +42,7 @@ const FindScholarship = () => {
     'Adya', 'Anilao', 'Anilao-Labac', 'Antipolo del Norte', 'Antipolo del Sur',
     'Bagong Pook', 'Balintawak', 'Banaybanay', 'Bolbok', 'Bugtong na Pulo',
     'Bulacnin', 'Bulaklakan', 'Calamias', 'Cumba', 'Dagatan', 'Duhatan',
-    'Halang', 'Inosloban', 'Kayumanggi', 'Latag', 'Lodlod', 'Lumbang',
+    'Halang', 'Inosluban', 'Kayumanggi', 'Latag', 'Lodlod', 'Lumbang',
     'Mabini', 'Malagonlong', 'Malitlit', 'Marauoy', 'Mataas na Lupa',
     'Munting Pulo', 'Pagolingin Bata', 'Pagolingin East', 'Pagolingin West',
     'Pangao', 'Pinagkawitan', 'Pinagtongulan', 'Plaridel',
@@ -84,7 +84,7 @@ const FindScholarship = () => {
     // Load user data
     const user = localStorage.getItem('currentUser');
     const profiles = JSON.parse(localStorage.getItem('userProfiles')) || {};
-    
+
     if (!user) {
       navigate('/login');
       return;
@@ -111,7 +111,7 @@ const FindScholarship = () => {
       document.head.removeChild(googleFontsLink);
       document.head.removeChild(googleFontsDisplay);
       document.head.removeChild(googleFontsSheet);
-      
+
       // Clean up camera stream
       if (currentStream) {
         currentStream.getTracks().forEach(track => track.stop());
@@ -325,7 +325,7 @@ const FindScholarship = () => {
     // Convert to blob and create file
     canvas.toBlob((blob) => {
       const file = new File([blob], 'face-verification.jpg', { type: 'image/jpeg' });
-      
+
       // Create a DataTransfer object to set the file input
       const dataTransfer = new DataTransfer();
       dataTransfer.items.add(file);
@@ -359,7 +359,7 @@ const FindScholarship = () => {
     } else {
       const fileInput = document.getElementById(`photoSearch${type.charAt(0).toUpperCase() + type.slice(1)}`);
       const file = fileInput?.files[0];
-      
+
       if (file) {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -372,7 +372,7 @@ const FindScholarship = () => {
 
   const removePhoto = (type) => {
     setPhotos(prev => ({ ...prev, [type]: null }));
-    
+
     // Clear the file input
     const fileInput = document.getElementById(`photoSearch${type.charAt(0).toUpperCase() + type.slice(1)}`);
     if (fileInput) {
@@ -1304,7 +1304,7 @@ const FindScholarship = () => {
         <div className="navbar-menu">
           <span>{currentUser}</span>
           <button className="logout-btn" onClick={logout}>
-            <i className="fas fa-sign-out-alt" style={{marginRight: '6px'}}></i>Logout
+            <i className="fas fa-sign-out-alt" style={{ marginRight: '6px' }}></i>Logout
           </button>
         </div>
       </nav>
@@ -1312,11 +1312,11 @@ const FindScholarship = () => {
       {/* FORM VIEW */}
       {showFormView && (
         <div className="form-view">
-          <div style={{maxWidth: '800px', margin: '0 auto', padding: '0 1rem'}}>
+          <div style={{ maxWidth: '800px', margin: '0 auto', padding: '0 1rem' }}>
             <Link to="/portal" className="back-button">
               <i className="fas fa-arrow-left"></i> Back to Portal
             </Link>
-            <h3 style={{color: 'var(--primary)', fontSize: '1.8rem', fontWeight: '700', textAlign: 'center', marginBottom: '1rem'}}>
+            <h3 style={{ color: 'var(--primary)', fontSize: '1.8rem', fontWeight: '700', textAlign: 'center', marginBottom: '1rem' }}>
               Find Scholarships
             </h3>
 
@@ -1331,54 +1331,54 @@ const FindScholarship = () => {
             <form onSubmit={handleScholarshipSearch} className="feedback-form">
               <div className="form-group">
                 <label>Full Name</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   name="fullName"
                   value={formData.fullName}
                   onChange={handleInputChange}
-                  placeholder="Enter your full name" 
-                  required 
+                  placeholder="Enter your full name"
+                  required
                 />
               </div>
               <div className="form-group">
                 <label>University</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   name="university"
                   value={formData.university}
                   onChange={handleInputChange}
-                  placeholder="Enter your university" 
-                  required 
+                  placeholder="Enter your university"
+                  required
                 />
               </div>
               <div className="form-group">
                 <label>GPA</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   name="gpa"
                   value={formData.gpa}
                   onChange={handleInputChange}
-                  step="0.01" 
-                  min="0" 
+                  step="0.01"
+                  min="0"
                   max="4"
-                  placeholder="e.g., 3.5" 
-                  required 
+                  placeholder="e.g., 3.5"
+                  required
                 />
               </div>
 
               {/* Income field with live indicator */}
               <div className="form-group">
                 <label>Income (PHP/month)</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   name="income"
                   value={formData.income}
                   onChange={handleInputChange}
-                  placeholder="e.g., 25000" 
-                  required 
+                  placeholder="e.g., 25000"
+                  required
                 />
                 {incomeLevel && (
-                  <span className="income-indicator" style={{color: incomeLevel.includes('Low') ? 'var(--success)' : incomeLevel.includes('Middle') ? 'var(--warning)' : 'var(--danger)'}}>
+                  <span className="income-indicator" style={{ color: incomeLevel.includes('Low') ? 'var(--success)' : incomeLevel.includes('Middle') ? 'var(--warning)' : 'var(--danger)' }}>
                     {incomeLevel}
                   </span>
                 )}
@@ -1398,12 +1398,12 @@ const FindScholarship = () => {
                 <label>Updated School ID (Front and Back)</label>
 
                 {/* Front ID Upload Box */}
-                <div style={{marginBottom: '1rem'}}>
-                  <label style={{fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem', display: 'block'}}>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem', display: 'block' }}>
                     Front of School ID
                   </label>
                   <div className="photo-upload-container">
-                    <div className="photo-options" style={{display: photos.front ? 'none' : 'flex'}}>
+                    <div className="photo-options" style={{ display: photos.front ? 'none' : 'flex' }}>
                       <button type="button" className="photo-option-btn" onClick={() => openGallery('front')}>
                         <i className="fas fa-images"></i>
                         <span>Choose from Gallery</span>
@@ -1417,24 +1417,24 @@ const FindScholarship = () => {
                         </button>
                       </div>
                     )}
-                    <input 
-                      type="file" 
-                      id="photoSearchFront" 
-                      accept="image/*" 
-                      style={{display: 'none'}} 
-                      required 
+                    <input
+                      type="file"
+                      id="photoSearchFront"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      required
                       onChange={() => handlePhotoChange('front')}
                     />
                   </div>
                 </div>
 
                 {/* Back ID Upload Box */}
-                <div style={{marginBottom: '1.5rem'}}>
-                  <label style={{fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem', display: 'block'}}>
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem', display: 'block' }}>
                     Back of School ID
                   </label>
                   <div className="photo-upload-container">
-                    <div className="photo-options" style={{display: photos.back ? 'none' : 'flex'}}>
+                    <div className="photo-options" style={{ display: photos.back ? 'none' : 'flex' }}>
                       <button type="button" className="photo-option-btn" onClick={() => openGallery('back')}>
                         <i className="fas fa-images"></i>
                         <span>Choose from Gallery</span>
@@ -1448,12 +1448,12 @@ const FindScholarship = () => {
                         </button>
                       </div>
                     )}
-                    <input 
-                      type="file" 
-                      id="photoSearchBack" 
-                      accept="image/*" 
-                      style={{display: 'none'}} 
-                      required 
+                    <input
+                      type="file"
+                      id="photoSearchBack"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      required
                       onChange={() => handlePhotoChange('back')}
                     />
                   </div>
@@ -1463,15 +1463,15 @@ const FindScholarship = () => {
               {/* Face Verification Section */}
               <div className="face-verification-section">
                 <h4>
-                  <i className="fas fa-camera" style={{marginRight: '8px'}}></i>
+                  <i className="fas fa-camera" style={{ marginRight: '8px' }}></i>
                   Face Verification
                 </h4>
-                <p style={{color: 'var(--text-soft)', fontSize: '0.9rem', marginBottom: '1rem'}}>
+                <p style={{ color: 'var(--text-soft)', fontSize: '0.9rem', marginBottom: '1rem' }}>
                   Take a clear photo of your face for identity verification
                 </p>
 
                 <div className="photo-upload-container">
-                  <div className="photo-options" style={{display: photos.face ? 'none' : 'flex'}}>
+                  <div className="photo-options" style={{ display: photos.face ? 'none' : 'flex' }}>
                     <button type="button" className="photo-option-btn" onClick={openCamera}>
                       <i className="fas fa-camera"></i>
                       <span>Open Camera</span>
@@ -1489,12 +1489,12 @@ const FindScholarship = () => {
                       </button>
                     </div>
                   )}
-                  <input 
-                    type="file" 
-                    id="photoSearchFace" 
-                    accept="image/*" 
-                    style={{display: 'none'}} 
-                    required 
+                  <input
+                    type="file"
+                    id="photoSearchFace"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    required
                     onChange={() => handlePhotoChange('face')}
                   />
                 </div>
@@ -1517,32 +1517,32 @@ const FindScholarship = () => {
           </div>
 
           {/* Camera Feed */}
-          <video 
+          <video
             ref={videoRef}
-            autoPlay 
-            playsInline 
-            style={{display: cameraReady ? 'block' : 'none'}}
+            autoPlay
+            playsInline
+            style={{ display: cameraReady ? 'block' : 'none' }}
           />
 
           {/* Camera Controls */}
-          <div className="camera-controls" style={{display: cameraReady ? 'flex' : 'none'}}>
+          <div className="camera-controls" style={{ display: cameraReady ? 'flex' : 'none' }}>
             <button className="capture-btn" onClick={capturePhoto}>
               <i className="fas fa-camera"></i> Capture
             </button>
             <button className="switch-camera-btn" onClick={switchCamera}>
               <i className="fas fa-sync-alt"></i> Switch Camera
             </button>
-            <button className="switch-camera-btn" onClick={closeCamera} style={{background: 'var(--gray-2)', color: 'var(--text-dark)'}}>
+            <button className="switch-camera-btn" onClick={closeCamera} style={{ background: 'var(--gray-2)', color: 'var(--text-dark)' }}>
               <i className="fas fa-times"></i> Close
             </button>
           </div>
 
           {/* Loading/Initializing indicator */}
           {cameraInitializing && (
-            <div style={{textAlign: 'center', padding: '2rem'}}>
-              <div className="loading-spinner" style={{width: '40px', height: '40px'}}></div>
-              <p style={{marginTop: '1rem', color: 'var(--text-soft)'}}>Initializing camera...</p>
-              <button className="retry-btn" onClick={closeCamera} style={{background: 'var(--gray-2)', color: 'var(--text-dark)', marginTop: '1.5rem'}}>
+            <div style={{ textAlign: 'center', padding: '2rem' }}>
+              <div className="loading-spinner" style={{ width: '40px', height: '40px' }}></div>
+              <p style={{ marginTop: '1rem', color: 'var(--text-soft)' }}>Initializing camera...</p>
+              <button className="retry-btn" onClick={closeCamera} style={{ background: 'var(--gray-2)', color: 'var(--text-dark)', marginTop: '1.5rem' }}>
                 Cancel
               </button>
             </div>
@@ -1553,11 +1553,11 @@ const FindScholarship = () => {
             <div className="camera-error">
               <i className="fas fa-exclamation-triangle"></i>
               <p>{cameraError.message}</p>
-              <div style={{fontSize: '0.8rem', margin: '0.5rem 0', opacity: '0.8'}}>
+              <div style={{ fontSize: '0.8rem', margin: '0.5rem 0', opacity: '0.8' }}>
                 {cameraError.details}
               </div>
               <button className="retry-btn" onClick={retryCamera}>Retry Camera</button>
-              <button className="retry-btn" onClick={closeCamera} style={{background: 'var(--gray-2)', color: 'var(--text-dark)', marginLeft: '0.5rem'}}>
+              <button className="retry-btn" onClick={closeCamera} style={{ background: 'var(--gray-2)', color: 'var(--text-dark)', marginLeft: '0.5rem' }}>
                 Close
               </button>
             </div>
@@ -1572,9 +1572,9 @@ const FindScholarship = () => {
             <h2>Your Scholarship Matches</h2>
             <p>Based on your profile, we've found these opportunities tailored for you.</p>
           </div>
-          <div style={{textAlign: 'center', marginBottom: '1.5rem'}}>
+          <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
             <button className="back-to-form-btn" onClick={switchToFormView}>
-              <i className="fas fa-arrow-left" style={{marginRight: '8px'}}></i>
+              <i className="fas fa-arrow-left" style={{ marginRight: '8px' }}></i>
               Back to search form
             </button>
           </div>
@@ -1602,7 +1602,7 @@ const FindScholarship = () => {
               ))
             ) : (
               <div className="no-results">
-                <i className="fas fa-search" style={{fontSize: '2rem', opacity: '0.5', marginBottom: '1rem'}}></i>
+                <i className="fas fa-search" style={{ fontSize: '2rem', opacity: '0.5', marginBottom: '1rem' }}></i>
                 <p>No matching scholarships found. Please review your information and try again with different criteria.</p>
               </div>
             )}

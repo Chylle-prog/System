@@ -2,7 +2,7 @@ export const BARANGAYS = [
   "Adya", "Anilao", "Anilao-Labac", "Antipolo del Norte", "Antipolo del Sur",
   "Bagong Pook", "Balintawak", "Banaybanay", "Bolbok", "Bugtong na Pulo",
   "Bulacnin", "Bulaklakan", "Calamias", "Cumba", "Dagatan", "Duhatan",
-  "Halang", "Inosloban", "Kayumanggi", "Latag", "Lodlod", "Lumbang",
+  "Halang", "Inosluban", "Kayumanggi", "Latag", "Lodlod", "Lumbang",
   "Mabini", "Malagonlong", "Malitlit", "Marauoy", "Mataas na Lupa",
   "Munting Pulo", "Pagolingin Bata", "Pagolingin East", "Pagolingin West",
   "Pangao", "Pinagkawitan", "Pinagtongulan", "Plaridel",
