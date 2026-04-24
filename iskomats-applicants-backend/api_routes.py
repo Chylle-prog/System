@@ -1277,7 +1277,7 @@ def notify_announcement_applicants(
     provider_no,
     provider_name=None,
     send_to_all_applicants=True,
-    send_email_alerts=False,
+    send_email_alerts=True,
     notification_title_prefix='New Announcement',
 ):
     conn = None
@@ -1306,7 +1306,6 @@ def notify_announcement_applicants(
                 )
 
             recipients = cur.fetchall()
-            conn = None
 
             provider_label = (provider_name or 'ISKOMATS').strip()
             notification_title = f"{notification_title_prefix}: {title}"
@@ -4310,7 +4309,7 @@ def create_announcement(current_user_id, pro_no, role):
                 provider_no=target_pro_no,
                 provider_name=provider_name,
                 send_to_all_applicants=send_to_all_applicants,
-                send_email_alerts=False, # Temporarily disabled to investigate delivery issues
+                send_email_alerts=True,
             )
             print(f"[ANNOUNCEMENT] Notification + email delivery started in background for announcement {ann_no}")
 
@@ -4350,7 +4349,7 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
     title = data.get('title')
     message = data.get('content')
     send_to_all_applicants = data.get('send_to_all_applicants', True)
-    should_notify = data.get('notify', False) # New flag to prevent duplicate notifications
+    should_notify = data.get('notify', True) # Default to true to ensure updates send notifications
     
     if not title or not message:
         return jsonify({'message': 'Title and content are required'}), 400
