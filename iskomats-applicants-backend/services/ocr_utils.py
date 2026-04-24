@@ -762,7 +762,8 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
             p_ratio = f_count / len(n_words) if n_words else 0
             
             # Ultimate Space-Stripped Fallback for Names
-            if p_ratio < (0.6 if is_indigency else 0.80):
+            # We do this for ALL documents now if the ratio is low, not just Indigency
+            if p_ratio < (0.6 if is_indigency else 0.75):
                 # Filter titles out of the clean name part too
                 raw_name_words = normalize_for_ocr(name_part).split()
                 filtered_name_words = [w for w in raw_name_words if w not in titles_to_ignore]
@@ -781,11 +782,13 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
                     if reversed_name in clean_text:
                         print(f"[OCR-MATCH-DEBUG] SUCCESS: Reversed name fallback matched '{reversed_name}'", flush=True)
                         return True, 1.0
-                
-                # Final word-by-word substring check for Indigency
-                if is_indigency and n_words:
-                    if any(w in norm_txt for w in n_words):
-                        return True, 0.7
+
+                # Final word-by-word substring check (very lenient)
+                if n_words:
+                    found_words = sum(1 for w in n_words if w in norm_txt or any(w in ocr_w for ocr_w in all_ocr_words))
+                    if found_words >= max(1, len(n_words) - 1):
+                        print(f"[OCR-MATCH-DEBUG] SUCCESS: Lenient word match ({found_words}/{len(n_words)})", flush=True)
+                        return True, 0.8
                     
             # For middle names, allow initial-based fallback
             if is_middle and n_words and p_ratio < (0.7 if is_indigency else 0.80):
@@ -886,14 +889,15 @@ def _perform_text_matching(ocr_text, target_first_name=None, target_middle_name=
     detected_brgy = []
     if is_indigency:
         # Search for words following "Barangay" or "Brgy"
-        # Lenient regex: catches Barangay Bolbok, BRGY. 12, Barangay SAN JOSE
         brgy_matches = re.findall(r'(?:barangay|brgy)\.?\s+([A-Z0-9][A-Za-z0-9]+(?:\s+[A-Z0-9][A-Za-z0-9]+)?)', ocr_text, re.IGNORECASE)
         detected_brgy = list(set([m.strip() for m in brgy_matches if len(m.strip()) > 2]))
         
-        # If explicitly looking for a target address and we found it but regex missed it (e.g. no "Brgy" prefix)
-        # add the target to the feedback list so the user sees it was detected.
-        if target_address and a_verified and not any(normalize_for_ocr(target_address) in normalize_for_ocr(b) for b in detected_brgy):
-            detected_brgy.append(target_address)
+        # If explicitly looking for a target address and we found it (a_verified), 
+        # add it to detected_brgy if not already there so the UI feedback shows it was found.
+        if target_address and a_verified:
+            norm_target = normalize_for_ocr(target_address)
+            if not any(norm_target in normalize_for_ocr(b) for b in detected_brgy):
+                detected_brgy.append(target_address)
 
     # 2.8 School Name Matching — delegated to school_utils for consistent logic
     school_ok = True
