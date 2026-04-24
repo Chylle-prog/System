@@ -837,14 +837,14 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
             print(f"[QUALITY REJECT] {quality_reason}", flush=True)
             return False, f"Image quality issue: {quality_reason}", "", 0.0
         
-        # Optimize resizing for IDs (Lower = Much Faster)
+        # Optimize resizing for IDs (Increased resolution for better small-text extraction)
         h, w = img.shape[:2]
-        # IDs are small and text is clear. 
-        # Indigency documents (Certificates) need more resolution to capture small letterheads.
-        target_w = 750 if not is_indigency else 1000 
+        # IDs are small and text is clear but dense. 
+        # Certificates (Indigency) also need high resolution.
+        target_w = 1200
         if w > target_w:
             scale = target_w / w
-            img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+            img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LANCZOS4)
     except Exception as e:
         return False, f"Preprocessing error: {str(e)}", "", {'name_ok': False, 'addr_ok': False, 'error': str(e)}
 
@@ -917,8 +917,20 @@ def verify_id_with_ocr(image_bytes, expected_first_name, expected_middle_name, e
                     if not (name_ok and addr_ok):
                         l_t, r_t = left_future.result(), right_future.result()
                         best_text = f"{best_text}\n---\n{l_t}\n---\n{r_t}"
+                        
+                        # --- ROBUST FALLBACK (Optimization #8): PSM 3 (Automatic) ---
+                        # If PSM 6 (fast) didn't catch the core info, run a single high-quality automatic scan
+                        print(f"[OCR] PSM 6 failed to verify ID. Trying Robust PSM 3 Fallback...", flush=True)
+                        psm3_text = _run_tesseract_on_image(img, psm=3)
+                        best_text = f"{best_text}\n---\n{psm3_text}"
                     else:
                         print(f"[OCR PERF] ID SUCCESS (Fast Path) in {time.time() - t_start:.2f}s", flush=True)
+
+                    name_v, addr_v, found_kw, score, meta = _perform_text_matching(best_text, expected_first_name, expected_middle_name, expected_last_name, expected_address, expected_id_no, expected_year_level, expected_school_name, doc_keywords, is_indigency)
+                    
+                    if name_v:
+                        print(f"[OCR PERF] SUCCESS after {time.time() - t_start:.2f}s", flush=True)
+                        return True, "Verified", best_text, {'name_ok': True, 'addr_ok': addr_v, 'name_ratio': score, 'keywords': found_kw}
 
 
             # t_end moved up into early-exit block or handled naturally

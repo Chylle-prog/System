@@ -145,14 +145,18 @@ async def api_verify_document(req: DocumentVerificationRequest):
         if doc_type == 'Enrollment':
             # TWEAK: High res (1200) and slow layout for complex CORs
             raw_t, _ = extract_document_text(image_bytes, max_width=1200, prefer_fast_layout=False, crop_percent=1.0)
-            v_t = bool(raw_t and len(raw_t.strip()) > 15)
-            msg = 'Verified' if v_t else 'Unable to read document text (verify lighting)'
+            name_ok, name_ratio, name_details = student_name_matches_text(raw_t, req.first_name, req.middle_name, req.last_name)
+            v_t = name_ok and bool(raw_t and len(raw_t.strip()) > 15)
+            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Content: OK]" if not v_t else "Verified"
+            meta = {'name_ok': name_ok, 'name_details': name_details}
         
         elif doc_type == 'Grades':
             # TWEAK: High res (1200) for dense tables
             raw_t, _ = extract_document_text(image_bytes, max_width=1200, prefer_fast_layout=False, crop_percent=1.0)
-            v_t = bool(raw_t and raw_t.strip())
-            msg = 'Verified' if v_t else 'Unable to read document text'
+            name_ok, name_ratio, name_details = student_name_matches_text(raw_t, req.first_name, req.middle_name, req.last_name)
+            v_t = name_ok and bool(raw_t and len(raw_t.strip()) > 5)
+            msg = f"Checklist: [Name: {'OK' if name_ok else 'X'} | Content: OK]" if not v_t else "Verified"
+            meta = {'name_ok': name_ok, 'name_details': name_details}
             
         elif doc_type == 'SchoolIDBack':
             raw_t, _ = extract_document_text(image_bytes, is_id_back=True)
@@ -160,8 +164,8 @@ async def api_verify_document(req: DocumentVerificationRequest):
             msg = 'Verified' if v_t else 'Unable to read school ID back text'
             
         elif doc_type == 'Indigency':
-            # TWEAK: 85% crop and normal layout (PSM 3) for certificates to avoid mixing columns
-            raw_t, _ = extract_document_text(image_bytes, max_width=800, prefer_fast_layout=False, crop_percent=0.85)
+            # TWEAK: High res (1200) and 85% crop for certificates
+            raw_t, _ = extract_document_text(image_bytes, max_width=1200, prefer_fast_layout=False, crop_percent=0.85)
             name_ok, name_ratio, name_details = student_name_matches_text(raw_t, req.first_name, req.middle_name, req.last_name, is_indigency=True)
             _, addr_ok, found_keywords, _, detect_meta = _perform_text_matching(raw_t, None, None, None, req.expected_address, is_indigency=True)
             
