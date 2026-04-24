@@ -1588,80 +1588,81 @@ def _record_admin_activity_worker(
             )
             conn.commit()
     except Exception as exc:
-        if conn:
-            conn.rollback()
-        print(f"[AUDIT] Failed to write admin activity log: {exc}")
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+        print(f"[AUDIT] Failed to write admin activity log: {exc}", flush=True)
 
 # ===== CHAT SOCKET EVENTS =====
 
 def initialize_auto_chat_rooms():
     """Create initial chat rooms for all pending/accepted applicants and their providers"""
-    conn = None
-    cursor = None
     try:
-        conn = get_db_startup()
-        cursor = conn.cursor()
-        
-        # Ensure table exists with new schema
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS message (
-                m_id SERIAL PRIMARY KEY,
-                applicant_no INTEGER,
-                pro_no INTEGER,
-                room VARCHAR(50),
-                username VARCHAR(255) NOT NULL,
-                sender_id INTEGER,
-                is_student_sender BOOLEAN,
-                message TEXT NOT NULL,
-                timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_message_app_pro ON message(applicant_no, pro_no)")
-        
-        # Get all valid applicant-provider pairs
-        cursor.execute("""
-            SELECT DISTINCT ast.applicant_no, s.pro_no 
-            FROM applicant_status ast
-            JOIN scholarships s ON ast.scholarship_no = s.req_no
-            WHERE ast.is_accepted = 'Pending' OR ast.is_accepted = 'Accepted' OR ast.is_accepted IS NULL
-        """)
-        pairs = cursor.fetchall()
-        
-        # Look up provider names dynamically from DB
-        cursor.execute("SELECT pro_no, provider_name FROM scholarship_providers")
-        program_names = {row['pro_no']: row['provider_name'] for row in cursor.fetchall()}
-        
-        for p in pairs:
-            app_no = p['applicant_no']
-            pro_no = p['pro_no']
-            if not app_no or not pro_no: continue
+        # Use fast_startup=True to avoid blocking deploy if DB is slow
+        with get_db(fast_startup=True) as conn:
+            cursor = conn.cursor()
             
-            sender_name = program_names.get(pro_no, 'Scholarship Program')
+            # Ensure table exists with new schema
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS message (
+                    m_id SERIAL PRIMARY KEY,
+                    applicant_no INTEGER,
+                    pro_no INTEGER,
+                    room VARCHAR(50),
+                    username VARCHAR(255) NOT NULL,
+                    sender_id INTEGER,
+                    is_student_sender BOOLEAN,
+                    message TEXT NOT NULL,
+                    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             
-            # Check if room already has messages in new columns
-            cursor.execute("SELECT 1 FROM message WHERE applicant_no = %s AND pro_no = %s LIMIT 1", (app_no, pro_no))
-            if not cursor.fetchone():
-                room = f"{app_no}+{pro_no}"
-                # Create initial system message
-                cursor.execute("""
-                    INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp)
-                    VALUES (%s, %s, %s, %s, %s, NOW())
-                """, (app_no, pro_no, room, sender_name, f'Chat initiated for Applicant {app_no}.'))
-        
-        conn.commit()
+            # Migration check: add new columns to existing table
+            cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'message'")
+            existing_columns = [row['column_name'] for row in cursor.fetchall()]
+            
+            if 'sender_id' not in existing_columns:
+                print("[MIGRATION] Adding missing column sender_id to message as INTEGER", flush=True)
+                cursor.execute("ALTER TABLE message ADD COLUMN sender_id INTEGER")
+                
+            if 'is_student_sender' not in existing_columns:
+                print("[MIGRATION] Adding missing column is_student_sender to message as BOOLEAN", flush=True)
+                cursor.execute("ALTER TABLE message ADD COLUMN is_student_sender BOOLEAN")
+                
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_message_app_pro ON message(applicant_no, pro_no)")
+            
+            # Get all valid applicant-provider pairs
+            # Using COALESCE for safer comparison of the 'is_accepted' text field
+            cursor.execute("""
+                SELECT DISTINCT ast.applicant_no, s.pro_no 
+                FROM applicant_status ast
+                JOIN scholarships s ON ast.scholarship_no = s.req_no
+                WHERE COALESCE(ast.is_accepted, 'Pending') IN ('Pending', 'Accepted')
+            """)
+            pairs = cursor.fetchall()
+            
+            # Look up provider names dynamically from DB
+            cursor.execute("SELECT pro_no, provider_name FROM scholarship_providers")
+            program_names = {row['pro_no']: row['provider_name'] for row in cursor.fetchall()}
+            
+            for p in pairs:
+                app_no = p['applicant_no']
+                pro_no = p['pro_no']
+                if not app_no or not pro_no: continue
+                
+                sender_name = program_names.get(pro_no, 'Scholarship Program')
+                
+                # Check if room already has messages
+                cursor.execute("SELECT 1 FROM message WHERE applicant_no = %s AND pro_no = %s LIMIT 1", (app_no, pro_no))
+                if not cursor.fetchone():
+                    room = f"{app_no}+{pro_no}"
+                    # Create initial system message
+                    cursor.execute("""
+                        INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp)
+                        VALUES (%s, %s, %s, %s, %s, NOW())
+                    """, (app_no, pro_no, room, sender_name, f'Chat initiated for Applicant {app_no}.'))
+            
+            conn.commit()
     except Exception as e:
-        print(f"Chat initialization error: {e}")
-        print("Skipping automatic chat room initialization until the database becomes available.")
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+        print(f"Chat initialization error: {e}", flush=True)
+        print("Skipping automatic chat room initialization until the database becomes available.", flush=True)
 
 def init_socketio(socketio):
     """Initialize SocketIO events for chatting"""

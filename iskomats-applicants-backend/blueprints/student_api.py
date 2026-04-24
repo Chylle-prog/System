@@ -1113,14 +1113,15 @@ def ensure_applicant_document_storage():
                 WHERE table_name = '{doc_table}'
             """)
             existing_doc_table_info = {
-                (row['column_name'] if isinstance(row, dict) else row[0]): (row['data_type'] if isinstance(row, dict) else row[1])
+                (row['column_name'] if isinstance(row, dict) else row[0]).lower(): (row['data_type'] if isinstance(row, dict) else row[1])
                 for row in cur.fetchall()
             }
             
             # Only ensure columns that are relevant for the doc table
             for col in document_table_cols:
-                if col in existing_doc_table_info:
-                    d_type = existing_doc_table_info[col].lower()
+                col_lower = col.lower()
+                if col_lower in existing_doc_table_info:
+                    d_type = existing_doc_table_info[col_lower].lower()
                     if d_type == 'bytea':
                         print(f"[MIGRATION] EXECUTING: Converting {col} in {doc_table} to TEXT", flush=True)
                         cur.execute(f"UPDATE {doc_table} SET {col} = NULL WHERE {col} IS NOT NULL")
