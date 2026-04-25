@@ -3456,7 +3456,7 @@ def get_applicants(current_user_id, pro_no, role, program):
                         a['income'] = float(a['income'])
                     except (ValueError, TypeError):
                         pass
-                
+                 
                 # Convert document blobs to media arrays (Optimized: use URLs)
                 # Include both image files and video files for each document type
                 a['indigencyFiles'] = get_applicant_media_metadata(app_no, 'indigency_doc', a.get('has_indigency_doc'), None, "Indigency Proof")
