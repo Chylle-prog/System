@@ -38,21 +38,26 @@ def get_allowed_origins():
         origins.append(base_origin)
         origins.append(base_origin + '/')
         
-        # Wildcard support for surge.sh and netlify.app
-        if base_origin.endswith('.surge.sh') or base_origin.endswith('.netlify.app'):
+        # Wildcard support for surge.sh, netlify.app, and vercel.app
+        if base_origin.endswith('.surge.sh') or base_origin.endswith('.netlify.app') or base_origin.endswith('.vercel.app'):
             host = base_origin.removeprefix('https://').removeprefix('http://').split('/')[0]
             # Match current host and any subdomains
             preview_patterns.append(re.compile(rf"^https?://([a-z0-9\-]+\.)*{re.escape(host)}/?$"))
-            # Bulletproof: Also add general surge.sh subdomain pattern
+            # Bulletproof: Also add general subdomain patterns
             if 'surge.sh' in host:
                 preview_patterns.append(re.compile(r"^https?://[a-z0-9\-]+\.surge\.sh/?$"))
+            elif 'netlify.app' in host:
+                preview_patterns.append(re.compile(r"^https?://[a-z0-9\-]+\.netlify\.app/?$"))
+            elif 'vercel.app' in host:
+                preview_patterns.append(re.compile(r"^https?://[a-z0-9\-]+\.vercel\.app/?$"))
 
     # Return unique list
     final_origins = list(dict.fromkeys(origins))
     
-    # LIBERAL SURGE/NETLIFY SUPPORT: Always allow any surge.sh or netlify.app origin to avoid blockers
+    # LIBERAL SURGE/NETLIFY/VERCEL SUPPORT: Always allow any surge.sh, netlify.app, or vercel.app origin to avoid blockers
     preview_patterns.append(re.compile(r"^https?://[a-z0-9\-]+\.surge\.sh/?$"))
     preview_patterns.append(re.compile(r"^https?://[a-z0-9\-]+\.netlify\.app/?$"))
+    preview_patterns.append(re.compile(r"^https?://[a-z0-9\-]+\.vercel\.app/?$"))
 
     return final_origins + preview_patterns
 
@@ -90,9 +95,10 @@ def is_origin_allowed(origin, exact_origins, regex_origins):
         except Exception as e:
             print(f"[CORS] Error matching pattern {pattern}: {e}")
 
-    # GLOBAL OVERRIDE: Allow any surge.sh or netlify.app origin as a safety net
+    # GLOBAL OVERRIDE: Allow any surge.sh, netlify.app, or vercel.app origin as a safety net
     if normalized_origin.endswith('.surge.sh') or normalized_origin.endswith('.surge.sh/') or \
-       normalized_origin.endswith('.netlify.app') or normalized_origin.endswith('.netlify.app/'):
+       normalized_origin.endswith('.netlify.app') or normalized_origin.endswith('.netlify.app/') or \
+       normalized_origin.endswith('.vercel.app') or normalized_origin.endswith('.vercel.app/'):
         return True
 
     # Log only unique rejections to avoid flooding
