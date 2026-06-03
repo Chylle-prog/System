@@ -12,10 +12,7 @@ python-dotenv
 cryptography
 opencv-python-headless
 numpy
-pandas
-pytesseract
 Pillow
-rapidfuzz
 uniface
 onnxruntime
 google-auth

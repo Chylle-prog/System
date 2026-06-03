@@ -856,117 +856,346 @@ const StudentInfo = () => {
     }
   };
 
+  // --- Client-Side Verification Algorithms (Streamlined for React) ---
+  const normalizeForOcr = (str) => {
+    if (!str) return "";
+    return str.toString()
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+  };
+
+  const studentNameMatchesText = (text, first, middle, last) => {
+    const normText = normalizeForOcr(text);
+    if (!normText) return { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } };
+
+    const checkNamePart = (part, isMiddle = false) => {
+        if (!part) return true;
+        const words = normalizeForOcr(part).split(' ').filter(w => w.length >= 2);
+        if (words.length === 0) return true;
+
+        let foundCount = 0;
+        words.forEach(word => {
+            if (new RegExp('\\b' + word + '\\b').test(normText) || normText.includes(word)) {
+                foundCount++;
+            } else if (isMiddle && word.length > 0) {
+                const initial = word[0];
+                if (new RegExp('\\b' + initial + '\\b').test(normText)) {
+                    foundCount++;
+                }
+            }
+        });
+
+        if (foundCount < words.length) {
+            const cleanPart = words.join('');
+            const cleanText = normText.replace(/\s/g, '');
+            if (cleanText.includes(cleanPart)) {
+                return true;
+            }
+        }
+
+        return foundCount >= Math.max(1, words.length - 1);
+    };
+
+    const firstOk = checkNamePart(first);
+    const middleOk = middle ? checkNamePart(middle, true) : true;
+    const lastOk = checkNamePart(last);
+
+    return {
+        success: firstOk && lastOk,
+        details: {
+            first_ok: firstOk,
+            middle_ok: middleOk,
+            last_ok: lastOk
+        }
+    };
+  };
+
+  const studentIdNoMatchesText = (targetId, text) => {
+    if (!targetId) return true;
+    
+    const normalizeId = (s) => {
+        return s.toString().toLowerCase().replace(/[^a-z0-9]/g, '')
+            .replace(/o/g, '0').replace(/q/g, '0').replace(/d/g, '0')
+            .replace(/i/g, '1').replace(/l/g, '1')
+            .replace(/z/g, '2').replace(/s/g, '5')
+            .replace(/g/g, '6').replace(/b/g, '6')
+            .replace(/q/g, '9');
+    };
+
+    const tId = normalizeId(targetId);
+    if (!tId) return true;
+
+    const normText = normalizeId(text);
+    const isMatched = normText.includes(tId);
+    if (isMatched) return true;
+
+    const words = text.split(/\s+/);
+    for (let word of words) {
+        if (normalizeId(word).includes(tId)) {
+            return true;
+        }
+    }
+    return false;
+  };
+
+  const schoolNameMatchesText = (text, targetSchool) => {
+    if (!targetSchool) return true;
+    const normText = normalizeForOcr(text);
+    const normSchool = normalizeForOcr(targetSchool);
+
+    if (normText.includes(normSchool)) return true;
+
+    const schoolWords = normSchool.split(' ').filter(w => w.length > 2);
+    if (schoolWords.length === 0) return true;
+
+    let matched = 0;
+    schoolWords.forEach(w => {
+        if (normText.includes(w)) matched++;
+    });
+
+    return (matched / schoolWords.length) >= 0.6;
+  };
+
+  const academic_year_matches_expected = (text, expectedYear) => {
+    if (!expectedYear) return true;
+    
+    const yearRegex = /20\d{2}/g;
+    const foundYears = text.match(yearRegex);
+    const expectedYears = expectedYear.match(yearRegex);
+
+    if (!foundYears || !expectedYears) return false;
+
+    for (let f of foundYears) {
+        if (expectedYears.includes(f)) return true;
+    }
+    return false;
+  };
+
+  const courseMatchesText = (expectedCourse, text) => {
+    if (!expectedCourse) return true;
+    const normText = normalizeForOcr(text);
+    const normCourse = normalizeForOcr(expectedCourse);
+    return normText.includes(normCourse);
+  };
+
+  const gpaMatchesText = (text, expectedGpa) => {
+    if (!expectedGpa) return true;
+    const cleanGpa = expectedGpa.toString().replace(/[^0-9.]/g, '');
+    if (!cleanGpa) return true;
+    return text.includes(cleanGpa);
+  };
+
+  const addressMatchesText = (text, expectedAddr) => {
+    if (!expectedAddr) return true;
+    const normText = normalizeForOcr(text);
+    const normAddr = normalizeForOcr(expectedAddr);
+
+    if (normText.includes(normAddr)) return true;
+
+    const words = normAddr.split(' ').filter(w => w.length > 2 && !['barangay', 'brgy', 'city', 'municipality'].includes(w));
+    if (words.length === 0) return true;
+
+    return words.some(w => normText.includes(w));
+  };
+
   const performOcrVerification = async (docType, docParam, extraParams = {}, videoUrl = null, silent = false) => {
+    const setStatus = (status) => {
+      if (silent) return;
+      if (docType === 'Indigency') { setOcrStatus(status); }
+      else if (docType === 'Enrollment') { setCoeStatus(status); }
+      else if (docType === 'Grades') { setGradesStatus(status); }
+      else if (docType === 'SchoolID') { setIdStatus(status); }
+    };
+
+    const setVerified = (v) => {
+      if (silent) return;
+      if (docType === 'Indigency') { setOcrVerified(v); }
+      else if (docType === 'Enrollment') { setCoeVerified(v); }
+      else if (docType === 'Grades') { setGradesVerified(v); }
+      else if (docType === 'SchoolID') { setIdVerified(v); }
+    };
+
     try {
-      const setStatus = (status) => {
-        if (silent) return;
-        if (docType === 'Indigency') { setOcrStatus(status); }
-        else if (docType === 'Enrollment') { setCoeStatus(status); }
-        else if (docType === 'Grades') { setGradesStatus(status); }
-        else if (docType === 'SchoolID') { setIdStatus(status); }
-      };
-
-      const setVerified = (v) => {
-        if (silent) return;
-        if (docType === 'Indigency') { setOcrVerified(v); }
-        else if (docType === 'Enrollment') { setCoeVerified(v); }
-        else if (docType === 'Grades') { setGradesVerified(v); }
-        else if (docType === 'SchoolID') { setIdVerified(v); }
-      };
-
       if (!silent) {
         setVerified('verifying');
-        setStatus(`Verifying your ${docType} document and video...`);
-        setScanProgress(15);
+        setStatus(`Initializing in-browser WebAssembly OCR Engine...`);
+        setScanProgress(5);
       }
 
-      let pInterval;
-      if (!silent) {
-        pInterval = setInterval(() => {
-          setScanProgress(p => p < 95 ? p + (Math.random() * 25) : p);
-        }, 80);
-      }
-
-      let { townCity, barangay, schoolName, idNumber, yearLevel, gpa, course, semester } = extraParams;
+      let { townCity, barangay, schoolName, idNumber, yearLevel, gpa, course, semester, academicYear } = extraParams;
       const targetBarangay = barangay || formData.barangay || formData.streetBarangay || '';
       const { firstName, lastName, middleName } = formData;
       const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
 
+      if (!window.Tesseract) {
+        throw new Error("WebAssembly OCR Engine (Tesseract.js) failed to load. Please check your internet connection.");
+      }
+
+      const runOcrOnImage = async (imgSource, stepName = "") => {
+        if (!silent) setStatus(`Scanning ${stepName} image with WebAssembly Worker...`);
+        const ocrResult = await window.Tesseract.recognize(imgSource, 'eng', {
+          workerPath: 'https://unpkg.com/tesseract.js@5.1.0/dist/worker.min.js',
+          corePath: 'https://unpkg.com/tesseract.js-core@5.1.0/tesseract-core.wasm.js',
+          langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+          logger: m => {
+            if (!silent && m.status === 'recognizing text') {
+              setScanProgress(Math.round(m.progress * 90));
+            }
+          }
+        });
+        return ocrResult.data.text || "";
+      };
+
+      let detectedText = "";
+      let isSuccess = false;
+      let scoreDetails = {};
+      let finalMessage = "";
+      let resultsList = [];
+
+      if (docType === 'SchoolID') {
+        const frontText = await runOcrOnImage(docParam.front, "School ID Front");
+        const backText = await runOcrOnImage(docParam.back, "School ID Back");
+        detectedText = `[FRONT ID TEXT]\n${frontText}\n\n[BACK ID TEXT]\n${backText}`;
+
+        const nameMatchFront = studentNameMatchesText(frontText, firstName, middleName, lastName);
+        const nameMatchBack = studentNameMatchesText(backText, firstName, middleName, lastName);
+        const nameOk = nameMatchFront.success || nameMatchBack.success;
+        const firstOk = nameMatchFront.details.first_ok || nameMatchBack.details.first_ok;
+        const middleOk = middleName ? (nameMatchFront.details.middle_ok || nameMatchBack.details.middle_ok) : true;
+        const lastOk = nameMatchFront.details.last_ok || nameMatchBack.details.last_ok;
+
+        const idOk = idNumber ? (studentIdNoMatchesText(idNumber, frontText) || studentIdNoMatchesText(idNumber, backText)) : true;
+        const schoolOk = schoolName ? (schoolNameMatchesText(frontText, schoolName) || schoolNameMatchesText(backText, schoolName)) : true;
+        const ayOk = academicYear ? (academic_year_matches_expected(frontText, academicYear) || academic_year_matches_expected(backText, academicYear)) : true;
+
+        isSuccess = nameOk && idOk && schoolOk && ayOk;
+        scoreDetails = {
+          "First Name": firstOk,
+          "Middle Name": middleName ? middleOk : null,
+          "Last Name": lastOk,
+          "ID Number": idNumber ? idOk : null,
+          "School Name": schoolName ? schoolOk : null,
+          "Academic Year": academicYear ? ayOk : null
+        };
+        finalMessage = isSuccess ? "School ID verified successfully client-side!" : "School ID verification mismatch.";
+        resultsList = [{ doc: 'SchoolID', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
+      } 
+      else if (docType === 'Enrollment') {
+        detectedText = await runOcrOnImage(docParam, "COE/COR");
+        const nameCheck = studentNameMatchesText(detectedText, firstName, middleName, lastName);
+        const schoolOk = schoolName ? schoolNameMatchesText(detectedText, schoolName) : true;
+        const courseOk = course ? courseMatchesText(course, detectedText) : true;
+        const ayOk = academicYear ? academic_year_matches_expected(detectedText, academicYear) : true;
+        const semOk = semester ? normalizeForOcr(detectedText).includes(normalizeForOcr(semester)) : true;
+        const idOk = idNumber ? studentIdNoMatchesText(idNumber, detectedText) : true;
+
+        isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk;
+        scoreDetails = {
+          "First Name": nameCheck.details.first_ok,
+          "Last Name": nameCheck.details.last_ok,
+          "School": schoolOk,
+          "Course": courseOk,
+          "Academic Year": ayOk,
+          "Semester": semOk,
+          "ID Number": idOk
+        };
+        finalMessage = isSuccess ? "Enrollment verified successfully client-side!" : "Enrollment verification mismatch.";
+        resultsList = [{ doc: 'Enrollment', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
+      }
+      else if (docType === 'Grades') {
+        detectedText = await runOcrOnImage(docParam, "Grades Transcript");
+        const nameCheck = studentNameMatchesText(detectedText, firstName, middleName, lastName);
+        const gpaOk = gpa ? gpaMatchesText(detectedText, gpa) : true;
+        const ayOk = academicYear ? academic_year_matches_expected(detectedText, academicYear) : true;
+        const semOk = semester ? normalizeForOcr(detectedText).includes(normalizeForOcr(semester)) : true;
+        const schoolOk = schoolName ? schoolNameMatchesText(detectedText, schoolName) : true;
+        const courseOk = course ? courseMatchesText(course, detectedText) : true;
+        const idOk = idNumber ? studentIdNoMatchesText(idNumber, detectedText) : true;
+
+        isSuccess = nameCheck.success && gpaOk && ayOk && semOk && schoolOk && courseOk && idOk;
+        scoreDetails = {
+          "First Name": nameCheck.details.first_ok,
+          "Last Name": nameCheck.details.last_ok,
+          "GPA Match": gpaOk,
+          "Academic Year": ayOk,
+          "Semester": semOk,
+          "School": schoolOk,
+          "Course": courseOk,
+          "ID Number": idOk
+        };
+        finalMessage = isSuccess ? "Grades verified successfully client-side!" : "Grades verification mismatch.";
+        resultsList = [{ doc: 'Grades', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
+      }
+      else if (docType === 'Indigency') {
+        detectedText = await runOcrOnImage(docParam, "Certificate of Indigency");
+        const nameCheck = studentNameMatchesText(detectedText, firstName, middleName, lastName);
+        const addrOk = targetBarangay ? addressMatchesText(detectedText, targetBarangay) : true;
+
+        isSuccess = nameCheck.success && addrOk;
+        scoreDetails = {
+          "First Name": nameCheck.details.first_ok,
+          "Last Name": nameCheck.details.last_ok,
+          "Address Match": addrOk
+        };
+        finalMessage = isSuccess ? "Indigency verified successfully client-side!" : "Indigency verification mismatch.";
+        resultsList = [{ doc: 'Indigency', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
+      }
+
+      if (!silent) {
+        setStatus("Saving verification results to database...");
+        setScanProgress(95);
+      }
+
       const result = await applicantAPI.ocrCheck(
-        docType === 'SchoolID' ? docParam.front : null,
-        docType === 'SchoolID' ? docParam.back : null,
-        docType === 'Indigency' ? docParam : null,
-        townCity,
-        docType === 'Enrollment' ? docParam : null,
-        docType === 'Grades' ? docParam : null,
-        firstName,
-        lastName,
-        middleName,
-        schoolName, idNumber, yearLevel, gpa, course,
-        videoUrl,
-        reqNo,
         docType,
-        targetBarangay,
-        semester
+        isSuccess,
+        finalMessage,
+        resultsList,
+        reqNo
       );
 
-      if (!silent && pInterval) clearInterval(pInterval);
       if (!silent) setScanProgress(100);
 
-      if (result.verified) {
+      if (isSuccess) {
         setVerified('success');
-        setStatus(result.message || 'Verification successful!');
-
-        // Store the detailed results if available
-        if (result.results) {
-          if (docType === 'Indigency') setIndigencyResults(result.results);
-          else if (docType === 'Enrollment') setCoeResults(result.results);
-          else if (docType === 'Grades') setGradesResults(result.results);
-          else if (docType === 'SchoolID') setIdResults(result.results);
-        }
+        setStatus(finalMessage);
+        
+        const viewResults = resultsList.map(r => ({
+          doc: r.doc,
+          verified: r.verified,
+          message: r.message,
+          score_details: r.score_details
+        }));
+        if (docType === 'Indigency') setIndigencyResults(viewResults);
+        else if (docType === 'Enrollment') setCoeResults(viewResults);
+        else if (docType === 'Grades') setGradesResults(viewResults);
+        else if (docType === 'SchoolID') setIdResults(viewResults);
 
         return true;
       } else {
-        const isTechnical = result.message?.includes('temporarily unavailable') ||
-          result.message?.includes('Low memory mode') ||
-          result.message?.includes('OCR service');
-
-        if (isTechnical) {
-          setVerified('technical_unavailable');
-          setStatus(result.message || 'OCR service temporarily unavailable');
-          return true;
-        }
-
         setVerified('failed');
-        const finalFailMsg = result.message || 'Verification failed. Please ensure your document is clear and all details (Name, ID, Year) are correct.';
-        setStatus(finalFailMsg);
+        setStatus(finalMessage);
 
-        // Store the detailed results even if verification failed to show the percentage
-        if (result.results) {
-          if (docType === 'Indigency') setIndigencyResults(result.results);
-          else if (docType === 'Enrollment') setCoeResults(result.results);
-          else if (docType === 'Grades') setGradesResults(result.results);
-          else if (docType === 'SchoolID') setIdResults(result.results);
-        }
+        const viewResults = resultsList.map(r => ({
+          doc: r.doc,
+          verified: r.verified,
+          message: r.message,
+          score_details: r.score_details
+        }));
+        if (docType === 'Indigency') setIndigencyResults(viewResults);
+        else if (docType === 'Enrollment') setCoeResults(viewResults);
+        else if (docType === 'Grades') setGradesResults(viewResults);
+        else if (docType === 'SchoolID') setIdResults(viewResults);
 
         return false;
       }
     } catch (err) {
-      console.error('OCR Error:', err);
+      console.error('Client-Side OCR Error:', err);
       const errMsg = `Technical Issue: ${err.message}`;
-      if (docType === 'Indigency') {
-        setOcrVerified('failed');
-        setOcrStatus(errMsg);
-      } else if (docType === 'Enrollment') {
-        setCoeVerified('failed');
-        setCoeStatus(errMsg);
-      } else if (docType === 'Grades') {
-        setGradesVerified('failed');
-        setGradesStatus(errMsg);
-      } else if (docType === 'SchoolID') {
-        setIdVerified('failed');
-        setIdStatus(errMsg);
-      }
+      setVerified('failed');
+      setStatus(errMsg);
       return false;
     }
   };

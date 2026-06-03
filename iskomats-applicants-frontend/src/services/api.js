@@ -662,63 +662,16 @@ export const applicantAPI = {
    * @param {string} lastName - User's current last name for verification
    * @returns {Promise}
    */
-  ocrCheck: async (idFront = null, idBack = null, indigencyDoc = null, townCity = null, enrollmentDoc = null, grades_doc = null, firstName = null, lastName = null, middleName = null, schoolName = null, idNumber = null, yearLevel = null, gpa = null, course = null, videoUrl = null, scholarshipNo = null, targetDoc = null, barangay = null, semester = null) => {
-    const fData = new FormData();
-
-    const appendDocumentIfNeeded = async (fieldName, value) => {
-      if (!value) {
-        return;
-      }
-
-      if (typeof value === 'string' && /^https?:\/\//i.test(value)) {
-        return;
-      }
-
-      let blob = value;
-      if (typeof value === 'string') {
-        // Convert base64 to blob
-        try {
-          const res = await fetch(value);
-          blob = await res.blob();
-        } catch (e) {
-          console.warn(`[OCR-ENCRYPT] Failed to convert ${fieldName} to blob:`, e);
-        }
-      }
-
-      fData.append(fieldName, blob);
-    };
-    
-    // Add document data (handling both base64 strings and potential Blob/Files)
-    await appendDocumentIfNeeded('id_front', idFront);
-    await appendDocumentIfNeeded('id_back', idBack);
-    await appendDocumentIfNeeded('indigency_doc', indigencyDoc);
-    await appendDocumentIfNeeded('enrollment_doc', enrollmentDoc);
-    await appendDocumentIfNeeded('grades_doc', grades_doc);
-    
-    // Add metadata
-    fData.append('town_city', townCity || '');
-    fData.append('barangay', barangay || '');
-    fData.append('firstName', firstName || '');
-    fData.append('lastName', lastName || '');
-    fData.append('middleName', middleName || '');
-    fData.append('schoolName', schoolName || '');
-    fData.append('idNumber', idNumber || '');
-    fData.append('yearLevel', yearLevel || '');
-    fData.append('gpa', gpa || '');
-    fData.append('course', course || '');
-    fData.append('semester', semester || '');
-    if (videoUrl && typeof videoUrl === 'object') {
-      fData.append('video_url', videoUrl.front || '');
-      fData.append('video_url_back', videoUrl.back || '');
-    } else {
-      fData.append('video_url', videoUrl || '');
-    }
-    if (scholarshipNo) fData.append('scholarship_no', scholarshipNo);
-    if (targetDoc) fData.append('target_doc', targetDoc);
-
+  ocrCheck: async (targetDoc, verified, message, results, scholarshipNo = null) => {
     return makeRequest('/student/verification/ocr-check', {
       method: 'POST',
-      body: fData,
+      body: JSON.stringify({
+        target_doc: targetDoc,
+        verified: verified,
+        message: message,
+        results: results,
+        scholarship_no: scholarshipNo
+      }),
     });
   },
 
