@@ -136,7 +136,7 @@ const uploadRequirementVideoDirect = async (fieldName, file, onProgress) => {
     success: true,
     publicUrl: data.publicUrl,
     originalSize: file.size,
-    convertedSize: encryptedFile.size,
+    convertedSize: file.size,
     transport: 'supabase-direct',
   };
 };

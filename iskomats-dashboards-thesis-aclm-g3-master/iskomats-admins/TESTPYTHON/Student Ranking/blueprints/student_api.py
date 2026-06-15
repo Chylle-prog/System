@@ -2546,6 +2546,7 @@ def submit_application():
                 'signature_image_data',
                 'id_img_front',
                 'id_img_back',
+                'schoolID_photo',
                 'enrollment_certificate_doc',
                 'grades_doc',
                 'indigency_doc',
@@ -2599,7 +2600,7 @@ def submit_application():
             return jsonify(response_payload), 409
 
         # ── Data Preparation ──────────────────────────────────────────────────
-        id_front_bytes = decode_base64(form_data.get('id_front')) or db_bytes(applicant.get('id_img_front'))
+        id_front_bytes = decode_base64(form_data.get('id_front')) or db_bytes(applicant.get('id_img_front') or applicant.get('schoolID_photo'))
         id_back_bytes = decode_base64(form_data.get('id_back')) or db_bytes(applicant.get('id_img_back'))
         face_photo_bytes = decode_base64(form_data.get('face_photo'))
         profile_pic_bytes = None
@@ -2642,9 +2643,11 @@ def submit_application():
                         print(f"[SUBMIT] Scheduling OCR for {full_name}...")
                         verification_tasks['ocr'] = executor.submit(
                             verify_id_with_ocr, 
-                            image_bytes=id_front_bytes,
-                            expected_name=full_name,
-                            expected_address=town_city
+                            id_front_bytes,
+                            applicant.get('first_name', ''),
+                            applicant.get('middle_name', ''),
+                            applicant.get('last_name', ''),
+                            town_city
                         )
 
                     # 2. Video OCR Validations
@@ -2766,6 +2769,7 @@ def submit_application():
             'grades_doc': doc_bytes['mayorGrades_photo'],
             'indigency_doc': doc_bytes['mayorIndigency_photo'],
             'id_pic': doc_bytes['mayorValidID_photo'] or face_photo_bytes,
+            'schoolID_photo': doc_bytes['schoolID_photo'],
         }
 
         for column_name, value in binary_map.items():
@@ -2873,6 +2877,7 @@ def ocr_check():
                 [
                     'id_img_front',
                     'id_img_back',
+                    'schoolID_photo',
                     'indigency_doc',
                     'enrollment_certificate_doc',
                     'grades_doc',
@@ -2988,7 +2993,7 @@ def ocr_check():
             'expected_academic_year': expected_academic_year,
             'expected_semester': expected_semester,
             'expected_id_no': expected_id_no,
-            'id_front': _hash_verification_source(id_front_param or applicant.get('id_img_front')),
+            'id_front': _hash_verification_source(id_front_param or applicant.get('id_img_front') or applicant.get('schoolID_photo')),
             'id_back': _hash_verification_source(id_back_param or applicant.get('id_img_back')),
             'indigency_doc': _hash_verification_source(indigency_doc_param or applicant.get('indigency_doc')),
             'enrollment_doc': _hash_verification_source(enrollment_doc_param or applicant.get('enrollment_certificate_doc')),
@@ -3286,8 +3291,9 @@ def ocr_check():
                 jobs.append(('Indigency', indigency_doc_param, applicant.get('indigency_doc')))
 
         if not target_doc or target_doc == 'SchoolID':
-            if id_front_param or applicant.get('id_img_front'):
-                jobs.append(('SchoolID', id_front_param, applicant.get('id_img_front')))
+            id_front_img = applicant.get('id_img_front') or applicant.get('schoolID_photo')
+            if id_front_param or id_front_img:
+                jobs.append(('SchoolID', id_front_param, id_front_img))
             if id_back_param or applicant.get('id_img_back'):
                 jobs.append(('SchoolIDBack', id_back_param, applicant.get('id_img_back')))
                 

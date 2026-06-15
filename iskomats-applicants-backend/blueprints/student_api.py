@@ -2711,6 +2711,7 @@ def submit_application():
                     'signature_image_data',
                     'id_img_front',
                     'id_img_back',
+                    'schoolID_photo',
                     'enrollment_certificate_doc',
                     'grades_doc',
                     'indigency_doc',
@@ -2796,7 +2797,7 @@ def submit_application():
                     return db_bytes(existing)
                 return None
 
-            id_front_bytes = get_doc_bytes('id_front', 'id_img_front')
+            id_front_bytes = get_doc_bytes('id_front', 'id_img_front') or get_doc_bytes('schoolID_photo', 'schoolID_photo')
             id_back_bytes = get_doc_bytes('id_back', 'id_img_back')
             face_photo_bytes = get_doc_bytes('face_photo', 'face_photo')
         
@@ -2812,12 +2813,13 @@ def submit_application():
         
             signature_bytes = get_doc_bytes('signature_data', 'signature_image_data')
 
-            doc_keys = ['mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo', 'mayorValidID_photo']
+            doc_keys = ['mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo', 'mayorValidID_photo', 'schoolID_photo']
             doc_column_map = {
                 'mayorCOE_photo': 'enrollment_certificate_doc',
                 'mayorGrades_photo': 'grades_doc',
                 'mayorIndigency_photo': 'indigency_doc',
                 'mayorValidID_photo': 'id_pic',
+                'schoolID_photo': 'schoolID_photo',
             }
 
             doc_bytes = {}
@@ -2969,6 +2971,7 @@ def submit_application():
                 'grades_doc': doc_bytes['mayorGrades_photo'],
                 'indigency_doc': doc_bytes['mayorIndigency_photo'],
                 'id_pic': doc_bytes['mayorValidID_photo'] or face_photo_bytes,
+                'schoolID_photo': doc_bytes['schoolID_photo'],
             }
 
             for column_name, value in binary_map.items():

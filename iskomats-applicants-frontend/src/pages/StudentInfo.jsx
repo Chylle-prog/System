@@ -238,6 +238,32 @@ const splitFullName = (fullName) => {
   };
 };
 
+let tesseractWorkerSingleton = null;
+let activeOcrLogger = null;
+
+const getTesseractWorker = async () => {
+  if (tesseractWorkerSingleton) {
+    return tesseractWorkerSingleton;
+  }
+
+  if (!window.Tesseract) {
+    throw new Error("WebAssembly OCR Engine (Tesseract.js) failed to load. Please check your internet connection.");
+  }
+
+  tesseractWorkerSingleton = await window.Tesseract.createWorker('eng', 1, {
+    workerPath: 'https://unpkg.com/tesseract.js@5.1.0/dist/worker.min.js',
+    corePath: 'https://unpkg.com/tesseract.js-core@5.1.0/tesseract-core.wasm.js',
+    langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+    logger: (m) => {
+      if (activeOcrLogger) {
+        activeOcrLogger(m);
+      }
+    }
+  });
+
+  return tesseractWorkerSingleton;
+};
+
 const StudentInfo = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -392,6 +418,13 @@ const StudentInfo = () => {
 
   const handleVideoUpload = (fieldName, blob) => {
     if (!blob) return;
+
+    // Check size limit: 20MB
+    const MAX_SIZE = 20 * 1024 * 1024;
+    if (blob.size > MAX_SIZE) {
+      alert(`The selected video file is too large (${(blob.size / (1024 * 1024)).toFixed(1)}MB). The maximum allowed size is 20MB. Please record a shorter or lower-resolution video.`);
+      return;
+    }
 
     // Immediate local preview
     const localUrl = URL.createObjectURL(blob);
@@ -1035,16 +1068,15 @@ const StudentInfo = () => {
 
       const runOcrOnImage = async (imgSource, stepName = "") => {
         if (!silent) setStatus(`Scanning ${stepName} image with WebAssembly Worker...`);
-        const ocrResult = await window.Tesseract.recognize(imgSource, 'eng', {
-          workerPath: 'https://unpkg.com/tesseract.js@5.1.0/dist/worker.min.js',
-          corePath: 'https://unpkg.com/tesseract.js-core@5.1.0/tesseract-core.wasm.js',
-          langPath: 'https://tessdata.projectnaptha.com/4.0.0',
-          logger: m => {
-            if (!silent && m.status === 'recognizing text') {
-              setScanProgress(Math.round(m.progress * 90));
-            }
+        
+        activeOcrLogger = (m) => {
+          if (!silent && m.status === 'recognizing text') {
+            setScanProgress(Math.round(m.progress * 90));
           }
-        });
+        };
+
+        const worker = await getTesseractWorker();
+        const ocrResult = await worker.recognize(imgSource);
         return ocrResult.data.text || "";
       };
 
