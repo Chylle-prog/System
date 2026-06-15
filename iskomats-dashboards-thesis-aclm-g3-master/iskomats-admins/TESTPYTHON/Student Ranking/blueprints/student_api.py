@@ -3298,6 +3298,48 @@ def ocr_check():
                 jobs.append(('SchoolIDBack', id_back_param, applicant.get('id_img_back')))
                 
         if not jobs:
+            # Check if this is a lightweight persistence request containing client-side results
+            verified = str(data.get('verified', 'false')).lower() == 'true'
+            message = data.get('message', '')
+            results = data.get('results', [])
+            if isinstance(results, str):
+                try:
+                    import json
+                    results = json.loads(results)
+                except Exception:
+                    results = []
+            
+            verification_updates = {}
+            if results:
+                for res in results:
+                    dtype = res.get('doc')
+                    is_verified = res.get('verified', False)
+                    if dtype == 'Indigency': verification_updates['indigency_verified'] = is_verified
+                    elif dtype == 'Enrollment': verification_updates['enrollment_verified'] = is_verified
+                    elif dtype == 'Grades': verification_updates['grades_verified'] = is_verified
+                    elif dtype == 'SchoolID': verification_updates['id_verified'] = is_verified
+            elif target_doc:
+                target_doc_norm = str(target_doc).lower()
+                if any(k in target_doc_norm for k in ['grade', 'mayorgrade']):
+                    verification_updates['grades_verified'] = verified
+                elif any(k in target_doc_norm for k in ['enrollment', 'coe', 'mayorcoe']):
+                    verification_updates['enrollment_verified'] = verified
+                elif any(k in target_doc_norm for k in ['indigency', 'mayorindigency']):
+                    verification_updates['indigency_verified'] = verified
+                elif any(k in target_doc_norm for k in ['idfront', 'schoolidfront', 'schoolid']):
+                    verification_updates['id_verified'] = verified
+            
+            if verification_updates:
+                with get_db() as conn:
+                    cur = conn.cursor()
+                    persist_applicant_document_values(cur, request.user_no, verification_updates)
+                    conn.commit()
+                return jsonify({
+                    'verified': verified,
+                    'message': message or 'Verification persisted successfully',
+                    'results': results or [{'doc': target_doc, 'verified': verified, 'message': message}]
+                })
+
             # If we were strictly targeting a doc, explain why it was skipped.
             if target_doc:
                 missing_doc_msg = f"The requested document ({target_doc}) was not found in the request or your profile records."

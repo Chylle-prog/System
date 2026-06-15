@@ -18,6 +18,16 @@ def check_applicants_columns():
             print(f"- {row[0]} ({row[1]})")
         
         cur.execute("""
+            SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_name = 'applicant_documents'
+        """)
+        rows = cur.fetchall()
+        print("\nColumns in 'applicant_documents':")
+        for row in rows:
+            print(f"- {row[0]} ({row[1]})")
+        
+        cur.execute("""
             SELECT table_name 
             FROM information_schema.tables 
             WHERE table_name LIKE 'applicant%'
@@ -26,6 +36,14 @@ def check_applicants_columns():
         print("\nTables like 'applicant%':")
         for t in tables:
             print(f"- {t[0]}")
+            
+        cur.execute("""
+            SELECT applicant_no, id_img_front, id_img_back, schoolid_photo FROM applicant_documents
+        """)
+        rows = cur.fetchall()
+        print("\nRows in 'applicant_documents':")
+        for row in rows:
+            print(row)
             
         cur.close()
         conn.close()
