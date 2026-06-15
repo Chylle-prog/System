@@ -90,12 +90,18 @@ def applicant_document_join_sql(cursor, applicant_alias='a', document_alias='ad'
 def applicant_document_expr(cursor, column_name, applicant_alias='a', document_alias='ad'):
     applicant_columns = get_table_columns(cursor, 'applicants')
     document_table = get_applicant_document_table(cursor)
-    applicant_expr = f'{applicant_alias}."{column_name}"' if column_name in applicant_columns else None
+    
+    # Do case-insensitive check
+    applicant_col_map = {col.lower(): col for col in applicant_columns}
+    real_applicant_col = applicant_col_map.get(column_name.lower())
+    applicant_expr = f'{applicant_alias}."{real_applicant_col}"' if real_applicant_col else None
 
     if document_table:
         document_columns = get_table_columns(cursor, document_table)
-        if column_name in document_columns:
-            document_expr = f'{document_alias}."{column_name}"'
+        doc_col_map = {col.lower(): col for col in document_columns}
+        real_doc_col = doc_col_map.get(column_name.lower())
+        if real_doc_col:
+            document_expr = f'{document_alias}."{real_doc_col}"'
             if applicant_expr:
                 return f'COALESCE({document_expr}, {applicant_expr})'
             return document_expr
@@ -134,18 +140,27 @@ def fetch_applicant_document_values(cursor, applicant_no, column_names):
 
 
 def persist_applicant_document_values(cursor, applicant_no, values):
-    document_values = {key: value for key, value in values.items() if key in APPLICANT_DOCUMENT_COLUMNS}
+    doc_cols_lower = {col.lower(): col for col in APPLICANT_DOCUMENT_COLUMNS}
+    
+    document_values = {}
+    for key, value in values.items():
+        key_lower = key.lower()
+        if key_lower in doc_cols_lower:
+            document_values[key] = value
+
     if not document_values:
         return
 
     document_table = get_applicant_document_table(cursor)
     if document_table:
         document_columns = get_table_columns(cursor, document_table)
-        filtered_values = {
-            key: value
-            for key, value in document_values.items()
-            if key in document_columns
-        }
+        doc_col_map = {col.lower(): col for col in document_columns}
+        filtered_values = {}
+        for key, value in document_values.items():
+            real_key = doc_col_map.get(key.lower())
+            if real_key:
+                filtered_values[real_key] = value
+
         if not filtered_values:
             return
 
@@ -165,11 +180,13 @@ def persist_applicant_document_values(cursor, applicant_no, values):
         return
 
     applicant_columns = get_table_columns(cursor, 'applicants')
-    fallback_values = {
-        key: value
-        for key, value in document_values.items()
-        if key in applicant_columns
-    }
+    applicant_col_map = {col.lower(): col for col in applicant_columns}
+    fallback_values = {}
+    for key, value in document_values.items():
+        real_key = applicant_col_map.get(key.lower())
+        if real_key:
+            fallback_values[real_key] = value
+
     if not fallback_values:
         return
 
