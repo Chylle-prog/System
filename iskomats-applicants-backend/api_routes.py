@@ -4154,13 +4154,15 @@ def get_applicant_image(applicant_no, column_name):
                     data = bytes(str(data), 'utf-8')
             
         # Handle decryption for all fields if encrypted
-        if _fernet and data and isinstance(data, (bytes, bytearray)) and data.startswith(b'gAAAA'):
+        if data:
+            from services.crypto_service import decrypt_if_encrypted
             try:
-                data = _fernet.decrypt(data)
-                print(f"[APPLICANT IMAGE] Decrypted {column_name} (Applicant {applicant_no})", flush=True)
+                decrypted = decrypt_if_encrypted(data)
+                if decrypted != data:
+                    data = decrypted
+                    print(f"[APPLICANT IMAGE] Decrypted {column_name} (Applicant {applicant_no})", flush=True)
             except Exception as e:
                 print(f"[APPLICANT IMAGE] Failed to decrypt {column_name}: {e}")
-                # Don't fail if decryption fails, might not be encrypted correctly
         
         # Detect image type from magic bytes
         mime_type = get_mime_type(data)

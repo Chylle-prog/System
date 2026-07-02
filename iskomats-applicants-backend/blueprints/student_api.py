@@ -615,13 +615,14 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
         if not data_to_upload:
             return None
             
-        # Optional: refined MIME detection
-        if data_to_upload.startswith(b'\x89PNG\r\n\x1a\n'):
-            mime_type = 'image/png'
+        # Encrypt binary image data before uploading to Supabase Storage
+        from services.crypto_utils import encrypt_data
+        data_to_upload = encrypt_data(data_to_upload)
+        mime_type = 'application/octet-stream'
         
         # Binary data upload
         try:
-            print(f"[STORAGE] Uploading {len(data_to_upload)} bytes to bucket: '{bucket_name}', path: '{file_path}'", flush=True)
+            print(f"[STORAGE] Uploading encrypted {len(data_to_upload)} bytes to bucket: '{bucket_name}', path: '{file_path}'", flush=True)
             # Use positional arguments for safety [path, file, options]
             supabase.storage.from_(bucket_name).upload(
                 file_path,
@@ -2251,12 +2252,9 @@ def get_profile():
                     )
 
                 if applicant.get(flag_name):
-                    # For profile picture, prioritize the Cloud URL if it already exists as a string
-                    raw_val = document_values.get(key)
-                    if isinstance(raw_val, str) and raw_val.startswith('http'):
-                        applicant[key] = normalize_supabase_url(raw_val)
-                    else:
-                        applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
+                    # Under encryption, we always route via the backend proxy get_applicant_document_raw 
+                    # to ensure the backend decrypts it before serving to the client.
+                    applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
                 else:
                     applicant[key] = None
 
@@ -2270,7 +2268,8 @@ def get_profile():
             ):
                 val = document_values.get(key) or applicant.get(key)
                 if isinstance(val, str) and val.startswith('http'):
-                    applicant[key] = normalize_supabase_url(val)
+                    # Route videos through the backend proxy raw endpoint for decryption too
+                    applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
                 else:
                     applicant[key] = val
 
@@ -2326,36 +2325,49 @@ def get_applicant_document(field_name):
             # Handle decryption for signature if needed
             if field_name == 'signature_image_data':
                 value = decode_signature(value)
-            # Handle both binary data (BLOBs) and URL strings (from Storage)
-            if isinstance(value, str):
-                # Normalize Supabase URLs to current project
-                value = normalize_supabase_url(value)
-                
-                # If it's already a URL or Data URI, return it directly
-                if value.startswith('http') or value.startswith('data:'):
-                    return jsonify({
-                        'fieldName': field_name,
-                        'data': value
-                    })
-                # Fallback for plain strings (e.g. base64 stored as text)
-                if isinstance(value, str):
-                    value = value.encode('utf-8')
-            elif isinstance(value, (bytes, bytearray)):
-                # Already binary (e.g. fetched from cloud URL or raw DB bytes)
-                pass
-            elif hasattr(value, 'tobytes'):
-                value = value.tobytes()
-            else:
-                value = bytes(value)
-                
+            
             # Determine mime type
             mime_type = 'image/jpeg'
             if field_name == 'signature_image_data':
                 mime_type = 'image/png'
             elif 'vid_url' in field_name:
                 mime_type = 'video/mp4'
-            elif field_name == 'grades_doc' or field_name == 'enrollment_certificate_doc':
-                pass
+            
+            # Handle both binary data (BLOBs) and URL strings (from Storage)
+            if isinstance(value, str) and value.startswith('http'):
+                import requests
+                from services.crypto_service import decrypt_if_encrypted
+                normalized_url = normalize_supabase_url(value)
+                try:
+                    resp = requests.get(normalized_url, timeout=30)
+                    if resp.status_code == 200:
+                        value = decrypt_if_encrypted(resp.content)
+                    else:
+                        value = value.encode('utf-8')
+                except Exception as e:
+                    print(f"[DOCUMENT JSON] Proxy download error for {field_name}: {e}", flush=True)
+                    value = value.encode('utf-8')
+            elif isinstance(value, str):
+                if value.startswith('data:'):
+                    return jsonify({
+                        'fieldName': field_name,
+                        'data': value
+                    })
+                value = value.encode('utf-8')
+            elif hasattr(value, 'tobytes'):
+                value = value.tobytes()
+            else:
+                value = bytes(value)
+                
+            # Decrypt if the database value itself is encrypted binary
+            from services.crypto_service import decrypt_if_encrypted
+            value = decrypt_if_encrypted(value)
+            
+            # Optimize: Detect correct mime type if it was decrypted
+            if value.startswith(b'\x89PNG'):
+                mime_type = 'image/png'
+            elif value.startswith(b'ftyp') or value.startswith(b'\x00\x00\x00\x18ftyp'):
+                mime_type = 'video/mp4'
                 
             # Optimization: Return as Base64 string so frontend can easily use it in data URI
             try:
@@ -2394,16 +2406,31 @@ def get_applicant_document_raw(field_name):
             if field_name == 'signature_image_data':
                 value = decode_signature(value)
             
-            if isinstance(value, str):
-                if value.startswith('http'):
+            if isinstance(value, str) and value.startswith('http'):
+                import requests
+                from services.crypto_service import decrypt_if_encrypted
+                normalized_url = normalize_supabase_url(value)
+                try:
+                    resp = requests.get(normalized_url, timeout=30)
+                    if resp.status_code == 200:
+                        value = decrypt_if_encrypted(resp.content)
+                    else:
+                        from flask import redirect
+                        return redirect(normalized_url)
+                except Exception as e:
+                    print(f"[DOCUMENT RAW] Proxy download error for {field_name}: {e}", flush=True)
                     from flask import redirect
-                    return redirect(normalize_supabase_url(value))
-                else:
-                    value = value.encode('utf-8')
+                    return redirect(normalized_url)
+            elif isinstance(value, str):
+                value = value.encode('utf-8')
             elif hasattr(value, 'tobytes'):
                 value = value.tobytes()
             else:
                 value = bytes(value)
+
+            # Ensure we decrypt binary data
+            from services.crypto_service import decrypt_if_encrypted
+            value = decrypt_if_encrypted(value)
 
             mime_type = 'image/jpeg'
             if field_name == 'signature_image_data' or value.startswith(b'\x89PNG'):
@@ -2419,7 +2446,7 @@ def get_applicant_document_raw(field_name):
             return response
     except Exception as e:
         print(f"[DOCUMENT RAW] Error: {e}", flush=True)
-        return str(e), 500
+        return "Internal Error", 500
 
 @student_api_bp.route('/applicant/profile', methods=['PUT'])
 @token_required
@@ -3718,9 +3745,14 @@ def upload_video():
 
                 threading.Thread(target=_cleanup_old_video, args=(current_user_id, db_col, supabase), daemon=True).start()
 
+            # Encrypt binary video data before uploading to Supabase Storage
+            from services.crypto_utils import encrypt_data
+            video_bytes = encrypt_data(video_bytes)
+            content_type = 'application/octet-stream'
+
             # Upload binary data to Supabase (using the dedicated videos bucket)
             try:
-                print(f"[VIDEO-UPLOAD] Bucket: '{bucket_name}' | Path: '{file_path}'", flush=True)
+                print(f"[VIDEO-UPLOAD] Bucket: '{bucket_name}' | Path: '{file_path}' (Encrypted)", flush=True)
                 supabase.storage.from_(bucket_name).upload(
                     file_path,
                     video_bytes,

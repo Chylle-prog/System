@@ -5,14 +5,16 @@ export const uploadProfilePicture = async (file) => {
   const applicantNo = sanitizeStorageSegment(localStorage.getItem('applicantNo'), 'unknown-applicant');
   const currentUser = sanitizeStorageSegment(localStorage.getItem('currentUser'), 'unknown-user');
   const ext = resolveImageUploadExtension(file);
-  const contentType = file?.type || 'image/jpeg';
   const objectPath = `profile_pictures/${applicantNo}-${currentUser}${ext}`;
+
+  const { encryptDocument } = await import('./CryptoService');
+  const encryptedFile = await encryptDocument(file);
 
   const uploadResult = await supabase.storage
     .from('document_images')
-    .upload(objectPath, file, {
+    .upload(objectPath, encryptedFile, {
       upsert: true,
-      contentType: contentType,
+      contentType: 'application/octet-stream',
       cacheControl: '60',
     });
 
@@ -106,14 +108,16 @@ const uploadRequirementVideoDirect = async (fieldName, file, onProgress) => {
   const currentUser = sanitizeStorageSegment(localStorage.getItem('currentUser'), 'unknown-user');
   const folder = folderMap[fieldName] || 'others';
   const ext = resolveVideoUploadExtension(file);
-  const contentType = file?.type || (ext === '.webm' ? 'video/webm' : 'video/mp4');
   const objectPath = `videos/${folder}/${applicantNo}-${currentUser}/${fieldName}${ext}`;
+
+  const { encryptDocument } = await import('./CryptoService');
+  const encryptedFile = await encryptDocument(file);
 
   const uploadResult = await supabase.storage
     .from('document_videos')
-    .upload(objectPath, file, {
+    .upload(objectPath, encryptedFile, {
       upsert: true,
-      contentType: contentType,
+      contentType: 'application/octet-stream',
       cacheControl: '60',
       onUploadProgress: (p) => {
         if (!onProgress) return;
@@ -168,7 +172,21 @@ const warmBackendConnection = async ({ force = false } = {}) => {
 };
 
 const resolveApplicantDocumentForDisplay = async (fieldName, value) => {
-  // Encryption is disabled. Return the URL directly.
+  if (!value || typeof value !== 'string') return value;
+
+  if (value.startsWith('http') && (value.includes('supabase.co') || value.includes('localhost') || value.includes('onrender.com'))) {
+    const isVideo = fieldName.endsWith('_vid_url') || fieldName.includes('video') || fieldName.includes('vid');
+    const mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
+    
+    try {
+      const { decryptUrl } = await import('./CryptoService');
+      return await decryptUrl(value, mimeType);
+    } catch (err) {
+      console.warn('[CRYPTO] Failed to decrypt document for display:', fieldName, err);
+      return value;
+    }
+  }
+
   return value;
 };
 
