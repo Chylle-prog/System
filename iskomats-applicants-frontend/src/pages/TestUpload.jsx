@@ -378,6 +378,24 @@ const TestUpload = () => {
   );
 };
 
+let tesseractWorkerSingleton = null;
+const getTesseractWorker = async () => {
+  if (tesseractWorkerSingleton) {
+    return tesseractWorkerSingleton;
+  }
+
+  if (!window.Tesseract) {
+    throw new Error("WebAssembly OCR Engine (Tesseract.js) failed to load.");
+  }
+
+  tesseractWorkerSingleton = await window.Tesseract.createWorker('eng', 1, {
+    workerPath: 'https://unpkg.com/tesseract.js@5.1.0/dist/worker.min.js',
+    corePath: 'https://unpkg.com/tesseract.js-core@5.1.0/tesseract-core.wasm.js',
+    langPath: 'https://tessdata.projectnaptha.com/4.0.0'
+  });
+  return tesseractWorkerSingleton;
+};
+
 const RenderPreview = ({ type, uploadKey, urls, previews }) => {
   const publicUrl = urls[uploadKey];
   const decryptedUrl = previews[uploadKey];
@@ -470,7 +488,8 @@ const RenderPreview = ({ type, uploadKey, urls, previews }) => {
       if (!window.Tesseract) {
         throw new Error("WebAssembly OCR Engine (Tesseract.js) is not loaded.");
       }
-      const result = await window.Tesseract.recognize(decryptedUrl, 'eng');
+      const worker = await getTesseractWorker();
+      const result = await worker.recognize(decryptedUrl);
       const extracted = result?.data?.text || "No text detected.";
       setOcrText(extracted);
 
