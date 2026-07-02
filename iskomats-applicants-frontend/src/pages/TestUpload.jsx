@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { encryptDocument, decryptUrl } from '../services/CryptoService';
+import { applicantAPI } from '../services/api';
 
 const TestUpload = () => {
   const [directImage, setDirectImage] = useState(null);
@@ -382,13 +383,89 @@ const RenderPreview = ({ type, uploadKey, urls, previews }) => {
   const decryptedUrl = previews[uploadKey];
   const [ocrText, setOcrText] = useState('');
   const [ocrLoading, setOcrLoading] = useState(false);
+  const [docType, setDocType] = useState('Plain');
+
+  // OCR Expected Match Criteria
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [schoolName, setSchoolName] = useState('');
+  const [idNumber, setIdNumber] = useState('');
+  const [barangay, setBarangay] = useState('');
+  const [gpa, setGpa] = useState('');
+  const [course, setCourse] = useState('');
+  const [semester, setSemester] = useState('');
+
+  const [verificationResult, setVerificationResult] = useState(null);
 
   if (!publicUrl) return null;
+
+  const normalizeForOcr = (str) => {
+    return String(str || '').toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  const checkNameMatches = (text, first, last) => {
+    const normText = normalizeForOcr(text);
+    if (!normText) return false;
+    const checkPart = (part) => {
+      if (!part) return true;
+      const words = normalizeForOcr(part).split(' ').filter(w => w.length >= 2);
+      if (words.length === 0) return true;
+      let found = 0;
+      words.forEach(w => {
+        if (new RegExp('\\b' + w + '\\b').test(normText) || normText.includes(w)) {
+          found++;
+        }
+      });
+      return found >= Math.max(1, words.length - 1);
+    };
+    return checkPart(first) && checkPart(last);
+  };
+
+  const checkIdMatches = (targetId, text) => {
+    if (!targetId) return true;
+    const normalizeId = (s) => s.toString().toLowerCase().replace(/[^a-z0-9]/g, '')
+      .replace(/o/g, '0').replace(/q/g, '0').replace(/d/g, '0')
+      .replace(/i/g, '1').replace(/l/g, '1')
+      .replace(/z/g, '2').replace(/s/g, '5')
+      .replace(/g/g, '6').replace(/b/g, '6')
+      .replace(/q/g, '9');
+    const tId = normalizeId(targetId);
+    const normText = normalizeId(text);
+    return normText.includes(tId);
+  };
+
+  const checkSchoolMatches = (text, targetSchool) => {
+    if (!targetSchool) return true;
+    const normText = normalizeForOcr(text);
+    const normSchool = normalizeForOcr(targetSchool);
+    if (normText.includes(normSchool)) return true;
+    const words = normSchool.split(' ').filter(w => w.length > 2);
+    if (words.length === 0) return true;
+    let matched = 0;
+    words.forEach(w => {
+      if (normText.includes(w)) matched++;
+    });
+    return (matched / words.length) >= 0.6;
+  };
+
+  const checkAddressMatches = (text, targetAddr) => {
+    if (!targetAddr) return true;
+    const normText = normalizeForOcr(text);
+    const normAddr = normalizeForOcr(targetAddr);
+    if (normText.includes(normAddr)) return true;
+    const words = normAddr.split(' ').filter(w => w.length > 2 && !['barangay', 'brgy', 'city', 'municipality'].includes(w));
+    if (words.length === 0) return true;
+    return words.some(w => normText.includes(w));
+  };
 
   const runOcrCheck = async () => {
     if (!decryptedUrl) return;
     setOcrLoading(true);
     setOcrText('');
+    setVerificationResult(null);
     try {
       if (!window.Tesseract) {
         throw new Error("WebAssembly OCR Engine (Tesseract.js) is not loaded.");
@@ -396,6 +473,70 @@ const RenderPreview = ({ type, uploadKey, urls, previews }) => {
       const result = await window.Tesseract.recognize(decryptedUrl, 'eng');
       const extracted = result?.data?.text || "No text detected.";
       setOcrText(extracted);
+
+      if (docType !== 'Plain') {
+        let nameOk = true;
+        let schoolOk = true;
+        let idOk = true;
+        let addrOk = true;
+        let gpaOk = true;
+        let courseOk = true;
+        let semOk = true;
+
+        if (firstName || lastName) {
+          nameOk = checkNameMatches(extracted, firstName, lastName);
+        }
+        if (schoolName) {
+          schoolOk = checkSchoolMatches(extracted, schoolName);
+        }
+        if (idNumber) {
+          idOk = checkIdMatches(idNumber, extracted);
+        }
+        if (barangay) {
+          addrOk = checkAddressMatches(extracted, barangay);
+        }
+        if (gpa) {
+          gpaOk = extracted.includes(gpa.toString().replace(/[^0-9.]/g, ''));
+        }
+        if (course) {
+          courseOk = normalizeForOcr(extracted).includes(normalizeForOcr(course));
+        }
+        if (semester) {
+          semOk = normalizeForOcr(extracted).includes(normalizeForOcr(semester));
+        }
+
+        let isSuccess = false;
+        let checks = {};
+
+        if (docType === 'SchoolID') {
+          isSuccess = nameOk && idOk && schoolOk;
+          checks = { 'Student Name': nameOk, 'ID Number': idOk, 'School Name': schoolOk };
+        } else if (docType === 'Enrollment') {
+          isSuccess = schoolOk && courseOk && semOk;
+          checks = { 'School Name': schoolOk, 'Course': courseOk, 'Semester': semOk };
+        } else if (docType === 'Grades') {
+          isSuccess = nameOk && gpaOk && semOk;
+          checks = { 'Student Name': nameOk, 'GPA': gpaOk, 'Semester': semOk };
+        } else if (docType === 'Indigency') {
+          isSuccess = nameOk && addrOk;
+          checks = { 'Student Name': nameOk, 'Barangay/Address': addrOk };
+        }
+
+        setVerificationResult({
+          success: isSuccess,
+          checks
+        });
+
+        // Persist verification status to DB in background
+        try {
+          await applicantAPI.ocrCheck(docType, isSuccess, `Testing Suite simulated: ${isSuccess ? 'Passed' : 'Failed'}`, [
+            { doc: docType, verified: isSuccess, message: 'Verified via Testing Suite' }
+          ]);
+          console.log("[TEST OCR] Verification status persisted successfully.");
+        } catch (dbErr) {
+          console.warn("[TEST OCR] Failed to persist OCR verification to database:", dbErr);
+        }
+      }
     } catch (err) {
       console.error("OCR Check Error:", err);
       setOcrText(`OCR Verification Failed: ${err.message}`);
@@ -459,28 +600,154 @@ const RenderPreview = ({ type, uploadKey, urls, previews }) => {
       </div>
 
       {type === 'image' && (
-        <div style={{ marginTop: '1rem' }}>
+        <div style={{ marginTop: '1rem', background: 'rgba(15,23,42,0.4)', borderRadius: '12px', padding: '1rem', border: '1px solid rgba(255,255,255,0.04)' }}>
+          <h4 style={{ fontSize: '0.9rem', color: '#cbd5e1', fontWeight: '700', marginBottom: '10px' }}>
+            Document Verification Simulator
+          </h4>
+          
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8', marginBottom: '6px', fontWeight: '600' }}>Document Type</label>
+            <select 
+              value={docType}
+              onChange={(e) => {
+                setDocType(e.target.value);
+                setVerificationResult(null);
+              }}
+              style={{
+                width: '100%',
+                background: '#090d16',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '8px',
+                padding: '8px',
+                fontSize: '0.8rem',
+                color: '#fff'
+              }}
+            >
+              <option value="Plain">Plain Text Extraction Only</option>
+              <option value="SchoolID">School ID Card</option>
+              <option value="Enrollment">Certificate of Enrollment (COE)</option>
+              <option value="Grades">Grades Transcript</option>
+              <option value="Indigency">Certificate of Indigency</option>
+            </select>
+          </div>
+
+          {docType !== 'Plain' && (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '10px',
+              marginBottom: '1rem',
+              animation: 'fadeIn 0.3s ease'
+            }}>
+              {(docType === 'SchoolID' || docType === 'Grades' || docType === 'Indigency') && (
+                <>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.72rem', color: '#94a3b8', marginBottom: '4px' }}>First Name</label>
+                    <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} style={{ width: '100%', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '6px', fontSize: '0.78rem', color: '#fff' }} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.72rem', color: '#94a3b8', marginBottom: '4px' }}>Last Name</label>
+                    <input type="text" value={lastName} onChange={e => setLastName(e.target.value)} style={{ width: '100%', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '6px', fontSize: '0.78rem', color: '#fff' }} />
+                  </div>
+                </>
+              )}
+              {(docType === 'SchoolID' || docType === 'Enrollment') && (
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={{ display: 'block', fontSize: '0.72rem', color: '#94a3b8', marginBottom: '4px' }}>Expected School Name</label>
+                  <input type="text" value={schoolName} onChange={e => setSchoolName(e.target.value)} style={{ width: '100%', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '6px', fontSize: '0.78rem', color: '#fff' }} placeholder="e.g. De La Salle" />
+                </div>
+              )}
+              {docType === 'SchoolID' && (
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={{ display: 'block', fontSize: '0.72rem', color: '#94a3b8', marginBottom: '4px' }}>Student ID Number</label>
+                  <input type="text" value={idNumber} onChange={e => setIdNumber(e.target.value)} style={{ width: '100%', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '6px', fontSize: '0.78rem', color: '#fff' }} />
+                </div>
+              )}
+              {docType === 'Indigency' && (
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={{ display: 'block', fontSize: '0.72rem', color: '#94a3b8', marginBottom: '4px' }}>Expected Barangay/Address</label>
+                  <input type="text" value={barangay} onChange={e => setBarangay(e.target.value)} style={{ width: '100%', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '6px', fontSize: '0.78rem', color: '#fff' }} />
+                </div>
+              )}
+              {docType === 'Enrollment' && (
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.72rem', color: '#94a3b8', marginBottom: '4px' }}>Course / Program</label>
+                  <input type="text" value={course} onChange={e => setCourse(e.target.value)} style={{ width: '100%', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '6px', fontSize: '0.78rem', color: '#fff' }} placeholder="e.g. BSCS" />
+                </div>
+              )}
+              {(docType === 'Enrollment' || docType === 'Grades') && (
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.72rem', color: '#94a3b8', marginBottom: '4px' }}>Semester</label>
+                  <input type="text" value={semester} onChange={e => setSemester(e.target.value)} style={{ width: '100%', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '6px', fontSize: '0.78rem', color: '#fff' }} placeholder="e.g. First Semester" />
+                </div>
+              )}
+              {docType === 'Grades' && (
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={{ display: 'block', fontSize: '0.72rem', color: '#94a3b8', marginBottom: '4px' }}>Expected GPA</label>
+                  <input type="text" value={gpa} onChange={e => setGpa(e.target.value)} style={{ width: '100%', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '6px', fontSize: '0.78rem', color: '#fff' }} placeholder="e.g. 1.75" />
+                </div>
+              )}
+            </div>
+          )}
+
           <button 
             onClick={runOcrCheck}
             disabled={ocrLoading}
             style={{
-              padding: '8px 16px',
+              width: '100%',
+              padding: '10px',
               borderRadius: '8px',
               background: 'rgba(56, 189, 248, 0.1)',
               border: '1px solid rgba(56, 189, 248, 0.3)',
               color: '#38bdf8',
-              fontSize: '0.8rem',
-              fontWeight: '700',
+              fontSize: '0.82rem',
+              fontWeight: '750',
               cursor: ocrLoading ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px'
+              justifyContent: 'center',
+              gap: '8px'
             }}
           >
-            <i className={ocrLoading ? "fas fa-spinner fa-spin" : "fas fa-eye"}></i>
-            {ocrLoading ? 'Scanning Document (OCR)...' : 'Run Wasm OCR Verification'}
+            <i className={ocrLoading ? "fas fa-spinner fa-spin" : "fas fa-shield-alt"}></i>
+            {ocrLoading ? 'Verifying Document via OCR...' : 'Run Document Verification Check'}
           </button>
           
+          {verificationResult && (
+            <div style={{
+              marginTop: '12px',
+              background: verificationResult.success ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)',
+              border: verificationResult.success ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid rgba(239, 68, 68, 0.25)',
+              borderRadius: '8px',
+              padding: '12px',
+              animation: 'fadeIn 0.3s ease'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: '750', color: verificationResult.success ? '#34d399' : '#f87171' }}>Verification Results:</span>
+                <span style={{
+                  fontSize: '0.72rem',
+                  fontWeight: '800',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  background: verificationResult.success ? '#065f46' : '#991b1b',
+                  color: '#fff'
+                }}>
+                  {verificationResult.success ? 'PASSED ✔' : 'FAILED ✘'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {Object.entries(verificationResult.checks).map(([checkName, checkPassed]) => (
+                  <div key={checkName} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', color: '#cbd5e1' }}>
+                    <span>{checkName}</span>
+                    <span style={{ color: checkPassed ? '#34d399' : '#f87171', fontWeight: '700' }}>
+                      {checkPassed ? 'MATCHED' : 'NOT FOUND'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {ocrText && (
             <div style={{
               marginTop: '10px',
@@ -492,7 +759,7 @@ const RenderPreview = ({ type, uploadKey, urls, previews }) => {
               overflowY: 'auto',
               fontFamily: 'monospace',
               fontSize: '0.78rem',
-              color: '#a7f3d0',
+              color: '#cbd5e1',
               whiteSpace: 'pre-wrap',
               animation: 'fadeIn 0.3s ease'
             }}>
