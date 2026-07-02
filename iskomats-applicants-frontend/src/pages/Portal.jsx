@@ -2696,6 +2696,11 @@ const Portal = () => {
                 <p>Access guides, templates, and tools to strengthen your applications.</p>
                 <button className="menu-btn" onClick={() => setPortalSection('resources')} disabled={portalLocked} style={portalLocked ? {cursor: 'not-allowed', opacity: 0.7} : undefined}>Browse Resources</button>
               </div>
+              <div className="menu-card" style={{ border: '2px dashed var(--primary)', background: 'rgba(56, 189, 248, 0.05)' }}>
+                <h3>[TEST] Encryption & Uploads</h3>
+                <p>Verify encrypted uploads of images and videos to Supabase Storage.</p>
+                <Link to="/test-upload" className="menu-btn" style={{ textDecoration: 'none', background: 'var(--primary)' }}>Go to Test Page</Link>
+              </div>
             </div>
           )}
 

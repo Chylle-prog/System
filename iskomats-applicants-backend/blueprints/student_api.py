@@ -3799,3 +3799,107 @@ def upload_video():
             'message': f'Video processing failed: {error_msg}'
         }), 500
 
+
+# ─── TEMPORARY TEST ENDPOINTS FOR ENCRYPTION & STORAGE ──────────────────
+@student_api_bp.route('/test/upload-image', methods=['POST'])
+@token_required
+def test_upload_image():
+    """
+    Test endpoint to upload an image to 'document_images' bucket under 'test-uploads/'.
+    Encrypts the image using encrypt_data before uploading.
+    """
+    try:
+        if 'image' not in request.files:
+            return jsonify({'success': False, 'message': 'No image file provided'}), 400
+        
+        file = request.files['image']
+        if file.filename == '':
+            return jsonify({'success': False, 'message': 'Empty image file'}), 400
+            
+        file_bytes = file.read()
+        
+        # Encrypt binary image data using encrypt_data
+        from services.crypto_utils import encrypt_data
+        encrypted_bytes = encrypt_data(file_bytes)
+        
+        from project_config import get_supabase_client
+        supabase = get_supabase_client()
+        if not supabase:
+            return jsonify({'success': False, 'message': 'Supabase client unavailable'}), 500
+            
+        bucket_name = 'document_images'
+        file_path = f"test-uploads/backend-image-{int(time.time())}.jpg"
+        
+        supabase.storage.from_(bucket_name).upload(
+            file_path,
+            bytes(encrypted_bytes),
+            {
+                'content-type': 'application/octet-stream',
+                'upsert': 'true',
+                'cache-control': '31536000'
+            }
+        )
+        
+        public_url_obj = supabase.storage.from_(bucket_name).get_public_url(file_path)
+        public_url = public_url_obj.public_url if hasattr(public_url_obj, 'public_url') else str(public_url_obj)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Test image uploaded successfully (Encrypted)',
+            'publicUrl': public_url
+        })
+    except Exception as e:
+        print(f"[TEST IMAGE UPLOAD] Error: {e}", flush=True)
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@student_api_bp.route('/test/upload-video', methods=['POST'])
+@token_required
+def test_upload_video():
+    """
+    Test endpoint to upload a video to 'document_videos' bucket under 'test-uploads/'.
+    Encrypts the video using encrypt_data before uploading.
+    """
+    try:
+        if 'video' not in request.files:
+            return jsonify({'success': False, 'message': 'No video file provided'}), 400
+        
+        file = request.files['video']
+        if file.filename == '':
+            return jsonify({'success': False, 'message': 'Empty video file'}), 400
+            
+        file_bytes = file.read()
+        
+        # Encrypt binary video data using encrypt_data
+        from services.crypto_utils import encrypt_data
+        encrypted_bytes = encrypt_data(file_bytes)
+        
+        from project_config import get_supabase_client
+        supabase = get_supabase_client()
+        if not supabase:
+            return jsonify({'success': False, 'message': 'Supabase client unavailable'}), 500
+            
+        bucket_name = 'document_videos'
+        file_path = f"test-uploads/backend-video-{int(time.time())}.mp4"
+        
+        supabase.storage.from_(bucket_name).upload(
+            file_path,
+            bytes(encrypted_bytes),
+            {
+                'content-type': 'application/octet-stream',
+                'upsert': 'true',
+                'cache-control': '31536000'
+            }
+        )
+        
+        public_url_obj = supabase.storage.from_(bucket_name).get_public_url(file_path)
+        public_url = public_url_obj.public_url if hasattr(public_url_obj, 'public_url') else str(public_url_obj)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Test video uploaded successfully (Encrypted)',
+            'publicUrl': public_url
+        })
+    except Exception as e:
+        print(f"[TEST VIDEO UPLOAD] Error: {e}", flush=True)
+        return jsonify({'success': False, 'message': str(e)}), 500
+

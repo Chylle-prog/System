@@ -17,6 +17,7 @@ const FindScholarship = lazy(() => import('./pages/FindScholarship'));
 const Profile = lazy(() => import('./pages/Profile'));
 const StudentInfo = lazy(() => import('./pages/StudentInfo'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const TestUpload = lazy(() => import('./pages/TestUpload'));
 
 // Loading fallback for lazy routes
 const LoadingFallback = () => (
@@ -75,6 +76,13 @@ function RouteContent() {
             <PrivateRoute>
               <Suspense fallback={<LoadingFallback />}>
                 <StudentInfo />
+              </Suspense>
+            </PrivateRoute>
+          } />
+          <Route path="/test-upload" element={
+            <PrivateRoute>
+              <Suspense fallback={<LoadingFallback />}>
+                <TestUpload />
               </Suspense>
             </PrivateRoute>
           } />
