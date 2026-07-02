@@ -380,8 +380,29 @@ const TestUpload = () => {
 const RenderPreview = ({ type, uploadKey, urls, previews }) => {
   const publicUrl = urls[uploadKey];
   const decryptedUrl = previews[uploadKey];
+  const [ocrText, setOcrText] = useState('');
+  const [ocrLoading, setOcrLoading] = useState(false);
 
   if (!publicUrl) return null;
+
+  const runOcrCheck = async () => {
+    if (!decryptedUrl) return;
+    setOcrLoading(true);
+    setOcrText('');
+    try {
+      if (!window.Tesseract) {
+        throw new Error("WebAssembly OCR Engine (Tesseract.js) is not loaded.");
+      }
+      const result = await window.Tesseract.recognize(decryptedUrl, 'eng');
+      const extracted = result?.data?.text || "No text detected.";
+      setOcrText(extracted);
+    } catch (err) {
+      console.error("OCR Check Error:", err);
+      setOcrText(`OCR Verification Failed: ${err.message}`);
+    } finally {
+      setOcrLoading(false);
+    }
+  };
 
   return (
     <div style={{ marginTop: '1.2rem', textAlign: 'left', animation: 'fadeIn 0.4s ease' }}>
@@ -436,6 +457,51 @@ const RenderPreview = ({ type, uploadKey, urls, previews }) => {
           )}
         </div>
       </div>
+
+      {type === 'image' && (
+        <div style={{ marginTop: '1rem' }}>
+          <button 
+            onClick={runOcrCheck}
+            disabled={ocrLoading}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '8px',
+              background: 'rgba(56, 189, 248, 0.1)',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              color: '#38bdf8',
+              fontSize: '0.8rem',
+              fontWeight: '700',
+              cursor: ocrLoading ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <i className={ocrLoading ? "fas fa-spinner fa-spin" : "fas fa-eye"}></i>
+            {ocrLoading ? 'Scanning Document (OCR)...' : 'Run Wasm OCR Verification'}
+          </button>
+          
+          {ocrText && (
+            <div style={{
+              marginTop: '10px',
+              background: '#040711',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: '8px',
+              padding: '12px',
+              maxHeight: '150px',
+              overflowY: 'auto',
+              fontFamily: 'monospace',
+              fontSize: '0.78rem',
+              color: '#a7f3d0',
+              whiteSpace: 'pre-wrap',
+              animation: 'fadeIn 0.3s ease'
+            }}>
+              <strong style={{ color: '#38bdf8', display: 'block', marginBottom: '6px' }}>Extracted OCR Text:</strong>
+              {ocrText}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

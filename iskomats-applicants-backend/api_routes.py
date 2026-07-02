@@ -702,35 +702,49 @@ def build_applicant_full_name(applicant_row):
 def coerce_binary_bytes(value):
     if value is None:
         return None
+        
+    result_bytes = None
     if hasattr(value, 'tobytes'):
-        return value.tobytes()
-    if isinstance(value, bytearray):
-        return bytes(value)
-    if isinstance(value, bytes):
-        return value
-    if isinstance(value, str):
+        result_bytes = value.tobytes()
+    elif isinstance(value, bytearray):
+        result_bytes = bytes(value)
+    elif isinstance(value, bytes):
+        result_bytes = value
+    elif isinstance(value, str):
         # Handle Base64 URL data
         if value.startswith('data:'):
             try:
                 comma_idx = value.find(',')
                 if comma_idx != -1:
-                    return base64.b64decode(value[comma_idx+1:])
+                    result_bytes = base64.b64decode(value[comma_idx+1:])
             except Exception:
                 pass
         
         # Handle HTTP URLs (Download)
-        if value.startswith('http'):
+        if not result_bytes and value.startswith('http'):
             try:
                 # Use a timeout to prevent hanging the background thread indefinitely
                 with urllib_request.urlopen(value, timeout=15) as response:
-                    return response.read()
+                    result_bytes = response.read()
             except Exception as download_error:
                 print(f"[DOWNLOAD ERROR] Failed to fetch document from {value}: {download_error}", flush=True)
                 # Fallback to returning the URL bytes if download fails
         
         # Fallback to UTF-8 encoding if it's just a string (not a URL)
-        return value.encode('utf-8', errors='replace')
-    return bytes(value)
+        if not result_bytes:
+            result_bytes = value.encode('utf-8', errors='replace')
+    else:
+        result_bytes = bytes(value)
+
+    # Ensure we decrypt the binary bytes if they are encrypted
+    if result_bytes:
+        from services.crypto_service import decrypt_if_encrypted
+        try:
+            result_bytes = decrypt_if_encrypted(result_bytes)
+        except Exception as e:
+            print(f"[COERCE DECRYPT ERROR] Failed to decrypt: {e}", flush=True)
+
+    return result_bytes
 
 
 def guess_extension_for_mime(mime_type):
