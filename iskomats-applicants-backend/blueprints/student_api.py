@@ -3124,7 +3124,6 @@ def ocr_check():
         # Parse results if it was sent as a JSON string in form-data
         if isinstance(results, str):
             try:
-                import json
                 results = json.loads(results)
             except Exception:
                 results = []
