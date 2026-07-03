@@ -2873,6 +2873,26 @@ def submit_application():
             conn.close()
 
 
+@student_api_bp.route('/verification-status', methods=['GET'])
+@token_required
+def get_verification_status():
+    """Returns current verification status for all documents."""
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cols = [
+                'indigency_verified', 'enrollment_verified', 'grades_verified', 
+                'id_verified', 'face_verified', 'signature_verified'
+            ]
+            row = fetch_applicant_document_values(cur, request.user_no, cols)
+            return jsonify({
+                'success': True,
+                'verified': row
+            })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
 @student_api_bp.route('/verification/ocr-check', methods=['POST'])
 @token_required
 def ocr_check():

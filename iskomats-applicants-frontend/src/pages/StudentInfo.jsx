@@ -1897,13 +1897,11 @@ const StudentInfo = () => {
         const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
         if (reqNo) {
           try {
-            const res = await scholarshipAPI.getByProgram('all', { req_no: reqNo });
-            if (res?.data?.success && Array.isArray(res?.data?.scholarships) && res.data.scholarships.length > 0) {
-              const scholarshipData = res.data.scholarships[0];
-              if (scholarshipData) {
-                setScholarshipDetails(scholarshipData);
-                console.log('[SCHOLARSHIP] Loaded requirements:', scholarshipData);
-              }
+            const res = await scholarshipAPI.getById(reqNo);
+            const scholarshipData = res?.scholarship || res;
+            if (scholarshipData) {
+              setScholarshipDetails(scholarshipData);
+              console.log('[SCHOLARSHIP] Loaded requirements:', scholarshipData);
             }
           } catch (e) {
             console.warn('[SCHOLARSHIP] Could not load scholarship details:', e);
