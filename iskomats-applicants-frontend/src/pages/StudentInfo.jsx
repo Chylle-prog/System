@@ -2154,8 +2154,8 @@ const StudentInfo = () => {
         if (baseScanType === 'SchoolID' && idVerified === null) {
           const front = getVerificationDocumentSource(schoolIdPhotos.front, userProfile?.id_img_front);
           const back = getVerificationDocumentSource(schoolIdPhotos.back, userProfile?.id_img_back);
-          const fVid = formData.schoolIdFront_video || documentVideos.schoolIdFront_video;
-          const bVid = formData.schoolIdBack_video || documentVideos.schoolIdBack_video;
+          const fVid = formData.schoolIdFront_video || documentVideos.schoolIdFront_video || userProfile?.schoolid_front_vid_url;
+          const bVid = formData.schoolIdBack_video || documentVideos.schoolIdBack_video || userProfile?.schoolid_back_vid_url;
           if (front && back && fVid && bVid && typeof fVid === 'string' && fVid.startsWith('http') && typeof bVid === 'string' && bVid.startsWith('http')) {
             handleIdScan();
             setAutoScanTrigger(null);
