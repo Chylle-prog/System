@@ -2302,7 +2302,9 @@ def get_applicant_document_raw(field_name):
     """Returns raw bytes with correct Content-Type for direct <img> usage."""
     allowed_fields = [
         'profile_picture', 'signature_image_data', 'id_img_front', 'id_img_back',
-        'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic'
+        'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic',
+        'id_vid_url', 'indigency_vid_url', 'grades_vid_url', 'enrollment_certificate_vid_url',
+        'schoolid_front_vid_url', 'schoolid_back_vid_url'
     ]
     if field_name not in allowed_fields:
         return "Invalid field", 400
