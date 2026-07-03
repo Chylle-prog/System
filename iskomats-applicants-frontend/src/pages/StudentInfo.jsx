@@ -1066,6 +1066,21 @@ const StudentInfo = () => {
         throw new Error("WebAssembly OCR Engine (Tesseract.js) failed to load. Please check your internet connection.");
       }
 
+      // Resolve/decrypt proxy URLs to local blob URLs for robust local OCR scanning
+      let resolvedParam = docParam;
+      if (docType === 'SchoolID') {
+        const resolvedFront = docParam.front ? await applicantAPI.resolveDocument('id_img_front', docParam.front) : null;
+        const resolvedBack = docParam.back ? await applicantAPI.resolveDocument('id_img_back', docParam.back) : null;
+        resolvedParam = { front: resolvedFront, back: resolvedBack };
+      } else {
+        const fieldMap = {
+          'Indigency': 'indigency_doc',
+          'Enrollment': 'enrollment_certificate_doc',
+          'Grades': 'grades_doc'
+        };
+        resolvedParam = await applicantAPI.resolveDocument(fieldMap[docType] || 'document', docParam);
+      }
+
       const runOcrOnImage = async (imgSource, stepName = "") => {
         if (!silent) setStatus(`Scanning ${stepName} image with WebAssembly Worker...`);
         
@@ -1087,8 +1102,8 @@ const StudentInfo = () => {
       let resultsList = [];
 
       if (docType === 'SchoolID') {
-        const frontText = await runOcrOnImage(docParam.front, "School ID Front");
-        const backText = await runOcrOnImage(docParam.back, "School ID Back");
+        const frontText = await runOcrOnImage(resolvedParam.front, "School ID Front");
+        const backText = await runOcrOnImage(resolvedParam.back, "School ID Back");
         detectedText = `[FRONT ID TEXT]\n${frontText}\n\n[BACK ID TEXT]\n${backText}`;
 
         const nameMatchFront = studentNameMatchesText(frontText, firstName, middleName, lastName);
@@ -1115,7 +1130,7 @@ const StudentInfo = () => {
         resultsList = [{ doc: 'SchoolID', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
       } 
       else if (docType === 'Enrollment') {
-        detectedText = await runOcrOnImage(docParam, "COE/COR");
+        detectedText = await runOcrOnImage(resolvedParam, "COE/COR");
         const nameCheck = studentNameMatchesText(detectedText, firstName, middleName, lastName);
         const schoolOk = schoolName ? schoolNameMatchesText(detectedText, schoolName) : true;
         const courseOk = course ? courseMatchesText(course, detectedText) : true;
@@ -1137,7 +1152,7 @@ const StudentInfo = () => {
         resultsList = [{ doc: 'Enrollment', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
       }
       else if (docType === 'Grades') {
-        detectedText = await runOcrOnImage(docParam, "Grades Transcript");
+        detectedText = await runOcrOnImage(resolvedParam, "Grades Transcript");
         const nameCheck = studentNameMatchesText(detectedText, firstName, middleName, lastName);
         const gpaOk = gpa ? gpaMatchesText(detectedText, gpa) : true;
         const ayOk = academicYear ? academic_year_matches_expected(detectedText, academicYear) : true;
@@ -1161,7 +1176,7 @@ const StudentInfo = () => {
         resultsList = [{ doc: 'Grades', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
       }
       else if (docType === 'Indigency') {
-        detectedText = await runOcrOnImage(docParam, "Certificate of Indigency");
+        detectedText = await runOcrOnImage(resolvedParam, "Certificate of Indigency");
         const nameCheck = studentNameMatchesText(detectedText, firstName, middleName, lastName);
         const addrOk = targetBarangay ? addressMatchesText(detectedText, targetBarangay) : true;
 

@@ -1188,6 +1188,11 @@ def token_required(route_handler):
         
         token = request.headers.get('Authorization')
         if not token:
+            token = request.args.get('token')
+            if token and not token.startswith('Bearer '):
+                token = 'Bearer ' + token
+                
+        if not token:
             return jsonify({'message': 'Token is missing'}), 401
 
         try:
@@ -2238,6 +2243,15 @@ def get_profile():
             ]
             document_values = fetch_applicant_document_values(cur, request.user_no, media_document_fields)
 
+            # Extract request JWT token to append to the lazy-load URLs
+            token_str = None
+            auth_header = request.headers.get('Authorization')
+            if auth_header:
+                if auth_header.startswith('Bearer '):
+                    token_str = auth_header[7:]
+                else:
+                    token_str = auth_header
+
             # 2. Add lazy-load URLs for the frontend to fetch binary data on-demand
             # This ensures the browser can still access the data without bloating the initial profile load
             for key in blob_fields:
@@ -2254,7 +2268,10 @@ def get_profile():
                 if applicant.get(flag_name):
                     # Under encryption, we always route via the backend proxy get_applicant_document_raw 
                     # to ensure the backend decrypts it before serving to the client.
-                    applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
+                    if token_str:
+                        applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, token=token_str, _external=True)
+                    else:
+                        applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
                 else:
                     applicant[key] = None
 
@@ -2269,7 +2286,10 @@ def get_profile():
                 val = document_values.get(key) or applicant.get(key)
                 if isinstance(val, str) and val.startswith('http'):
                     # Route videos through the backend proxy raw endpoint for decryption too
-                    applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
+                    if token_str:
+                        applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, token=token_str, _external=True)
+                    else:
+                        applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
                 else:
                     applicant[key] = val
 
