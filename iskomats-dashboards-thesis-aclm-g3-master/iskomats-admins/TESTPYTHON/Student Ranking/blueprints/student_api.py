@@ -3365,7 +3365,6 @@ def ocr_check():
             results = data.get('results', [])
             if isinstance(results, str):
                 try:
-                    import json
                     results = json.loads(results)
                 except Exception:
                     results = []
