@@ -1152,6 +1152,9 @@ def db_bytes(value):
         if normalized.startswith('http'):
             print(f"[DB_BYTES] Resolving URL to bytes: {normalized[:60]}...", flush=True)
             content, _err = fetch_video_bytes_from_url(normalized)
+            if content:
+                from services.crypto_service import decrypt_if_encrypted
+                content = decrypt_if_encrypted(content)
             return content
         # Otherwise, check if it's base64
         try:
@@ -2851,6 +2854,9 @@ def ocr_check():
         
         target_doc = data.get('target_doc') or data.get('targetDoc')
         
+        # Determine if this is a lightweight persistence request containing client-side results
+        is_persistence = 'verified' in data or 'results' in data
+        
         # Normalize target_doc to canonical forms used in 'jobs' population
         if target_doc:
             target_doc_norm = str(target_doc).lower()
@@ -3275,7 +3281,10 @@ def ocr_check():
 
         # 3. Schedule Parallel Jobs
         jobs = []
-        if target_doc:
+        if is_persistence:
+            # Skip job scheduling for persistence requests
+            pass
+        elif target_doc:
             print(f"[OCR-ISOLATION] Strictly verifying only: {target_doc}", flush=True)
 
         if not target_doc or target_doc == 'Enrollment':
@@ -3334,6 +3343,8 @@ def ocr_check():
                     cur = conn.cursor()
                     persist_applicant_document_values(cur, request.user_no, verification_updates)
                     conn.commit()
+            
+            if is_persistence:
                 return jsonify({
                     'verified': verified,
                     'message': message or 'Verification persisted successfully',
