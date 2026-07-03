@@ -1257,7 +1257,7 @@ const StudentInfo = () => {
     );
     const townCity = formData.townCityMunicipality || '';
     const barangay = formData.barangay || '';
-    const videoUrl = formData.mayorIndigency_video || documentVideos.mayorIndigency_video;
+    const videoUrl = formData.mayorIndigency_video || documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url;
 
     // Skip if nothing changed (doc/video)
     const last = lastIndigencyScanRef.current;
@@ -1314,7 +1314,7 @@ const StudentInfo = () => {
     const idNumber = formData.schoolIdNumber || '';
     const yearLevel = formData.yearLevel || '';
     const course = formData.course || '';
-    const videoUrl = formData.mayorCOE_video || documentVideos.mayorCOE_video;
+    const videoUrl = formData.mayorCOE_video || documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url;
     const year = formData.year || '';
     const semester = ''; // Semester removed from frontend
 
@@ -1360,7 +1360,7 @@ const StudentInfo = () => {
     const idNumber = formData.schoolIdNumber || '';
     const yearLevel = formData.yearLevel || '';
     const gpa = formData.gpa || '';
-    const videoUrl = formData.mayorGrades_video || documentVideos.mayorGrades_video;
+    const videoUrl = formData.mayorGrades_video || documentVideos.mayorGrades_video || userProfile?.grades_vid_url;
     const grades_sem = ''; // Semester for Grades removed
 
     if (!gradesDoc) {
@@ -1419,8 +1419,8 @@ const StudentInfo = () => {
       schoolIdPhotos.back,
       userProfile?.id_img_back
     );
-    const frontVideoUrl = formData.schoolIdFront_video || documentVideos.schoolIdFront_video;
-    const backVideoUrl = formData.schoolIdBack_video || documentVideos.schoolIdBack_video;
+    const frontVideoUrl = formData.schoolIdFront_video || documentVideos.schoolIdFront_video || userProfile?.schoolid_front_vid_url;
+    const backVideoUrl = formData.schoolIdBack_video || documentVideos.schoolIdBack_video || userProfile?.schoolid_back_vid_url;
 
     // Skip if nothing changed (images/videos)
     const last = lastIdScanRef.current;
