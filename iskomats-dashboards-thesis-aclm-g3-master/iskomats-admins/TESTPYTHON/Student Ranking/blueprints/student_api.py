@@ -1093,6 +1093,12 @@ def token_required(route_handler):
             return '', 204 # Return empty response - CORS headers added by after_request
         
         token = request.headers.get('Authorization')
+        # Check query parameters as a fallback if Authorization header is missing
+        if not token:
+            token = request.args.get('token')
+            if token and not token.startswith('Bearer '):
+                token = f"Bearer {token}"
+                
         if not token:
             return jsonify({'message': 'Token is missing'}), 401
 
@@ -2158,15 +2164,34 @@ def get_profile():
             ]
             document_values = fetch_applicant_document_values(cur, request.user_no, media_document_fields)
 
+            # Extract request JWT token to append to the lazy-load URLs
+            token_str = None
+            auth_header = request.headers.get('Authorization')
+            if auth_header:
+                if auth_header.startswith('Bearer '):
+                    token_str = auth_header[7:]
+                else:
+                    token_str = auth_header
+
             # 2. Add lazy-load URLs for the frontend to fetch binary data on-demand
             # This ensures the browser can still access the data without bloating the initial profile load
             for key in blob_fields:
                 flag_name = flag_map.get(key, f"has_{key}")
                 if key != 'profile_picture':
                     applicant[flag_name] = document_values.get(key) is not None
+                else:
+                    # Specialized check for profile picture
+                    applicant['has_profile_picture'] = (
+                        document_values.get('profile_picture') is not None or 
+                        applicant.get('has_profile_picture')
+                    )
+
                 if applicant.get(flag_name):
                     # Use absolute URL for raw bytes to avoid origin issues on Surge
-                    applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
+                    if token_str:
+                        applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, token=token_str, _external=True)
+                    else:
+                        applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
                 else:
                     applicant[key] = None
 
@@ -2178,7 +2203,14 @@ def get_profile():
                 'schoolid_front_vid_url',
                 'schoolid_back_vid_url',
             ):
-                applicant[key] = document_values.get(key) or applicant.get(key)
+                val = document_values.get(key) or applicant.get(key)
+                if isinstance(val, str) and val.startswith('http'):
+                    if token_str:
+                        applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, token=token_str, _external=True)
+                    else:
+                        applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
+                else:
+                    applicant[key] = val
 
             # 3. Clean up other types
             for key, value in list(applicant.items()):
