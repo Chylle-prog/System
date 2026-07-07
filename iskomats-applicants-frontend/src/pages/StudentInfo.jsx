@@ -3324,6 +3324,66 @@ const StudentInfo = () => {
         </div>
       </nav>
 
+      {/* ========================================== */}
+      {/* DEBUG SKIP BUTTONS - REMOVE WHEN DONE      */}
+      {/* ========================================== */}
+      <div style={{
+        position: 'fixed',
+        bottom: '20px',
+        right: '20px',
+        zIndex: 9999,
+        background: 'rgba(15, 23, 42, 0.95)',
+        padding: '12px',
+        borderRadius: '12px',
+        border: '1px solid #334155',
+        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px'
+      }}>
+        <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 'bold', textAlign: 'center' }}>🛠️ DEBUG ACTIONS</div>
+        <button 
+          onClick={() => {
+            setOcrVerified('success');
+            setIdVerified('success');
+            setCoeVerified('success');
+            setGradesVerified('success');
+            setFaceVerified('success');
+            setSignatureVerified('success');
+            showPromptMessage('DEBUG: All verifications bypassed successfully!');
+          }}
+          style={{
+            background: '#10b981',
+            color: '#fff',
+            border: 'none',
+            padding: '6px 12px',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontSize: '11px',
+            fontWeight: 'bold'
+          }}
+        >
+          Verify All Steps
+        </button>
+        <button 
+          onClick={() => {
+            setCurrentStep(prev => Math.min(prev + 1, 4));
+          }}
+          style={{
+            background: '#3b82f6',
+            color: '#fff',
+            border: 'none',
+            padding: '6px 12px',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontSize: '11px',
+            fontWeight: 'bold'
+          }}
+        >
+          Next Step (Skip Validation)
+        </button>
+      </div>
+      {/* ========================================== */}
 
       <div className="form-container">
         {/* Back to FindScholarship Button */}
