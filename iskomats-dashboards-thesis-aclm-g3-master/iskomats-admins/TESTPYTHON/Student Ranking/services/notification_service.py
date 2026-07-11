@@ -130,6 +130,95 @@ The ISKOMATS Team
         raise e
 
 
+def send_sms_logic(number, message):
+    """Sends SMS to a mobile number using Semaphore or Twilio."""
+    import urllib.parse
+    import base64
+    
+    provider = os.environ.get('SMS_PROVIDER', '').strip().lower()
+    if not provider or provider == 'none':
+        print("[SMS INFO] SMS notifications are disabled (SMS_PROVIDER not set).")
+        return False
+        
+    print(f"[SMS INFO] Attempting to send SMS via {provider} to {number}...")
+    
+    # Simple sanitization of number to ensure it works with Semaphore and Twilio
+    # Strip any non-digit chars
+    clean_number = "".join(c for c in str(number) if c.isdigit() or c == '+')
+    
+    if provider == 'semaphore':
+        api_key = os.environ.get('SEMAPHORE_API_KEY', '').strip()
+        sender_name = os.environ.get('SEMAPHORE_SENDER_NAME', 'SEMAPHORE').strip()
+        if not api_key:
+            print("[SMS ERROR] Semaphore apikey not configured (SEMAPHORE_API_KEY is empty)")
+            return False
+            
+        url = "https://api.semaphore.co/api/v4/messages"
+        data = urllib.parse.urlencode({
+            'apikey': api_key,
+            'number': clean_number,
+            'message': message,
+            'sendername': sender_name
+        }).encode('utf-8')
+        
+        req = urllib_request.Request(url, data=data, method='POST')
+        try:
+            with urllib_request.urlopen(req, timeout=15) as response:
+                resp_data = json.loads(response.read().decode('utf-8'))
+                print(f"[SMS SUCCESS] Semaphore response: {resp_data}")
+                return True
+        except Exception as err:
+            print(f"[SMS ERROR] Semaphore failed: {err}")
+            return False
+            
+    elif provider == 'twilio':
+        account_sid = os.environ.get('TWILIO_ACCOUNT_SID', '').strip()
+        auth_token = os.environ.get('TWILIO_AUTH_TOKEN', '').strip()
+        from_number = os.environ.get('TWILIO_FROM_NUMBER', '').strip()
+        
+        if not all([account_sid, auth_token, from_number]):
+            print("[SMS ERROR] Twilio settings not fully configured (SID/Token/From is empty)")
+            return False
+            
+        # Twilio prefers E.164 format. If number doesn't start with '+', 
+        # check if it's a PH mobile number starting with '09' or '9' and prepend '+63'
+        formatted_number = clean_number
+        if not formatted_number.startswith('+'):
+            if formatted_number.startswith('0'):
+                formatted_number = '+63' + formatted_number[1:]
+            elif formatted_number.startswith('9'):
+                formatted_number = '+63' + formatted_number
+            else:
+                # Fallback to appending '+' just in case
+                formatted_number = '+' + formatted_number
+                
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
+        data = urllib.parse.urlencode({
+            'From': from_number,
+            'To': formatted_number,
+            'Body': message
+        }).encode('utf-8')
+        
+        auth_string = f"{account_sid}:{auth_token}"
+        auth_header = base64.b64encode(auth_string.encode('utf-8')).decode('utf-8')
+        
+        req = urllib_request.Request(url, data=data, method='POST')
+        req.add_header('Authorization', f'Basic {auth_header}')
+        req.add_header('Content-Type', 'application/x-www-form-urlencoded')
+        
+        try:
+            with urllib_request.urlopen(req, timeout=15) as response:
+                resp_data = json.loads(response.read().decode('utf-8'))
+                print(f"[SMS SUCCESS] Twilio SID: {resp_data.get('sid')}")
+                return True
+        except Exception as err:
+            print(f"[SMS ERROR] Twilio failed: {err}")
+            return False
+    else:
+        print(f"[SMS ERROR] Unknown SMS provider: {provider}")
+        return False
+
+
 def create_notification(user_no, title, message, notif_type='message', send_email=True, db_conn=None, google_access_token=None, sync_email=False):
     """Create an applicant notification and optionally send an email alert."""
     GMAIL_SENDER_EMAIL = (
@@ -184,34 +273,54 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
             except Exception as socket_err:
                 print(f"[NOTIF SOCKET ERROR] Failed to emit: {socket_err}")
 
-        if not send_email:
-            if not db_conn: conn.commit()
-            if should_close_conn: conn.close()
-            return {'created': True, 'email_sent': False, 'reason': 'email-disabled'}
-
-        # 3. Get the applicant's email address
+        # 3. Get the applicant's email address and mobile number
         applicant_email_table = get_applicant_email_table(cur)
         cur.execute(f"SELECT email_address FROM {applicant_email_table} WHERE applicant_no = %s LIMIT 1", (user_no,))
         user_row = cur.fetchone()
         
+        cur.execute("SELECT mobile_no FROM applicants WHERE applicant_no = %s LIMIT 1", (user_no,))
+        mobile_row = cur.fetchone()
+        
         if not db_conn: conn.commit()
         
-        if not user_row or not user_row['email_address']:
-            if should_close_conn: conn.close()
-            return {'created': True, 'email_sent': False, 'reason': 'email-not-found'}
-            
-        receiver_email = user_row['email_address']
+        receiver_email = user_row['email_address'] if user_row else None
+        receiver_mobile = mobile_row['mobile_no'] if mobile_row else None
         
+        # SMS alert trigger in the background
+        sms_sent = False
+        if receiver_mobile:
+            sms_text = f"ISKOMATS: {title} - {message}"
+            if len(sms_text) > 300:
+                sms_text = sms_text[:297] + "..."
+            import threading
+            sms_thread = threading.Thread(target=lambda: send_sms_logic(receiver_mobile, sms_text))
+            sms_thread.daemon = True
+            sms_thread.start()
+            sms_sent = True
+
+        if not send_email or not receiver_email:
+            if should_close_conn: conn.close()
+            return {
+                'created': True, 
+                'email_sent': False, 
+                'sms_sent': sms_sent, 
+                'reason': 'email-disabled-or-not-found' if not send_email else 'email-not-found'
+            }
+            
         # 4. Send Email alert via Gmail API
         if GMAIL_SENDER_EMAIL:
             def _send_email_logic(access_token=None):
                 try:
                     email_body = f"""Hello,
-\nYou have a new notification from ISKOMATS:
-\n{title}
+
+You have a new notification from ISKOMATS:
+
+{title}
 {message}
-\nPlease log in to the portal to view more details.
-\nBest regards,
+
+Please log in to the portal to view more details.
+
+Best regards,
 The ISKOMATS Team
 """
                     msg = MIMEText(email_body)
@@ -247,7 +356,7 @@ The ISKOMATS Team
                 # Synchronous send (for batch jobs that are already in a background thread)
                 _send_email_logic(google_access_token)
                 if should_close_conn: conn.close()
-                return {'created': True, 'email_sent': True, 'email': receiver_email}
+                return {'created': True, 'email_sent': True, 'sms_sent': sms_sent, 'email': receiver_email}
             else:
                 # Background send (for individual notifications)
                 import threading
@@ -256,10 +365,10 @@ The ISKOMATS Team
                 thread.start()
                 
                 if should_close_conn: conn.close()
-                return {'created': True, 'email_sent': True, 'email': receiver_email, 'info': 'Sending in background'}
+                return {'created': True, 'email_sent': True, 'sms_sent': sms_sent, 'email': receiver_email, 'info': 'Sending in background'}
         else:
             if should_close_conn: conn.close()
-            return {'created': True, 'email_sent': False, 'email': receiver_email, 'reason': 'sender-email-not-configured'}
+            return {'created': True, 'email_sent': False, 'sms_sent': sms_sent, 'email': receiver_email, 'reason': 'sender-email-not-configured'}
         
     except Exception as e:
         print(f"[NOTIF ERROR] Notification creation failed: {e}", flush=True)
