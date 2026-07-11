@@ -152,8 +152,28 @@ def _extract_classical_embedding(img_np):
     hu_moments = cv2.HuMoments(cv2.moments(binary)).flatten()
     hu_moments = np.sign(hu_moments) * np.log1p(np.abs(hu_moments))
 
-    embedding = np.concatenate([downsampled, horizontal_projection, vertical_projection, hu_moments])
+    # Helper function to normalize components individually
+    def _safe_normalize(v):
+        v = np.asarray(v, dtype=np.float32)
+        norm = np.linalg.norm(v)
+        return v / norm if norm > 1e-8 else v
+
+    # Normalize each feature sub-vector individually
+    down_norm = _safe_normalize(downsampled)
+    h_proj_norm = _safe_normalize(horizontal_projection)
+    v_proj_norm = _safe_normalize(vertical_projection)
+    hu_norm = _safe_normalize(hu_moments)
+
+    # Combine with weights (70% shape geometry, 30% projections & moments)
+    embedding = np.concatenate([
+        down_norm * 0.70, 
+        h_proj_norm * 0.15, 
+        v_proj_norm * 0.15, 
+        hu_norm * 0.05
+    ])
+    
     return _normalize_vector(embedding)
+
 
 def get_signature_extractor():
     """
@@ -172,32 +192,10 @@ def get_signature_extractor():
 
 def extract_signature_embedding(img_np):
     """
-    Converts a signature image into a 1280-D "Neural Fingerprint" vector.
-    Now with Translation & Scale Invariance via Auto-Cropping.
+    Converts a signature image into a normalized classical shape descriptor.
+    Bypasses generic ImageNet features to ensure high accuracy signature matching.
     """
-    try:
-        if not TENSORFLOW_AVAILABLE:
-            print("[BRAIN] Using classical OpenCV signature embedding.", flush=True)
-            return _extract_classical_embedding(img_np)
-
-        model = get_signature_extractor()
-        if model is None:
-            return _extract_classical_embedding(img_np)
-
-        canvas_gray = _prepare_signature_canvas(img_np, size=224)
-        if canvas_gray is None:
-            return None
-
-        canvas = cv2.cvtColor(canvas_gray, cv2.COLOR_GRAY2BGR)
-        x = image.img_to_array(canvas)
-        x = np.expand_dims(x, axis=0)
-        x = preprocess_input(x)
-
-        embedding = model.predict(x, verbose=0)
-        return _normalize_vector(embedding)
-    except Exception as e:
-        print(f"[BRAIN] Embedding extraction failed: {e}", flush=True)
-        return _extract_classical_embedding(img_np)
+    return _extract_classical_embedding(img_np)
 
 def get_mean_profile_vector(student_id):
     """
