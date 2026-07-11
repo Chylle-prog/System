@@ -2353,6 +2353,7 @@ def get_applicant_document_raw(field_name):
             
             # Handle Supabase Storage URLs (MIGRATION: BYTEA -> TEXT)
             if isinstance(value, str) and value.startswith('http'):
+                from services.applicant_document_service import normalize_supabase_url
                 normalized_url = normalize_supabase_url(value)
                 # Redirect for videos to save memory/egress
                 if 'vid_url' in field_name or 'video' in field_name:
