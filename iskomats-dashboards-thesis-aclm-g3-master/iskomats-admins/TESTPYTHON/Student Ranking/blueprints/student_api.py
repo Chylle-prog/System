@@ -634,9 +634,41 @@ def resolve_verification_image_bytes(image_data):
     if decoded:
         return decoded
 
-    if normalized.startswith('http') and is_trusted_storage_url(normalized):
-        content, _error = fetch_video_bytes_from_url(normalized)
-        return content
+    if normalized.startswith('http'):
+        # If it's our own backend proxy URL, fetch directly from the DB!
+        if '/api/student/applicant/document/raw/' in normalized:
+            try:
+                from urllib.parse import urlparse
+                path = urlparse(normalized).path
+                parts = path.strip('/').split('/')
+                field_name = parts[-1]
+                
+                student_id = getattr(request, 'user_no', None)
+                if student_id:
+                    with get_db() as conn:
+                        cur = conn.cursor()
+                        from services.applicant_document_service import fetch_applicant_document_values
+                        row = fetch_applicant_document_values(cur, student_id, [field_name])
+                        if row and row[field_name]:
+                            val = row[field_name]
+                            if field_name == 'signature_image_data':
+                                from services.ocr_utils import decode_signature
+                                val = decode_signature(val)
+                            
+                            if isinstance(val, str) and val.startswith('http'):
+                                return resolve_verification_image_bytes(val)
+                            elif isinstance(val, str):
+                                return val.encode('utf-8')
+                            elif hasattr(val, 'tobytes'):
+                                return val.tobytes()
+                            else:
+                                return bytes(val)
+            except Exception as e:
+                print(f"[RESOLVE] Failed to resolve local proxy URL {normalized}: {e}", flush=True)
+
+        if is_trusted_storage_url(normalized):
+            content, _error = fetch_video_bytes_from_url(normalized)
+            return content
 
     return None
 
@@ -2321,18 +2353,32 @@ def get_applicant_document_raw(field_name):
             
             # Handle Supabase Storage URLs (MIGRATION: BYTEA -> TEXT)
             if isinstance(value, str) and value.startswith('http'):
-                from flask import redirect, make_response
-                print(f"[DOCUMENT RAW] Redirecting to storage: {value}", flush=True)
-                # 302 redirect with 1-hour cache
-                response = make_response(redirect(value))
-                response.headers.set('Cache-Control', 'public, max-age=3600')
-                return response
-            
-            if not isinstance(value, bytes):
-                if hasattr(value, 'tobytes'):
-                    value = value.tobytes()
+                normalized_url = normalize_supabase_url(value)
+                # Redirect for videos to save memory/egress
+                if 'vid_url' in field_name or 'video' in field_name:
+                    from flask import redirect, make_response
+                    response = make_response(redirect(normalized_url))
+                    response.headers.set('Cache-Control', 'public, max-age=3600')
+                    return response
                 else:
-                    value = bytes(value)
+                    # Download and proxy images directly using the authenticated service role key
+                    content, error = fetch_video_bytes_from_url(normalized_url)
+                    if content is not None:
+                        from services.crypto_service import decrypt_if_encrypted
+                        value = decrypt_if_encrypted(content)
+                    else:
+                        from flask import redirect
+                        return redirect(normalized_url)
+            else:
+                if not isinstance(value, bytes):
+                    if hasattr(value, 'tobytes'):
+                        value = value.tobytes()
+                    else:
+                        value = bytes(value)
+
+                # Ensure we decrypt binary data
+                from services.crypto_service import decrypt_if_encrypted
+                value = decrypt_if_encrypted(value)
 
             mime_type = 'image/jpeg'
             if field_name == 'signature_image_data' or (len(value) > 4 and value.startswith(b'\x89PNG')):

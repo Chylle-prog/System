@@ -681,10 +681,43 @@ def resolve_verification_image_bytes(image_data):
         if decoded:
             raw_bytes = decoded
         elif normalized.startswith('http'):
-            target_url = normalize_supabase_url(normalized)
-            if is_trusted_storage_url(target_url):
-                content, _error = fetch_video_bytes_from_url(target_url)
-                raw_bytes = content
+            # If it's our own backend proxy URL, fetch directly from the DB!
+            if '/api/student/applicant/document/raw/' in normalized:
+                try:
+                    from urllib.parse import urlparse
+                    path = urlparse(normalized).path
+                    parts = path.strip('/').split('/')
+                    field_name = parts[-1]
+                    
+                    student_id = getattr(request, 'user_no', None)
+                    if student_id:
+                        with get_db() as conn:
+                            cur = conn.cursor()
+                            from services.applicant_document_service import fetch_applicant_document_values
+                            row = fetch_applicant_document_values(cur, student_id, [field_name])
+                            if row and row[field_name]:
+                                val = row[field_name]
+                                if field_name == 'signature_image_data':
+                                    from services.ocr_utils import decode_signature
+                                    val = decode_signature(val)
+                                
+                                if isinstance(val, str) and val.startswith('http'):
+                                    # Recursively resolve the storage URL
+                                    return resolve_verification_image_bytes(val)
+                                elif isinstance(val, str):
+                                    raw_bytes = val.encode('utf-8')
+                                elif hasattr(val, 'tobytes'):
+                                    raw_bytes = val.tobytes()
+                                else:
+                                    raw_bytes = bytes(val)
+                except Exception as e:
+                    print(f"[RESOLVE] Failed to resolve local proxy URL {normalized}: {e}", flush=True)
+
+            if not raw_bytes:
+                target_url = normalize_supabase_url(normalized)
+                if is_trusted_storage_url(target_url):
+                    content, _error = fetch_video_bytes_from_url(target_url)
+                    raw_bytes = content
 
     if raw_bytes:
         # Decrypt if the frontend encrypted it before upload
@@ -2427,30 +2460,33 @@ def get_applicant_document_raw(field_name):
                 value = decode_signature(value)
             
             if isinstance(value, str) and value.startswith('http'):
-                import requests
-                from services.crypto_service import decrypt_if_encrypted
                 normalized_url = normalize_supabase_url(value)
-                try:
-                    resp = requests.get(normalized_url, timeout=30)
-                    if resp.status_code == 200:
-                        value = decrypt_if_encrypted(resp.content)
+                # Redirect for videos to save memory/egress
+                if 'vid_url' in field_name or 'video' in field_name:
+                    from flask import redirect, make_response
+                    response = make_response(redirect(normalized_url))
+                    response.headers.set('Cache-Control', 'public, max-age=3600')
+                    return response
+                else:
+                    # Download and proxy images directly using the authenticated service role key
+                    content, error = fetch_video_bytes_from_url(normalized_url)
+                    if content is not None:
+                        from services.crypto_utils import decrypt_if_encrypted
+                        value = decrypt_if_encrypted(content)
                     else:
                         from flask import redirect
                         return redirect(normalized_url)
-                except Exception as e:
-                    print(f"[DOCUMENT RAW] Proxy download error for {field_name}: {e}", flush=True)
-                    from flask import redirect
-                    return redirect(normalized_url)
-            elif isinstance(value, str):
-                value = value.encode('utf-8')
-            elif hasattr(value, 'tobytes'):
-                value = value.tobytes()
             else:
-                value = bytes(value)
+                if isinstance(value, str):
+                    value = value.encode('utf-8')
+                elif hasattr(value, 'tobytes'):
+                    value = value.tobytes()
+                else:
+                    value = bytes(value)
 
-            # Ensure we decrypt binary data
-            from services.crypto_service import decrypt_if_encrypted
-            value = decrypt_if_encrypted(value)
+                # Ensure we decrypt binary data
+                from services.crypto_utils import decrypt_if_encrypted
+                value = decrypt_if_encrypted(value)
 
             mime_type = 'image/jpeg'
             if field_name == 'signature_image_data' or value.startswith(b'\x89PNG'):
