@@ -1103,7 +1103,9 @@ If you did not request a password reset, you can ignore this email.
     msg['To'] = receiver_email
 
     access_token = fetch_google_access_token()
-    encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
+    raw_bytes = msg.as_bytes()
+    raw_bytes = raw_bytes.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+    encoded_message = base64.urlsafe_b64encode(raw_bytes).decode('utf-8')
     gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
     gmail_request = urllib_request.Request(
         'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
@@ -1567,10 +1569,23 @@ def student_resend_verification_email():
             applicant_email_table = get_applicant_email_table(cur)
             
             # 1. Check if email exists in permanent table (already verified)
-            cur.execute(f'SELECT app_em_no FROM {applicant_email_table} WHERE email_address ILIKE %s', (email,))
+            cur.execute(f'SELECT app_em_no, is_verified FROM {applicant_email_table} WHERE email_address ILIKE %s', (email,))
             user = cur.fetchone()
             if user:
-                return jsonify({'message': 'Email already verified. Please sign in.'}), 400
+                if user.get('is_verified', True):
+                    return jsonify({'message': 'Email already verified. Please sign in.'}), 400
+                else:
+                    new_code = generate_verification_code()
+                    cur.execute(f'UPDATE {applicant_email_table} SET verification_code = %s WHERE app_em_no = %s', (new_code, user['app_em_no']))
+                    conn.commit()
+                    
+                    try:
+                        send_verification_email(email, new_code)
+                    except Exception as e:
+                        print(f"[EMAIL ERROR] Failed to send verification email for admin-created account: {e}", flush=True)
+                        return jsonify({'message': f'Failed to send email: {str(e)}'}), 500
+                    
+                    return jsonify({'message': 'Verification email sent successfully'}), 200
 
             # 2. Check if email exists in pending registrations
             pending, pending_expired = fetch_pending_registration(cur, email=email)

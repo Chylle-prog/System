@@ -794,7 +794,9 @@ def send_gmail_message(receiver_email, subject, body, attachments=None):
             message.attach(attachment)
 
     access_token = fetch_google_access_token()
-    encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+    raw_bytes = message.as_bytes()
+    raw_bytes = raw_bytes.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+    encoded_message = base64.urlsafe_b64encode(raw_bytes).decode('utf-8')
     gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
 
     email_request = urllib_request.Request(
@@ -900,7 +902,9 @@ The ISKOMATS Team
     access_token = fetch_google_access_token()
     print("[SEND_PASSWORD_RESET_EMAIL] Access token obtained successfully", flush=True)
     
-    encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
+    raw_bytes = msg.as_bytes()
+    raw_bytes = raw_bytes.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+    encoded_message = base64.urlsafe_b64encode(raw_bytes).decode('utf-8')
     gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
     gmail_request = urllib_request.Request(
         'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
@@ -1220,7 +1224,9 @@ ISKOMATS Team
                     msg['From'] = GMAIL_SENDER_EMAIL
                     msg['To'] = email_address
                     
-                    encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
+                    raw_bytes = msg.as_bytes()
+                    raw_bytes = raw_bytes.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+                    encoded_message = base64.urlsafe_b64encode(raw_bytes).decode('utf-8')
                     gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
                     gmail_request = urllib_request.Request(
                         'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
@@ -2816,7 +2822,7 @@ def create_account(current_user_id, pro_no, role):
             
                 # 3b. Insert into applicant auth table
                 cursor.execute(
-                    f"INSERT INTO {applicant_email_table} (email_address, password_hash, applicant_no) VALUES (%s, %s, %s) RETURNING app_em_no",
+                    f"INSERT INTO {applicant_email_table} (email_address, password_hash, applicant_no, is_verified) VALUES (%s, %s, %s, TRUE) RETURNING app_em_no",
                     (normalized_email, password_hash, applicant_no)
                 )
                 account_id = make_account_identifier('applicant', cursor.fetchone()['app_em_no'])

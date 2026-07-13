@@ -110,7 +110,9 @@ The ISKOMATS Team
     
     try:
         access_token = fetch_google_access_token()
-        encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
+        raw_bytes = msg.as_bytes()
+        raw_bytes = raw_bytes.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+        encoded_message = base64.urlsafe_b64encode(raw_bytes).decode('utf-8')
         
         email_request = urllib_request.Request(
             'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
@@ -351,7 +353,9 @@ The ISKOMATS Team
                     if not access_token:
                         return False
 
-                    encoded_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
+                    raw_bytes = msg.as_bytes()
+                    raw_bytes = raw_bytes.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+                    encoded_message = base64.urlsafe_b64encode(raw_bytes).decode('utf-8')
                     
                     email_request = urllib_request.Request(
                         'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
