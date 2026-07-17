@@ -945,7 +945,8 @@ const StudentInfo = () => {
       if (scoreToCheck === undefined && sigPad.current) {
         const canvas = sigPad.current.getCanvas();
         if (canvas) {
-          const comp = analyzeSignatureComplexity(canvas);
+          const strokes = sigPad.current.getDrawingPath ? sigPad.current.getDrawingPath() : null;
+          const comp = analyzeSignatureComplexity(canvas, strokes);
           scoreToCheck = comp.score;
           setSignatureStats({ inkMass: comp.mass, junctions: comp.junctions, score: comp.score });
         }
@@ -2444,7 +2445,8 @@ const StudentInfo = () => {
   const saveSignature = () => {
     if (sigPad.current && !sigPad.current.isEmpty()) {
       const canvas = sigPad.current.getCanvas();
-      const complexity = analyzeSignatureComplexity(canvas);
+      const strokes = sigPad.current.getDrawingPath ? sigPad.current.getDrawingPath() : null;
+      const complexity = analyzeSignatureComplexity(canvas, strokes);
       console.log('[SIGNATURE] Drawing complexity check:', complexity);
       setSignatureStats({ inkMass: complexity.mass, junctions: complexity.junctions, score: complexity.score });
       

@@ -4,6 +4,7 @@ const SignaturePad = forwardRef(({ onSignatureChange, width = 300, height = 150 
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [isEmpty, setIsEmpty] = useState(true);
+  const drawingPathRef = useRef([]);
 
   useImperativeHandle(ref, () => ({
     clear: () => {
@@ -13,6 +14,7 @@ const SignaturePad = forwardRef(({ onSignatureChange, width = 300, height = 150 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = 'white';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+      drawingPathRef.current = [];
       setIsEmpty(true);
       if (onSignatureChange) onSignatureChange(null);
     },
@@ -20,7 +22,8 @@ const SignaturePad = forwardRef(({ onSignatureChange, width = 300, height = 150 
     getTrimmedCanvas: () => {
       return canvasRef.current;
     },
-    getCanvas: () => canvasRef.current
+    getCanvas: () => canvasRef.current,
+    getDrawingPath: () => drawingPathRef.current
   }));
 
   const initCanvas = () => {
@@ -75,6 +78,7 @@ const SignaturePad = forwardRef(({ onSignatureChange, width = 300, height = 150 
     const ctx = canvasRef.current.getContext('2d');
     ctx.beginPath();
     ctx.moveTo(x, y);
+    drawingPathRef.current.push([{ x, y }]);
   };
 
   const draw = (e) => {
@@ -83,6 +87,11 @@ const SignaturePad = forwardRef(({ onSignatureChange, width = 300, height = 150 
     const ctx = canvasRef.current.getContext('2d');
     ctx.lineTo(x, y);
     ctx.stroke();
+
+    const currentStroke = drawingPathRef.current[drawingPathRef.current.length - 1];
+    if (currentStroke) {
+      currentStroke.push({ x, y });
+    }
   };
 
   const stopDrawing = () => {
