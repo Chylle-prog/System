@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { authAPI, applicantAPI, uploadProfilePicture } from '../services/api';
+import { authAPI, applicantAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { GoogleLogin } from '@react-oauth/google';
 import lipaBg from '../assets/lipa.jpg';
@@ -260,20 +260,6 @@ const Login = () => {
       
       const email = localStorage.getItem('currentUser');
 
-      // Use the exact names expected by the backend field_mapping
-      let finalProfilePictureUrl = null;
-      if (rawProfilePictureFile) {
-        try {
-          setLoadingMessage({ title: 'Uploading Photo', message: 'Securing your profile picture...' });
-          finalProfilePictureUrl = await uploadProfilePicture(rawProfilePictureFile);
-        } catch (uploadError) {
-          console.error('[PROFILE-PIC] Failed to upload to storage:', uploadError);
-          // With strict cloud enforcement in the backend, we should only proceed if upload succeeds
-          // or if we're willing to accept no photo.
-          finalProfilePictureUrl = null; 
-        }
-      }
-
       const profilePayload = {
         firstName,
         middleName,
@@ -286,7 +272,7 @@ const Login = () => {
         townCity: townCityMunicipality,
         province,
         zipCode,
-        profile_picture: finalProfilePictureUrl
+        profile_picture: profilePicture
       };
       
       await applicantAPI.updateProfile(profilePayload);

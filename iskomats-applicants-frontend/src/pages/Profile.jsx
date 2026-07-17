@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { applicantAPI, uploadProfilePicture } from '../services/api';
+import { applicantAPI } from '../services/api';
 import { SCHOOLS, BARANGAYS } from '../utils/constants';
 
 const Profile = () => {
@@ -177,17 +177,6 @@ const Profile = () => {
     try {
       setLoadingMessage({ title: 'Updating Profile', message: 'Saving your changes to the database...' });
       setShowLoadingOverlay(true);
-      // Use the exact names expected by the backend field_mapping
-      let finalProfilePictureUrl = formData.profile_picture;
-      if (rawProfilePictureFile) {
-        try {
-          setLoadingMessage({ title: 'Uploading Photo', message: 'Securing your profile picture...' });
-          finalProfilePictureUrl = await uploadProfilePicture(rawProfilePictureFile);
-        } catch (uploadError) {
-          console.error('[PROFILE-PIC] Failed to upload to storage:', uploadError);
-          // Fallback to dataURL/formData value if storage fails
-        }
-      }
 
       const profileData = {
         firstName: formData.firstName,
@@ -201,7 +190,7 @@ const Profile = () => {
         province: formData.province,
         zipCode: formData.zipCode,
         course: formData.course,
-        profile_picture: finalProfilePictureUrl
+        profile_picture: formData.profile_picture
       };
 
       // Update profile via API

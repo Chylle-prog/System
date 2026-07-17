@@ -2641,6 +2641,11 @@ def update_profile():
                 if raw_val:
                     # If it's already a URL, we don't need to decode or upload
                     if isinstance(raw_val, str) and (raw_val.startswith('http') or raw_val.startswith('https')):
+                        # If it is a backend proxy URL, it means the user did not change the file, so skip updating it
+                        if '/applicant/document/raw/' in raw_val or '/applicant-image/' in raw_val:
+                            print(f"[UPDATE PROFILE] Field {field_key} is a backend proxy URL. Skipping update.", flush=True)
+                            continue
+                        
                         print(f"[UPDATE PROFILE] Field {field_key} is already a URL. Saving directly.", flush=True)
                         if db_col == 'profile_picture' and has_profile_picture_column:
                             add_update(db_col, raw_val)
@@ -2905,7 +2910,11 @@ def submit_application():
             if has_profile_picture_column:
                 raw_url = get_unified_val('profile_picture') or get_unified_val('profilePicture')
                 if isinstance(raw_url, str) and (raw_url.startswith('http') or raw_url.startswith('https')):
-                    profile_pic_url = raw_url
+                    if '/applicant/document/raw/' in raw_url or '/applicant-image/' in raw_url:
+                        print(f"[SUBMIT] profile_picture is a backend proxy URL. Skipping profile picture update.", flush=True)
+                        profile_pic_url = None
+                    else:
+                        profile_pic_url = raw_url
                 else:
                     profile_pic_bytes = get_doc_bytes('profile_picture', 'profile_picture')
         

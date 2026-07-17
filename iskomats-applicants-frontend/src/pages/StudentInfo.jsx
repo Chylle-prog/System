@@ -2599,7 +2599,7 @@ const StudentInfo = () => {
         }
       });
 
-      if (photos.profile_picture) submissionData.append('profile_picture', photos.profile_picture);
+      if (idPicturePreview) submissionData.append('profile_picture', idPicturePreview);
       if (photos.id_front || schoolIdPhotos.front) submissionData.append('id_front', photos.id_front || schoolIdPhotos.front);
       if (photos.id_back || schoolIdPhotos.back) submissionData.append('id_back', photos.id_back || schoolIdPhotos.back);
       if (photos.face_photo) submissionData.append('face_photo', photos.face_photo);
