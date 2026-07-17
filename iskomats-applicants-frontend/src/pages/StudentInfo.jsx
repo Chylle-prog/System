@@ -822,8 +822,9 @@ const StudentInfo = () => {
     const data = imageData.data;
     
     let inkPixels = 0;
-    let sumX = 0, sumY = 0;
     let points = [];
+    let minX = canvas.width, maxX = 0;
+    let minY = canvas.height, maxY = 0;
 
     for (let i = 0; i < data.length; i += 4) {
       if (data[i] < 200) { // Black ink
@@ -831,19 +832,66 @@ const StudentInfo = () => {
         const pixelIdx = i / 4;
         const x = pixelIdx % canvas.width;
         const y = Math.floor(pixelIdx / canvas.width);
-        sumX += x;
-        sumY += y;
-        if (inkPixels % 10 === 0) points.push({x, y});
+        
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+
+        if (inkPixels % 8 === 0) {
+          points.push({ x, y });
+        }
       }
     }
 
     if (inkPixels === 0) return { score: 0, mass: 0, junctions: 0 };
 
+    const width = maxX - minX;
+    const height = maxY - minY;
+
+    // Reject extremely flat, tiny, or empty strokes
+    if (width < 25 || height < 20 || inkPixels < 150) {
+      console.log('[SIGNATURE COMPLEXITY] Rejected due to size/flatness:', { width, height, inkPixels });
+      return { score: 0.02, mass: inkPixels, junctions: 0 };
+    }
+
+    // Collinearity check (line fitting)
+    const N = points.length;
+    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0, sumYY = 0;
+    points.forEach(p => {
+      sumX += p.x;
+      sumY += p.y;
+      sumXY += p.x * p.y;
+      sumXX += p.x * p.x;
+      sumYY += p.y * p.y;
+    });
+
+    const meanX = sumX / N;
+    const meanY = sumY / N;
+
+    let varX = 0, varY = 0, covXY = 0;
+    points.forEach(p => {
+      const dx = p.x - meanX;
+      const dy = p.y - meanY;
+      varX += dx * dx;
+      varY += dy * dy;
+      covXY += dx * dy;
+    });
+
+    const rNumerator = covXY;
+    const rDenominator = Math.sqrt(varX * varY);
+    let rSquared = 0;
+    if (rDenominator > 0) {
+      const r = rNumerator / rDenominator;
+      rSquared = r * r;
+    }
+
+    // Junctions check using a wider offset window
     let junctions = 0;
     const neighborOffsets = [
-      [-1, -1], [0, -1], [1, -1],
-      [-1, 0],          [1, 0],
-      [-1, 1],  [0, 1],  [1, 1]
+      [-2, -2], [0, -2], [2, -2],
+      [-2, 0],          [2, 0],
+      [-2, 2],  [0, 2],  [2, 2]
     ];
 
     points.forEach(p => {
@@ -857,10 +905,17 @@ const StudentInfo = () => {
       if (neighbors > 2) junctions++;
     });
     
-    const normalizedMass = Math.min(1, inkPixels / 2000);
-    const normalizedJunctions = Math.min(1, junctions / 150);
-    const score = (normalizedMass * 0.3) + (normalizedJunctions * 0.7);
-    
+    const normalizedMass = Math.min(1, inkPixels / 3000);
+    const normalizedJunctions = Math.min(1, junctions / 120);
+    let score = (normalizedMass * 0.3) + (normalizedJunctions * 0.7);
+
+    // If points are highly collinear (e.g., drawing is a single line), heavily penalize the score
+    if (rSquared > 0.75) {
+      const penalty = (rSquared - 0.75) / 0.25; // 0 to 1
+      score = score * (1 - penalty * 0.95); // reduce score by up to 95%
+      console.log('[SIGNATURE COMPLEXITY] Collinear penalty applied:', { rSquared, penalty, originalScore: (normalizedMass * 0.3) + (normalizedJunctions * 0.7), newScore: score });
+    }
+
     return { score, mass: inkPixels, junctions };
   };
 
@@ -4672,49 +4727,6 @@ const StudentInfo = () => {
                                       <p style={{ fontSize: '0.55rem', color: '#94a3b8', margin: '0 0 2px 0', fontWeight: '700' }}>JUNCTIONS</p>
                                       <p style={{ fontSize: '0.75rem', fontWeight: '700', color: '#1e293b', margin: 0 }}>{signatureStats.junctions}</p>
                                     </div>
-                                  </div>
-                                </div>
-
-                                {/* Training Feedback Loop */}
-                                <div style={{ padding: '10px', background: '#eef2ff', borderRadius: '10px', border: '1px solid #e0e7ff', textAlign: 'center' }}>
-                                  <p style={{ fontSize: '0.65rem', fontWeight: '800', color: '#6366f1', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                    <i className="fas fa-magic"></i> TRAINING FEEDBACK
-                                  </p>
-                                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                                    <button 
-                                      type="button"
-                                      disabled={feedbackStatus.signature}
-                                      onClick={() => sendFeedback('signature', 'agree')}
-                                      style={{
-                                        padding: '4px 12px',
-                                        fontSize: '0.65rem',
-                                        fontWeight: '700',
-                                        color: '#fff',
-                                        background: '#10b981',
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        cursor: 'pointer'
-                                      }}
-                                    >
-                                      {feedbackStatus.signature ? 'Thank you!' : 'Agree'}
-                                    </button>
-                                    <button 
-                                      type="button"
-                                      disabled={feedbackStatus.signature}
-                                      onClick={() => sendFeedback('signature', 'disagree')}
-                                      style={{
-                                        padding: '4px 12px',
-                                        fontSize: '0.65rem',
-                                        fontWeight: '700',
-                                        color: '#fff',
-                                        background: '#ef4444',
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        cursor: 'pointer'
-                                      }}
-                                    >
-                                      Disagree
-                                    </button>
                                   </div>
                                 </div>
                               </div>
