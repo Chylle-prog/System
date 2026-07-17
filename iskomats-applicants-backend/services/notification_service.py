@@ -216,6 +216,40 @@ def send_sms_logic(number, message):
         except Exception as err:
             print(f"[SMS ERROR] Twilio failed: {err}")
             return False
+
+    elif provider == 'itexmo':
+        # ITEXMO: Philippines-local SMS provider (affordable, good PH carrier coverage)
+        # Sign up at: https://www.itexmo.com
+        # Required env vars: ITEXMO_EMAIL, ITEXMO_PASSWORD, ITEXMO_API_CODE
+        email = os.environ.get('ITEXMO_EMAIL', '').strip()
+        password = os.environ.get('ITEXMO_PASSWORD', '').strip()
+        api_code = os.environ.get('ITEXMO_API_CODE', '').strip()
+
+        if not all([email, password, api_code]):
+            print("[SMS ERROR] ITEXMO settings not fully configured (EMAIL/PASSWORD/API_CODE is empty)")
+            return False
+
+        # ITEXMO accepts Philippine numbers as-is (09XXXXXXXXX or +639XXXXXXXXX)
+        url = "https://api.itexmo.com/api/broadcast"
+        data = urllib.parse.urlencode({
+            'Email': email,
+            'Password': password,
+            'ApiCode': api_code,
+            'Number': clean_number,
+            'Message': message,
+        }).encode('utf-8')
+
+        req = urllib_request.Request(url, data=data, method='POST')
+        req.add_header('Content-Type', 'application/x-www-form-urlencoded')
+        try:
+            with urllib_request.urlopen(req, timeout=15) as response:
+                resp_body = response.read().decode('utf-8')
+                print(f"[SMS SUCCESS] ITEXMO response: {resp_body}")
+                return True
+        except Exception as err:
+            print(f"[SMS ERROR] ITEXMO failed: {err}")
+            return False
+
     else:
         print(f"[SMS ERROR] Unknown SMS provider: {provider}")
         return False

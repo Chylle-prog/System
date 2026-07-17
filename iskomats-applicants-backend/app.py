@@ -59,11 +59,14 @@ exact_allowed_origins, preview_origin_patterns = split_allowed_origins(all_allow
 # Note: We handle CORS manually in before_request and after_request to have full control
 # Don't use CORS() extension - it can conflict with manual handlers
 
-print(f"[STARTUP] Initializing SocketIO with {len(exact_allowed_origins)} exact origins...")
-# Pass only string origins to SocketIO to avoid issues with regex objects
+print(f"[STARTUP] Initializing SocketIO with wildcard CORS (manual CORS is handled by before/after_request handlers)...")
+# Use "*" for SocketIO's own CORS check because manual CORS (before/after_request) already
+# handles fine-grained origin validation including regex-matched surge.sh / netlify.app subdomains.
+# Without "*" here, WebSocket upgrade handshakes from those subdomains are rejected with HTTP 400
+# because SocketIO only sees the exact-string list (regex patterns are stripped out).
 socketio = SocketIO(
-    app, 
-    cors_allowed_origins=exact_allowed_origins,
+    app,
+    cors_allowed_origins="*",
     engineio_logger=True,
     ping_timeout=120,
     ping_interval=30,
