@@ -254,6 +254,9 @@ const getTesseractWorker = async () => {
     workerPath: 'https://unpkg.com/tesseract.js@5.1.0/dist/worker.min.js',
     corePath: 'https://unpkg.com/tesseract.js-core@5.1.0/tesseract-core.wasm.js',
     langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+    // Cache the language model in IndexedDB so it's only downloaded once.
+    // After the first scan, subsequent scans load from local cache (~instant).
+    cacheMethod: 'write',
     logger: (m) => {
       if (activeOcrLogger) {
         activeOcrLogger(m);
