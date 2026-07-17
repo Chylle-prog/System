@@ -4198,6 +4198,37 @@ def get_applicant_image(applicant_no, column_name):
             except:
                 return jsonify({'message': f'Invalid data format for {column_name}'}), 500
 
+        if mime_type.startswith('video/'):
+            from flask import request, Response
+            range_header = request.headers.get('Range', None)
+            if range_header and range_header.startswith('bytes='):
+                try:
+                    byte_ranges = range_header.replace('bytes=', '').split('-')
+                    start = int(byte_ranges[0]) if byte_ranges[0] else 0
+                    end = int(byte_ranges[1]) if byte_ranges[1] else len(data) - 1
+                except ValueError:
+                    start = 0
+                    end = len(data) - 1
+                
+                if end >= len(data):
+                    end = len(data) - 1
+                if start > end:
+                    start = end
+                
+                chunk = data[start:end+1]
+                response = Response(chunk, status=206, mimetype=mime_type)
+                response.headers.set('Accept-Ranges', 'bytes')
+                response.headers.set('Content-Range', f'bytes {start}-{end}/{len(data)}')
+                response.headers.set('Content-Length', str(len(chunk)))
+                response.headers.set('Cache-Control', 'public, max-age=3600')
+                return response
+            else:
+                response = Response(data, mimetype=mime_type)
+                response.headers.set('Accept-Ranges', 'bytes')
+                response.headers.set('Content-Length', str(len(data)))
+                response.headers.set('Cache-Control', 'public, max-age=3600')
+                return response
+        
         try:
             return send_file(
                 BytesIO(data),

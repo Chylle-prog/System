@@ -2476,21 +2476,14 @@ def get_applicant_document_raw(field_name):
             
             if isinstance(value, str) and value.startswith('http'):
                 normalized_url = normalize_supabase_url(value)
-                # Redirect for videos to save memory/egress
-                if 'vid_url' in field_name or 'video' in field_name:
-                    from flask import redirect, make_response
-                    response = make_response(redirect(normalized_url))
-                    response.headers.set('Cache-Control', 'public, max-age=3600')
-                    return response
+                # Download and proxy files directly using the authenticated service role key
+                content, error = fetch_video_bytes_from_url(normalized_url)
+                if content is not None:
+                    from services.crypto_utils import decrypt_if_encrypted
+                    value = decrypt_if_encrypted(content)
                 else:
-                    # Download and proxy images directly using the authenticated service role key
-                    content, error = fetch_video_bytes_from_url(normalized_url)
-                    if content is not None:
-                        from services.crypto_utils import decrypt_if_encrypted
-                        value = decrypt_if_encrypted(content)
-                    else:
-                        from flask import redirect
-                        return redirect(normalized_url)
+                    from flask import redirect
+                    return redirect(normalized_url)
             else:
                 if isinstance(value, str):
                     value = value.encode('utf-8')
@@ -2506,15 +2499,48 @@ def get_applicant_document_raw(field_name):
             mime_type = 'image/jpeg'
             if field_name == 'signature_image_data' or value.startswith(b'\x89PNG'):
                 mime_type = 'image/png'
-            elif 'vid_url' in field_name or value.startswith(b'ftyp') or value.startswith(b'\x00\x00\x00\x18ftyp'):
-                mime_type = 'video/mp4'
+            elif 'vid_url' in field_name or value.startswith(b'ftyp') or value.startswith(b'\x00\x00\x00\x18ftyp') or value.startswith(b'\x1a\x45\xdf\xa3'):
+                if value.startswith(b'\x1a\x45\xdf\xa3'):
+                    mime_type = 'video/webm'
+                else:
+                    mime_type = 'video/mp4'
                 
-            from flask import make_response
-            response = make_response(value)
-            response.headers.set('Content-Type', mime_type)
-            # Add browser caching to reduce egress (1 hour)
-            response.headers.set('Cache-Control', 'public, max-age=3600')
-            return response
+            if mime_type.startswith('video/'):
+                from flask import Response
+                range_header = request.headers.get('Range', None)
+                if range_header and range_header.startswith('bytes='):
+                    try:
+                        byte_ranges = range_header.replace('bytes=', '').split('-')
+                        start = int(byte_ranges[0]) if byte_ranges[0] else 0
+                        end = int(byte_ranges[1]) if byte_ranges[1] else len(value) - 1
+                    except ValueError:
+                        start = 0
+                        end = len(value) - 1
+                    
+                    if end >= len(value):
+                        end = len(value) - 1
+                    if start > end:
+                        start = end
+                    
+                    chunk = value[start:end+1]
+                    response = Response(chunk, status=206, mimetype=mime_type)
+                    response.headers.set('Accept-Ranges', 'bytes')
+                    response.headers.set('Content-Range', f'bytes {start}-{end}/{len(value)}')
+                    response.headers.set('Content-Length', str(len(chunk)))
+                    response.headers.set('Cache-Control', 'public, max-age=3600')
+                    return response
+                else:
+                    response = Response(value, mimetype=mime_type)
+                    response.headers.set('Accept-Ranges', 'bytes')
+                    response.headers.set('Content-Length', str(len(value)))
+                    response.headers.set('Cache-Control', 'public, max-age=3600')
+                    return response
+            else:
+                from flask import make_response
+                response = make_response(value)
+                response.headers.set('Content-Type', mime_type)
+                response.headers.set('Cache-Control', 'public, max-age=3600')
+                return response
     except Exception as e:
         print(f"[DOCUMENT RAW] Error: {e}", flush=True)
         return "Internal Error", 500
