@@ -794,7 +794,16 @@ const StudentInfo = () => {
       JSON.stringify({
         currentStep: nextStep,
         hasOtherAssistance,
-        formData: serializeDraftFormData(nextFormData)
+        formData: serializeDraftFormData(nextFormData),
+        verificationStates: {
+          ocrVerified,
+          coeVerified,
+          gradesVerified,
+          idVerified,
+          faceVerified,
+          signatureVerified,
+          faceMatchResult
+        }
       })
     );
   };
@@ -809,7 +818,7 @@ const StudentInfo = () => {
 
   const handleSignatureScan = async () => {
     // We need both the drawn signature and the ID back photo
-    const idBack = schoolIdPhotos.back || userProfile?.id_img_back;
+    const idBack = schoolIdPhotos.back || formData.schoolIdBack;
     const currentSignature = drawnSignature || formData.applicantSignatureName;
 
     if (!currentSignature) {
@@ -1252,12 +1261,11 @@ const StudentInfo = () => {
   const handleIndigencyScan = async () => {
     const indigencyDoc = getVerificationDocumentSource(
       photos.mayorIndigency_photo,
-      formData.mayorIndigency_photo,
-      userProfile?.indigency_doc
+      formData.mayorIndigency_photo
     );
     const townCity = formData.townCityMunicipality || '';
     const barangay = formData.barangay || '';
-    const videoUrl = formData.mayorIndigency_video || documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url;
+    const videoUrl = formData.mayorIndigency_video || documentVideos.mayorIndigency_video;
 
     // Skip if nothing changed (doc/video)
     const last = lastIndigencyScanRef.current;
@@ -1307,14 +1315,13 @@ const StudentInfo = () => {
   const handleCOEScan = async () => {
     const coeDoc = getVerificationDocumentSource(
       photos.mayorCOE_photo,
-      formData.mayorCOE_photo,
-      userProfile?.enrollment_certificate_doc
+      formData.mayorCOE_photo
     );
     const schoolName = formData.schoolName || '';
     const idNumber = formData.schoolIdNumber || '';
     const yearLevel = formData.yearLevel || '';
     const course = formData.course || '';
-    const videoUrl = formData.mayorCOE_video || documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url;
+    const videoUrl = formData.mayorCOE_video || documentVideos.mayorCOE_video;
     const year = formData.year || '';
     const semester = ''; // Semester removed from frontend
 
@@ -1353,14 +1360,13 @@ const StudentInfo = () => {
   const handleGradesScan = async () => {
     const gradesDoc = getVerificationDocumentSource(
       photos.mayorGrades_photo,
-      formData.mayorGrades_photo,
-      userProfile?.grades_doc
+      formData.mayorGrades_photo
     );
     const schoolName = formData.schoolName || '';
     const idNumber = formData.schoolIdNumber || '';
     const yearLevel = formData.yearLevel || '';
     const gpa = formData.gpa || '';
-    const videoUrl = formData.mayorGrades_video || documentVideos.mayorGrades_video || userProfile?.grades_vid_url;
+    const videoUrl = formData.mayorGrades_video || documentVideos.mayorGrades_video;
     const grades_sem = ''; // Semester for Grades removed
 
     if (!gradesDoc) {
@@ -1413,14 +1419,14 @@ const StudentInfo = () => {
   const handleIdScan = async () => {
     const idFront = getVerificationDocumentSource(
       schoolIdPhotos.front,
-      userProfile?.id_img_front
+      formData.schoolIdFront
     );
     const idBack = getVerificationDocumentSource(
       schoolIdPhotos.back,
-      userProfile?.id_img_back
+      formData.schoolIdBack
     );
-    const frontVideoUrl = formData.schoolIdFront_video || documentVideos.schoolIdFront_video || userProfile?.schoolid_front_vid_url;
-    const backVideoUrl = formData.schoolIdBack_video || documentVideos.schoolIdBack_video || userProfile?.schoolid_back_vid_url;
+    const frontVideoUrl = formData.schoolIdFront_video || documentVideos.schoolIdFront_video;
+    const backVideoUrl = formData.schoolIdBack_video || documentVideos.schoolIdBack_video;
 
     // Skip if nothing changed (images/videos)
     const last = lastIdScanRef.current;
@@ -1804,93 +1810,11 @@ const StudentInfo = () => {
           setIdPicturePreview(profile.profile_picture);
           setPhotos(prev => ({ ...prev, face_photo: profile.profile_picture }));
         }
-        if (profile.signature_data) {
-          setFormData(prev => ({ ...prev, applicantSignatureName: profile.signature_data }));
-          setSignaturePreview(profile.signature_data);
-          setSignatureVerified('success');
-        }
 
         if (profile.has_other_assistance) {
           setHasOtherAssistance('Yes');
         } else if (profile.has_other_assistance === false) {
           setHasOtherAssistance('No');
-        }
-
-        // VERIFICATION STATUS SYNCHRONIZATION
-        // We no longer infer 'success' just from document presence. 
-        // We fetch the ground-truth status from the backend to ensure data integrity.
-        try {
-          const vStatus = await verificationAPI.getStatus();
-          if (vStatus.success && vStatus.verified) {
-            const v = vStatus.verified;
-            if (v.indigency_verified) setOcrVerified('success');
-            if (v.enrollment_verified) setCoeVerified('success');
-            if (v.grades_verified) setGradesVerified('success');
-            if (v.id_verified) setIdVerified('success');
-            if (v.face_verified) {
-              setFaceVerified('success');
-              setFaceMatchResult({ verified: true });
-            }
-            if (v.signature_verified) setSignatureVerified('success');
-
-            console.log('[VERIFICATION] Fresh status synced from backend:', v);
-          }
-        } catch (vErr) {
-          console.warn('[VERIFICATION] Could not fetch ground-truth status, falling back to unverified.', vErr);
-        }
-
-        // Set photo previews from profile regardless of verification status
-        if (profile.indigency_doc) {
-          setPhotos(prev => ({ ...prev, mayorIndigency_photo: profile.indigency_doc }));
-        }
-        if (profile.id_img_front && profile.id_img_back) {
-          setSchoolIdPhotos({ front: profile.id_img_front, back: profile.id_img_back });
-          setPhotos(prev => ({ ...prev, id_front: profile.id_img_front, id_back: profile.id_img_back }));
-        }
-        if (profile.enrollment_certificate_doc) {
-          setPhotos(prev => ({ ...prev, mayorCOE_photo: profile.enrollment_certificate_doc }));
-        }
-        if (profile.grades_doc) {
-          setPhotos(prev => ({ ...prev, mayorGrades_photo: profile.grades_doc }));
-        }
-        if (profile.profile_picture) {
-          setIdPicturePreview(profile.profile_picture);
-          setPhotos(prev => ({ ...prev, face_photo: profile.profile_picture }));
-        }
-        if (profile.signature_data) {
-          setFormData(prev => ({ ...prev, applicantSignatureName: profile.signature_data }));
-          setSignaturePreview(profile.signature_data);
-        }
-
-        const videoMap = {
-          id_vid_url: 'face_video',
-          indigency_vid_url: 'mayorIndigency_video',
-          grades_vid_url: 'mayorGrades_video',
-          enrollment_certificate_vid_url: 'mayorCOE_video',
-          schoolid_front_vid_url: 'schoolIdFront_video',
-          schoolid_back_vid_url: 'schoolIdBack_video'
-        };
-
-        const loadedVideos = {};
-        const videoPromises = Object.entries(videoMap).map(async ([dbField, stateField]) => {
-          if (profile[dbField]) {
-            try {
-              // Decrypt and resolve via backend proxy
-              const resolved = await applicantAPI.resolveDocument(dbField, profile[dbField]);
-              loadedVideos[stateField] = resolved;
-              setFormData(prev => ({ ...prev, [stateField]: resolved }));
-            } catch (err) {
-              console.warn(`[VIDEO] Failed to resolve ${dbField}:`, err);
-              loadedVideos[stateField] = profile[dbField];
-              setFormData(prev => ({ ...prev, [stateField]: profile[dbField] }));
-            }
-          }
-        });
-
-        await Promise.all(videoPromises);
-
-        if (Object.keys(loadedVideos).length > 0) {
-          setDocumentVideos(prev => ({ ...prev, ...loadedVideos }));
         }
 
         // Fetch scholarship requirements
@@ -1911,7 +1835,61 @@ const StudentInfo = () => {
         console.warn('Could not pre-fill from profile:', err.message);
       } finally {
         if (savedDraft?.formData) {
-          setFormData(prev => fillEmptyValuesOnly(prev, savedDraft.formData));
+          const draftForm = savedDraft.formData;
+          setFormData(prev => {
+            const next = fillEmptyValuesOnly(prev, draftForm);
+            
+            // Restore previews from next formData
+            if (draftForm.mayorIndigency_photo) {
+              setPhotos(p => ({ ...p, mayorIndigency_photo: draftForm.mayorIndigency_photo }));
+            }
+            if (draftForm.schoolIdFront) {
+              setSchoolIdPhotos(p => ({ ...p, front: draftForm.schoolIdFront }));
+              setPhotos(p => ({ ...p, id_front: draftForm.schoolIdFront }));
+            }
+            if (draftForm.schoolIdBack) {
+              setSchoolIdPhotos(p => ({ ...p, back: draftForm.schoolIdBack }));
+              setPhotos(p => ({ ...p, id_back: draftForm.schoolIdBack }));
+            }
+            if (draftForm.mayorCOE_photo) {
+              setPhotos(p => ({ ...p, mayorCOE_photo: draftForm.mayorCOE_photo }));
+            }
+            if (draftForm.mayorGrades_photo) {
+              setPhotos(p => ({ ...p, mayorGrades_photo: draftForm.mayorGrades_photo }));
+            }
+            
+            // Restore video previews
+            const nextVideos = {};
+            const videoFields = {
+              face_video: 'face_video',
+              mayorIndigency_video: 'mayorIndigency_video',
+              mayorGrades_video: 'mayorGrades_video',
+              mayorCOE_video: 'mayorCOE_video',
+              schoolIdFront_video: 'schoolIdFront_video',
+              schoolIdBack_video: 'schoolIdBack_video'
+            };
+            Object.entries(videoFields).forEach(([stateKey, formKey]) => {
+              if (draftForm[formKey]) {
+                nextVideos[stateKey] = draftForm[formKey];
+              }
+            });
+            if (Object.keys(nextVideos).length > 0) {
+              setDocumentVideos(p => ({ ...p, ...nextVideos }));
+            }
+
+            return next;
+          });
+        }
+
+        if (savedDraft?.verificationStates) {
+          const vs = savedDraft.verificationStates;
+          if (vs.ocrVerified) setOcrVerified(vs.ocrVerified);
+          if (vs.coeVerified) setCoeVerified(vs.coeVerified);
+          if (vs.gradesVerified) setGradesVerified(vs.gradesVerified);
+          if (vs.idVerified) setIdVerified(vs.idVerified);
+          if (vs.faceVerified) setFaceVerified(vs.faceVerified);
+          if (vs.signatureVerified) setSignatureVerified(vs.signatureVerified);
+          if (vs.faceMatchResult) setFaceMatchResult(vs.faceMatchResult);
         }
 
         if (savedDraft?.hasOtherAssistance) {
@@ -1948,7 +1926,10 @@ const StudentInfo = () => {
     }
 
     persistDraft(currentUser);
-  }, [currentUser, formData, hasOtherAssistance, currentStep, scholarshipName, searchParams]);
+  }, [
+    currentUser, formData, hasOtherAssistance, currentStep, scholarshipName, searchParams,
+    ocrVerified, coeVerified, gradesVerified, idVerified, faceVerified, signatureVerified, faceMatchResult
+  ]);
 
 
 
@@ -2140,8 +2121,8 @@ const StudentInfo = () => {
     const autoTrigger = async () => {
       // Step 1: Indigency
       if (currentStep === 1 && baseScanType === 'Indigency' && ocrVerified === null) {
-        const doc = getVerificationDocumentSource(photos.mayorIndigency_photo, formData.mayorIndigency_photo, userProfile?.indigency_doc);
-        const vid = formData.mayorIndigency_video || documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url;
+        const doc = getVerificationDocumentSource(photos.mayorIndigency_photo, formData.mayorIndigency_photo);
+        const vid = formData.mayorIndigency_video || documentVideos.mayorIndigency_video;
         if (doc && vid && typeof vid === 'string' && vid.startsWith('http')) {
           handleIndigencyScan();
           setAutoScanTrigger(null);
@@ -2152,10 +2133,10 @@ const StudentInfo = () => {
       if (currentStep === 3) {
         // School ID
         if (baseScanType === 'SchoolID' && idVerified === null) {
-          const front = getVerificationDocumentSource(schoolIdPhotos.front, userProfile?.id_img_front);
-          const back = getVerificationDocumentSource(schoolIdPhotos.back, userProfile?.id_img_back);
-          const fVid = formData.schoolIdFront_video || documentVideos.schoolIdFront_video || userProfile?.schoolid_front_vid_url;
-          const bVid = formData.schoolIdBack_video || documentVideos.schoolIdBack_video || userProfile?.schoolid_back_vid_url;
+          const front = getVerificationDocumentSource(schoolIdPhotos.front, formData.schoolIdFront);
+          const back = getVerificationDocumentSource(schoolIdPhotos.back, formData.schoolIdBack);
+          const fVid = formData.schoolIdFront_video || documentVideos.schoolIdFront_video;
+          const bVid = formData.schoolIdBack_video || documentVideos.schoolIdBack_video;
           if (front && back && fVid && bVid && typeof fVid === 'string' && fVid.startsWith('http') && typeof bVid === 'string' && bVid.startsWith('http')) {
             handleIdScan();
             setAutoScanTrigger(null);
@@ -2164,8 +2145,8 @@ const StudentInfo = () => {
 
         // COE
         if (baseScanType === 'Enrollment' && coeVerified === null) {
-          const doc = getVerificationDocumentSource(photos.mayorCOE_photo, formData.mayorCOE_photo, userProfile?.enrollment_certificate_doc);
-          const vid = formData.mayorCOE_video || documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url;
+          const doc = getVerificationDocumentSource(photos.mayorCOE_photo, formData.mayorCOE_photo);
+          const vid = formData.mayorCOE_video || documentVideos.mayorCOE_video;
           if (doc && vid && typeof vid === 'string' && vid.startsWith('http')) {
             handleCOEScan();
             setAutoScanTrigger(null);
@@ -2174,8 +2155,8 @@ const StudentInfo = () => {
 
         // Grades
         if (baseScanType === 'Grades' && gradesVerified === null) {
-          const doc = getVerificationDocumentSource(photos.mayorGrades_photo, formData.mayorGrades_photo, userProfile?.grades_doc);
-          const vid = formData.mayorGrades_video || documentVideos.mayorGrades_video || userProfile?.grades_vid_url;
+          const doc = getVerificationDocumentSource(photos.mayorGrades_photo, formData.mayorGrades_photo);
+          const vid = formData.mayorGrades_video || documentVideos.mayorGrades_video;
           if (doc && vid && typeof vid === 'string' && vid.startsWith('http')) {
             handleGradesScan();
             setAutoScanTrigger(null);
@@ -2394,7 +2375,7 @@ const StudentInfo = () => {
         showPromptMessage('Please upload your 2x2 ID Picture.');
         return;
       }
-      if (!photos.mayorIndigency_photo && !formData.mayorIndigency_photo && !userProfile?.indigency_doc) {
+      if (!photos.mayorIndigency_photo && !formData.mayorIndigency_photo) {
         showPromptMessage('Please upload your Certificate of Indigency.');
         return;
       }
@@ -2405,15 +2386,15 @@ const StudentInfo = () => {
     }
 
     if (currentStep === 3) {
-      if ((!schoolIdPhotos.front && !userProfile?.id_img_front) || (!schoolIdPhotos.back && !userProfile?.id_img_back)) {
+      if (!schoolIdPhotos.front || !schoolIdPhotos.back) {
         showPromptMessage('Please upload both Front and Back of your ID.');
         return;
       }
-      if (!photos.mayorCOE_photo && !formData.mayorCOE_photo && !userProfile?.enrollment_certificate_doc) {
+      if (!photos.mayorCOE_photo && !formData.mayorCOE_photo) {
         showPromptMessage('Please upload your Certificate of Enrollment.');
         return;
       }
-      if (!photos.mayorGrades_photo && !formData.mayorGrades_photo && !userProfile?.grades_doc) {
+      if (!photos.mayorGrades_photo && !formData.mayorGrades_photo) {
         showPromptMessage('Please upload your Grades document.');
         return;
       }
@@ -2549,7 +2530,7 @@ const StudentInfo = () => {
 
     let missingDocLabel = '';
     for (const doc of requiredDocs) {
-      const hasPhoto = formData[doc.name] || photos[doc.name] || userProfile?.[doc.profileField];
+      const hasPhoto = formData[doc.name] || photos[doc.name];
       if (!hasPhoto) {
         missingDocLabel = doc.label;
         break;
@@ -2562,8 +2543,8 @@ const StudentInfo = () => {
     }
 
     if (
-      (!schoolIdPhotos.front && !userProfile?.id_img_front) ||
-      (!schoolIdPhotos.back && !userProfile?.id_img_back) ||
+      (!schoolIdPhotos.front) ||
+      (!schoolIdPhotos.back) ||
       (!photos.face_photo && !userProfile?.profile_picture)
     ) {
       showPromptMessage('Please complete Identity Verification: Upload Front/Back School ID and a Face Photo.');
@@ -3613,11 +3594,11 @@ const StudentInfo = () => {
                     {renderDocumentMediaPicker({
                       photoId: 'photo_mayorIndigency_photo',
                       photoName: 'mayorIndigency_photo',
-                      photoValue: photos.mayorIndigency_photo || userProfile?.indigency_doc,
+                      photoValue: photos.mayorIndigency_photo || formData.mayorIndigency_photo,
                       onPhotoChange: handleInputChange,
                       videoId: 'video_mayorIndigency_video',
                       videoName: 'mayorIndigency_video',
-                      videoValue: documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url,
+                      videoValue: documentVideos.mayorIndigency_video || formData.mayorIndigency_video,
                       onVideoChange: handleVideoUpload,
                       isUploadingVideo: Boolean(uploadingFields['mayorIndigency_video']),
                       isVerifying: ocrVerified === 'verifying'
@@ -3625,10 +3606,10 @@ const StudentInfo = () => {
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
                       <div className="scanning-container">
-                        <div className="image-container" style={{ height: '240px' }} onClick={() => (photos.mayorIndigency_photo || userProfile?.indigency_doc) && setLightboxSrc(photos.mayorIndigency_photo || userProfile?.indigency_doc)}>
-                          {(photos.mayorIndigency_photo || userProfile?.indigency_doc) ? (
+                        <div className="image-container" style={{ height: '240px' }} onClick={() => (photos.mayorIndigency_photo || formData.mayorIndigency_photo) && setLightboxSrc(photos.mayorIndigency_photo || formData.mayorIndigency_photo)}>
+                          {(photos.mayorIndigency_photo || formData.mayorIndigency_photo) ? (
                             <>
-                              <img src={photos.mayorIndigency_photo || userProfile?.indigency_doc} style={{ objectFit: 'contain', background: '#000' }} alt="Indigency Preview" />
+                              <img src={photos.mayorIndigency_photo || formData.mayorIndigency_photo} style={{ objectFit: 'contain', background: '#000' }} alt="Indigency Preview" />
                               <div style={{ position: 'absolute', bottom: '12px', right: '12px', background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '6px 10px', borderRadius: '10px', fontSize: '0.7rem', backdropFilter: 'blur(4px)' }}>
                                 <i className="fas fa-expand-alt" style={{ marginRight: '6px' }}></i> Tap to view
                               </div>
@@ -3646,7 +3627,7 @@ const StudentInfo = () => {
                       <VideoRecorder
                         label="Verification Video"
                         onRecordComplete={(blob) => handleVideoUpload('mayorIndigency_video', blob)}
-                        initialVideoUrl={documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url}
+                        initialVideoUrl={documentVideos.mayorIndigency_video || formData.mayorIndigency_video}
                         isUploading={Boolean(uploadingFields['mayorIndigency_video'])}
                         uploadProgress={uploadProgress['mayorIndigency_video']}
                         disabled={isAnyScanning || isSavingStep}
@@ -3655,12 +3636,12 @@ const StudentInfo = () => {
                       />
                     </div>
 
-                    {(photos.mayorIndigency_photo || userProfile?.indigency_doc) && (
+                    {(photos.mayorIndigency_photo || formData.mayorIndigency_photo) && (
                       <>
                         <button
                           type="button"
                           onClick={handleIndigencyScan}
-                          disabled={isSavingStep || ocrVerified === 'verifying' || isAnyVideoUploading || !(documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url || formData.mayorIndigency_video)}
+                          disabled={isSavingStep || ocrVerified === 'verifying' || isAnyVideoUploading || !(documentVideos.mayorIndigency_video || formData.mayorIndigency_video)}
                           style={{
                             width: '100%',
                             padding: '0.9rem',
@@ -3977,11 +3958,11 @@ const StudentInfo = () => {
                       {renderDocumentMediaPicker({
                         photoLabel: 'Front ID',
                         photoId: 'school_id_front_photo',
-                        photoValue: schoolIdPhotos.front || userProfile?.id_img_front,
+                        photoValue: schoolIdPhotos.front || formData.schoolIdFront,
                         onPhotoChange: (e) => handleSchoolIdPhotoUpload('front', e),
                         videoId: 'video_schoolIdFront_video',
                         videoName: 'schoolIdFront_video',
-                        videoValue: documentVideos.schoolIdFront_video || userProfile?.schoolid_front_vid_url,
+                        videoValue: documentVideos.schoolIdFront_video || formData.schoolIdFront_video,
                         onVideoChange: handleVideoUpload,
                         isUploadingVideo: Boolean(uploadingFields['schoolIdFront_video']),
                         isVerifying: idVerified === 'verifying'
@@ -3990,9 +3971,9 @@ const StudentInfo = () => {
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
                         {/* Front Photo Preview */}
                         <div className="scanning-container">
-                          <div className="image-container" style={{ height: '240px' }} onClick={() => setLightboxSrc(schoolIdPhotos.front || userProfile?.id_img_front)}>
-                            {(schoolIdPhotos.front || userProfile?.id_img_front) ? (
-                              <img src={schoolIdPhotos.front || userProfile?.id_img_front} alt="Front ID" />
+                          <div className="image-container" style={{ height: '240px' }} onClick={() => setLightboxSrc(schoolIdPhotos.front || formData.schoolIdFront)}>
+                            {(schoolIdPhotos.front || formData.schoolIdFront) ? (
+                              <img src={schoolIdPhotos.front || formData.schoolIdFront} alt="Front ID" />
                             ) : (
                               <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
                                 <i className="fas fa-image" style={{ fontSize: '2rem', marginBottom: '8px' }}></i>
@@ -4007,7 +3988,7 @@ const StudentInfo = () => {
                         <VideoRecorder
                           label="Front Check Video"
                           onRecordComplete={(blob) => handleVideoUpload('schoolIdFront_video', blob)}
-                          initialVideoUrl={documentVideos.schoolIdFront_video || userProfile?.schoolid_front_vid_url}
+                          initialVideoUrl={documentVideos.schoolIdFront_video || formData.schoolIdFront_video}
                           isUploading={Boolean(uploadingFields['schoolIdFront_video'])}
                           uploadProgress={uploadProgress['schoolIdFront_video']}
                           disabled={isAnyScanning || isSavingStep}
@@ -4035,11 +4016,11 @@ const StudentInfo = () => {
 
                       {renderDocumentMediaPicker({
                         photoId: 'school_id_back_photo',
-                        photoValue: schoolIdPhotos.back || userProfile?.id_img_back,
+                        photoValue: schoolIdPhotos.back || formData.schoolIdBack,
                         onPhotoChange: (e) => handleSchoolIdPhotoUpload('back', e),
                         videoId: 'video_schoolIdBack_video',
                         videoName: 'schoolIdBack_video',
-                        videoValue: documentVideos.schoolIdBack_video || userProfile?.schoolid_back_vid_url,
+                        videoValue: documentVideos.schoolIdBack_video || formData.schoolIdBack_video,
                         onVideoChange: handleVideoUpload,
                         isUploadingVideo: Boolean(uploadingFields['schoolIdBack_video']),
                         isVerifying: idVerified === 'verifying'
@@ -4048,9 +4029,9 @@ const StudentInfo = () => {
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
                         {/* Back Photo Preview */}
                         <div className="scanning-container">
-                          <div className="image-container" style={{ height: '240px' }} onClick={() => setLightboxSrc(schoolIdPhotos.back || userProfile?.id_img_back)}>
-                            {(schoolIdPhotos.back || userProfile?.id_img_back) ? (
-                              <img src={schoolIdPhotos.back || userProfile?.id_img_back} alt="Back ID" />
+                          <div className="image-container" style={{ height: '240px' }} onClick={() => setLightboxSrc(schoolIdPhotos.back || formData.schoolIdBack)}>
+                            {(schoolIdPhotos.back || formData.schoolIdBack) ? (
+                              <img src={schoolIdPhotos.back || formData.schoolIdBack} alt="Back ID" />
                             ) : (
                               <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
                                 <i className="fas fa-image" style={{ fontSize: '2rem', marginBottom: '8px' }}></i>
@@ -4065,7 +4046,7 @@ const StudentInfo = () => {
                         <VideoRecorder
                           label="Back Check Video"
                           onRecordComplete={(blob) => handleVideoUpload('schoolIdBack_video', blob)}
-                          initialVideoUrl={documentVideos.schoolIdBack_video || userProfile?.schoolid_back_vid_url}
+                          initialVideoUrl={documentVideos.schoolIdBack_video || formData.schoolIdBack_video}
                           isUploading={Boolean(uploadingFields['schoolIdBack_video'])}
                           uploadProgress={uploadProgress['schoolIdBack_video']}
                           disabled={isAnyScanning || isSavingStep}
@@ -4090,10 +4071,10 @@ const StudentInfo = () => {
                       onClick={handleIdScan}
                       disabled={
                         isSavingStep || idVerified === 'verifying' || isAnyVideoUploading ||
-                        !(schoolIdPhotos.front || userProfile?.id_img_front) ||
-                        !(schoolIdPhotos.back || userProfile?.id_img_back) ||
-                        !(documentVideos.schoolIdFront_video || userProfile?.schoolid_front_vid_url || formData.schoolIdFront_video) ||
-                        !(documentVideos.schoolIdBack_video || userProfile?.schoolid_back_vid_url || formData.schoolIdBack_video)
+                        !(schoolIdPhotos.front || formData.schoolIdFront) ||
+                        !(schoolIdPhotos.back || formData.schoolIdBack) ||
+                        !(documentVideos.schoolIdFront_video || formData.schoolIdFront_video) ||
+                        !(documentVideos.schoolIdBack_video || formData.schoolIdBack_video)
                       }
                       style={{
                         width: '100%',
@@ -4183,11 +4164,11 @@ const StudentInfo = () => {
                         {renderDocumentMediaPicker({
                           photoId: 'photo_mayorCOE_photo',
                           photoName: 'mayorCOE_photo',
-                          photoValue: photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc,
+                          photoValue: photos.mayorCOE_photo || formData.mayorCOE_photo,
                           onPhotoChange: handleInputChange,
                           videoId: 'video_mayorCOE_video',
                           videoName: 'mayorCOE_video',
-                          videoValue: documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url,
+                          videoValue: documentVideos.mayorCOE_video || formData.mayorCOE_video,
                           onVideoChange: handleVideoUpload,
                           isUploadingVideo: Boolean(uploadingFields['mayorCOE_video']),
                           isVerifying: coeVerified === 'verifying'
@@ -4195,9 +4176,9 @@ const StudentInfo = () => {
 
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
                           <div className="scanning-container">
-                            <div className="image-container" style={{ height: '240px' }} onClick={() => (photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && setLightboxSrc(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc)}>
-                              {(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) ? (
-                                <img src={photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc} style={{ objectFit: 'contain', background: '#000' }} alt="COE Preview" />
+                            <div className="image-container" style={{ height: '240px' }} onClick={() => (photos.mayorCOE_photo || formData.mayorCOE_photo) && setLightboxSrc(photos.mayorCOE_photo || formData.mayorCOE_photo)}>
+                              {(photos.mayorCOE_photo || formData.mayorCOE_photo) ? (
+                                <img src={photos.mayorCOE_photo || formData.mayorCOE_photo} style={{ objectFit: 'contain', background: '#000' }} alt="COE Preview" />
                               ) : (
                                 <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
                                   <i className="fas fa-image" style={{ fontSize: '2rem', marginBottom: '8px' }}></i>
@@ -4211,7 +4192,7 @@ const StudentInfo = () => {
                           <VideoRecorder
                             label="COE Verification Video"
                             onRecordComplete={(blob) => handleVideoUpload('mayorCOE_video', blob)}
-                            initialVideoUrl={documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url}
+                            initialVideoUrl={documentVideos.mayorCOE_video || formData.mayorCOE_video}
                             isUploading={Boolean(uploadingFields['mayorCOE_video'])}
                             uploadProgress={uploadProgress['mayorCOE_video']}
                             disabled={isAnyScanning || isSavingStep}
@@ -4220,12 +4201,12 @@ const StudentInfo = () => {
                           />
                         </div>
 
-                        {(photos.mayorCOE_photo || userProfile?.enrollment_certificate_doc) && (
+                        {(photos.mayorCOE_photo || formData.mayorCOE_photo) && (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                             <button
                               type="button"
                               onClick={handleCOEScan}
-                              disabled={isSavingStep || coeVerified === 'verifying' || isAnyVideoUploading || !(documentVideos.mayorCOE_video || userProfile?.enrollment_certificate_vid_url || formData.mayorCOE_video)}
+                              disabled={isSavingStep || coeVerified === 'verifying' || isAnyVideoUploading || !(documentVideos.mayorCOE_video || formData.mayorCOE_video)}
                               style={{
                                 width: '100%',
                                 padding: '0.85rem',
@@ -4313,11 +4294,11 @@ const StudentInfo = () => {
                           {renderDocumentMediaPicker({
                             photoId: 'photo_mayorGrades_photo',
                             photoName: 'mayorGrades_photo',
-                            photoValue: photos.mayorGrades_photo || userProfile?.grades_doc,
+                            photoValue: photos.mayorGrades_photo || formData.mayorGrades_photo,
                             onPhotoChange: handleInputChange,
                             videoId: 'video_mayorGrades_video',
                             videoName: 'mayorGrades_video',
-                            videoValue: documentVideos.mayorGrades_video || userProfile?.grades_vid_url,
+                            videoValue: documentVideos.mayorGrades_video || formData.mayorGrades_video,
                             onVideoChange: handleVideoUpload,
                             isUploadingVideo: Boolean(uploadingFields['mayorGrades_video']),
                             isVerifying: gradesVerified === 'verifying'
@@ -4325,9 +4306,9 @@ const StudentInfo = () => {
 
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
                             <div className="scanning-container">
-                              <div className="image-container" style={{ height: '240px' }} onClick={() => (photos.mayorGrades_photo || userProfile?.grades_doc) && setLightboxSrc(photos.mayorGrades_photo || userProfile?.grades_doc)}>
-                                {(photos.mayorGrades_photo || userProfile?.grades_doc) ? (
-                                  <img src={photos.mayorGrades_photo || userProfile?.grades_doc} style={{ objectFit: 'contain', background: '#000' }} alt="Grades Preview" />
+                              <div className="image-container" style={{ height: '240px' }} onClick={() => (photos.mayorGrades_photo || formData.mayorGrades_photo) && setLightboxSrc(photos.mayorGrades_photo || formData.mayorGrades_photo)}>
+                                {(photos.mayorGrades_photo || formData.mayorGrades_photo) ? (
+                                  <img src={photos.mayorGrades_photo || formData.mayorGrades_photo} style={{ objectFit: 'contain', background: '#000' }} alt="Grades Preview" />
                                 ) : (
                                   <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
                                     <i className="fas fa-image" style={{ fontSize: '2rem', marginBottom: '8px' }}></i>
@@ -4341,7 +4322,7 @@ const StudentInfo = () => {
                             <VideoRecorder
                               label="Grades Verification Video"
                               onRecordComplete={(blob) => handleVideoUpload('mayorGrades_video', blob)}
-                              initialVideoUrl={documentVideos.mayorGrades_video || userProfile?.grades_vid_url}
+                              initialVideoUrl={documentVideos.mayorGrades_video || formData.mayorGrades_video}
                               isUploading={Boolean(uploadingFields['mayorGrades_video'])}
                               uploadProgress={uploadProgress['mayorGrades_video']}
                               disabled={isAnyScanning || isSavingStep}
@@ -4350,12 +4331,12 @@ const StudentInfo = () => {
                             />
                           </div>
 
-                          {(photos.mayorGrades_photo || userProfile?.grades_doc) && (
+                          {(photos.mayorGrades_photo || formData.mayorGrades_photo) && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                               <button
                                 type="button"
                                 onClick={handleGradesScan}
-                                disabled={isSavingStep || gradesVerified === 'verifying' || isAnyVideoUploading || !(documentVideos.mayorGrades_video || userProfile?.grades_vid_url || formData.mayorGrades_video)}
+                                disabled={isSavingStep || gradesVerified === 'verifying' || isAnyVideoUploading || !(documentVideos.mayorGrades_video || formData.mayorGrades_video)}
                                 style={{
                                   width: '100%',
                                   padding: '0.85rem',
@@ -4536,7 +4517,7 @@ const StudentInfo = () => {
                             <button
                               type="button"
                               onClick={handleSignatureScan}
-                              disabled={signatureVerified === 'verifying' || !(schoolIdPhotos.back || userProfile?.id_img_back)}
+                              disabled={signatureVerified === 'verifying' || !(schoolIdPhotos.back || formData.schoolIdBack)}
                               style={{
                                 width: '100%',
                                 padding: '0.6rem',
@@ -4669,8 +4650,8 @@ const StudentInfo = () => {
                         <div style={{ fontSize: '0.65rem', color: '#6366f1', fontWeight: '800', background: '#eef2ff', padding: '3px 8px', borderRadius: '6px' }}>FRONT ID</div>
                       </div>
                       <div style={{ height: '240px', border: '2px dashed #cbd5e1', borderRadius: '15px', overflow: 'hidden', background: '#f8fafc', position: 'relative' }}>
-                        {(schoolIdPhotos.front || userProfile?.id_img_front) ? (
-                          <img src={schoolIdPhotos.front || userProfile?.id_img_front} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="Reference ID" />
+                        {(schoolIdPhotos.front || formData.schoolIdFront) ? (
+                          <img src={schoolIdPhotos.front || formData.schoolIdFront} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="Reference ID" />
                         ) : (
                           <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', textAlign: 'center', padding: '1rem' }}>
                             <i className="fas fa-id-card" style={{ fontSize: '2rem', marginBottom: '10px' }}></i>
@@ -4761,7 +4742,7 @@ const StudentInfo = () => {
                       <div style={{ width: '100%', maxWidth: '300px', margin: '0 auto' }}>
                         {!faceMatchResult ? (
                           <button type="button" onClick={async () => {
-                            const idImg = schoolIdPhotos.front || userProfile?.id_img_front;
+                            const idImg = schoolIdPhotos.front || formData.schoolIdFront;
                             if (!idImg) {
                               showPromptMessage('Please upload your School ID in Step 3 first.');
                               return;
