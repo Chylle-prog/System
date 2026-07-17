@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import SignaturePad from '../components/SignaturePad';
 import VideoRecorder from '../components/VideoRecorder';
-import { applicantAPI, applicationAPI, scholarshipAPI, verificationAPI } from '../services/api';
+import { applicantAPI, applicationAPI, scholarshipAPI, verificationAPI, uploadProfilePicture } from '../services/api';
 import { SCHOOLS, BARANGAYS } from '../utils/constants';
 
 const FIND_SCHOLARSHIP_PROFILE_KEY = 'findScholarshipProfile';
@@ -273,6 +273,7 @@ const StudentInfo = () => {
   const [showPrompt, setShowPrompt] = useState(false);
   const [promptMessage, setPromptMessage] = useState('');
   const [idPicturePreview, setIdPicturePreview] = useState(null);
+  const [rawProfilePictureFile, setRawProfilePictureFile] = useState(null);
   const [faceVerificationPreview, setFaceVerificationPreview] = useState(null);
   const [signaturePreview, setSignaturePreview] = useState(null);
   const [drawnSignature, setDrawnSignature] = useState(null);
@@ -2376,11 +2377,22 @@ const StudentInfo = () => {
 
   const handleIdPictureUpload = (e) => {
     const file = e.target.files[0];
-    if (file && window.compressImage) {
+    if (!file) return;
+    // Keep the raw File object so we can upload it to storage on submit
+    setRawProfilePictureFile(file);
+    if (window.compressImage) {
       window.compressImage(file, 400).then(compressedBase64 => {
         setIdPicturePreview(compressedBase64);
         setFormData(prev => ({ ...prev, profile_picture: compressedBase64 }));
       });
+    } else {
+      // Fallback: use the file directly as preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setIdPicturePreview(reader.result);
+        setFormData(prev => ({ ...prev, profile_picture: reader.result }));
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -2742,7 +2754,25 @@ const StudentInfo = () => {
         }
       });
 
-      if (idPicturePreview) submissionData.append('profile_picture', idPicturePreview);
+      // Upload profile picture to Supabase Storage and send only the URL to the backend.
+      // This matches how the profile-update flow works and prevents bytea storage.
+      if (rawProfilePictureFile) {
+        try {
+          console.log('[SUBMIT] Uploading profile picture to storage...');
+          const profilePicUrl = await uploadProfilePicture(rawProfilePictureFile);
+          console.log('[SUBMIT] Profile picture URL:', profilePicUrl);
+          submissionData.append('profile_picture', profilePicUrl);
+        } catch (uploadErr) {
+          console.error('[SUBMIT] Failed to upload profile picture:', uploadErr);
+          throw new Error(`Profile picture upload failed: ${uploadErr.message}`);
+        }
+      } else if (idPicturePreview && (idPicturePreview.startsWith('http://') || idPicturePreview.startsWith('https://'))) {
+        // Pre-existing picture already stored as a URL — send it as-is
+        submissionData.append('profile_picture', idPicturePreview);
+      } else if (userProfile?.profile_picture && (userProfile.profile_picture.startsWith('http://') || userProfile.profile_picture.startsWith('https://'))) {
+        // Reuse the existing profile picture URL from the user's profile
+        submissionData.append('profile_picture', userProfile.profile_picture);
+      }
       if (photos.id_front || schoolIdPhotos.front) submissionData.append('id_front', photos.id_front || schoolIdPhotos.front);
       if (photos.id_back || schoolIdPhotos.back) submissionData.append('id_back', photos.id_back || schoolIdPhotos.back);
       if (photos.face_photo) submissionData.append('face_photo', photos.face_photo);

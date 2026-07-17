@@ -2493,6 +2493,11 @@ def get_applicant_document_raw(field_name):
             
             if isinstance(value, str) and value.startswith('http'):
                 normalized_url = normalize_supabase_url(value)
+                # profile_picture is stored as a plain Supabase public URL — no encryption.
+                # Redirect directly instead of trying to download+proxy it, which can fail on Render.
+                if field_name == 'profile_picture':
+                    from flask import redirect
+                    return redirect(normalized_url)
                 # Download and proxy files directly using the authenticated service role key
                 content, error = fetch_video_bytes_from_url(normalized_url)
                 if content is not None:
