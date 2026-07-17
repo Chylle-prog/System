@@ -594,22 +594,22 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
         from .signature_brain import calculate_neural_match, compare_signature_images, prepare_signature_match_view
         
         if not signature_bytes or not id_back_bytes:
-            return False, "Missing signature or ID image", 0.0, None, None
+            return False, "Missing signature or ID image", 0.0, None, None, None, None
         
         try:
             sig_img = _decode_cv_image(signature_bytes, white_background=True)
         except Exception as e:
             print(f"[SIGNATURE] Error decoding signature: {e}", flush=True)
-            return False, "Invalid signature format", 0.0, None, None
+            return False, "Invalid signature format", 0.0, None, None, None, None
         
         try:
             id_img = _decode_cv_image(id_back_bytes)
         except Exception as e:
             print(f"[SIGNATURE] Error decoding ID image: {e}", flush=True)
-            return False, "Invalid ID image format", 0.0, None, None
+            return False, "Invalid ID image format", 0.0, None, None, None, None
         
         if sig_img is None or id_img is None:
-            return False, "Could not decode images", 0.0, None, None
+            return False, "Could not decode images", 0.0, None, None, None, None
 
         preview_signature = _prepare_signature_preview(sig_img)
         extracted_id_signature = _extract_signature_from_id_back(id_img)

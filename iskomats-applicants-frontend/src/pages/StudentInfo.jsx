@@ -883,39 +883,55 @@ const StudentInfo = () => {
       setSignatureStatus('Analyzing handwriting patterns...');
       setScanProgress(20);
 
-      // Perform local complexity check on signature canvas if available
-      let complexity = { score: 1.0, mass: 1000, junctions: 50 };
-      if (sigPad.current) {
+      // 1. Get complexity score (prefer pre-calculated signatureStats.score from saveSignature)
+      let scoreToCheck = signatureStats.score;
+      
+      // Fallback: if pad is somehow still mounted, calculate it now
+      if (scoreToCheck === undefined && sigPad.current) {
         const canvas = sigPad.current.getCanvas();
         if (canvas) {
-          complexity = analyzeSignatureComplexity(canvas);
-          setSignatureStats({ inkMass: complexity.mass, junctions: complexity.junctions });
+          const comp = analyzeSignatureComplexity(canvas);
+          scoreToCheck = comp.score;
+          setSignatureStats({ inkMass: comp.mass, junctions: comp.junctions, score: comp.score });
         }
       }
+      
+      if (scoreToCheck === undefined) {
+        // Safe fallback if not pre-calculated and pad is hidden
+        scoreToCheck = 1.0; 
+      }
+
+      console.log('[SIGNATURE] Checking complexity score before match:', scoreToCheck);
 
       const pInterval = setInterval(() => {
         setScanProgress(p => p < 90 ? p + (Math.random() * 15) : p);
       }, 100);
 
       const result = await applicantAPI.verifySignatureAgainstIdBack(currentSignature, idBack);
+      console.log('[SIGNATURE] API match response received:', result);
 
       clearInterval(pInterval);
       setScanProgress(100);
 
+      // Clone result to avoid mutation failures if response object is frozen
+      const finalResult = { ...result };
+
       // If complexity is extremely low, reject simple doodle
-      if (complexity.score < 0.22 && result.verified) {
-        result.verified = false;
-        result.message = `[Verification Rejected] Simple doodle detected. Structure score: ${(complexity.score * 100).toFixed(1)}%.`;
+      if (scoreToCheck < 0.22 && finalResult.verified) {
+        console.log('[SIGNATURE] Local rejection triggered: complexity score', scoreToCheck, 'is below 0.22');
+        finalResult.verified = false;
+        finalResult.message = `[Verification Rejected] Simple doodle detected. Structure score: ${(scoreToCheck * 100).toFixed(1)}%.`;
       }
 
-      setSignatureResults(result);
+      console.log('[SIGNATURE] Evaluated final result:', finalResult);
+      setSignatureResults(finalResult);
 
-      if (result.verified) {
+      if (finalResult.verified) {
         setSignatureVerified('success');
-        setSignatureStatus(result.message || 'Signature patterns match your ID!');
+        setSignatureStatus(finalResult.message || 'Signature patterns match your ID!');
       } else {
         setSignatureVerified('failed');
-        setSignatureStatus(result.message || 'Signature mismatch. Please ensure you sign as you did on your ID.');
+        setSignatureStatus(finalResult.message || 'Signature mismatch. Please ensure you sign as you did on your ID.');
       }
     } catch (err) {
       console.error('Signature Verification Error:', err);
@@ -2372,7 +2388,11 @@ const StudentInfo = () => {
 
   const saveSignature = () => {
     if (sigPad.current && !sigPad.current.isEmpty()) {
-      const canvas = sigPad.current.getTrimmedCanvas();
+      const canvas = sigPad.current.getCanvas();
+      const complexity = analyzeSignatureComplexity(canvas);
+      console.log('[SIGNATURE] Drawing complexity check:', complexity);
+      setSignatureStats({ inkMass: complexity.mass, junctions: complexity.junctions, score: complexity.score });
+      
       const dataUrl = canvas.toDataURL('image/png');
       setFormData(prev => ({ ...prev, applicantSignatureName: dataUrl }));
       setShowSignaturePad(false);
