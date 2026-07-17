@@ -279,6 +279,7 @@ const StudentInfo = () => {
   const [signatureVerified, setSignatureVerified] = useState(null);
   const [signatureStatus, setSignatureStatus] = useState('');
   const [signatureResults, setSignatureResults] = useState(null);
+  const [signatureStats, setSignatureStats] = useState({ inkMass: 0, junctions: 0 });
   const [feedbackStatus, setFeedbackStatus] = useState({});
   const [hasOtherAssistance, setHasOtherAssistance] = useState('');
   const [scholarshipName, setScholarshipName] = useState('Scholarship Application');
@@ -815,8 +816,55 @@ const StudentInfo = () => {
     sessionStorage.removeItem(buildDraftStorageKey(user, searchParams, scholarshipName));
   };
 
+  const analyzeSignatureComplexity = (canvas) => {
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    
+    let inkPixels = 0;
+    let sumX = 0, sumY = 0;
+    let points = [];
+
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] < 200) { // Black ink
+        inkPixels++;
+        const pixelIdx = i / 4;
+        const x = pixelIdx % canvas.width;
+        const y = Math.floor(pixelIdx / canvas.width);
+        sumX += x;
+        sumY += y;
+        if (inkPixels % 10 === 0) points.push({x, y});
+      }
+    }
+
+    if (inkPixels === 0) return { score: 0, mass: 0, junctions: 0 };
+
+    let junctions = 0;
+    const neighborOffsets = [
+      [-1, -1], [0, -1], [1, -1],
+      [-1, 0],          [1, 0],
+      [-1, 1],  [0, 1],  [1, 1]
+    ];
+
+    points.forEach(p => {
+      let neighbors = 0;
+      neighborOffsets.forEach(([dx, dy]) => {
+        const nx = p.x + dx;
+        const ny = p.y + dy;
+        const idx = (ny * canvas.width + nx) * 4;
+        if (data[idx] < 200) neighbors++;
+      });
+      if (neighbors > 2) junctions++;
+    });
+    
+    const normalizedMass = Math.min(1, inkPixels / 2000);
+    const normalizedJunctions = Math.min(1, junctions / 150);
+    const score = (normalizedMass * 0.3) + (normalizedJunctions * 0.7);
+    
+    return { score, mass: inkPixels, junctions };
+  };
+
   const handleSignatureScan = async () => {
-    // We need both the drawn signature and the ID back photo
     const idBack = schoolIdPhotos.back || formData.schoolIdBack;
     const currentSignature = drawnSignature || formData.applicantSignatureName;
 
@@ -835,6 +883,16 @@ const StudentInfo = () => {
       setSignatureStatus('Analyzing handwriting patterns...');
       setScanProgress(20);
 
+      // Perform local complexity check on signature canvas if available
+      let complexity = { score: 1.0, mass: 1000, junctions: 50 };
+      if (sigPad.current) {
+        const canvas = sigPad.current.getCanvas();
+        if (canvas) {
+          complexity = analyzeSignatureComplexity(canvas);
+          setSignatureStats({ inkMass: complexity.mass, junctions: complexity.junctions });
+        }
+      }
+
       const pInterval = setInterval(() => {
         setScanProgress(p => p < 90 ? p + (Math.random() * 15) : p);
       }, 100);
@@ -843,6 +901,13 @@ const StudentInfo = () => {
 
       clearInterval(pInterval);
       setScanProgress(100);
+
+      // If complexity is extremely low, reject simple doodle
+      if (complexity.score < 0.22 && result.verified) {
+        result.verified = false;
+        result.message = `[Verification Rejected] Simple doodle detected. Structure score: ${(complexity.score * 100).toFixed(1)}%.`;
+      }
+
       setSignatureResults(result);
 
       if (result.verified) {
@@ -859,12 +924,14 @@ const StudentInfo = () => {
     }
   };
 
-  const sendFeedback = async (type, isCorrect) => {
+  const sendFeedback = async (type, decision) => {
     if (feedbackStatus[type]) return;
 
     try {
       if (type === 'signature') {
-        await applicantAPI.sendSignatureFeedback(isCorrect);
+        const currentSignature = drawnSignature || formData.applicantSignatureName;
+        const wasVerified = signatureResults?.verified || false;
+        await applicantAPI.sendSignatureFeedback(currentSignature, decision, wasVerified);
         setFeedbackStatus(prev => ({ ...prev, signature: true }));
         showPromptMessage('Thank you for your feedback!');
       }
@@ -4567,9 +4634,68 @@ const StudentInfo = () => {
                                   borderLeft: `3px solid ${signatureResults.verified ? '#10b981' : '#ef4444'}`,
                                   fontSize: '0.7rem',
                                   color: '#475569',
-                                  lineHeight: '1.4'
+                                  lineHeight: '1.4',
+                                  marginBottom: '15px'
                                 }}>
                                   {signatureResults.message}
+                                </div>
+
+                                {/* Complexity Metrics */}
+                                <div style={{ marginBottom: '15px' }}>
+                                  <span style={{ fontSize: '0.65rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', display: 'block', marginBottom: '8px', textAlign: 'left' }}>Complexity Metrics</span>
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                    <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 10px', textAlign: 'center' }}>
+                                      <p style={{ fontSize: '0.55rem', color: '#94a3b8', margin: '0 0 2px 0', fontWeight: '700' }}>INK MASS</p>
+                                      <p style={{ fontSize: '0.75rem', fontWeight: '700', color: '#1e293b', margin: 0 }}>{signatureStats.inkMass} px</p>
+                                    </div>
+                                    <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 10px', textAlign: 'center' }}>
+                                      <p style={{ fontSize: '0.55rem', color: '#94a3b8', margin: '0 0 2px 0', fontWeight: '700' }}>JUNCTIONS</p>
+                                      <p style={{ fontSize: '0.75rem', fontWeight: '700', color: '#1e293b', margin: 0 }}>{signatureStats.junctions}</p>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Training Feedback Loop */}
+                                <div style={{ padding: '10px', background: '#eef2ff', borderRadius: '10px', border: '1px solid #e0e7ff', textAlign: 'center' }}>
+                                  <p style={{ fontSize: '0.65rem', fontWeight: '800', color: '#6366f1', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                    <i className="fas fa-magic"></i> TRAINING FEEDBACK
+                                  </p>
+                                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                    <button 
+                                      type="button"
+                                      disabled={feedbackStatus.signature}
+                                      onClick={() => sendFeedback('signature', 'agree')}
+                                      style={{
+                                        padding: '4px 12px',
+                                        fontSize: '0.65rem',
+                                        fontWeight: '700',
+                                        color: '#fff',
+                                        background: '#10b981',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      {feedbackStatus.signature ? 'Thank you!' : 'Agree'}
+                                    </button>
+                                    <button 
+                                      type="button"
+                                      disabled={feedbackStatus.signature}
+                                      onClick={() => sendFeedback('signature', 'disagree')}
+                                      style={{
+                                        padding: '4px 12px',
+                                        fontSize: '0.65rem',
+                                        fontWeight: '700',
+                                        color: '#fff',
+                                        background: '#ef4444',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      Disagree
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             )}

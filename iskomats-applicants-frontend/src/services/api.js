@@ -768,10 +768,14 @@ export const applicantAPI = {
    * @param {boolean} isCorrect - whether the user agrees with the match
    * @returns {Promise}
    */
-  sendSignatureFeedback: async (isCorrect) => {
+  sendSignatureFeedback: async (signatureImage, decision, wasVerified) => {
     return makeRequest('/student/verification/signature-feedback', {
       method: 'POST',
-      body: JSON.stringify({ is_correct: isCorrect }),
+      body: JSON.stringify({
+        signature_image: signatureImage,
+        decision: decision,
+        was_verified: wasVerified
+      }),
     });
   },
 };
