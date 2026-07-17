@@ -26,6 +26,10 @@ class SocketService {
       this._notifyHandlers('message', data);
     });
 
+    this.socket.on('history', (data) => {
+      this._notifyHandlers('history', data);
+    });
+
     this.socket.on('logged_in', (data) => {
       // Store user ID and username for message sending
       this.userId = data.id;

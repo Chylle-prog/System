@@ -43,6 +43,11 @@ class SocketService {
       this.notify('message', data);
     });
 
+    this.socket.on('history', (data) => {
+      console.log('Received history:', data);
+      this.notify('history', data);
+    });
+
     this.socket.on('logged_in', (data) => {
       console.log('Logged in successfully:', data);
       // Store user ID and username for message sending

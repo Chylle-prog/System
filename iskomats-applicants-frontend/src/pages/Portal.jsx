@@ -262,7 +262,7 @@ const Portal = () => {
     const announcementInterval = setInterval(fetchAnnouncements, 30000);
 
     // Socket.IO Integration
-    let unsubLogged, unsubMsg, unsubRoom, unsubNotif, unsubNotifUpdate;
+    let unsubLogged, unsubMsg, unsubRoom, unsubNotif, unsubNotifUpdate, unsubHistory;
     const token = localStorage.getItem('authToken');
     const applicantNo = localStorage.getItem('applicantNo');
     if (token) {
@@ -291,6 +291,52 @@ const Portal = () => {
             const roomId = typeof roomObj === 'string' ? roomObj : roomObj.room;
             socketService.loadHistory(roomId);
           });
+        }
+      });
+
+      unsubHistory = socketService.subscribe('history', (data) => {
+        const roomId = data.room;
+        const messages = data.messages || [];
+
+        setChatMessages(prev => {
+          const roomMsgs = prev[roomId] || [];
+          
+          // Merge historical messages avoiding duplicates
+          const merged = [...roomMsgs];
+          messages.forEach(msg => {
+            const isDuplicate = merged.some(m => {
+              if (msg.m_id && m.m_id) return m.m_id === msg.m_id;
+              return m.message === msg.message && m.sender === msg.username && m.time === msg.timestamp;
+            });
+            if (!isDuplicate) {
+              merged.push({
+                id: msg.m_id || `${roomId}-${msg.timestamp}-${msg.username}`,
+                m_id: msg.m_id,
+                sender: msg.username,
+                message: msg.message,
+                time: msg.timestamp,
+                type: String(msg.sender_id) === String(applicantNo) ? 'sent' : 'received'
+              });
+            }
+          });
+          
+          return {
+            ...prev,
+            [roomId]: sortChatMessages(merged)
+          };
+        });
+
+        // Also update scholarships list lastMessage to the latest message in history if any
+        if (messages.length > 0) {
+          const lastMsg = messages[messages.length - 1];
+          setScholarships(prev => prev.map(s => {
+            if (s.id !== roomId) return s;
+            return {
+              ...s,
+              lastMessage: lastMsg.message,
+              time: 'Previous chat'
+            };
+          }));
         }
       });
 
@@ -392,6 +438,7 @@ const Portal = () => {
       if (unsubRoom) unsubRoom();
       if (unsubNotif) unsubNotif();
       if (unsubNotifUpdate) unsubNotifUpdate();
+      if (unsubHistory) unsubHistory();
       if (token) {
         socketService.disconnect();
       }

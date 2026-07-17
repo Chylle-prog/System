@@ -2882,10 +2882,21 @@ def submit_application():
             scholarship_id = req_no
         
             # Verify the scholarship exists and check GPA requirement
-            cur.execute('SELECT scholarship_name, gpa FROM scholarships WHERE req_no = %s', (scholarship_id,))
+            cur.execute(
+                """
+                SELECT s.scholarship_name, s.gpa, s.pro_no, p.provider_name
+                FROM scholarships s
+                LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
+                WHERE s.req_no = %s
+                """,
+                (scholarship_id,),
+            )
             scholarship = cur.fetchone()
             if not scholarship:
                 return jsonify({'message': 'Scholarship not found'}), 404
+            
+            pro_no = scholarship.get('pro_no')
+            pro_name = scholarship.get('provider_name') or 'Scholarship Program'
             
             min_gpa_required = scholarship.get('gpa')
             applicant_gpa = get_unified_val('gpa') or applicant.get('overall_gpa')
@@ -3174,6 +3185,23 @@ def submit_application():
                 """,
                 (scholarship_id, current_user_id),
             )
+
+            # Ensure the initial system message is created so the chat room immediately exists in DB
+            # and appears in both applicant and admin dashboards.
+            if pro_no:
+                cur.execute(
+                    "SELECT 1 FROM message WHERE applicant_no = %s AND pro_no = %s LIMIT 1",
+                    (current_user_id, pro_no),
+                )
+                if not cur.fetchone():
+                    room = f"{current_user_id}+{pro_no}"
+                    cur.execute(
+                        """
+                        INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp)
+                        VALUES (%s, %s, %s, %s, %s, NOW())
+                        """,
+                        (current_user_id, pro_no, room, pro_name, f'Chat initiated for Applicant {current_user_id}.'),
+                    )
 
             conn.commit()
             print(f"[SUBMIT] Application successful for User {current_user_id} in {time.time() - start_time:.2f}s")

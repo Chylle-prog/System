@@ -589,6 +589,51 @@ export default function ScholarshipDashboard({
         });
       });
 
+      const unsubHistory = socketService.subscribe('history', (data) => {
+        const roomId = data.room;
+        const messages = data.messages || [];
+
+        setData(prev => {
+          // Filter out existing messages in this room to avoid duplicates
+          const otherMsgs = prev.inbox.filter(m => m.room !== roomId);
+          const roomMsgs = prev.inbox.filter(m => m.room === roomId);
+          
+          const nextMsgs = [...roomMsgs];
+          messages.forEach(msg => {
+            const isDuplicate = roomMsgs.some(m => {
+              if (msg.m_id && m.m_id) return m.m_id === msg.m_id;
+              return m.message === msg.message && m.username === msg.username && m.timestamp === msg.timestamp;
+            });
+            
+            if (!isDuplicate) {
+              const [appNo, proNo] = roomId.split('+');
+              const isActiveRoom = currentInboxRoomRef.current === roomId;
+              // Check if it's admin/provider sender
+              const isAdminMessage = adminSenderAliases.has(normalizeProviderIdentity(msg.username));
+              
+              nextMsgs.push({
+                id: msg.m_id || (Date.now() + Math.random()),
+                m_id: msg.m_id,
+                studentName: msg.username,
+                studentEmail: appNo,
+                applicant_no: msg.applicant_no || appNo,
+                studentStatus: msg.student_status,
+                message: msg.message,
+                timestamp: msg.timestamp,
+                read: isActiveRoom || isAdminMessage,
+                is_student_sender: !isAdminMessage,
+                room: roomId
+              });
+            }
+          });
+          
+          return {
+            ...prev,
+            inbox: sortMessages([...otherMsgs, ...nextMsgs])
+          };
+        });
+      });
+
       const unsubLogged = socketService.subscribe('logged_in', (data) => {
         // Store authorized rooms and load history for each
         // rooms may be [{room, provider_name}] objects or plain strings
@@ -642,6 +687,7 @@ export default function ScholarshipDashboard({
         unsubLogged();
         unsubRoom();
         unsubStatusUpdate();
+        if (unsubHistory) unsubHistory();
         socketService.disconnect();
       };
     }
