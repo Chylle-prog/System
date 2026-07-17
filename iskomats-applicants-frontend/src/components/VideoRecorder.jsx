@@ -10,7 +10,7 @@ import React, { useState, useEffect, useRef } from 'react';
  * @param {string} initialVideoUrl - Existing video URL to show as preview
  * @param {boolean} isUploading - Whether the video is currently uploading
  */
-const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoUrl, isUploading = false, uploadProgress = 0, containerStyle = {}, disabled = false, hideButton = false }) => {
+const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoUrl, isUploading = false, uploadProgress = 0, containerStyle = {}, disabled = false, hideButton = false, fieldName }) => {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [fileName, setFileName] = useState('');
   const [videoError, setVideoError] = useState(null);
@@ -21,12 +21,19 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
     console.log('VideoRecorder useEffect triggered:', {
       initialVideoUrl,
       currentPreviewUrl: previewUrl,
-      label
+      label,
+      fieldName
     });
     
     if (initialVideoUrl) {
-      console.log(`Setting preview URL for ${label}:`, initialVideoUrl);
-      setPreviewUrl(initialVideoUrl);
+      let targetUrl = initialVideoUrl;
+      if (typeof targetUrl === 'string' && targetUrl.startsWith('http') && !targetUrl.includes('/applicant/document/raw/')) {
+        const token = localStorage.getItem('authToken');
+        const apiOrigin = (import.meta.env.VITE_API_URL || 'http://localhost:10001/api').replace(/\/api\/?$/, '');
+        targetUrl = `${apiOrigin}/api/student/applicant/document/raw/${fieldName || 'video'}?token=${token}`;
+      }
+      console.log(`Setting preview URL for ${label}:`, targetUrl);
+      setPreviewUrl(targetUrl);
       setFileName('Existing saved video');
       setVideoError(null);
     } else if (!previewUrl || !previewUrl.startsWith('blob:')) {
@@ -34,7 +41,7 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
       setFileName('');
       setVideoError(null);
     }
-  }, [initialVideoUrl]);
+  }, [initialVideoUrl, fieldName]);
 
   const openFilePicker = () => {
     if (disabled) return;

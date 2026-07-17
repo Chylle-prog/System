@@ -444,7 +444,6 @@ const StudentInfo = () => {
       .then(result => {
         const publicUrl = result.publicUrl;
         setFormData(prev => ({ ...prev, [fieldName]: publicUrl }));
-        setDocumentVideos(prev => ({ ...prev, [fieldName]: publicUrl }));
 
         // Remove from uploading state
         setUploadingFields(prev => {
@@ -3574,6 +3573,7 @@ const StudentInfo = () => {
                         disabled={isAnyScanning || isSavingStep}
                         hideButton={true}
                         containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                        fieldName="mayorIndigency_video"
                       />
                     </div>
 
@@ -3935,6 +3935,7 @@ const StudentInfo = () => {
                           disabled={isAnyScanning || isSavingStep}
                           hideButton={true}
                           containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                          fieldName="schoolIdFront_video"
                         />
                       </div>
 
@@ -3993,6 +3994,7 @@ const StudentInfo = () => {
                           disabled={isAnyScanning || isSavingStep}
                           hideButton={true}
                           containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                          fieldName="schoolIdBack_video"
                         />
                       </div>
 
@@ -4139,6 +4141,7 @@ const StudentInfo = () => {
                             disabled={isAnyScanning || isSavingStep}
                             hideButton={true}
                             containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                            fieldName="mayorCOE_video"
                           />
                         </div>
 
@@ -4269,6 +4272,7 @@ const StudentInfo = () => {
                               disabled={isAnyScanning || isSavingStep}
                               hideButton={true}
                               containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                              fieldName="mayorGrades_video"
                             />
                           </div>
 

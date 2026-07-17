@@ -2459,18 +2459,35 @@ def get_applicant_document_raw(field_name):
         'profile_picture', 'signature_image_data', 'id_img_front', 'id_img_back',
         'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic',
         'id_vid_url', 'indigency_vid_url', 'grades_vid_url', 'enrollment_certificate_vid_url',
-        'schoolid_front_vid_url', 'schoolid_back_vid_url'
+        'schoolid_front_vid_url', 'schoolid_back_vid_url',
+        # Frontend fields
+        'face_photo', 'face_video', 'mayorIndigency_video', 'mayorGrades_video', 'mayorCOE_video',
+        'schoolIdFront_video', 'schoolIdBack_video', 'id_front', 'id_back'
     ]
     if field_name not in allowed_fields:
         return "Invalid field", 400
+    
+    field_mapping = {
+        'face_video': 'id_vid_url',
+        'mayorIndigency_video': 'indigency_vid_url',
+        'mayorGrades_video': 'grades_vid_url',
+        'mayorCOE_video': 'enrollment_certificate_vid_url',
+        'schoolIdFront_video': 'schoolid_front_vid_url',
+        'schoolIdBack_video': 'schoolid_back_vid_url',
+        'id_front': 'id_img_front',
+        'id_back': 'id_img_back',
+        'face_photo': 'id_pic',
+    }
+    db_field = field_mapping.get(field_name, field_name)
+    
     try:
         with get_db() as conn:
             cur = conn.cursor()
-            row = fetch_applicant_document_values(cur, request.user_no, [field_name])
-            if not row or not row[field_name]:
+            row = fetch_applicant_document_values(cur, request.user_no, [db_field])
+            if not row or not row[db_field]:
                 return "Not found", 404
             
-            value = row[field_name]
+            value = row[db_field]
             if field_name == 'signature_image_data':
                 value = decode_signature(value)
             
