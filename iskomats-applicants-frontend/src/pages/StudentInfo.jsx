@@ -3468,6 +3468,48 @@ const StudentInfo = () => {
         }
       `}</style>
 
+      {/* Dev Debug Toggle for Alternate Account Checks */}
+      <div style={{
+        position: 'fixed',
+        bottom: '20px',
+        right: '20px',
+        zIndex: 9999,
+        background: '#1e293b',
+        color: '#fff',
+        padding: '10px 14px',
+        borderRadius: '30px',
+        boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+        fontSize: '0.75rem',
+        fontWeight: 'bold',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        border: '1px solid #334155'
+      }}>
+        <span style={{ color: localStorage.getItem('debug_skip_alternate_check') === 'true' ? '#10b981' : '#ef4444' }}>●</span>
+        <span>Alt Account Check: {localStorage.getItem('debug_skip_alternate_check') === 'true' ? 'Bypassed' : 'Enabled'}</span>
+        <button 
+          type="button"
+          onClick={() => {
+            const isBypassed = localStorage.getItem('debug_skip_alternate_check') === 'true';
+            localStorage.setItem('debug_skip_alternate_check', isBypassed ? 'false' : 'true');
+            window.location.reload();
+          }}
+          style={{
+            background: '#3b82f6',
+            color: 'white',
+            border: 'none',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '0.7rem',
+            fontWeight: '700'
+          }}
+        >
+          Toggle
+        </button>
+      </div>
+
       <nav className="navbar">
         <Link to="/portal" className="navbar-brand">iskoMats</Link>
         <div className="navbar-menu">

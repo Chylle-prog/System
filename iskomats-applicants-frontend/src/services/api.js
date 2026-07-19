@@ -206,6 +206,10 @@ const makeRequest = async (endpoint, options = {}) => {
     ...options.headers,
   };
 
+  if (localStorage.getItem('debug_skip_alternate_check') === 'true') {
+    headers['X-Skip-Alternate-Check'] = 'true';
+  }
+
   if (!(options.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
   }
@@ -641,6 +645,9 @@ export const applicantAPI = {
     const token = getAuthToken();
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (localStorage.getItem('debug_skip_alternate_check') === 'true') {
+      headers['X-Skip-Alternate-Check'] = 'true';
+    }
 
     const response = await fetch(url, { method: 'POST', headers, body: formData });
     const data = await response.json();
@@ -652,6 +659,9 @@ export const applicantAPI = {
     const token = getAuthToken();
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (localStorage.getItem('debug_skip_alternate_check') === 'true') {
+      headers['X-Skip-Alternate-Check'] = 'true';
+    }
 
     // Encrypt any Files/Blobs in the FormData before final submission
     const encryptedFormData = new FormData();

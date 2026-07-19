@@ -2255,10 +2255,15 @@ def get_profile():
             if not applicant:
                 return jsonify({'message': 'Not found'}), 404
 
-            duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, applicant)
-            # Oldest Account Wins: Only restrict if the current user_no is NOT the smallest ID for this identity
-            applicant['duplicate_applicant_exists'] = request.user_no > min(duplicate_ids)
-            applicant['portal_lock_message'] = 'This is a duplicate account. Please use your original login.' if applicant['duplicate_applicant_exists'] else None
+            skip_alternate_check = request.headers.get('X-Skip-Alternate-Check') == 'true'
+            if skip_alternate_check:
+                applicant['duplicate_applicant_exists'] = False
+                applicant['portal_lock_message'] = None
+            else:
+                duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, applicant)
+                # Oldest Account Wins: Only restrict if the current user_no is NOT the smallest ID for this identity
+                applicant['duplicate_applicant_exists'] = request.user_no > min(duplicate_ids)
+                applicant['portal_lock_message'] = 'This is a duplicate account. Please use your original login.' if applicant['duplicate_applicant_exists'] else None
 
             # Calculate sibling-blocked scholarships for the portal
             sibling_blocked_ids = []
@@ -2734,24 +2739,26 @@ def update_profile():
             # Preventive Duplicate Check:
             # We fetch the potentially updated applicant and check if they've become a duplicate.
             # "Oldest Wins": If the current account is NOT the oldest for this identity, we reject the save.
-            cur.execute("SELECT * FROM applicants WHERE applicant_no = %s", (request.user_no,))
-            potential_duplicate = cur.fetchone()
-            if potential_duplicate:
-                duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, potential_duplicate)
-                if len(duplicate_ids) > 1 and request.user_no > min(duplicate_ids):
-                    main_id = min(duplicate_ids)
-                    # Correctly fetch email from the auth table, not the applicant data table
-                    app_email_table = get_applicant_email_table(cur)
-                    cur.execute(f"SELECT email_address FROM {app_email_table} WHERE applicant_no = %s", (main_id,))
-                    main_email_row = cur.fetchone()
-                    main_email = main_email_row['email_address'] if main_email_row else "your original account"
-                    
-                    conn.rollback()
-                    print(f"[CONFLICT] User {request.user_no} attempted to create/update to a duplicate identity of {main_id} ({main_email})", flush=True)
-                    return jsonify({
-                        'message': 'Alternate Account detected',
-                        'error': f'Please use your main account: {main_email}'
-                    }), 409
+            skip_alternate_check = request.headers.get('X-Skip-Alternate-Check') == 'true'
+            if not skip_alternate_check:
+                cur.execute("SELECT * FROM applicants WHERE applicant_no = %s", (request.user_no,))
+                potential_duplicate = cur.fetchone()
+                if potential_duplicate:
+                    duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, potential_duplicate)
+                    if len(duplicate_ids) > 1 and request.user_no > min(duplicate_ids):
+                        main_id = min(duplicate_ids)
+                        # Correctly fetch email from the auth table, not the applicant data table
+                        app_email_table = get_applicant_email_table(cur)
+                        cur.execute(f"SELECT email_address FROM {app_email_table} WHERE applicant_no = %s", (main_id,))
+                        main_email_row = cur.fetchone()
+                        main_email = main_email_row['email_address'] if main_email_row else "your original account"
+                        
+                        conn.rollback()
+                        print(f"[CONFLICT] User {request.user_no} attempted to create/update to a duplicate identity of {main_id} ({main_email})", flush=True)
+                        return jsonify({
+                            'message': 'Alternate Account detected',
+                            'error': f'Please use your main account: {main_email}'
+                        }), 409
 
             conn.commit()
 
