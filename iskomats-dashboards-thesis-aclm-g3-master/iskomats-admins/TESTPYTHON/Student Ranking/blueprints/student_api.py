@@ -598,14 +598,19 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
             except Exception as cleanup_err:
                 print(f"[STORAGE CLEANUP] Skip: {cleanup_err}", flush=True)
 
+        # Encrypt binary image data before uploading to Supabase Storage
+        from services.crypto_service import encrypt_data
+        encrypted_bytes = encrypt_data(bytes(image_data))
+        mime_type = 'application/octet-stream'
+
         # Upload
         file_name = f"{applicant_no}_{int(time.time())}.{ext}"
         file_path = f"{folder}/{file_name}"
         
-        print(f"[STORAGE] Uploading {field_name} for applicant {applicant_no} to {bucket_name}/{file_path}", flush=True)
+        print(f"[STORAGE] Uploading encrypted {field_name} for applicant {applicant_no} to {bucket_name}/{file_path}", flush=True)
         res = supabase.storage.from_(bucket_name).upload(
             file_path,
-            bytes(image_data),
+            encrypted_bytes,
             file_options={'content-type': mime_type, 'upsert': 'true'}
         )
         
@@ -2665,9 +2670,21 @@ def submit_application():
         scholarship_id = req_no
         
         # Verify the scholarship exists
-        cur.execute('SELECT req_no FROM scholarships WHERE req_no = %s', (scholarship_id,))
-        if not cur.fetchone():
+        cur.execute(
+            """
+            SELECT s.req_no, s.pro_no, p.provider_name
+            FROM scholarships s
+            LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
+            WHERE s.req_no = %s
+            """,
+            (scholarship_id,),
+        )
+        scholarship = cur.fetchone()
+        if not scholarship:
             return jsonify({'message': 'Scholarship not found'}), 404
+            
+        pro_no = scholarship.get('pro_no')
+        pro_name = scholarship.get('provider_name') or 'Scholarship Program'
 
         preliminary_identity = build_restriction_identity_from_applicant(applicant, source_data=request_payload)
         if preliminary_identity:
@@ -2917,6 +2934,23 @@ def submit_application():
             """,
             (scholarship_id, current_user_id),
         )
+
+        # Ensure the initial system message is created so the chat room immediately exists in DB
+        # and appears in both applicant and admin dashboards.
+        if pro_no:
+            cur.execute(
+                "SELECT 1 FROM message WHERE applicant_no = %s AND pro_no = %s LIMIT 1",
+                (current_user_id, pro_no),
+            )
+            if not cur.fetchone():
+                room = f"{current_user_id}+{pro_no}"
+                cur.execute(
+                    """
+                    INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp)
+                    VALUES (%s, %s, %s, %s, %s, NOW())
+                    """,
+                    (current_user_id, pro_no, room, pro_name, f'Chat initiated for Applicant {current_user_id}.'),
+                )
 
         conn.commit()
         print(f"[SUBMIT] Application successful for User {current_user_id} in {time.time() - start_time:.2f}s")

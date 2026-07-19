@@ -34,12 +34,40 @@ def decrypt_aes_gcm(data):
         ciphertext = data[len(prefix)+12:]
         
         # Prepare key (matches CryptoService.js: getCryptoKey)
-        key_bytes = _FRONTEND_KEY_STR.ljust(32, '0')[:32].encode()
+        enc_key_str = os.environ.get('ENCRYPTION_KEY', _FRONTEND_KEY_STR)
+        key_bytes = enc_key_str.ljust(32, '0')[:32].encode()
         aesgcm = AESGCM(key_bytes)
         
         return aesgcm.decrypt(iv, ciphertext, None)
     except Exception as e:
         print(f"[CRYPTO_SERVICE] AES-GCM Decryption failed: {e}")
+        return data
+
+MAGIC_PREFIX = b'ENC:'
+
+def encrypt_data(data):
+    """Encrypts bytes and adds the MAGIC_PREFIX (matches CryptoService.js)."""
+    if not data:
+        return data
+        
+    # Standardize input to bytes
+    if isinstance(data, str):
+        data = data.encode('utf-8')
+    elif hasattr(data, 'tobytes'):
+        data = data.tobytes()
+    else:
+        data = bytes(data)
+        
+    try:
+        enc_key_str = os.environ.get('ENCRYPTION_KEY', _FRONTEND_KEY_STR)
+        key_bytes = enc_key_str.ljust(32, '0')[:32].encode()
+        aesgcm = AESGCM(key_bytes)
+        
+        iv = os.urandom(12)
+        encrypted = aesgcm.encrypt(iv, data, None)
+        return MAGIC_PREFIX + iv + encrypted
+    except Exception as e:
+        print(f"[CRYPTO_SERVICE] Encryption failed: {e}")
         return data
 
 def decrypt_if_encrypted(data):

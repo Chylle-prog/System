@@ -3,7 +3,7 @@ services:
     name: iskomats-backend
     env: docker
     plan: free
-    rootDir: "iskomats-dashboards-thesis-aclm-g3-master/iskomats-admins/TESTPYTHON/Student Ranking"
+    rootDir: "iskomats-applicants-backend"
     envVars:
       - key: PORT
         value: 10000
