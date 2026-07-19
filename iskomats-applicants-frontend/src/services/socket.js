@@ -1,7 +1,13 @@
 import { io } from 'socket.io-client';
 
-// const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://iskomats-applicants-backend.onrender.com';
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:10001';
+const getSocketUrl = () => {
+  if (import.meta.env.VITE_SOCKET_URL) {
+    return import.meta.env.VITE_SOCKET_URL;
+  }
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:10001/api';
+  return apiUrl.replace(/\/api\/?$/, '');
+};
+const SOCKET_URL = getSocketUrl();
 
 class SocketService {
   constructor() {
