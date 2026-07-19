@@ -3407,18 +3407,8 @@ def analyze_merits_onthefly(merits_text):
         except Exception as e:
             print(f"[AI MERITS ERROR] API call failed: {e}. Falling back to rule-based parser.", flush=True)
 
-    # Fast rule-based fallback parser
-    text_lower = merits_text.lower()
-    if any(w in text_lower for w in ['national', 'international', 'olympiad', 'philippine representative']):
-        return 16, "Awarded 16 points for National or International level merit."
-    elif any(w in text_lower for w in ['regional', 'provincial', 'clraal', 'stcaa', 'region']):
-        return 11, "Awarded 11 points for Regional or Provincial level merit."
-    elif any(w in text_lower for w in ['division', 'city', 'district', 'high honors', 'with high honor', 'consistent with honor']):
-        return 7, "Awarded 7 points for Division or City level academic merit."
-    elif any(w in text_lower for w in ['school', 'class', 'officer', 'with honor', 'dean\'s list', 'deans list', 'award', 'merit', 'participant']):
-        return 3, "Awarded 3 points for School-level merit or honor."
-    
-    return 1, "Awarded 1 point for general merits."
+    # If API key is missing or call fails, return 0
+    return 0, "AI evaluation failed or no API key provided."
 
 @api_bp.route('/applicants/<program>', methods=['GET'])
 @token_required
