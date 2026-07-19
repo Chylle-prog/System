@@ -4378,8 +4378,8 @@ export default function ScholarshipDashboard({
             </div>
 
             <div className="p-4 border-t border-gray-100 col-span-2">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Year for Grades</p>
-              <p className="font-bold text-gray-800">{a.grades_year || 'N/A'}</p>
+              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Merits/Awards</p>
+              <p className="font-bold text-gray-800 whitespace-pre-wrap">{a.meritsAwardsReceived || 'N/A'}</p>
             </div>
 
           </div>
