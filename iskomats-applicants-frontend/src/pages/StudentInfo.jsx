@@ -1950,7 +1950,6 @@ const StudentInfo = () => {
 
         if (profile.profile_picture) {
           setIdPicturePreview(profile.profile_picture);
-          setPhotos(prev => ({ ...prev, face_photo: profile.profile_picture }));
         }
 
         if (profile.has_other_assistance) {

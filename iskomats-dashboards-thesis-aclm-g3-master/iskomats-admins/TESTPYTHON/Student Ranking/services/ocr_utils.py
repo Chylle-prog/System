@@ -1415,7 +1415,7 @@ def _decode_face_image(image_bytes):
 
     return image
 
-def _pick_primary_face(faces, image_label, min_area_pct=0.0):
+def _pick_primary_face(faces, image_label, min_area_pct=0.0, image_shape=None):
     """
     Select the highest-confidence face above threshold.
     Optional: Ensure it covers a minimum percentage of image area (for selfies).
@@ -1437,8 +1437,7 @@ def _pick_primary_face(faces, image_label, min_area_pct=0.0):
         # bbox is typically [x1, y1, x2, y2]
         x1, y1, x2, y2 = best_face.bbox
         area = (x2 - x1) * (y2 - y1)
-        # Using 512x512 as max internal canvas area
-        total_area = 512 * 512 
+        total_area = (image_shape[0] * image_shape[1]) if image_shape is not None else (512 * 512)
         pct = (area / total_area) * 100
         
         if pct < min_area_pct:
@@ -1459,11 +1458,11 @@ def verify_face_with_id(user_photo_bytes, id_photo_bytes):
 
         # For selfies, we want the face to occupy at least 8% of the processing frame
         user_faces = detector.detect(user_image)
-        user_face = _pick_primary_face(user_faces, 'the live photo', min_area_pct=3.0)
+        user_face = _pick_primary_face(user_faces, 'the live photo', min_area_pct=3.0, image_shape=user_image.shape)
         
         # For ID cards, the face can be quite small (no min_area)
         id_faces = detector.detect(id_image)
-        id_face = _pick_primary_face(id_faces, 'the ID image')
+        id_face = _pick_primary_face(id_faces, 'the ID image', image_shape=id_image.shape)
 
         user_embedding = recognizer.get_normalized_embedding(user_image, user_face.landmarks)
         id_embedding = recognizer.get_normalized_embedding(id_image, id_face.landmarks)

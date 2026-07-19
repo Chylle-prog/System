@@ -138,7 +138,7 @@ def _decode_face_image(image_bytes):
 
     return image
 
-def _pick_primary_face(faces, image_label, min_area_pct=0.0):
+def _pick_primary_face(faces, image_label, min_area_pct=0.0, image_shape=None):
     """Select the highest-confidence face above threshold."""
     if not faces:
         raise ValueError(f"No face detected in {image_label}. Please look directly at the camera.")
@@ -153,7 +153,7 @@ def _pick_primary_face(faces, image_label, min_area_pct=0.0):
     if min_area_pct > 0 and hasattr(best_face, 'bbox'):
         x1, y1, x2, y2 = best_face.bbox
         area = (x2 - x1) * (y2 - y1)
-        total_area = 512 * 512 
+        total_area = (image_shape[0] * image_shape[1]) if image_shape is not None else (512 * 512)
         pct = (area / total_area) * 100
         
         if pct < min_area_pct:
@@ -170,10 +170,10 @@ def verify_face_with_id(user_photo_bytes, id_photo_bytes):
         id_image = _decode_face_image(id_photo_bytes)
 
         user_faces = detector.detect(user_image)
-        user_face = _pick_primary_face(user_faces, 'the live photo', min_area_pct=3.0)
+        user_face = _pick_primary_face(user_faces, 'the live photo', min_area_pct=3.0, image_shape=user_image.shape)
         
         id_faces = detector.detect(id_image)
-        id_face = _pick_primary_face(id_faces, 'the ID image')
+        id_face = _pick_primary_face(id_faces, 'the ID image', image_shape=id_image.shape)
 
         user_embedding = recognizer.get_normalized_embedding(user_image, user_face.landmarks)
         id_embedding = recognizer.get_normalized_embedding(id_image, id_face.landmarks)
