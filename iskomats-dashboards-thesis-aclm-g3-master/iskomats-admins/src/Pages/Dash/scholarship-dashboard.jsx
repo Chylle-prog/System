@@ -389,6 +389,7 @@ export default function ScholarshipDashboard({
   const [trackScholarshipFilter, setTrackScholarshipFilter] = useState('all');
   const [data, setData] = useState(initialDashboardData);
   const [searchTrack, setSearchTrack] = useState('');
+  const [sortByPoints, setSortByPoints] = useState(false);
   const [finderSearch, setFinderSearch] = useState('');
   const [finderAvailabilityFilter, setFinderAvailabilityFilter] = useState('all'); // all | open | full
   const [reportTab, setReportTab] = useState('pending'); // pending | accepted | declined
@@ -1449,6 +1450,97 @@ export default function ScholarshipDashboard({
     return false;
   };
 
+  const getScholarshipForApplicant = (a) => {
+    if (!a) return null;
+    const reqNo = a.reqNo || a.req_no || a.scholarshipNo || a.scholarship_no;
+    if (!reqNo && trackScholarshipFilter !== 'all' && trackScholarshipFilter !== 'deleted') {
+      return (data.scholarshipPosts || []).find(s => String(s.reqNo || s.id || '') === String(trackScholarshipFilter));
+    }
+    return (data.scholarshipPosts || []).find(s => String(s.reqNo || s.id || '') === String(reqNo));
+  };
+
+  const calculateDeservednessScoreDetails = (a, sch) => {
+    if (!a) return { total: 0, gpaScore: 0, incomeScore: 0, meritScore: 0, reason: '' };
+    
+    const applicantGpa = Number(a.grade ?? a.overall_gpa ?? a.gpa ?? 0);
+    const applicantIncome = Number(a.income ?? a.financial_income_of_parents ?? a.family?.grossIncome ?? 0);
+
+    let normalizedGpa = applicantGpa;
+    
+    if (applicantGpa >= 1.0 && applicantGpa <= 5.0) {
+      const schoolLower = String(a.school || a.schoolName || '').toLowerCase().trim();
+      let isUpSystem = false;
+      
+      if (schoolLower) {
+        const upKeywords = ['philippines', 'up', 'pup', 'plm', 'pamantasan', 'tup', 'bulsu', 'state', 'university', 'college', 'technological', 'mapua', 'su'];
+        const dlsuKeywords = ['la salle', 'dlsu', 'ateneo', 'admu', 'benilde', 'csb', 'beda'];
+        if (upKeywords.some(kw => schoolLower.includes(kw)) && !dlsuKeywords.some(kw => schoolLower.includes(kw))) {
+          isUpSystem = true;
+        }
+      } else {
+        if (applicantGpa <= 2.4) {
+          isUpSystem = true;
+        }
+      }
+
+      if (isUpSystem) {
+        normalizedGpa = 100 - (applicantGpa - 1.0) * 12.5;
+      } else {
+        if (applicantGpa <= 4.0) {
+          normalizedGpa = 50 + applicantGpa * 12.5;
+        } else {
+          normalizedGpa = 37.5 + applicantGpa * 12.5;
+        }
+      }
+    }
+
+    let gpaScore = 0;
+    const minGpa = sch ? Number(sch.gpa ?? sch.minGpa ?? 0) : 0;
+    if (minGpa > 0) {
+      const normalizedMinGpa = minGpa;
+      if (normalizedGpa >= normalizedMinGpa) {
+        gpaScore = Math.min(60, (normalizedGpa - normalizedMinGpa) * 12);
+      }
+    } else {
+      gpaScore = Math.min(60, Math.max(0, (normalizedGpa - 75) * 2.4));
+    }
+
+    let incomeScore = 0;
+    const maxInc = sch ? Number(sch.parentFinance ?? sch.parent_finance ?? sch.maxIncome ?? 400000) : 400000;
+    if (applicantIncome <= maxInc) {
+      incomeScore = Math.min(50, Math.floor((maxInc - applicantIncome) / 15000));
+    }
+
+    const meritScore = Number(a.meritScore ?? 0);
+    const total = Math.max(0, gpaScore + incomeScore + meritScore);
+
+    return {
+      total,
+      gpaScore,
+      incomeScore,
+      meritScore,
+      reason: a.meritReason || 'No evaluated achievements.'
+    };
+  };
+
+  const calculateDeservednessScore = (a, sch) => {
+    return calculateDeservednessScoreDetails(a, sch).total;
+  };
+
+  const renderPointsCell = (a) => {
+    const details = calculateDeservednessScoreDetails(a, getScholarshipForApplicant(a));
+    const tooltipText = `Score Breakdown:\n• GPA Score: ${details.gpaScore.toFixed(1)} pts\n• Financial Need: ${details.incomeScore.toFixed(1)} pts\n• Merits/Awards (AI): ${details.meritScore.toFixed(1)} pts\n\nAI Reason:\n${details.reason}`;
+
+    return (
+      <td className="px-4 py-3 font-semibold text-gray-700">
+        <div className="flex items-center gap-1.5 cursor-help" title={tooltipText}>
+          <FaStar className="text-yellow-500 text-xs" />
+          <span>{details.total.toFixed(0)}</span>
+        </div>
+      </td>
+    );
+  };
+
   const scholarshipFinderResults = useMemo(() => {
     const search = normalizeFinderText(finderSearch);
     const allTrackedApplicants = [
@@ -1836,7 +1928,11 @@ export default function ScholarshipDashboard({
     const filteredApplicants = allPending.filter(a => matchesScholarshipSelection(a, trackScholarshipFilter));
     
     const top = [...filteredApplicants]
-      .sort((a, b) => (Number(b.grade) || 0) - (Number(a.grade) || 0))
+      .sort((a, b) => {
+        const schA = getScholarshipForApplicant(a);
+        const schB = getScholarshipForApplicant(b);
+        return calculateDeservednessScore(b, schB) - calculateDeservednessScore(a, schA);
+      })
       .slice(0, count);
       
     setRecommended(top);
@@ -2856,11 +2952,30 @@ export default function ScholarshipDashboard({
       });
     };
 
-    const pendingTagged = prioritizeProcessingApplicants(filterList(data.applicants)).map((a) => ({ ...a, _listType: 'pending', _listIdx: data.applicants.indexOf(a) }));
-    const acceptedTagged = filterList(data.accepted).map((a, i) => ({ ...a, _listType: 'accepted', _listIdx: data.accepted.indexOf(a) }));
-    const rejectedTagged = filterList(data.rejected).map((a, i) => ({ ...a, _listType: 'rejected', _listIdx: data.rejected.indexOf(a) }));
-    const cancelledTagged = filterList(data.cancelled).map((a, i) => ({ ...a, _listType: 'cancelled', _listIdx: data.cancelled.indexOf(a) }));
-    const allList = [...pendingTagged, ...acceptedTagged, ...rejectedTagged, ...cancelledTagged];
+    const sortApplicants = (list) => {
+      if (!sortByPoints) return list;
+      return [...list].sort((a, b) => {
+        const schA = getScholarshipForApplicant(a);
+        const schB = getScholarshipForApplicant(b);
+        const scoreA = calculateDeservednessScore(a, schA);
+        const scoreB = calculateDeservednessScore(b, schB);
+        return scoreB - scoreA;
+      });
+    };
+
+    const pendingTaggedRaw = prioritizeProcessingApplicants(filterList(data.applicants)).map((a) => ({ ...a, _listType: 'pending', _listIdx: data.applicants.indexOf(a) }));
+    const pendingTagged = sortApplicants(pendingTaggedRaw);
+
+    const acceptedTaggedRaw = filterList(data.accepted).map((a, i) => ({ ...a, _listType: 'accepted', _listIdx: data.accepted.indexOf(a) }));
+    const acceptedTagged = sortApplicants(acceptedTaggedRaw);
+
+    const rejectedTaggedRaw = filterList(data.rejected).map((a, i) => ({ ...a, _listType: 'rejected', _listIdx: data.rejected.indexOf(a) }));
+    const rejectedTagged = sortApplicants(rejectedTaggedRaw);
+
+    const cancelledTaggedRaw = filterList(data.cancelled).map((a, i) => ({ ...a, _listType: 'cancelled', _listIdx: data.cancelled.indexOf(a) }));
+    const cancelledTagged = sortApplicants(cancelledTaggedRaw);
+
+    const allList = sortApplicants([...pendingTaggedRaw, ...acceptedTaggedRaw, ...rejectedTaggedRaw, ...cancelledTaggedRaw]);
     const acceptedList = acceptedTagged;
     const rejectedList = rejectedTagged;
     const cancelledList = cancelledTagged;
@@ -2932,6 +3047,19 @@ export default function ScholarshipDashboard({
               </option>
             ))}
           </select>
+          
+          <button
+            type="button"
+            onClick={() => setSortByPoints(prev => !prev)}
+            className={`px-4 py-3 rounded-xl text-sm outline-none font-bold shadow-sm transition-all flex items-center gap-2 border ${
+              sortByPoints 
+                ? 'bg-[#800020] text-white border-[#800020] hover:bg-[#650018]' 
+                : 'bg-gray-50 text-[#800020] border-gray-200 hover:bg-gray-100'
+            }`}
+          >
+            <FaStar className={sortByPoints ? 'text-yellow-400' : 'text-[#800020]/75'} />
+            {sortByPoints ? 'Sorted by Deservedness' : 'Sort by Points'}
+          </button>
         </div>
 
         <div className="overflow-y-auto rounded-xl border border-gray-200" style={{ maxHeight: 'calc(100vh - 500px)' }}>
@@ -2941,6 +3069,7 @@ export default function ScholarshipDashboard({
                 <th className="px-4 py-3 text-left font-semibold">Name</th>
                 <th className="px-4 py-3 text-left font-semibold">Grade</th>
                 <th className="px-4 py-3 text-left font-semibold">Financial</th>
+                <th className="px-4 py-3 text-left font-semibold">Points</th>
                 <th className="px-4 py-3 text-left font-semibold">School & Course</th>
                 <th className="px-4 py-3 text-left font-semibold">Contact & Address</th>
                 <th className="px-4 py-3 text-left font-semibold">Action</th>
@@ -2962,6 +3091,7 @@ export default function ScholarshipDashboard({
                       </td>
                       <td className="px-4 py-3">{a.grade}</td>
                       <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                      {renderPointsCell(a)}
                       <td className="px-4 py-3 text-xs">
                         <div className="font-bold text-[#800020]">{a.school}</div>
                         <div className="text-[10px] text-gray-500 font-medium">{a.course || 'No Course Provided'}</div>
@@ -3001,6 +3131,7 @@ export default function ScholarshipDashboard({
                       </td>
                       <td className="px-4 py-3">{a.grade}</td>
                       <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                      {renderPointsCell(a)}
                       <td className="px-4 py-3 text-xs">
                         <div className="font-bold text-[#800020]">{a.school}</div>
                         <div className="text-[10px] text-gray-500 font-medium">{a.course || 'No Course Provided'}</div>
@@ -3028,6 +3159,7 @@ export default function ScholarshipDashboard({
                       </td>
                       <td className="px-4 py-3">{a.grade}</td>
                       <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                      {renderPointsCell(a)}
                       <td className="px-4 py-3 text-xs">
                         <div className="font-bold text-[#800020]">{a.school}</div>
                         <div className="text-[10px] text-gray-500 font-medium">{a.course || 'No Course Provided'}</div>
@@ -3055,6 +3187,7 @@ export default function ScholarshipDashboard({
                       </td>
                       <td className="px-4 py-3">{a.grade}</td>
                       <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                      {renderPointsCell(a)}
                       <td className="px-4 py-3 text-xs">
                         <div className="font-bold text-[#800020]">{a.school}</div>
                         <div className="text-[10px] text-gray-500 font-medium">{a.course || 'No Course Provided'}</div>
@@ -3082,6 +3215,7 @@ export default function ScholarshipDashboard({
                       </td>
                       <td className="px-4 py-3">{a.grade}</td>
                       <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                      {renderPointsCell(a)}
                       <td className="px-4 py-3 text-xs">
                         <div className="font-bold text-[#800020]">{a.school}</div>
                         <div className="text-[10px] text-gray-500 font-medium">{a.course || 'No Course Provided'}</div>

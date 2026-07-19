@@ -3360,6 +3360,66 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
 
+def analyze_merits_onthefly(merits_text):
+    """
+    Parses merits_text using Gemini API if GEMINI_API_KEY is present in env,
+    otherwise falls back to a fast rule-based parser.
+    """
+    import os
+    import json
+    import requests
+    
+    if not merits_text or not merits_text.strip():
+        return 0, "No merits or awards provided."
+
+    api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
+    if api_key:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+            prompt = f"""
+            You are an expert academic evaluator. Analyze the student's merits and awards text and assign points from 0 to 20.
+            Rubric:
+            - 0 points: No honors/awards, or only regular activities.
+            - 1-5 points: School-level achievements (e.g. Honor Student, Class Officer, local club leader).
+            - 6-10 points: Division/City-level awards (e.g. Consistent With Honors/High Honors, Division competition placements).
+            - 11-15 points: Regional/Provincial awards (e.g. Regional Science Fair winner, Regional athletic meet medalist).
+            - 16-20 points: National/International awards (e.g. National Math Olympiad placer, international delegate).
+            
+            Input Text: "{merits_text}"
+            
+            Return ONLY a valid JSON object:
+            {{"score": <0-20>, "reason": "<one sentence explanation>"}}
+            """
+            payload = {
+                "contents": [{
+                    "parts": [{"text": prompt}]
+                }],
+                "generationConfig": {
+                    "responseMimeType": "application/json"
+                }
+            }
+            response = requests.post(url, json=payload, timeout=5)
+            if response.status_code == 200:
+                res_data = response.json()
+                text = res_data['candidates'][0]['content']['parts'][0]['text']
+                parsed = json.loads(text.strip())
+                return int(parsed.get('score', 0)), str(parsed.get('reason', 'Evaluated by AI.'))
+        except Exception as e:
+            print(f"[AI MERITS ERROR] API call failed: {e}. Falling back to rule-based parser.", flush=True)
+
+    # Fast rule-based fallback parser
+    text_lower = merits_text.lower()
+    if any(w in text_lower for w in ['national', 'international', 'olympiad', 'philippine representative']):
+        return 16, "Awarded 16 points for National or International level merit."
+    elif any(w in text_lower for w in ['regional', 'provincial', 'clraal', 'stcaa', 'region']):
+        return 11, "Awarded 11 points for Regional or Provincial level merit."
+    elif any(w in text_lower for w in ['division', 'city', 'district', 'high honors', 'with high honor', 'consistent with honor']):
+        return 7, "Awarded 7 points for Division or City level academic merit."
+    elif any(w in text_lower for w in ['school', 'class', 'officer', 'with honor', 'dean\'s list', 'deans list', 'award', 'merit', 'participant']):
+        return 3, "Awarded 3 points for School-level merit or honor."
+    
+    return 1, "Awarded 1 point for general merits."
+
 @api_bp.route('/applicants/<program>', methods=['GET'])
 @token_required
 def get_applicants(current_user_id, pro_no, role, program):
@@ -3378,6 +3438,7 @@ def get_applicants(current_user_id, pro_no, role, program):
                    a.middle_name as "middleName",
                    a.mother_name as "motherName",
                    a.father_name as "fatherName",
+                   a.merits_awards_received as "meritsAwardsReceived",
                    a.first_name as name, a.overall_gpa as grade,
                    a.financial_income_of_parents as income, CONCAT_WS(', ', NULLIF(a.street_brgy, ''), NULLIF(a.town_city_municipality, ''), NULLIF(a.province, ''), NULLIF(a.zip_code, '')) as location,
                    a.maiden_name as "maidenName",
@@ -3524,6 +3585,13 @@ def get_applicants(current_user_id, pro_no, role, program):
 
                 # Fill in ID# with school_id_no
                 a['idNumber'] = a.get('school_id_no') or a.get('schoolId')
+                
+                # AI merits evaluation calculated purely in memory (on-the-fly) without saving to DB
+                merits_text = a.get('meritsAwardsReceived') or ""
+                m_score, m_reason = analyze_merits_onthefly(merits_text)
+                a['meritScore'] = m_score
+                a['meritReason'] = m_reason
+                
                 result.append(a)
             except Exception as row_error:
                 app_identifier = None

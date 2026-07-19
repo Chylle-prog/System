@@ -234,22 +234,46 @@ def gpa_matches_text(raw_text, expected_gpa):
 
     return False, None, candidates
 
-def normalize_to_percent(val):
-    """Converts point scales (1.0-5.0) to approx percentage (70-100)."""
+def normalize_to_percent(val, school_name=None):
+    """Converts point scales (1.0-5.0) to approx percentage (70-100) taking scale direction into account."""
     try:
         val = float(val)
     except:
         return val
 
-    if 70.0 <= val <= 100.0: return val
-    # 4.0 Scale (e.g. DLSL, US Schools) where 4.0 is 100%
-    if 1.0 <= val <= 4.0:
-        # Approx linear mapping: 4.0->99, 3.0->87, 2.0->80, 1.0->75
-        return 75.0 + (val - 1.0) * 8.0
-    # 5.0 Scale (e.g. UP, most PH public) where 1.0 is 100%, 3.0 is passing, 5.0 is failing
-    if 1.0 <= val <= 5.0:
-        # 1.0->99, 3.0->75, 5.0->50
-        return 100.0 - (val - 1.0) * 12.5
+    if 70.0 <= val <= 100.0:
+        return val
+
+    school_lower = school_name.lower().strip() if school_name else ""
+    
+    # 1. Check if the school name strongly implies UP system (1.0 is highest/best)
+    is_up_system = False
+    if school_lower:
+        up_keywords = ['philippines', 'up', 'pup', 'plm', 'pamantasan', 'tup', 'bulsu', 'state', 'university', 'college', 'technological', 'mapua', 'su']
+        dlsu_keywords = ['la salle', 'dlsu', 'ateneo', 'admu', 'benilde', 'csb', 'beda']
+        if any(kw in school_lower for kw in up_keywords) and not any(kw in school_lower for kw in dlsu_keywords):
+            is_up_system = True
+
+    # If we couldn't tell from the school name, use the grade range heuristic
+    if not school_lower:
+        if 1.0 <= val <= 2.4:
+            is_up_system = True
+        else:
+            is_up_system = False
+
+    if is_up_system:
+        # 1.0-5.0 Scale where 1.0 is best (100%), 3.0 is passing (75%), 5.0 is failing (50%)
+        if 1.0 <= val <= 5.0:
+            return 100.0 - (val - 1.0) * 12.5
+    else:
+        # 4.0 or 5.0 Scale where 4.0 or 5.0 is best (100%), 1.0 is passing/worst
+        # Map 4.0 scale: 4.0->100, 3.0->87.5, 2.0->75, 1.0->62.5
+        if 1.0 <= val <= 4.0:
+            return 50.0 + val * 12.5
+        # Map 5.0 scale: 5.0->100, 4.0->87.5, 3.0->75, 2.0->62.5, 1.0->50
+        elif 1.0 <= val <= 5.0:
+            return 37.5 + val * 12.5
+
     return val
 
 
@@ -2645,6 +2669,8 @@ def update_profile():
                         except (ValueError, TypeError):
                             value = None
                     add_update(db_col, value)
+                    
+
 
             for frontend_key, db_col in document_field_mapping.items():
                 if frontend_key in data:
@@ -2913,7 +2939,8 @@ def submit_application():
                     student_gpa_val = float(applicant_gpa)
                     # Normalize if mismatch in scales (Scholarship usually uses 0-100, student might use 1.0-5.0)
                     if min_gpa_required > 10 and student_gpa_val < 10:
-                        student_gpa_val = normalize_to_percent(student_gpa_val)
+                        school_name = get_unified_val('schoolName') or applicant.get('school')
+                        student_gpa_val = normalize_to_percent(student_gpa_val, school_name=school_name)
                 
                     if student_gpa_val < float(min_gpa_required):
                         return jsonify({
