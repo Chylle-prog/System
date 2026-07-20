@@ -3544,6 +3544,12 @@ def get_applicants(current_user_id, pro_no, role, program):
                         a['income'] = float(a['income'])
                     except (ValueError, TypeError):
                         pass
+                
+                # AI merits evaluation calculated purely in memory (on-the-fly) without saving to DB
+                merits_text = a.get('meritsAwardsReceived') or ""
+                m_score, m_reason = analyze_merits_onthefly(merits_text)
+                a['meritScore'] = m_score
+                a['meritReason'] = m_reason
                  
                 # Convert document blobs to media arrays (Optimized: use URLs)
                 # Include both image files and video files for each document type
