@@ -93,21 +93,21 @@ const DecryptedMedia = ({ src, type, className, controls = false, onClick = null
 
   if (type && type.startsWith('image')) {
     return (
-      <img 
-        src={decryptedSrc} 
-        alt={alt} 
-        className={className} 
+      <img
+        src={decryptedSrc}
+        alt={alt}
+        className={className}
         onClick={onClick}
         onError={() => setHasError(true)}
       />
     );
   }
-  
+
   return (
-    <video 
-      src={decryptedSrc} 
-      controls={controls} 
-      className={className} 
+    <video
+      src={decryptedSrc}
+      controls={controls}
+      className={className}
     />
   );
 };
@@ -598,20 +598,20 @@ export default function ScholarshipDashboard({
           // Filter out existing messages in this room to avoid duplicates
           const otherMsgs = prev.inbox.filter(m => m.room !== roomId);
           const roomMsgs = prev.inbox.filter(m => m.room === roomId);
-          
+
           const nextMsgs = [...roomMsgs];
           messages.forEach(msg => {
             const isDuplicate = roomMsgs.some(m => {
               if (msg.m_id && m.m_id) return m.m_id === msg.m_id;
               return m.message === msg.message && m.username === msg.username && m.timestamp === msg.timestamp;
             });
-            
+
             if (!isDuplicate) {
               const [appNo, proNo] = roomId.split('+');
               const isActiveRoom = currentInboxRoomRef.current === roomId;
               // Check if it's admin/provider sender
               const isAdminMessage = adminSenderAliases.has(normalizeProviderIdentity(msg.username));
-              
+
               nextMsgs.push({
                 id: msg.m_id || (Date.now() + Math.random()),
                 m_id: msg.m_id,
@@ -627,7 +627,7 @@ export default function ScholarshipDashboard({
               });
             }
           });
-          
+
           return {
             ...prev,
             inbox: sortMessages([...otherMsgs, ...nextMsgs])
@@ -1427,11 +1427,11 @@ export default function ScholarshipDashboard({
     }
 
     const selectedOption = scholarshipFilterOptions.find((option) => option.value === selectedValue);
-    
+
     // Exact ID matching
     const applicantReqNo = String(applicant.reqNo || applicant.req_no || applicant.request_no || applicant.scholarshipNo || applicant.scholarship_no || '').toLowerCase();
     const selectedReqNo = String(selectedValue || '').toLowerCase();
-    
+
     if (selectedReqNo && applicantReqNo === selectedReqNo) {
       return true;
     }
@@ -1461,16 +1461,16 @@ export default function ScholarshipDashboard({
 
   const calculateDeservednessScoreDetails = (a, sch) => {
     if (!a) return { total: 0, gpaScore: 0, incomeScore: 0, meritScore: 0, reason: '' };
-    
+
     const applicantGpa = Number(a.grade ?? a.overall_gpa ?? a.gpa ?? 0);
     const applicantIncome = Number(a.income ?? a.financial_income_of_parents ?? a.family?.grossIncome ?? 0);
 
     let normalizedGpa = applicantGpa;
-    
+
     if (applicantGpa >= 1.0 && applicantGpa <= 5.0) {
       const schoolLower = String(a.school || a.schoolName || '').toLowerCase().trim();
       let isUpSystem = false;
-      
+
       if (schoolLower) {
         const upKeywords = ['philippines', 'up', 'pup', 'plm', 'pamantasan', 'tup', 'bulsu', 'state', 'university', 'college', 'technological', 'mapua', 'su'];
         const dlsuKeywords = ['la salle', 'dlsu', 'ateneo', 'admu', 'benilde', 'csb', 'beda'];
@@ -1923,10 +1923,10 @@ export default function ScholarshipDashboard({
   const recommendStudents = () => {
     const count = parseInt(recommendCount) || 10;
     const allPending = data.applicants || [];
-    
+
     // Exact same filtering logic as the Track list
     const filteredApplicants = allPending.filter(a => matchesScholarshipSelection(a, trackScholarshipFilter));
-    
+
     const top = [...filteredApplicants]
       .sort((a, b) => {
         const schA = getScholarshipForApplicant(a);
@@ -1934,7 +1934,7 @@ export default function ScholarshipDashboard({
         return calculateDeservednessScore(b, schB) - calculateDeservednessScore(a, schA);
       })
       .slice(0, count);
-      
+
     setRecommended(top);
     setRecommendationModal(true);
   };
@@ -3047,18 +3047,17 @@ export default function ScholarshipDashboard({
               </option>
             ))}
           </select>
-          
+
           <button
             type="button"
             onClick={() => setSortByPoints(prev => !prev)}
-            className={`px-4 py-3 rounded-xl text-sm outline-none font-bold shadow-sm transition-all flex items-center gap-2 border ${
-              sortByPoints 
-                ? 'bg-[#800020] text-white border-[#800020] hover:bg-[#650018]' 
+            className={`px-4 py-3 rounded-xl text-sm outline-none font-bold shadow-sm transition-all flex items-center gap-2 border ${sortByPoints
+                ? 'bg-[#800020] text-white border-[#800020] hover:bg-[#650018]'
                 : 'bg-gray-50 text-[#800020] border-gray-200 hover:bg-gray-100'
-            }`}
+              }`}
           >
             <FaStar className={sortByPoints ? 'text-yellow-400' : 'text-[#800020]/75'} />
-            {sortByPoints ? 'Sorted by Deservedness' : 'Sort by Points'}
+            {sortByPoints ? 'Sorted by Points' : 'Sort by Points'}
           </button>
         </div>
 
@@ -4249,16 +4248,15 @@ export default function ScholarshipDashboard({
             </div>
           </div>
           <div className="flex gap-2 mt-2">
-            <span className={`flex items-center justify-center px-4 py-1.5 rounded-full text-xs font-bold uppercase ${
-              listType === 'accepted' ? 'bg-green-100 text-green-700' :
-              listType === 'rejected' ? 'bg-red-100 text-red-700' :
-              listType === 'cancelled' ? 'bg-gray-100 text-gray-700' :
-              'bg-yellow-100 text-yellow-700'
-            }`}>
+            <span className={`flex items-center justify-center px-4 py-1.5 rounded-full text-xs font-bold uppercase ${listType === 'accepted' ? 'bg-green-100 text-green-700' :
+                listType === 'rejected' ? 'bg-red-100 text-red-700' :
+                  listType === 'cancelled' ? 'bg-gray-100 text-gray-700' :
+                    'bg-yellow-100 text-yellow-700'
+              }`}>
               {listType === 'accepted' ? 'Accepted' :
-               listType === 'rejected' ? 'Rejected' :
-               listType === 'cancelled' ? 'Cancelled' :
-               'Pending Review'}
+                listType === 'rejected' ? 'Rejected' :
+                  listType === 'cancelled' ? 'Cancelled' :
+                    'Pending Review'}
             </span>
             <div className="flex gap-2 mb-4">
               <button
@@ -4962,10 +4960,10 @@ export default function ScholarshipDashboard({
       {imageModalSrc && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80" onClick={() => setImageModalSrc(null)}>
           <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-            <DecryptedMedia 
-              src={imageModalSrc} 
-              type="image/jpeg" 
-              className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl" 
+            <DecryptedMedia
+              src={imageModalSrc}
+              type="image/jpeg"
+              className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl"
             />
             <button type="button" onClick={() => setImageModalSrc(null)} className="absolute top-3 right-3 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-[#800020]">×</button>
           </div>

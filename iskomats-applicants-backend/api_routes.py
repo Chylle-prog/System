@@ -3366,14 +3366,15 @@ def analyze_merits_onthefly(merits_text):
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
             prompt = f"""
-            You are an expert academic evaluator. Analyze the student's merits and awards text and assign points from 0 to 20.
-            Rubric:
-            - 0 points: No honors/awards, or only regular activities.
-            - 1-5 points: School-level achievements (e.g. Honor Student, Class Officer, local club leader).
-            - 6-10 points: Division/City-level awards (e.g. Consistent With Honors/High Honors, Division competition placements).
-            - 11-15 points: Regional/Provincial awards (e.g. Regional Science Fair winner, Regional athletic meet medalist).
-            - 16-20 points: National/International awards (e.g. National Math Olympiad placer, international delegate, Valedictorian, Summa Cum Laude).
-            
+            You are an expert academic evaluator. Score from 0-20 based on:
+
+1. **Level** (organizing body): School (1-3) → District/City (4-7) → State/Regional (8-12) → National (13-17) → International (18-20)
+2. **Selectivity**: Add +1-3 if <10% of applicants/participants win
+3. **Relevance**: Multiply score by 0.7-1.3 based on alignment with target field
+4. **Leadership/Impact**: +1-2 if student initiated/led the achievement
+5. **Consistency**: +1 if 3+ awards at same/higher tier
+
+Final = clamped 0-20.
             Input Text: "{merits_text}"
             
             Return ONLY a valid JSON object:
