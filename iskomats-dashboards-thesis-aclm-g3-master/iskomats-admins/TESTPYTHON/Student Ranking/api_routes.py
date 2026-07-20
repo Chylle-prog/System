@@ -3383,13 +3383,14 @@ def analyze_merits_onthefly(merits_text):
             - 1-5 points: School-level achievements (e.g. Honor Student, Class Officer, local club leader).
             - 6-10 points: Division/City-level awards (e.g. Consistent With Honors/High Honors, Division competition placements).
             - 11-15 points: Regional/Provincial awards (e.g. Regional Science Fair winner, Regional athletic meet medalist).
-            - 16-20 points: National/International awards (e.g. National Math Olympiad placer, international delegate).
+            - 16-20 points: National/International awards (e.g. National Math Olympiad placer, international delegate, Valedictorian, Summa Cum Laude).
             
             Input Text: "{merits_text}"
             
             Return ONLY a valid JSON object:
             {{"score": <0-20>, "reason": "<one sentence explanation>"}}
             """
+            
             payload = {
                 "contents": [{
                     "parts": [{"text": prompt}]
@@ -3404,11 +3405,28 @@ def analyze_merits_onthefly(merits_text):
                 text = res_data['candidates'][0]['content']['parts'][0]['text']
                 parsed = json.loads(text.strip())
                 return int(parsed.get('score', 0)), str(parsed.get('reason', 'Evaluated by AI.'))
+            else:
+                print(f"[AI MERITS ERROR] API call returned status {response.status_code}: {response.text}", flush=True)
         except Exception as e:
             print(f"[AI MERITS ERROR] API call failed: {e}. Falling back to rule-based parser.", flush=True)
 
-    # If API key is missing or call fails, return 0
-    return 0, "AI evaluation failed or no API key provided."
+    # Fast rule-based fallback parser
+    text_lower = merits_text.lower()
+    
+    # 16-20 points: National/International/Top Honors
+    if any(w in text_lower for w in ['national', 'international', 'olympiad', 'philippine representative', 'valedictorian', 'summa cum laude', 'champion']):
+        return 16, "Awarded 16 points for National/International level merit or top honors (e.g., Valedictorian)."
+    # 11-15 points: Regional/Provincial/High Honors
+    elif any(w in text_lower for w in ['regional', 'provincial', 'clraal', 'stcaa', 'region', 'salutatorian', 'magna cum laude']):
+        return 11, "Awarded 11 points for Regional/Provincial level merit or high honors."
+    # 6-10 points: Division/City/District
+    elif any(w in text_lower for w in ['division', 'city', 'district', 'high honors', 'with high honor', 'consistent with honor', 'cum laude', '1st honorable mention']):
+        return 7, "Awarded 7 points for Division/City level academic merit."
+    # 1-5 points: School-level/Participation
+    elif any(w in text_lower for w in ['school', 'class', 'officer', 'with honor', 'dean\'s list', 'deans list', 'award', 'merit', 'participant', 'honorable mention', 'president']):
+        return 3, "Awarded 3 points for School-level merit or honor."
+    
+    return 0, "No recognizable awards found in the fallback parser."
 
 @api_bp.route('/applicants/<program>', methods=['GET'])
 @token_required
