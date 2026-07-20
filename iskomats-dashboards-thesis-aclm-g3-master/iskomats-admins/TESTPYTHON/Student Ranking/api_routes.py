@@ -3413,6 +3413,19 @@ def analyze_merits_onthefly(merits_text):
     # If API key is missing or call fails, return 0
     return 0, "AI evaluation failed or no API key provided."
 
+@api_bp.route('/test-ai', methods=['GET'])
+def test_ai():
+    import os
+    merit_text = request.args.get('merits', 'Valedictorian')
+    score, reason = analyze_merits_onthefly(merit_text)
+    return jsonify({
+        'status': 'success',
+        'merit_tested': merit_text,
+        'ai_score': score,
+        'ai_reason': reason,
+        'api_key_exists': bool(os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY'))
+    })
+
 @api_bp.route('/applicants/<program>', methods=['GET'])
 @token_required
 def get_applicants(current_user_id, pro_no, role, program):
