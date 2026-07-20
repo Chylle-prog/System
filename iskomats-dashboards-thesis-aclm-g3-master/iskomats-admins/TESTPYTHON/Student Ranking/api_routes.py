@@ -3375,7 +3375,7 @@ def analyze_merits_onthefly(merits_text):
     api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
     if api_key:
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
             prompt = f"""
             You are an expert academic evaluator. Analyze the student's merits and awards text and assign points from 0 to 20.
             Rubric:
