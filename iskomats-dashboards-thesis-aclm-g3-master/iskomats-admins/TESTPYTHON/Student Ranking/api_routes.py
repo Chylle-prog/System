@@ -3375,7 +3375,7 @@ def analyze_merits_onthefly(merits_text):
     api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
     if api_key:
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
             prompt = f"""
             You are an expert academic evaluator. Analyze the student's merits and awards text and assign points from 0 to 20.
             Rubric:
@@ -3408,25 +3408,10 @@ def analyze_merits_onthefly(merits_text):
             else:
                 print(f"[AI MERITS ERROR] API call returned status {response.status_code}: {response.text}", flush=True)
         except Exception as e:
-            print(f"[AI MERITS ERROR] API call failed: {e}. Falling back to rule-based parser.", flush=True)
+            print(f"[AI MERITS ERROR] API call failed: {e}", flush=True)
 
-    # Fast rule-based fallback parser
-    text_lower = merits_text.lower()
-    
-    # 16-20 points: National/International/Top Honors
-    if any(w in text_lower for w in ['national', 'international', 'olympiad', 'philippine representative', 'valedictorian', 'summa cum laude', 'champion']):
-        return 16, "Awarded 16 points for National/International level merit or top honors (e.g., Valedictorian)."
-    # 11-15 points: Regional/Provincial/High Honors
-    elif any(w in text_lower for w in ['regional', 'provincial', 'clraal', 'stcaa', 'region', 'salutatorian', 'magna cum laude']):
-        return 11, "Awarded 11 points for Regional/Provincial level merit or high honors."
-    # 6-10 points: Division/City/District
-    elif any(w in text_lower for w in ['division', 'city', 'district', 'high honors', 'with high honor', 'consistent with honor', 'cum laude', '1st honorable mention']):
-        return 7, "Awarded 7 points for Division/City level academic merit."
-    # 1-5 points: School-level/Participation
-    elif any(w in text_lower for w in ['school', 'class', 'officer', 'with honor', 'dean\'s list', 'deans list', 'award', 'merit', 'participant', 'honorable mention', 'president']):
-        return 3, "Awarded 3 points for School-level merit or honor."
-    
-    return 0, "No recognizable awards found in the fallback parser."
+    # If API key is missing or call fails, return 0
+    return 0, "AI evaluation failed or no API key provided."
 
 @api_bp.route('/applicants/<program>', methods=['GET'])
 @token_required
