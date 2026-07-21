@@ -3524,7 +3524,7 @@ def get_applicants(current_user_id, pro_no, role, program):
         # Add Pagination for SuperAdmin performance
         limit = int(filters.get('limit', 500))
         offset = int(filters.get('offset', 0))
-        query += ' ORDER BY s.status_updated DESC, a.applicant_no DESC LIMIT %s OFFSET %s'
+        query += ' ORDER BY a.applicant_no ASC LIMIT %s OFFSET %s'
         params.extend([limit, offset])
         
         # Note: filters.get('status') ignored because table schema does not properly match it yet
