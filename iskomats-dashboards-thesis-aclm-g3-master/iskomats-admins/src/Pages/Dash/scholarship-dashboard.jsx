@@ -2953,13 +2953,17 @@ export default function ScholarshipDashboard({
     };
 
     const sortApplicants = (list) => {
-      if (!sortByPoints) return list;
       return [...list].sort((a, b) => {
-        const schA = getScholarshipForApplicant(a);
-        const schB = getScholarshipForApplicant(b);
-        const scoreA = calculateDeservednessScore(a, schA);
-        const scoreB = calculateDeservednessScore(b, schB);
-        return scoreB - scoreA;
+        if (sortByPoints) {
+          const schA = getScholarshipForApplicant(a);
+          const schB = getScholarshipForApplicant(b);
+          const scoreA = calculateDeservednessScore(a, schA);
+          const scoreB = calculateDeservednessScore(b, schB);
+          if (scoreB !== scoreA) return scoreB - scoreA;
+        }
+        const idA = Number(a.applicant_no || a.id || a.applicantNo || 0);
+        const idB = Number(b.applicant_no || b.id || b.applicantNo || 0);
+        return idA - idB;
       });
     };
 
