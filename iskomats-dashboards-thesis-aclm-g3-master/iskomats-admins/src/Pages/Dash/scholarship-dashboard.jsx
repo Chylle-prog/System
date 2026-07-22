@@ -1562,7 +1562,7 @@ export default function ScholarshipDashboard({
     const unsubNotifications = socketService.onAnnouncementNotification((data) => {
       console.log('[NOTIFICATION] Received announcement notification:', data);
       // Show an alert for the new announcement
-      alert(`ðŸ“¢ ${data.title}\n\n${data.message}`);
+      alert(`📢 ${data.title}\n\n${data.message}`);
     });
 
     return () => {
@@ -5732,7 +5732,7 @@ export default function ScholarshipDashboard({
                   <div className="flex flex-wrap gap-2">
                     {pendingAction.documents.map((doc, idx) => (
                       <span key={idx} className="bg-white border border-gray-200 px-3 py-1 rounded-full text-[10px] font-bold text-gray-600 shadow-sm">
-                        ðŸ“Ž {doc}
+                        📎 {doc}
                       </span>
                     ))}
                   </div>
