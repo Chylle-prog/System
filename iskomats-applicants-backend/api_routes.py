@@ -1358,13 +1358,15 @@ def notify_announcement_applicants(
 
                 if not app_no: continue
 
-                # Each call to create_notification handles its own connection and commit
+                # Each call to create_notification handles its own connection and commit.
+                # Use sync_email=True because notify_announcement_applicants is ALREADY running inside a background worker thread.
                 result = create_notification(
                     user_no=app_no,
                     title=notification_title,
                     message=notification_message,
                     notif_type='announcement',
                     send_email=send_email_alerts,
+                    sync_email=True,
                 )
                 
                 # Force a UI refresh for the student portal via socket

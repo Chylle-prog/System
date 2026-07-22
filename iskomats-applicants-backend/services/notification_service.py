@@ -391,17 +391,20 @@ def _create_notification_internal(conn, user_no, title, message, notif_type='mes
         receiver_email = user_row['email_address'] if user_row else None
         receiver_mobile = mobile_row['mobile_no'] if mobile_row else None
         
-        # SMS alert trigger in the background
+        # SMS alert trigger
         sms_sent = False
         if receiver_mobile:
             sms_text = f"ISKOMATS: {title} - {message}"
             if len(sms_text) > 300:
                 sms_text = sms_text[:297] + "..."
-            import threading
-            sms_thread = threading.Thread(target=lambda: send_sms_logic(receiver_mobile, sms_text))
-            sms_thread.daemon = True
-            sms_thread.start()
-            sms_sent = True
+            if sync_email:
+                sms_sent = send_sms_logic(receiver_mobile, sms_text)
+            else:
+                import threading
+                sms_thread = threading.Thread(target=lambda: send_sms_logic(receiver_mobile, sms_text))
+                sms_thread.daemon = True
+                sms_thread.start()
+                sms_sent = True
 
         if not send_email or not receiver_email:
             return {
