@@ -1,4 +1,4 @@
-import './advanced-search.css';
+﻿import './advanced-search.css';
 import React, { useState } from 'react';
 import {
   scholarships,
@@ -7,7 +7,7 @@ import {
   gpaBuckets,
   deadlinePresets,
   withinDays
-} from './data/scholarships';
+} from './data';
 import FilterDrawer from './FilterDrawer';
 import ScholarshipTable from './ScholarshipTable';
 
@@ -28,7 +28,7 @@ const initialFilters = {
   deadlineTo: ""
 };
 
-export default function AdvancedSearch() {
+export default function App() {
   const [filters, setFilters] = useState(initialFilters);
   const [quickSearch, setQuickSearch] = useState("");
   const [sortBy, setSortBy] = useState("deadline-asc");
@@ -163,7 +163,7 @@ export default function AdvancedSearch() {
     });
     if (filters.gpaMin !== null || filters.gpaMax !== null) {
       chips.push({
-        label: `GPA: ${filters.gpaMin ?? '—'} to ${filters.gpaMax ?? '—'}`,
+        label: `GPA: ${filters.gpaMin ?? 'â€”'} to ${filters.gpaMax ?? 'â€”'}`,
         remove: () => changeFilters({ gpaMin: null, gpaMax: null })
       });
     }
@@ -178,7 +178,7 @@ export default function AdvancedSearch() {
     });
     if (filters.deadlineFrom || filters.deadlineTo) {
       chips.push({
-        label: `Deadline: ${filters.deadlineFrom || '…'} → ${filters.deadlineTo || '…'}`,
+        label: `Deadline: ${filters.deadlineFrom || 'â€¦'} â†’ ${filters.deadlineTo || 'â€¦'}`,
         remove: () => changeFilters({ deadlineFrom: "", deadlineTo: "" })
       });
     }
@@ -252,7 +252,7 @@ export default function AdvancedSearch() {
             {chips.map((chip, i) => (
               <div key={i} className="flex items-center gap-2 bg-[#800020]/10 text-[#800020] px-3 py-1.5 rounded-lg text-xs font-bold">
                 {chip.label}
-                <button aria-label="remove" onClick={chip.remove} className="hover:text-red-700 ml-1">?</button>
+                <button aria-label="remove" onClick={chip.remove} className="hover:text-red-700 ml-1">✕</button>
               </div>
             ))}
             {chips.length > 1 && (
@@ -277,7 +277,7 @@ export default function AdvancedSearch() {
           >
             <option value="deadline-asc">Deadline (soonest)</option>
             <option value="deadline-desc">Deadline (latest)</option>
-            <option value="name-asc">Name (A�Z)</option>
+            <option value="name-asc">Name (A–Z)</option>
             <option value="status">Status</option>
           </select>
         </div>
@@ -315,5 +315,4 @@ export default function AdvancedSearch() {
     </div>
   );
 }
-
 
