@@ -382,26 +382,18 @@ def _create_notification_internal(conn, user_no, title, message, notif_type='mes
             applicant_email_table = get_applicant_email_table(cur)
             cur.execute(f"SELECT email_address FROM {applicant_email_table} WHERE applicant_no = %s LIMIT 1", (user_no,))
             user_row = cur.fetchone()
-            if user_row and user_row.get('email_address'):
+            if user_row:
                 receiver_email = user_row.get('email_address')
         except Exception as e_table_err:
-            print(f"[NOTIF WARN] Email table query error: {e_table_err}")
-
-        if not receiver_email:
-            try:
-                cur.execute("SELECT email FROM applicants WHERE applicant_no = %s LIMIT 1", (user_no,))
-                user_row = cur.fetchone()
-                if user_row and user_row.get('email'):
-                    receiver_email = user_row.get('email')
-            except Exception: pass
+            print(f"[NOTIF WARN] Email table query error: {e_table_err}", flush=True)
 
         try:
-            cur.execute("SELECT mobile_no, contact_no, phone FROM applicants WHERE applicant_no = %s LIMIT 1", (user_no,))
+            cur.execute("SELECT mobile_no FROM applicants WHERE applicant_no = %s LIMIT 1", (user_no,))
             mobile_row = cur.fetchone()
             if mobile_row:
-                receiver_mobile = mobile_row.get('mobile_no') or mobile_row.get('contact_no') or mobile_row.get('phone')
+                receiver_mobile = mobile_row.get('mobile_no')
         except Exception as mob_err:
-            print(f"[NOTIF WARN] Mobile query error: {mob_err}")
+            print(f"[NOTIF WARN] Mobile query error: {mob_err}", flush=True)
         
         if commit: conn.commit()
         
