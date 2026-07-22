@@ -26,10 +26,9 @@ const sanitizeOriginUrl = (rawUrl, fallback = 'https://iskomats-backend.onrender
   let str = rawUrl.trim();
   if (!str) return fallback;
 
-  str = str.replace(/\/(api|socket\.io).*$/i, '').replace(/\/+$/, '');
-  str = str.replace(/(https?|\/https?)+$/i, '').replace(/\/+$/, '');
-  str = str.replace(/^(https?:\/\/+|https?:?\/+)/i, '');
-  str = str.replace(/(https?|\/https?)+$/i, '').replace(/\/+$/, '');
+  str = str.replace(/^(https?:?\/*)+/i, '');
+  str = str.split('/')[0].split('?')[0].split('#')[0];
+  str = str.replace(/(https?)+$/i, '');
 
   if (!str) return fallback;
 
@@ -73,7 +72,7 @@ const resolveApiBaseUrl = () => {
   return normalizeApiBaseUrl(defaultBackendOrigin);
 };
 
-const resolveSocketUrl = () => {
+export const resolveSocketUrl = () => {
   const configuredSocketUrl = import.meta.env.VITE_SOCKET_URL;
 
   if (configuredSocketUrl && (isLocalDevelopment() || !isLocalOrigin(configuredSocketUrl))) {

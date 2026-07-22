@@ -24,7 +24,9 @@ class SocketService {
       return;
     }
 
-    this.socket = io(SOCKET_URL, {
+    const socketUrl = getSocketUrl();
+
+    this.socket = io(socketUrl, {
       auth: { token },
       transports: ['polling', 'websocket'],
       reconnection: true,

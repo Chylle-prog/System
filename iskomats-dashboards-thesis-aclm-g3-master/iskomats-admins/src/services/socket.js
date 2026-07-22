@@ -1,5 +1,5 @@
 import { io } from 'socket.io-client';
-import { SOCKET_URL } from './config';
+import { SOCKET_URL, resolveSocketUrl } from './config';
 
 class SocketService {
   constructor() {
@@ -12,7 +12,9 @@ class SocketService {
   connect(token) {
     if (this.socket) return;
 
-    this.socket = io(SOCKET_URL, {
+    const socketUrl = resolveSocketUrl ? resolveSocketUrl() : SOCKET_URL;
+
+    this.socket = io(socketUrl, {
       auth: { token },
       transports: ['websocket', 'polling']
     });

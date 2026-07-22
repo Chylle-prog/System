@@ -43,22 +43,19 @@ export const sanitizeOriginUrl = (rawUrl, fallback = 'https://iskomats-backend.o
   let str = rawUrl.trim();
   if (!str) return fallback;
 
-  // 1. Strip path components like /api, /socket.io, query strings
-  str = str.replace(/\/(api|socket\.io).*$/i, '').replace(/\/+$/, '');
+  // 1. Remove leading protocol or malformed protocol prefixes (e.g. https://, http:/, https://https://)
+  str = str.replace(/^(https?:?\/*)+/i, '');
 
-  // 2. Remove stray/concatenated 'https' or 'http' at domain boundary or end of domain
+  // 2. Strip path/query/fragment components (e.g. /api, /socket.io, ?foo=bar)
+  str = str.split('/')[0].split('?')[0].split('#')[0];
+
+  // 3. Remove stray/concatenated 'https' or 'http' at domain boundary or end of domain
   // e.g. "iskomats-backend.onrender.comhttps" -> "iskomats-backend.onrender.com"
-  str = str.replace(/(https?|\/https?)+$/i, '').replace(/\/+$/, '');
-
-  // 3. Remove leading protocol or malformed protocol prefixes
-  str = str.replace(/^(https?:\/\/+|https?:?\/+)/i, '');
-
-  // 4. Second pass for stray trailing 'https' or 'http' after protocol removal
-  str = str.replace(/(https?|\/https?)+$/i, '').replace(/\/+$/, '');
+  str = str.replace(/(https?)+$/i, '');
 
   if (!str) return fallback;
 
-  // 5. Prepend proper protocol
+  // 4. Prepend proper protocol
   const isLocal = str.startsWith('localhost') || str.startsWith('127.0.0.1');
   const protocol = isLocal ? 'http://' : 'https://';
   return `${protocol}${str}`;
