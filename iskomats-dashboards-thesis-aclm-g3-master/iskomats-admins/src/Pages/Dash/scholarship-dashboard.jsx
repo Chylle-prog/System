@@ -208,6 +208,167 @@ const isValidAcademicYear = (value) => ACADEMIC_YEAR_PATTERN.test(normalizeAcade
 
 const normalizeProviderIdentity = (value) => String(value || '').toLowerCase().trim();
 
+const normalizeSearchText = (value) => String(value ?? '').toLowerCase().trim();
+
+const EMPTY_ADVANCED_SEARCH = {
+  scholarshipName: '',
+  provider: '',
+  educationLevel: '',
+  courseProgram: '',
+  location: '',
+  academicRequirements: '',
+  incomeBracket: '',
+  status: '',
+  deadlineFrom: '',
+  deadlineTo: '',
+  scholarshipType: '',
+  minGpa: '',
+  applicantName: '',
+  applicantSchool: '',
+  applicantGpa: ''
+};
+
+const getScholarshipField = (post, fieldNames) => {
+  for (const fieldName of fieldNames) {
+    const value = post?.[fieldName];
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      return String(value).trim();
+    }
+  }
+  return '';
+};
+
+const hasActiveAdvancedFilters = (advanced) =>
+  Object.values(advanced).some((value) => String(value ?? '').trim() !== '');
+
+const getApplicantScholarshipPost = (applicant, scholarshipPosts) => {
+  const posts = scholarshipPosts || [];
+  const applicantReqNo = String(
+    applicant.reqNo || applicant.req_no || applicant.request_no || applicant.scholarshipNo || applicant.scholarship_no || ''
+  );
+
+  if (applicantReqNo) {
+    const byId = posts.find((post) => String(post.reqNo || post.id || '') === applicantReqNo);
+    if (byId) {
+      return byId;
+    }
+  }
+
+  const applicantScholarshipName = normalizeSearchText(
+    applicant.scholarshipName || applicant.scholarship_name || applicant.appliedScholarship || applicant.scholarship || applicant.scholarshipTitle || ''
+  );
+
+  if (!applicantScholarshipName) {
+    return null;
+  }
+
+  return posts.find((post) => {
+    const postName = normalizeSearchText(post.scholarshipName || post.title || '');
+    return postName && (postName === applicantScholarshipName || postName.includes(applicantScholarshipName) || applicantScholarshipName.includes(postName));
+  }) || null;
+};
+
+const applicantMatchesAdvancedScholarshipFilters = (applicant, advanced, scholarshipPosts) => {
+  if (!hasActiveAdvancedFilters(advanced)) {
+    return true;
+  }
+
+  // Filter by applicant's own attributes
+  if (advanced.applicantName && !normalizeSearchText(applicant.name).includes(normalizeSearchText(advanced.applicantName))) {
+    return false;
+  }
+
+  if (advanced.applicantSchool && !normalizeSearchText(applicant.school).includes(normalizeSearchText(advanced.applicantSchool))) {
+    return false;
+  }
+
+  if (advanced.applicantGpa && applicant.grade && !normalizeSearchText(String(applicant.grade)).includes(normalizeSearchText(advanced.applicantGpa))) {
+    return false;
+  }
+
+  if (advanced.courseProgram && applicant.course && !normalizeSearchText(applicant.course).includes(normalizeSearchText(advanced.courseProgram))) {
+    return false;
+  }
+
+  if (advanced.location && (applicant.municipality || applicant.address)) {
+    const locationMatch = normalizeSearchText(applicant.municipality || '').includes(normalizeSearchText(advanced.location)) ||
+                        normalizeSearchText(applicant.address || '').includes(normalizeSearchText(advanced.location));
+    if (!locationMatch) return false;
+  }
+
+  if (advanced.incomeBracket && (applicant.income || applicant.financial_income_of_parents || applicant.parentFinance || applicant.family?.grossIncome) && !normalizeSearchText(String(applicant.income || applicant.financial_income_of_parents || applicant.parentFinance || applicant.family?.grossIncome)).includes(normalizeSearchText(advanced.incomeBracket))) {
+    return false;
+  }
+
+  if (advanced.status && applicant.status !== advanced.status) {
+    return false;
+  }
+
+  // Filter by scholarship attributes (scholarship they applied to)
+  const post = getApplicantScholarshipPost(applicant, scholarshipPosts);
+  
+  if (advanced.scholarshipName) {
+    const postName = normalizeSearchText(post?.scholarshipName || post?.title || '');
+    if (!postName.includes(normalizeSearchText(advanced.scholarshipName))) {
+      return false;
+    }
+  }
+
+  if (advanced.provider) {
+    const providerValue = normalizeSearchText(getScholarshipField(post, ['providerName', 'provider_name', 'provider', 'program']));
+    if (!providerValue.includes(normalizeSearchText(advanced.provider))) {
+      return false;
+    }
+  }
+
+  if (advanced.educationLevel) {
+    const educationValue = normalizeSearchText(getScholarshipField(post, ['educationLevel', 'education_level', 'education', 'education_level_required']));
+    if (!educationValue.includes(normalizeSearchText(advanced.educationLevel))) {
+      return false;
+    }
+  }
+
+  if (advanced.scholarshipType) {
+    const scholarshipTypeValue = normalizeSearchText(getScholarshipField(post, ['scholarshipType', 'scholarship_type', 'type', 'program_type']));
+    if (!scholarshipTypeValue.includes(normalizeSearchText(advanced.scholarshipType))) {
+      return false;
+    }
+  }
+
+  if (advanced.academicRequirements) {
+    const academicRequirements = normalizeSearchText(getScholarshipField(post, ['academicRequirements', 'requirements', 'eligibility', 'eligibilityRequirements', 'minGpa']));
+    if (!academicRequirements.includes(normalizeSearchText(advanced.academicRequirements))) {
+      return false;
+    }
+  }
+
+  if (advanced.minGpa) {
+    const minGpaValue = normalizeSearchText(post?.minGpa);
+    if (!minGpaValue.includes(normalizeSearchText(advanced.minGpa))) {
+      return false;
+    }
+  }
+
+  if (advanced.deadlineFrom || advanced.deadlineTo) {
+    const deadlineValue = post?.deadline ? new Date(post.deadline) : null;
+    if (advanced.deadlineFrom) {
+      const fromDate = new Date(advanced.deadlineFrom);
+      if (deadlineValue && deadlineValue < fromDate) {
+        return false;
+      }
+    }
+    if (advanced.deadlineTo) {
+      const toDate = new Date(advanced.deadlineTo);
+      toDate.setHours(23, 59, 59, 999);
+      if (deadlineValue && deadlineValue > toDate) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+};
+
 const decodeTokenPayload = (token) => {
   if (!token) {
     return null;
@@ -416,6 +577,253 @@ export default function ScholarshipDashboard({
   const [processingApplicantActions, setProcessingApplicantActions] = useState({});
   const [sortConfig, setSortConfig] = useState({ column: null, direction: null });
   const [activeDropdown, setActiveDropdown] = useState(null);
+  const [showTrackAdvancedSearch, setShowTrackAdvancedSearch] = useState(false);
+  const [trackAdvancedSearch, setTrackAdvancedSearch] = useState({ ...EMPTY_ADVANCED_SEARCH });
+
+  const trackActiveFilterCount = useMemo(() => {
+    return Object.values(trackAdvancedSearch).filter((value) => String(value ?? '').trim() !== '').length;
+  }, [trackAdvancedSearch]);
+
+  const advancedFilterOptions = useMemo(() => {
+    const posts = (data.scholarshipPosts || []).filter(post => !(post.isRemoved || post.is_removed));
+    const providers = new Set();
+    const educationLevels = new Set();
+    const coursePrograms = new Set();
+    const scholarshipTypes = new Set();
+
+    posts.forEach((post) => {
+      const provider = getScholarshipField(post, ['providerName', 'provider_name', 'provider', 'program']);
+      if (provider) providers.add(provider);
+
+      const educationLevel = getScholarshipField(post, ['educationLevel', 'education_level', 'education', 'education_level_required']);
+      if (educationLevel) educationLevels.add(educationLevel);
+
+      const courseProgram = getScholarshipField(post, ['course', 'courseProgram', 'program', 'programName']);
+      if (courseProgram) coursePrograms.add(courseProgram);
+
+      const scholarshipType = getScholarshipField(post, ['scholarshipType', 'scholarship_type', 'type', 'program_type']);
+      if (scholarshipType) scholarshipTypes.add(scholarshipType);
+    });
+
+    return {
+      providers: [...providers].sort(),
+      educationLevels: [...educationLevels].sort(),
+      coursePrograms: [...coursePrograms].sort(),
+      scholarshipTypes: [...scholarshipTypes].sort(),
+    };
+  }, [data.scholarshipPosts]);
+
+  const renderAdvancedSearchPanel = (title, filters, setFilters, onReset, isApplicantSearch = false) => (
+    <div className="mb-6 rounded-2xl border border-gray-200 bg-gray-50 p-4 space-y-4 shadow-sm">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <h4 className="text-sm font-black uppercase tracking-wider text-[#800020]">{title}</h4>
+        <button
+          type="button"
+          onClick={onReset}
+          className="text-sm font-semibold text-[#800020] hover:underline"
+        >
+          Reset Filters
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        {isApplicantSearch && (
+          <>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Applicant Name</label>
+              <input
+                type="text"
+                name="applicantName"
+                value={filters.applicantName}
+                onChange={(e) => setFilters((prev) => ({ ...prev, applicantName: e.target.value }))}
+                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+                placeholder="Search applicant name"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Applicant School</label>
+              <input
+                type="text"
+                name="applicantSchool"
+                value={filters.applicantSchool}
+                onChange={(e) => setFilters((prev) => ({ ...prev, applicantSchool: e.target.value }))}
+                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+                placeholder="Search school name"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Applicant GPA/Grade</label>
+              <input
+                type="text"
+                name="applicantGpa"
+                value={filters.applicantGpa}
+                onChange={(e) => setFilters((prev) => ({ ...prev, applicantGpa: e.target.value }))}
+                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+                placeholder="e.g. 85"
+              />
+            </div>
+          </>
+        )}
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Scholarship name</label>
+          <input
+            type="text"
+            name="scholarshipName"
+            value={filters.scholarshipName}
+            onChange={(e) => setFilters((prev) => ({ ...prev, scholarshipName: e.target.value }))}
+            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+            placeholder="Search title"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Provider / Organization</label>
+          <select
+            name="provider"
+            value={filters.provider}
+            onChange={(e) => setFilters((prev) => ({ ...prev, provider: e.target.value }))}
+            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+          >
+            <option value="">All providers</option>
+            {advancedFilterOptions.providers.map((provider) => (
+              <option key={provider} value={provider}>{provider}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Education level</label>
+          <select
+            name="educationLevel"
+            value={filters.educationLevel}
+            onChange={(e) => setFilters((prev) => ({ ...prev, educationLevel: e.target.value }))}
+            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+          >
+            <option value="">Any level</option>
+            {advancedFilterOptions.educationLevels.map((level) => (
+              <option key={level} value={level}>{level}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Course / Program</label>
+          <select
+            name="courseProgram"
+            value={filters.courseProgram}
+            onChange={(e) => setFilters((prev) => ({ ...prev, courseProgram: e.target.value }))}
+            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+          >
+            <option value="">Any course</option>
+            {advancedFilterOptions.coursePrograms.map((course) => (
+              <option key={course} value={course}>{course}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Location</label>
+          <input
+            type="text"
+            name="location"
+            value={filters.location}
+            onChange={(e) => setFilters((prev) => ({ ...prev, location: e.target.value }))}
+            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+            placeholder="e.g. Lipa City, Batangas"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Academic requirements</label>
+          <input
+            type="text"
+            name="academicRequirements"
+            value={filters.academicRequirements}
+            onChange={(e) => setFilters((prev) => ({ ...prev, academicRequirements: e.target.value }))}
+            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+            placeholder="GPA / grade requirement"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Income bracket</label>
+          <input
+            type="text"
+            name="incomeBracket"
+            value={filters.incomeBracket}
+            onChange={(e) => setFilters((prev) => ({ ...prev, incomeBracket: e.target.value }))}
+            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+            placeholder="e.g. PHP 100k"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Status</label>
+          <select
+            name="status"
+            value={filters.status}
+            onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}
+            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+          >
+            <option value="">Any status</option>
+            {isApplicantSearch ? (
+              <>
+                <option value="Pending">Pending</option>
+                <option value="Accepted">Accepted</option>
+                <option value="Rejected">Rejected</option>
+                <option value="Cancelled">Cancelled</option>
+              </>
+            ) : (
+              <>
+                <option value="open">Open</option>
+                <option value="closed">Closed</option>
+                <option value="pending">Pending</option>
+                <option value="expired">Expired</option>
+              </>
+            )}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Application deadline from</label>
+          <input
+            type="date"
+            name="deadlineFrom"
+            value={filters.deadlineFrom}
+            onChange={(e) => setFilters((prev) => ({ ...prev, deadlineFrom: e.target.value }))}
+            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Application deadline to</label>
+          <input
+            type="date"
+            name="deadlineTo"
+            value={filters.deadlineTo}
+            onChange={(e) => setFilters((prev) => ({ ...prev, deadlineTo: e.target.value }))}
+            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Type of scholarship</label>
+          <select
+            name="scholarshipType"
+            value={filters.scholarshipType}
+            onChange={(e) => setFilters((prev) => ({ ...prev, scholarshipType: e.target.value }))}
+            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+          >
+            <option value="">Any type</option>
+            {advancedFilterOptions.scholarshipTypes.map((type) => (
+              <option key={type} value={type}>{type}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Minimum GPA</label>
+          <input
+            type="text"
+            name="minGpa"
+            value={filters.minGpa}
+            onChange={(e) => setFilters((prev) => ({ ...prev, minGpa: e.target.value }))}
+            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+            placeholder="e.g. 85"
+          />
+        </div>
+      </div>
+    </div>
+  );
 
   useEffect(() => {
     const handleOutsideClick = (e) => {
@@ -3016,8 +3424,9 @@ export default function ScholarshipDashboard({
           (a.mobileNumber && a.mobileNumber.toLowerCase().includes(search));
         const matchesScholarship = matchesScholarshipSelection(a, trackScholarshipFilter);
         const matchesCourse = courseTrackFilter === 'all' || a.course === courseTrackFilter;
+        const matchesAdvanced = applicantMatchesAdvancedScholarshipFilters(a, trackAdvancedSearch, data.scholarshipPosts);
 
-        return matchesSearch && matchesScholarship && matchesCourse;
+        return matchesSearch && matchesScholarship && matchesCourse && matchesAdvanced;
       });
     };
 
@@ -3132,7 +3541,35 @@ export default function ScholarshipDashboard({
             <FaStar className={sortByPoints ? 'text-yellow-400' : 'text-[#800020]/75'} />
             {sortByPoints ? 'Sorted by Points' : 'Sort by Points'}
           </button>
+
+          <button
+            type="button"
+            onClick={() => setShowTrackAdvancedSearch((prev) => !prev)}
+            className="px-4 py-3 rounded-xl border border-[#800020] text-[#800020] font-semibold text-sm hover:bg-[#800020]/10 transition-colors flex items-center gap-2"
+          >
+            <FaFilter />
+            {showTrackAdvancedSearch ? 'Hide Filters' : 'Advanced Search'}
+            {trackActiveFilterCount > 0 && (
+              <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-[#800020] text-white text-[10px] font-black">
+                {trackActiveFilterCount}
+              </span>
+            )}
+          </button>
         </div>
+
+        {showTrackAdvancedSearch && renderAdvancedSearchPanel(
+          'Advanced Applicant Search',
+          trackAdvancedSearch,
+          setTrackAdvancedSearch,
+          () => setTrackAdvancedSearch({ ...EMPTY_ADVANCED_SEARCH }),
+          true
+        )}
+
+        {trackActiveFilterCount > 0 && !showTrackAdvancedSearch && (
+          <p className="text-xs text-gray-500 mb-4">
+            {trackActiveFilterCount} filter{trackActiveFilterCount === 1 ? '' : 's'} active — showing applicants matching your criteria.
+          </p>
+        )}
 
         <div className="overflow-y-auto rounded-xl border border-gray-200" style={{ maxHeight: 'calc(100vh - 500px)' }}>
           <table className="w-full text-sm">
@@ -5066,7 +5503,6 @@ export default function ScholarshipDashboard({
             {[
               { id: 'dashboard', label: 'Dashboard', icon: <FaTachometerAlt /> },
               { id: 'finder', label: 'Slot Tracking', icon: <FaSearch /> },
-              { id: 'advanced-search', label: 'Advanced Search', icon: <FaSearch /> },
               { id: 'manage', label: 'Manage', icon: <FaFilter /> },
               { id: 'track', label: 'Track', icon: <FaUsers /> },
               { id: 'reports', label: 'Reports', icon: <FaChartBar /> },
