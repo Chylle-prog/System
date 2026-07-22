@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { applicantAPI, applicationAPI, scholarshipAPI, announcementAPI, notificationAPI, API_ORIGIN } from '../services/api';
@@ -66,17 +66,17 @@ const getAnnouncementPreview = (message) => {
 
 const formatToLocalTime = (dateStr) => {
   if (!dateStr) return '';
-  
+
   // If it's a string like "2026-04-23 20:11:34", browsers treat it as local time.
   // We assume the backend sends UTC, so we normalize to ISO format with 'Z'.
   let normalized = dateStr;
   if (typeof dateStr === 'string' && dateStr.includes(' ') && !dateStr.includes('T') && !dateStr.includes('Z')) {
     normalized = dateStr.replace(' ', 'T') + 'Z';
   }
-  
+
   const date = new Date(normalized);
   if (isNaN(date.getTime())) return dateStr;
-  
+
   return date.toLocaleString('en-US', {
     year: 'numeric',
     month: 'short',
@@ -109,13 +109,13 @@ const Portal = () => {
   const [selectedAnnouncementImage, setSelectedAnnouncementImage] = useState(null);
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedAppForView, setSelectedAppForView] = useState(null);
-  
+
   // Custom Modal States for Cancellation
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [pendingCancel, setPendingCancel] = useState(null); // { reqNo, scholarshipName }
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [statusInfo, setStatusInfo] = useState({ title: '', message: '', isError: false });
-  
+
   const messageDropdownRef = useRef(null);
   const notificationDropdownRef = useRef(null);
   const currentChatRoomRef = useRef(null);
@@ -175,7 +175,7 @@ const Portal = () => {
     // Load user data
     const user = localStorage.getItem('currentUser');
     const profiles = JSON.parse(localStorage.getItem('userProfiles')) || {};
-    
+
     if (!user || !localStorage.getItem('authToken')) {
       navigate('/login');
       return;
@@ -207,7 +207,7 @@ const Portal = () => {
         console.warn("Failed to fetch user profile:", err);
       }
     };
-    
+
     if (user) {
       fetchApplications();
       fetchProfile().then((profile) => {
@@ -268,7 +268,7 @@ const Portal = () => {
     const applicantNo = localStorage.getItem('applicantNo');
     if (token) {
       socketService.connect(token);
-      
+
       unsubLogged = socketService.subscribe('logged_in', (data) => {
         // data.rooms is now an array of {room, provider_name} objects
         if (data.rooms) {
@@ -301,7 +301,7 @@ const Portal = () => {
 
         setChatMessages(prev => {
           const roomMsgs = prev[roomId] || [];
-          
+
           // Merge historical messages avoiding duplicates
           const merged = [...roomMsgs];
           messages.forEach(msg => {
@@ -320,7 +320,7 @@ const Portal = () => {
               });
             }
           });
-          
+
           return {
             ...prev,
             [roomId]: sortChatMessages(merged)
@@ -363,7 +363,7 @@ const Portal = () => {
             time: msg.timestamp,
             type: String(msg.sender_id) === String(applicantNo) ? 'sent' : 'received'
           };
-          
+
           return {
             ...prev,
             [msg.room]: sortChatMessages([...roomMsgs, nextMessage])
@@ -401,13 +401,13 @@ const Portal = () => {
           'scholarship': 'fa-graduation-cap',
           'result': 'fa-file-signature'
         };
-        
+
         const newNotif = {
           ...data,
           read: false,
           icon: type_icons[data.type] || 'fa-bell'
         };
-        
+
         setNotifications(prev => {
           // Avoid duplicates
           if (prev.some(n => n.id === newNotif.id)) return prev;
@@ -504,13 +504,13 @@ const Portal = () => {
     setCurrentChatId(scholarId);
     setShowChatModal(true);
     socketService.loadHistory(scholarId);
-    
+
     // Get the provider name from the scholarships array
     const scholarship = scholarships.find(s => s.id === scholarId);
     setCurrentChatProviderName(scholarship?.name || null);
-    
+
     // Mark scholarship as read when opening chat
-    setScholarships(prev => prev.map(s => 
+    setScholarships(prev => prev.map(s =>
       s.id === scholarId ? { ...s, unread: 0 } : s
     ));
   };
@@ -556,15 +556,15 @@ const Portal = () => {
           // Room ID format: applicantNo+proNo
           const parts = room.id.split('+');
           if (parts.length < 2) return true; // Keep unidentified room formats
-          
+
           const roomProNo = parts.length > 1 ? parseInt(parts[1]) : null;
           // Check if any application matches this provider
-          return applications.some(app => 
-            (roomProNo !== null) && 
+          return applications.some(app =>
+            (roomProNo !== null) &&
             (Number(app.pro_no) === roomProNo || Number(app.provider_no) === roomProNo)
           );
         });
-        
+
         // Only update if something was actually filtered out to avoid loops
         if (filtered.length !== prev.length) {
           return filtered;
@@ -632,22 +632,22 @@ const Portal = () => {
     const daysInMonth = getDaysInMonth(currentDate);
     const firstDay = getFirstDayOfMonth(currentDate);
     const days = [];
-    
+
     // Add empty cells for days before month starts
     for (let i = 0; i < firstDay; i++) {
       days.push(null);
     }
-    
+
     // Add days of the month
     for (let i = 1; i <= daysInMonth; i++) {
       days.push(i);
     }
-    
+
     // Add empty cells to complete the grid (6 weeks = 42 cells)
     while (days.length < 42) {
       days.push(null);
     }
-    
+
     return days;
   };
 
@@ -694,7 +694,7 @@ const Portal = () => {
     // 1. Mark as read in DB if not already
     // Optimistic update
     if (!notif.read) {
-      setNotifications(prev => prev.map(n => 
+      setNotifications(prev => prev.map(n =>
         n.id === notif.id ? { ...n, read: true } : n
       ));
       notificationAPI.markAsRead(notif.id).catch(err => {
@@ -704,13 +704,13 @@ const Portal = () => {
 
     // 2. Navigate based on type
     setShowNotificationDropdown(false);
-    
+
     const notifTitle = (notif.title || '').toLowerCase();
     const notifType = (notif.type || '').toLowerCase();
-    
+
     // Check if it's a new or updated scholarship
-    const isScholarshipUpdate = 
-      notifType === 'scholarship' || 
+    const isScholarshipUpdate =
+      notifType === 'scholarship' ||
       notifType === 'scholarship_update' ||
       (notifTitle.includes('scholarship') && (notifTitle.includes('new') || notifTitle.includes('update') || notifTitle.includes('posted')));
 
@@ -723,10 +723,10 @@ const Portal = () => {
       // Find the specific announcement to open it
       // Use fuzzy matching for title or message if ID isn't linked
       const notifText = `${notif.title || ''} ${notif.message || ''}`;
-      const ann = dbAnnouncements.find(a => 
+      const ann = dbAnnouncements.find(a =>
         (a.ann_no && notifText.includes(String(a.ann_no))) ||
         (a.ann_title && (notif.title || '').includes(a.ann_title)) ||
-        (a.ann_title && notifText.includes(a.ann_title)) || 
+        (a.ann_title && notifText.includes(a.ann_title)) ||
         (a.ann_message && notifText.includes(a.ann_message.substring(0, 20)))
       );
       if (ann) {
@@ -746,7 +746,7 @@ const Portal = () => {
 
   const handleConfirmCancel = async () => {
     if (!pendingCancel) return;
-    
+
     const { reqNo, scholarshipName } = pendingCancel;
     setShowCancelConfirm(false);
 
@@ -755,7 +755,7 @@ const Portal = () => {
       message: 'Please wait while we process your request.'
     });
     setShowLoadingOverlay(true);
-    
+
     try {
       // 1. Find the application to get the provider ID for the chat room removal
       const targetApp = applications.find(app => (app.scholarship_no === reqNo || app.req_no === reqNo));
@@ -769,7 +769,7 @@ const Portal = () => {
         const scholarship = scholarships.find(s => s.id === roomId);
         const providerName = scholarship?.name || null;
         socketService.sendMessage(roomId, applicantNo, `I have cancelled my application for "${scholarshipName}".`, providerName);
-        
+
         // Remove the room from the applicant's side local state immediately
         setScholarships(prev => prev.filter(s => s.id !== roomId));
       }
@@ -780,7 +780,7 @@ const Portal = () => {
       // Refresh the list after cancellation
       const apps = await applicationAPI.getUserApplications();
       setApplications(apps || []);
-      
+
       setStatusInfo({
         title: 'Cancellation Successful',
         message: `Your application for "${scholarshipName}" has been successfully cancelled.`,
@@ -802,24 +802,24 @@ const Portal = () => {
     }
   };
 
-   const openAnnouncement = (ann) => {
-     if (!ann) return;
-     const id = ann?.ann_no ?? ann?.id ?? ann?.announcement_id ?? 'N/A';
-     const title = ann?.ann_title || ann?.title || 'Announcement';
-     const message = ann?.ann_message || ann?.message || ann?.content || 'No details provided.';
-     const provider = ann?.provider_name || ann?.providerName || 'Scholarship Team';
-     const date = ann?.time_added || ann?.status_updated || ann?.ann_date || null;
+  const openAnnouncement = (ann) => {
+    if (!ann) return;
+    const id = ann?.ann_no ?? ann?.id ?? ann?.announcement_id ?? 'N/A';
+    const title = ann?.ann_title || ann?.title || 'Announcement';
+    const message = ann?.ann_message || ann?.message || ann?.content || 'No details provided.';
+    const provider = ann?.provider_name || ann?.providerName || 'Scholarship Team';
+    const date = ann?.time_added || ann?.status_updated || ann?.ann_date || null;
 
-     setSelectedAnnouncement({
-       ...ann,
-       announcementId: id,
-       announcementTitle: title,
-       announcementMessage: message,
-       announcementProvider: provider,
-       postedAt: date,
-     });
-     setShowAnnouncementModal(true);
-   };
+    setSelectedAnnouncement({
+      ...ann,
+      announcementId: id,
+      announcementTitle: title,
+      announcementMessage: message,
+      announcementProvider: provider,
+      postedAt: date,
+    });
+    setShowAnnouncementModal(true);
+  };
 
   const closeAnnouncementModal = () => {
     setShowAnnouncementModal(false);
@@ -1920,7 +1920,7 @@ const Portal = () => {
         }
 
         .requirements-list li::before {
-          content: 'âœ“';
+          content: '✓';
           position: absolute;
           left: 0;
           top: 0.6rem;
@@ -2042,7 +2042,7 @@ const Portal = () => {
           }
 
           .community-post::after {
-            content: 'View Details â†’';
+            content: 'View Details •••••••••••’';
             position: absolute;
             bottom: 0.8rem;
             right: 1.2rem;
@@ -2403,9 +2403,9 @@ const Portal = () => {
         gap: '8px',
         border: '1px solid #334155'
       }}>
-        <span style={{ color: localStorage.getItem('debug_skip_alternate_check') === 'true' ? '#10b981' : '#ef4444' }}>â—</span>
+        <span style={{ color: localStorage.getItem('debug_skip_alternate_check') === 'true' ? '#10b981' : '#ef4444' }}>•••••••••••</span>
         <span>Alt Account Check: {localStorage.getItem('debug_skip_alternate_check') === 'true' ? 'Bypassed' : 'Enabled'}</span>
-        <button 
+        <button
           type="button"
           onClick={() => {
             const isBypassed = localStorage.getItem('debug_skip_alternate_check') === 'true';
@@ -2450,7 +2450,7 @@ const Portal = () => {
                 <div className="message-list">
                   {scholarships.length > 0 ? (
                     scholarships.map(scholar => (
-                      <div 
+                      <div
                         key={scholar.id}
                         className={`message-item ${scholar.unread > 0 ? 'unread' : ''}`}
                         onClick={() => openChat(scholar.id, scholar.name)}
@@ -2465,11 +2465,11 @@ const Portal = () => {
                         </div>
                         {scholar.unread > 0 && (
                           <span style={{
-                            background: 'var(--primary)', 
-                            color: 'white', 
-                            borderRadius: '12px', 
-                            padding: '0.2rem 0.6rem', 
-                            fontSize: '0.75rem', 
+                            background: 'var(--primary)',
+                            color: 'white',
+                            borderRadius: '12px',
+                            padding: '0.2rem 0.6rem',
+                            fontSize: '0.75rem',
                             fontWeight: '800',
                             marginLeft: 'auto',
                             display: 'flex',
@@ -2484,9 +2484,9 @@ const Portal = () => {
                     ))
                   ) : (
                     <div className="no-messages">
-                      <i className="fas fa-comments" style={{ 
-                        fontSize: '2rem', 
-                        color: 'var(--gray-3)', 
+                      <i className="fas fa-comments" style={{
+                        fontSize: '2rem',
+                        color: 'var(--gray-3)',
                         marginBottom: '1rem',
                         display: 'block'
                       }}></i>
@@ -2524,7 +2524,7 @@ const Portal = () => {
               <div className="notification-list">
                 {notifications.length > 0 ? (
                   notifications.map(notif => (
-                    <div 
+                    <div
                       key={notif.id}
                       className={`notification-item ${notif.read ? '' : 'unread'}`}
                       onClick={() => handleNotificationClick(notif)}
@@ -2544,9 +2544,9 @@ const Portal = () => {
                   ))
                 ) : (
                   <div className="no-messages" style={{ padding: '2rem', textAlign: 'center' }}>
-                    <i className="fas fa-bell-slash" style={{ 
-                      fontSize: '2rem', 
-                      color: 'var(--gray-3)', 
+                    <i className="fas fa-bell-slash" style={{
+                      fontSize: '2rem',
+                      color: 'var(--gray-3)',
                       marginBottom: '1rem',
                       display: 'block'
                     }}></i>
@@ -2559,18 +2559,18 @@ const Portal = () => {
 
           <button className="profile-btn" onClick={() => navigate('/profile')} style={{ display: 'flex', alignItems: 'center', padding: '0.4rem 1.2rem' }}>
             {globalProfile?.profile_picture || userProfile?.profile_picture ? (
-              <img 
-                src={globalProfile?.profile_picture || userProfile?.profile_picture} 
-                alt="Avatar" 
+              <img
+                src={globalProfile?.profile_picture || userProfile?.profile_picture}
+                alt="Avatar"
                 className="nav-profile-avatar"
               />
             ) : (
-              <i className="fas fa-user-circle" style={{marginRight: '6px'}}></i>
+              <i className="fas fa-user-circle" style={{ marginRight: '6px' }}></i>
             )}
             Profile
           </button>
           <button className="logout-btn" onClick={logout}>
-            <i className="fas fa-sign-out-alt" style={{marginRight: '6px'}}></i>Logout
+            <i className="fas fa-sign-out-alt" style={{ marginRight: '6px' }}></i>Logout
           </button>
         </div>
       </nav>      {/* Loading overlay */}
@@ -2612,12 +2612,12 @@ const Portal = () => {
             <div ref={chatMessagesEndRef} />
           </div>
           <div className="chat-input-area">
-            <input 
-              type="text" 
+            <input
+              type="text"
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder="Type your message..." 
+              placeholder="Type your message..."
             />
             <button onClick={sendMessage}>
               <i className="fas fa-paper-plane"></i>
@@ -2628,12 +2628,12 @@ const Portal = () => {
 
       {/* Announcement Detail Modal */}
       {showAnnouncementModal && selectedAnnouncement && (
-        <div 
-          className="announcement-modal-overlay" 
+        <div
+          className="announcement-modal-overlay"
           onClick={closeAnnouncementModal}
         >
-          <div 
-            className="announcement-modal" 
+          <div
+            className="announcement-modal"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="ann-modal-header">
@@ -2649,15 +2649,15 @@ const Portal = () => {
               <h2 className="ann-modal-title">{selectedAnnouncement.announcementTitle}</h2>
               <div className="ann-modal-meta">
                 <span style={{ background: 'var(--accent-soft)', padding: '0.2rem 0.6rem', borderRadius: '6px', color: 'var(--primary)', fontWeight: '700' }}>
-                  <i className="fas fa-hashtag" style={{marginRight: '8px'}}></i>
+                  <i className="fas fa-hashtag" style={{ marginRight: '8px' }}></i>
                   {selectedAnnouncement.announcementId}
                 </span>
                 <span>
-                  <i className="far fa-calendar-alt" style={{marginRight: '8px'}}></i>
+                  <i className="far fa-calendar-alt" style={{ marginRight: '8px' }}></i>
                   Posted on {selectedAnnouncement.postedAt ? new Date(selectedAnnouncement.postedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Recently'}
                 </span>
                 <span>
-                  <i className="far fa-user" style={{marginRight: '8px'}}></i>
+                  <i className="far fa-user" style={{ marginRight: '8px' }}></i>
                   {selectedAnnouncement.announcementProvider}
                 </span>
               </div>
@@ -2698,13 +2698,13 @@ const Portal = () => {
                   })}
                 </div>
               )}
-              <div style={{marginTop: '3rem', padding: '1.5rem', background: 'var(--gray-1)', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '1rem'}}>
-                <div style={{width: '45px', height: '45px', background: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', boxShadow: 'var(--shadow-sm)'}}>
+              <div style={{ marginTop: '3rem', padding: '1.5rem', background: 'var(--gray-1)', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <div style={{ width: '45px', height: '45px', background: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', boxShadow: 'var(--shadow-sm)' }}>
                   <i className="fas fa-info-circle"></i>
                 </div>
-                <div style={{flex: 1}}>
-                  <h4 style={{fontSize: '0.9rem', color: 'var(--text-dark)', marginBottom: '0.2rem'}}>Need more information?</h4>
-                  <p style={{fontSize: '0.8rem', color: 'var(--text-soft)'}}>You can contact the scholarship provider directly via the chat feature linked to your application.</p>
+                <div style={{ flex: 1 }}>
+                  <h4 style={{ fontSize: '0.9rem', color: 'var(--text-dark)', marginBottom: '0.2rem' }}>Need more information?</h4>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-soft)' }}>You can contact the scholarship provider directly via the chat feature linked to your application.</p>
                 </div>
               </div>
             </div>
@@ -2755,8 +2755,8 @@ const Portal = () => {
                 <i className="fas fa-user-lock"></i>
               </div>
               <div>
-                <div style={{fontWeight: 800, fontSize: '1rem', marginBottom: '0.2rem'}}>{portalLockMessage}</div>
-                <div style={{fontSize: '0.88rem', lineHeight: '1.5'}}>Only your Profile remains available while this account is restricted.</div>
+                <div style={{ fontWeight: 800, fontSize: '1rem', marginBottom: '0.2rem' }}>{portalLockMessage}</div>
+                <div style={{ fontSize: '0.88rem', lineHeight: '1.5' }}>Only your Profile remains available while this account is restricted.</div>
               </div>
             </div>
           )}
@@ -2766,7 +2766,7 @@ const Portal = () => {
                 <h3>Find Scholarships</h3>
                 <p>Discover personalized scholarship opportunities that match your profile and qualifications.</p>
                 {portalLocked ? (
-                  <button className="menu-btn" disabled style={{cursor: 'not-allowed', opacity: 0.7}}>{portalLockMessage}</button>
+                  <button className="menu-btn" disabled style={{ cursor: 'not-allowed', opacity: 0.7 }}>{portalLockMessage}</button>
                 ) : (
                   <Link to="/findscholarship" className="menu-btn">Get Started</Link>
                 )}
@@ -2774,17 +2774,17 @@ const Portal = () => {
               <div className="menu-card">
                 <h3>My Applications</h3>
                 <p>Track and manage your scholarship applications in one convenient location.</p>
-                <button className="menu-btn" onClick={() => setPortalSection('applications')} disabled={portalLocked} style={portalLocked ? {cursor: 'not-allowed', opacity: 0.7} : undefined}>View Applications</button>
+                <button className="menu-btn" onClick={() => setPortalSection('applications')} disabled={portalLocked} style={portalLocked ? { cursor: 'not-allowed', opacity: 0.7 } : undefined}>View Applications</button>
               </div>
               <div className="menu-card">
                 <h3>Community</h3>
                 <p>Connect with other students, mentors, and scholarship providers.</p>
-                <button className="menu-btn" onClick={() => setPortalSection('community')} disabled={portalLocked} style={portalLocked ? {cursor: 'not-allowed', opacity: 0.7} : undefined}>Join Community</button>
+                <button className="menu-btn" onClick={() => setPortalSection('community')} disabled={portalLocked} style={portalLocked ? { cursor: 'not-allowed', opacity: 0.7 } : undefined}>Join Community</button>
               </div>
               <div className="menu-card">
                 <h3>Resources</h3>
                 <p>Access guides, templates, and tools to strengthen your applications.</p>
-                <button className="menu-btn" onClick={() => setPortalSection('resources')} disabled={portalLocked} style={portalLocked ? {cursor: 'not-allowed', opacity: 0.7} : undefined}>Browse Resources</button>
+                <button className="menu-btn" onClick={() => setPortalSection('resources')} disabled={portalLocked} style={portalLocked ? { cursor: 'not-allowed', opacity: 0.7 } : undefined}>Browse Resources</button>
               </div>
             </div>
           )}
@@ -2795,28 +2795,28 @@ const Portal = () => {
               <button className="back-button" onClick={() => setPortalSection('menu')}>
                 <i className="fas fa-arrow-left"></i> Back
               </button>
-              <h3 style={{color: 'var(--primary)', fontSize: '1.8rem'}}>Ongoing Applications</h3>
+              <h3 style={{ color: 'var(--primary)', fontSize: '1.8rem' }}>Ongoing Applications</h3>
               <div className="application-list">
                 {applications.length === 0 ? (
-                  <div style={{textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-soft)'}}>
-                    <i className="fas fa-folder-open" style={{fontSize: '3rem', color: 'var(--gray-3)', marginBottom: '1rem', display: 'block'}}></i>
-                    <p style={{marginBottom: '1rem'}}>You haven't submitted any scholarship applications yet.</p>
-                    <Link to="/findscholarship" className="menu-btn" style={{textDecoration: 'none', color: 'white', display: 'inline-block'}}>
+                  <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-soft)' }}>
+                    <i className="fas fa-folder-open" style={{ fontSize: '3rem', color: 'var(--gray-3)', marginBottom: '1rem', display: 'block' }}></i>
+                    <p style={{ marginBottom: '1rem' }}>You haven't submitted any scholarship applications yet.</p>
+                    <Link to="/findscholarship" className="menu-btn" style={{ textDecoration: 'none', color: 'white', display: 'inline-block' }}>
                       Find Scholarships
                     </Link>
                   </div>
                 ) : (
                   [...applications].reverse().map((app, index) => {
                     const badgeClass = app.status === 'Accepted' ? 'status-approved' :
-                                     app.status === 'Rejected' ? 'status-rejected' :
-                                     app.status === 'Cancelled' ? 'status-cancelled' : 'status-pending';
-                    
+                      app.status === 'Rejected' ? 'status-rejected' :
+                        app.status === 'Cancelled' ? 'status-cancelled' : 'status-pending';
+
                     return (
                       <div key={app.scholarship_no} className="application-item">
                         <div className="application-info">
                           <h4>{app.name}</h4>
-                          <p style={{color: '#a0b0c0'}}>
-                             Deadline: {app.deadline ? new Date(app.deadline).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
+                          <p style={{ color: '#a0b0c0' }}>
+                            Deadline: {app.deadline ? new Date(app.deadline).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
                           </p>
                         </div>
                         <div className="application-actions">
@@ -2845,39 +2845,39 @@ const Portal = () => {
                 <i className="fas fa-arrow-left"></i> Back
               </button>
 
-              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem'}}>
-                <h3 style={{color: 'var(--primary)', margin: 0, fontSize: '1.8rem'}}>Announcements</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <h3 style={{ color: 'var(--primary)', margin: 0, fontSize: '1.8rem' }}>Announcements</h3>
                 <button
-                  onClick={() => document.getElementById('events-calendar-section')?.scrollIntoView({behavior: 'smooth'})}
+                  onClick={() => document.getElementById('events-calendar-section')?.scrollIntoView({ behavior: 'smooth' })}
                   style={{
-                    background: 'var(--primary)', 
-                    color: 'white', 
-                    border: 'none', 
-                    padding: '0.6rem 1.2rem', 
-                    borderRadius: '8px', 
-                    cursor: 'pointer', 
-                    fontSize: '0.9rem', 
-                    fontWeight: '500', 
-                    transition: 'all 0.2s', 
+                    background: 'var(--primary)',
+                    color: 'white',
+                    border: 'none',
+                    padding: '0.6rem 1.2rem',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                    fontWeight: '500',
+                    transition: 'all 0.2s',
                     boxShadow: '0 4px 10px rgba(79,13,0,0.15)'
                   }}
                 >
-                  <i className="fas fa-calendar-alt" style={{marginRight: '6px'}}></i> View Calendar
+                  <i className="fas fa-calendar-alt" style={{ marginRight: '6px' }}></i> View Calendar
                 </button>
               </div>
-              <div style={{display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2.5rem'}}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2.5rem' }}>
                 {dbAnnouncements.length > 0 ? (
                   dbAnnouncements.map((ann, idx) => (
-                    <div 
-                      key={ann.ann_no || idx} 
-                      className="community-post" 
-                      style={{borderLeft: '4px solid var(--primary)', paddingLeft: '1.2rem'}}
+                    <div
+                      key={ann.ann_no || idx}
+                      className="community-post"
+                      style={{ borderLeft: '4px solid var(--primary)', paddingLeft: '1.2rem' }}
                     >
-                      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.8rem'}}>
-                        <div style={{flex: 1}}>
-                          <h4 style={{margin: 0, color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px'}}>{ann.provider_name}</h4>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.8rem' }}>
+                        <div style={{ flex: 1 }}>
+                          <h4 style={{ margin: 0, color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{ann.provider_name}</h4>
                           {ann.ann_title && (
-                            <h5 style={{margin: '0.3rem 0 0 0', color: 'var(--text-dark)', fontSize: '1.15rem', fontWeight: '800', lineHeight: '1.3', display: 'flex', alignItems: 'center'}}>
+                            <h5 style={{ margin: '0.3rem 0 0 0', color: 'var(--text-dark)', fontSize: '1.15rem', fontWeight: '800', lineHeight: '1.3', display: 'flex', alignItems: 'center' }}>
                               {ann.ann_title}
                               {(() => {
                                 const createdDate = new Date(ann.time_added || 0);
@@ -2900,22 +2900,22 @@ const Portal = () => {
                             </h5>
                           )}
                         </div>
-                        <span style={{fontSize: '0.75rem', color: 'var(--text-soft)', background: 'var(--gray-2)', padding: '0.25rem 0.75rem', borderRadius: '20px', fontWeight: '600'}}>
-                          <i className="far fa-clock" style={{marginRight: '5px'}}></i>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-soft)', background: 'var(--gray-2)', padding: '0.25rem 0.75rem', borderRadius: '20px', fontWeight: '600' }}>
+                          <i className="far fa-clock" style={{ marginRight: '5px' }}></i>
                           {ann.time_added ? formatToLocalTime(ann.time_added) : 'Recent'}
                         </span>
                       </div>
-                      <p style={{marginBottom: '1rem', color: 'var(--text-soft)', fontSize: '0.95rem', lineHeight: '1.6', display: '-webkit-box', WebkitLineClamp: '3', WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
+                      <p style={{ marginBottom: '1rem', color: 'var(--text-soft)', fontSize: '0.95rem', lineHeight: '1.6', display: '-webkit-box', WebkitLineClamp: '3', WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                         {ann.ann_message}
                       </p>
 
                       {/* Compact Image Preview for the List Card */}
                       {ann.announcementImages?.length > 0 && (
                         <div style={{
-                          display: 'flex', 
-                          gap: '8px', 
-                          overflowX: 'auto', 
-                          paddingBottom: '0.8rem', 
+                          display: 'flex',
+                          gap: '8px',
+                          overflowX: 'auto',
+                          paddingBottom: '0.8rem',
                           marginBottom: '0.8rem',
                           scrollbarWidth: 'none',
                           msOverflowStyle: 'none'
@@ -2923,10 +2923,10 @@ const Portal = () => {
                           {ann.announcementImages.map((image, i) => {
                             const imageSrc = ensureAbsoluteUrl(typeof image === 'string' ? image : image?.url);
                             if (!imageSrc) return null;
-                            const imageAlt = `Image ${i+1} of ${ann.ann_title || 'Announcement'}`;
+                            const imageAlt = `Image ${i + 1} of ${ann.ann_title || 'Announcement'}`;
 
                             return (
-                              <img 
+                              <img
                                 key={i}
                                 src={imageSrc}
                                 alt={imageAlt}
@@ -2952,7 +2952,7 @@ const Portal = () => {
                           })}
                         </div>
                       )}
-                      <button 
+                      <button
                         onClick={() => openAnnouncement(ann)}
                         style={{
                           backgroundImage: 'linear-gradient(135deg, #4F0D00, #9b3e22)',
@@ -2983,47 +2983,47 @@ const Portal = () => {
                     </div>
                   ))
                 ) : (
-                  <div style={{textAlign: 'center', padding: '2rem', color: 'var(--text-soft)'}}>
-                    <i className="fas fa-bullhorn" style={{fontSize: '2rem', marginBottom: '1rem', display: 'block'}}></i>
+                  <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-soft)' }}>
+                    <i className="fas fa-bullhorn" style={{ fontSize: '2rem', marginBottom: '1rem', display: 'block' }}></i>
                     <p>No announcements at this time.</p>
                   </div>
                 )}
               </div>
 
-              <h3 id="events-calendar-section" style={{color: 'var(--primary)', marginBottom: '1.5rem', fontSize: '1.6rem', paddingTop: '1rem'}}>
+              <h3 id="events-calendar-section" style={{ color: 'var(--primary)', marginBottom: '1.5rem', fontSize: '1.6rem', paddingTop: '1rem' }}>
                 Events Calendar
               </h3>
-              <div style={{background: 'white', borderRadius: '16px', padding: '1.5rem', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-light)'}}>
+              <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-light)' }}>
                 {/* Calendar Navigation */}
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem'}}>
-                  <div style={{display: 'flex', gap: '0.5rem'}}>
-                    <button 
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
                       onClick={() => navigateYear('prev')}
-                      style={{background: 'none', border: 'none', fontSize: '1rem', cursor: 'pointer', color: 'var(--text-soft)', padding: '0.3rem'}}
+                      style={{ background: 'none', border: 'none', fontSize: '1rem', cursor: 'pointer', color: 'var(--text-soft)', padding: '0.3rem' }}
                       title="Previous Year"
                     >
                       <i className="fas fa-angle-double-left"></i>
                     </button>
-                    <button 
+                    <button
                       onClick={() => navigateMonth('prev')}
-                      style={{background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--text-soft)', padding: '0.3rem'}}
+                      style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--text-soft)', padding: '0.3rem' }}
                       title="Previous Month"
                     >
                       <i className="fas fa-chevron-left"></i>
                     </button>
                   </div>
-                  <h4 style={{margin: 0, fontSize: '1.2rem', color: '#333'}}>{getMonthName(currentDate)}</h4>
-                  <div style={{display: 'flex', gap: '0.5rem'}}>
-                    <button 
+                  <h4 style={{ margin: 0, fontSize: '1.2rem', color: '#333' }}>{getMonthName(currentDate)}</h4>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
                       onClick={() => navigateMonth('next')}
-                      style={{background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--text-soft)', padding: '0.3rem'}}
+                      style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--text-soft)', padding: '0.3rem' }}
                       title="Next Month"
                     >
                       <i className="fas fa-chevron-right"></i>
                     </button>
-                    <button 
+                    <button
                       onClick={() => navigateYear('next')}
-                      style={{background: 'none', border: 'none', fontSize: '1rem', cursor: 'pointer', color: 'var(--text-soft)', padding: '0.3rem'}}
+                      style={{ background: 'none', border: 'none', fontSize: '1rem', cursor: 'pointer', color: 'var(--text-soft)', padding: '0.3rem' }}
                       title="Next Year"
                     >
                       <i className="fas fa-angle-double-right"></i>
@@ -3032,15 +3032,15 @@ const Portal = () => {
                 </div>
 
                 {/* Today Button */}
-                <div style={{textAlign: 'center', marginBottom: '1rem'}}>
-                  <button 
+                <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+                  <button
                     onClick={goToToday}
                     style={{
-                      background: 'var(--primary)', 
-                      color: 'white', 
-                      border: 'none', 
-                      padding: '0.4rem 1rem', 
-                      borderRadius: '20px', 
+                      background: 'var(--primary)',
+                      color: 'white',
+                      border: 'none',
+                      padding: '0.4rem 1rem',
+                      borderRadius: '20px',
                       fontSize: '0.85rem',
                       cursor: 'pointer',
                       boxShadow: '0 2px 4px rgba(79,13,0,0.15)'
@@ -3051,22 +3051,22 @@ const Portal = () => {
                 </div>
 
                 {/* Calendar Grid */}
-                <div style={{display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem', textAlign: 'center', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.85rem', color: 'var(--text-soft)'}}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem', textAlign: 'center', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.85rem', color: 'var(--text-soft)' }}>
                   <div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div>
                 </div>
-                <div style={{display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem', textAlign: 'center', fontSize: '0.95rem'}}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem', textAlign: 'center', fontSize: '0.95rem' }}>
                   {generateCalendarDays().map((day, index) => {
                     const event = day ? getEventsForDate(day) : null;
-                    const isToday = day === new Date().getDate() && 
-                                   currentDate.getMonth() === new Date().getMonth() && 
-                                   currentDate.getFullYear() === new Date().getFullYear();
-                    
+                    const isToday = day === new Date().getDate() &&
+                      currentDate.getMonth() === new Date().getMonth() &&
+                      currentDate.getFullYear() === new Date().getFullYear();
+
                     if (!day) {
-                      return <div key={index} style={{padding: '0.6rem', color: '#ccc'}}></div>;
+                      return <div key={index} style={{ padding: '0.6rem', color: '#ccc' }}></div>;
                     }
-                    
-                    let dayStyle = {padding: '0.6rem', cursor: 'pointer', borderRadius: '8px', transition: 'all 0.2s'};
-                    
+
+                    let dayStyle = { padding: '0.6rem', cursor: 'pointer', borderRadius: '8px', transition: 'all 0.2s' };
+
                     if (event) {
                       if (event.type === 'warning') {
                         dayStyle.background = 'var(--warning-bg)';
@@ -3085,15 +3085,15 @@ const Portal = () => {
                         dayStyle.boxShadow = '0 2px 4px rgba(0,0,0,0.05)';
                       }
                     }
-                    
+
                     if (isToday) {
                       dayStyle.border = '2px solid var(--primary)';
                       dayStyle.fontWeight = 'bold';
                     }
-                    
+
                     return (
-                      <div 
-                        key={index} 
+                      <div
+                        key={index}
                         style={dayStyle}
                         title={event ? event.title : ''}
                         onClick={() => {
@@ -3138,17 +3138,17 @@ const Portal = () => {
                   })}
                 </div>
                 {/* Dynamic Events Legend */}
-                <div style={{marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '0.8rem', fontSize: '0.9rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-light)'}}>
-                  <p style={{fontSize: '0.8rem', color: 'var(--text-soft)', fontWeight: '600', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px'}}>Upcoming Deadlines & Events</p>
-                  
+                <div style={{ marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '0.8rem', fontSize: '0.9rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-light)' }}>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-soft)', fontWeight: '600', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Upcoming Deadlines & Events</p>
+
                   {/* Dynamic Scholarship Deadlines */}
                   {resources.filter(s => {
                     if (!s.deadline) return false;
                     const d = new Date(s.deadline);
                     return d.getMonth() === currentDate.getMonth() && d.getFullYear() === currentDate.getFullYear();
                   }).sort((a, b) => new Date(a.deadline) - new Date(b.deadline)).map((s, idx) => (
-                    <div key={`deadline-${idx}`} style={{display: 'flex', alignItems: 'center', gap: '0.8rem', fontWeight: '600', color: 'var(--text-dark)'}}>
-                      <span style={{width: '14px', height: '14px', borderRadius: '4px', background: 'var(--accent-soft)', border: '2px solid var(--primary)'}}></span>
+                    <div key={`deadline-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', fontWeight: '600', color: 'var(--text-dark)' }}>
+                      <span style={{ width: '14px', height: '14px', borderRadius: '4px', background: 'var(--accent-soft)', border: '2px solid var(--primary)' }}></span>
                       Deadline: {s.scholarship_name || s.name} &mdash; {new Date(s.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                     </div>
                   ))}
@@ -3158,8 +3158,8 @@ const Portal = () => {
                     const d = new Date(s.deadline);
                     return d.getMonth() === currentDate.getMonth() && d.getFullYear() === currentDate.getFullYear();
                   }).length === 0 && (
-                    <p style={{fontSize: '0.85rem', color: '#999', fontStyle: 'italic', marginTop: '0.5rem'}}>No scheduled deadlines for this month.</p>
-                  )}
+                      <p style={{ fontSize: '0.85rem', color: '#999', fontStyle: 'italic', marginTop: '0.5rem' }}>No scheduled deadlines for this month.</p>
+                    )}
                 </div>
               </div>
             </div>
@@ -3171,7 +3171,7 @@ const Portal = () => {
               <button className="back-button" onClick={() => setPortalSection('menu')}>
                 <i className="fas fa-arrow-left"></i> Back
               </button>
-              <h3 style={{color: 'var(--primary)', fontSize: '1.8rem', fontWeight: '700', marginBottom: '2rem'}}>
+              <h3 style={{ color: 'var(--primary)', fontSize: '1.8rem', fontWeight: '700', marginBottom: '2rem' }}>
                 Resources & Guides
               </h3>
               <div className="scholarship-list">
@@ -3188,9 +3188,9 @@ const Portal = () => {
                     return (
                       <div className="scholarship-card" key={res.req_no}>
                         <h4>
-                          <i 
-                            className={`fas ${res.icon || 'fa-graduation-cap'}`} 
-                            style={{marginRight: '10px', color: 'var(--primary)'}}
+                          <i
+                            className={`fas ${res.icon || 'fa-graduation-cap'}`}
+                            style={{ marginRight: '10px', color: 'var(--primary)' }}
                           ></i>
                           {res.scholarship_name}
                           {(() => {
@@ -3223,7 +3223,7 @@ const Portal = () => {
                           ) : (
                             <ul>
                               {res.gpa && <li>Minimum GPA: {res.gpa}</li>}
-                              {res.parent_finance && <li>Monthly family income â‰¤ â‚±{Number(res.parent_finance).toLocaleString()}</li>}
+                              {res.parent_finance && <li>Monthly family income ≤ ₱{Number(res.parent_finance).toLocaleString()}</li>}
                               {res.location && <li>Resident of {res.location}</li>}
                               <li>Please check the official provider website for more details.</li>
                             </ul>
@@ -3233,8 +3233,8 @@ const Portal = () => {
                     );
                   })
                 ) : (
-                  <div style={{textAlign: 'center', padding: '2rem', color: 'var(--text-soft)'}}>
-                    <i className="fas fa-spinner fa-spin" style={{fontSize: '2rem', marginBottom: '1rem'}}></i>
+                  <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-soft)' }}>
+                    <i className="fas fa-spinner fa-spin" style={{ fontSize: '2rem', marginBottom: '1rem' }}></i>
                     <p>Loading scholarship resources...</p>
                   </div>
                 )}
@@ -3272,13 +3272,13 @@ const Portal = () => {
       {showStatusModal && (
         <div className="loading-overlay active">
           <div className="loading-modal">
-            <i 
-              className={`fas ${statusInfo.isError ? 'fa-times-circle' : 'fa-check-circle'}`} 
-              style={{ 
-                fontSize: '4rem', 
-                color: statusInfo.isError ? '#e74c3c' : '#27ae60', 
-                marginBottom: '1.5rem', 
-                display: 'block' 
+            <i
+              className={`fas ${statusInfo.isError ? 'fa-times-circle' : 'fa-check-circle'}`}
+              style={{
+                fontSize: '4rem',
+                color: statusInfo.isError ? '#e74c3c' : '#27ae60',
+                marginBottom: '1.5rem',
+                display: 'block'
               }}
             ></i>
             <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '1rem' }}>
@@ -3288,8 +3288,8 @@ const Portal = () => {
               {statusInfo.message}
             </p>
             <div className="modal-buttons">
-              <button 
-                className="modal-btn modal-btn-primary" 
+              <button
+                className="modal-btn modal-btn-primary"
                 onClick={() => setShowStatusModal(false)}
               >
                 OK
@@ -3313,7 +3313,7 @@ const Portal = () => {
                 <i className="fas fa-times"></i>
               </button>
             </div>
-            
+
             <div className="view-modal-content">
               {/* Applicant Details */}
               <div className="view-section">
@@ -3391,7 +3391,7 @@ const Portal = () => {
                   </div>
                   <div className="view-item">
                     <label>Parents' Gross Income</label>
-                    <div className="value">â‚±{Number(userProfile?.financial_income_of_parents || 0).toLocaleString()}</div>
+                    <div className="value">₱{Number(userProfile?.financial_income_of_parents || 0).toLocaleString()}</div>
                   </div>
                   <div className="view-item">
                     <label>Number of Siblings</label>
@@ -3449,7 +3449,7 @@ const Portal = () => {
           </div>
         </div>
       )}
-      
+
       {/* Chatbot */}
       <ChatbotDesign apiUrl={import.meta.env.VITE_CHATBOT_API_URL || import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:8000'} />
     </>

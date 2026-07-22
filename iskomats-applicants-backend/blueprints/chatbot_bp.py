@@ -45,14 +45,11 @@ def chat():
 
     history = [{"role": m.get("role", "user"), "content": m.get("content", "")} for m in history_data]
 
-    context = rag.get_context(message)
-
-    if not context:
-        def empty_stream():
-            msg = "Wala akong impormasyon tungkol dyan / I don't have information about that."
-            yield f"data: {json.dumps({'token': msg})}\n\n"
-            yield f"data: {json.dumps({'done': True})}\n\n"
-        return Response(empty_stream(), mimetype="text/event-stream")
+    try:
+        context = rag.get_context(message)
+    except Exception as e:
+        logger.warning(f"RAG context retrieval failed: {e}")
+        context = ""
 
     def event_stream():
         try:

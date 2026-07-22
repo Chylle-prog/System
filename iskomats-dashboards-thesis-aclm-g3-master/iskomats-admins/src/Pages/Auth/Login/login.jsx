@@ -89,8 +89,8 @@ const Login = () => {
             return;
           }
           // Check if it's an email verification error
-          if (error.response.data?.message?.includes('not verified') || 
-              error.response.data?.message?.includes('verify')) {
+          if (error.response.data?.message?.includes('not verified') ||
+            error.response.data?.message?.includes('verify')) {
             errorMessage = "Please verify your email first. Redirecting to verification page...";
             localStorage.setItem('registrationEmail', formData.email);
             setFormData({
@@ -188,7 +188,7 @@ const Login = () => {
                         value={formData.password}
                         onChange={handleChange}
                         className="w-full bg-white/5 border border-white/20 rounded-xl py-3 pl-11 pr-12 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#800020]/50 focus:border-[#800020] transition-all"
-                        placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                        placeholder="•••••••••••"
                         required
                       />
                       <button
