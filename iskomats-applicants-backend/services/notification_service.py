@@ -84,8 +84,70 @@ def fetch_google_access_token():
         print(f"[NOTIF ERROR] Token exchange failed: {e}")
         raise RuntimeError(f"Token exchange failed: {str(e)}")
 
+import smtplib
+
+def send_email_message(msg):
+    """
+    Unified email dispatcher.
+    First tries Google OAuth API. If OAuth fails or token is expired,
+    it automatically falls back to SMTP if GMAIL_APP_PASSWORD or SMTP_PASSWORD is set.
+    """
+    receiver_email = msg['To']
+    sender_email = msg['From']
+    
+    oauth_err_detail = None
+    # 1. Try Google OAuth API
+    try:
+        access_token = fetch_google_access_token()
+        raw_bytes = msg.as_bytes()
+        raw_bytes = raw_bytes.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+        encoded_message = base64.urlsafe_b64encode(raw_bytes).decode('utf-8')
+        
+        email_request = urllib_request.Request(
+            'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+            data=json.dumps({'raw': encoded_message}).encode('utf-8'),
+            headers={
+                'Authorization': f'Bearer {access_token}',
+                'Content-Type': 'application/json',
+            },
+            method='POST',
+        )
+        
+        with urllib_request.urlopen(email_request, timeout=30) as response:
+            print(f"[EMAIL OAUTH SUCCESS] Sent email to {receiver_email}")
+            return True
+    except Exception as oauth_err:
+        oauth_err_detail = str(oauth_err)
+        print(f"[EMAIL OAUTH WARN] OAuth send failed for {receiver_email}: {oauth_err}")
+
+    # 2. Try SMTP App Password fallback
+    app_password = (
+        os.environ.get('GMAIL_APP_PASSWORD', '').strip() or 
+        os.environ.get('SMTP_PASSWORD', '').strip() or 
+        os.environ.get('SMTP_PASS', '').strip()
+    )
+    smtp_user = os.environ.get('SMTP_USER', '').strip() or sender_email
+    smtp_host = os.environ.get('SMTP_HOST', 'smtp.gmail.com').strip()
+    smtp_port = int(os.environ.get('SMTP_PORT', '587'))
+
+    if app_password:
+        try:
+            print(f"[EMAIL SMTP] Attempting SMTP fallback via {smtp_host}:{smtp_port}...")
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
+                server.starttls()
+                server.login(smtp_user, app_password)
+                server.send_message(msg)
+            print(f"[EMAIL SMTP SUCCESS] Sent email via SMTP to {receiver_email}")
+            return True
+        except Exception as smtp_err:
+            print(f"[EMAIL SMTP ERROR] SMTP fallback failed: {smtp_err}")
+            raise RuntimeError(f"Both OAuth ({oauth_err_detail}) and SMTP ({smtp_err}) email delivery failed.")
+    else:
+        raise RuntimeError(oauth_err_detail or "Failed to send email.")
+
+
 def send_verification_email(receiver_email, code, is_admin=False):
-    """Unified helper to send verification codes via Gmail API."""
+    """Unified helper to send verification codes via Gmail API / SMTP fallback."""
     GMAIL_SENDER_EMAIL = os.environ.get('GMAIL_SENDER_EMAIL', '').strip()
     if not GMAIL_SENDER_EMAIL:
         raise RuntimeError('GMAIL_SENDER_EMAIL is not configured.')
@@ -108,28 +170,7 @@ The ISKOMATS Team
     msg['From'] = GMAIL_SENDER_EMAIL
     msg['To'] = receiver_email
     
-    try:
-        access_token = fetch_google_access_token()
-        raw_bytes = msg.as_bytes()
-        raw_bytes = raw_bytes.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
-        encoded_message = base64.urlsafe_b64encode(raw_bytes).decode('utf-8')
-        
-        email_request = urllib_request.Request(
-            'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
-            data=json.dumps({'raw': encoded_message}).encode('utf-8'),
-            headers={
-                'Authorization': f'Bearer {access_token}',
-                'Content-Type': 'application/json',
-            },
-            method='POST',
-        )
-        
-        with urllib_request.urlopen(email_request, timeout=30) as response:
-            print(f"[EMAIL SUCCESS] Sent verification to {receiver_email}")
-            return True
-    except Exception as e:
-        print(f"[EMAIL ERROR] Failed to send verification to {receiver_email}: {e}")
-        raise e
+    return send_email_message(msg)
 
 
 def send_sms_logic(number, message):
@@ -380,29 +421,7 @@ The ISKOMATS Team
                     msg['Subject'] = f"ISKOMATS Notification: {title}"
                     msg['From'] = GMAIL_SENDER_EMAIL
                     msg['To'] = receiver_email
-                    
-                    if not access_token:
-                        access_token = fetch_google_access_token()
-                    
-                    if not access_token:
-                        return False
-
-                    raw_bytes = msg.as_bytes()
-                    raw_bytes = raw_bytes.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
-                    encoded_message = base64.urlsafe_b64encode(raw_bytes).decode('utf-8')
-                    
-                    email_request = urllib_request.Request(
-                        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
-                        data=json.dumps({'raw': encoded_message}).encode('utf-8'),
-                        headers={
-                            'Authorization': f'Bearer {access_token}',
-                            'Content-Type': 'application/json',
-                        },
-                        method='POST',
-                    )
-                    
-                    with urllib_request.urlopen(email_request, timeout=30) as response:
-                        return True
+                    return send_email_message(msg)
                 except Exception as email_err:
                     print(f"[NOTIF EMAIL ERROR] Failed to send email to {receiver_email}: {email_err}")
                     return False

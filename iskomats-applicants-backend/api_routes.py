@@ -61,7 +61,7 @@ def on_blueprint_init(state):
             print(f"[BACKEND] Admin schema migration skipped or failed: {e}")
 
 from project_config import get_db, get_db_startup, use_storage, upload_to_supabase
-from services.notification_service import create_notification, init_socketio as init_notification_socketio, fetch_google_access_token, send_verification_email
+from services.notification_service import create_notification, init_socketio as init_notification_socketio, fetch_google_access_token, send_verification_email, send_email_message
 
 # ─── SCHEMA & AUDIT CACHE ───
 _SCHEMA_INITIALIZED = False
@@ -882,7 +882,7 @@ def load_applicant_verification_context(cursor, applicant_no, scholarship_no):
 
 
 def send_password_reset_email(receiver_email, reset_url, provider_name=None):
-    """Send a password reset email via the Gmail API over HTTPS."""
+    """Send a password reset email via Google OAuth API / SMTP fallback."""
     from email.mime.text import MIMEText
     
     print(f"[SEND_PASSWORD_RESET_EMAIL] Starting email send process...", flush=True)
@@ -909,44 +909,12 @@ Best regards,
 The ISKOMATS Team
 """
 
-    # Create proper MIME email using MIMEText (like the student API does)
     msg = MIMEText(body)
     msg['Subject'] = 'Reset your ISKOMATS password'
     msg['From'] = GMAIL_SENDER_EMAIL
     msg['To'] = receiver_email
 
-    print("[SEND_PASSWORD_RESET_EMAIL] Fetching Google access token...", flush=True)
-    access_token = fetch_google_access_token()
-    print("[SEND_PASSWORD_RESET_EMAIL] Access token obtained successfully", flush=True)
-    
-    raw_bytes = msg.as_bytes()
-    raw_bytes = raw_bytes.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
-    encoded_message = base64.urlsafe_b64encode(raw_bytes).decode('utf-8')
-    gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
-    gmail_request = urllib_request.Request(
-        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
-        data=gmail_request_body,
-        headers={
-            'Authorization': f'Bearer {access_token}',
-            'Content-Type': 'application/json',
-        },
-        method='POST',
-    )
-
-    try:
-        print("[SEND_PASSWORD_RESET_EMAIL] Sending request to Gmail API...", flush=True)
-        with urllib_request.urlopen(gmail_request, timeout=30) as response:
-            response_data = response.read()
-            print(f"[SEND_PASSWORD_RESET_EMAIL] Gmail API response: {response_data.decode('utf-8')}", flush=True)
-    except urllib_error.HTTPError as exc:
-        response_body = exc.read().decode('utf-8', errors='replace')
-        print(f"[SEND_PASSWORD_RESET_EMAIL] Gmail API HTTP Error: {exc.code} - {response_body}", flush=True)
-        raise RuntimeError(f'Gmail API send failed: {response_body}') from exc
-    except OSError as exc:
-        print(f"[SEND_PASSWORD_RESET_EMAIL] Network error: {str(exc)}", flush=True)
-        raise RuntimeError('Gmail API request failed because the network request could not be completed') from exc
-    except Exception as exc:
-        print(f"[SEND_PASSWORD_RESET_EMAIL] Unexpected error: {str(exc)}", flush=True)
+    return send_email_message(msg)
 
 
 @api_bp.route('/applicants/<int:applicant_no>/school-verification', methods=['POST'])

@@ -43,7 +43,7 @@ from services.ocr_utils import (
     verify_signature_against_id, 
     save_signature_profile
 )
-from services.notification_service import create_notification, fetch_google_access_token, send_verification_email
+from services.notification_service import create_notification, fetch_google_access_token, send_verification_email, send_email_message
 from services.google_auth_service import verify_google_token
 from concurrent.futures import ThreadPoolExecutor
 
@@ -1197,10 +1197,8 @@ def decode_password_reset_token(token):
 
 
 def send_password_reset_email(receiver_email, reset_url):
-    """Send a password reset email via the Gmail API."""
-    from urllib import request as urllib_request
+    """Send a password reset email via Google OAuth API / SMTP fallback."""
     from email.mime.text import MIMEText
-    import json
     
     if not GMAIL_SENDER_EMAIL:
         raise RuntimeError('Gmail sender email is not configured.')
@@ -1221,21 +1219,7 @@ If you did not request a password reset, you can ignore this email.
     msg['From'] = GMAIL_SENDER_EMAIL
     msg['To'] = receiver_email
 
-    access_token = fetch_google_access_token()
-    raw_bytes = msg.as_bytes()
-    raw_bytes = raw_bytes.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
-    encoded_message = base64.urlsafe_b64encode(raw_bytes).decode('utf-8')
-    gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
-    gmail_request = urllib_request.Request(
-        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
-        data=gmail_request_body,
-        headers={
-            'Authorization': f'Bearer {access_token}',
-            'Content-Type': 'application/json',
-        },
-        method='POST',
-    )
-    urllib_request.urlopen(gmail_request, timeout=30)
+    return send_email_message(msg)
 
 
 def token_required(route_handler):
