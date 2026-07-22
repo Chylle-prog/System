@@ -5,9 +5,27 @@
 
 import { supabase } from '../supabaseClient';
 
-// API Base URL - change this if backend is on different server
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
+export const sanitizeOriginUrl = (rawUrl, fallback = 'https://iskomats-backend.onrender.com') => {
+  if (!rawUrl || typeof rawUrl !== 'string') return fallback;
+  let str = rawUrl.trim();
+  if (!str) return fallback;
+  str = str.replace(/\/(api|socket\.io).*$/i, '').replace(/\/+$/, '');
+  str = str.replace(/(\/|\b)(https?)+$/i, '').replace(/\/+$/, '');
+  str = str.replace(/^(https?:\/\/+|https?:?\/+)/i, '');
+  str = str.replace(/(\/|\b)(https?)+$/i, '').replace(/\/+$/, '');
+  if (!str) return fallback;
+  const isLocal = str.startsWith('localhost') || str.startsWith('127.0.0.1');
+  return `${isLocal ? 'http://' : 'https://'}${str}`;
+};
+
+const getApiBaseUrl = () => {
+  const raw = import.meta.env.VITE_API_URL || 'https://iskomats-backend.onrender.com/api';
+  const origin = sanitizeOriginUrl(raw);
+  return `${origin}/api`;
+};
+
+const API_BASE_URL = getApiBaseUrl();
+export const API_ORIGIN = sanitizeOriginUrl(API_BASE_URL);
 let backendWarmupPromise = null;
 
 const sanitizeStorageSegment = (value, fallback = 'anonymous') => {

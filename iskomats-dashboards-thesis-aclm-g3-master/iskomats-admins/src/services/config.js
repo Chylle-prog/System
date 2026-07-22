@@ -19,34 +19,32 @@ const isLocalOrigin = (value) => {
   }
 };
 
+const sanitizeOriginUrl = (rawUrl, fallback = 'https://iskomats-backend.onrender.com') => {
+  if (!rawUrl || typeof rawUrl !== 'string') {
+    return fallback;
+  }
+  let str = rawUrl.trim();
+  if (!str) return fallback;
+
+  str = str.replace(/\/(api|socket\.io).*$/i, '').replace(/\/+$/, '');
+  str = str.replace(/(\/|\b)(https?)+$/i, '').replace(/\/+$/, '');
+  str = str.replace(/^(https?:\/\/+|https?:?\/+)/i, '');
+  str = str.replace(/(\/|\b)(https?)+$/i, '').replace(/\/+$/, '');
+
+  if (!str) return fallback;
+
+  const isLocal = str.startsWith('localhost') || str.startsWith('127.0.0.1');
+  const protocol = isLocal ? 'http://' : 'https://';
+  return `${protocol}${str}`;
+};
+
 const normalizeApiBaseUrl = (value) => {
-  if (!value) return `${PRODUCTION_BACKEND_ORIGIN}${API_PREFIX}`;
-  let sanitized = stripTrailingSlash(value.trim());
-  sanitized = sanitized.replace(/https\/?$/i, '').replace(/\/+$/, '');
-  if (!sanitized.startsWith('http://') && !sanitized.startsWith('https://')) {
-    sanitized = `https://${sanitized}`;
-  }
-
-  if (sanitized.endsWith(API_PREFIX)) {
-    return sanitized;
-  }
-
-  return `${sanitized}${API_PREFIX}`;
+  const origin = sanitizeOriginUrl(value, PRODUCTION_BACKEND_ORIGIN);
+  return `${origin}${API_PREFIX}`;
 };
 
 const normalizeSocketUrl = (value) => {
-  if (!value) return PRODUCTION_BACKEND_ORIGIN;
-  let sanitized = stripTrailingSlash(value.trim());
-  sanitized = sanitized.replace(/https\/?$/i, '').replace(/\/+$/, '');
-  if (!sanitized.startsWith('http://') && !sanitized.startsWith('https://')) {
-    sanitized = `https://${sanitized}`;
-  }
-
-  if (sanitized.endsWith(API_PREFIX)) {
-    return sanitized.slice(0, -API_PREFIX.length);
-  }
-
-  return sanitized;
+  return sanitizeOriginUrl(value, PRODUCTION_BACKEND_ORIGIN);
 };
 
 const isLocalDevelopment = () => {

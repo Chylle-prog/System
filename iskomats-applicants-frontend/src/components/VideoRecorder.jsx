@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { API_ORIGIN } from '../services/api';
 
 /**
  * VideoUploader Component (Repurposed from VideoRecorder)
@@ -29,7 +30,7 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
       let targetUrl = initialVideoUrl;
       if (typeof targetUrl === 'string' && targetUrl.startsWith('http') && !targetUrl.includes('/applicant/document/raw/')) {
         const token = localStorage.getItem('authToken');
-        const apiOrigin = (import.meta.env.VITE_API_URL || 'http://localhost:10001/api').replace(/\/api\/?$/, '');
+        const apiOrigin = API_ORIGIN;
         targetUrl = `${apiOrigin}/api/student/applicant/document/raw/${fieldName || 'video'}?token=${token}`;
       }
       console.log(`Setting preview URL for ${label}:`, targetUrl);

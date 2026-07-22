@@ -1,6 +1,12 @@
 import { io } from 'socket.io-client';
+import { sanitizeOriginUrl } from './api';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5001';
+const getSocketUrl = () => {
+  const raw = import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_URL || 'https://iskomats-backend.onrender.com';
+  return sanitizeOriginUrl(raw);
+};
+
+const SOCKET_URL = getSocketUrl();
 
 class SocketService {
   constructor() {

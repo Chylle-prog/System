@@ -1,17 +1,9 @@
 import { io } from 'socket.io-client';
+import { sanitizeOriginUrl } from './api';
 
 const getSocketUrl = () => {
-  let url = import.meta.env.VITE_SOCKET_URL;
-  if (!url) {
-    const apiUrl = import.meta.env.VITE_API_URL || 'https://iskomats-backend.onrender.com/api';
-    url = apiUrl.replace(/\/api\/?$/, '');
-  }
-  url = url.trim();
-  url = url.replace(/https\/?$/i, '').replace(/\/+$/, '');
-  if (!url.startsWith('http://') && !url.startsWith('https://')) {
-    url = `https://${url}`;
-  }
-  return url;
+  const raw = import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_URL || 'https://iskomats-backend.onrender.com';
+  return sanitizeOriginUrl(raw);
 };
 const SOCKET_URL = getSocketUrl();
 

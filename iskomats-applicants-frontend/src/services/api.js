@@ -36,20 +36,42 @@ export const uploadProfilePicture = async (file) => {
 
 import { supabase } from '../supabaseClient';
 
-const getApiBaseUrl = () => {
-  let url = import.meta.env.VITE_API_URL || 'https://iskomats-backend.onrender.com/api';
-  url = url.trim();
-  url = url.replace(/https\/?$/i, '').replace(/\/+$/, '');
-  if (!url.startsWith('http://') && !url.startsWith('https://')) {
-    url = `https://${url}`;
+export const sanitizeOriginUrl = (rawUrl, fallback = 'https://iskomats-backend.onrender.com') => {
+  if (!rawUrl || typeof rawUrl !== 'string') {
+    return fallback;
   }
-  if (!url.endsWith('/api')) {
-    url = `${url}/api`;
-  }
-  return url;
+  let str = rawUrl.trim();
+  if (!str) return fallback;
+
+  // 1. Strip path components like /api, /socket.io, query strings
+  str = str.replace(/\/(api|socket\.io).*$/i, '').replace(/\/+$/, '');
+
+  // 2. Remove stray/concatenated 'https' or 'http' at domain boundary or end of domain
+  // e.g. "iskomats-backend.onrender.comhttps" -> "iskomats-backend.onrender.com"
+  str = str.replace(/(\/|\b)(https?)+$/i, '').replace(/\/+$/, '');
+
+  // 3. Remove leading protocol or malformed protocol prefixes
+  str = str.replace(/^(https?:\/\/+|https?:?\/+)/i, '');
+
+  // 4. Second pass for stray trailing 'https' or 'http' after protocol removal
+  str = str.replace(/(\/|\b)(https?)+$/i, '').replace(/\/+$/, '');
+
+  if (!str) return fallback;
+
+  // 5. Prepend proper protocol
+  const isLocal = str.startsWith('localhost') || str.startsWith('127.0.0.1');
+  const protocol = isLocal ? 'http://' : 'https://';
+  return `${protocol}${str}`;
 };
+
+const getApiBaseUrl = () => {
+  const raw = import.meta.env.VITE_API_URL || 'https://iskomats-backend.onrender.com/api';
+  const origin = sanitizeOriginUrl(raw);
+  return `${origin}/api`;
+};
+
 const API_BASE_URL = getApiBaseUrl();
-export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
+export const API_ORIGIN = sanitizeOriginUrl(API_BASE_URL);
 let backendWarmupPromise = null;
 
 const sanitizeStorageSegment = (value, fallback = 'anonymous') => {
