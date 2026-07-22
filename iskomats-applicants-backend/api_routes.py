@@ -1948,23 +1948,31 @@ def init_socketio(socketio):
                         query += " AND m.timestamp >= %s"
                         params.append(session_start)
             
-                query += " ORDER BY m.timestamp ASC LIMIT 100"
+                query += " ORDER BY m.timestamp ASC LIMIT 200"
                 cursor.execute(query, tuple(params))
                 messages = cursor.fetchall()
-            
+
+                formatted_list = []
                 for msg in messages:
-                    emit('message', {
+                    fmt = {
                         'm_id': msg['m_id'],
                         'username': msg['username'],
                         'sender_id': msg['sender_id'],
                         'is_student_sender': msg['is_student_sender'],
                         'message': msg['message'],
-                        'timestamp': msg['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
+                        'timestamp': msg['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(msg['timestamp'], 'strftime') else str(msg['timestamp']),
                         'room': room,
                         'student_status': msg['student_status']
-                    })
+                    }
+                    formatted_list.append(fmt)
+                    emit('message', fmt)
+
+                emit('history', {
+                    'room': room,
+                    'messages': formatted_list
+                })
         except Exception as e:
-            print(f"Error loading history: {e}")
+            print(f"[SOCKET HISTORY ERROR] Error loading history for room {room}: {e}")
 
     @socketio.on('message')
     def on_message(data):

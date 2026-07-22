@@ -496,6 +496,84 @@ const Portal = () => {
     };
   }, [notifications]);
 
+  // Connect socket and subscribe to chat messages / history
+  useEffect(() => {
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      socketService.connect(token);
+    }
+
+    const unsubMsg = socketService.subscribe('message', (msg) => {
+      const roomId = msg.room;
+      if (!roomId) return;
+
+      setChatMessages(prev => {
+        const roomMsgs = prev[roomId] || [];
+        const isDuplicate = roomMsgs.some(m => {
+          if (msg.m_id && m.m_id) return m.m_id === msg.m_id;
+          return m.message === msg.message && m.time === msg.timestamp;
+        });
+
+        if (isDuplicate) return prev;
+
+        const applicantNo = localStorage.getItem('applicantNo');
+        const isStudentSender = msg.is_student_sender ?? (String(msg.sender_id) === String(applicantNo));
+        const formattedMsg = {
+          id: msg.m_id || (Date.now() + Math.random()),
+          m_id: msg.m_id,
+          type: isStudentSender ? 'sent' : 'received',
+          sender: isStudentSender ? 'You' : (msg.username || 'Provider'),
+          message: msg.message,
+          time: msg.timestamp || new Date().toLocaleString()
+        };
+
+        return {
+          ...prev,
+          [roomId]: [...roomMsgs, formattedMsg]
+        };
+      });
+    });
+
+    const unsubHistory = socketService.subscribe('history', (data) => {
+      const roomId = data.room;
+      const messages = data.messages || [];
+      if (!roomId) return;
+
+      setChatMessages(prev => {
+        const applicantNo = localStorage.getItem('applicantNo');
+        const formattedMsgs = messages.map(msg => {
+          const isStudentSender = msg.is_student_sender ?? (String(msg.sender_id) === String(applicantNo));
+          return {
+            id: msg.m_id || (Date.now() + Math.random()),
+            m_id: msg.m_id,
+            type: isStudentSender ? 'sent' : 'received',
+            sender: isStudentSender ? 'You' : (msg.username || 'Provider'),
+            message: msg.message,
+            time: msg.timestamp || new Date().toLocaleString()
+          };
+        });
+
+        return {
+          ...prev,
+          [roomId]: formattedMsgs
+        };
+      });
+    });
+
+    const unsubAddRoom = socketService.subscribe('add_room', (data) => {
+      const roomId = data.room;
+      if (roomId) {
+        socketService.loadHistory(roomId);
+      }
+    });
+
+    return () => {
+      unsubMsg();
+      unsubHistory();
+      unsubAddRoom();
+    };
+  }, []);
+
   const logout = () => {
     authLogout();  // This clears currentUser, authToken, and applicantNo
     navigate('/');
