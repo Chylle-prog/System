@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chart, registerables } from 'chart.js';
 import {
   FaCheckCircle,
@@ -414,6 +414,75 @@ export default function ScholarshipDashboard({
   const [confirmDeleteModal, setConfirmDeleteModal] = useState(null); // { type: 'scholarship'|'announcement', id, title, label }
   const [pendingAction, setPendingAction] = useState(null); // { type, applicant, onConfirm, recipient, messageSummary }
   const [processingApplicantActions, setProcessingApplicantActions] = useState({});
+  const [sortConfig, setSortConfig] = useState({ column: null, direction: null });
+  const [activeDropdown, setActiveDropdown] = useState(null);
+
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (!e.target.closest('.sort-dropdown-container')) {
+        setActiveDropdown(null);
+      }
+    };
+    document.addEventListener('click', handleOutsideClick);
+    return () => document.removeEventListener('click', handleOutsideClick);
+  }, []);
+
+  const handleSortCheck = (column, direction) => {
+    if (sortConfig.column === column && sortConfig.direction === direction) {
+      setSortConfig({ column: null, direction: null });
+    } else {
+      setSortConfig({ column, direction });
+    }
+  };
+
+  const sortApplicants = (list) => {
+    if (!sortConfig.column || !sortConfig.direction) return list;
+
+    return [...list].sort((a, b) => {
+      let valA, valB;
+      if (sortConfig.column === 'name') {
+        valA = String(a.name || '').trim().toLowerCase();
+        valB = String(b.name || '').trim().toLowerCase();
+      } else if (sortConfig.column === 'grade') {
+        valA = parseFloat(String(a.grade || 0).replace(/,/g, ''));
+        valB = parseFloat(String(b.grade || 0).replace(/,/g, ''));
+        if (isNaN(valA)) valA = 0;
+        if (isNaN(valB)) valB = 0;
+      } else if (sortConfig.column === 'financial') {
+        valA = parseFloat(String(a.income || a.financial_income_of_parents || a.family?.grossIncome || 0).replace(/,/g, ''));
+        valB = parseFloat(String(b.income || b.financial_income_of_parents || b.family?.grossIncome || 0).replace(/,/g, ''));
+        if (isNaN(valA)) valA = 0;
+        if (isNaN(valB)) valB = 0;
+      } else if (sortConfig.column === 'points') {
+        valA = Number(a.evaluationScore || a.totalPoints || a.points || 0);
+        valB = Number(b.evaluationScore || b.totalPoints || b.points || 0);
+      } else if (sortConfig.column === 'schoolCourse') {
+        const schoolA = String(a.school || '').trim().toLowerCase();
+        const schoolB = String(b.school || '').trim().toLowerCase();
+        if (schoolA !== schoolB) {
+          valA = schoolA;
+          valB = schoolB;
+        } else {
+          valA = String(a.course || '').trim().toLowerCase();
+          valB = String(b.course || '').trim().toLowerCase();
+        }
+      } else if (sortConfig.column === 'contactAddress') {
+        const addrA = String(a.municipality || '').trim().toLowerCase();
+        const addrB = String(b.municipality || '').trim().toLowerCase();
+        if (addrA !== addrB) {
+          valA = addrA;
+          valB = addrB;
+        } else {
+          valA = String(a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || '').trim().toLowerCase();
+          valB = String(b.mobileNumber || b.phone || (b.studentContact && b.studentContact.phone) || '').trim().toLowerCase();
+        }
+      }
+
+      if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
   const [formData, setFormData] = useState({
     scholarshipName: '',
     deadline: '',
@@ -3068,13 +3137,187 @@ export default function ScholarshipDashboard({
         <div className="overflow-y-auto rounded-xl border border-gray-200" style={{ maxHeight: 'calc(100vh - 500px)' }}>
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-[#800020] text-white">
-                <th className="px-4 py-3 text-left font-semibold">Name</th>
-                <th className="px-4 py-3 text-left font-semibold">Grade</th>
-                <th className="px-4 py-3 text-left font-semibold">Financial</th>
-                <th className="px-4 py-3 text-left font-semibold">Points</th>
-                <th className="px-4 py-3 text-left font-semibold">School & Course</th>
-                <th className="px-4 py-3 text-left font-semibold">Contact & Address</th>
+              <tr className="bg-[#800020] text-white select-none">
+                <th className="px-4 py-3 text-left font-semibold relative sort-dropdown-container">
+                  <div className="flex items-center gap-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === 'name' ? null : 'name'); }}>
+                    <span>Name</span>
+                    <FaChevronDown className={`text-white/70 text-[10px] transition-transform ${activeDropdown === 'name' ? 'rotate-180' : ''}`} />
+                  </div>
+                  {activeDropdown === 'name' && (
+                    <div className="absolute left-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-50 text-gray-800 font-normal py-2 px-3">
+                      <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort Name</div>
+                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={sortConfig.column === 'name' && sortConfig.direction === 'asc'}
+                          onChange={() => handleSortCheck('name', 'asc')}
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                        />
+                        <span className="text-sm">A - Z</span>
+                      </label>
+                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={sortConfig.column === 'name' && sortConfig.direction === 'desc'}
+                          onChange={() => handleSortCheck('name', 'desc')}
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                        />
+                        <span className="text-sm">Z - A</span>
+                      </label>
+                    </div>
+                  )}
+                </th>
+
+                <th className="px-4 py-3 text-left font-semibold relative sort-dropdown-container">
+                  <div className="flex items-center gap-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === 'grade' ? null : 'grade'); }}>
+                    <span>Grade</span>
+                    <FaChevronDown className={`text-white/70 text-[10px] transition-transform ${activeDropdown === 'grade' ? 'rotate-180' : ''}`} />
+                  </div>
+                  {activeDropdown === 'grade' && (
+                    <div className="absolute left-0 mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-xl z-50 text-gray-800 font-normal py-2 px-3">
+                      <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort Grade</div>
+                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={sortConfig.column === 'grade' && sortConfig.direction === 'desc'}
+                          onChange={() => handleSortCheck('grade', 'desc')}
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                        />
+                        <span className="text-sm">Highest to Lowest</span>
+                      </label>
+                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={sortConfig.column === 'grade' && sortConfig.direction === 'asc'}
+                          onChange={() => handleSortCheck('grade', 'asc')}
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                        />
+                        <span className="text-sm">Lowest to Highest</span>
+                      </label>
+                    </div>
+                  )}
+                </th>
+
+                <th className="px-4 py-3 text-left font-semibold relative sort-dropdown-container">
+                  <div className="flex items-center gap-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === 'financial' ? null : 'financial'); }}>
+                    <span>Financial</span>
+                    <FaChevronDown className={`text-white/70 text-[10px] transition-transform ${activeDropdown === 'financial' ? 'rotate-180' : ''}`} />
+                  </div>
+                  {activeDropdown === 'financial' && (
+                    <div className="absolute left-0 mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-xl z-50 text-gray-800 font-normal py-2 px-3">
+                      <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort Financial</div>
+                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={sortConfig.column === 'financial' && sortConfig.direction === 'desc'}
+                          onChange={() => handleSortCheck('financial', 'desc')}
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                        />
+                        <span className="text-sm">Highest to Lowest</span>
+                      </label>
+                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={sortConfig.column === 'financial' && sortConfig.direction === 'asc'}
+                          onChange={() => handleSortCheck('financial', 'asc')}
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                        />
+                        <span className="text-sm">Lowest to Highest</span>
+                      </label>
+                    </div>
+                  )}
+                </th>
+
+                <th className="px-4 py-3 text-left font-semibold relative sort-dropdown-container">
+                  <div className="flex items-center gap-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === 'points' ? null : 'points'); }}>
+                    <span>Points</span>
+                    <FaChevronDown className={`text-white/70 text-[10px] transition-transform ${activeDropdown === 'points' ? 'rotate-180' : ''}`} />
+                  </div>
+                  {activeDropdown === 'points' && (
+                    <div className="absolute left-0 mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-xl z-50 text-gray-800 font-normal py-2 px-3">
+                      <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort Points</div>
+                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={sortConfig.column === 'points' && sortConfig.direction === 'desc'}
+                          onChange={() => handleSortCheck('points', 'desc')}
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                        />
+                        <span className="text-sm">Highest to Lowest</span>
+                      </label>
+                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={sortConfig.column === 'points' && sortConfig.direction === 'asc'}
+                          onChange={() => handleSortCheck('points', 'asc')}
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                        />
+                        <span className="text-sm">Lowest to Highest</span>
+                      </label>
+                    </div>
+                  )}
+                </th>
+
+                <th className="px-4 py-3 text-left font-semibold relative sort-dropdown-container">
+                  <div className="flex items-center gap-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === 'schoolCourse' ? null : 'schoolCourse'); }}>
+                    <span>School & Course</span>
+                    <FaChevronDown className={`text-white/70 text-[10px] transition-transform ${activeDropdown === 'schoolCourse' ? 'rotate-180' : ''}`} />
+                  </div>
+                  {activeDropdown === 'schoolCourse' && (
+                    <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-50 text-gray-800 font-normal py-2 px-3">
+                      <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort School & Course</div>
+                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={sortConfig.column === 'schoolCourse' && sortConfig.direction === 'asc'}
+                          onChange={() => handleSortCheck('schoolCourse', 'asc')}
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                        />
+                        <span className="text-sm">A - Z</span>
+                      </label>
+                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={sortConfig.column === 'schoolCourse' && sortConfig.direction === 'desc'}
+                          onChange={() => handleSortCheck('schoolCourse', 'desc')}
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                        />
+                        <span className="text-sm">Z - A</span>
+                      </label>
+                    </div>
+                  )}
+                </th>
+
+                <th className="px-4 py-3 text-left font-semibold relative sort-dropdown-container">
+                  <div className="flex items-center gap-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === 'contactAddress' ? null : 'contactAddress'); }}>
+                    <span>Contact & Address</span>
+                    <FaChevronDown className={`text-white/70 text-[10px] transition-transform ${activeDropdown === 'contactAddress' ? 'rotate-180' : ''}`} />
+                  </div>
+                  {activeDropdown === 'contactAddress' && (
+                    <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-50 text-gray-800 font-normal py-2 px-3">
+                      <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort Contact & Address</div>
+                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={sortConfig.column === 'contactAddress' && sortConfig.direction === 'asc'}
+                          onChange={() => handleSortCheck('contactAddress', 'asc')}
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                        />
+                        <span className="text-sm">A - Z</span>
+                      </label>
+                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={sortConfig.column === 'contactAddress' && sortConfig.direction === 'desc'}
+                          onChange={() => handleSortCheck('contactAddress', 'desc')}
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                        />
+                        <span className="text-sm">Z - A</span>
+                      </label>
+                    </div>
+                  )}
+                </th>
+
                 <th className="px-4 py-3 text-left font-semibold">Action</th>
               </tr>
             </thead>
