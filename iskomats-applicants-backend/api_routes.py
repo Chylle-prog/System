@@ -1986,18 +1986,20 @@ def init_socketio(socketio):
         sender_id = data.get('sender_id')  # ID of who is sending (applicant_no or user_no)
         message_text = data.get('message')
 
-        if not all([room, message_text, sender_id]):
-            print(f"Missing required fields: room={room}, message={message_text}, sender_id={sender_id}")
+        if not room or not message_text:
+            print(f"Missing required fields: room={room}, message={message_text}")
             return
 
         try:
             # Parse IDs from room format "app_no+pro_no"
             app_no, pro_no = map(int, room.split('+'))
+            if not sender_id:
+                sender_id = app_no
             
             with get_db() as conn:
                 cursor = conn.cursor()
                 sender_role = (session.get('role') or '').lower()
-                is_student_sender = sender_role == 'student'
+                is_student_sender = (sender_role == 'student') or (str(sender_id) == str(app_no))
             
                 # Determine the sender's actual name from the database
                 actual_username = username
@@ -2055,6 +2057,7 @@ def init_socketio(socketio):
                     'm_id': m_id,
                     'username': actual_username,
                     'sender_id': sender_id,
+                    'is_student_sender': is_student_sender,
                     'message': message_text,
                     'room': room,
                     'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S'),

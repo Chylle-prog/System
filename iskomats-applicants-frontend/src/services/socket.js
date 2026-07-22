@@ -121,12 +121,16 @@ class SocketService {
   }
 
   sendMessage(room, username, message, providerName = null) {
+    const storedApplicantNo = typeof window !== 'undefined' ? localStorage.getItem('applicantNo') : null;
+    const fallbackSenderId = storedApplicantNo || (room && room.includes('+') ? room.split('+')[0] : null);
+    const senderId = this.userId || fallbackSenderId;
+
     if (this.socket?.connected) {
       this.socket.emit('message', { 
         room, 
         username: username || this.username, 
         message,
-        sender_id: this.userId,
+        sender_id: senderId,
         ...(providerName && { provider_name: providerName })
       });
     }
