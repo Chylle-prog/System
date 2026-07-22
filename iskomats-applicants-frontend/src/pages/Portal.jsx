@@ -317,7 +317,7 @@ const Portal = () => {
                 sender: msg.username,
                 message: msg.message,
                 time: msg.timestamp,
-                type: String(msg.sender_id) === String(applicantNo) ? 'sent' : 'received'
+                type: (msg.is_student_sender || String(msg.sender_id) === String(applicantNo)) ? 'sent' : 'received'
               });
             }
           });
@@ -362,7 +362,7 @@ const Portal = () => {
             sender: msg.username,
             message: msg.message,
             time: msg.timestamp,
-            type: String(msg.sender_id) === String(applicantNo) ? 'sent' : 'received'
+            type: (msg.is_student_sender || String(msg.sender_id) === String(applicantNo)) ? 'sent' : 'received'
           };
 
           return {

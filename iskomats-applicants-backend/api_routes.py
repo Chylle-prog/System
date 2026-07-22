@@ -1768,12 +1768,15 @@ def init_socketio(socketio):
                 elif 'admin' in ur_low:
                     user_role = 'admin'
 
+            
             print(f"DEBUG Chat Login: user_id={user_id}, role={user_role}")
             
             if not user_id:
                 print("ERROR: No user_id/user_no in token")
                 emit('error', {'msg': 'Invalid token payload'})
                 return
+            session['role'] = user_role
+            session['user_id'] = user_id
 
             # Identify name and provider for chat
             with get_db() as conn:
@@ -1942,7 +1945,8 @@ def init_socketio(socketio):
 
                 # If the user is a student, we filter the history so they only see 
                 # messages from their CURRENT application sessions.
-                if session.get('role') == 'student':
+                user_role = session.get('role')
+                if user_role == 'student':
                     # Get the oldest creation date among active applications for this provider
                     cursor.execute("""
                         SELECT MIN(created_at) as session_start
@@ -1956,9 +1960,6 @@ def init_socketio(socketio):
                     if session_start:
                         query += " AND m.timestamp >= %s"
                         params.append(session_start)
-                    else:
-                        # If no active application exists, don't show any history to the student
-                        query += " AND 1=0"
             
                 query += " ORDER BY m.timestamp ASC LIMIT 100"
                 cursor.execute(query, tuple(params))
