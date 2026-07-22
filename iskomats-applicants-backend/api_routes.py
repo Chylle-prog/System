@@ -4560,18 +4560,20 @@ def create_announcement(current_user_id, pro_no, role):
                 provider_no=target_pro_no
             )
         
-            # Notify students based on send_to_all_applicants flag
-            print(f"[ANNOUNCEMENT] Dispatching background notifications for ann_no {ann_no} (SendToAll: {send_to_all_applicants})", flush=True)
-            run_background_task(
-                notify_announcement_applicants,
-                title=title,
-                message=message,
-                provider_no=target_pro_no,
-                provider_name=provider_name,
-                send_to_all_applicants=send_to_all_applicants,
-                send_email_alerts=True,
-            )
-            print(f"[ANNOUNCEMENT] Background delivery task queued successfully.")
+            # Notify students based on send_to_all_applicants flag synchronously
+            print(f"[ANNOUNCEMENT] Dispatching notifications for ann_no {ann_no} (SendToAll: {send_to_all_applicants})", flush=True)
+            try:
+                notify_announcement_applicants(
+                    title=title,
+                    message=message,
+                    provider_no=target_pro_no,
+                    provider_name=provider_name,
+                    send_to_all_applicants=send_to_all_applicants,
+                    send_email_alerts=True,
+                )
+                print(f"[ANNOUNCEMENT] Notification delivery completed successfully for ann_no {ann_no}.")
+            except Exception as notif_err:
+                print(f"[ANNOUNCEMENT WARN] Notification dispatch error: {notif_err}", flush=True)
 
             return jsonify({'message': 'Announcement created', 'ann_no': ann_no}), 201
     except Exception as e:
