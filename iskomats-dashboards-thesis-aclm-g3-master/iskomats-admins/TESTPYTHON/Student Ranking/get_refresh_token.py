@@ -6,6 +6,12 @@ import http.server
 import socketserver
 from urllib.parse import urlparse, parse_qs
 import os
+import sys
+
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except Exception:
+    pass
 
 # Global variable to store intercepted auth code
 intercepted_code = None
@@ -32,9 +38,15 @@ def main():
     print("\n--- Google OAuth 2.0 Refresh Token Generator ---")
     print("This script will help you generate a fresh GOOGLE_REFRESH_TOKEN.")
     
-    # 1. Get Client Credentials
-    client_id = input("\nEnter your GOOGLE_CLIENT_ID: ").strip()
-    client_secret = input("Enter your GOOGLE_CLIENT_SECRET: ").strip()
+    # 1. Get Client Credentials from Environment
+    client_id = os.environ.get('GOOGLE_CLIENT_ID', '').strip()
+    client_secret = os.environ.get('GOOGLE_CLIENT_SECRET', '').strip()
+    
+    if not client_id:
+        client_id = input("\nEnter your GOOGLE_CLIENT_ID: ").strip()
+    if not client_secret:
+        client_secret = input("Enter your GOOGLE_CLIENT_SECRET: ").strip()
+        
     scopes = "https://www.googleapis.com/auth/gmail.send"
     
     # 2. Try to find an available port for the redirect listener
@@ -53,13 +65,13 @@ def main():
             continue
             
     if not httpd:
-        print("\n❌ Error: Could not bind to any of the ports (8080, 8081, 8888).")
+        print("\n[ERROR] Could not bind to any of the ports (8080, 8081, 8888).")
         print("Please close any programs that might be using these ports and try again.")
         return
 
     redirect_uri = f"http://localhost:{actual_port}/"
     if actual_port != 8080:
-        print(f"\n⚠️  Port 8080 was busy. Using port {actual_port} instead.")
+        print(f"\n[INFO] Port 8080 was busy. Using port {actual_port} instead.")
         print(f"IMPORTANT: Ensure '{redirect_uri}' is added to your Google Redirect URIs!")
 
     # 3. Generate the authorization URL
@@ -90,7 +102,7 @@ def main():
         while intercepted_code is None:
             httpd.handle_request()
     
-    print(f"\n✅ Authorization code intercepted: {intercepted_code[:10]}...")
+    print(f"\n[SUCCESS] Authorization code intercepted: {intercepted_code[:10]}...")
     
     # 4. Exchange authorization code for refresh token
     token_params = {
@@ -118,17 +130,17 @@ def main():
         refresh_token = payload.get('refresh_token')
         
         if refresh_token:
-            print("\n✅ SUCCESS! Your NEW GOOGLE_REFRESH_TOKEN is:")
+            print("\n[SUCCESS] Your NEW GOOGLE_REFRESH_TOKEN is:")
             print("-" * 60)
             print(refresh_token)
             print("-" * 60)
             print("\nCopy this value and update it in your Render Environment Variables.")
         else:
-            print("\n❌ Error: Refresh token not found. This can happen if you didn't grant the proper scopes.")
-            print(f"Response: {payload}")
+            print("\n[ERROR] Refresh token not found. Response:")
+            print(f"{payload}")
             
     except Exception as e:
-        print(f"\n❌ Error during token exchange: {e}")
+        print(f"\n[ERROR] Error during token exchange: {e}")
         try:
             if hasattr(e, 'read'):
                 print(f"Server response: {e.read().decode('utf-8')}")
