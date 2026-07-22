@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+﻿import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { applicantAPI, applicationAPI, scholarshipAPI, announcementAPI, notificationAPI, API_ORIGIN } from '../services/api';
@@ -1920,7 +1920,7 @@ const Portal = () => {
         }
 
         .requirements-list li::before {
-          content: '✓';
+          content: 'âœ“';
           position: absolute;
           left: 0;
           top: 0.6rem;
@@ -2042,7 +2042,7 @@ const Portal = () => {
           }
 
           .community-post::after {
-            content: 'View Details →';
+            content: 'View Details â†’';
             position: absolute;
             bottom: 0.8rem;
             right: 1.2rem;
@@ -2403,7 +2403,7 @@ const Portal = () => {
         gap: '8px',
         border: '1px solid #334155'
       }}>
-        <span style={{ color: localStorage.getItem('debug_skip_alternate_check') === 'true' ? '#10b981' : '#ef4444' }}>●</span>
+        <span style={{ color: localStorage.getItem('debug_skip_alternate_check') === 'true' ? '#10b981' : '#ef4444' }}>â—</span>
         <span>Alt Account Check: {localStorage.getItem('debug_skip_alternate_check') === 'true' ? 'Bypassed' : 'Enabled'}</span>
         <button 
           type="button"
@@ -3223,7 +3223,7 @@ const Portal = () => {
                           ) : (
                             <ul>
                               {res.gpa && <li>Minimum GPA: {res.gpa}</li>}
-                              {res.parent_finance && <li>Monthly family income ≤ ₱{Number(res.parent_finance).toLocaleString()}</li>}
+                              {res.parent_finance && <li>Monthly family income â‰¤ â‚±{Number(res.parent_finance).toLocaleString()}</li>}
                               {res.location && <li>Resident of {res.location}</li>}
                               <li>Please check the official provider website for more details.</li>
                             </ul>
@@ -3391,7 +3391,7 @@ const Portal = () => {
                   </div>
                   <div className="view-item">
                     <label>Parents' Gross Income</label>
-                    <div className="value">₱{Number(userProfile?.financial_income_of_parents || 0).toLocaleString()}</div>
+                    <div className="value">â‚±{Number(userProfile?.financial_income_of_parents || 0).toLocaleString()}</div>
                   </div>
                   <div className="view-item">
                     <label>Number of Siblings</label>
@@ -3434,6 +3434,8 @@ const Portal = () => {
                       <div className="doc-status available">View File</div>
                     </div>
                   )}
+
+
                   {userProfile?.indigency_doc && (
                     <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.indigency_doc))}>
                       <div className="doc-icon"><i className="fas fa-house-user"></i></div>
@@ -3447,7 +3449,9 @@ const Portal = () => {
           </div>
         </div>
       )}
-      <ChatbotDesign apiUrl={import.meta.env.VITE_CHATBOT_API_URL || 'http://localhost:8000'} />
+      
+      {/* Chatbot */}
+      <ChatbotDesign apiUrl={import.meta.env.VITE_CHATBOT_API_URL || import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:8000'} />
     </>
   );
 };
