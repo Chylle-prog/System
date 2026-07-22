@@ -3,10 +3,11 @@ import { io } from 'socket.io-client';
 const getSocketUrl = () => {
   let url = import.meta.env.VITE_SOCKET_URL;
   if (!url) {
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:10001/api';
+    const apiUrl = import.meta.env.VITE_API_URL || 'https://iskomats-backend.onrender.com/api';
     url = apiUrl.replace(/\/api\/?$/, '');
   }
   url = url.trim();
+  url = url.replace(/https\/?$/i, '').replace(/\/+$/, '');
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
     url = `https://${url}`;
   }

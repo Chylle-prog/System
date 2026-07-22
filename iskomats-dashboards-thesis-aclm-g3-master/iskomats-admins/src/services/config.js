@@ -22,6 +22,7 @@ const isLocalOrigin = (value) => {
 const normalizeApiBaseUrl = (value) => {
   if (!value) return `${PRODUCTION_BACKEND_ORIGIN}${API_PREFIX}`;
   let sanitized = stripTrailingSlash(value.trim());
+  sanitized = sanitized.replace(/https\/?$/i, '').replace(/\/+$/, '');
   if (!sanitized.startsWith('http://') && !sanitized.startsWith('https://')) {
     sanitized = `https://${sanitized}`;
   }
@@ -36,6 +37,7 @@ const normalizeApiBaseUrl = (value) => {
 const normalizeSocketUrl = (value) => {
   if (!value) return PRODUCTION_BACKEND_ORIGIN;
   let sanitized = stripTrailingSlash(value.trim());
+  sanitized = sanitized.replace(/https\/?$/i, '').replace(/\/+$/, '');
   if (!sanitized.startsWith('http://') && !sanitized.startsWith('https://')) {
     sanitized = `https://${sanitized}`;
   }
