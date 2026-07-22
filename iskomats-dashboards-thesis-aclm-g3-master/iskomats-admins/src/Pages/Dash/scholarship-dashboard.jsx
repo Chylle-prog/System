@@ -38,7 +38,6 @@ import * as XLSX from 'xlsx';
 import { adminAPI, scholarshipAPI, announcementService, warmBackendConnection } from '../../services/api';
 import { decryptUrl } from '../../services/CryptoService';
 import socketService from '../../services/socket';
-import AdvancedSearch from './AdvancedSearch/AdvancedSearch';
 import iskomatsLogo from '../../assets/logo.png';
 
 Chart.register(...registerables);
@@ -5093,6 +5092,7 @@ export default function ScholarshipDashboard({
     </div>
   );
 }
+
 
 
 

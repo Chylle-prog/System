@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import {
   FaBan,
   FaChartBar,
@@ -29,7 +29,6 @@ import {
 import * as XLSX from 'xlsx';
 import { adminAPI, scholarshipAPI } from '../../services/api';
 import socketService from '../../services/socket';
-import AdvancedSearch from './AdvancedSearch/AdvancedSearch';
 
 const ACTION_EVENT_OPTIONS = [
   { label: 'Password / Security', value: 'Password' },
@@ -648,10 +647,6 @@ export default function Dash() {
               <FaUsersCog className="flex-shrink-0" />
               {!sidebarCollapsed && <span>Manage Accounts</span>}
             </button>
-            <button onClick={() => setActiveTab('advanced-search')} className={`w-full flex items-center gap-3 rounded-xl transition-all ${activeTab === 'advanced-search' ? 'bg-white/20' : 'hover:bg-white/10'} ${sidebarCollapsed ? 'justify-center p-3' : 'px-4 py-3'}`}>
-              <FaSearch className="flex-shrink-0" />
-              {!sidebarCollapsed && <span>Advanced Search</span>}
-            </button>
 
             <div className="space-y-1">
               <button onClick={() => toggleSubmenu('reports')} className={`w-full flex items-center justify-between rounded-xl hover:bg-white/10 transition-all ${sidebarCollapsed ? 'justify-center p-3' : 'px-4 py-3'}`}>
@@ -676,7 +671,7 @@ export default function Dash() {
             {!sidebarCollapsed && <span className="whitespace-nowrap">Generate Report</span>}
           </button>
           <button onClick={() => loadDashboardData(false)} className={`w-full py-3 bg-white/10 text-white font-black rounded-xl hover:bg-white/15 transition-all text-xs uppercase tracking-widest flex items-center justify-center gap-2 ${sidebarCollapsed ? 'p-3' : 'px-4'}`}>
-            <span className="flex-shrink-0">⟳</span>
+            <span className="flex-shrink-0">âŸ³</span>
             {!sidebarCollapsed && <span className="whitespace-nowrap">Refresh Data</span>}
           </button>
         </div>
@@ -720,9 +715,6 @@ export default function Dash() {
             </div>
           ) : (
             <>
-            {activeTab === 'advanced-search' && (
-              <AdvancedSearch />
-            )}
             {activeTab === 'dashboard' && (
               <div className="space-y-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -780,8 +772,8 @@ export default function Dash() {
                                 <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-gray-500 gap-2">
                                   <span>{provider.provider_name}</span>
                                   <span className="text-right flex gap-2">
-                                    <span style={{color: '#800020'}}>👤 {provider.usersCount}</span>
-                                    <span style={{color: '#16a34a'}}>👨‍🎓 {provider.applicantsCount}</span>
+                                    <span style={{color: '#800020'}}>ðŸ‘¤ {provider.usersCount}</span>
+                                    <span style={{color: '#16a34a'}}>ðŸ‘¨â€ðŸŽ“ {provider.applicantsCount}</span>
                                   </span>
                                 </div>
                                 <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
@@ -824,7 +816,7 @@ export default function Dash() {
                       className="p-2.5 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 transition-all flex items-center justify-center"
                       title="Refresh Accounts"
                     >
-                      <span className={`transition-transform duration-500 ${isLoading ? 'animate-spin' : ''}`}>⟳</span>
+                      <span className={`transition-transform duration-500 ${isLoading ? 'animate-spin' : ''}`}>âŸ³</span>
                     </button>
                     <button onClick={() => openAccountModal('add')} className="px-6 py-2 bg-[#800020] text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-[#800020]/20 flex items-center gap-2 hover:bg-[#650018] transition-all">
                       <FaPlus /> New {accountType === 'Applicant' ? 'Student' : accountType}
