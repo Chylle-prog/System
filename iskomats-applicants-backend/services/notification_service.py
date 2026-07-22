@@ -196,25 +196,34 @@ def send_sms_logic(number, message):
     
     if provider == 'semaphore':
         api_key = os.environ.get('SEMAPHORE_API_KEY', '').strip()
-        sender_name = os.environ.get('SEMAPHORE_SENDER_NAME', 'SEMAPHORE').strip()
+        sender_name = os.environ.get('SEMAPHORE_SENDER_NAME', '').strip()
         if not api_key:
             print("[SMS ERROR] Semaphore apikey not configured (SEMAPHORE_API_KEY is empty)")
             return False
             
         url = "https://api.semaphore.co/api/v4/messages"
-        data = urllib.parse.urlencode({
+        payload_dict = {
             'apikey': api_key,
             'number': clean_number,
             'message': message,
-            'sendername': sender_name
-        }).encode('utf-8')
-        
+        }
+        if sender_name:
+            payload_dict['sendername'] = sender_name
+
+        data = urllib.parse.urlencode(payload_dict).encode('utf-8')
         req = urllib_request.Request(url, data=data, method='POST')
         try:
             with urllib_request.urlopen(req, timeout=15) as response:
                 resp_data = json.loads(response.read().decode('utf-8'))
                 print(f"[SMS SUCCESS] Semaphore response: {resp_data}")
                 return True
+        except urllib_error.HTTPError as err:
+            try:
+                err_body = err.read().decode('utf-8')
+                print(f"[SMS ERROR] Semaphore HTTP Error {err.code}: {err_body}")
+            except Exception:
+                print(f"[SMS ERROR] Semaphore HTTP Error {err.code}: {err}")
+            return False
         except Exception as err:
             print(f"[SMS ERROR] Semaphore failed: {err}")
             return False
