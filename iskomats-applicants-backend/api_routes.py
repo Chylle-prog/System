@@ -2704,7 +2704,6 @@ def get_accounts(current_user_id, pro_no, role):
                             WHEN ast.is_accepted = 'Rejected' THEN 'Rejected'
                             WHEN ast.is_accepted = 'Cancelled' THEN 'Cancelled'
                             ELSE 'Pending'
-                            ELSE 'Pending'
                         END AS status,
                         {joined_expr} AS joined,
                         COALESCE(ae.is_locked, FALSE) AS locked

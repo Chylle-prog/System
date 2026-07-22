@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   FaBan,
   FaChartBar,
@@ -17,6 +17,7 @@ import {
   FaSearch,
   FaSignInAlt,
   FaSignOutAlt,
+  FaSyncAlt,
   FaTachometerAlt,
   FaTimesCircle,
   FaTrash,
@@ -189,62 +190,20 @@ export default function Dash() {
     });
   }, [providers, accounts]);
 
-  const loadDashboardData = async (showLoader = true) => {
-    if (showLoader) {
-      setIsLoading(true);
-    }
-    setPageError('');
-
+  const loadDashboardData = async () => {
+    setIsLoading(true);
+    setPageError(null);
     setAccountsLoading(true);
     setStatsLoading(true);
     setLogsLoading(true);
     setProvidersLoading(true);
 
-    adminAPI.getAllAccounts().then((result) => {
-      const nextAccounts = (result.data.accounts || []).map(normalizeAccount);
-      setAccounts(nextAccounts);
-      setAccountsLoading(false);
-    }).catch(() => {
-      setAccounts([]);
-      setAccountsLoading(false);
-      setPageError((prev) => prev + ' Accounts failed.');
-    });
-
-    adminAPI.getDashboardStats().then((result) => {
-      setStatistics(result.data.statistics || emptyStatistics);
-      setStatsLoading(false);
-    }).catch(() => {
-      setStatistics(emptyStatistics);
-      setStatsLoading(false);
-      setPageError((prev) => prev + ' Statistics failed.');
-    });
-
-    adminAPI.getActivityLogs().then((result) => {
-      const nextLogs = (result.data.logs || []).map(normalizeLog);
-      setActivities(nextLogs);
-      setLogsLoading(false);
-    }).catch(() => {
-      setActivities([]);
-      setLogsLoading(false);
-      setPageError((prev) => prev + ' Activity logs failed.');
-    });
-
-    scholarshipAPI.getProviders().then((result) => {
-      setProviders(result.data || []);
-      setProvidersLoading(false);
-    }).catch(() => {
-      setProviders([]);
-      setProvidersLoading(false);
-      setPageError((prev) => prev + ' Providers failed.');
-    });
-
-    // Hide global loader when all are done
-    Promise.allSettled([
+    const [accountsResult, statisticsResult, logsResult, providersResult] = await Promise.allSettled([
       adminAPI.getAllAccounts(),
       adminAPI.getDashboardStats(),
       adminAPI.getActivityLogs(),
       scholarshipAPI.getProviders(),
-    ]).then(() => setIsLoading(false));
+    ]);
 
     const errors = [];
 
@@ -255,6 +214,7 @@ export default function Dash() {
       errors.push('accounts');
       setAccounts([]);
     }
+    setAccountsLoading(false);
 
     if (statisticsResult.status === 'fulfilled') {
       setStatistics(statisticsResult.value.data.statistics || emptyStatistics);
@@ -262,6 +222,7 @@ export default function Dash() {
       errors.push('statistics');
       setStatistics(emptyStatistics);
     }
+    setStatsLoading(false);
 
     if (logsResult.status === 'fulfilled') {
       const nextLogs = (logsResult.value.data.logs || []).map(normalizeLog);
@@ -270,6 +231,7 @@ export default function Dash() {
       errors.push('activity logs');
       setActivities([]);
     }
+    setLogsLoading(false);
 
     if (providersResult.status === 'fulfilled') {
       setProviders(providersResult.value.data || []);
@@ -277,6 +239,7 @@ export default function Dash() {
       errors.push('scholarship providers');
       setProviders([]);
     }
+    setProvidersLoading(false);
 
     if (errors.length > 0) {
       setPageError(`Failed to load ${errors.join(', ')} from the database.`);
@@ -813,10 +776,11 @@ export default function Dash() {
                     <div className="flex items-center gap-3">
                       <button
                         onClick={() => loadDashboardData(false)}
-                        className="p-2.5 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 transition-all flex items-center justify-center"
+                        className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-all flex items-center gap-2 text-xs font-bold uppercase tracking-wider"
                         title="Refresh Accounts"
                       >
-                        <span className={`transition-transform duration-500 ${isLoading ? 'animate-spin' : ''}`}>•••••••••••</span>
+                        <FaSyncAlt className={`transition-transform duration-500 ${isLoading ? 'animate-spin' : ''}`} />
+                        <span>Refresh</span>
                       </button>
                       <button onClick={() => openAccountModal('add')} className="px-6 py-2 bg-[#800020] text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-[#800020]/20 flex items-center gap-2 hover:bg-[#650018] transition-all">
                         <FaPlus /> New {accountType === 'Applicant' ? 'Student' : accountType}
