@@ -27,7 +27,7 @@ const initialFilters = {
   deadlineTo: ""
 };
 
-export default function App() {
+export default function AdvancedSearch({ liveScholarships = [] }) {
   const [filters, setFilters] = useState(initialFilters);
   const [quickSearch, setQuickSearch] = useState("");
   const [sortBy, setSortBy] = useState("deadline-asc");
@@ -314,6 +314,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
