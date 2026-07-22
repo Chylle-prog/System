@@ -4862,6 +4862,7 @@ export default function ScholarshipDashboard({
         </header>
 
         {section === 'dashboard' && renderDashboard()}
+        {section === 'advanced-search' && <AdvancedSearch />}
         {section === 'finder' && renderFinder()}
         {section === 'manage' && renderManage()}
         {section === 'track' && renderTrack()}
@@ -5093,6 +5094,7 @@ export default function ScholarshipDashboard({
     </div>
   );
 }
+
 
 
 
