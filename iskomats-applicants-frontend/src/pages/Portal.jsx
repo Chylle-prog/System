@@ -2389,7 +2389,7 @@ const Portal = () => {
       <div style={{
         position: 'fixed',
         bottom: '20px',
-        right: '20px',
+        left: '20px',
         zIndex: 9999,
         background: '#1e293b',
         color: '#fff',
@@ -3447,7 +3447,7 @@ const Portal = () => {
           </div>
         </div>
       )}
-      <ChatbotDesign />
+      <ChatbotDesign apiUrl={import.meta.env.VITE_CHATBOT_API_URL || 'http://localhost:8000'} />
     </>
   );
 };

@@ -3471,7 +3471,7 @@ const StudentInfo = () => {
       <div style={{
         position: 'fixed',
         bottom: '20px',
-        right: '20px',
+        left: '20px',
         zIndex: 9999,
         background: '#1e293b',
         color: '#fff',
