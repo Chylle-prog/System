@@ -36,9 +36,19 @@ export const uploadProfilePicture = async (file) => {
 
 import { supabase } from '../supabaseClient';
 
-// API Base URL - change this if backend is on different server
-// const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://iskomats-applicants-backend.onrender.com/api';
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:10001/api';
+const getApiBaseUrl = () => {
+  let url = import.meta.env.VITE_API_URL || 'https://iskomats-backend.onrender.com/api';
+  url = url.trim();
+  url = url.replace(/https\/?$/i, '').replace(/\/+$/, '');
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = `https://${url}`;
+  }
+  if (!url.endsWith('/api')) {
+    url = `${url}/api`;
+  }
+  return url;
+};
+const API_BASE_URL = getApiBaseUrl();
 export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
 let backendWarmupPromise = null;
 
