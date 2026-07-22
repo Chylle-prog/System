@@ -3432,6 +3432,45 @@ export default function ScholarshipDashboard({
 
     const sortApplicants = (list) => {
       return [...list].sort((a, b) => {
+        if (sortConfig.column && sortConfig.direction) {
+          let valA = '';
+          let valB = '';
+
+          if (sortConfig.column === 'name') {
+            valA = String(a.name || '').toLowerCase();
+            valB = String(b.name || '').toLowerCase();
+          } else if (sortConfig.column === 'grade') {
+            valA = Number(a.grade || 0);
+            valB = Number(b.grade || 0);
+          } else if (sortConfig.column === 'financial') {
+            valA = Number(a.income || a.financial_income_of_parents || a.parentFinance || a.family?.grossIncome || 0);
+            valB = Number(b.income || b.financial_income_of_parents || b.parentFinance || b.family?.grossIncome || 0);
+          } else if (sortConfig.column === 'points') {
+            const schA = getScholarshipForApplicant(a);
+            const schB = getScholarshipForApplicant(b);
+            valA = calculateDeservednessScore(a, schA);
+            valB = calculateDeservednessScore(b, schB);
+          } else if (sortConfig.column === 'schoolCourse') {
+            valA = String(`${a.school || ''} ${a.course || ''}`).toLowerCase();
+            valB = String(`${b.school || ''} ${b.course || ''}`).toLowerCase();
+          } else if (sortConfig.column === 'contactAddress') {
+            valA = String(`${a.municipality || ''} ${a.address || ''} ${a.mobileNumber || ''}`).toLowerCase();
+            valB = String(`${b.municipality || ''} ${b.address || ''} ${b.mobileNumber || ''}`).toLowerCase();
+          } else {
+            valA = String(a[sortConfig.column] || '').toLowerCase();
+            valB = String(b[sortConfig.column] || '').toLowerCase();
+          }
+
+          if (valA !== valB) {
+            if (typeof valA === 'number' && typeof valB === 'number') {
+              return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
+            }
+            return sortConfig.direction === 'asc'
+              ? String(valA).localeCompare(String(valB))
+              : String(valB).localeCompare(String(valA));
+          }
+        }
+
         if (sortByPoints) {
           const schA = getScholarshipForApplicant(a);
           const schB = getScholarshipForApplicant(b);
@@ -3439,6 +3478,7 @@ export default function ScholarshipDashboard({
           const scoreB = calculateDeservednessScore(b, schB);
           if (scoreB !== scoreA) return scoreB - scoreA;
         }
+
         const idA = Number(a.applicant_no || a.id || a.applicantNo || 0);
         const idB = Number(b.applicant_no || b.id || b.applicantNo || 0);
         return idA - idB;
