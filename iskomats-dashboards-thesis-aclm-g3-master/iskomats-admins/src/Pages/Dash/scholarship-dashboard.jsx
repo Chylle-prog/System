@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chart, registerables } from 'chart.js';
 import {
   FaCheckCircle,
@@ -112,7 +112,7 @@ const DecryptedMedia = ({ src, type, className, controls = false, onClick = null
   );
 };
 
-const ACADEMIC_YEAR_PATTERN = /^\d{4}[-–—]\d{4}$/;
+const ACADEMIC_YEAR_PATTERN = /^\d{4}[•••••••••••]\d{4}$/;
 
 const autoAdjustColumnWidths = (data) => {
   if (!data || !data.length || !data[0]) return [];
@@ -150,7 +150,7 @@ const sortMessages = (messages) => [...messages].sort(compareMessageOrder);
 
 const getDefaultAcademicYear = () => {
   const currentYear = new Date().getFullYear();
-  return `${currentYear}–${currentYear + 1}`;
+  return `${currentYear}•••••••••••${currentYear + 1}`;
 };
 
 const normalizeAcademicYear = (value) => {
@@ -161,16 +161,16 @@ const normalizeAcademicYear = (value) => {
 
   const extractedYears = rawValue.match(/\d{4}/g);
   if (extractedYears && extractedYears.length >= 2) {
-    return `${extractedYears[0]}–${extractedYears[1]}`;
+    return `${extractedYears[0]}•••••••••••“${extractedYears[1]}`;
   }
 
   const digitsOnly = rawValue.replace(/\D/g, '');
   if (digitsOnly.length >= 8) {
-    return `${digitsOnly.slice(0, 4)}–${digitsOnly.slice(4, 8)}`;
+    return `${digitsOnly.slice(0, 4)}•••••••••••“${digitsOnly.slice(4, 8)}`;
   }
 
   // Replace any dash-like character with a proper en-dash
-  return rawValue.replace(/[^\d\-–—]/g, '').replace(/[\-–—]{1,}/g, '–');
+  return rawValue.replace(/[^\d\-•••••••••••]/g, '').replace(/[\-•••••••••••]{1,}/g, '•••••••••••');
 };
 
 const COURSES = [
@@ -881,7 +881,7 @@ export default function ScholarshipDashboard({
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: name === 'year' ? value.replace(/[^\d\s\-–—]/g, '') : value,
+      [name]: name === 'year' ? value.replace(/[•••••••••••]/g, '') : value,
     }));
   };
 
@@ -2672,7 +2672,7 @@ export default function ScholarshipDashboard({
             onClick={() => setManageMode('list')}
             className="px-4 py-2 rounded-lg bg-gray-500 text-white font-semibold hover:bg-gray-600 transition-colors"
           >
-            ← Back to List
+            â† Back to List
           </button>
         </div>
 
@@ -2777,7 +2777,7 @@ export default function ScholarshipDashboard({
                   placeholder="e.g. 2025-2026"
                   required
                 />
-                <p className="text-xs text-gray-500 mt-1">Use the YYYYâ€“YYYY format (e.g., 2025â€“2026).</p>
+                <p className="text-xs text-gray-500 mt-1">Use the YYYYYYYY format (e.g., 2025â€“2026).</p>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-[#800020] mb-1">Semester for Grades *</label>
@@ -3783,7 +3783,7 @@ export default function ScholarshipDashboard({
                                 <span className="font-bold text-[10px] text-gray-700">{loc.percentage}%</span>
                               </div>
                             </td>
-                            <td className="px-4 py-3 font-bold text-green-600 text-[10px]">{loc.percentage > 5 ? '←‘ HIGH' : '←’ STABLE'}</td>
+                            <td className="px-4 py-3 font-bold text-green-600 text-[10px]">{loc.percentage > 5 ? 'â†‘ HIGH' : 'â†’ STABLE'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -4583,7 +4583,7 @@ export default function ScholarshipDashboard({
             </div>
           </div>
           <button type="button" onClick={() => setSection('track')} className="px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors text-white font-medium">
-            ← Track
+            â† Track
           </button>
         </div>
       </div>
@@ -4718,7 +4718,7 @@ export default function ScholarshipDashboard({
                   </div>
                 </div>
                 <button type="button" onClick={() => setViewMessage(null)} className="text-sm text-gray-600 hover:text-[#800020]">
-                  ← Back
+                  â† Back
                 </button>
               </div>
 
@@ -4970,7 +4970,7 @@ export default function ScholarshipDashboard({
               type="image/jpeg"
               className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl"
             />
-            <button type="button" onClick={() => setImageModalSrc(null)} className="absolute top-3 right-3 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-[#800020]">×</button>
+            <button type="button" onClick={() => setImageModalSrc(null)} className="absolute top-3 right-3 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-[#800020]">Ã—</button>
           </div>
         </div>
       )}
@@ -5092,7 +5092,6 @@ export default function ScholarshipDashboard({
     </div>
   );
 }
-
 
 
 

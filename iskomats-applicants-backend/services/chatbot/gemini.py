@@ -1,29 +1,40 @@
 import os
-from typing import Generator
-from google import genai
-from google.genai import types
+import json
 import logging
+import requests
+from typing import Generator
 
 logger = logging.getLogger(__name__)
 
 class GeminiService:
     def __init__(self, api_key: str, model: str):
-        self.api_key = api_key
-        self.model = model
-        self.client = genai.Client(api_key=self.api_key) if self.api_key else None
+        self.api_key = api_key or ""
+        self.model = model or "llama-3.3-70b-versatile"
+        
+        # Check if Groq key is set
+        groq_key = os.getenv("GROQ_API_KEY", "")
+        if not groq_key and self.api_key.startswith("gsk_"):
+            groq_key = self.api_key
+            
+        self.groq_api_key = groq_key
+        
+        # Initialize Google GenAI client as fallback if needed
+        self.client = None
+        if not self.groq_api_key and self.api_key:
+            try:
+                from google import genai
+                self.client = genai.Client(api_key=self.api_key)
+            except Exception as e:
+                logger.warning(f"Could not initialize Google GenAI client: {e}")
 
     def check_health(self) -> bool:
-        if not self.client:
-            return False
-        return True
+        return bool(self.groq_api_key or self.client)
 
     def stream_chat(
         self, message: str, history: list[dict], context: str = ""
     ) -> Generator[str, None, None]:
-        if not self.client:
-            yield "Error: Gemini API key is not configured."
-            return
-
+        groq_key = os.getenv("GROQ_API_KEY", "") or self.groq_api_key
+        
         system_instruction = (
             "You are IskoBots, a guidance chatbot assistant for iskoMats in Lipa City. "
             "You are NOT made by any person or company - you are a system guidance tool. "
@@ -33,27 +44,84 @@ class GeminiService:
             f"\n\nREFERENCE MATERIAL:\n{context}"
         )
 
-        contents = []
-        for msg in history[-2:]:
-            role = "user" if msg["role"] == "user" else "model"
-            contents.append(types.Content(role=role, parts=[types.Part.from_text(text=msg["content"])]))
-        
-        contents.append(types.Content(role="user", parts=[types.Part.from_text(text=message)]))
+        # 1. USE GROQ API (If GROQ_API_KEY is configured)
+        if groq_key:
+            groq_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+            endpoint = "https://api.groq.com/openai/v1/chat/completions"
+            
+            messages = [{"role": "system", "content": system_instruction}]
+            for msg in history[-4:]:
+                role = "user" if msg.get("role") == "user" else "assistant"
+                messages.append({"role": role, "content": msg.get("content", "")})
+            messages.append({"role": "user", "content": message})
 
-        config = types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            temperature=0.2,
-        )
+            headers = {
+                "Authorization": f"Bearer {groq_key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": groq_model,
+                "messages": messages,
+                "temperature": 0.2,
+                "stream": True
+            }
 
-        try:
-            response_stream = self.client.models.generate_content_stream(
-                model=self.model,
-                contents=contents,
-                config=config,
-            )
-            for chunk in response_stream:
-                if chunk.text:
-                    yield chunk.text
-        except Exception as e:
-            logger.error(f"Gemini API error: {e}")
-            yield f"\n[Error: {str(e)}]"
+            try:
+                response = requests.post(endpoint, headers=headers, json=payload, stream=True, timeout=30)
+                if response.status_code != 200:
+                    error_msg = response.text
+                    logger.error(f"Groq API error {response.status_code}: {error_msg}")
+                    yield f"\n[Error: Groq API status {response.status_code}]"
+                    return
+
+                for line in response.iter_lines():
+                    if not line:
+                        continue
+                    line_str = line.decode('utf-8')
+                    if line_str.startswith("data: "):
+                        data_str = line_str[6:].strip()
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data_str)
+                            delta = chunk.get("choices", [{}])[0].get("delta", {})
+                            content_piece = delta.get("content", "")
+                            if content_piece:
+                                yield content_piece
+                        except Exception:
+                            pass
+                return
+            except Exception as e:
+                logger.error(f"Groq API streaming exception: {e}")
+                yield f"\n[Error: {str(e)}]"
+                return
+
+        # 2. FALLBACK TO GEMINI (If GEMINI_API_KEY is configured)
+        if self.client:
+            try:
+                from google.genai import types
+                contents = []
+                for msg in history[-2:]:
+                    role = "user" if msg.get("role") == "user" else "model"
+                    contents.append(types.Content(role=role, parts=[types.Part.from_text(text=msg.get("content", ""))]))
+                contents.append(types.Content(role="user", parts=[types.Part.from_text(text=message)]))
+
+                config = types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    temperature=0.2,
+                )
+
+                response_stream = self.client.models.generate_content_stream(
+                    model=self.model,
+                    contents=contents,
+                    config=config,
+                )
+                for chunk in response_stream:
+                    if chunk.text:
+                        yield chunk.text
+            except Exception as e:
+                logger.error(f"Gemini API error: {e}")
+                yield f"\n[Error: {str(e)}]"
+            return
+
+        yield "Error: No AI API key configured (neither GROQ_API_KEY nor GEMINI_API_KEY)."
