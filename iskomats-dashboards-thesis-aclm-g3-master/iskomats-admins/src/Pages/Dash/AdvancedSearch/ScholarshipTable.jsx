@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 
 function statusClass(s) {
   return 'status-' + s.toLowerCase();
@@ -19,21 +19,21 @@ export default function ScholarshipTable({ list }) {
   return (
     <>
       {list.map((s, idx) => (
-        <div key={`${s.name}-${idx}`} className="table-row">
+        <div key={`${(s.scholarshipName || 'Untitled')}-${idx}`} className="table-row">
           <div>
-            <div className="row-title">{s.name}</div>
+            <div className="row-title">{(s.scholarshipName || 'Untitled')}</div>
             <div className="row-meta">
-              <span>{s.provider}</span>
-              <span>{s.level}</span>
-              <span>{s.course}</span>
+              <span>{(s.providerName || 'Current Provider')}</span>
+              <span>{(s.level || 'All Levels')}</span>
+              <span>{(s.course || 'All Courses')}</span>
             </div>
           </div>
           <div className="col-loc" style={{ fontSize: '13px', color: 'var(--ink-soft)' }}>
             {s.location}
           </div>
           <div>
-            <span className={`status-badge ${statusClass(s.status)}`}>
-              {s.status}
+            <span className={`status-badge ${statusClass((s.isFull ? 'Full' : 'Open'))}`}>
+              {(s.isFull ? 'Full' : 'Open')}
             </span>
           </div>
           <div className="col-deadline deadline-cell">{formatDate(s.deadline)}</div>
@@ -45,3 +45,4 @@ export default function ScholarshipTable({ list }) {
     </>
   );
 }
+

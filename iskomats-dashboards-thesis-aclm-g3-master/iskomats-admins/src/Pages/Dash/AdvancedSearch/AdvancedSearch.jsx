@@ -1,7 +1,6 @@
 ﻿import './advanced-search.css';
 import React, { useState } from 'react';
 import {
-  scholarships,
   incomeLabels,
   statusColors,
   gpaBuckets,
@@ -53,29 +52,29 @@ export default function App() {
     // Quick search logic
     if (quickSearch) {
       const qs = quickSearch.toLowerCase();
-      if (!(s.name.toLowerCase().includes(qs) || s.provider.toLowerCase().includes(qs))) {
+      if (!((s.scholarshipName || '').toLowerCase().includes(qs) || (s.providerName || '').toLowerCase().includes(qs))) {
         return false;
       }
     }
 
     if (exceptCategory !== 'keyword' && f.keyword) {
-      if (!s.name.toLowerCase().includes(f.keyword.toLowerCase())) return false;
+      if (!(s.scholarshipName || '').toLowerCase().includes(f.keyword.toLowerCase())) return false;
     }
-    if (exceptCategory !== 'course' && f.course.length && !f.course.includes(s.course)) return false;
-    if (exceptCategory !== 'level' && f.level.length && !f.level.includes(s.level)) return false;
-    if (exceptCategory !== 'location' && f.location.length && !f.location.includes(s.location)) return false;
-    if (exceptCategory !== 'school' && f.school.length && !f.school.includes(s.school)) return false;
-    if (exceptCategory !== 'type' && f.type.length && !f.type.includes(s.type)) return false;
-    if (exceptCategory !== 'income' && f.income.length && !f.income.includes(s.income)) return false;
-    if (exceptCategory !== 'status' && f.status.length && !f.status.includes(s.status)) return false;
+    if (exceptCategory !== 'course' && f.course.length && !f.course.includes((s.course || ''))) return false;
+    if (exceptCategory !== 'level' && f.level.length && !f.level.includes((s.level || ''))) return false;
+    if (exceptCategory !== 'location' && f.location.length && !f.location.includes((s.location || ''))) return false;
+    if (exceptCategory !== 'school' && f.school.length && !f.school.includes((s.school || ''))) return false;
+    if (exceptCategory !== 'type' && f.type.length && !f.type.includes((s.type || ''))) return false;
+    if (exceptCategory !== 'income' && f.income.length && !f.income.includes((s.parentFinance || ''))) return false;
+    if (exceptCategory !== 'status' && f.status.length && !f.status.includes((s.isFull ? 'Full' : 'Open'))) return false;
 
     if (exceptCategory !== 'gpa') {
-      if (f.gpaMin !== null && s.gpa < f.gpaMin) return false;
-      if (f.gpaMax !== null && s.gpa > f.gpaMax) return false;
+      if (f.gpaMin !== null && (s.minGpa || 0) < f.gpaMin) return false;
+      if (f.gpaMax !== null && (s.minGpa || 0) > f.gpaMax) return false;
       if (f.gpaMin === null && f.gpaMax === null && f.gpaBuckets.length) {
         const inAny = f.gpaBuckets.some(bid => {
           const b = gpaBuckets.find(x => x.id === bid);
-          return s.gpa >= b.min && s.gpa <= b.max;
+          return (s.minGpa || 0) >= b.min && (s.minGpa || 0) <= b.max;
         });
         if (!inAny) return false;
       }
@@ -99,11 +98,11 @@ export default function App() {
   const matches = (s) => matchesExcept(s, null, filters);
 
   const getFilteredAndSorted = () => {
-    const list = scholarships.filter(matches);
+    const list = liveScholarships.filter(matches);
     if (sortBy === 'deadline-asc') list.sort((a, b) => a.deadline.localeCompare(b.deadline));
     if (sortBy === 'deadline-desc') list.sort((a, b) => b.deadline.localeCompare(a.deadline));
-    if (sortBy === 'name-asc') list.sort((a, b) => a.name.localeCompare(b.name));
-    if (sortBy === 'status') list.sort((a, b) => a.status.localeCompare(b.status));
+    if (sortBy === 'name-asc') list.sort((a, b) => (a.scholarshipName || '').localeCompare(b.scholarshipName || ''));
+    if (sortBy === 'status') list.sort((a, b) => (a.isFull ? 'Full' : 'Open').localeCompare(b.isFull ? 'Full' : 'Open'));
     return list;
   };
 
@@ -155,10 +154,10 @@ export default function App() {
         });
       });
     });
-    filters.income.forEach(v => {
+    filter(s.parentFinance || '').forEach(v => {
       chips.push({
         label: `Income: ${incomeLabels[v]}`,
-        remove: () => changeFilters({ income: filters.income.filter(x => x !== v) })
+        remove: () => changeFilters({ income: filter(s.parentFinance || '').filter(x => x !== v) })
       });
     });
     if (filters.gpaMin !== null || filters.gpaMax !== null) {
@@ -315,4 +314,7 @@ export default function App() {
     </div>
   );
 }
+
+
+
 
