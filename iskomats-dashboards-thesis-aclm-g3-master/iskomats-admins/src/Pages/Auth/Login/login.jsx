@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   FaLock,
@@ -188,7 +188,7 @@ const Login = () => {
                         value={formData.password}
                         onChange={handleChange}
                         className="w-full bg-white/5 border border-white/20 rounded-xl py-3 pl-11 pr-12 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#800020]/50 focus:border-[#800020] transition-all"
-                        placeholder="••••••••"
+                        placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                         required
                       />
                       <button
@@ -227,12 +227,6 @@ const Login = () => {
               </form>
 
               <div className="pt-6 text-center border-t border-white/20 mt-6 text-sm text-white/80">
-                <p>
-                  Don't have an account?{" "}
-                  <a href="/register" className="font-bold hover:underline">
-                    Create account
-                  </a>
-                </p>
                 <p className="text-xs text-white/60 mt-2">
                   &copy; 2025 Iskomats Scholarships
                 </p>
@@ -246,3 +240,5 @@ const Login = () => {
 };
 
 export default Login;
+
+
