@@ -40,7 +40,7 @@ export const sanitizeOriginUrl = (rawUrl, fallback = 'https://iskomats-backend.o
   if (!rawUrl || typeof rawUrl !== 'string') {
     return fallback;
   }
-  let str = rawUrl.trim();
+  let str = rawUrl.trim().replace(/^['"`\s]+|['"`\s]+$/g, '');
   if (!str) return fallback;
 
   // 1. Remove leading protocol or malformed protocol prefixes (e.g. https://, http:/, https://https://)
@@ -53,9 +53,12 @@ export const sanitizeOriginUrl = (rawUrl, fallback = 'https://iskomats-backend.o
   // e.g. "iskomats-backend.onrender.comhttps" -> "iskomats-backend.onrender.com"
   str = str.replace(/(https?)+$/i, '');
 
+  // 4. Strip non-domain characters
+  str = str.replace(/[^a-zA-Z0-9.:-]/g, '');
+
   if (!str) return fallback;
 
-  // 4. Prepend proper protocol
+  // 5. Prepend proper protocol
   const isLocal = str.startsWith('localhost') || str.startsWith('127.0.0.1');
   const protocol = isLocal ? 'http://' : 'https://';
   return `${protocol}${str}`;

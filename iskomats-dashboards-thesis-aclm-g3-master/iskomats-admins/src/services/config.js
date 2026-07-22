@@ -23,12 +23,13 @@ const sanitizeOriginUrl = (rawUrl, fallback = 'https://iskomats-backend.onrender
   if (!rawUrl || typeof rawUrl !== 'string') {
     return fallback;
   }
-  let str = rawUrl.trim();
+  let str = rawUrl.trim().replace(/^['"`\s]+|['"`\s]+$/g, '');
   if (!str) return fallback;
 
   str = str.replace(/^(https?:?\/*)+/i, '');
   str = str.split('/')[0].split('?')[0].split('#')[0];
   str = str.replace(/(https?)+$/i, '');
+  str = str.replace(/[^a-zA-Z0-9.:-]/g, '');
 
   if (!str) return fallback;
 
