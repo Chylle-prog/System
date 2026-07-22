@@ -29,6 +29,7 @@ import {
 import * as XLSX from 'xlsx';
 import { adminAPI, scholarshipAPI } from '../../services/api';
 import socketService from '../../services/socket';
+import AdvancedSearch from './AdvancedSearch/AdvancedSearch';
 
 const ACTION_EVENT_OPTIONS = [
   { label: 'Password / Security', value: 'Password' },
@@ -647,6 +648,10 @@ export default function Dash() {
               <FaUsersCog className="flex-shrink-0" />
               {!sidebarCollapsed && <span>Manage Accounts</span>}
             </button>
+            <button onClick={() => setActiveTab('advanced-search')} className={`w-full flex items-center gap-3 rounded-xl transition-all ${activeTab === 'advanced-search' ? 'bg-white/20' : 'hover:bg-white/10'} ${sidebarCollapsed ? 'justify-center p-3' : 'px-4 py-3'}`}>
+              <FaSearch className="flex-shrink-0" />
+              {!sidebarCollapsed && <span>Advanced Search</span>}
+            </button>
 
             <div className="space-y-1">
               <button onClick={() => toggleSubmenu('reports')} className={`w-full flex items-center justify-between rounded-xl hover:bg-white/10 transition-all ${sidebarCollapsed ? 'justify-center p-3' : 'px-4 py-3'}`}>
@@ -715,6 +720,9 @@ export default function Dash() {
             </div>
           ) : (
             <>
+            {activeTab === 'advanced-search' && (
+              <AdvancedSearch />
+            )}
             {activeTab === 'dashboard' && (
               <div className="space-y-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
