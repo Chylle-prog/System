@@ -154,10 +154,10 @@ export default function AdvancedSearch({ liveScholarships = [] }) {
         });
       });
     });
-    filter(s.parentFinance || '').forEach(v => {
+    filters.income.forEach(v => {
       chips.push({
         label: `Income: ${incomeLabels[v]}`,
-        remove: () => changeFilters({ income: filter(s.parentFinance || '').filter(x => x !== v) })
+        remove: () => changeFilters({ income: filters.income.filter(x => x !== v) })
       });
     });
     if (filters.gpaMin !== null || filters.gpaMax !== null) {
@@ -314,6 +314,7 @@ export default function AdvancedSearch({ liveScholarships = [] }) {
     </div>
   );
 }
+
 
 
 
