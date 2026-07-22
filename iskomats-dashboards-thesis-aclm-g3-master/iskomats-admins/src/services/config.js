@@ -20,7 +20,11 @@ const isLocalOrigin = (value) => {
 };
 
 const normalizeApiBaseUrl = (value) => {
-  const sanitized = stripTrailingSlash(value);
+  if (!value) return `${PRODUCTION_BACKEND_ORIGIN}${API_PREFIX}`;
+  let sanitized = stripTrailingSlash(value.trim());
+  if (!sanitized.startsWith('http://') && !sanitized.startsWith('https://')) {
+    sanitized = `https://${sanitized}`;
+  }
 
   if (sanitized.endsWith(API_PREFIX)) {
     return sanitized;
@@ -30,7 +34,11 @@ const normalizeApiBaseUrl = (value) => {
 };
 
 const normalizeSocketUrl = (value) => {
-  const sanitized = stripTrailingSlash(value);
+  if (!value) return PRODUCTION_BACKEND_ORIGIN;
+  let sanitized = stripTrailingSlash(value.trim());
+  if (!sanitized.startsWith('http://') && !sanitized.startsWith('https://')) {
+    sanitized = `https://${sanitized}`;
+  }
 
   if (sanitized.endsWith(API_PREFIX)) {
     return sanitized.slice(0, -API_PREFIX.length);

@@ -1,11 +1,16 @@
 import { io } from 'socket.io-client';
 
 const getSocketUrl = () => {
-  if (import.meta.env.VITE_SOCKET_URL) {
-    return import.meta.env.VITE_SOCKET_URL;
+  let url = import.meta.env.VITE_SOCKET_URL;
+  if (!url) {
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:10001/api';
+    url = apiUrl.replace(/\/api\/?$/, '');
   }
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:10001/api';
-  return apiUrl.replace(/\/api\/?$/, '');
+  url = url.trim();
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = `https://${url}`;
+  }
+  return url;
 };
 const SOCKET_URL = getSocketUrl();
 
