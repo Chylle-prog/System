@@ -120,6 +120,7 @@ const Portal = () => {
   const notificationDropdownRef = useRef(null);
   const currentChatRoomRef = useRef(null);
   const chatMessagesEndRef = useRef(null);
+  const hasFetchedApps = useRef(false);
 
   // Scholarship chat data
   const [scholarships, setScholarships] = useState([]);
