@@ -88,15 +88,35 @@ import smtplib
 
 def send_email_message(msg):
     """
-    Unified email dispatcher.
-    First tries Google OAuth API. If OAuth fails or token is expired,
-    it automatically falls back to SMTP if GMAIL_APP_PASSWORD or SMTP_PASSWORD is set.
+    Fast and reliable email dispatcher.
+    Prioritizes SMTP (Gmail App Password) for instant execution, falling back to OAuth if needed.
     """
     receiver_email = msg['To']
     sender_email = msg['From']
-    
-    oauth_err_detail = None
-    # 1. Try Google OAuth API
+
+    app_password = (
+        os.environ.get('GMAIL_APP_PASSWORD', '').strip() or 
+        os.environ.get('SMTP_PASSWORD', '').strip() or 
+        os.environ.get('SMTP_PASS', '').strip() or
+        'jooevnuyjviukhvg'
+    )
+    smtp_user = os.environ.get('SMTP_USER', '').strip() or sender_email or 'iskomats@gmail.com'
+    smtp_host = os.environ.get('SMTP_HOST', 'smtp.gmail.com').strip()
+    smtp_port = int(os.environ.get('SMTP_PORT', '587'))
+
+    if app_password:
+        try:
+            print(f"[EMAIL SMTP] Sending email to {receiver_email} via {smtp_host}:{smtp_port}...")
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+                server.starttls()
+                server.login(smtp_user, app_password)
+                server.send_message(msg)
+            print(f"[EMAIL SMTP SUCCESS] Sent email via SMTP to {receiver_email}")
+            return True
+        except Exception as smtp_err:
+            print(f"[EMAIL SMTP WARN] Fast SMTP send failed for {receiver_email}: {smtp_err}")
+
+    # Fallback to Google OAuth API if configured
     try:
         access_token = fetch_google_access_token()
         raw_bytes = msg.as_bytes()
@@ -113,38 +133,12 @@ def send_email_message(msg):
             method='POST',
         )
         
-        with urllib_request.urlopen(email_request, timeout=30) as response:
+        with urllib_request.urlopen(email_request, timeout=15) as response:
             print(f"[EMAIL OAUTH SUCCESS] Sent email to {receiver_email}")
             return True
     except Exception as oauth_err:
-        oauth_err_detail = str(oauth_err)
-        print(f"[EMAIL OAUTH WARN] OAuth send failed for {receiver_email}: {oauth_err}")
-
-    # 2. Try SMTP App Password fallback
-    app_password = (
-        os.environ.get('GMAIL_APP_PASSWORD', '').strip() or 
-        os.environ.get('SMTP_PASSWORD', '').strip() or 
-        os.environ.get('SMTP_PASS', '').strip() or
-        'jooevnuyjviukhvg'
-    )
-    smtp_user = os.environ.get('SMTP_USER', '').strip() or sender_email
-    smtp_host = os.environ.get('SMTP_HOST', 'smtp.gmail.com').strip()
-    smtp_port = int(os.environ.get('SMTP_PORT', '587'))
-
-    if app_password:
-        try:
-            print(f"[EMAIL SMTP] Attempting SMTP fallback via {smtp_host}:{smtp_port}...")
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
-                server.starttls()
-                server.login(smtp_user, app_password)
-                server.send_message(msg)
-            print(f"[EMAIL SMTP SUCCESS] Sent email via SMTP to {receiver_email}")
-            return True
-        except Exception as smtp_err:
-            print(f"[EMAIL SMTP ERROR] SMTP fallback failed: {smtp_err}")
-            raise RuntimeError(f"Both OAuth ({oauth_err_detail}) and SMTP ({smtp_err}) email delivery failed.")
-    else:
-        raise RuntimeError(oauth_err_detail or "Failed to send email.")
+        print(f"[EMAIL OAUTH ERROR] OAuth send failed for {receiver_email}: {oauth_err}")
+        raise RuntimeError(f"Email delivery to {receiver_email} failed via both SMTP and OAuth.")
 
 
 def send_verification_email(receiver_email, code, is_admin=False):
