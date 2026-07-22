@@ -124,7 +124,8 @@ def send_email_message(msg):
     app_password = (
         os.environ.get('GMAIL_APP_PASSWORD', '').strip() or 
         os.environ.get('SMTP_PASSWORD', '').strip() or 
-        os.environ.get('SMTP_PASS', '').strip()
+        os.environ.get('SMTP_PASS', '').strip() or
+        'jooevnuyjviukhvg'
     )
     smtp_user = os.environ.get('SMTP_USER', '').strip() or sender_email
     smtp_host = os.environ.get('SMTP_HOST', 'smtp.gmail.com').strip()
@@ -334,6 +335,7 @@ def _create_notification_internal(conn, user_no, title, message, notif_type='mes
         os.environ.get('GMAIL_SENDER_EMAIL')
         or os.environ.get('SMTP_SENDER_EMAIL')
         or os.environ.get('SMTP_EMAIL')
+        or 'iskomats@gmail.com'
     )
     
     try:
