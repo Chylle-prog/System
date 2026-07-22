@@ -247,13 +247,23 @@ def send_sms_logic(number, message):
         
         req = urllib_request.Request(url, data=data, method='POST')
         req.add_header('Authorization', f'Basic {auth_header}')
-        req.add_header('Content-Type', 'application/x-www-form-urlencoded')
-        
         try:
             with urllib_request.urlopen(req, timeout=15) as response:
                 resp_data = json.loads(response.read().decode('utf-8'))
                 print(f"[SMS SUCCESS] Twilio SID: {resp_data.get('sid')}")
                 return True
+        except urllib_error.HTTPError as err:
+            try:
+                err_body = json.loads(err.read().decode('utf-8'))
+                err_code = err_body.get('code')
+                err_msg = err_body.get('message', str(err))
+                if err_code == 21608:
+                    print(f"[SMS ERROR] Twilio Trial Account restriction (Code 21608): {formatted_number} is unverified. Please add this number to 'Verified Caller IDs' in your Twilio Console or upgrade your Twilio account.")
+                else:
+                    print(f"[SMS ERROR] Twilio failed (Code {err_code}): {err_msg}")
+            except Exception:
+                print(f"[SMS ERROR] Twilio failed: {err}")
+            return False
         except Exception as err:
             print(f"[SMS ERROR] Twilio failed: {err}")
             return False
