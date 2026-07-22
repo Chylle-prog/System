@@ -1,4 +1,4 @@
-﻿import warnings
+import warnings
 with warnings.catch_warnings():
     warnings.filterwarnings('ignore', category=DeprecationWarning)
     # Eventlet is deprecated but we suppress the warning since it's fundamentally embedded in Flask-SocketIO's current setup.
@@ -85,8 +85,8 @@ init_admin_socketio(socketio)
 print("[STARTUP] Initializing Chatbot RAG Pipeline...", flush=True)
 try:
     from blueprints.chatbot_bp import init_chatbot
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
+    GEMINI_API_KEY = os.getenv("GROQ_API_KEY") or os.getenv("GEMINI_API_KEY", "")
+    GEMINI_MODEL = os.getenv("GROQ_MODEL") or os.getenv("GEMINI_MODEL", "llama-3.3-70b-versatile")
     CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
     DOCUMENTS_DIR = os.getenv("DOCUMENTS_DIR", "./data")
     gemini_service, rag, doc_loader = init_chatbot(

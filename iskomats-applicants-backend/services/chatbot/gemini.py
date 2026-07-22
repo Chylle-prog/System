@@ -11,8 +11,8 @@ class GeminiService:
         self.api_key = api_key or ""
         self.model = model or "llama-3.3-70b-versatile"
         
-        # Check if Groq key is set
-        groq_key = os.getenv("GROQ_API_KEY", "")
+        # Check if Groq key is set in environment or passed as api_key
+        groq_key = os.getenv("GROQ_API_KEY", "").strip()
         if not groq_key and self.api_key.startswith("gsk_"):
             groq_key = self.api_key
             
@@ -20,7 +20,7 @@ class GeminiService:
         
         # Initialize Google GenAI client as fallback if needed
         self.client = None
-        if not self.groq_api_key and self.api_key:
+        if not self.groq_api_key and self.api_key and not self.api_key.startswith("gsk_"):
             try:
                 from google import genai
                 self.client = genai.Client(api_key=self.api_key)
@@ -33,7 +33,7 @@ class GeminiService:
     def stream_chat(
         self, message: str, history: list[dict], context: str = ""
     ) -> Generator[str, None, None]:
-        groq_key = os.getenv("GROQ_API_KEY", "") or self.groq_api_key
+        groq_key = os.getenv("GROQ_API_KEY", "").strip() or self.groq_api_key
         
         system_instruction = (
             "You are IskoBots, a guidance chatbot assistant for iskoMats in Lipa City. "
