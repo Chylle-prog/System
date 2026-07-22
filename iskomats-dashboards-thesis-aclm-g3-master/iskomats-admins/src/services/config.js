@@ -27,9 +27,9 @@ const sanitizeOriginUrl = (rawUrl, fallback = 'https://iskomats-backend.onrender
   if (!str) return fallback;
 
   str = str.replace(/\/(api|socket\.io).*$/i, '').replace(/\/+$/, '');
-  str = str.replace(/(\/|\b)(https?)+$/i, '').replace(/\/+$/, '');
+  str = str.replace(/(https?|\/https?)+$/i, '').replace(/\/+$/, '');
   str = str.replace(/^(https?:\/\/+|https?:?\/+)/i, '');
-  str = str.replace(/(\/|\b)(https?)+$/i, '').replace(/\/+$/, '');
+  str = str.replace(/(https?|\/https?)+$/i, '').replace(/\/+$/, '');
 
   if (!str) return fallback;
 

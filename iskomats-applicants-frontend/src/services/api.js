@@ -48,13 +48,13 @@ export const sanitizeOriginUrl = (rawUrl, fallback = 'https://iskomats-backend.o
 
   // 2. Remove stray/concatenated 'https' or 'http' at domain boundary or end of domain
   // e.g. "iskomats-backend.onrender.comhttps" -> "iskomats-backend.onrender.com"
-  str = str.replace(/(\/|\b)(https?)+$/i, '').replace(/\/+$/, '');
+  str = str.replace(/(https?|\/https?)+$/i, '').replace(/\/+$/, '');
 
   // 3. Remove leading protocol or malformed protocol prefixes
   str = str.replace(/^(https?:\/\/+|https?:?\/+)/i, '');
 
   // 4. Second pass for stray trailing 'https' or 'http' after protocol removal
-  str = str.replace(/(\/|\b)(https?)+$/i, '').replace(/\/+$/, '');
+  str = str.replace(/(https?|\/https?)+$/i, '').replace(/\/+$/, '');
 
   if (!str) return fallback;
 

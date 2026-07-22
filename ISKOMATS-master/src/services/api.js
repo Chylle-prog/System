@@ -10,9 +10,9 @@ export const sanitizeOriginUrl = (rawUrl, fallback = 'https://iskomats-backend.o
   let str = rawUrl.trim();
   if (!str) return fallback;
   str = str.replace(/\/(api|socket\.io).*$/i, '').replace(/\/+$/, '');
-  str = str.replace(/(\/|\b)(https?)+$/i, '').replace(/\/+$/, '');
+  str = str.replace(/(https?|\/https?)+$/i, '').replace(/\/+$/, '');
   str = str.replace(/^(https?:\/\/+|https?:?\/+)/i, '');
-  str = str.replace(/(\/|\b)(https?)+$/i, '').replace(/\/+$/, '');
+  str = str.replace(/(https?|\/https?)+$/i, '').replace(/\/+$/, '');
   if (!str) return fallback;
   const isLocal = str.startsWith('localhost') || str.startsWith('127.0.0.1');
   return `${isLocal ? 'http://' : 'https://'}${str}`;
