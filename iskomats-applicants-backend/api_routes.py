@@ -487,33 +487,50 @@ def ensure_is_removed_columns(cursor):
 # ===== DATABASE MIGRATIONS =====
 
 def ensure_verification_columns():
-    """Ensure email table has verification columns for admin registration"""
+    """Ensure email tables have verification and lock columns for admin and applicant accounts"""
     try:
         conn = get_db_startup()
         cur = conn.cursor()
         user_email_table = get_user_email_table(cur)
+        applicant_email_table = get_applicant_email_table(cur)
         
-        # Check if verification columns exist
+        # Check user_email columns
         cur.execute("""
             SELECT column_name
             FROM information_schema.columns
-            WHERE table_name = %s AND column_name IN ('is_verified', 'verification_code')
+            WHERE table_name = %s AND column_name IN ('is_verified', 'verification_code', 'is_locked')
         """, (user_email_table,))
-        existing = [row['column_name'] for row in cur.fetchall()]
+        existing_user = [row['column_name'] for row in cur.fetchall()]
         
-        if 'is_verified' not in existing:
+        if 'is_verified' not in existing_user:
             print(f"[MIGRATION] Adding is_verified to {user_email_table}")
             cur.execute(f"ALTER TABLE {user_email_table} ADD COLUMN is_verified BOOLEAN DEFAULT FALSE")
             cur.execute(f"UPDATE {user_email_table} SET is_verified = TRUE")
         
-        if 'verification_code' not in existing:
+        if 'verification_code' not in existing_user:
             print(f"[MIGRATION] Adding verification_code to {user_email_table}")
             cur.execute(f"ALTER TABLE {user_email_table} ADD COLUMN verification_code VARCHAR(10)")
+
+        if 'is_locked' not in existing_user:
+            print(f"[MIGRATION] Adding is_locked to {user_email_table}")
+            cur.execute(f"ALTER TABLE {user_email_table} ADD COLUMN is_locked BOOLEAN DEFAULT FALSE")
+
+        # Check applicant_email columns
+        cur.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = %s AND column_name = 'is_locked'
+        """, (applicant_email_table,))
+        existing_app = [row['column_name'] for row in cur.fetchall()]
+
+        if 'is_locked' not in existing_app:
+            print(f"[MIGRATION] Adding is_locked to {applicant_email_table}")
+            cur.execute(f"ALTER TABLE {applicant_email_table} ADD COLUMN is_locked BOOLEAN DEFAULT FALSE")
         
         conn.commit()
         cur.close()
         conn.close()
-        print("[MIGRATION] Email table verification columns ensured")
+        print("[MIGRATION] Email table verification and lock columns ensured")
     finally:
         if 'cur' in locals() and cur:
             try: cur.close()
@@ -2654,15 +2671,29 @@ def get_accounts(current_user_id, pro_no, role):
             applicant_email_table = get_applicant_email_table(cursor)
 
             cursor.execute(
-                '''
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name = 'applicant_status' AND column_name = 'status_updated'
-                ) AS has_status_updated
+                f'''
+                SELECT 
+                    EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name = '{user_email_table}' AND column_name = 'is_locked'
+                    ) AS has_user_locked,
+                    EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name = '{applicant_email_table}' AND column_name = 'is_locked'
+                    ) AS has_app_locked,
+                    EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name = 'applicant_status' AND column_name = 'status_updated'
+                    ) AS has_status_updated
                 '''
             )
-            has_status_updated = cursor.fetchone()['has_status_updated']
+            col_info = cursor.fetchone()
+            has_user_locked = col_info['has_user_locked']
+            has_app_locked = col_info['has_app_locked']
+            has_status_updated = col_info['has_status_updated']
+
+            user_locked_expr = 'COALESCE(ue.is_locked, FALSE)' if has_user_locked else 'FALSE'
+            app_locked_expr = 'COALESCE(ae.is_locked, FALSE)' if has_app_locked else 'FALSE'
             joined_expr = 'COALESCE(ast.status_updated, NOW())::date' if has_status_updated else 'NULL::date'
             status_column = ', status_updated' if has_status_updated else ''
             applicant_order = 'status_updated DESC' if has_status_updated else 'stat_no DESC'
@@ -2682,7 +2713,7 @@ def get_accounts(current_user_id, pro_no, role):
                         p.pro_no AS provider_no,
                         'Registered' AS status,
                         NULL::date AS joined,
-                        COALESCE(ue.is_locked, FALSE) AS locked
+                        {user_locked_expr} AS locked
                     FROM {user_email_table} ue
                     LEFT JOIN users u ON ue.user_no = u.user_no
                     LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
@@ -2706,7 +2737,7 @@ def get_accounts(current_user_id, pro_no, role):
                             ELSE 'Pending'
                         END AS status,
                         {joined_expr} AS joined,
-                        COALESCE(ae.is_locked, FALSE) AS locked
+                        {app_locked_expr} AS locked
                     FROM {applicant_email_table} ae
                     LEFT JOIN applicants a ON ae.applicant_no = a.applicant_no
                     LEFT JOIN (
