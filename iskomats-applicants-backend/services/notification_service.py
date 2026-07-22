@@ -264,6 +264,8 @@ def send_sms_logic(number, message):
                 err_msg = err_body.get('message', str(err))
                 if err_code == 21608:
                     print(f"[SMS ERROR] Twilio Trial Account restriction (Code 21608): {formatted_number} is unverified. Please add this number to 'Verified Caller IDs' in your Twilio Console or upgrade your Twilio account.")
+                elif err_code == 21612:
+                    print(f"[SMS ERROR] Twilio Geo-Permission Restriction (Code 21612): Sending SMS to Philippines (+63) is currently disabled on your Twilio number ({from_number}). Please enable 'Philippines' under Messaging -> Settings -> Geo-permissions in your Twilio Console.")
                 else:
                     print(f"[SMS ERROR] Twilio failed (Code {err_code}): {err_msg}")
             except Exception:
