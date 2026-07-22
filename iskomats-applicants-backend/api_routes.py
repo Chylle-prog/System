@@ -1309,14 +1309,8 @@ def notify_announcement_applicants(
         log(f"[ANNOUNCEMENT NOTIF] Task started. send_to_all={send_to_all_applicants}, provider={provider_no}")
         with get_db() as conn:
             cur = conn.cursor()
-            if send_to_all_applicants:
-                log("[ANNOUNCEMENT NOTIF] Mode: Global. Fetching all verified applicants.")
-                applicant_email_table = get_applicant_email_table(cur)
-                # Ensure we get all applicants who have verified email accounts
-                cur.execute(
-                    f"SELECT DISTINCT applicant_no FROM {applicant_email_table} WHERE is_verified = TRUE AND applicant_no IS NOT NULL"
-                )
-            else:
+            recipients = []
+            if not send_to_all_applicants and provider_no:
                 log(f"[ANNOUNCEMENT NOTIF] Mode: Provider-specific ({provider_no}).")
                 cur.execute(
                     """
@@ -1327,7 +1321,15 @@ def notify_announcement_applicants(
                     """,
                     (provider_no,),
                 )
-            recipients = cur.fetchall()
+                recipients = cur.fetchall()
+
+            if not recipients:
+                log("[ANNOUNCEMENT NOTIF] Fetching all verified applicants as primary/fallback recipients.")
+                applicant_email_table = get_applicant_email_table(cur)
+                cur.execute(
+                    f"SELECT DISTINCT applicant_no FROM {applicant_email_table} WHERE is_verified = TRUE AND applicant_no IS NOT NULL"
+                )
+                recipients = cur.fetchall()
             
         if not recipients:
             log(f"[ANNOUNCEMENT NOTIF WARNING] No recipients found for announcement.")
@@ -4352,6 +4354,7 @@ def get_current_user_info(current_user_id, pro_no, role):
 # ===== ANNOUNCEMENT ENDPOINTS =====
 
 @api_bp.route('/announcements', methods=['GET'])
+@api_bp.route('/admin/announcements', methods=['GET'])
 @token_required
 def get_admin_announcements(current_user_id, pro_no, role):
     try:
@@ -4467,6 +4470,7 @@ def get_admin_announcements(current_user_id, pro_no, role):
         return jsonify({'message': str(e)}), 500
 
 @api_bp.route('/announcements', methods=['POST'])
+@api_bp.route('/admin/announcements', methods=['POST'])
 @token_required
 def create_announcement(current_user_id, pro_no, role):
     # Support both JSON and multipart/form-data
@@ -4587,6 +4591,7 @@ def create_announcement(current_user_id, pro_no, role):
             conn.close()
 
 @api_bp.route('/announcements/<int:ann_no>', methods=['PUT'])
+@api_bp.route('/admin/announcements/<int:ann_no>', methods=['PUT'])
 @token_required
 def update_announcement(current_user_id, pro_no, role, ann_no):
     # Support both JSON and multipart/form-data
@@ -4755,6 +4760,7 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
             conn.close()
 
 @api_bp.route('/announcements/<int:ann_no>', methods=['DELETE'])
+@api_bp.route('/admin/announcements/<int:ann_no>', methods=['DELETE'])
 @token_required
 def delete_announcement(current_user_id, pro_no, role, ann_no):
     conn = None
