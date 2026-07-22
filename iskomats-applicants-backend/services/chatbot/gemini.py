@@ -9,15 +9,25 @@ logger = logging.getLogger(__name__)
 class GeminiService:
     def __init__(self, api_key: str, model: str):
         self.api_key = api_key or ""
-        self.model = model or "llama-3.3-70b-versatile"
         
-        # Check if Groq key is set in environment or passed as api_key
+        # Check if Groq key is set in environment, passed as api_key, or in GEMINI_API_KEY
         groq_key = os.getenv("GROQ_API_KEY", "").strip()
         if not groq_key and self.api_key.startswith("gsk_"):
             groq_key = self.api_key
+        if not groq_key and os.getenv("GEMINI_API_KEY", "").startswith("gsk_"):
+            groq_key = os.getenv("GEMINI_API_KEY", "").strip()
             
         self.groq_api_key = groq_key
-        
+
+        if self.groq_api_key:
+            self.model = os.getenv("GROQ_MODEL") or "llama-3.3-70b-versatile"
+        else:
+            # For Google GenAI, model MUST be a valid Gemini model string
+            gemini_mod = model or os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
+            if "llama" in gemini_mod.lower():
+                gemini_mod = "gemini-2.0-flash-lite"
+            self.model = gemini_mod
+
         # Initialize Google GenAI client as fallback if needed
         self.client = None
         if not self.groq_api_key and self.api_key and not self.api_key.startswith("gsk_"):

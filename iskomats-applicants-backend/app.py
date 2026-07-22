@@ -86,7 +86,7 @@ print("[STARTUP] Initializing Chatbot RAG Pipeline...", flush=True)
 try:
     from blueprints.chatbot_bp import init_chatbot
     GEMINI_API_KEY = os.getenv("GROQ_API_KEY") or os.getenv("GEMINI_API_KEY", "")
-    GEMINI_MODEL = os.getenv("GROQ_MODEL") or os.getenv("GEMINI_MODEL", "llama-3.3-70b-versatile")
+    GEMINI_MODEL = os.getenv("GROQ_MODEL") or os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
     CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
     DOCUMENTS_DIR = os.getenv("DOCUMENTS_DIR", "./data")
     gemini_service, rag, doc_loader = init_chatbot(
