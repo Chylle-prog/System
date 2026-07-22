@@ -3395,6 +3395,7 @@ def get_my_applications():
                     s.req_no,
                     s.deadline,
                     s.pro_no,
+                    sp.provider_name,
                     CASE
                         WHEN ast.is_accepted = 'Accepted' THEN 'Accepted'
                         WHEN ast.is_accepted = 'Rejected' THEN 'Rejected'
@@ -3404,6 +3405,7 @@ def get_my_applications():
                     ast.status_updated
                 FROM applicant_status ast
                 LEFT JOIN scholarships s ON ast.scholarship_no = s.req_no
+                LEFT JOIN scholarship_providers sp ON s.pro_no = sp.pro_no
                 WHERE ast.applicant_no = %s
                 """,
                 (request.user_no,),

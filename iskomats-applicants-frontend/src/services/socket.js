@@ -15,10 +15,16 @@ class SocketService {
     this.subscribers = new Map();
     this.userId = null;
     this.username = null;
+    this.lastLoggedInData = null;
   }
 
   connect(token) {
-    if (this.socket?.connected) return;
+    if (this.socket?.connected) {
+      if (token) {
+        this.socket.emit('login', { token });
+      }
+      return;
+    }
 
     this.socket = io(SOCKET_URL, {
       auth: { token },
@@ -59,6 +65,7 @@ class SocketService {
       // Store user ID and username for message sending
       this.userId = data.id;
       this.username = data.name;
+      this.lastLoggedInData = data;
       this.notify('logged_in', data);
     });
 
@@ -84,6 +91,7 @@ class SocketService {
       this.socket = null;
       this.userId = null;
       this.username = null;
+      this.lastLoggedInData = null;
     }
   }
 
@@ -92,6 +100,11 @@ class SocketService {
       this.subscribers.set(event, new Set());
     }
     this.subscribers.get(event).add(callback);
+
+    if (event === 'logged_in' && this.lastLoggedInData) {
+      callback(this.lastLoggedInData);
+    }
+
     return () => this.unsubscribe(event, callback);
   }
 

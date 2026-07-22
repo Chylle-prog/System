@@ -544,13 +544,44 @@ const Portal = () => {
     chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [currentChatId, currentRoomMessages.length, showChatModal]);
 
-  const hasFetchedApps = useRef(false);
-
-  // Automated Cleanup: Ensure chat rooms only exist for active applications
+  // Synchronize applications with chat rooms so chat rooms exist even if socket login was delayed
   useEffect(() => {
-    // We only cleanup IF we have successfully fetched the application list at least once
-    // to avoid clearing chat rooms before they've had a chance to match against applications.
-    if (hasFetchedApps.current && scholarships.length > 0) {
+    if (applications.length > 0) {
+      const applicantNo = localStorage.getItem('applicantNo');
+      if (!applicantNo) return;
+
+      setScholarships(prev => {
+        const existingRoomIds = new Set(prev.map(s => s.id));
+        const updatedRooms = [...prev];
+        let changed = false;
+
+        applications.forEach(app => {
+          const proNo = app.pro_no || app.provider_no;
+          if (!proNo) return;
+          const roomId = `${applicantNo}+${proNo}`;
+
+          if (!existingRoomIds.has(roomId)) {
+            changed = true;
+            updatedRooms.push({
+              id: roomId,
+              name: app.provider_name || app.name || 'Scholarship Admin',
+              icon: 'fa-building',
+              unread: 0,
+              lastMessage: 'Tap to chat with provider',
+              time: ''
+            });
+            socketService.loadHistory(roomId);
+          }
+        });
+
+        return changed ? updatedRooms : prev;
+      });
+    }
+  }, [applications]);
+
+  // Automated Cleanup: Ensure chat rooms only exist for active applications or rooms with messages
+  useEffect(() => {
+    if (hasFetchedApps.current && scholarships.length > 0 && applications.length > 0) {
       setScholarships(prev => {
         const filtered = prev.filter(room => {
           // Room ID format: applicantNo+proNo
@@ -558,11 +589,13 @@ const Portal = () => {
           if (parts.length < 2) return true; // Keep unidentified room formats
 
           const roomProNo = parts.length > 1 ? parseInt(parts[1]) : null;
-          // Check if any application matches this provider
-          return applications.some(app =>
+          // Check if any application matches this provider or if messages exist
+          const hasApp = applications.some(app =>
             (roomProNo !== null) &&
             (Number(app.pro_no) === roomProNo || Number(app.provider_no) === roomProNo)
           );
+          const hasMsgs = Boolean(chatMessages[room.id] && chatMessages[room.id].length > 0);
+          return hasApp || hasMsgs;
         });
 
         // Only update if something was actually filtered out to avoid loops
@@ -572,7 +605,7 @@ const Portal = () => {
         return prev;
       });
     }
-  }, [applications, scholarships.length]);
+  }, [applications, scholarships.length, chatMessages]);
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
