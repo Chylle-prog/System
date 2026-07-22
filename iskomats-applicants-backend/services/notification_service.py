@@ -375,17 +375,35 @@ def _create_notification_internal(conn, user_no, title, message, notif_type='mes
             print(f"[NOTIF SOCKET SKIP] _socketio not initialized - cannot send real-time alert to user {user_no}")
 
         # 3. Get the applicant's email address and mobile number
-        applicant_email_table = get_applicant_email_table(cur)
-        cur.execute(f"SELECT email_address FROM {applicant_email_table} WHERE applicant_no = %s LIMIT 1", (user_no,))
-        user_row = cur.fetchone()
-        
-        cur.execute("SELECT mobile_no FROM applicants WHERE applicant_no = %s LIMIT 1", (user_no,))
-        mobile_row = cur.fetchone()
+        receiver_email = None
+        receiver_mobile = None
+
+        try:
+            applicant_email_table = get_applicant_email_table(cur)
+            cur.execute(f"SELECT email_address FROM {applicant_email_table} WHERE applicant_no = %s LIMIT 1", (user_no,))
+            user_row = cur.fetchone()
+            if user_row and user_row.get('email_address'):
+                receiver_email = user_row.get('email_address')
+        except Exception as e_table_err:
+            print(f"[NOTIF WARN] Email table query error: {e_table_err}")
+
+        if not receiver_email:
+            try:
+                cur.execute("SELECT email FROM applicants WHERE applicant_no = %s LIMIT 1", (user_no,))
+                user_row = cur.fetchone()
+                if user_row and user_row.get('email'):
+                    receiver_email = user_row.get('email')
+            except Exception: pass
+
+        try:
+            cur.execute("SELECT mobile_no, contact_no, phone FROM applicants WHERE applicant_no = %s LIMIT 1", (user_no,))
+            mobile_row = cur.fetchone()
+            if mobile_row:
+                receiver_mobile = mobile_row.get('mobile_no') or mobile_row.get('contact_no') or mobile_row.get('phone')
+        except Exception as mob_err:
+            print(f"[NOTIF WARN] Mobile query error: {mob_err}")
         
         if commit: conn.commit()
-        
-        receiver_email = user_row['email_address'] if user_row else None
-        receiver_mobile = mobile_row['mobile_no'] if mobile_row else None
         
         # SMS alert trigger
         sms_sent = False

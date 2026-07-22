@@ -1324,10 +1324,25 @@ def notify_announcement_applicants(
                 recipients = cur.fetchall()
 
             if not recipients:
-                log("[ANNOUNCEMENT NOTIF] Fetching all verified applicants as primary/fallback recipients.")
+                log("[ANNOUNCEMENT NOTIF] Fetching verified applicants as primary recipients.")
                 applicant_email_table = get_applicant_email_table(cur)
                 cur.execute(
                     f"SELECT DISTINCT applicant_no FROM {applicant_email_table} WHERE is_verified = TRUE AND applicant_no IS NOT NULL"
+                )
+                recipients = cur.fetchall()
+
+            if not recipients:
+                log("[ANNOUNCEMENT NOTIF] Fallback: Fetching all applicants from email table.")
+                applicant_email_table = get_applicant_email_table(cur)
+                cur.execute(
+                    f"SELECT DISTINCT applicant_no FROM {applicant_email_table} WHERE applicant_no IS NOT NULL"
+                )
+                recipients = cur.fetchall()
+
+            if not recipients:
+                log("[ANNOUNCEMENT NOTIF] Secondary Fallback: Fetching all applicants from applicants table.")
+                cur.execute(
+                    "SELECT DISTINCT applicant_no FROM applicants WHERE applicant_no IS NOT NULL"
                 )
                 recipients = cur.fetchall()
             
