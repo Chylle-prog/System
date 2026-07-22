@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chart, registerables } from 'chart.js';
 import {
   FaCheckCircle,
@@ -292,7 +292,7 @@ const applicantMatchesAdvancedScholarshipFilters = (applicant, advanced, scholar
 
   if (advanced.location && (applicant.municipality || applicant.address)) {
     const locationMatch = normalizeSearchText(applicant.municipality || '').includes(normalizeSearchText(advanced.location)) ||
-                        normalizeSearchText(applicant.address || '').includes(normalizeSearchText(advanced.location));
+      normalizeSearchText(applicant.address || '').includes(normalizeSearchText(advanced.location));
     if (!locationMatch) return false;
   }
 
@@ -306,7 +306,7 @@ const applicantMatchesAdvancedScholarshipFilters = (applicant, advanced, scholar
 
   // Filter by scholarship attributes (scholarship they applied to)
   const post = getApplicantScholarshipPost(applicant, scholarshipPosts);
-  
+
   if (advanced.scholarshipName) {
     const postName = normalizeSearchText(post?.scholarshipName || post?.title || '');
     if (!postName.includes(normalizeSearchText(advanced.scholarshipName))) {
@@ -3149,7 +3149,7 @@ export default function ScholarshipDashboard({
             onClick={() => setManageMode('list')}
             className="px-4 py-2 rounded-lg bg-gray-500 text-white font-semibold hover:bg-gray-600 transition-colors"
           >
-            â† Back to List
+            Back to List
           </button>
         </div>
 
@@ -3624,20 +3624,20 @@ export default function ScholarshipDashboard({
                     <div className="absolute left-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-50 text-gray-800 font-normal py-2 px-3">
                       <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort Name</div>
                       <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           checked={sortConfig.column === 'name' && sortConfig.direction === 'asc'}
                           onChange={() => handleSortCheck('name', 'asc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
                         />
                         <span className="text-sm">A - Z</span>
                       </label>
                       <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           checked={sortConfig.column === 'name' && sortConfig.direction === 'desc'}
                           onChange={() => handleSortCheck('name', 'desc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
                         />
                         <span className="text-sm">Z - A</span>
                       </label>
@@ -3654,20 +3654,20 @@ export default function ScholarshipDashboard({
                     <div className="absolute left-0 mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-xl z-50 text-gray-800 font-normal py-2 px-3">
                       <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort Grade</div>
                       <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           checked={sortConfig.column === 'grade' && sortConfig.direction === 'desc'}
                           onChange={() => handleSortCheck('grade', 'desc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
                         />
                         <span className="text-sm">Highest to Lowest</span>
                       </label>
                       <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           checked={sortConfig.column === 'grade' && sortConfig.direction === 'asc'}
                           onChange={() => handleSortCheck('grade', 'asc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
                         />
                         <span className="text-sm">Lowest to Highest</span>
                       </label>
@@ -3684,20 +3684,20 @@ export default function ScholarshipDashboard({
                     <div className="absolute left-0 mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-xl z-50 text-gray-800 font-normal py-2 px-3">
                       <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort Financial</div>
                       <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           checked={sortConfig.column === 'financial' && sortConfig.direction === 'desc'}
                           onChange={() => handleSortCheck('financial', 'desc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
                         />
                         <span className="text-sm">Highest to Lowest</span>
                       </label>
                       <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           checked={sortConfig.column === 'financial' && sortConfig.direction === 'asc'}
                           onChange={() => handleSortCheck('financial', 'asc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
                         />
                         <span className="text-sm">Lowest to Highest</span>
                       </label>
@@ -3714,20 +3714,20 @@ export default function ScholarshipDashboard({
                     <div className="absolute left-0 mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-xl z-50 text-gray-800 font-normal py-2 px-3">
                       <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort Points</div>
                       <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           checked={sortConfig.column === 'points' && sortConfig.direction === 'desc'}
                           onChange={() => handleSortCheck('points', 'desc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
                         />
                         <span className="text-sm">Highest to Lowest</span>
                       </label>
                       <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           checked={sortConfig.column === 'points' && sortConfig.direction === 'asc'}
                           onChange={() => handleSortCheck('points', 'asc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
                         />
                         <span className="text-sm">Lowest to Highest</span>
                       </label>
@@ -3744,20 +3744,20 @@ export default function ScholarshipDashboard({
                     <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-50 text-gray-800 font-normal py-2 px-3">
                       <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort School & Course</div>
                       <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           checked={sortConfig.column === 'schoolCourse' && sortConfig.direction === 'asc'}
                           onChange={() => handleSortCheck('schoolCourse', 'asc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
                         />
                         <span className="text-sm">A - Z</span>
                       </label>
                       <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           checked={sortConfig.column === 'schoolCourse' && sortConfig.direction === 'desc'}
                           onChange={() => handleSortCheck('schoolCourse', 'desc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
                         />
                         <span className="text-sm">Z - A</span>
                       </label>
@@ -3774,20 +3774,20 @@ export default function ScholarshipDashboard({
                     <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-50 text-gray-800 font-normal py-2 px-3">
                       <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort Contact & Address</div>
                       <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           checked={sortConfig.column === 'contactAddress' && sortConfig.direction === 'asc'}
                           onChange={() => handleSortCheck('contactAddress', 'asc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
                         />
                         <span className="text-sm">A - Z</span>
                       </label>
                       <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           checked={sortConfig.column === 'contactAddress' && sortConfig.direction === 'desc'}
                           onChange={() => handleSortCheck('contactAddress', 'desc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer" 
+                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
                         />
                         <span className="text-sm">Z - A</span>
                       </label>
@@ -5303,7 +5303,7 @@ export default function ScholarshipDashboard({
             </div>
           </div>
           <button type="button" onClick={() => setSection('track')} className="px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors text-white font-medium">
-            â† Track
+            Track
           </button>
         </div>
       </div>
@@ -5438,7 +5438,7 @@ export default function ScholarshipDashboard({
                   </div>
                 </div>
                 <button type="button" onClick={() => setViewMessage(null)} className="text-sm text-gray-600 hover:text-[#800020]">
-                  â† Back
+                  Back
                 </button>
               </div>
 
