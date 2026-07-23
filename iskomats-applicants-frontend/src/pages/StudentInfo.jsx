@@ -1580,7 +1580,12 @@ const StudentInfo = () => {
       showPromptMessage('Please upload or capture your Certificate of Indigency first.');
       return;
     }
-    if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
+    const hasVideo = !!videoUrl && (
+      (typeof videoUrl === 'string' && videoUrl.trim().length > 0) ||
+      (typeof videoUrl === 'object')
+    );
+
+    if (!hasVideo) {
       showPromptMessage('Please record and upload the Indigency video first.');
       return;
     }
