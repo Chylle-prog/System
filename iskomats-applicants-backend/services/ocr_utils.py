@@ -617,30 +617,32 @@ def _extract_signature_from_id_back(id_img):
     if not final_parts:
         final_parts = [anchor]
             
-    # Draw ONLY the isolated signature handwriting contours onto binary canvas
-    signature_mask = np.zeros((h_idx, w_idx), dtype=np.uint8)
+    # Mask binary ink directly to preserve thin pen strokes and hollow loops (no ink blotting)
+    contour_mask = np.zeros((h_idx, w_idx), dtype=np.uint8)
     for part in final_parts:
-        cv2.drawContours(signature_mask, [part['cnt']], -1, 255, -1)
+        cv2.drawContours(contour_mask, [part['cnt']], -1, 255, -1)
+
+    isolated_ink = cv2.bitwise_and(binary, binary, mask=contour_mask)
 
     x0 = min(p['box'][0] for p in final_parts)
     y0 = min(p['box'][1] for p in final_parts)
     x1 = max(p['box'][0] + p['box'][2] for p in final_parts)
     y1 = max(p['box'][1] + p['box'][3] for p in final_parts)
 
-    pad = 8
+    pad = 6
     x0, y0 = max(0, x0 - pad), max(0, y0 - pad)
     x1, y1 = min(w_idx, x1 + pad), min(h_idx, y1 + pad)
 
-    crop_mask = signature_mask[y0:y1, x0:x1]
-    if crop_mask.size == 0 or np.count_nonzero(crop_mask) == 0:
+    crop_ink = isolated_ink[y0:y1, x0:x1]
+    if crop_ink.size == 0 or np.count_nonzero(crop_ink) == 0:
         ch, cw = int(h_idx * 0.6), int(w_idx * 0.7)
         qy0, qx0 = int((h_idx - ch)/2), int((w_idx - cw)/2)
         fallback = roi_gray[qy0:qy0+ch, qx0:qx0+cw]
         result = cv2.cvtColor(fallback, cv2.COLOR_GRAY2BGR)
         return cv2.resize(result, (400, max(1, int(400 * ch/cw))), interpolation=cv2.INTER_LINEAR)
 
-    result = np.full((crop_mask.shape[0], crop_mask.shape[1], 3), 255, dtype=np.uint8)
-    result[crop_mask > 0] = (0, 0, 0)
+    result = np.full((crop_ink.shape[0], crop_ink.shape[1], 3), 255, dtype=np.uint8)
+    result[crop_ink > 0] = (0, 0, 0)
     
     target_w = 400
     target_h = max(1, int(target_w * (result.shape[0] / float(result.shape[1]))))
