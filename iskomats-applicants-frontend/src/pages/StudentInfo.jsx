@@ -321,9 +321,115 @@ const StudentInfo = () => {
     });
 
     if (totalFields === 0) return 0;
-    const percentage = Math.round((passedFields / totalFields) * 100);
-    return percentage;
+    return totalFields > 0 ? Math.round((passedFields / totalFields) * 100) : (results.every(r => r.verified) ? 100 : 0);
   };
+
+  const [expandedRequirements, setExpandedRequirements] = useState({});
+
+  const toggleInlineRequirements = (docType) => {
+    setExpandedRequirements(prev => ({ ...prev, [docType]: !prev[docType] }));
+  };
+
+  const renderInlineRequirementsChecklist = (docType) => {
+    const log = ocrDebugLogs[docType];
+    if (!log || !log.requirements || Object.keys(log.requirements).length === 0) return null;
+
+    const isExpanded = expandedRequirements[docType] !== false; // Default expanded on feedback card
+
+    return (
+      <div style={{ marginTop: '12px', borderTop: '1px solid rgba(0,0,0,0.08)', paddingTop: '10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isExpanded ? '10px' : '0' }}>
+          <button
+            type="button"
+            onClick={() => toggleInlineRequirements(docType)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#4f46e5',
+              cursor: 'pointer',
+              fontSize: '0.78rem',
+              fontWeight: '700',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: 0
+            }}
+          >
+            <i className={`fas ${isExpanded ? 'fa-chevron-down' : 'fa-chevron-right'}`}></i>
+            {isExpanded ? 'Hide Requirements Checklist' : 'Show Requirements Checklist'}
+          </button>
+        </div>
+
+        {isExpanded && (
+          <div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+              gap: '8px',
+              marginBottom: '8px'
+            }}>
+              {Object.entries(log.requirements).map(([key, val]) => {
+                const matchVal = log.scoreDetails ? log.scoreDetails[key] : null;
+                let isMatch = matchVal === 'MATCH✓' || matchVal === true || val === 'Uploaded & Attached';
+                if (matchVal === 'MISMATCH✗' || matchVal === false) isMatch = false;
+
+                return (
+                  <div key={key} style={{
+                    background: isMatch ? '#f0fdf4' : '#fef2f2',
+                    border: `1px solid ${isMatch ? '#bbf7d0' : '#fecaca'}`,
+                    borderRadius: '8px',
+                    padding: '8px 10px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <div style={{ overflow: 'hidden', paddingRight: '4px' }}>
+                      <div style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>{key}</div>
+                      <div style={{ fontSize: '0.78rem', fontWeight: '800', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{String(val)}</div>
+                    </div>
+                    <span style={{
+                      fontSize: '0.62rem',
+                      fontWeight: '800',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      background: isMatch ? '#16a34a' : '#dc2626',
+                      color: 'white',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {isMatch ? 'MATCH✓' : 'MISMATCH✗'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {log.detectedText && (
+              <details style={{ marginTop: '6px' }}>
+                <summary style={{ fontSize: '0.72rem', color: '#64748b', cursor: 'pointer', fontWeight: '600' }}>
+                  📄 View Raw Text Extracted by OCR Engine
+                </summary>
+                <pre style={{
+                  marginTop: '4px',
+                  fontSize: '0.7rem',
+                  color: '#334155',
+                  background: '#f8fafc',
+                  padding: '8px',
+                  borderRadius: '6px',
+                  whiteSpace: 'pre-wrap',
+                  maxHeight: '120px',
+                  overflowY: 'auto',
+                  border: '1px solid #e2e8f0'
+                }}>
+                  {log.detectedText}
+                </pre>
+              </details>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const triggerAutoScan = (docType) => setAutoScanTrigger(prev => prev === docType ? `${docType}_${Date.now()}` : docType);
 
   const getDocTypeFromField = (field) => {
@@ -3704,25 +3810,7 @@ const StudentInfo = () => {
         >
           Toggle
         </button>
-        <button
-          type="button"
-          onClick={() => setShowOcrDebugModal(true)}
-          style={{
-            background: '#8b5cf6',
-            color: 'white',
-            border: 'none',
-            padding: '4px 10px',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '0.7rem',
-            fontWeight: '700',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px'
-          }}
-        >
-          <i className="fas fa-bug"></i> OCR Debug Inspector
-        </button>
+
       </div>
 
       <nav className="navbar">
@@ -4070,29 +4158,7 @@ const StudentInfo = () => {
                                 )}
                               </div>
                               <p style={{ fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.5' }}>{ocrStatus}</p>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedDebugTab('Indigency');
-                                  setShowOcrDebugModal(true);
-                                }}
-                                style={{
-                                  marginTop: '8px',
-                                  background: '#8b5cf6',
-                                  color: 'white',
-                                  border: 'none',
-                                  padding: '4px 10px',
-                                  borderRadius: '6px',
-                                  fontSize: '0.72rem',
-                                  fontWeight: '700',
-                                  cursor: 'pointer',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '6px'
-                                }}
-                              >
-                                <i className="fas fa-bug"></i> Inspect OCR Scan Details
-                              </button>
+                              {renderInlineRequirementsChecklist('Indigency')}
                             </div>
                           </div>
                         )}
@@ -4537,29 +4603,7 @@ const StudentInfo = () => {
                             )}
                           </div>
                           <p style={{ fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.5' }}>{idStatus}</p>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedDebugTab('SchoolID');
-                              setShowOcrDebugModal(true);
-                            }}
-                            style={{
-                              marginTop: '8px',
-                              background: '#8b5cf6',
-                              color: 'white',
-                              border: 'none',
-                              padding: '4px 10px',
-                              borderRadius: '6px',
-                              fontSize: '0.72rem',
-                              fontWeight: '700',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px'
-                            }}
-                          >
-                            <i className="fas fa-bug"></i> Inspect OCR Scan Details
-                          </button>
+                          {renderInlineRequirementsChecklist('SchoolID')}
                         </div>
                       </div>
                     )}
@@ -4691,29 +4735,7 @@ const StudentInfo = () => {
                                     )}
                                   </div>
                                   <p style={{ fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.4' }}>{coeStatus}</p>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setSelectedDebugTab('Enrollment');
-                                      setShowOcrDebugModal(true);
-                                    }}
-                                    style={{
-                                      marginTop: '8px',
-                                      background: '#8b5cf6',
-                                      color: 'white',
-                                      border: 'none',
-                                      padding: '4px 10px',
-                                      borderRadius: '6px',
-                                      fontSize: '0.72rem',
-                                      fontWeight: '700',
-                                      cursor: 'pointer',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '6px'
-                                    }}
-                                  >
-                                    <i className="fas fa-bug"></i> Inspect OCR Scan Details
-                                  </button>
+                                  {renderInlineRequirementsChecklist('Enrollment')}
                                 </div>
                               </div>
                             )}
@@ -4845,29 +4867,7 @@ const StudentInfo = () => {
                                       )}
                                     </div>
                                     <p style={{ fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.4' }}>{gradesStatus}</p>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setSelectedDebugTab('Grades');
-                                        setShowOcrDebugModal(true);
-                                      }}
-                                      style={{
-                                        marginTop: '8px',
-                                        background: '#8b5cf6',
-                                        color: 'white',
-                                        border: 'none',
-                                        padding: '4px 10px',
-                                        borderRadius: '6px',
-                                        fontSize: '0.72rem',
-                                        fontWeight: '700',
-                                        cursor: 'pointer',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '6px'
-                                      }}
-                                    >
-                                      <i className="fas fa-bug"></i> Inspect OCR Scan Details
-                                    </button>
+                                    {renderInlineRequirementsChecklist('Grades')}
                                   </div>
                                 </div>
                               )}
@@ -5515,259 +5515,6 @@ const StudentInfo = () => {
         </div>
       </div>
 
-      {/* OCR Verification & Requirement Debug Modal */}
-      {showOcrDebugModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(15, 23, 42, 0.8)',
-          backdropFilter: 'blur(10px)',
-          zIndex: 99999,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '1rem',
-          animation: 'fadeIn 0.2s ease'
-        }}>
-          <div style={{
-            background: '#1e293b',
-            color: '#f8fafc',
-            width: '100%',
-            maxWidth: '880px',
-            maxHeight: '90vh',
-            borderRadius: '24px',
-            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.6)',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            border: '1px solid #334155'
-          }}>
-            {/* Modal Header */}
-            <div style={{
-              padding: '1.25rem 1.75rem',
-              borderBottom: '1px solid #334155',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              background: '#0f172a'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '40px', height: '40px', background: 'rgba(168, 85, 247, 0.2)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <i className="fas fa-bug" style={{ color: '#a855f7', fontSize: '1.3rem' }}></i>
-                </div>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '800', color: '#f8fafc' }}>
-                    OCR Scan & Requirement Inspector Debugger
-                  </h3>
-                  <p style={{ margin: 0, fontSize: '0.75rem', color: '#94a3b8' }}>
-                    Compare target requirements against raw OCR recognized text to diagnose scanning mismatches.
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowOcrDebugModal(false)}
-                style={{
-                  background: 'rgba(255,255,255,0.08)',
-                  border: 'none',
-                  color: '#94a3b8',
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '50%',
-                  fontSize: '1.1rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <i className="fas fa-times"></i>
-              </button>
-            </div>
-
-            {/* Document Category Tabs */}
-            <div style={{
-              display: 'flex',
-              background: '#0f172a',
-              padding: '0 1.25rem',
-              borderBottom: '1px solid #334155',
-              overflowX: 'auto'
-            }}>
-              {[
-                { key: 'SchoolID', label: '🪪 School ID (Front/Back)' },
-                { key: 'Enrollment', label: '📄 COE / COR (Enrollment)' },
-                { key: 'Grades', label: '📊 Grades Transcript' },
-                { key: 'Indigency', label: '🏛️ Barangay Indigency & Video' }
-              ].map((tab) => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => setSelectedDebugTab(tab.key)}
-                  style={{
-                    padding: '0.9rem 1.25rem',
-                    background: 'transparent',
-                    border: 'none',
-                    borderBottom: selectedDebugTab === tab.key ? '3px solid #a855f7' : '3px solid transparent',
-                    color: selectedDebugTab === tab.key ? '#a855f7' : '#94a3b8',
-                    fontWeight: '800',
-                    fontSize: '0.85rem',
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Modal Body Content */}
-            <div style={{ padding: '1.5rem', overflowY: 'auto', flex: 1 }}>
-              {(() => {
-                const currentLog = ocrDebugLogs[selectedDebugTab] || {};
-                const status = currentLog.status || 'Not Scanned';
-                const isSuccess = status.includes('SUCCESS');
-                const isFailed = status.includes('FAILED');
-
-                return (
-                  <div>
-                    {/* Status Header Banner */}
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      background: isSuccess ? 'rgba(16, 185, 129, 0.12)' : (isFailed ? 'rgba(239, 68, 68, 0.12)' : 'rgba(148, 163, 184, 0.12)'),
-                      border: `1px solid ${isSuccess ? '#10b981' : (isFailed ? '#ef4444' : '#64748b')}`,
-                      padding: '1rem 1.25rem',
-                      borderRadius: '16px',
-                      marginBottom: '1.5rem'
-                    }}>
-                      <div>
-                        <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#94a3b8', fontWeight: '800' }}>
-                          SCAN STATUS
-                        </div>
-                        <div style={{ fontSize: '1.1rem', fontWeight: '800', color: isSuccess ? '#34d399' : (isFailed ? '#f87171' : '#cbd5e1') }}>
-                          {status}
-                        </div>
-                        {currentLog.message && (
-                          <div style={{ fontSize: '0.8rem', color: '#e2e8f0', marginTop: '4px' }}>
-                            {currentLog.message}
-                          </div>
-                        )}
-                      </div>
-                      {currentLog.timestamp && (
-                        <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                          Timestamp: {currentLog.timestamp}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Requirements Checklist & Verification Scores */}
-                    <h4 style={{ fontSize: '0.9rem', color: '#cbd5e1', marginBottom: '0.75rem', fontWeight: '700' }}>
-                      📋 Verification Checklist & Target Requirements
-                    </h4>
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                      gap: '0.75rem',
-                      marginBottom: '1.5rem'
-                    }}>
-                      {Object.keys(currentLog.requirements || {}).length === 0 ? (
-                        <div style={{ color: '#94a3b8', fontSize: '0.8rem', fontStyle: 'italic', gridColumn: '1 / -1' }}>
-                          No scan data recorded yet for {selectedDebugTab}. Run the scan on this document step to view results.
-                        </div>
-                      ) : (
-                        Object.entries(currentLog.requirements || {}).map(([key, reqVal]) => {
-                          const scoreVal = currentLog.scoreDetails ? currentLog.scoreDetails[key] : null;
-                          let badgeColor = '#64748b';
-                          let badgeText = 'N/A';
-                          if (scoreVal === true) { badgeColor = '#10b981'; badgeText = 'MATCH ✓'; }
-                          else if (scoreVal === false) { badgeColor = '#ef4444'; badgeText = 'MISMATCH ✗'; }
-
-                          return (
-                            <div key={key} style={{
-                              background: '#0f172a',
-                              padding: '0.85rem 1rem',
-                              borderRadius: '12px',
-                              border: '1px solid #334155',
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center'
-                            }}>
-                              <div>
-                                <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: '700' }}>{key}</div>
-                                <div style={{ fontSize: '0.85rem', color: '#f8fafc', fontWeight: '700', wordBreak: 'break-word' }}>
-                                  {String(reqVal)}
-                                </div>
-                              </div>
-                              {scoreVal !== null && scoreVal !== undefined && (
-                                <span style={{
-                                  background: badgeColor,
-                                  color: 'white',
-                                  fontSize: '0.65rem',
-                                  fontWeight: '800',
-                                  padding: '2px 8px',
-                                  borderRadius: '10px',
-                                  whiteSpace: 'nowrap'
-                                }}>
-                                  {badgeText}
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-
-                    {/* Raw Text Detected by OCR Engine */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                      <h4 style={{ fontSize: '0.9rem', color: '#cbd5e1', margin: 0, fontWeight: '700' }}>
-                        🔤 Raw Text Extracted by WebAssembly OCR (Tesseract.js)
-                      </h4>
-                      {currentLog.detectedText && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(currentLog.detectedText);
-                            alert('Raw OCR text copied to clipboard!');
-                          }}
-                          style={{
-                            background: '#334155',
-                            color: '#cbd5e1',
-                            border: 'none',
-                            padding: '4px 10px',
-                            borderRadius: '6px',
-                            fontSize: '0.7rem',
-                            cursor: 'pointer',
-                            fontWeight: '700'
-                          }}
-                        >
-                          <i className="fas fa-copy"></i> Copy Text
-                        </button>
-                      )}
-                    </div>
-                    <div style={{
-                      background: '#020617',
-                      border: '1px solid #1e293b',
-                      padding: '1rem',
-                      borderRadius: '12px',
-                      maxHeight: '240px',
-                      overflowY: 'auto',
-                      fontFamily: 'monospace',
-                      fontSize: '0.8rem',
-                      color: '#38bdf8',
-                      whiteSpace: 'pre-wrap',
-                      lineHeight: 1.5
-                    }}>
-                      {currentLog.detectedText || 'No text recognized yet. Click "Scan" or "Verify" on this document step to trigger OCR.'}
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 };
