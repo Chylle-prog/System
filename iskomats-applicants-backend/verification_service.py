@@ -117,26 +117,20 @@ async def api_signature_match(req: SignatureMatchRequest):
 
         verified, message, confidence, sub_img, ext_img, matcher_sub_img, matcher_ref_img = verify_signature_against_id(signature_bytes, id_back_bytes)
 
-        processed_submitted = None
-        extracted_signature = None
-        matcher_submitted = None
-        matcher_reference = None
+        def _to_base64(img):
+            if img is None:
+                return None
+            if isinstance(img, str):
+                return img
+            if isinstance(img, np.ndarray):
+                _, buffer = cv2.imencode('.png', img)
+                return f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+            return None
 
-        if sub_img is not None:
-            _, buffer = cv2.imencode('.png', sub_img)
-            processed_submitted = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
-
-        if ext_img is not None:
-            _, buffer = cv2.imencode('.png', ext_img)
-            extracted_signature = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
-
-        if matcher_sub_img is not None:
-            _, buffer = cv2.imencode('.png', matcher_sub_img)
-            matcher_submitted = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
-
-        if matcher_ref_img is not None:
-            _, buffer = cv2.imencode('.png', matcher_ref_img)
-            matcher_reference = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+        processed_submitted = _to_base64(sub_img)
+        extracted_signature = _to_base64(ext_img)
+        matcher_submitted = _to_base64(matcher_sub_img)
+        matcher_reference = _to_base64(matcher_ref_img)
 
         return {
             "verified": bool(verified),
