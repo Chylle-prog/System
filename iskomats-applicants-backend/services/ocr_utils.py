@@ -553,33 +553,43 @@ def _extract_signature_from_id_back(id_img):
     for cnt in contours:
         x, y, w, h = cv2.boundingRect(cnt)
         
-        if x < 8 or (x+w) > w_idx-8: continue
-        if y < 4 or (y+h) > h_idx-4: continue
+        if x < 4 or (x+w) > w_idx-4: continue
+        if y < 2 or (y+h) > h_idx-2: continue
         
         area = cv2.contourArea(cnt)
-        if area < 50: continue
+        if area < 35: continue
         
         solidity = area / float(w * h) if w * h > 0 else 0
         aspect = w / float(h) if h > 0 else 0
         extent = area / float(w_idx * h_idx)
         
-        if aspect > 3.0 and h < 20: 
+        # Exclude horizontal lines / underlines
+        if aspect > 3.2 and h < 18: 
+            continue
+
+        # Exclude vertical bracket lines near left/right box boundaries (e.g. '[' or ']')
+        if (x < w_idx * 0.15 or (x + w) > w_idx * 0.85) and (h > h_idx * 0.35) and aspect < 0.35:
+            continue
+
+        # Exclude printed label text at the bottom (e.g. 'Signature', 'SIGNATURE OF BEARER')
+        if (y + h/2) > h_idx * 0.65 and h < h_idx * 0.30:
             continue
         
         peri = cv2.arcLength(cnt, True)
         approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
-        if 4 <= len(approx) <= 6 and solidity > 0.5:
+        if 4 <= len(approx) <= 6 and solidity > 0.55:
              continue
              
-        if 0.6 < aspect < 1.6 and solidity > 0.40:
+        if 0.6 < aspect < 1.6 and solidity > 0.45:
             continue
             
-        if (extent > 0.10 or w > w_idx * 0.35) and solidity > 0.45: continue
+        if (extent > 0.12 or w > w_idx * 0.40) and solidity > 0.50: continue
             
         complexity = cv2.arcLength(cnt, True)
         hw_score = complexity / (np.sqrt(area) + 1)
         
         candidates.append({
+            'cnt': cnt,
             'box': (x, y, w, h), 
             'complex': complexity, 
             'hw_score': hw_score,
@@ -592,35 +602,48 @@ def _extract_signature_from_id_back(id_img):
         qy0, qx0 = int((h_idx - ch)/2), int((w_idx - cw)/2)
         fallback = roi_gray[qy0:qy0+ch, qx0:qx0+cw]
         result = cv2.cvtColor(fallback, cv2.COLOR_GRAY2BGR)
-        return cv2.resize(result, (400, int(400 * ch/cw)), interpolation=cv2.INTER_LINEAR)
+        return cv2.resize(result, (400, max(1, int(400 * ch/cw))), interpolation=cv2.INTER_LINEAR)
         
     candidates.sort(key=lambda c: c['hw_score'], reverse=True)
     
-    signature_lane = [c for c in candidates if h_idx * 0.10 < c['y_mid'] < h_idx * 0.60]
+    signature_lane = [c for c in candidates if h_idx * 0.05 < c['y_mid'] < h_idx * 0.62]
     anchor = signature_lane[0] if signature_lane else candidates[0]
     
     final_parts = []
     for c in candidates:
-        if abs(c['y_mid'] - anchor['y_mid']) < h_idx * 0.25:
-            final_parts.append(c['box'])
+        if abs(c['y_mid'] - anchor['y_mid']) < h_idx * 0.28:
+            final_parts.append(c)
             
     if not final_parts:
-        final_parts = [anchor['box']]
+        final_parts = [anchor]
             
-    x0 = min(b[0] for b in final_parts)
-    y0 = min(b[1] for b in final_parts)
-    x1 = max(b[0] + b[2] for b in final_parts)
-    y1 = max(b[1] + b[3] for b in final_parts)
-    
+    # Draw ONLY the isolated signature handwriting contours onto binary canvas
+    signature_mask = np.zeros((h_idx, w_idx), dtype=np.uint8)
+    for part in final_parts:
+        cv2.drawContours(signature_mask, [part['cnt']], -1, 255, -1)
+
+    x0 = min(p['box'][0] for p in final_parts)
+    y0 = min(p['box'][1] for p in final_parts)
+    x1 = max(p['box'][0] + p['box'][2] for p in final_parts)
+    y1 = max(p['box'][1] + p['box'][3] for p in final_parts)
+
     pad = 8
-    crop_bin = binary[max(0, y0-pad):min(h_idx, y1+pad), 
-                      max(0, x0-pad):min(w_idx, x1+pad)]
-    
-    result = np.full((crop_bin.shape[0], crop_bin.shape[1], 3), 255, dtype=np.uint8)
-    result[crop_bin > 0] = (0, 0, 0)
+    x0, y0 = max(0, x0 - pad), max(0, y0 - pad)
+    x1, y1 = min(w_idx, x1 + pad), min(h_idx, y1 + pad)
+
+    crop_mask = signature_mask[y0:y1, x0:x1]
+    if crop_mask.size == 0 or np.count_nonzero(crop_mask) == 0:
+        ch, cw = int(h_idx * 0.6), int(w_idx * 0.7)
+        qy0, qx0 = int((h_idx - ch)/2), int((w_idx - cw)/2)
+        fallback = roi_gray[qy0:qy0+ch, qx0:qx0+cw]
+        result = cv2.cvtColor(fallback, cv2.COLOR_GRAY2BGR)
+        return cv2.resize(result, (400, max(1, int(400 * ch/cw))), interpolation=cv2.INTER_LINEAR)
+
+    result = np.full((crop_mask.shape[0], crop_mask.shape[1], 3), 255, dtype=np.uint8)
+    result[crop_mask > 0] = (0, 0, 0)
     
     target_w = 400
-    target_h = int(target_w * (result.shape[0] / float(result.shape[1])))
+    target_h = max(1, int(target_w * (result.shape[0] / float(result.shape[1]))))
     return cv2.resize(result, (target_w, target_h), interpolation=cv2.INTER_CUBIC)
 
 def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None):
