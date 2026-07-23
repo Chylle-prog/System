@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Navbar from './Navbar';
+import ChatbotDesign from '../components/ChatbotDesign';
 import { useAuth } from '../contexts/AuthContext';
 import './HomePage.css';
 
@@ -384,6 +385,9 @@ const HomePage = () => {
           </div>
         </div>
       )}
+
+      {/* Chatbot */}
+      <ChatbotDesign apiUrl={import.meta.env.VITE_CHATBOT_API_URL || import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:8000'} />
     </>
   );
 };
