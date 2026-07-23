@@ -341,7 +341,7 @@ const StudentInfo = () => {
         }}>
           {Object.entries(log.requirements).map(([key, val]) => {
             const matchVal = log.scoreDetails ? log.scoreDetails[key] : null;
-            let isMatch = matchVal === 'MATCH✓' || matchVal === true || val === 'Uploaded & Attached';
+            let isMatch = matchVal === 'MATCH✓' || matchVal === true || (matchVal !== false && val === 'Uploaded & Attached');
             if (matchVal === 'MISMATCH✗' || matchVal === false) isMatch = false;
 
             return (
@@ -399,93 +399,156 @@ const StudentInfo = () => {
     );
   };
 
-  const validateVideoLiveness = (videoSrc) => {
-    return new Promise((resolve) => {
-      if (!videoSrc) {
-        resolve({ valid: false, reason: "No video uploaded or recorded." });
-        return;
+  const validateVideoLiveness = async (videoSrc) => {
+    if (!videoSrc) {
+      return { valid: false, reason: "No video uploaded or recorded." };
+    }
+
+    let target = videoSrc;
+    if (Array.isArray(target)) target = target[0];
+    if (target && typeof target === 'object' && !(target instanceof Blob) && !(target instanceof File)) {
+      target = target.url || target.src || target.front || target.back || null;
+    }
+    if (!target) {
+      return { valid: false, reason: "Invalid video source format." };
+    }
+
+    let srcUrl = null;
+    let createdBlobUrl = null;
+
+    try {
+      if (target instanceof Blob || target instanceof File) {
+        createdBlobUrl = URL.createObjectURL(target);
+        srcUrl = createdBlobUrl;
+      } else if (typeof target === 'string') {
+        const trimmed = target.trim();
+        if (trimmed.startsWith('blob:') || trimmed.startsWith('data:')) {
+          srcUrl = trimmed;
+        } else if (trimmed.startsWith('http') || trimmed.startsWith('/')) {
+          try {
+            const resp = await fetch(trimmed);
+            if (resp.ok) {
+              const blob = await resp.blob();
+              createdBlobUrl = URL.createObjectURL(blob);
+              srcUrl = createdBlobUrl;
+            } else {
+              srcUrl = trimmed;
+            }
+          } catch (e) {
+            srcUrl = trimmed;
+          }
+        }
       }
 
-      let srcUrl = typeof videoSrc === 'string' ? videoSrc : (videoSrc instanceof Blob || videoSrc instanceof File ? URL.createObjectURL(videoSrc) : null);
       if (!srcUrl) {
-        resolve({ valid: true });
-        return;
+        return { valid: false, reason: "Could not load video source." };
       }
 
-      const video = document.createElement('video');
-      video.crossOrigin = 'anonymous';
-      video.muted = true;
-      video.playsInline = true;
-      video.src = srcUrl;
+      return await new Promise((resolve) => {
+        const video = document.createElement('video');
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
 
-      let timeout = setTimeout(() => {
-        video.remove();
-        resolve({ valid: true });
-      }, 5000);
+        let cleanedUp = false;
+        const cleanup = () => {
+          if (cleanedUp) return;
+          cleanedUp = true;
+          try {
+            video.pause();
+            video.removeAttribute('src');
+            video.load();
+            video.remove();
+          } catch (e) {}
+          if (createdBlobUrl) {
+            URL.revokeObjectURL(createdBlobUrl);
+          }
+        };
 
-      video.onloadeddata = () => {
-        try {
-          const seekTime = Math.min(1.0, (video.duration || 2.0) / 2);
-          video.currentTime = seekTime;
-        } catch (e) {
+        const timeout = setTimeout(() => {
+          cleanup();
+          resolve({ valid: false, reason: "Video analysis timed out. Please re-record a clear video under proper lighting." });
+        }, 8000);
+
+        const analyzeFrame = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            const width = Math.min(video.videoWidth || 320, 320);
+            const height = Math.min(video.videoHeight || 240, 240);
+            canvas.width = width;
+            canvas.height = height;
+
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, width, height);
+
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const data = imageData.data;
+            let totalLuminance = 0;
+            let maxLuminance = 0;
+            const pixelCount = data.length / 4;
+
+            for (let i = 0; i < data.length; i += 4) {
+              const r = data[i];
+              const g = data[i + 1];
+              const b = data[i + 2];
+              const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+              totalLuminance += lum;
+              if (lum > maxLuminance) maxLuminance = lum;
+            }
+
+            const avgLuminance = totalLuminance / pixelCount;
+
+            let diffSum = 0;
+            for (let i = 0; i < data.length; i += 4) {
+              const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+              diffSum += Math.pow(lum - avgLuminance, 2);
+            }
+            const stdDev = Math.sqrt(diffSum / pixelCount);
+
+            clearTimeout(timeout);
+            cleanup();
+
+            if (avgLuminance < 18 || maxLuminance < 25 || stdDev < 5) {
+              resolve({
+                valid: false,
+                reason: `Pitch-Black / Covered Camera Video Rejected (Brightness: ${avgLuminance.toFixed(1)}/255). Please record a clear video under proper lighting.`
+              });
+            } else {
+              resolve({ valid: true, avgLuminance, stdDev, maxLuminance });
+            }
+          } catch (err) {
+            clearTimeout(timeout);
+            cleanup();
+            resolve({ valid: false, reason: "Video frame analysis failed. Please ensure video file is clear and playable." });
+          }
+        };
+
+        video.onloadeddata = () => {
+          try {
+            const seekTime = Math.min(0.5, (video.duration || 1.0) / 2);
+            video.currentTime = seekTime;
+          } catch (e) {
+            analyzeFrame();
+          }
+        };
+
+        video.onseeked = () => {
+          analyzeFrame();
+        };
+
+        video.onerror = () => {
           clearTimeout(timeout);
-          video.remove();
-          resolve({ valid: true });
-        }
-      };
+          cleanup();
+          resolve({ valid: false, reason: "Video file cannot be decoded or played. Please re-record or upload a valid video." });
+        };
 
-      video.onseeked = () => {
-        clearTimeout(timeout);
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = Math.min(video.videoWidth || 320, 320);
-          canvas.height = Math.min(video.videoHeight || 240, 240);
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const data = imageData.data;
-          let totalLuminance = 0;
-          let pixelCount = data.length / 4;
-
-          for (let i = 0; i < data.length; i += 4) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-            totalLuminance += (0.299 * r + 0.587 * g + 0.114 * b);
-          }
-
-          const avgLuminance = totalLuminance / pixelCount;
-
-          let diffSum = 0;
-          for (let i = 0; i < data.length; i += 4) {
-            const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-            diffSum += Math.pow(lum - avgLuminance, 2);
-          }
-          const stdDev = Math.sqrt(diffSum / pixelCount);
-
-          video.remove();
-
-          if (avgLuminance < 18 || stdDev < 6) {
-            resolve({
-              valid: false,
-              reason: `Pitch-Black / Covered Camera Video Rejected (Brightness: ${avgLuminance.toFixed(1)}/255). Please record a clear video under proper lighting.`
-            });
-          } else {
-            resolve({ valid: true, avgLuminance, stdDev });
-          }
-        } catch (err) {
-          video.remove();
-          resolve({ valid: true });
-        }
-      };
-
-      video.onerror = () => {
-        clearTimeout(timeout);
-        video.remove();
-        resolve({ valid: true });
-      };
-    });
+        video.src = srcUrl;
+        video.load();
+      });
+    } catch (err) {
+      if (createdBlobUrl) URL.revokeObjectURL(createdBlobUrl);
+      return { valid: false, reason: `Video processing error: ${err.message}` };
+    }
   };
 
   const triggerAutoScan = (docType) => setAutoScanTrigger(prev => prev === docType ? `${docType}_${Date.now()}` : docType);
@@ -1508,10 +1571,11 @@ const StudentInfo = () => {
       let resultsList = [];
 
       // Validate Video Liveness (Reject pitch-black screen or covered lens videos)
+      let videoCheck = null;
       const videoToCheck = Array.isArray(videoUrl) ? videoUrl[0] : videoUrl;
       if (videoToCheck) {
         if (!silent) setStatus("Analyzing video lighting & liveness...");
-        const videoCheck = await validateVideoLiveness(videoToCheck);
+        videoCheck = await validateVideoLiveness(videoToCheck);
         if (!videoCheck.valid) {
           isSuccess = false;
           finalMessage = videoCheck.reason;
@@ -1527,7 +1591,7 @@ const StudentInfo = () => {
             [docType]: {
               status: 'FAILED (BLACK VIDEO REJECTED)',
               message: finalMessage,
-              detectedText: 'Video validation failed: Pitch black screen / dark lens detected.',
+              detectedText: `Video validation failed: ${videoCheck.reason}`,
               scoreDetails,
               requirements: {
                 "First Name": firstName || 'N/A',
@@ -1622,16 +1686,17 @@ const StudentInfo = () => {
         detectedText = await runOcrOnImage(resolvedParam, "Certificate of Indigency");
         const nameCheck = studentNameMatchesText(detectedText, firstName, middleName, lastName);
         const addrOk = targetBarangay ? addressMatchesText(detectedText, targetBarangay) : true;
+        const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
 
-        isSuccess = nameCheck.success && addrOk;
+        isSuccess = nameCheck.success && addrOk && videoOk;
         scoreDetails = {
           "First Name": nameCheck.details.first_ok,
           "Last Name": nameCheck.details.last_ok,
           "Barangay Address": targetBarangay ? addrOk : null,
           "Town / City": townCity ? true : null,
-          "Video Proof": videoUrl ? true : false
+          "Video Proof": videoOk
         };
-        finalMessage = isSuccess ? "Indigency verified successfully client-side!" : "Indigency verification mismatch.";
+        finalMessage = isSuccess ? "Indigency verified successfully client-side!" : (!videoOk ? (videoCheck?.reason || "Indigency video proof failed validation.") : "Indigency verification mismatch.");
         resultsList = [{ doc: 'Indigency', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
       }
 
@@ -1672,7 +1737,7 @@ const StudentInfo = () => {
           "Last Name": lastName || 'N/A',
           "Barangay Address": targetBarangay || 'N/A',
           "Town / City": townCity || 'N/A',
-          "Video Proof": videoUrl ? 'Uploaded & Attached' : 'No Video Attached'
+          "Video Proof": videoCheck ? (videoCheck.valid ? 'Uploaded & Validated' : 'Pitch-Black / Rejected Video') : (videoUrl ? 'Uploaded & Attached' : 'No Video Attached')
         };
       }
 
