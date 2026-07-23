@@ -1889,7 +1889,7 @@ const StudentInfo = () => {
     );
     const townCity = formData.townCityMunicipality || '';
     const barangay = formData.barangay || '';
-    const videoUrl = formData.mayorIndigency_video || documentVideos.mayorIndigency_video;
+    const videoUrl = documentVideos.mayorIndigency_video || formData.mayorIndigency_video;
 
     // Skip if nothing changed (doc/video)
     const last = lastIndigencyScanRef.current;
@@ -1950,7 +1950,7 @@ const StudentInfo = () => {
     const idNumber = formData.schoolIdNumber || '';
     const yearLevel = formData.yearLevel || '';
     const course = formData.course || '';
-    const videoUrl = formData.mayorCOE_video || documentVideos.mayorCOE_video;
+    const videoUrl = documentVideos.mayorCOE_video || formData.mayorCOE_video;
     const year = formData.year || '';
     const semester = ''; // Semester removed from frontend
 
@@ -2008,7 +2008,7 @@ const StudentInfo = () => {
     const idNumber = formData.schoolIdNumber || '';
     const yearLevel = formData.yearLevel || '';
     const gpa = formData.gpa || '';
-    const videoUrl = formData.mayorGrades_video || documentVideos.mayorGrades_video;
+    const videoUrl = documentVideos.mayorGrades_video || formData.mayorGrades_video;
     const grades_sem = ''; // Semester for Grades removed
 
     if (!gradesDoc) {
@@ -2074,8 +2074,8 @@ const StudentInfo = () => {
       schoolIdPhotos.back,
       formData.schoolIdBack
     );
-    const frontVideoUrl = formData.schoolIdFront_video || documentVideos.schoolIdFront_video;
-    const backVideoUrl = formData.schoolIdBack_video || documentVideos.schoolIdBack_video;
+    const frontVideoUrl = documentVideos.schoolIdFront_video || formData.schoolIdFront_video;
+    const backVideoUrl = documentVideos.schoolIdBack_video || formData.schoolIdBack_video;
 
     // Skip if nothing changed (images/videos)
     const last = lastIdScanRef.current;
@@ -2781,8 +2781,8 @@ const StudentInfo = () => {
       // Step 1: Indigency
       if (currentStep === 1 && baseScanType === 'Indigency' && ocrVerified === null) {
         const doc = getVerificationDocumentSource(photos.mayorIndigency_photo, formData.mayorIndigency_photo);
-        const vid = formData.mayorIndigency_video || documentVideos.mayorIndigency_video;
-        if (doc && vid && typeof vid === 'string' && vid.startsWith('http')) {
+        const vid = documentVideos.mayorIndigency_video || formData.mayorIndigency_video;
+        if (doc && vid) {
           handleIndigencyScan();
           setAutoScanTrigger(null);
         }
@@ -2794,9 +2794,9 @@ const StudentInfo = () => {
         if (baseScanType === 'SchoolID' && idVerified === null) {
           const front = getVerificationDocumentSource(schoolIdPhotos.front, formData.schoolIdFront);
           const back = getVerificationDocumentSource(schoolIdPhotos.back, formData.schoolIdBack);
-          const fVid = formData.schoolIdFront_video || documentVideos.schoolIdFront_video;
-          const bVid = formData.schoolIdBack_video || documentVideos.schoolIdBack_video;
-          if (front && back && fVid && bVid && typeof fVid === 'string' && fVid.startsWith('http') && typeof bVid === 'string' && bVid.startsWith('http')) {
+          const fVid = documentVideos.schoolIdFront_video || formData.schoolIdFront_video;
+          const bVid = documentVideos.schoolIdBack_video || formData.schoolIdBack_video;
+          if (front && back && fVid && bVid) {
             handleIdScan();
             setAutoScanTrigger(null);
           }
@@ -2805,8 +2805,8 @@ const StudentInfo = () => {
         // COE
         if (baseScanType === 'Enrollment' && coeVerified === null) {
           const doc = getVerificationDocumentSource(photos.mayorCOE_photo, formData.mayorCOE_photo);
-          const vid = formData.mayorCOE_video || documentVideos.mayorCOE_video;
-          if (doc && vid && typeof vid === 'string' && vid.startsWith('http')) {
+          const vid = documentVideos.mayorCOE_video || formData.mayorCOE_video;
+          if (doc && vid) {
             handleCOEScan();
             setAutoScanTrigger(null);
           }
@@ -2815,8 +2815,8 @@ const StudentInfo = () => {
         // Grades
         if (baseScanType === 'Grades' && gradesVerified === null) {
           const doc = getVerificationDocumentSource(photos.mayorGrades_photo, formData.mayorGrades_photo);
-          const vid = formData.mayorGrades_video || documentVideos.mayorGrades_video;
-          if (doc && vid && typeof vid === 'string' && vid.startsWith('http')) {
+          const vid = documentVideos.mayorGrades_video || formData.mayorGrades_video;
+          if (doc && vid) {
             handleGradesScan();
             setAutoScanTrigger(null);
           }
