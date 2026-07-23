@@ -438,7 +438,11 @@ def ensure_schema_integrity(cursor):
     # 2. Scholarship specific fields
     scholarship_cols = {
         'semester': 'VARCHAR(50)',
-        'year': 'VARCHAR(50)'
+        'year': 'VARCHAR(50)',
+        'grades_sem': 'VARCHAR(50)',
+        'grades_year': 'VARCHAR(50)',
+        'course': 'VARCHAR(255)',
+        'program_type': 'VARCHAR(100)'
     }
     for col, col_type in scholarship_cols.items():
         cursor.execute(
