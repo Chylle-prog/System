@@ -553,26 +553,26 @@ def _extract_signature_from_id_back(id_img):
     for cnt in contours:
         x, y, w, h = cv2.boundingRect(cnt)
         
-        if x < 4 or (x+w) > w_idx-4: continue
+        if x < 2 or (x+w) > w_idx-2: continue
         if y < 2 or (y+h) > h_idx-2: continue
         
         area = cv2.contourArea(cnt)
-        if area < 35: continue
+        if area < 30: continue
         
         solidity = area / float(w * h) if w * h > 0 else 0
         aspect = w / float(h) if h > 0 else 0
         extent = area / float(w_idx * h_idx)
         
-        # Exclude horizontal lines / underlines
-        if aspect > 3.2 and h < 18: 
+        # 1. Exclude tall thin vertical lines / brackets (e.g. '|', '[', ']')
+        if aspect < 0.22:
             continue
 
-        # Exclude vertical bracket lines near left/right box boundaries (e.g. '[' or ']')
-        if (x < w_idx * 0.15 or (x + w) > w_idx * 0.85) and (h > h_idx * 0.35) and aspect < 0.35:
+        # 2. Exclude horizontal lines / underlines / box top-bottom borders
+        if aspect > 2.8 or (aspect > 2.0 and h < 16): 
             continue
 
-        # Exclude printed label text at the bottom (e.g. 'Signature', 'SIGNATURE OF BEARER')
-        if (y + h/2) > h_idx * 0.65 and h < h_idx * 0.30:
+        # 3. Exclude printed label text at the bottom (e.g. 'Signature', 'Si natu')
+        if (y + h/2) > h_idx * 0.52 and area < 450:
             continue
         
         peri = cv2.arcLength(cnt, True)
