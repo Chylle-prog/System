@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chart, registerables } from 'chart.js';
 import {
   FaCheckCircle,
@@ -3254,7 +3254,7 @@ export default function ScholarshipDashboard({
                   placeholder="e.g. 2025-2026"
                   required
                 />
-                <p className="text-xs text-gray-500 mt-1">Use the YYYYYYYY format (e.g., 2025â€“2026).</p>
+                <p className="text-xs text-gray-500 mt-1">Use the YYYYYYYY format (e.g., 2025-2026).</p>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-[#800020] mb-1">Semester for Grades *</label>
