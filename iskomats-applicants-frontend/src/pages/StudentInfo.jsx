@@ -4957,6 +4957,25 @@ const StudentInfo = () => {
                     Signature & Additional Identification <span style={{ color: '#e74c3c' }}>*</span>
                   </label>
 
+                  {/* Reference Back ID Card */}
+                  <div style={{ background: '#fff', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e1e8f0', marginBottom: '1.5rem', boxShadow: '0 4px 15px rgba(0,0,0,0.03)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                      <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#1a202c' }}>REFERENCE SOURCE</label>
+                      <div style={{ fontSize: '0.65rem', color: '#6366f1', fontWeight: '800', background: '#eef2ff', padding: '3px 8px', borderRadius: '6px' }}>BACK ID</div>
+                    </div>
+                    <div style={{ height: '220px', border: '2px dashed #cbd5e1', borderRadius: '15px', overflow: 'hidden', background: '#f8fafc', position: 'relative' }}>
+                      {(schoolIdPhotos.back || formData.schoolIdBack) ? (
+                        <img src={schoolIdPhotos.back || formData.schoolIdBack} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="Reference Back ID" />
+                      ) : (
+                        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', textAlign: 'center', padding: '1rem' }}>
+                          <i className="fas fa-id-card" style={{ fontSize: '2rem', marginBottom: '10px' }}></i>
+                          <p style={{ fontSize: '0.75rem', fontWeight: '600', margin: 0 }}>Back ID Not Available<br /><span style={{ fontSize: '0.65rem', fontWeight: 'normal' }}>Please upload in Step 3</span></p>
+                        </div>
+                      )}
+                    </div>
+                    <p style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.75rem', fontStyle: 'italic', textAlign: 'center' }}>We will match your drawn signature against the official signature on the back of your ID.</p>
+                  </div>
+
                   <div style={{ display: 'block' }}>
                     {/* Signature Column */}
                     <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: '16px', padding: '1.5rem', textAlign: 'center', width: '100%' }}>
