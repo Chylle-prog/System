@@ -53,3 +53,6 @@ OCR Tests/
 
 # References folder
 Reference/
+
+# Verifier Bench
+iskomats-verifier-bench/
