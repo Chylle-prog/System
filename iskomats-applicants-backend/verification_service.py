@@ -8,8 +8,10 @@ from pydantic import BaseModel, Field
 import uvicorn
 from fastapi.middleware.cors import CORSMiddleware
 
-# Import face verification logic from our streamlined ocr_utils
-from services.ocr_utils import verify_face_with_id
+# Import face and signature verification logic from our streamlined ocr_utils
+from services.ocr_utils import verify_face_with_id, verify_signature_against_id, resolve_verification_image_bytes
+import cv2
+import numpy as np
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO)
@@ -17,7 +19,7 @@ logger = logging.getLogger("verification-service")
 
 app = FastAPI(
     title="Iskomats High-Performance Verification Service",
-    description="FastAPI-based Face matching engine for Iskomats scholarship system.",
+    description="FastAPI-based Face & Signature matching engine for Iskomats scholarship system.",
     version="1.0.0"
 )
 
@@ -32,13 +34,20 @@ app.add_middleware(
 # --- MODELS ---
 
 class FaceVerificationRequest(BaseModel):
-    id_image_base64: str = Field(..., alias="idImage")
-    live_face_base64: str = Field(..., alias="liveFace")
+    id_image_base64: Optional[str] = Field(None, alias="idImage")
+    live_face_base64: Optional[str] = Field(None, alias="liveFace")
+    face_image: Optional[str] = None
+    id_image: Optional[str] = None
+
+class SignatureMatchRequest(BaseModel):
+    signature_image: Optional[str] = None
+    id_back_image: Optional[str] = None
 
 
 # --- ENDPOINTS ---
 
 @app.get("/health")
+@app.get("/api/health")
 async def health_check():
     return {
         "status": "healthy", 
@@ -48,33 +57,97 @@ async def health_check():
     }
 
 @app.post("/verify/face")
+@app.post("/api/student/verification/face-match")
+@app.post("/student/verification/face-match")
 async def api_verify_face(req: FaceVerificationRequest):
     """
     Wraps verify_face_with_id using UniFace/DeepFace.
     """
     start_time = time.time()
     try:
-        try:
-            id_bytes = base64.b64decode(req.id_image_base64.split(',')[-1])
-            face_bytes = base64.b64decode(req.live_face_base64.split(',')[-1])
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid base64 image data")
+        id_str = req.id_image or req.id_image_base64
+        face_str = req.face_image or req.live_face_base64
+
+        if not id_str or not face_str:
+            return {"verified": False, "message": "Missing face or ID image data", "confidence": 0.0}
+
+        id_bytes = resolve_verification_image_bytes(id_str)
+        face_bytes = resolve_verification_image_bytes(face_str)
+
+        if not id_bytes or not face_bytes:
+            return {"verified": False, "message": "Invalid image data", "confidence": 0.0}
 
         # Call face verification logic
-        success, message, confidence = verify_face_with_id(id_bytes, face_bytes)
+        success, message, confidence = verify_face_with_id(face_bytes, id_bytes)
         
         return {
-            "success": success,
-            "message": message,
-            "confidence": confidence,
+            "verified": bool(success),
+            "message": str(message),
+            "confidence": float(confidence) * 100.0 if confidence <= 1.0 else float(confidence),
             "process_time": time.time() - start_time
         }
     except Exception as e:
         logger.error(f"Error in Face Verification: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"verified": False, "message": str(e), "confidence": 0.0}
+
+
+@app.post("/api/student/verification/signature-match")
+@app.post("/student/verification/signature-match")
+@app.post("/verify/signature")
+async def api_signature_match(req: SignatureMatchRequest):
+    """
+    Signature matching endpoint for FastAPI microservice and Verifier Bench.
+    """
+    start_time = time.time()
+    try:
+        if not req.signature_image or not req.id_back_image:
+            return {"verified": False, "message": "Missing signature or ID back image.", "confidence": 0.0}
+
+        signature_bytes = resolve_verification_image_bytes(req.signature_image)
+        id_back_bytes = resolve_verification_image_bytes(req.id_back_image)
+
+        if not signature_bytes or not id_back_bytes:
+            return {"verified": False, "message": "Invalid image format.", "confidence": 0.0}
+
+        verified, message, confidence, sub_img, ext_img, matcher_sub_img, matcher_ref_img = verify_signature_against_id(signature_bytes, id_back_bytes)
+
+        processed_submitted = None
+        extracted_signature = None
+        matcher_submitted = None
+        matcher_reference = None
+
+        if sub_img is not None:
+            _, buffer = cv2.imencode('.png', sub_img)
+            processed_submitted = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+
+        if ext_img is not None:
+            _, buffer = cv2.imencode('.png', ext_img)
+            extracted_signature = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+
+        if matcher_sub_img is not None:
+            _, buffer = cv2.imencode('.png', matcher_sub_img)
+            matcher_submitted = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+
+        if matcher_ref_img is not None:
+            _, buffer = cv2.imencode('.png', matcher_ref_img)
+            matcher_reference = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+
+        return {
+            "verified": bool(verified),
+            "message": str(message),
+            "confidence": float(confidence) * 100.0 if confidence <= 1.0 else float(confidence),
+            "processed_submitted": processed_submitted,
+            "extracted_signature": extracted_signature,
+            "matcher_submitted": matcher_submitted,
+            "matcher_reference": matcher_reference,
+            "process_time": time.time() - start_time
+        }
+    except Exception as e:
+        logger.error(f"Error in Signature Verification: {str(e)}")
+        return {"verified": False, "message": str(e), "confidence": 0.0}
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("VERIFICATION_PORT", 8001))
-    logger.info(f"Starting Face Verification Service on port {port}...")
+    port = int(os.environ.get("VERIFICATION_PORT", 8000))
+    logger.info(f"Starting Verification Microservice on port {port}...")
     uvicorn.run(app, host="0.0.0.0", port=port)
