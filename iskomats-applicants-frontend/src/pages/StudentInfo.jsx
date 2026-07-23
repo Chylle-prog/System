@@ -1501,6 +1501,12 @@ const StudentInfo = () => {
         return ocrResult.data.text || "";
       };
 
+      let detectedText = "";
+      let isSuccess = false;
+      let scoreDetails = {};
+      let finalMessage = "";
+      let resultsList = [];
+
       // Validate Video Liveness (Reject pitch-black screen or covered lens videos)
       const videoToCheck = Array.isArray(videoUrl) ? videoUrl[0] : videoUrl;
       if (videoToCheck) {
