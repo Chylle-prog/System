@@ -324,107 +324,76 @@ const StudentInfo = () => {
     return totalFields > 0 ? Math.round((passedFields / totalFields) * 100) : (results.every(r => r.verified) ? 100 : 0);
   };
 
-  const [expandedRequirements, setExpandedRequirements] = useState({});
-
-  const toggleInlineRequirements = (docType) => {
-    setExpandedRequirements(prev => ({ ...prev, [docType]: !prev[docType] }));
-  };
+  const [showAllRequirementsChecklist, setShowAllRequirementsChecklist] = useState(true);
 
   const renderInlineRequirementsChecklist = (docType) => {
+    if (!showAllRequirementsChecklist) return null;
     const log = ocrDebugLogs[docType];
     if (!log || !log.requirements || Object.keys(log.requirements).length === 0) return null;
 
-    const isExpanded = expandedRequirements[docType] !== false; // Default expanded on feedback card
-
     return (
       <div style={{ marginTop: '12px', borderTop: '1px solid rgba(0,0,0,0.08)', paddingTop: '10px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isExpanded ? '10px' : '0' }}>
-          <button
-            type="button"
-            onClick={() => toggleInlineRequirements(docType)}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#4f46e5',
-              cursor: 'pointer',
-              fontSize: '0.78rem',
-              fontWeight: '700',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: 0
-            }}
-          >
-            <i className={`fas ${isExpanded ? 'fa-chevron-down' : 'fa-chevron-right'}`}></i>
-            {isExpanded ? 'Hide Requirements Checklist' : 'Show Requirements Checklist'}
-          </button>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+          gap: '8px',
+          marginBottom: '8px'
+        }}>
+          {Object.entries(log.requirements).map(([key, val]) => {
+            const matchVal = log.scoreDetails ? log.scoreDetails[key] : null;
+            let isMatch = matchVal === 'MATCH✓' || matchVal === true || val === 'Uploaded & Attached';
+            if (matchVal === 'MISMATCH✗' || matchVal === false) isMatch = false;
+
+            return (
+              <div key={key} style={{
+                background: isMatch ? '#f0fdf4' : '#fef2f2',
+                border: `1px solid ${isMatch ? '#bbf7d0' : '#fecaca'}`,
+                borderRadius: '8px',
+                padding: '8px 10px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div style={{ overflow: 'hidden', paddingRight: '4px' }}>
+                  <div style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>{key}</div>
+                  <div style={{ fontSize: '0.78rem', fontWeight: '800', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{String(val)}</div>
+                </div>
+                <span style={{
+                  fontSize: '0.62rem',
+                  fontWeight: '800',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  background: isMatch ? '#16a34a' : '#dc2626',
+                  color: 'white',
+                  whiteSpace: 'nowrap'
+                }}>
+                  {isMatch ? 'MATCH✓' : 'MISMATCH✗'}
+                </span>
+              </div>
+            );
+          })}
         </div>
 
-        {isExpanded && (
-          <div>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-              gap: '8px',
-              marginBottom: '8px'
+        {log.detectedText && (
+          <details style={{ marginTop: '6px' }}>
+            <summary style={{ fontSize: '0.72rem', color: '#64748b', cursor: 'pointer', fontWeight: '600' }}>
+              📄 View Raw Text Extracted by OCR Engine
+            </summary>
+            <pre style={{
+              marginTop: '4px',
+              fontSize: '0.7rem',
+              color: '#334155',
+              background: '#f8fafc',
+              padding: '8px',
+              borderRadius: '6px',
+              whiteSpace: 'pre-wrap',
+              maxHeight: '120px',
+              overflowY: 'auto',
+              border: '1px solid #e2e8f0'
             }}>
-              {Object.entries(log.requirements).map(([key, val]) => {
-                const matchVal = log.scoreDetails ? log.scoreDetails[key] : null;
-                let isMatch = matchVal === 'MATCH✓' || matchVal === true || val === 'Uploaded & Attached';
-                if (matchVal === 'MISMATCH✗' || matchVal === false) isMatch = false;
-
-                return (
-                  <div key={key} style={{
-                    background: isMatch ? '#f0fdf4' : '#fef2f2',
-                    border: `1px solid ${isMatch ? '#bbf7d0' : '#fecaca'}`,
-                    borderRadius: '8px',
-                    padding: '8px 10px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}>
-                    <div style={{ overflow: 'hidden', paddingRight: '4px' }}>
-                      <div style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>{key}</div>
-                      <div style={{ fontSize: '0.78rem', fontWeight: '800', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{String(val)}</div>
-                    </div>
-                    <span style={{
-                      fontSize: '0.62rem',
-                      fontWeight: '800',
-                      padding: '2px 6px',
-                      borderRadius: '4px',
-                      background: isMatch ? '#16a34a' : '#dc2626',
-                      color: 'white',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {isMatch ? 'MATCH✓' : 'MISMATCH✗'}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {log.detectedText && (
-              <details style={{ marginTop: '6px' }}>
-                <summary style={{ fontSize: '0.72rem', color: '#64748b', cursor: 'pointer', fontWeight: '600' }}>
-                  📄 View Raw Text Extracted by OCR Engine
-                </summary>
-                <pre style={{
-                  marginTop: '4px',
-                  fontSize: '0.7rem',
-                  color: '#334155',
-                  background: '#f8fafc',
-                  padding: '8px',
-                  borderRadius: '6px',
-                  whiteSpace: 'pre-wrap',
-                  maxHeight: '120px',
-                  overflowY: 'auto',
-                  border: '1px solid #e2e8f0'
-                }}>
-                  {log.detectedText}
-                </pre>
-              </details>
-            )}
-          </div>
+              {log.detectedText}
+            </pre>
+          </details>
         )}
       </div>
     );
@@ -3770,7 +3739,7 @@ const StudentInfo = () => {
         }
       `}</style>
 
-      {/* Dev Debug Toggle for Alternate Account Checks */}
+      {/* Dev Debug & Global Requirements Checklist Toggle */}
       <div style={{
         position: 'fixed',
         bottom: '20px',
@@ -3778,39 +3747,66 @@ const StudentInfo = () => {
         zIndex: 9999,
         background: '#1e293b',
         color: '#fff',
-        padding: '10px 14px',
-        borderRadius: '30px',
-        boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+        padding: '12px 16px',
+        borderRadius: '18px',
+        boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
         fontSize: '0.75rem',
         fontWeight: 'bold',
         display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
+        flexDirection: 'column',
+        gap: '10px',
         border: '1px solid #334155'
       }}>
-        <span style={{ color: localStorage.getItem('debug_skip_alternate_check') === 'true' ? '#10b981' : '#ef4444' }}>●</span>
-        <span>Alt Account Check: {localStorage.getItem('debug_skip_alternate_check') === 'true' ? 'Bypassed' : 'Enabled'}</span>
-        <button 
+        {/* Alt Account Check Row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ color: localStorage.getItem('debug_skip_alternate_check') === 'true' ? '#10b981' : '#ef4444' }}>●</span>
+          <span>Alt Account Check: {localStorage.getItem('debug_skip_alternate_check') === 'true' ? 'Bypassed' : 'Enabled'}</span>
+          <button 
+            type="button"
+            onClick={() => {
+              const isBypassed = localStorage.getItem('debug_skip_alternate_check') === 'true';
+              localStorage.setItem('debug_skip_alternate_check', isBypassed ? 'false' : 'true');
+              window.location.reload();
+            }}
+            style={{
+              background: '#3b82f6',
+              color: 'white',
+              border: 'none',
+              padding: '4px 8px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '0.7rem',
+              fontWeight: '700'
+            }}
+          >
+            Toggle
+          </button>
+        </div>
+
+        {/* Global Requirements Checklist Toggle Button (Below Alt Account Check) */}
+        <button
           type="button"
-          onClick={() => {
-            const isBypassed = localStorage.getItem('debug_skip_alternate_check') === 'true';
-            localStorage.setItem('debug_skip_alternate_check', isBypassed ? 'false' : 'true');
-            window.location.reload();
-          }}
+          onClick={() => setShowAllRequirementsChecklist(prev => !prev)}
           style={{
-            background: '#3b82f6',
+            width: '100%',
+            background: showAllRequirementsChecklist ? '#6366f1' : '#475569',
             color: 'white',
             border: 'none',
-            padding: '4px 8px',
-            borderRadius: '4px',
+            padding: '7px 12px',
+            borderRadius: '10px',
             cursor: 'pointer',
-            fontSize: '0.7rem',
-            fontWeight: '700'
+            fontSize: '0.75rem',
+            fontWeight: '800',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
           }}
         >
-          Toggle
+          <i className={`fas ${showAllRequirementsChecklist ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+          {showAllRequirementsChecklist ? 'Hide Requirements Info (All)' : 'Show Requirements Info (All)'}
         </button>
-
       </div>
 
       <nav className="navbar">
