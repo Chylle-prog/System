@@ -43,6 +43,12 @@ class SignatureMatchRequest(BaseModel):
     signature_image: Optional[str] = None
     id_back_image: Optional[str] = None
 
+class SignatureFeedbackRequest(BaseModel):
+    signature_image: Optional[str] = None
+    decision: Optional[str] = 'agree'
+    was_verified: Optional[bool] = False
+    student_id: Optional[str] = 'bench_user'
+
 
 # --- ENDPOINTS ---
 
@@ -145,6 +151,43 @@ async def api_signature_match(req: SignatureMatchRequest):
     except Exception as e:
         logger.error(f"Error in Signature Verification: {str(e)}")
         return {"verified": False, "message": str(e), "confidence": 0.0}
+
+
+@app.post("/api/student/verification/signature-feedback")
+@app.post("/student/verification/signature-feedback")
+async def api_signature_feedback(req: SignatureFeedbackRequest):
+    """
+    Saves feedback from Verifier Bench or applicant flow to train/reinforce signature profiles.
+    """
+    try:
+        if not req.signature_image:
+            return {"success": False, "message": "Missing signature image data."}
+
+        signature_bytes = resolve_verification_image_bytes(req.signature_image)
+        if not signature_bytes:
+            return {"success": False, "message": "Invalid signature image."}
+        
+        student_id = req.student_id or 'bench_user'
+        user_choice = req.decision or 'agree'
+        was_verified = req.was_verified or False
+
+        if user_choice == 'agree':
+            profile_type = 'real' if was_verified else 'fake'
+        else:
+            profile_type = 'fake' if was_verified else 'real'
+
+        from services.ocr_utils import save_signature_profile
+        success = save_signature_profile(student_id, signature_bytes, profile_type=profile_type)
+
+        if user_choice == 'agree':
+            msg = f"System logic reinforced. Result confirmed as {profile_type}."
+        else:
+            msg = f"System logic corrected. Drawing re-classified as {profile_type}."
+
+        return {"success": bool(success), "message": msg if success else f"Failed to update {profile_type} profile."}
+    except Exception as e:
+        logger.error(f"Error in Signature Feedback: {str(e)}")
+        return {"success": False, "message": str(e)}
 
 
 if __name__ == "__main__":

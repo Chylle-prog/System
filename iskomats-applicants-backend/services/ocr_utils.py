@@ -698,6 +698,7 @@ def save_signature_profile(student_id, drawing_data, profile_type='real'):
     """
     try:
         if not drawing_data: return False
+        student_id = student_id or 'bench_user'
         
         # Safe decode base64
         if isinstance(drawing_data, str):
