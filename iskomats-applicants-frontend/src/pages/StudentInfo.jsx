@@ -1135,21 +1135,25 @@ const StudentInfo = () => {
   };
 
   const schoolNameMatchesText = (text, targetSchool) => {
-    if (!targetSchool) return true;
+    if (!targetSchool || !text) return true;
     const normText = normalizeForOcr(text);
-    const normSchool = normalizeForOcr(targetSchool);
+    
+    // Support slash-separated school aliases, e.g. "DLSL/De La Salle Lipa"
+    const schoolAliases = String(targetSchool).split(/[\/\|,]/).map(s => s.trim()).filter(Boolean);
 
-    if (normText.includes(normSchool)) return true;
+    for (let alias of schoolAliases) {
+      const normAlias = normalizeForOcr(alias);
+      if (normAlias && normText.includes(normAlias)) return true;
 
-    const schoolWords = normSchool.split(' ').filter(w => w.length > 2);
-    if (schoolWords.length === 0) return true;
+      // Words check (excluding common filler words)
+      const schoolWords = normAlias.split(' ').filter(w => w.length > 2 && !['school', 'university', 'college', 'of', 'and', 'the', 'inc', 'corp'].includes(w));
+      if (schoolWords.length > 0) {
+        const matched = schoolWords.filter(w => normText.includes(w)).length;
+        if ((matched / schoolWords.length) >= 0.5) return true;
+      }
+    }
 
-    let matched = 0;
-    schoolWords.forEach(w => {
-        if (normText.includes(w)) matched++;
-    });
-
-    return (matched / schoolWords.length) >= 0.6;
+    return false;
   };
 
   const academic_year_matches_expected = (text, expectedYear) => {
@@ -1177,10 +1181,28 @@ const StudentInfo = () => {
   };
 
   const courseMatchesText = (expectedCourse, text) => {
-    if (!expectedCourse) return true;
+    if (!expectedCourse || !text) return true;
     const normText = normalizeForOcr(text);
     const normCourse = normalizeForOcr(expectedCourse);
-    return normText.includes(normCourse);
+
+    // 1. Direct substring match
+    if (normText.includes(normCourse)) return true;
+
+    // 2. Generate acronym (e.g., "BS Information Technology" -> "bsit", "bs it")
+    const words = String(expectedCourse).trim().split(/\s+/);
+    const acronym = words.map(w => w[0] ? w[0].toLowerCase() : '').join('');
+    if (acronym.length >= 2 && (normText.includes(acronym) || normText.includes(acronym.replace('bs', 'bs ')))) {
+      return true;
+    }
+
+    // 3. Significant words match (e.g. "information", "technology", "computer", "science")
+    const sigWords = words.map(normalizeForOcr).filter(w => w.length > 2 && !['bachelor', 'master', 'doctor', 'science', 'arts', 'degree', 'major', 'in', 'of', 'and'].includes(w));
+    if (sigWords.length > 0) {
+      const matched = sigWords.filter(w => normText.includes(w)).length;
+      return (matched / sigWords.length) >= 0.5;
+    }
+
+    return false;
   };
 
   const gpaMatchesText = (text, expectedGpa) => {
