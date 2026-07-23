@@ -5146,191 +5146,215 @@ const StudentInfo = () => {
                 </div>
 
                 {/* Face Verification Section */}
-                <div style={{ marginBottom: '2rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0' }}>
-                  <h4 style={{ fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px' }}>
-                    Final Identity Verification <span style={{ color: '#e74c3c' }}>*</span>
-                  </h4>
-                  <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '1.2rem', paddingLeft: '16px' }}>Match captured photo with your School ID</p>
+                {signatureVerified === 'success' ? (
+                  <div style={{ marginBottom: '2rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0', animation: 'fadeIn 0.5s ease' }}>
+                    <h4 style={{ fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px' }}>
+                      Final Identity Verification <span style={{ color: '#e74c3c' }}>*</span>
+                    </h4>
+                    <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '1.2rem', paddingLeft: '16px' }}>Match captured photo with your School ID</p>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem', alignItems: 'flex-start' }}>
-                    {/* Reference ID Column */}
-                    <div style={{ background: '#fff', padding: '1.2rem', borderRadius: '20px', border: '1px solid #e1e8f0', boxShadow: '0 4px 15px rgba(0,0,0,0.03)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#1a202c' }}>REFERENCE SOURCE</label>
-                        <div style={{ fontSize: '0.65rem', color: '#6366f1', fontWeight: '800', background: '#eef2ff', padding: '3px 8px', borderRadius: '6px' }}>FRONT ID</div>
-                      </div>
-                      <div style={{ height: '240px', border: '2px dashed #cbd5e1', borderRadius: '15px', overflow: 'hidden', background: '#f8fafc', position: 'relative' }}>
-                        {(schoolIdPhotos.front || formData.schoolIdFront) ? (
-                          <img src={schoolIdPhotos.front || formData.schoolIdFront} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="Reference ID" />
-                        ) : (
-                          <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', textAlign: 'center', padding: '1rem' }}>
-                            <i className="fas fa-id-card" style={{ fontSize: '2rem', marginBottom: '10px' }}></i>
-                            <p style={{ fontSize: '0.75rem', fontWeight: '600', margin: 0 }}>ID Not Available<br /><span style={{ fontSize: '0.65rem', fontWeight: 'normal' }}>Please upload in Step 3</span></p>
-                          </div>
-                        )}
-                      </div>
-                      <p style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '1rem', fontStyle: 'italic', textAlign: 'center' }}>We will match your live photo against this ID face.</p>
-                    </div>
-
-                    {/* Media Picker and Preview Column */}
-                    <div style={{ background: '#fff', padding: '1.2rem', borderRadius: '20px', border: '1px solid #e1e8f0', boxShadow: '0 4px 15px rgba(0,0,0,0.03)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#1a202c' }}>LIVE CAPTURE</label>
-                        <div style={{ fontSize: '0.65rem', color: '#3b82f6', fontWeight: '800', background: '#eff6ff', padding: '3px 8px', borderRadius: '6px' }}>PHOTO</div>
-                      </div>
-
-                      <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1rem', textAlign: 'center' }}>Take a live photo using your camera to verify your identity.</p>
-
-                      <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
-                        <div style={{ 
-                          border: '2px solid #fff', 
-                          borderRadius: '15px', 
-                          width: '220px', 
-                          height: '240px', 
-                          display: 'flex', 
-                          flexDirection: 'column',
-                          alignItems: 'center', 
-                          justifyContent: 'center', 
-                          background: '#e1e8f0', 
-                          position: 'relative', 
-                          overflow: 'hidden', 
-                          boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)',
-                          padding: photos.face_photo ? '0' : '1.5rem'
-                        }}>
-                          {photos.face_photo ? (
-                            <>
-                              <img src={photos.face_photo} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Face Verification" />
-                              <div style={{ position: 'absolute', bottom: '10px', left: '0', right: '0', display: 'flex', justifyContent: 'center', gap: '8px', padding: '0 10px' }}>
-                                <button 
-                                  type="button" 
-                                  onClick={() => openCamera('face_photo')} 
-                                  style={{ background: 'rgba(255,255,255,0.9)', color: 'var(--primary)', border: 'none', borderRadius: '10px', padding: '6px 12px', fontSize: '0.75rem', fontWeight: '800', cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '5px' }}
-                                >
-                                  <i className="fas fa-camera"></i> Retake
-                                </button>
-                                <button 
-                                  type="button" 
-                                  onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); }} 
-                                  style={{ background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', borderRadius: '10px', padding: '6px 12px', fontSize: '0.75rem', fontWeight: '800', cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '5px' }}
-                                >
-                                  <i className="fas fa-trash"></i> Remove
-                                </button>
-                              </div>
-                            </>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem', alignItems: 'flex-start' }}>
+                      {/* Reference ID Column */}
+                      <div style={{ background: '#fff', padding: '1.2rem', borderRadius: '20px', border: '1px solid #e1e8f0', boxShadow: '0 4px 15px rgba(0,0,0,0.03)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                          <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#1a202c' }}>REFERENCE SOURCE</label>
+                          <div style={{ fontSize: '0.65rem', color: '#6366f1', fontWeight: '800', background: '#eef2ff', padding: '3px 8px', borderRadius: '6px' }}>FRONT ID</div>
+                        </div>
+                        <div style={{ height: '240px', border: '2px dashed #cbd5e1', borderRadius: '15px', overflow: 'hidden', background: '#f8fafc', position: 'relative' }}>
+                          {(schoolIdPhotos.front || formData.schoolIdFront) ? (
+                            <img src={schoolIdPhotos.front || formData.schoolIdFront} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="Reference ID" />
                           ) : (
-                            <button 
-                              type="button" 
-                              onClick={() => openCamera('face_photo')} 
-                              style={{ 
-                                border: '2px solid var(--primary)', 
-                                background: 'white', 
-                                color: 'var(--primary)', 
-                                cursor: 'pointer', 
-                                display: 'flex', 
-                                flexDirection: 'column', 
-                                alignItems: 'center', 
-                                justifyContent: 'center',
-                                gap: '12px',
-                                padding: '1.5rem',
-                                borderRadius: '18px',
-                                width: '100%',
-                                transition: 'all 0.2s ease'
-                              }}
-                              className="hover-pop"
-                            >
-                              <i className="fas fa-camera" style={{ fontSize: '2.5rem' }}></i>
-                              <span style={{ fontSize: '0.9rem', fontWeight: '800', textTransform: 'uppercase' }}>Open Camera</span>
-                            </button>
+                            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', textAlign: 'center', padding: '1rem' }}>
+                              <i className="fas fa-id-card" style={{ fontSize: '2rem', marginBottom: '10px' }}></i>
+                              <p style={{ fontSize: '0.75rem', fontWeight: '600', margin: 0 }}>ID Not Available<br /><span style={{ fontSize: '0.65rem', fontWeight: 'normal' }}>Please upload in Step 3</span></p>
+                            </div>
                           )}
+                        </div>
+                        <p style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '1rem', fontStyle: 'italic', textAlign: 'center' }}>We will match your live photo against this ID face.</p>
+                      </div>
+
+                      {/* Media Picker and Preview Column */}
+                      <div style={{ background: '#fff', padding: '1.2rem', borderRadius: '20px', border: '1px solid #e1e8f0', boxShadow: '0 4px 15px rgba(0,0,0,0.03)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                          <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#1a202c' }}>LIVE CAPTURE</label>
+                          <div style={{ fontSize: '0.65rem', color: '#3b82f6', fontWeight: '800', background: '#eff6ff', padding: '3px 8px', borderRadius: '6px' }}>PHOTO</div>
+                        </div>
+
+                        <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1rem', textAlign: 'center' }}>Take a live photo using your camera to verify your identity.</p>
+
+                        <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
+                          <div style={{ 
+                            border: '2px solid #fff', 
+                            borderRadius: '15px', 
+                            width: '220px', 
+                            height: '240px', 
+                            display: 'flex', 
+                            flexDirection: 'column',
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            background: '#e1e8f0', 
+                            position: 'relative', 
+                            overflow: 'hidden', 
+                            boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)',
+                            padding: photos.face_photo ? '0' : '1.5rem'
+                          }}>
+                            {photos.face_photo ? (
+                              <>
+                                <img src={photos.face_photo} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Face Verification" />
+                                <div style={{ position: 'absolute', bottom: '10px', left: '0', right: '0', display: 'flex', justifyContent: 'center', gap: '8px', padding: '0 10px' }}>
+                                  <button 
+                                    type="button" 
+                                    onClick={() => openCamera('face_photo')} 
+                                    style={{ background: 'rgba(255,255,255,0.9)', color: 'var(--primary)', border: 'none', borderRadius: '10px', padding: '6px 12px', fontSize: '0.75rem', fontWeight: '800', cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '5px' }}
+                                  >
+                                    <i className="fas fa-camera"></i> Retake
+                                  </button>
+                                  <button 
+                                    type="button" 
+                                    onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); }} 
+                                    style={{ background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', borderRadius: '10px', padding: '6px 12px', fontSize: '0.75rem', fontWeight: '800', cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '5px' }}
+                                  >
+                                    <i className="fas fa-trash"></i> Remove
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <button 
+                                type="button" 
+                                onClick={() => openCamera('face_photo')} 
+                                style={{ 
+                                  border: '2px solid var(--primary)', 
+                                  background: 'white', 
+                                  color: 'var(--primary)', 
+                                  cursor: 'pointer', 
+                                  display: 'flex', 
+                                  flexDirection: 'column', 
+                                  alignItems: 'center', 
+                                  justifyContent: 'center',
+                                  gap: '12px',
+                                  padding: '1.5rem',
+                                  borderRadius: '18px',
+                                  width: '100%',
+                                  transition: 'all 0.2s ease'
+                                }}
+                                className="hover-pop"
+                              >
+                                <i className="fas fa-camera" style={{ fontSize: '2.5rem' }}></i>
+                                <span style={{ fontSize: '0.9rem', fontWeight: '800', textTransform: 'uppercase' }}>Open Camera</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div style={{ width: '100%', textAlign: 'center', marginTop: '1.5rem' }}>
-                    {photos.face_photo && (
-                      <div style={{ width: '100%', maxWidth: '300px', margin: '0 auto' }}>
-                        {!faceMatchResult ? (
-                          <button type="button" onClick={async () => {
-                            const idImg = schoolIdPhotos.front || formData.schoolIdFront;
-                            if (!idImg) {
-                              showPromptMessage('Please upload your School ID in Step 3 first.');
-                              return;
-                            }
-
-                            setIsFaceMatching(true);
-                            setLoadingMessage({ title: 'Matching Face', message: 'Comparing captured photo with your School ID...' });
-
-                            try {
-                              const faceImage = await normalizeVerificationImage(photos.face_photo);
-                              const normalizedIdImage = await normalizeVerificationImage(idImg);
-                              const result = await applicantAPI.verifyFaceAgainstId(faceImage, normalizedIdImage);
-                              setFaceMatchResult(result);
-                              if (result.verified) {
-                                setFaceVerified('success');
-                                showPromptMessage('Face successfully matched with ID!');
-                              } else {
-                                showPromptMessage(`Face Match Issue: ${result.message || 'Face does not match the ID.'}`);
+                    <div style={{ width: '100%', textAlign: 'center', marginTop: '1.5rem' }}>
+                      {photos.face_photo && (
+                        <div style={{ width: '100%', maxWidth: '300px', margin: '0 auto' }}>
+                          {!faceMatchResult ? (
+                            <button type="button" onClick={async () => {
+                              const idImg = schoolIdPhotos.front || formData.schoolIdFront;
+                              if (!idImg) {
+                                showPromptMessage('Please upload your School ID in Step 3 first.');
+                                return;
                               }
-                            } catch (err) {
-                              console.error('Match error:', err);
-                              // Do not auto-verify on technical errors for security
-                              showPromptMessage('Verification service issue. Please try again with a clearer photo.');
-                              setFaceMatchResult({ verified: false, technical_unavailable: true });
-                            } finally {
-                              setIsFaceMatching(false);
-                            }
-                          }} className="submit-btn" disabled={isFaceMatching} style={{ width: '100%', background: 'var(--primary)', borderRadius: '12px' }}>
-                            {isFaceMatching ? <><i className="fas fa-spinner fa-spin"></i> Matching...</> : <><i className="fas fa-user-check"></i> Verify Match with ID</>}
-                          </button>
-                        ) : (
-                          <div style={{
-                            padding: '1rem',
-                            borderRadius: '12px',
-                            background: faceMatchResult.verified ? '#f0fff4' : '#fff5f5',
-                            border: `1px solid ${faceMatchResult.verified ? '#c6f6d5' : '#fed7d7'}`,
-                            display: 'flex',
-                            alignItems: 'start',
-                            gap: '12px',
-                            textAlign: 'left'
-                          }}>
+
+                              setIsFaceMatching(true);
+                              setLoadingMessage({ title: 'Matching Face', message: 'Comparing captured photo with your School ID...' });
+
+                              try {
+                                const faceImage = await normalizeVerificationImage(photos.face_photo);
+                                const normalizedIdImage = await normalizeVerificationImage(idImg);
+                                const result = await applicantAPI.verifyFaceAgainstId(faceImage, normalizedIdImage);
+                                setFaceMatchResult(result);
+                                if (result.verified) {
+                                  setFaceVerified('success');
+                                  showPromptMessage('Face successfully matched with ID!');
+                                } else {
+                                  showPromptMessage(`Face Match Issue: ${result.message || 'Face does not match the ID.'}`);
+                                }
+                              } catch (err) {
+                                console.error('Match error:', err);
+                                showPromptMessage('Verification service issue. Please try again with a clearer photo.');
+                                setFaceMatchResult({ verified: false, technical_unavailable: true });
+                              } finally {
+                                setIsFaceMatching(false);
+                              }
+                            }} className="submit-btn" disabled={isFaceMatching} style={{ width: '100%', background: 'var(--primary)', borderRadius: '12px' }}>
+                              {isFaceMatching ? <><i className="fas fa-spinner fa-spin"></i> Matching...</> : <><i className="fas fa-user-check"></i> Verify Match with ID</>}
+                            </button>
+                          ) : (
                             <div style={{
-                              width: '24px',
-                              height: '24px',
-                              borderRadius: '50%',
-                              background: faceMatchResult.verified ? '#27ae60' : '#e74c3c',
-                              color: 'white',
+                              padding: '1rem',
+                              borderRadius: '12px',
+                              background: faceMatchResult.verified ? '#f0fff4' : '#fff5f5',
+                              border: `1px solid ${faceMatchResult.verified ? '#c6f6d5' : '#fed7d7'}`,
                               display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: '0.7rem',
-                              flexShrink: 0,
-                              marginTop: '2px'
+                              alignItems: 'start',
+                              gap: '12px',
+                              textAlign: 'left'
                             }}>
-                              <i className={`fas ${faceMatchResult.verified ? 'fa-user-check' : 'fa-user-times'}`}></i>
-                            </div>
-                            <div>
-                              <h5 style={{ margin: '0 0 2px 0', fontSize: '0.85rem', color: '#333', fontWeight: '700' }}>
-                                {faceMatchResult.verified ? 'Identity Verified' : 'Identity Mismatch'}
-                              </h5>
-                              <p style={{
-                                fontSize: '0.8rem',
-                                color: faceMatchResult.verified ? '#2f855a' : '#c53030',
-                                margin: 0,
-                                lineHeight: '1.4'
+                              <div style={{
+                                width: '24px',
+                                height: '24px',
+                                borderRadius: '50%',
+                                background: faceMatchResult.verified ? '#27ae60' : '#e74c3c',
+                                color: 'white',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '0.7rem',
+                                flexShrink: 0,
+                                marginTop: '2px'
                               }}>
-                                {faceMatchResult.verified ? (faceMatchResult.technical_unavailable ? 'Service issue (Manual Check needed)' : 'Facial identity verified!') : faceMatchResult.message || 'Face identity mismatch.'}
-                              </p>
-                              {!faceMatchResult.verified && (
-                                <button type="button" onClick={() => setFaceMatchResult(null)} style={{ background: 'none', border: 'none', color: '#c53030', cursor: 'pointer', textDecoration: 'underline', fontSize: '0.75rem', padding: 0, marginTop: '5px', fontWeight: '700' }}>Retry Capture</button>
-                              )}
+                                <i className={`fas ${faceMatchResult.verified ? 'fa-user-check' : 'fa-user-times'}`}></i>
+                              </div>
+                              <div>
+                                <h5 style={{ margin: '0 0 2px 0', fontSize: '0.85rem', color: '#333', fontWeight: '700' }}>
+                                  {faceMatchResult.verified ? 'Identity Verified' : 'Identity Mismatch'}
+                                </h5>
+                                <p style={{
+                                  fontSize: '0.8rem',
+                                  color: faceMatchResult.verified ? '#2f855a' : '#c53030',
+                                  margin: 0,
+                                  lineHeight: '1.4'
+                                }}>
+                                  {faceMatchResult.verified ? (faceMatchResult.technical_unavailable ? 'Service issue (Manual Check needed)' : 'Facial identity verified!') : faceMatchResult.message || 'Face identity mismatch.'}
+                                </p>
+                                {!faceMatchResult.verified && (
+                                  <button type="button" onClick={() => setFaceMatchResult(null)} style={{ background: 'none', border: 'none', color: '#c53030', cursor: 'pointer', textDecoration: 'underline', fontSize: '0.75rem', padding: 0, marginTop: '5px', fontWeight: '700' }}>Retry Capture</button>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div style={{
+                    marginTop: '1.5rem',
+                    marginBottom: '2rem',
+                    padding: '2.5rem 1.5rem',
+                    background: '#f8fafc',
+                    borderRadius: '28px',
+                    border: '1.5px dashed #e2e8f0',
+                    textAlign: 'center',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '12px',
+                    animation: 'fadeIn 0.5s ease'
+                  }}>
+                    <div style={{ width: '64px', height: '64px', background: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px rgba(0,0,0,0.04)', marginBottom: '4px' }}>
+                      <i className="fas fa-lock" style={{ color: '#94a3b8', fontSize: '1.4rem' }}></i>
+                    </div>
+                    <h4 style={{ fontSize: '1.1rem', color: '#334155', fontWeight: '800', margin: 0 }}>Face Verification & Front ID Locked</h4>
+                    <p style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '380px', margin: 0, lineHeight: '1.5' }}>
+                      Please complete and verify your <b>Handwriting Signature Verification</b> above first. Once verified against your Back ID, the Front ID and Face Verification section will automatically unlock.
+                    </p>
+                  </div>
+                )}
 
                 <div style={{ marginTop: '3rem', display: 'flex', justifyContent: 'space-between' }}>
                   <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
