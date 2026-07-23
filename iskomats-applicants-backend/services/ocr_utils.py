@@ -34,8 +34,38 @@ def decode_base64(data):
     if isinstance(data, str):
         if ',' in data:
             data = data.split(',')[1]
-        return base64.b64decode(data)
+        try:
+            return base64.b64decode(data)
+        except Exception:
+            return None
     return data
+
+def resolve_verification_image_bytes(image_data):
+    """Resolve base64, bytes, memoryview, or http URL to raw image bytes."""
+    if not image_data:
+        return None
+    
+    if isinstance(image_data, memoryview):
+        return image_data.tobytes()
+    if isinstance(image_data, (bytes, bytearray)):
+        return bytes(image_data)
+    if isinstance(image_data, str):
+        normalized = image_data.strip()
+        if not normalized:
+            return None
+        decoded = decode_base64(normalized)
+        if decoded:
+            return decoded
+        if normalized.startswith('http'):
+            try:
+                import urllib.request
+                req = urllib.request.Request(normalized, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    return resp.read()
+            except Exception as e:
+                print(f"[RESOLVE] Failed to fetch image URL {normalized}: {e}", flush=True)
+                return None
+    return None
 
 def clear_heavy_memory():
     """Aggressive memory release to keep Render happy."""
