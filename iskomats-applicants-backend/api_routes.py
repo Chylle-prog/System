@@ -4422,6 +4422,7 @@ def get_admin_announcements(current_user_id, pro_no, role):
                     a.ann_no,
                     a.ann_title,
                     a.ann_message,
+                    a.pro_no,
                     {date_col} AS ann_date,
                     {date_col} AS time_added,
                     COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,

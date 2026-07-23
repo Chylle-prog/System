@@ -2530,7 +2530,7 @@ const Portal = () => {
         gap: '8px',
         border: '1px solid #334155'
       }}>
-        <span style={{ color: localStorage.getItem('debug_skip_alternate_check') === 'true' ? '#10b981' : '#ef4444' }}>•••••••••••</span>
+        <span style={{ color: localStorage.getItem('debug_skip_alternate_check') === 'true' ? '#10b981' : '#ef4444' }}>●</span>
         <span>Alt Account Check: {localStorage.getItem('debug_skip_alternate_check') === 'true' ? 'Bypassed' : 'Enabled'}</span>
         <button
           type="button"

@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chart, registerables } from 'chart.js';
 import {
   FaCheckCircle,
@@ -1583,6 +1583,8 @@ export default function ScholarshipDashboard({
       const normalizedAnnouncements = (response.data || []).map(ann => ({
         id: ann.ann_no || ann.id,
         ann_no: ann.ann_no || ann.id,
+        pro_no: ann.pro_no ?? ann.proNo,
+        proNo: ann.pro_no ?? ann.proNo,
         title: ann.ann_title || ann.title,
         content: ann.ann_message || ann.message || ann.content,
         date: ann.created_at || ann.time_added || ann.ann_date || new Date().toISOString(),
@@ -1603,7 +1605,12 @@ export default function ScholarshipDashboard({
           return true;
         }
 
-        return activeProviderNames.some((name) => announcementProviderName.includes(name) || name.includes(announcementProviderName));
+        return activeProviderNames.some((name) => 
+          announcementProviderName.includes(name) || 
+          name.includes(announcementProviderName) ||
+          (name.includes('tulong') && announcementProviderName.includes('tulong')) ||
+          (name.includes('dunong') && announcementProviderName.includes('dunong'))
+        );
       });
       setData(prev => ({ ...prev, announcements: normalizedAnnouncements }));
     } catch (error) {
