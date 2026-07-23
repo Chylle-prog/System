@@ -309,6 +309,13 @@ def _decode_cv_image(image_bytes, white_background=False):
     if img is None:
         return None
 
+    # Downscale oversized images (e.g. 4000x3000 phone camera uploads) to max 1000px for speed boost
+    h, w = img.shape[:2]
+    max_dim = max(h, w)
+    if max_dim > 1000:
+        scale = 1000.0 / max_dim
+        img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+
     if len(img.shape) == 2:
         return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
@@ -502,7 +509,7 @@ def _extract_signature_from_id_back(id_img):
     print(f"[SIGNATURE] Extracted ROI from ID Back: shape={roi_gray.shape}", flush=True)
     
     norm = cv2.normalize(roi_gray, None, 0, 255, cv2.NORM_MINMAX)
-    smooth = cv2.bilateralFilter(norm, 9, 75, 75)
+    smooth = cv2.GaussianBlur(norm, (5, 5), 0)
     
     binary = cv2.adaptiveThreshold(
         smooth, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
