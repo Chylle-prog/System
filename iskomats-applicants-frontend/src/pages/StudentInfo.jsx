@@ -513,6 +513,35 @@ const StudentInfo = () => {
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+            // 1. Perform fast luminance check to reject pitch black screen instantly
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            let totalLuminance = 0;
+            let maxLuminance = 0;
+            const pixelCount = data.length / 4;
+
+            for (let i = 0; i < data.length; i += 4) {
+              const r = data[i];
+              const g = data[i + 1];
+              const b = data[i + 2];
+              const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+              totalLuminance += lum;
+              if (lum > maxLuminance) maxLuminance = lum;
+            }
+
+            const avgLuminance = totalLuminance / pixelCount;
+
+            if (avgLuminance < 16 && maxLuminance < 22) {
+              clearTimeout(timeout);
+              cleanup();
+              resolve({
+                valid: false,
+                reason: `Pitch-Black / Covered Camera Video Rejected (Brightness: ${avgLuminance.toFixed(1)}/255). Please record a clear video showing your document.`
+              });
+              return true;
+            }
+
+            // 2. Perform OCR and require at least one word of 3+ letters to verify document text exists
             getTesseractWorker()
               .then(worker => worker.recognize(canvas))
               .then(ocrResult => {
@@ -520,9 +549,9 @@ const StudentInfo = () => {
                 cleanup();
 
                 const extractedText = ocrResult?.data?.text || "";
-                const cleanText = extractedText.replace(/[^a-zA-Z0-9]/g, '');
+                const hasWords = /[a-zA-Z]{3,}/.test(extractedText);
 
-                if (cleanText.length >= 3) {
+                if (hasWords) {
                   resolve({ valid: true, detectedText: extractedText });
                 } else {
                   resolve({
