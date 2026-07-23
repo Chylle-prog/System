@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import Navbar from './Navbar';
 import ChatbotDesign from '../components/ChatbotDesign';
 import { useAuth } from '../contexts/AuthContext';
@@ -7,9 +7,23 @@ import './HomePage.css';
 
 const HomePage = () => {
   const { currentUser } = useAuth();
+  const location = useLocation();
   const [activeModal, setActiveModal] = useState(null);
   const [activeFAQ, setActiveFAQ] = useState(null);
   const [activeCategory, setActiveCategory] = useState('all');
+
+  useEffect(() => {
+    const targetId = location.state?.scrollTo || (location.hash ? location.hash.replace('#', '') : null);
+    if (targetId) {
+      const timer = setTimeout(() => {
+        const element = document.getElementById(targetId);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [location]);
 
   const scrollToSection = (sectionId) => {
     const element = document.getElementById(sectionId);

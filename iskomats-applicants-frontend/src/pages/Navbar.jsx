@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import './Navbar.css';
 
 const Navbar = ({ showMenu = false, userEmail = '' }) => {
   const { logout, currentUser, userProfile } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLogout = () => {
@@ -15,6 +16,20 @@ const Navbar = ({ showMenu = false, userEmail = '' }) => {
 
   const toggleMobileMenu = () => {
     setMobileMenuOpen(!mobileMenuOpen);
+  };
+
+  const handleNavClick = (e, sectionId) => {
+    e.preventDefault();
+    setMobileMenuOpen(false);
+    
+    if (location.pathname === '/') {
+      const element = document.getElementById(sectionId);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth' });
+      }
+    } else {
+      navigate('/', { state: { scrollTo: sectionId } });
+    }
   };
 
   // Get first name from profiles if available, or fallback to cached name, or email
@@ -39,9 +54,9 @@ const Navbar = ({ showMenu = false, userEmail = '' }) => {
       
       {!currentUser ? (
         <div className={`navbar-nav ${mobileMenuOpen ? 'mobile-open' : ''}`}>
-          <a href="#about" onClick={(e) => { e.preventDefault(); setMobileMenuOpen(false); document.getElementById('about')?.scrollIntoView({ behavior: 'smooth' }); }}>About Us</a>
-          <a href="#application" onClick={(e) => { e.preventDefault(); setMobileMenuOpen(false); document.getElementById('application')?.scrollIntoView({ behavior: 'smooth' }); }}>Scholarship Programs</a>
-          <a href="#contact" onClick={(e) => { e.preventDefault(); setMobileMenuOpen(false); document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }); }}>Contact Info</a>
+          <a href="#about" onClick={(e) => handleNavClick(e, 'about')}>About Us</a>
+          <a href="#application" onClick={(e) => handleNavClick(e, 'application')}>Scholarship Programs</a>
+          <a href="#contact" onClick={(e) => handleNavClick(e, 'contact')}>Contact Info</a>
           <Link to="/login" className="nav-btn" onClick={() => setMobileMenuOpen(false)}>Apply Now</Link>
         </div>
       ) : (
