@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chart, registerables } from 'chart.js';
 import {
   FaCheckCircle,
@@ -112,7 +112,7 @@ const DecryptedMedia = ({ src, type, className, controls = false, onClick = null
   );
 };
 
-const ACADEMIC_YEAR_PATTERN = /^\d{4}[•••••••••••]\d{4}$/;
+const ACADEMIC_YEAR_PATTERN = /^\d{4}[-]\d{4}$/;
 
 const autoAdjustColumnWidths = (data) => {
   if (!data || !data.length || !data[0]) return [];
@@ -150,7 +150,7 @@ const sortMessages = (messages) => [...messages].sort(compareMessageOrder);
 
 const getDefaultAcademicYear = () => {
   const currentYear = new Date().getFullYear();
-  return `${currentYear}•••••••••••${currentYear + 1}`;
+  return `${currentYear}-${currentYear + 1}`;
 };
 
 const normalizeAcademicYear = (value) => {
@@ -161,16 +161,16 @@ const normalizeAcademicYear = (value) => {
 
   const extractedYears = rawValue.match(/\d{4}/g);
   if (extractedYears && extractedYears.length >= 2) {
-    return `${extractedYears[0]}•••••••••••“${extractedYears[1]}`;
+    return `${extractedYears[0]}-${extractedYears[1]}`;
   }
 
   const digitsOnly = rawValue.replace(/\D/g, '');
   if (digitsOnly.length >= 8) {
-    return `${digitsOnly.slice(0, 4)}•••••••••••“${digitsOnly.slice(4, 8)}`;
+    return `${digitsOnly.slice(0, 4)}-${digitsOnly.slice(4, 8)}`;
   }
 
   // Replace any dash-like character with a proper en-dash
-  return rawValue.replace(/[^\d\-•••••••••••]/g, '').replace(/[\-•••••••••••]{1,}/g, '•••••••••••');
+  return rawValue.replace(/[^\d\-]/g, '').replace(/[\-]{1,}/g, '-');
 };
 
 const COURSES = [
@@ -1358,7 +1358,7 @@ export default function ScholarshipDashboard({
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: name === 'year' ? value.replace(/[•••••••••••]/g, '') : value,
+      [name]: value,
     }));
   };
 
