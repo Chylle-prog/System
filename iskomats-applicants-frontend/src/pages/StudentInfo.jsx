@@ -1566,7 +1566,15 @@ const StudentInfo = () => {
     setLoadingMessage({ title: 'Scanning COE', message: 'Verifying your Certificate of Enrollment and Video Content...' });
 
     try {
-      const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, idNumber, yearLevel, course, semester }, videoUrl);
+      const targetAcademicYear = scholarshipDetails?.year || scholarshipDetails?.academic_year || formData.schoolYear || '';
+      const success = await performOcrVerification('Enrollment', coeDoc, {
+        schoolName,
+        idNumber,
+        yearLevel,
+        course,
+        semester,
+        academicYear: targetAcademicYear
+      }, videoUrl);
       if (success) {
         if (scholarshipDetails) {
           /* Semester check removed */
@@ -1610,13 +1618,15 @@ const StudentInfo = () => {
     setLoadingMessage({ title: 'Scanning Grades', message: 'Verifying your Grades document and Video Content...' });
 
     try {
+      const targetAcademicYear = scholarshipDetails?.grades_year || scholarshipDetails?.year || scholarshipDetails?.academic_year || formData.schoolYear || '';
       const success = await performOcrVerification('Grades', gradesDoc, {
         schoolName: formData.schoolName,
         idNumber: formData.schoolIdNumber,
         yearLevel: formData.yearLevel,
         gpa: formData.gpa,
         semester: '',
-        grades_sem
+        grades_sem,
+        academicYear: targetAcademicYear
       }, videoUrl);
       if (success) {
         const applicantGpa = parseFloat(formData.gpa);
@@ -1686,6 +1696,7 @@ const StudentInfo = () => {
     lastIdScanRef.current = { front: idFront, back: idBack, frontVid: frontVideoUrl, backVid: backVideoUrl };
 
     try {
+      const targetAcademicYear = scholarshipDetails?.year || scholarshipDetails?.academic_year || formData.schoolYear || '';
       // Only check video presence, not full video OCR (backend already optimized)
       const success = await performOcrVerification(
         'SchoolID',
@@ -1693,7 +1704,8 @@ const StudentInfo = () => {
         {
           schoolName: formData.schoolName,
           idNumber: formData.schoolIdNumber,
-          yearLevel: formData.yearLevel
+          yearLevel: formData.yearLevel,
+          academicYear: targetAcademicYear
         },
         { front: frontVideoUrl, back: backVideoUrl }
       );
