@@ -628,7 +628,7 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
     Neural signature matching against ID back image.
     """
     try:
-        from .signature_brain import calculate_neural_match, compare_signature_images, prepare_signature_match_view
+        from .signature_brain import calculate_neural_match, compare_signature_images, prepare_signature_match_view, validate_signature_complexity
         
         if not signature_bytes or not id_back_bytes:
             return False, "Missing signature or ID image", 0.0, None, None, None, None
@@ -649,8 +649,15 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
             return False, "Could not decode images", 0.0, None, None, None, None
 
         preview_signature = _prepare_signature_preview(sig_img)
-        extracted_id_signature = _extract_signature_from_id_back(id_img)
         matcher_submitted_view = prepare_signature_match_view(sig_img)
+
+        # Enforce stroke complexity — reject single lines, dots, or blank drawings
+        is_valid_sig, invalid_reason = validate_signature_complexity(sig_img)
+        if not is_valid_sig:
+            print(f"[SIGNATURE] Complexity validation rejected: {invalid_reason}", flush=True)
+            return False, invalid_reason, 0.0, preview_signature, None, matcher_submitted_view, None
+
+        extracted_id_signature = _extract_signature_from_id_back(id_img)
 
         if extracted_id_signature is None or extracted_id_signature.size == 0:
             print("[SIGNATURE] Failed to isolate signature from ID Back.", flush=True)
@@ -679,7 +686,7 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
             print(f"[SIGNATURE] Error in neural matching: {e}", flush=True)
             return False, f"Matching error: {str(e)}", 0.0, preview_signature, extracted_id_preview, matcher_submitted_view, matcher_reference_view
         
-        threshold = 0.20
+        threshold = 0.45
         is_verified = score >= threshold
         status = (
             f"Signature match successful ({score_source})"

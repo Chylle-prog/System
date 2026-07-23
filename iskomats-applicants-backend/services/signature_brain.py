@@ -42,6 +42,49 @@ def _cosine_similarity(vector_a, vector_b):
     return float(np.clip(np.dot(normalized_a, normalized_b), -1.0, 1.0))
 
 
+def validate_signature_complexity(img_np):
+    """
+    Checks if a signature image has genuine handwriting complexity
+    rather than a single straight line, dot, or blank stroke.
+    Returns (is_valid, reason).
+    """
+    if img_np is None:
+        return False, "No signature image provided."
+
+    gray = cv2.cvtColor(img_np, cv2.COLOR_BGR2GRAY) if len(img_np.shape) == 3 else img_np
+    
+    # Threshold ink (assuming dark ink on light background)
+    _, binary = cv2.threshold(gray, 220, 255, cv2.THRESH_BINARY_INV)
+    
+    ink_pixels = cv2.countNonZero(binary)
+    if ink_pixels < 80:
+        return False, "Signature is too faint or empty. Please draw a clearer signature."
+
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return False, "No signature stroke detected."
+
+    # Filter out tiny noise dots
+    valid_contours = [c for c in contours if cv2.contourArea(c) > 15]
+    if not valid_contours:
+        return False, "Signature stroke is too small or faint."
+
+    # Compute bounding box of all ink
+    all_pts = np.vstack(valid_contours)
+    x, y, w, h = cv2.boundingRect(all_pts)
+
+    if h < 14:
+        return False, "Submitted signature is too simple (e.g. a single straight line). Please draw your full handwritten signature."
+
+    aspect_ratio = w / float(h) if h > 0 else 0.0
+    
+    # A single line has very high aspect ratio (> 6.0) and low vertical variation / simple contours
+    if aspect_ratio > 6.0 and len(valid_contours) <= 3:
+        return False, "Submitted signature is a single line. Please draw your complete signature."
+
+    return True, "Valid"
+
+
 def _extract_ink_crop(img_np):
     gray = cv2.cvtColor(img_np, cv2.COLOR_BGR2GRAY) if len(img_np.shape) == 3 else img_np
     
