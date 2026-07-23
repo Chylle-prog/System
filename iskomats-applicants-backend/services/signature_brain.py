@@ -145,14 +145,29 @@ def _extract_ink_crop(img_np):
     
     return gray[y_p:y_p + h_p, x_p:x_p + w_p]
 
-def _prepare_signature_canvas(img_np, size=128):
+def _prepare_signature_canvas(img_np, size=224):
     cropped = _extract_ink_crop(img_np)
     h_c, w_c = cropped.shape[:2]
     if h_c == 0 or w_c == 0:
         return None
 
-    # Normalize directly to uniform square canvas to eliminate aspect ratio padding mismatches
-    canvas = cv2.resize(cropped, (size, size), interpolation=cv2.INTER_AREA)
+    margin = max(4, int(size * 0.04))
+    usable_size = max(8, size - (margin * 2))
+    
+    print(f"[BRAIN] Preparing signature canvas: input={img_np.shape[:2]}, crop={cropped.shape[:2]}, target_size={size}", flush=True)
+
+    if h_c > w_c:
+        new_h, new_w = usable_size, max(1, int(w_c * usable_size / h_c))
+        pad_w = margin + ((usable_size - new_w) // 2)
+        pad_h = margin
+    else:
+        new_h, new_w = max(1, int(h_c * usable_size / w_c)), usable_size
+        pad_h = margin + ((usable_size - new_h) // 2)
+        pad_w = margin
+
+    resized = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    canvas = np.full((size, size), 255, dtype=np.uint8)
+    canvas[pad_h:pad_h + new_h, pad_w:pad_w + new_w] = resized
     return canvas
 
 
@@ -192,12 +207,12 @@ def _extract_classical_embedding(img_np):
     v_proj_norm = _safe_normalize(vertical_projection)
     hu_norm = _safe_normalize(hu_moments)
 
-    # Combine with weights (40% projections, 30% Hu moments, 30% spatial geometry)
+    # Combine with weights (70% shape geometry, 30% projections & moments)
     embedding = np.concatenate([
-        hu_norm * 0.35,
-        h_proj_norm * 0.20, 
-        v_proj_norm * 0.20,
-        down_norm * 0.25
+        down_norm * 0.70, 
+        h_proj_norm * 0.15, 
+        v_proj_norm * 0.15, 
+        hu_norm * 0.05
     ])
     
     return _normalize_vector(embedding)
