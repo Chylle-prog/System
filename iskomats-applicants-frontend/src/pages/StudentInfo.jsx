@@ -1206,10 +1206,60 @@ const StudentInfo = () => {
   };
 
   const gpaMatchesText = (text, expectedGpa) => {
-    if (!expectedGpa) return true;
-    const cleanGpa = expectedGpa.toString().replace(/[^0-9.]/g, '');
-    if (!cleanGpa) return true;
-    return text.includes(cleanGpa);
+    if (!expectedGpa || !text) return true;
+
+    const rawGpaStr = String(expectedGpa).trim();
+    const parsedTargetGpa = parseFloat(rawGpaStr.replace(/[^0-9.]/g, ''));
+    if (isNaN(parsedTargetGpa)) return true;
+
+    const cleanText = String(text).replace(/[\–\—·•]/g, '.');
+
+    // 1. Direct text match with exact string, rounded string, or comma decimal (e.g. "3.4375", "3.44", "3,4375")
+    if (cleanText.includes(rawGpaStr) || cleanText.includes(rawGpaStr.replace('.', ','))) return true;
+
+    const roundedGpaStr = parsedTargetGpa.toFixed(2); // "3.44"
+    if (cleanText.includes(roundedGpaStr)) return true;
+
+    // 2. Extract digits only of expected GPA (e.g., "3.4375" -> "34375")
+    const expectedDigits = rawGpaStr.replace(/\D/g, '');
+
+    // 3. Tokenize numbers in OCR text (both explicitly formatted and missing-period digit sequences)
+    const tokens = cleanText.split(/[\s:;=,]+/);
+
+    for (let token of tokens) {
+      const cleanToken = token.replace(/[^0-9.]/g, '');
+      if (!cleanToken) continue;
+
+      // Direct digits-only match (e.g. OCR recognized "34375" without decimal point)
+      if (expectedDigits.length >= 3 && cleanToken === expectedDigits) {
+        return true;
+      }
+
+      // Check if inserting a decimal point into digits-only sequence matches target
+      if (!cleanToken.includes('.') && cleanToken.length >= 3 && cleanToken.length <= 6) {
+        // Option A: 1st digit decimal (e.g. "34375" -> "3.4375", "175" -> "1.75")
+        const cand1Str = cleanToken.slice(0, 1) + '.' + cleanToken.slice(1);
+        const cand1Val = parseFloat(cand1Str);
+        if (!isNaN(cand1Val) && Math.abs(cand1Val - parsedTargetGpa) < 0.05) {
+          return true;
+        }
+
+        // Option B: 2nd digit decimal for percentage scale (e.g. "885" -> "88.5")
+        const cand2Str = cleanToken.slice(0, 2) + '.' + cleanToken.slice(2);
+        const cand2Val = parseFloat(cand2Str);
+        if (!isNaN(cand2Val) && Math.abs(cand2Val - parsedTargetGpa) < 0.05) {
+          return true;
+        }
+      }
+
+      // Standard float proximity check (e.g. 3.44 vs 3.4375)
+      const tokenValue = parseFloat(cleanToken);
+      if (!isNaN(tokenValue) && Math.abs(tokenValue - parsedTargetGpa) < 0.05) {
+        return true;
+      }
+    }
+
+    return false;
   };
 
   const addressMatchesText = (text, expectedAddr) => {

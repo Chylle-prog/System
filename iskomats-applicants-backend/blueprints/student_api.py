@@ -209,18 +209,30 @@ def gpa_matches_text(raw_text, expected_gpa):
     # Rule: If applicant wrote 3.5, accept 3.54676 (startswith)
     # Rule: If applicant wrote 3.54, fail 3.45
     target_clean = clean_num(expected_digits)
+    t_digits = re.sub(r'\D', '', target_clean)
     
     for c in candidates:
         if c.startswith(target_clean):
             return True, expected_digits, [c]
+        c_digits = re.sub(r'\D', '', c)
+        if len(t_digits) >= 3 and c_digits == t_digits:
+            return True, expected_digits, [c]
+        if not '.' in c and len(c_digits) >= 3 and len(c_digits) <= 6:
+            try:
+                cand_val = float(c_digits[0] + '.' + c_digits[1:])
+                expected_val = float(target_clean)
+                if abs(cand_val - expected_val) < 0.05:
+                    return True, expected_digits, [c]
+            except Exception:
+                pass
             
-    # 4. Fallback for float matching (legacy support for percentage scales)
+    # 4. Fallback for float matching
     try:
         expected_val = float(target_clean)
         for c in candidates:
             try:
                 c_val = float(c)
-                if abs(c_val - expected_val) < 0.001:
+                if abs(c_val - expected_val) < 0.05:
                     return True, expected_digits, [c]
             except: continue
     except: pass
