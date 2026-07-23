@@ -883,50 +883,77 @@
 /* Responsive */
 @media (max-width: 768px) {
   .hero h1 {
-    font-size: 2.5rem;
+    font-size: 2.3rem;
   }
-  
+
+  .features,
+  .branded-grid,
+  .stats-container,
+  .scholarship-grid,
+  .contact-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1.5rem !important;
+  }
+
   .info-section h2 {
-    font-size: 2.2rem;
+    font-size: 2rem;
     margin-bottom: 2rem;
-  }
-  
-  .scholarship-grid {
-    grid-template-columns: 1fr;
-    gap: 2rem;
   }
   
   .scholarship-card {
-    padding: 2.5rem;
+    padding: 1.75rem 1.25rem;
   }
   
   .about-container {
-    padding: 3rem 5%;
-    margin: 2rem 5%;
+    padding: 2rem 1.25rem !important;
+    margin: 1.5rem 1rem !important;
+    border-radius: 24px !important;
+    box-sizing: border-box !important;
   }
   
   .about-container h2 {
-    font-size: 2.2rem;
-    margin-bottom: 2rem;
+    font-size: 2rem;
+    margin-bottom: 1.5rem;
   }
   
   .about-container .info-content {
-    padding: 2.5rem;
-    font-size: 1.1rem;
+    padding: 1.5rem 1.25rem;
+    font-size: 1rem;
   }
   
   .contact-container {
-    padding: 3rem 5%;
-    margin: 2rem 5%;
+    padding: 2rem 1.25rem !important;
+    margin: 1.5rem 1rem !important;
+    border-radius: 24px !important;
+    box-sizing: border-box !important;
   }
   
   .contact-header h2 {
-    font-size: 2rem;
+    font-size: 1.8rem;
   }
-  
-  .contact-grid {
-    grid-template-columns: 1fr;
-    gap: 1.5rem;
+
+  .contact-card {
+    padding: 1.25rem 1rem !important;
+    gap: 1rem !important;
+    flex-direction: row;
+    align-items: flex-start !important;
+    box-sizing: border-box !important;
+    max-width: 100% !important;
+  }
+
+  .contact-info {
+    min-width: 0 !important;
+    flex: 1;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  .contact-info p,
+  .contact-info h3,
+  .contact-subtitle {
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    white-space: normal !important;
   }
   
   .contact-actions {
@@ -960,5 +987,32 @@
   
   .scholarship-modal-section h4 {
     font-size: 1.1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero {
+    padding: 3.5rem 1rem 4rem !important;
+  }
+
+  .hero h1 {
+    font-size: 1.85rem !important;
+  }
+
+  .hero p {
+    font-size: 0.95rem !important;
+  }
+
+  .about-container,
+  .contact-container {
+    padding: 1.5rem 1rem !important;
+    margin: 1rem 0.5rem !important;
+    border-radius: 20px !important;
+  }
+
+  .feature-card,
+  .branded-card {
+    padding: 1.5rem 1.2rem !important;
+    border-radius: 20px !important;
   }
 }

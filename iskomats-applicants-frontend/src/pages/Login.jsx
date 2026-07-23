@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { GoogleLogin } from '@react-oauth/google';
 import lipaBg from '../assets/lipa.jpg';
 import { SCHOOLS, BARANGAYS } from '../utils/constants';
+import Navbar from './Navbar';
 
 
 
@@ -1114,8 +1115,14 @@ const Login = () => {
           
           .form-group input,
           .form-group select {
-            padding: 0.8rem 1rem;
+            padding: 0.8rem 1rem 0.8rem 3rem !important;
             font-size: 0.95rem;
+          }
+
+          .input-wrapper input,
+          .profile-input-wrapper input,
+          .profile-input-wrapper select {
+            padding-left: 3rem !important;
           }
           
           .submit-btn {
@@ -1154,8 +1161,14 @@ const Login = () => {
           
           .form-group input,
           .form-group select {
-            padding: 0.7rem 0.9rem;
+            padding: 0.7rem 0.9rem 0.7rem 3rem !important;
             font-size: 0.9rem;
+          }
+
+          .input-wrapper input,
+          .profile-input-wrapper input,
+          .profile-input-wrapper select {
+            padding-left: 3rem !important;
           }
           
           .submit-btn {
@@ -1185,17 +1198,7 @@ const Login = () => {
       `}</style>
 
       <div className="login-bg-overlay" />
-      <nav className="navbar">
-        <Link to="/" className="navbar-brand">
-          <img src="/iskologo.png" alt="iskoMats" style={{ height: '56px', marginRight: '16px', verticalAlign: 'middle' }} />
-          iskoMats
-        </Link>
-        <div className="navbar-nav">
-          <Link to="/">Home</Link>
-          <a href="/#about">About Us</a>
-          <a href="/#contact">Contact Info</a>
-        </div>
-      </nav>
+      <Navbar />
 
       <div className="auth-wrapper">
         {/* Auth section */}
