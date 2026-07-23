@@ -4274,7 +4274,16 @@ const StudentInfo = () => {
                   </div>
                   <div className="form-group">
                     <label>General Weighted Average / GPA <span style={{ color: '#e74c3c' }}>*</span></label>
-                    <input type="number" name="gpa" value={formData.gpa} onChange={handleInputChange} placeholder="85 or 1.75" step="0.01" required={currentStep === 3} />
+                    <input
+                      type="number"
+                      name="gpa"
+                      value={formData.gpa}
+                      readOnly
+                      style={{ backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }}
+                      placeholder="GPA pre-filled from profile"
+                      step="0.01"
+                      required={currentStep === 3}
+                    />
                   </div>
                 </div>
 
