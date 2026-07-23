@@ -13,7 +13,8 @@ DEFAULT_CORS_ORIGINS = (
     "https://foregoing-giants.surge.sh,"
     "https://iskomats-applicants.surge.sh,"
     "https://iskomats-admin.surge.sh,"
-    "https://system-hxgp.onrender.com"
+    "https://system-hxgp.onrender.com,"
+    "https://system-rshh.vercel.app"
 )
 
 
