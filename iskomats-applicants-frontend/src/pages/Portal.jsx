@@ -2185,6 +2185,21 @@ const Portal = () => {
           animation: modalFadeIn 0.3s ease forwards;
         }
 
+        @media (max-width: 640px) {
+          .announcement-modal-overlay {
+            padding: 0;
+            align-items: flex-end;
+          }
+          .announcement-modal {
+            max-width: 100% !important;
+            max-height: 92vh !important;
+            border-bottom-left-radius: 0 !important;
+            border-bottom-right-radius: 0 !important;
+            border-top-left-radius: 24px !important;
+            border-top-right-radius: 24px !important;
+          }
+        }
+
         .announcement-modal {
           background: white;
           width: 100%;

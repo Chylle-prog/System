@@ -3461,9 +3461,32 @@ const StudentInfo = () => {
 
         @media (max-width: 768px) {
           .step-label { display: none; }
-          .form-card { padding: 1.5rem; }
+          .form-card { padding: 1.25rem 1rem !important; }
           .navbar { padding: 1rem 5%; }
           .media-grid { grid-template-columns: 1fr; }
+          .form-group-row, .grid-2, .grid-3 {
+            grid-template-columns: 1fr !important;
+            flex-direction: column !important;
+            gap: 0.75rem !important;
+          }
+          .wizard-steps {
+            overflow-x: auto;
+            padding-bottom: 0.5rem;
+            -webkit-overflow-scrolling: touch;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .form-header h2 {
+            font-size: 1.35rem !important;
+          }
+          .form-card {
+            border-radius: 16px !important;
+          }
+          .btn-primary, .btn-secondary, .btn-submit {
+            width: 100% !important;
+            padding: 0.85rem 1rem !important;
+          }
         }
       `}</style>
 
