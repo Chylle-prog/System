@@ -1312,11 +1312,11 @@ const StudentInfo = () => {
         scoreDetails = {
           "First Name": nameCheck.details.first_ok,
           "Last Name": nameCheck.details.last_ok,
-          "School": schoolOk,
-          "Course": courseOk,
-          "Academic Year": ayOk,
-          "Semester": semOk,
-          "ID Number": idOk
+          "School Name": schoolName ? schoolOk : null,
+          "Course / Track": course ? courseOk : null,
+          "Academic Year": academicYear ? ayOk : null,
+          "Semester": semester ? semOk : null,
+          "ID Number": idNumber ? idOk : null
         };
         finalMessage = isSuccess ? "Enrollment verified successfully client-side!" : "Enrollment verification mismatch.";
         resultsList = [{ doc: 'Enrollment', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
@@ -1335,12 +1335,12 @@ const StudentInfo = () => {
         scoreDetails = {
           "First Name": nameCheck.details.first_ok,
           "Last Name": nameCheck.details.last_ok,
-          "GPA Match": gpaOk,
-          "Academic Year": ayOk,
-          "Semester": semOk,
-          "School": schoolOk,
-          "Course": courseOk,
-          "ID Number": idOk
+          "GPA Requirement": gpa ? gpaOk : null,
+          "Academic Year": academicYear ? ayOk : null,
+          "Semester": semester ? semOk : null,
+          "School Name": schoolName ? schoolOk : null,
+          "Course / Track": course ? courseOk : null,
+          "ID Number": idNumber ? idOk : null
         };
         finalMessage = isSuccess ? "Grades verified successfully client-side!" : "Grades verification mismatch.";
         resultsList = [{ doc: 'Grades', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
@@ -1354,7 +1354,9 @@ const StudentInfo = () => {
         scoreDetails = {
           "First Name": nameCheck.details.first_ok,
           "Last Name": nameCheck.details.last_ok,
-          "Address Match": addrOk
+          "Barangay Address": targetBarangay ? addrOk : null,
+          "Town / City": townCity ? true : null,
+          "Video Proof": videoUrl ? true : false
         };
         finalMessage = isSuccess ? "Indigency verified successfully client-side!" : "Indigency verification mismatch.";
         resultsList = [{ doc: 'Indigency', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
