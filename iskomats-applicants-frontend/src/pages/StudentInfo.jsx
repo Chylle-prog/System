@@ -1154,17 +1154,26 @@ const StudentInfo = () => {
 
   const academic_year_matches_expected = (text, expectedYear) => {
     if (!expectedYear) return true;
-    
+    if (!text) return false;
+
+    const normText = String(text).replace(/[\–\—]/g, '-').toLowerCase();
+    const normExpected = String(expectedYear).replace(/[\–\—]/g, '-').trim();
+
     const yearRegex = /20\d{2}/g;
-    const foundYears = text.match(yearRegex);
-    const expectedYears = expectedYear.match(yearRegex);
+    const foundYears = normText.match(yearRegex) || [];
+    const expectedYears = normExpected.match(yearRegex) || [];
 
-    if (!foundYears || !expectedYears) return false;
+    if (expectedYears.length === 0) return true;
+    if (foundYears.length === 0) return false;
 
-    for (let f of foundYears) {
-        if (expectedYears.includes(f)) return true;
+    // If expected year is a range like "2026-2027" (contains 2 years), ALL expected years must be present in the text
+    if (expectedYears.length >= 2) {
+      const firstTwoExpected = expectedYears.slice(0, 2);
+      return firstTwoExpected.every(yr => foundYears.includes(yr));
     }
-    return false;
+
+    // Single year matching (e.g., "2026")
+    return expectedYears.every(yr => foundYears.includes(yr));
   };
 
   const courseMatchesText = (expectedCourse, text) => {

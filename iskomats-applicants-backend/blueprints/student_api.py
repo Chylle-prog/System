@@ -105,32 +105,25 @@ _VERIFICATION_RESULT_CACHE_SIZE_LIMIT = 128
 _VERIFICATION_RESULT_CACHE_TTL_SECONDS = 300
 PENDING_REGISTRATION_EXPIRY_WINDOW = timedelta(hours=1)
 def academic_year_matches_expected(found_year, expected_year):
-    """Core AY matching logic"""
+    """Core AY matching logic: Requires ALL years in a range (e.g. 2026-2027) to be present."""
     if not expected_year: return True
     if not found_year: return False
 
     # Normalize found and expected to digit lists
     found_years = [int(y) for y in re.findall(r'20\d{2}', str(found_year))]
-    # Handle both hyphen and Unicode dashes
     expected_str = str(expected_year).replace('–', '-').replace('—', '-')
     expected_years = [int(y) for y in re.findall(r'20\d{2}', expected_str)]
 
-    if not found_years or not expected_years: return False
+    if not expected_years: return True
+    if not found_years: return False
 
-    # Check for direct year match (e.g. 2026 in 2026-2027)
-    for f in found_years:
-        if f in expected_years:
-            return True
-            
-    # Range check
+    # Range check: If expected is "2026-2027" (contains 2+ years), BOTH start & end years must be present
     if len(expected_years) >= 2:
-        min_exp, max_exp = min(expected_years), max(expected_years)
-        return any(min_exp <= y <= max_exp for y in found_years)
-    
-    # Target check
-    latest_found = max(found_years)
-    target_year = expected_years[0]
-    return latest_found >= target_year
+        req_start, req_end = expected_years[0], expected_years[1]
+        return (req_start in found_years) and (req_end in found_years)
+
+    # Single target year check (e.g. 2026)
+    return expected_years[0] in found_years
 
 def academic_year_matches_latest_expected(found_year, expected_year):
     # Use the harmonized logic
