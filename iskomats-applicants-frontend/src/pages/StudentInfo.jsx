@@ -399,6 +399,95 @@ const StudentInfo = () => {
     );
   };
 
+  const validateVideoLiveness = (videoSrc) => {
+    return new Promise((resolve) => {
+      if (!videoSrc) {
+        resolve({ valid: false, reason: "No video uploaded or recorded." });
+        return;
+      }
+
+      let srcUrl = typeof videoSrc === 'string' ? videoSrc : (videoSrc instanceof Blob || videoSrc instanceof File ? URL.createObjectURL(videoSrc) : null);
+      if (!srcUrl) {
+        resolve({ valid: true });
+        return;
+      }
+
+      const video = document.createElement('video');
+      video.crossOrigin = 'anonymous';
+      video.muted = true;
+      video.playsInline = true;
+      video.src = srcUrl;
+
+      let timeout = setTimeout(() => {
+        video.remove();
+        resolve({ valid: true });
+      }, 5000);
+
+      video.onloadeddata = () => {
+        try {
+          const seekTime = Math.min(1.0, (video.duration || 2.0) / 2);
+          video.currentTime = seekTime;
+        } catch (e) {
+          clearTimeout(timeout);
+          video.remove();
+          resolve({ valid: true });
+        }
+      };
+
+      video.onseeked = () => {
+        clearTimeout(timeout);
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.min(video.videoWidth || 320, 320);
+          canvas.height = Math.min(video.videoHeight || 240, 240);
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imageData.data;
+          let totalLuminance = 0;
+          let pixelCount = data.length / 4;
+
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            totalLuminance += (0.299 * r + 0.587 * g + 0.114 * b);
+          }
+
+          const avgLuminance = totalLuminance / pixelCount;
+
+          let diffSum = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+            diffSum += Math.pow(lum - avgLuminance, 2);
+          }
+          const stdDev = Math.sqrt(diffSum / pixelCount);
+
+          video.remove();
+
+          if (avgLuminance < 18 || stdDev < 6) {
+            resolve({
+              valid: false,
+              reason: `Pitch-Black / Covered Camera Video Rejected (Brightness: ${avgLuminance.toFixed(1)}/255). Please record a clear video under proper lighting.`
+            });
+          } else {
+            resolve({ valid: true, avgLuminance, stdDev });
+          }
+        } catch (err) {
+          video.remove();
+          resolve({ valid: true });
+        }
+      };
+
+      video.onerror = () => {
+        clearTimeout(timeout);
+        video.remove();
+        resolve({ valid: true });
+      };
+    });
+  };
+
   const triggerAutoScan = (docType) => setAutoScanTrigger(prev => prev === docType ? `${docType}_${Date.now()}` : docType);
 
   const getDocTypeFromField = (field) => {
@@ -1412,11 +1501,42 @@ const StudentInfo = () => {
         return ocrResult.data.text || "";
       };
 
-      let detectedText = "";
-      let isSuccess = false;
-      let scoreDetails = {};
-      let finalMessage = "";
-      let resultsList = [];
+      // Validate Video Liveness (Reject pitch-black screen or covered lens videos)
+      const videoToCheck = Array.isArray(videoUrl) ? videoUrl[0] : videoUrl;
+      if (videoToCheck) {
+        if (!silent) setStatus("Analyzing video lighting & liveness...");
+        const videoCheck = await validateVideoLiveness(videoToCheck);
+        if (!videoCheck.valid) {
+          isSuccess = false;
+          finalMessage = videoCheck.reason;
+          scoreDetails = {
+            "First Name": false,
+            "Last Name": false,
+            "Video Proof": false
+          };
+          resultsList = [{ doc: docType, verified: false, message: finalMessage, score_details: scoreDetails }];
+          
+          setOcrDebugLogs((prev) => ({
+            ...prev,
+            [docType]: {
+              status: 'FAILED (BLACK VIDEO REJECTED)',
+              message: finalMessage,
+              detectedText: 'Video validation failed: Pitch black screen / dark lens detected.',
+              scoreDetails,
+              requirements: {
+                "First Name": firstName || 'N/A',
+                "Last Name": lastName || 'N/A',
+                "Video Proof": 'PITCH BLACK REJECTED'
+              },
+              timestamp: new Date().toLocaleTimeString()
+            }
+          }));
+
+          setVerified('failed');
+          setStatus(finalMessage);
+          return false;
+        }
+      }
 
       if (docType === 'SchoolID') {
         const frontText = await runOcrOnImage(resolvedParam.front, "School ID Front");
