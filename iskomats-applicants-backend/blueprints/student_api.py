@@ -742,11 +742,24 @@ def resolve_verification_image_bytes(image_data):
                 except Exception as e:
                     print(f"[RESOLVE] Failed to resolve local proxy URL {normalized}: {e}", flush=True)
 
-            if not raw_bytes:
-                target_url = normalize_supabase_url(normalized)
-                if is_trusted_storage_url(target_url):
-                    content, _error = fetch_video_bytes_from_url(target_url)
-                    raw_bytes = content
+            if not raw_bytes and normalized.startswith('http'):
+                try:
+                    target_url = normalize_supabase_url(normalized)
+                    if is_trusted_storage_url(target_url):
+                        content, _error = fetch_video_bytes_from_url(target_url)
+                        if content:
+                            raw_bytes = content
+                except Exception as e:
+                    print(f"[RESOLVE] Storage fetch error: {e}", flush=True)
+
+                if not raw_bytes:
+                    try:
+                        import urllib.request
+                        req = urllib.request.Request(normalized, headers={'User-Agent': 'Mozilla/5.0'})
+                        with urllib.request.urlopen(req, timeout=8) as resp:
+                            raw_bytes = resp.read()
+                    except Exception as e:
+                        print(f"[RESOLVE] Direct HTTP fetch failed for {normalized[:60]}: {e}", flush=True)
 
     if raw_bytes:
         # Decrypt if the frontend encrypted it before upload
