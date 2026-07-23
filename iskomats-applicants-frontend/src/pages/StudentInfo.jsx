@@ -1708,7 +1708,12 @@ const StudentInfo = () => {
       showPromptMessage('Please upload your Certificate of Enrollment first.');
       return;
     }
-    if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
+    const hasCoeVideo = !!videoUrl && (
+      (typeof videoUrl === 'string' && videoUrl.trim().length > 0) ||
+      (typeof videoUrl === 'object')
+    );
+
+    if (!hasCoeVideo) {
       showPromptMessage('Please record and upload the COE video first.');
       return;
     }
@@ -1760,7 +1765,12 @@ const StudentInfo = () => {
       showPromptMessage('Please upload your Grades document first.');
       return;
     }
-    if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
+    const hasGradesVideo = !!videoUrl && (
+      (typeof videoUrl === 'string' && videoUrl.trim().length > 0) ||
+      (typeof videoUrl === 'object')
+    );
+
+    if (!hasGradesVideo) {
       showPromptMessage('Please record and upload the Grades video first.');
       return;
     }
@@ -1833,11 +1843,20 @@ const StudentInfo = () => {
       showPromptMessage('Please upload both front and back of your School ID first.');
       return;
     }
-    if (!frontVideoUrl || typeof frontVideoUrl !== 'string' || !frontVideoUrl.startsWith('http')) {
+    const hasFrontVideo = !!frontVideoUrl && (
+      (typeof frontVideoUrl === 'string' && frontVideoUrl.trim().length > 0) ||
+      (typeof frontVideoUrl === 'object')
+    );
+    const hasBackVideo = !!backVideoUrl && (
+      (typeof backVideoUrl === 'string' && backVideoUrl.trim().length > 0) ||
+      (typeof backVideoUrl === 'object')
+    );
+
+    if (!hasFrontVideo) {
       showPromptMessage('Please record and upload the front School ID video first.');
       return;
     }
-    if (!backVideoUrl || typeof backVideoUrl !== 'string' || !backVideoUrl.startsWith('http')) {
+    if (!hasBackVideo) {
       showPromptMessage('Please record and upload the back School ID video first.');
       return;
     }
