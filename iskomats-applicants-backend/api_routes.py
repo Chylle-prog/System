@@ -447,15 +447,24 @@ def ensure_schema_integrity(cursor):
     for col, col_type in scholarship_cols.items():
         cursor.execute(
             """
-            SELECT COUNT(*)
+            SELECT data_type
             FROM information_schema.columns
             WHERE table_name = 'scholarships' AND column_name = %s
             """,
             (col,)
         )
-        if read_count(cursor.fetchone()) == 0:
+        res = cursor.fetchone()
+        if not res:
             print(f"[MIGRATION] Adding {col} to scholarships table")
             cursor.execute(f"ALTER TABLE scholarships ADD COLUMN {col} {col_type}")
+        else:
+            current_type = (res['data_type'] if isinstance(res, dict) else res[0]).lower()
+            if 'int' in current_type:
+                print(f"[MIGRATION] Converting scholarships.{col} from {current_type} to {col_type}")
+                try:
+                    cursor.execute(f"ALTER TABLE scholarships ALTER COLUMN {col} TYPE {col_type} USING {col}::text")
+                except Exception as e:
+                    print(f"[MIGRATION WARNING] Failed to convert scholarships.{col}: {e}")
     
     _SCHEMA_INITIALIZED = True
 
