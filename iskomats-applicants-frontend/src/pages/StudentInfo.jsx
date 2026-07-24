@@ -1785,6 +1785,28 @@ const StudentInfo = () => {
     return keywords.some(kw => normText.includes(kw));
   };
 
+  const yearLevelMatchesText = (text, expectedYearLevel) => {
+    if (!expectedYearLevel || !text) return true;
+    const normText = normalizeForOcr(text);
+    const normLevel = normalizeForOcr(String(expectedYearLevel));
+
+    // Direct match (e.g. '1st year', '2nd year', '3rd year', '4th year')
+    if (normText.includes(normLevel)) return true;
+
+    // Numeric extraction (e.g. '1st' -> 1, '2nd' -> 2)
+    const numericMap = { '1st': 1, '2nd': 2, '3rd': 3, '4th': 4, '5th': 5, 'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5 };
+    const levelNum = numericMap[normLevel.replace(/\s*year\s*/gi, '').trim()];
+
+    if (levelNum !== undefined) {
+      // Match Roman numerals (I, II, III, IV) and ordinal numbers (1, 2, 3, 4)
+      const romanMap = { 1: ['i', '1', '1st', 'first'], 2: ['ii', '2', '2nd', 'second'], 3: ['iii', '3', '3rd', 'third'], 4: ['iv', '4', '4th', 'fourth'], 5: ['v', '5', '5th', 'fifth'] };
+      const variants = romanMap[levelNum] || [];
+      return variants.some(v => normText.includes(v + ' year') || normText.includes('year ' + v) || new RegExp('\\b' + v + '\\b').test(normText));
+    }
+
+    return false;
+  };
+
   const preprocessImageForOcr = (imageSource) => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -2045,16 +2067,18 @@ const StudentInfo = () => {
         const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
         const semOk = semester ? normalizeForOcr(combinedText).includes(normalizeForOcr(semester)) : true;
         const idOk = idNumber ? studentIdNoMatchesText(idNumber, combinedText) : true;
+        const yrOk = yearLevel ? yearLevelMatchesText(combinedText, yearLevel) : true;
         const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
         const coeTypeOk = coe_type_matches_text(combinedText);
 
-        isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk && videoOk && coeTypeOk;
+        isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk && yrOk && videoOk && coeTypeOk;
         scoreDetails = {
           "First Name": nameCheck.details.first_ok,
           "Last Name": nameCheck.details.last_ok,
           "School Name": schoolName ? schoolOk : null,
           "Course / Track": course ? courseOk : null,
           "Academic Year": academicYear ? ayOk : null,
+          "Year Level": yearLevel ? yrOk : null,
           "Semester": semester ? semOk : null,
           "ID Number": idNumber ? idOk : null,
           "Document Type": coeTypeOk,
@@ -2075,14 +2099,16 @@ const StudentInfo = () => {
         const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
         const courseOk = course ? courseMatchesText(course, combinedText) : true;
         const idOk = idNumber ? studentIdNoMatchesText(idNumber, combinedText) : true;
+        const yrOk = yearLevel ? yearLevelMatchesText(combinedText, yearLevel) : true;
         const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
 
-        isSuccess = nameCheck.success && gpaOk && ayOk && semOk && schoolOk && courseOk && idOk && videoOk;
+        isSuccess = nameCheck.success && gpaOk && ayOk && semOk && schoolOk && courseOk && idOk && yrOk && videoOk;
         scoreDetails = {
           "First Name": nameCheck.details.first_ok,
           "Last Name": nameCheck.details.last_ok,
           "GPA Requirement": gpa ? gpaOk : null,
           "Academic Year": academicYear ? ayOk : null,
+          "Year Level": yearLevel ? yrOk : null,
           "Semester": semester ? semOk : null,
           "School Name": schoolName ? schoolOk : null,
           "Course / Track": course ? courseOk : null,
