@@ -1588,6 +1588,9 @@ const StudentInfo = () => {
     const tId = normalizeId(targetId);
     if (!tId) return true;
 
+    // Student ID number must have at least 6 digits to be considered a valid student number
+    if (tId.length < 6) return false;
+
     const normText = normalizeId(text);
     const isMatched = normText.includes(tId);
     if (isMatched) return true;
@@ -2482,6 +2485,10 @@ const StudentInfo = () => {
     }
     if (!formData.schoolName || !formData.schoolIdNumber || !formData.yearLevel) {
       showPromptMessage('Please complete School Name, School ID Number, and Year Level first.');
+      return;
+    }
+    if (String(formData.schoolIdNumber).replace(/[^0-9a-zA-Z]/g, '').length < 6) {
+      showPromptMessage('Please enter a valid School ID Number (must be at least 6-8 digits).');
       return;
     }
 
