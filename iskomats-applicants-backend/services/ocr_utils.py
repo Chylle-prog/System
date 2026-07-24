@@ -27,7 +27,7 @@ _FACE_RECOGNIZER = None
 _FACE_MODEL_INIT_ERROR = None
 _FACE_MATCH_THRESHOLD = 0.36 
 _FACE_DETECTION_THRESHOLD = 0.25 
-_MAX_FACE_WIDTH = 400
+_MAX_FACE_WIDTH = 320  # Match frontend resize; smaller = faster inference
 
 def decode_base64(data):
     """Safely decode base64 strings/URIs to bytes."""
@@ -133,6 +133,7 @@ def _init_face_models():
             sess_options.intra_op_num_threads = 1
             sess_options.inter_op_num_threads = 1
             sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
             
             providers = ['CPUExecutionProvider']
 
