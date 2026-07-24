@@ -115,7 +115,7 @@ def call_fastapi_verify_face(id_image_bytes, live_face_bytes):
         response = requests.post(
             f"{VERIFICATION_SERVICE_URL}/verify/face",
             json=payload,
-            timeout=30
+            timeout=2
         )
         
         if response.status_code == 200:

@@ -3677,13 +3677,8 @@ def face_match():
     try:
         face_bytes = resolve_verification_image_bytes(face_image_data)
         id_bytes = resolve_verification_image_bytes(id_image_data)
-        from services.verification_client import call_fastapi_verify_face
-        verified, message, confidence = call_fastapi_verify_face(id_bytes, face_bytes)
-
-        if not verified and ("Service Error" in str(message) or "HTTPConnectionPool" in str(message) or "timeout" in str(message).lower() or "localhost:8001" in str(message)):
-            print(f"[FACE-MATCH] FastAPI microservice unavailable ({message}). Falling back to local in-process face matcher...", flush=True)
-            from services.ocr_utils import verify_face_with_id
-            verified, message, confidence = verify_face_with_id(face_bytes, id_bytes)
+        from services.ocr_utils import verify_face_with_id
+        verified, message, confidence = verify_face_with_id(face_bytes, id_bytes)
 
         return jsonify({
             'verified': verified,
