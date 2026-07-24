@@ -372,7 +372,7 @@ if __name__ == '__main__':
         else:
             print(f"[INFO] PORT environment variable found: {port_env}", flush=True)
             
-        port = int(os.environ.get('PORT', '5000'))
+        port = int(os.environ.get('PORT', '10000'))
         host = os.environ.get('HOST', '0.0.0.0')
         print(f"\n{'='*60}", flush=True)
         print(f"[STARTUP] Starting ISKOMATS Backend on {host}:{port}", flush=True)
