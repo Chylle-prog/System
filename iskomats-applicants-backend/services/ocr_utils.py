@@ -506,13 +506,12 @@ def _extract_signature_from_id_back(id_img):
     if height == 0 or width == 0:
         return None
 
-    lane_y0, lane_y1 = int(height * 0.18), int(height * 0.48)
+    # DLSL & Philippine Student IDs have signature box in upper 8% - 38% region
+    lane_y0, lane_y1 = int(height * 0.08), int(height * 0.38)
     lane_x0, lane_x1 = int(width * 0.05), int(width * 0.95)
     roi_gray = gray[lane_y0:lane_y1, lane_x0:lane_x1].copy()
     
-    # We erased pytesseract label erasure to fully isolate signature extraction without any server-side Tesseract dependency.
-    # Handwriting ink components will naturally be isolated by aspect and solidity.
-
+    h_idx, w_idx = roi_gray.shape[:2]
     print(f"[SIGNATURE] Extracted ROI from ID Back: shape={roi_gray.shape}", flush=True)
     
     norm = cv2.normalize(roi_gray, None, 0, 255, cv2.NORM_MINMAX)
@@ -522,10 +521,24 @@ def _extract_signature_from_id_back(id_img):
         smooth, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY_INV, 31, 7
     )
+
+    # Detect signature horizontal underline (if present)
+    horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (int(w_idx * 0.20), 1))
+    detected_lines = cv2.morphologyEx(binary, cv2.MORPH_OPEN, horizontal_kernel)
+    line_contours, _ = cv2.findContours(detected_lines, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
+    sig_line_y = None
+    if line_contours:
+        valid_lines = []
+        for l_cnt in line_contours:
+            lx, ly, lw, lh = cv2.boundingRect(l_cnt)
+            if lw > w_idx * 0.18 and ly > h_idx * 0.30:
+                valid_lines.append(ly)
+        if valid_lines:
+            sig_line_y = min(valid_lines)
+
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     candidates = []
-    h_idx, w_idx = binary.shape[:2]
     
     for cnt in contours:
         x, y, w, h = cv2.boundingRect(cnt)
@@ -534,33 +547,27 @@ def _extract_signature_from_id_back(id_img):
         if y < 2 or (y+h) > h_idx-2: continue
         
         area = cv2.contourArea(cnt)
-        if area < 30: continue
+        if area < 40: continue
         
         solidity = area / float(w * h) if w * h > 0 else 0
         aspect = w / float(h) if h > 0 else 0
         extent = area / float(w_idx * h_idx)
         
-        # 1. Exclude tall thin vertical lines / brackets (e.g. '|', '[', ']')
-        if aspect < 0.22:
+        # 1. Exclude horizontal line itself
+        if aspect > 4.5 and h <= 8:
             continue
 
-        # 2. Exclude horizontal lines / underlines / box top-bottom borders
-        if aspect > 2.8 or (aspect > 2.0 and h < 16): 
+        # 2. Exclude printed text below signature baseline / line
+        if sig_line_y is not None and (y + h/2) >= (sig_line_y - 2):
             continue
 
-        # 3. Exclude printed label text at the bottom (e.g. 'Signature', 'Si natu')
-        if (y + h/2) > h_idx * 0.52 and area < 450:
+        # 3. Exclude small letter-like printed text at bottom ('Signature', 'Si n tu')
+        if (y + h/2) > h_idx * 0.55 and area < 500:
             continue
-        
-        peri = cv2.arcLength(cnt, True)
-        approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
-        if 4 <= len(approx) <= 6 and solidity > 0.55:
-             continue
-             
-        if 0.6 < aspect < 1.6 and solidity > 0.45:
+
+        # 4. Exclude vertical margins
+        if aspect < 0.15:
             continue
-            
-        if (extent > 0.12 or w > w_idx * 0.40) and solidity > 0.50: continue
             
         complexity = cv2.arcLength(cnt, True)
         hw_score = complexity / (np.sqrt(area) + 1)
@@ -575,7 +582,7 @@ def _extract_signature_from_id_back(id_img):
         })
 
     if not candidates:
-        ch, cw = int(h_idx * 0.6), int(w_idx * 0.7)
+        ch, cw = int(h_idx * 0.7), int(w_idx * 0.8)
         qy0, qx0 = int((h_idx - ch)/2), int((w_idx - cw)/2)
         fallback = roi_gray[qy0:qy0+ch, qx0:qx0+cw]
         result = cv2.cvtColor(fallback, cv2.COLOR_GRAY2BGR)
@@ -583,18 +590,17 @@ def _extract_signature_from_id_back(id_img):
         
     candidates.sort(key=lambda c: c['hw_score'], reverse=True)
     
-    signature_lane = [c for c in candidates if h_idx * 0.05 < c['y_mid'] < h_idx * 0.62]
+    signature_lane = [c for c in candidates if c['y_mid'] < h_idx * 0.65]
     anchor = signature_lane[0] if signature_lane else candidates[0]
     
     final_parts = []
     for c in candidates:
-        if abs(c['y_mid'] - anchor['y_mid']) < h_idx * 0.28:
+        if abs(c['y_mid'] - anchor['y_mid']) < h_idx * 0.35:
             final_parts.append(c)
             
     if not final_parts:
         final_parts = [anchor]
             
-    # Mask binary ink directly to preserve thin pen strokes and hollow loops (no ink blotting)
     contour_mask = np.zeros((h_idx, w_idx), dtype=np.uint8)
     for part in final_parts:
         cv2.drawContours(contour_mask, [part['cnt']], -1, 255, -1)
@@ -606,13 +612,13 @@ def _extract_signature_from_id_back(id_img):
     x1 = max(p['box'][0] + p['box'][2] for p in final_parts)
     y1 = max(p['box'][1] + p['box'][3] for p in final_parts)
 
-    pad = 6
+    pad = 8
     x0, y0 = max(0, x0 - pad), max(0, y0 - pad)
     x1, y1 = min(w_idx, x1 + pad), min(h_idx, y1 + pad)
 
     crop_ink = isolated_ink[y0:y1, x0:x1]
     if crop_ink.size == 0 or np.count_nonzero(crop_ink) == 0:
-        ch, cw = int(h_idx * 0.6), int(w_idx * 0.7)
+        ch, cw = int(h_idx * 0.7), int(w_idx * 0.8)
         qy0, qx0 = int((h_idx - ch)/2), int((w_idx - cw)/2)
         fallback = roi_gray[qy0:qy0+ch, qx0:qx0+cw]
         result = cv2.cvtColor(fallback, cv2.COLOR_GRAY2BGR)
