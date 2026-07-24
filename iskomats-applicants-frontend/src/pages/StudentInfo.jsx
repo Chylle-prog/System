@@ -84,6 +84,27 @@ const normalizeVerificationImage = async (value) => {
   return value;
 };
 
+/**
+ * Resize an image to max 320px (longest edge) at 0.82 JPEG quality
+ * for fast face verification API calls.
+ */
+const resizeImageForFaceVerification = (dataUrl, maxDim = 320, quality = 0.82) =>
+  new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const ratio = Math.min(maxDim / img.width, maxDim / img.height, 1);
+      const w = Math.max(1, Math.round(img.width * ratio));
+      const h = Math.max(1, Math.round(img.height * ratio));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => resolve(dataUrl); // fallback: use original on error
+    img.src = dataUrl;
+  });
+
 const resolvePersistedDocumentUrl = (...values) => values.find((value) => isHttpUrl(value)) || null;
 
 const getVerificationDocumentSource = (localValue, ...persistedValues) => {
@@ -1158,6 +1179,7 @@ const StudentInfo = () => {
     schoolSector: '',
     mobileNumber: '',
     yearLevel: '',
+    semester: '1st Semester',
     emailAddress: '',
     gpa: '',
     meritsAwardsReceived: '',
@@ -1651,10 +1673,10 @@ const StudentInfo = () => {
     if (expectedYears.length === 0) return true;
     if (foundYears.length === 0) return false;
 
-    // If expected year is a range like "2025-2026" (contains 2 years), any of the expected years present in text is accepted
+    // If expected year is a range like "2026-2027" (contains 2 years), ALL expected years must be present in foundYears
     if (expectedYears.length >= 2) {
       const firstTwoExpected = expectedYears.slice(0, 2);
-      return firstTwoExpected.some(yr => foundYears.includes(yr));
+      return firstTwoExpected.every(yr => foundYears.includes(yr));
     }
 
     // Single year matching (e.g., "2026")
@@ -1802,6 +1824,31 @@ const StudentInfo = () => {
       const romanMap = { 1: ['i', '1', '1st', 'first'], 2: ['ii', '2', '2nd', 'second'], 3: ['iii', '3', '3rd', 'third'], 4: ['iv', '4', '4th', 'fourth'], 5: ['v', '5', '5th', 'fifth'] };
       const variants = romanMap[levelNum] || [];
       return variants.some(v => normText.includes(v + ' year') || normText.includes('year ' + v) || new RegExp('\\b' + v + '\\b').test(normText));
+    }
+
+    return false;
+  };
+
+  const semesterMatchesText = (text, expectedSemester) => {
+    if (!expectedSemester || !text) return true;
+    const normText = normalizeForOcr(text);
+    const normSem = normalizeForOcr(expectedSemester);
+
+    if (normText.includes(normSem)) return true;
+
+    const semMap = {
+      '1st': ['1st', 'first', '1', 'sem 1', '1st sem', '1st semester', 'term 1'],
+      '2nd': ['2nd', 'second', '2', 'sem 2', '2nd sem', '2nd semester', 'term 2'],
+      'summer': ['summer', 'midyear', 'mid-year', '3rd', 'third', 'trimester']
+    };
+
+    let targetKey = null;
+    if (normSem.includes('1') || normSem.includes('first')) targetKey = '1st';
+    else if (normSem.includes('2') || normSem.includes('second')) targetKey = '2nd';
+    else if (normSem.includes('summer') || normSem.includes('mid')) targetKey = 'summer';
+
+    if (targetKey && semMap[targetKey]) {
+      return semMap[targetKey].some(kw => normText.includes(kw));
     }
 
     return false;
@@ -2065,7 +2112,7 @@ const StudentInfo = () => {
         const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
         const courseOk = course ? courseMatchesText(course, combinedText) : true;
         const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
-        const semOk = semester ? normalizeForOcr(combinedText).includes(normalizeForOcr(semester)) : true;
+        const semOk = semester ? semesterMatchesText(combinedText, semester) : true;
         const idOk = idNumber ? studentIdNoMatchesText(idNumber, combinedText) : true;
         const yrOk = yearLevel ? yearLevelMatchesText(combinedText, yearLevel) : true;
         const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
@@ -2095,7 +2142,7 @@ const StudentInfo = () => {
         const nameCheck = studentNameMatchesText(combinedText, firstName, middleName, lastName);
         const gpaOk = gpa ? gpaMatchesText(combinedText, gpa) : true;
         const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
-        const semOk = semester ? normalizeForOcr(combinedText).includes(normalizeForOcr(semester)) : true;
+        const semOk = semester ? semesterMatchesText(combinedText, semester) : true;
         const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
         const courseOk = course ? courseMatchesText(course, combinedText) : true;
         const idOk = idNumber ? studentIdNoMatchesText(idNumber, combinedText) : true;
@@ -2351,7 +2398,7 @@ const StudentInfo = () => {
     const course = formData.course || '';
     const videoUrl = documentVideos.mayorCOE_video || formData.mayorCOE_video;
     const year = formData.year || '';
-    const semester = ''; // Semester removed from frontend
+    const semester = formData.semester || scholarshipDetails?.semester || '1st Semester';
 
     if (!coeDoc) {
       showPromptMessage('Please upload your Certificate of Enrollment first.');
@@ -2408,7 +2455,7 @@ const StudentInfo = () => {
     const yearLevel = formData.yearLevel || '';
     const gpa = formData.gpa || '';
     const videoUrl = documentVideos.mayorGrades_video || formData.mayorGrades_video;
-    const grades_sem = ''; // Semester for Grades removed
+    const semester = formData.semester || scholarshipDetails?.semester || '1st Semester';
 
     if (!gradesDoc) {
       showPromptMessage('Please upload your Grades document first.');
@@ -2437,8 +2484,7 @@ const StudentInfo = () => {
         idNumber: formData.schoolIdNumber,
         yearLevel: formData.yearLevel,
         gpa: formData.gpa,
-        semester: '',
-        grades_sem,
+        semester,
         academicYear: targetAcademicYear
       }, videoUrl);
       if (success) {
@@ -2829,6 +2875,7 @@ const StudentInfo = () => {
           schoolSector: profile.school_sector || '',
           mobileNumber: profile.mobile_no || '',
           yearLevel: profile.year_lvl || '',
+          semester: profile.semester || '1st Semester',
           emailAddress: profile.email || user,
           fatherStatus: profile.father_status === true ? 'Living' : profile.father_status === false ? 'Deceased' : '',
           fatherName: profile.father_name || '',
@@ -5175,6 +5222,18 @@ const StudentInfo = () => {
 
                 <div className="form-row">
                   <div className="form-group">
+                    <label>Semester <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <select name="semester" value={formData.semester} onChange={handleInputChange} required={currentStep === 3}>
+                      <option value="">Select Semester</option>
+                      <option value="1st Semester">1st Semester</option>
+                      <option value="2nd Semester">2nd Semester</option>
+                      <option value="Summer">Summer / Mid-Year</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
                     <label>Course/Program <span style={{ color: '#e74c3c' }}>*</span></label>
                     <input
                       type="text"
@@ -6110,8 +6169,11 @@ const StudentInfo = () => {
                               setLoadingMessage({ title: 'Matching Face', message: 'Comparing captured photo with your School ID...' });
 
                               try {
-                                const faceImage = await normalizeVerificationImage(photos.face_photo);
-                                const normalizedIdImage = await normalizeVerificationImage(idImg);
+                                const faceNorm = await normalizeVerificationImage(photos.face_photo);
+                                const idNorm = await normalizeVerificationImage(idImg);
+                                // Downscale to 320px max before sending — slashes payload size 10-20x
+                                const faceImage = await resizeImageForFaceVerification(faceNorm, 320, 0.82);
+                                const normalizedIdImage = await resizeImageForFaceVerification(idNorm, 320, 0.82);
                                 const result = await applicantAPI.verifyFaceAgainstId(faceImage, normalizedIdImage);
                                 if (result.verified) {
                                   setFaceMatchResult(result);
