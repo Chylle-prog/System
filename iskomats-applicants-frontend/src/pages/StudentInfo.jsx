@@ -6086,30 +6086,23 @@ const StudentInfo = () => {
                               try {
                                 const faceImage = await normalizeVerificationImage(photos.face_photo);
                                 const normalizedIdImage = await normalizeVerificationImage(idImg);
-                                const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ verified: true, message: 'Face photo captured & verified.' }), 4000));
-                                const result = await Promise.race([
-                                  applicantAPI.verifyFaceAgainstId(faceImage, normalizedIdImage),
-                                  timeoutPromise
-                                ]);
+                                const result = await applicantAPI.verifyFaceAgainstId(faceImage, normalizedIdImage);
                                 if (result.verified) {
                                   setFaceMatchResult(result);
                                   setFaceVerified('success');
                                   showPromptMessage('Face successfully matched with ID!');
                                 } else if (result.message && (result.message.includes('Service Error') || result.message.includes('timed out') || result.message.includes('ConnectionPool') || result.message.includes('localhost'))) {
-                                  const fallbackRes = { verified: true, message: 'Face photo captured and verified.' };
-                                  setFaceMatchResult(fallbackRes);
-                                  setFaceVerified('success');
-                                  showPromptMessage('Face photo captured & verified successfully!');
+                                  // Backend service unavailable — do NOT auto-pass, inform user
+                                  setFaceMatchResult({ verified: false, message: 'Verification service unavailable. Please try again.' });
+                                  showPromptMessage('Verification service unavailable. Please try again shortly.');
                                 } else {
                                   setFaceMatchResult(result);
                                   showPromptMessage(`Face Match Issue: ${result.message || 'Face does not match the ID.'}`);
                                 }
                               } catch (err) {
                                 console.error('Match error:', err);
-                                const fallbackRes = { verified: true, message: 'Face photo captured and verified.' };
-                                setFaceMatchResult(fallbackRes);
-                                setFaceVerified('success');
-                                showPromptMessage('Face photo captured & verified successfully!');
+                                setFaceMatchResult({ verified: false, message: 'Verification failed. Please try again.' });
+                                showPromptMessage('Verification failed. Please retake your photo and try again.');
                               } finally {
                                 setIsFaceMatching(false);
                               }

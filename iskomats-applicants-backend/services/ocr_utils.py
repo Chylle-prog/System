@@ -25,8 +25,8 @@ _FACE_MODEL_LOCK = threading.Semaphore(1)
 _FACE_DETECTOR = None
 _FACE_RECOGNIZER = None
 _FACE_MODEL_INIT_ERROR = None
-_FACE_MATCH_THRESHOLD = 0.25 
-_FACE_DETECTION_THRESHOLD = 0.28 
+_FACE_MATCH_THRESHOLD = 0.36 
+_FACE_DETECTION_THRESHOLD = 0.25 
 _MAX_FACE_WIDTH = 400
 
 def decode_base64(data):
@@ -199,7 +199,7 @@ def verify_face_with_id(user_photo_bytes, id_photo_bytes):
         id_embedding = recognizer.get_normalized_embedding(id_image, id_face.landmarks)
 
         if user_embedding is None or id_embedding is None:
-            return True, "Face verified successfully (features aligned).", 0.85
+            return False, "Unable to extract face features. Please use a clearer photo.", 0.0
 
         try:
             from uniface import compute_similarity
@@ -208,9 +208,10 @@ def verify_face_with_id(user_photo_bytes, id_photo_bytes):
             similarity = float(np.dot(user_embedding, id_embedding.T)[0][0])
 
         similarity = max(0.0, min(1.0, similarity))
+        print(f"[FACE] Similarity score: {similarity:.4f} (threshold: {_FACE_MATCH_THRESHOLD})", flush=True)
 
-        if similarity >= _FACE_MATCH_THRESHOLD or similarity >= 0.12:
-            return True, f"Face verified successfully! (similarity: {similarity*100:.1f}%)", max(0.75, similarity)
+        if similarity >= _FACE_MATCH_THRESHOLD:
+            return True, f"Face verified successfully! (similarity: {similarity*100:.1f}%)", similarity
 
         return False, f"Face match uncertain (similarity: {similarity*100:.1f}%). Please ensure clear lighting.", similarity
     except ValueError as exc:
