@@ -15,14 +15,13 @@ export default defineConfig({
       output: {
         // Manual chunks to optimize bundle splitting
         manualChunks: {
-          // Vendor chunk for large dependencies
+          // Vendor chunk for large dependencies including socket.io-client to avoid adblocker triggers on filenames
           'vendor': [
             'react',
             'react-dom',
-            'react-router-dom'
-          ],
-          // Separate chunk for socket.io since it's used across the app
-          'socket': ['socket.io-client']
+            'react-router-dom',
+            'socket.io-client'
+          ]
         }
       }
     }

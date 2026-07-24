@@ -340,6 +340,7 @@ const StudentInfo = () => {
           marginBottom: '8px'
         }}>
           {Object.entries(log.requirements).map(([key, val]) => {
+            if (val === 'N/A' || val === null || val === undefined || val === '') return null;
             const matchVal = log.scoreDetails ? log.scoreDetails[key] : null;
             let isMatch = matchVal === 'MATCH✓' || matchVal === true || (matchVal !== false && val === 'Uploaded & Attached');
             if (matchVal === 'MISMATCH✗' || matchVal === false) isMatch = false;
@@ -399,7 +400,7 @@ const StudentInfo = () => {
     );
   };
 
-  const validateVideoLiveness = async (videoSrc) => {
+  const validateVideoLiveness = async (videoSrc, fieldName = null) => {
     if (!videoSrc) {
       return { valid: false, reason: "No video uploaded or recorded." };
     }
@@ -430,20 +431,31 @@ const StudentInfo = () => {
         } else if (trimmed.startsWith('http') || trimmed.startsWith('/') || trimmed.includes('/api/')) {
           try {
             const token = localStorage.getItem('authToken');
+            const apiOrigin = API_ORIGIN;
+
+            // Resolve to backend decryption proxy URL
+            let fetchUrl = trimmed;
+            if (fieldName && !trimmed.includes('/document/raw/')) {
+              fetchUrl = `${apiOrigin}/api/student/applicant/document/raw/${fieldName}?token=${token}`;
+            } else if (!trimmed.includes('token=')) {
+              fetchUrl = `${trimmed}${trimmed.includes('?') ? '&' : '?'}token=${token}`;
+            }
+
+            if (fetchUrl.startsWith('/')) {
+              fetchUrl = `${apiOrigin}${fetchUrl}`;
+            }
+
             const headers = {};
             if (token) headers['Authorization'] = `Bearer ${token}`;
-
-            let fetchUrl = trimmed;
-            if (fetchUrl.startsWith('/')) {
-              const origin = window.location.origin;
-              fetchUrl = `${origin}${fetchUrl}`;
-            }
 
             const resp = await fetch(fetchUrl, { headers });
             if (resp.ok) {
               const blob = await resp.blob();
               if (blob.size > 0) {
-                createdBlobUrl = URL.createObjectURL(blob);
+                // Explicitly decrypt the video file on the client side in case the backend redirects to the raw encrypted Supabase URL
+                const { decryptDocument } = await import('../services/CryptoService');
+                const decryptedBlob = await decryptDocument(blob, 'video/mp4');
+                createdBlobUrl = URL.createObjectURL(decryptedBlob);
                 srcUrl = createdBlobUrl;
               } else {
                 srcUrl = trimmed;
@@ -492,18 +504,32 @@ const StudentInfo = () => {
 
         const timeout = setTimeout(() => {
           if (!ocrTriggered) {
+            ocrTriggered = true;
             cleanup();
-            resolve({ valid: false, reason: "Video text extraction timed out. Please ensure your video is clear and displays your document." });
+            resolve({
+              valid: false,
+              reason: "Video text extraction timed out. Please ensure your video is clear and displays your document.",
+              detectedText: accumulatedText.join("\n\n") || "No text extracted before timeout."
+            });
           }
-        }, 12000);
+        }, 20000);
 
-        const analyzeFrame = () => {
+        const checkPoints = [0.3, 0.75];
+        let currentCheckIndex = 0;
+        let accumulatedText = [];
+        let hasSeeked = false;
+
+        const captureFrame = () => {
+          if (ocrTriggered) return;
+
           const w = video.videoWidth;
           const h = video.videoHeight;
-          if (!w || !h || ocrTriggered) {
-            return false;
+          if (!w || !h) {
+            clearTimeout(timeout);
+            cleanup();
+            resolve({ valid: false, reason: "Video dimensions are invalid." });
+            return;
           }
-          ocrTriggered = true;
 
           try {
             const canvas = document.createElement('canvas');
@@ -513,82 +539,80 @@ const StudentInfo = () => {
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // 1. Perform fast luminance check to reject pitch black screen instantly
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-            let totalLuminance = 0;
-            let maxLuminance = 0;
-            const pixelCount = data.length / 4;
-
-            for (let i = 0; i < data.length; i += 4) {
-              const r = data[i];
-              const g = data[i + 1];
-              const b = data[i + 2];
-              const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-              totalLuminance += lum;
-              if (lum > maxLuminance) maxLuminance = lum;
-            }
-
-            const avgLuminance = totalLuminance / pixelCount;
-
-            if (avgLuminance < 16 && maxLuminance < 22) {
-              clearTimeout(timeout);
-              cleanup();
-              resolve({
-                valid: false,
-                reason: `Pitch-Black / Covered Camera Video Rejected (Brightness: ${avgLuminance.toFixed(1)}/255). Please record a clear video showing your document.`
-              });
-              return true;
-            }
-
-            // 2. Perform OCR and require at least one word of 3+ letters to verify document text exists
             getTesseractWorker()
               .then(worker => worker.recognize(canvas))
               .then(ocrResult => {
-                clearTimeout(timeout);
-                cleanup();
-
                 const extractedText = ocrResult?.data?.text || "";
-                const hasWords = /[a-zA-Z]{3,}/.test(extractedText);
+                const cleanExtracted = extractedText.trim().replace(/\s+/g, ' ');
+                accumulatedText.push(`[Frame at ${(video.currentTime).toFixed(1)}s]: "${cleanExtracted}"`);
 
-                if (hasWords) {
-                  resolve({ valid: true, detectedText: extractedText });
+                let isValid = false;
+                if (fieldName === 'mayorCOE_video') {
+                  isValid = /regist|enroll|cert|cor|coe/i.test(extractedText);
                 } else {
-                  resolve({
-                    valid: false,
-                    reason: "No readable text detected in verification video. Please ensure the video clearly displays your document text."
-                  });
+                  isValid = /[a-zA-Z]{3,}/.test(extractedText);
+                }
+
+                if (isValid) {
+                  ocrTriggered = true;
+                  clearTimeout(timeout);
+                  cleanup();
+                  resolve({ valid: true, detectedText: cleanExtracted });
+                } else {
+                  // Seek to the next checkpoint if we haven't checked all checkpoints
+                  currentCheckIndex++;
+                  if (currentCheckIndex < checkPoints.length && isFinite(video.duration) && video.duration > 0) {
+                    const nextTime = video.duration * checkPoints[currentCheckIndex];
+                    video.currentTime = nextTime;
+                  } else {
+                    // All checkpoints failed
+                    ocrTriggered = true;
+                    clearTimeout(timeout);
+                    cleanup();
+                    resolve({
+                      valid: false,
+                      reason: fieldName === 'mayorCOE_video' 
+                        ? "No 'Certificate of Registration' or 'Enrollment' keywords detected in the COE video."
+                        : "No readable text detected in verification video. Please ensure the video clearly displays your document text.",
+                      detectedText: accumulatedText.join("\n\n")
+                    });
+                  }
                 }
               })
               .catch(err => {
-                clearTimeout(timeout);
-                cleanup();
-                resolve({ valid: false, reason: `Video text recognition issue: ${err.message}` });
+                // If Tesseract fails for this frame, move to next checkpoint
+                currentCheckIndex++;
+                if (currentCheckIndex < checkPoints.length && isFinite(video.duration) && video.duration > 0) {
+                  video.currentTime = video.duration * checkPoints[currentCheckIndex];
+                } else {
+                  ocrTriggered = true;
+                  clearTimeout(timeout);
+                  cleanup();
+                  resolve({ valid: false, reason: `Video text recognition issue: ${err.message}`, detectedText: accumulatedText.join("\n\n") });
+                }
               });
-            return true;
           } catch (err) {
+            ocrTriggered = true;
             clearTimeout(timeout);
             cleanup();
-            resolve({ valid: false, reason: "Video frame analysis failed. Please ensure video file is clear and playable." });
-            return true;
+            resolve({ valid: false, reason: "Video frame analysis failed.", detectedText: accumulatedText.join("\n\n") });
           }
         };
 
-        const tryAnalyze = () => {
-          if (video.videoWidth > 0 && video.videoHeight > 0) {
-            if (analyzeFrame()) return;
-          }
+        const initiateSeek = () => {
+          if (hasSeeked) return;
+          hasSeeked = true;
           if (isFinite(video.duration) && video.duration > 0) {
-            try {
-              video.currentTime = Math.min(0.5, video.duration * 0.2);
-            } catch (e) {}
+            video.currentTime = video.duration * checkPoints[0];
+          } else {
+            captureFrame();
           }
         };
 
-        video.onloadedmetadata = () => tryAnalyze();
-        video.onloadeddata = () => tryAnalyze();
-        video.oncanplay = () => tryAnalyze();
-        video.onseeked = () => analyzeFrame();
+        video.onloadedmetadata = () => initiateSeek();
+        video.onloadeddata = () => initiateSeek();
+        video.oncanplay = () => initiateSeek();
+        video.onseeked = () => captureFrame();
 
         video.onerror = () => {
           clearTimeout(timeout);
@@ -728,7 +752,7 @@ const StudentInfo = () => {
     else if (fieldName === 'schoolIdFront_video' || fieldName === 'schoolIdBack_video') { setIdVerified(null); setIdStatus(''); }
     else if (fieldName === 'face_video') { setFaceVerified(null); }
 
-    // Start background upload
+    // Start background upload immediately
     const uploadPromise = applicantAPI.uploadRequirementVideo(fieldName, blob, (percent) => {
       setUploadProgress(prev => ({ ...prev, [fieldName]: percent }));
     })
@@ -749,7 +773,7 @@ const StudentInfo = () => {
           return next;
         });
 
-        // Persist to profile in background (Wait! We already do this? If not, keep it)
+        // Persist to profile in background
         applicantAPI.updateProfile({ [fieldName]: publicUrl }).catch(err => {
           console.warn(`Could not sync ${fieldName} to profile:`, err.message);
         });
@@ -1456,10 +1480,10 @@ const StudentInfo = () => {
     if (expectedYears.length === 0) return true;
     if (foundYears.length === 0) return false;
 
-    // If expected year is a range like "2026-2027" (contains 2 years), ALL expected years must be present in the text
+    // If expected year is a range like "2025-2026" (contains 2 years), any of the expected years present in text is accepted
     if (expectedYears.length >= 2) {
       const firstTwoExpected = expectedYears.slice(0, 2);
-      return firstTwoExpected.every(yr => foundYears.includes(yr));
+      return firstTwoExpected.some(yr => foundYears.includes(yr));
     }
 
     // Single year matching (e.g., "2026")
@@ -1561,6 +1585,22 @@ const StudentInfo = () => {
     return words.some(w => normText.includes(w));
   };
 
+  const coe_type_matches_text = (text) => {
+    if (!text) return false;
+    const normText = normalizeForOcr(text);
+    const keywords = [
+      'certificate of registration',
+      'certificate of enrollment',
+      'registration',
+      'enrollment',
+      'enrolled',
+      'enroll',
+      'cor',
+      'coe'
+    ];
+    return keywords.some(kw => normText.includes(kw));
+  };
+
   const performOcrVerification = async (docType, docParam, extraParams = {}, videoUrl = null, silent = false) => {
     const setStatus = (status) => {
       if (silent) return;
@@ -1629,48 +1669,43 @@ const StudentInfo = () => {
       let finalMessage = "";
       let resultsList = [];
 
-      // Validate Video Proof (Confirm text is readable in the video)
+      // Validate Video Proof for non-SchoolID documents
       let videoCheck = null;
-      const videoToCheck = Array.isArray(videoUrl) ? videoUrl[0] : videoUrl;
-      if (videoToCheck) {
-        if (!silent) setStatus("Confirming document text in verification video...");
-        videoCheck = await validateVideoLiveness(videoToCheck);
-        if (!videoCheck.valid) {
-          isSuccess = false;
-          finalMessage = videoCheck.reason;
-          scoreDetails = {
-            "First Name": false,
-            "Last Name": false,
-            "Video Proof": false
-          };
-          resultsList = [{ doc: docType, verified: false, message: finalMessage, score_details: scoreDetails }];
-          
-          setOcrDebugLogs((prev) => ({
-            ...prev,
-            [docType]: {
-              status: 'FAILED (NO TEXT IN VIDEO)',
-              message: finalMessage,
-              detectedText: `Video validation failed: ${videoCheck.reason}`,
-              scoreDetails,
-              requirements: {
-                "First Name": firstName || 'N/A',
-                "Last Name": lastName || 'N/A',
-                "Video Proof": 'NO READABLE TEXT IN VIDEO'
-              },
-              timestamp: new Date().toLocaleTimeString()
-            }
-          }));
+      if (docType !== 'SchoolID') {
+        const videoToCheck = Array.isArray(videoUrl) ? videoUrl[0] : videoUrl;
+        if (videoToCheck) {
+          if (!silent) setStatus("Confirming document text in verification video...");
+          let videoFieldName = 'video';
+          if (docType === 'Indigency') videoFieldName = 'mayorIndigency_video';
+          else if (docType === 'Enrollment') videoFieldName = 'mayorCOE_video';
+          else if (docType === 'Grades') videoFieldName = 'mayorGrades_video';
 
-          setVerified('failed');
-          setStatus(finalMessage);
-          return false;
+          videoCheck = await validateVideoLiveness(videoToCheck, videoFieldName);
         }
       }
+
+      // SchoolID Video validation variables
+      let frontVidCheck = null;
+      let backVidCheck = null;
 
       if (docType === 'SchoolID') {
         const frontText = await runOcrOnImage(resolvedParam.front, "School ID Front");
         const backText = await runOcrOnImage(resolvedParam.back, "School ID Back");
         detectedText = `[FRONT ID TEXT]\n${frontText}\n\n[BACK ID TEXT]\n${backText}`;
+
+        // Validate School ID Videos
+        const fVid = videoUrl?.front;
+        const bVid = videoUrl?.back;
+
+        if (fVid) {
+          if (!silent) setStatus("Confirming text in front School ID video...");
+          frontVidCheck = await validateVideoLiveness(fVid, 'schoolIdFront_video');
+        }
+
+        if (bVid) {
+          if (!silent) setStatus("Confirming text in back School ID video...");
+          backVidCheck = await validateVideoLiveness(bVid, 'schoolIdBack_video');
+        }
 
         const nameMatchFront = studentNameMatchesText(frontText, firstName, middleName, lastName);
         const nameMatchBack = studentNameMatchesText(backText, firstName, middleName, lastName);
@@ -1682,17 +1717,24 @@ const StudentInfo = () => {
         const idOk = idNumber ? (studentIdNoMatchesText(idNumber, frontText) || studentIdNoMatchesText(idNumber, backText)) : true;
         const schoolOk = schoolName ? (schoolNameMatchesText(frontText, schoolName) || schoolNameMatchesText(backText, schoolName)) : true;
         const ayOk = academicYear ? (academic_year_matches_expected(frontText, academicYear) || academic_year_matches_expected(backText, academicYear)) : true;
+        
+        const videoOk = (!fVid || (frontVidCheck && frontVidCheck.valid)) && (!bVid || (backVidCheck && backVidCheck.valid));
 
-        isSuccess = nameOk && idOk && schoolOk && ayOk;
+        isSuccess = nameOk && idOk && schoolOk && ayOk && videoOk;
         scoreDetails = {
           "First Name": firstOk,
           "Middle Name": middleName ? middleOk : null,
           "Last Name": lastOk,
           "ID Number": idNumber ? idOk : null,
           "School Name": schoolName ? schoolOk : null,
-          "Academic Year": academicYear ? ayOk : null
+          "Academic Year": academicYear ? ayOk : null,
+          "Video Proof": videoOk
         };
-        finalMessage = isSuccess ? "School ID verified successfully client-side!" : "School ID verification mismatch.";
+        finalMessage = isSuccess 
+          ? "School ID verified successfully client-side!" 
+          : (!videoOk 
+              ? `Video Proof mismatch: ${(!frontVidCheck?.valid ? frontVidCheck?.reason : '')} ${(!backVidCheck?.valid ? backVidCheck?.reason : '')}`.trim() 
+              : "School ID verification mismatch.");
         resultsList = [{ doc: 'SchoolID', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
       } 
       else if (docType === 'Enrollment') {
@@ -1703,8 +1745,10 @@ const StudentInfo = () => {
         const ayOk = academicYear ? academic_year_matches_expected(detectedText, academicYear) : true;
         const semOk = semester ? normalizeForOcr(detectedText).includes(normalizeForOcr(semester)) : true;
         const idOk = idNumber ? studentIdNoMatchesText(idNumber, detectedText) : true;
+        const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
+        const coeTypeOk = coe_type_matches_text(detectedText);
 
-        isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk;
+        isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk && videoOk && coeTypeOk;
         scoreDetails = {
           "First Name": nameCheck.details.first_ok,
           "Last Name": nameCheck.details.last_ok,
@@ -1712,9 +1756,13 @@ const StudentInfo = () => {
           "Course / Track": course ? courseOk : null,
           "Academic Year": academicYear ? ayOk : null,
           "Semester": semester ? semOk : null,
-          "ID Number": idNumber ? idOk : null
+          "ID Number": idNumber ? idOk : null,
+          "Document Type": coeTypeOk,
+          "Video Proof": videoOk
         };
-        finalMessage = isSuccess ? "Enrollment verified successfully client-side!" : "Enrollment verification mismatch.";
+        finalMessage = isSuccess 
+          ? "Enrollment verified successfully client-side!" 
+          : (!videoOk ? (videoCheck?.reason || "Enrollment video proof failed validation.") : "Enrollment verification mismatch.");
         resultsList = [{ doc: 'Enrollment', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
       }
       else if (docType === 'Grades') {
@@ -1726,8 +1774,9 @@ const StudentInfo = () => {
         const schoolOk = schoolName ? schoolNameMatchesText(detectedText, schoolName) : true;
         const courseOk = course ? courseMatchesText(course, detectedText) : true;
         const idOk = idNumber ? studentIdNoMatchesText(idNumber, detectedText) : true;
+        const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
 
-        isSuccess = nameCheck.success && gpaOk && ayOk && semOk && schoolOk && courseOk && idOk;
+        isSuccess = nameCheck.success && gpaOk && ayOk && semOk && schoolOk && courseOk && idOk && videoOk;
         scoreDetails = {
           "First Name": nameCheck.details.first_ok,
           "Last Name": nameCheck.details.last_ok,
@@ -1736,9 +1785,12 @@ const StudentInfo = () => {
           "Semester": semester ? semOk : null,
           "School Name": schoolName ? schoolOk : null,
           "Course / Track": course ? courseOk : null,
-          "ID Number": idNumber ? idOk : null
+          "ID Number": idNumber ? idOk : null,
+          "Video Proof": videoOk
         };
-        finalMessage = isSuccess ? "Grades verified successfully client-side!" : "Grades verification mismatch.";
+        finalMessage = isSuccess 
+          ? "Grades verified successfully client-side!" 
+          : (!videoOk ? (videoCheck?.reason || "Grades video proof failed validation.") : "Grades verification mismatch.");
         resultsList = [{ doc: 'Grades', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
       }
       else if (docType === 'Indigency') {
@@ -1761,15 +1813,22 @@ const StudentInfo = () => {
 
       let debugRequirements = {};
       if (docType === 'SchoolID') {
+        const videoOk = (!videoUrl?.front || (frontVidCheck && frontVidCheck.valid)) && (!videoUrl?.back || (backVidCheck && backVidCheck.valid));
+        let videoReason = 'Uploaded & Validated';
+        if (!videoOk) {
+          videoReason = `Front: ${frontVidCheck?.reason || 'No failure info'} | Back: ${backVidCheck?.reason || 'No failure info'}`;
+        }
         debugRequirements = {
           "First Name": firstName || 'N/A',
           "Middle Name": middleName || 'N/A',
           "Last Name": lastName || 'N/A',
           "ID Number": idNumber || 'N/A',
           "School Name": schoolName || 'N/A',
-          "Academic Year": academicYear || 'N/A'
+          "Academic Year": academicYear || 'N/A',
+          "Video Proof": videoReason
         };
       } else if (docType === 'Enrollment') {
+        const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
         debugRequirements = {
           "First Name": firstName || 'N/A',
           "Last Name": lastName || 'N/A',
@@ -1777,9 +1836,12 @@ const StudentInfo = () => {
           "Course / Track": course || 'N/A',
           "Academic Year": academicYear || 'N/A',
           "Semester": semester || 'N/A',
-          "ID Number": idNumber || 'N/A'
+          "ID Number": idNumber || 'N/A',
+          "Document Type": 'Certificate of Registration/Enrollment',
+          "Video Proof": videoOk ? 'Uploaded & Validated' : (videoCheck?.reason || 'No Text Detected in Video')
         };
       } else if (docType === 'Grades') {
+        const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
         debugRequirements = {
           "First Name": firstName || 'N/A',
           "Last Name": lastName || 'N/A',
@@ -1788,16 +1850,25 @@ const StudentInfo = () => {
           "Semester": semester || 'N/A',
           "School Name": schoolName || 'N/A',
           "Course / Track": course || 'N/A',
-          "ID Number": idNumber || 'N/A'
+          "ID Number": idNumber || 'N/A',
+          "Video Proof": videoOk ? 'Uploaded & Validated' : (videoCheck?.reason || 'No Text Detected in Video')
         };
       } else if (docType === 'Indigency') {
+        const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
         debugRequirements = {
           "First Name": firstName || 'N/A',
           "Last Name": lastName || 'N/A',
           "Barangay Address": targetBarangay || 'N/A',
           "Town / City": townCity || 'N/A',
-          "Video Proof": videoCheck ? (videoCheck.valid ? 'Uploaded & Validated' : 'No Text Detected in Video') : (videoUrl ? 'Uploaded & Attached' : 'No Video Attached')
+          "Video Proof": videoOk ? 'Uploaded & Validated' : (videoCheck?.reason || 'No Text Detected in Video')
         };
+      }
+
+      let combinedText = "";
+      if (docType === 'SchoolID') {
+        combinedText = `[DOCUMENT OCR TEXT]\n${detectedText || 'No text recognized.'}\n\n[FRONT ID VIDEO OCR LOGS]\n${frontVidCheck?.detectedText || 'No text logs.'}\n\n[BACK ID VIDEO OCR LOGS]\n${backVidCheck?.detectedText || 'No text logs.'}`;
+      } else {
+        combinedText = `[DOCUMENT OCR TEXT]\n${detectedText || 'No text recognized.'}\n\n[VIDEO OCR CHECK LOGS]\n${videoCheck?.detectedText || 'No video text log available.'}`;
       }
 
       setOcrDebugLogs((prev) => ({
@@ -1805,7 +1876,7 @@ const StudentInfo = () => {
         [docType]: {
           status: isSuccess ? 'VERIFIED (SUCCESS)' : 'FAILED (MISMATCH)',
           message: finalMessage,
-          detectedText: detectedText || 'No text recognized by OCR engine.',
+          detectedText: combinedText,
           scoreDetails: scoreDetails || {},
           requirements: debugRequirements,
           timestamp: new Date().toLocaleTimeString()
@@ -1975,7 +2046,7 @@ const StudentInfo = () => {
     setLoadingMessage({ title: 'Scanning COE', message: 'Verifying your Certificate of Enrollment and Video Content...' });
 
     try {
-      const targetAcademicYear = scholarshipDetails?.year || scholarshipDetails?.academic_year || formData.schoolYear || '';
+      const targetAcademicYear = scholarshipDetails?.year || scholarshipDetails?.academic_year || formData.schoolYear || '2025-2026';
       const success = await performOcrVerification('Enrollment', coeDoc, {
         schoolName,
         idNumber,
@@ -2032,7 +2103,7 @@ const StudentInfo = () => {
     setLoadingMessage({ title: 'Scanning Grades', message: 'Verifying your Grades document and Video Content...' });
 
     try {
-      const targetAcademicYear = scholarshipDetails?.grades_year || scholarshipDetails?.year || scholarshipDetails?.academic_year || formData.schoolYear || '';
+      const targetAcademicYear = scholarshipDetails?.grades_year || scholarshipDetails?.year || scholarshipDetails?.academic_year || formData.schoolYear || '2025-2026';
       const success = await performOcrVerification('Grades', gradesDoc, {
         schoolName: formData.schoolName,
         idNumber: formData.schoolIdNumber,
@@ -2119,7 +2190,7 @@ const StudentInfo = () => {
     lastIdScanRef.current = { front: idFront, back: idBack, frontVid: frontVideoUrl, backVid: backVideoUrl };
 
     try {
-      const targetAcademicYear = scholarshipDetails?.year || scholarshipDetails?.academic_year || formData.schoolYear || '';
+      const targetAcademicYear = scholarshipDetails?.year || scholarshipDetails?.academic_year || formData.schoolYear || '2025-2026';
       // Only check video presence, not full video OCR (backend already optimized)
       const success = await performOcrVerification(
         'SchoolID',
@@ -2408,6 +2479,9 @@ const StudentInfo = () => {
           targetLastName = parts.lastName || targetLastName;
         }
 
+        const token = localStorage.getItem('authToken');
+        const apiOrigin = API_ORIGIN;
+
         const updates = {
           firstName: targetFirstName,
           lastName: targetLastName,
@@ -2452,6 +2526,78 @@ const StudentInfo = () => {
           updates.zipCode = scholarshipSearchProfile?.zip_code || profile.zip_code || profile.zipCode;
         }
 
+        // 1. Map document photos and previews from server profile
+        const newPhotos = {};
+        if (profile.has_mayorIndigency_photo) {
+          const indigencyUrl = `${apiOrigin}/api/student/applicant/document/raw/indigency_doc?token=${token}`;
+          newPhotos.mayorIndigency_photo = indigencyUrl;
+          updates.mayorIndigency_photo = indigencyUrl;
+        } else {
+          newPhotos.mayorIndigency_photo = null;
+          updates.mayorIndigency_photo = null;
+        }
+
+        if (profile.has_mayorCOE_photo) {
+          const coeUrl = `${apiOrigin}/api/student/applicant/document/raw/enrollment_certificate_doc?token=${token}`;
+          newPhotos.mayorCOE_photo = coeUrl;
+          updates.mayorCOE_photo = coeUrl;
+        } else {
+          newPhotos.mayorCOE_photo = null;
+          updates.mayorCOE_photo = null;
+        }
+
+        if (profile.has_mayorGrades_photo) {
+          const gradesUrl = `${apiOrigin}/api/student/applicant/document/raw/grades_doc?token=${token}`;
+          newPhotos.mayorGrades_photo = gradesUrl;
+          updates.mayorGrades_photo = gradesUrl;
+        } else {
+          newPhotos.mayorGrades_photo = null;
+          updates.mayorGrades_photo = null;
+        }
+
+        const newIdPhotos = { front: null, back: null };
+        if (profile.has_id) {
+          const frontUrl = `${apiOrigin}/api/student/applicant/document/raw/id_img_front?token=${token}`;
+          newIdPhotos.front = frontUrl;
+          updates.schoolIdFront = frontUrl;
+        } else {
+          updates.schoolIdFront = null;
+        }
+
+        if (profile.has_id_back) {
+          const backUrl = `${apiOrigin}/api/student/applicant/document/raw/id_img_back?token=${token}`;
+          newIdPhotos.back = backUrl;
+          updates.schoolIdBack = backUrl;
+        } else {
+          updates.schoolIdBack = null;
+        }
+
+        setPhotos(prev => ({
+          ...prev,
+          ...newPhotos,
+          id_front: newIdPhotos.front,
+          id_back: newIdPhotos.back
+        }));
+        setSchoolIdPhotos(newIdPhotos);
+
+        // 2. Map video URLs from server profile
+        const nextVideos = {
+          face_video: profile.id_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/face_video?token=${token}` : null,
+          mayorIndigency_video: profile.indigency_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorIndigency_video?token=${token}` : null,
+          mayorGrades_video: profile.grades_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorGrades_video?token=${token}` : null,
+          mayorCOE_video: profile.enrollment_certificate_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorCOE_video?token=${token}` : null,
+          schoolIdFront_video: profile.schoolid_front_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdFront_video?token=${token}` : null,
+          schoolIdBack_video: profile.schoolid_back_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdBack_video?token=${token}` : null
+        };
+        setDocumentVideos(nextVideos);
+
+        updates.face_video = nextVideos.face_video;
+        updates.mayorIndigency_video = nextVideos.mayorIndigency_video;
+        updates.mayorGrades_video = nextVideos.mayorGrades_video;
+        updates.mayorCOE_video = nextVideos.mayorCOE_video;
+        updates.schoolIdFront_video = nextVideos.schoolIdFront_video;
+        updates.schoolIdBack_video = nextVideos.schoolIdBack_video;
+
         setFormData(prev => {
           const merged = mergeMeaningfulValues(prev, updates);
           return {
@@ -2462,9 +2608,49 @@ const StudentInfo = () => {
           };
         });
 
-        // LAZY LOADING OPTIMIZATION
-        // (Removed fetchHeavyBlobs as it was causing excessive egress and slowing down initial load.
-        // Images now load on-demand using standard <img> tags and browser caching.)
+        // 3. Set verification states strictly from database (source of truth)
+        if (profile.indigency_verified && profile.indigency_vid_url && profile.has_mayorIndigency_photo) {
+          setOcrVerified('success');
+          setOcrStatus('Indigency verified successfully client-side!');
+          setIndigencyResults([{ doc: 'Indigency', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Last Name": true, "Barangay Address": true } }]);
+        } else {
+          setOcrVerified(null);
+          setOcrStatus('');
+          setIndigencyResults([]);
+        }
+
+        if (profile.enrollment_verified && profile.enrollment_certificate_vid_url && profile.has_mayorCOE_photo) {
+          setCoeVerified('success');
+          setCoeStatus('COE verified successfully client-side!');
+          setCoeResults([{ doc: 'Enrollment', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Last Name": true, "School Name": true } }]);
+        } else {
+          setCoeVerified(null);
+          setCoeStatus('');
+          setCoeResults([]);
+        }
+
+        if (profile.grades_verified && profile.grades_vid_url && profile.has_mayorGrades_photo) {
+          setGradesVerified('success');
+          setGradesStatus('Grades verified successfully client-side!');
+          setGradesResults([{ doc: 'Grades', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Last Name": true, "GPA Requirement": true } }]);
+        } else {
+          setGradesVerified(null);
+          setGradesStatus('');
+          setGradesResults([]);
+        }
+
+        if (profile.id_verified && profile.schoolid_front_vid_url && profile.schoolid_back_vid_url && profile.has_id && profile.has_id_back) {
+          setIdVerified('success');
+          setIdStatus('School ID verified successfully client-side!');
+          setIdResults([{ doc: 'SchoolID', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Last Name": true } }]);
+        } else {
+          setIdVerified(null);
+          setIdStatus('');
+          setIdResults([]);
+        }
+
+        setFaceVerified(profile.face_verified && profile.id_vid_url && profile.has_profile_picture ? 'success' : null);
+        setSignatureVerified(profile.signature_verified && profile.has_signature ? 'success' : null);
 
         if (profile.profile_picture) {
           setIdPicturePreview(profile.profile_picture);
@@ -2477,7 +2663,22 @@ const StudentInfo = () => {
         }
 
         // Fetch scholarship requirements
-        const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
+        let reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
+        const scholarshipNameParam = searchParams.get('scholarship');
+
+        if (!reqNo && scholarshipNameParam) {
+          try {
+            // Find reqNo by listing all scholarships and matching by name
+            const allScholarships = await scholarshipAPI.getAll();
+            const matchedSch = allScholarships.find(s => s.scholarship_name === scholarshipNameParam);
+            if (matchedSch) {
+              reqNo = matchedSch.req_no;
+            }
+          } catch (e) {
+            console.warn('[SCHOLARSHIP] Could not resolve reqNo by name:', e);
+          }
+        }
+
         if (reqNo) {
           try {
             const res = await scholarshipAPI.getById(reqNo);
@@ -2493,62 +2694,22 @@ const StudentInfo = () => {
       } catch (err) {
         console.warn('Could not pre-fill from profile:', err.message);
       } finally {
+        // Load other transient details from draft (excluding files/videos/verification states to prevent stale state persistence)
         if (savedDraft?.formData) {
-          const draftForm = savedDraft.formData;
-          setFormData(prev => {
-            const next = fillEmptyValuesOnly(prev, draftForm);
-            
-            // Restore previews from next formData
-            if (draftForm.mayorIndigency_photo) {
-              setPhotos(p => ({ ...p, mayorIndigency_photo: draftForm.mayorIndigency_photo }));
-            }
-            if (draftForm.schoolIdFront) {
-              setSchoolIdPhotos(p => ({ ...p, front: draftForm.schoolIdFront }));
-              setPhotos(p => ({ ...p, id_front: draftForm.schoolIdFront }));
-            }
-            if (draftForm.schoolIdBack) {
-              setSchoolIdPhotos(p => ({ ...p, back: draftForm.schoolIdBack }));
-              setPhotos(p => ({ ...p, id_back: draftForm.schoolIdBack }));
-            }
-            if (draftForm.mayorCOE_photo) {
-              setPhotos(p => ({ ...p, mayorCOE_photo: draftForm.mayorCOE_photo }));
-            }
-            if (draftForm.mayorGrades_photo) {
-              setPhotos(p => ({ ...p, mayorGrades_photo: draftForm.mayorGrades_photo }));
-            }
-            
-            // Restore video previews
-            const nextVideos = {};
-            const videoFields = {
-              face_video: 'face_video',
-              mayorIndigency_video: 'mayorIndigency_video',
-              mayorGrades_video: 'mayorGrades_video',
-              mayorCOE_video: 'mayorCOE_video',
-              schoolIdFront_video: 'schoolIdFront_video',
-              schoolIdBack_video: 'schoolIdBack_video'
-            };
-            Object.entries(videoFields).forEach(([stateKey, formKey]) => {
-              if (draftForm[formKey]) {
-                nextVideos[stateKey] = draftForm[formKey];
-              }
-            });
-            if (Object.keys(nextVideos).length > 0) {
-              setDocumentVideos(p => ({ ...p, ...nextVideos }));
-            }
+          const draftForm = { ...savedDraft.formData };
+          
+          // Delete file/video fields so draft does not resurrect deleted/changed files
+          const fileKeys = [
+            'mayorIndigency_photo', 'mayorIndigency_video',
+            'mayorCOE_photo', 'mayorCOE_video',
+            'mayorGrades_photo', 'mayorGrades_video',
+            'schoolIdFront', 'schoolIdBack',
+            'schoolIdFront_video', 'schoolIdBack_video',
+            'face_video', 'profile_picture'
+          ];
+          fileKeys.forEach(k => delete draftForm[k]);
 
-            return next;
-          });
-        }
-
-        if (savedDraft?.verificationStates) {
-          const vs = savedDraft.verificationStates;
-          if (vs.ocrVerified) setOcrVerified(vs.ocrVerified);
-          if (vs.coeVerified) setCoeVerified(vs.coeVerified);
-          if (vs.gradesVerified) setGradesVerified(vs.gradesVerified);
-          if (vs.idVerified) setIdVerified(vs.idVerified);
-          if (vs.faceVerified) setFaceVerified(vs.faceVerified);
-          if (vs.signatureVerified) setSignatureVerified(vs.signatureVerified);
-          if (vs.faceMatchResult) setFaceMatchResult(vs.faceMatchResult);
+          setFormData(prev => fillEmptyValuesOnly(prev, draftForm));
         }
 
         if (savedDraft?.hasOtherAssistance) {
