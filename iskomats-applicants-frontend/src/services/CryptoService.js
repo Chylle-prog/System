@@ -93,9 +93,25 @@ export const decryptDocument = async (blob, originalType = 'image/jpeg') => {
 export const decryptUrl = async (url, type = 'image/jpeg') => {
   if (!url || typeof url !== 'string' || !url.startsWith('http')) return url;
   try {
-    const response = await fetch(url);
+    const separator = url.includes('?') ? '&' : '?';
+    const fetchUrl = `${url}${separator}_cb=${Date.now()}`;
+    const response = await fetch(fetchUrl);
+    if (!response.ok) return url;
     const blob = await response.blob();
-    const decryptedBlob = await decryptDocument(blob, type);
+    if (blob.size === 0) return url;
+
+    // Check if the payload is already an unencrypted image or video
+    const headerBuffer = await blob.slice(0, 16).arrayBuffer();
+    const headerBytes = new Uint8Array(headerBuffer);
+    const isMkvWebm = headerBytes[0] === 0x1a && headerBytes[1] === 0x45 && headerBytes[2] === 0xdf && headerBytes[3] === 0xa3;
+    const isMp4 = String.fromCharCode(...headerBytes.slice(4, 8)) === 'ftyp';
+    const isPng = headerBytes[0] === 0x89 && headerBytes[1] === 0x50 && headerBytes[2] === 0x4e && headerBytes[3] === 0x47;
+    const isJpg = headerBytes[0] === 0xff && headerBytes[1] === 0xd8 && headerBytes[2] === 0xff;
+
+    let decryptedBlob = blob;
+    if (!isMkvWebm && !isMp4 && !isPng && !isJpg) {
+      decryptedBlob = await decryptDocument(blob, type);
+    }
     return URL.createObjectURL(decryptedBlob);
   } catch (error) {
     console.warn('[CRYPTO] Failed to fetch and decrypt URL:', url, error);
