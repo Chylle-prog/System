@@ -1521,9 +1521,19 @@ const StudentInfo = () => {
     const lines = String(rawText).split(/\r?\n/);
     const fields = {};
 
+    // Multi-column line preprocessor to isolate adjacent fields (e.g. Name : ... Reg No : ...)
+    const rightLabelRegex = /\s+(?=(?:Reg\s*No|Tran\s*Date|College|Pay\s*Type|User|Run\s*Date|Scholarship|Discount|Ref\s*No|Status|Section|Bldg\/Room)\s*[:\-])/i;
+    const splitLines = [];
+    for (const line of lines) {
+      const parts = line.split(rightLabelRegex);
+      for (const p of parts) {
+        if (p.trim()) splitLines.push(p.trim());
+      }
+    }
+
     const labelMap = {
       name: [/name\s*[:\-]\s*(.+)/i, /student\s*name\s*[:\-]\s*(.+)/i, /name\s*of\s*student\s*[:\-]\s*(.+)/i, /pangalan\s*[:\-]\s*(.+)/i],
-      studentId: [/student\s*(?:no|number|id)\s*[:\-]\s*(.+)/i, /id\s*(?:no|number)\s*[:\-]\s*(.+)/i, /sr\s*code\s*[:\-]\s*(.+)/i, /reg\s*no\s*[:\-]\s*(.+)/i],
+      studentId: [/student\s*(?:no|number|id)\s*[:\-]?\s*(.+)/i, /id\s*(?:no|number)\s*[:\-]?\s*(.+)/i, /sr\s*code\s*[:\-]?\s*(.+)/i, /reg\s*no\s*[:\-]?\s*(.+)/i],
       yearLevel: [/year\s*level\s*[:\-]\s*(.+)/i, /yr\s*level\s*[:\-]\s*(.+)/i, /year\s*[:\-]\s*(.+)/i, /grade\s*level\s*[:\-]\s*(.+)/i],
       course: [/course\s*[:\-]\s*(.+)/i, /program\s*[:\-]\s*(.+)/i, /degree\s*[:\-]\s*(.+)/i, /strand\s*[:\-]\s*(.+)/i],
       schoolYearSem: [/school\s*year\s*(?:sem)?\s*[:\-]\s*(.+)/i, /academic\s*year\s*[:\-]\s*(.+)/i, /a\.?y\.?\s*[:\-]\s*(.+)/i, /s\.?y\.?\s*[:\-]\s*(.+)/i],
@@ -1531,17 +1541,18 @@ const StudentInfo = () => {
       barangay: [/barangay\s*[:\-]\s*(.+)/i, /brgy\s*[:\-]\s*(.+)/i, /resident\s*of\s*(?:brgy|barangay)?\s*[:\-]?\s*(.+)/i]
     };
 
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-
+    for (const line of splitLines) {
       for (const [key, regexes] of Object.entries(labelMap)) {
         if (fields[key]) continue;
         for (const regex of regexes) {
-          const match = trimmed.match(regex);
+          const match = line.match(regex);
           if (match && match[1] && match[1].trim().length > 0) {
-            fields[key] = match[1].trim();
-            break;
+            let val = match[1].trim();
+            val = val.replace(/\s+(?:Reg|Tran|College|Pay|User|Scholarship|Discount|Ref)\s*[:\-].*/i, '').trim();
+            if (val.length > 0) {
+              fields[key] = val;
+              break;
+            }
           }
         }
       }

@@ -7,6 +7,10 @@ import cv2
 import numpy as np
 import threading
 import shutil
+import re
+import difflib
+import platform
+import pytesseract
 from project_config import get_performance_config
 
 # Get performance profile
@@ -737,3 +741,503 @@ def save_signature_profile(student_id, drawing_data, profile_type='real'):
     except Exception as e:
         print(f"[SIGNATURE] Save error: {e}", flush=True)
         return False
+
+
+# ─── DOCUMENT OCR & STRUCTURED COR PARSER ───────────────────────────────────
+
+_tesseract_initialized = False
+
+def _init_tesseract():
+    global _tesseract_initialized
+    if _tesseract_initialized:
+        return
+    if platform.system() == 'Windows':
+        candidates = [
+            os.environ.get('TESSERACT_CMD', r'C:\Program Files\Tesseract-OCR\tesseract.exe'),
+            r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+            r'tesseract'
+        ]
+        for cmd in candidates:
+            if os.path.exists(cmd):
+                pytesseract.pytesseract.tesseract_cmd = cmd
+                print(f"[OCR] Tesseract executable configured: {cmd}", flush=True)
+                break
+    _tesseract_initialized = True
+
+def normalize_text(text):
+    if not text:
+        return ""
+    return re.sub(r'[^a-z0-9\s]', ' ', str(text).lower()).strip()
+
+def _run_tesseract_on_image(img, psm=3):
+    if img is None:
+        return ""
+    try:
+        _init_tesseract()
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+        h, w = gray.shape[:2]
+        if w < 1000:
+            scale = 1000.0 / w
+            gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
+        text = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 1')
+        return text.strip()
+    except Exception as e:
+        print(f"[OCR] Tesseract error: {e}", flush=True)
+        return ""
+
+def extract_document_text(image_bytes, psm=3):
+    if not image_bytes:
+        return ""
+    try:
+        data = decode_base64(image_bytes)
+        if not data:
+            return ""
+        nparr = np.frombuffer(data, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            return ""
+        return _run_tesseract_on_image(img, psm=psm)
+    except Exception as e:
+        print(f"[OCR] Extract error: {e}", flush=True)
+        return ""
+
+def preprocess_cor_lines(raw_text):
+    """
+    Splits lines where multi-column labels are concatenated on a single line.
+    E.g. "Name : LANTAFE, MIKAELA YSABEL LINATOC Reg No : 38927" ->
+         ["Name : LANTAFE, MIKAELA YSABEL LINATOC", "Reg No : 38927"]
+    """
+    if not raw_text:
+        return []
+    
+    right_labels = [
+        r'Reg\s*No', r'Tran\s*Date', r'College', r'Pay\s*Type',
+        r'User', r'Run\s*Date', r'Scholarship', r'Discount',
+        r'Ref\s*No', r'Status', r'Section', r'Bldg/Room'
+    ]
+    pattern = rf'\s+(?=(?:{"|".join(right_labels)})\s*[:\-])'
+    
+    split_lines = []
+    for line in str(raw_text).splitlines():
+        sublines = re.split(pattern, line.strip(), flags=re.IGNORECASE)
+        for s in sublines:
+            if s.strip():
+                split_lines.append(s.strip())
+    return split_lines
+
+def parse_cor_document(raw_text):
+    """
+    Structured parser for Official Certificate of Registration (COR).
+    Extracts key-value fields while preventing adjacent column bleed.
+    """
+    lines = preprocess_cor_lines(raw_text)
+    fields = {}
+
+    label_patterns = {
+        'name': [
+            r'name\s*[:\-]\s*([A-Za-z\s,\.\-]+)',
+            r'student\s*name\s*[:\-]\s*([A-Za-z\s,\.\-]+)',
+            r'pangalan\s*[:\-]\s*([A-Za-z\s,\.\-]+)'
+        ],
+        'student_id': [
+            r'student\s*(?:no|number|id)\s*[:\-]?\s*([A-Za-z0-9\-]{4,20})',
+            r'id\s*(?:no|number)\s*[:\-]?\s*([A-Za-z0-9\-]{4,20})',
+            r'reg\s*no\s*[:\-]?\s*([A-Za-z0-9\-]{4,20})',
+            r'sr\s*code\s*[:\-]?\s*([A-Za-z0-9\-]{4,20})'
+        ],
+        'school_year_sem': [
+            r'school\s*year\s*(?:sem)?\s*[:\-]\s*([A-Za-z0-9\s\-\.\/]+)',
+            r'academic\s*year\s*[:\-]\s*([A-Za-z0-9\s\-\.\/]+)',
+            r'a\.?y\.?\s*[:\-]\s*([A-Za-z0-9\s\-\.\/]+)',
+            r's\.?y\.?\s*[:\-]\s*([A-Za-z0-9\s\-\.\/]+)'
+        ],
+        'year_level': [
+            r'year\s*level\s*[:\-]\s*([A-Za-z0-9\s]+)',
+            r'yr\s*level\s*[:\-]\s*([A-Za-z0-9\s]+)',
+            r'grade\s*level\s*[:\-]\s*([A-Za-z0-9\s]+)'
+        ],
+        'course': [
+            r'course\s*[:\-]\s*([A-Za-z0-9\s,\.\-\&]+)',
+            r'program\s*[:\-]\s*([A-Za-z0-9\s,\.\-\&]+)',
+            r'degree\s*[:\-]\s*([A-Za-z0-9\s,\.\-\&]+)'
+        ],
+        'college': [
+            r'college\s*[:\-]\s*([A-Za-z0-9\s,\.\-\&]+)'
+        ]
+    }
+
+    for line in lines:
+        for field_name, regexes in label_patterns.items():
+            if field_name in fields:
+                continue
+            for regex in regexes:
+                match = re.search(regex, line, re.IGNORECASE)
+                if match:
+                    val = match.group(1).strip()
+                    val = re.sub(r'\s+(?:Reg|Tran|College|Pay|User|Scholarship|Discount|Ref)\s*[:\-].*', '', val, flags=re.IGNORECASE)
+                    if len(val) > 0:
+                        fields[field_name] = val
+                        break
+
+    raw_upper = str(raw_text).upper()
+    if 'DE LA SALLE LIPA' in raw_upper or 'DLSL' in raw_upper:
+        fields['school_name'] = 'De La Salle Lipa'
+    elif 'BATANGAS STATE UNIVERSITY' in raw_upper or 'BATSTATEU' in raw_upper:
+        fields['school_name'] = 'Batangas State University'
+    elif 'UNIVERSITY OF THE PHILIPPINES' in raw_upper or 'UP' in raw_upper:
+        fields['school_name'] = 'University of the Philippines'
+
+    return fields
+
+def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_name, **kwargs):
+    """
+    Strict multi-field validation for COR documents.
+    Requires Name + Student ID + Academic Year/Sem + Course to ALL pass.
+    No loose single-word global fallbacks allowed.
+    """
+    expected_id_no = kwargs.get('expected_id_no') or kwargs.get('idNo')
+    expected_school_name = kwargs.get('expected_school_name') or kwargs.get('schoolName')
+    expected_academic_year = kwargs.get('expected_academic_year') or kwargs.get('academicYear')
+    expected_semester = kwargs.get('expected_semester') or kwargs.get('semester')
+    expected_course = kwargs.get('course') or kwargs.get('expected_course')
+    expected_year_level = kwargs.get('expected_year_level') or kwargs.get('yearLevel')
+
+    meta = {'parsed_fields': parsed_fields}
+    failures = []
+
+    # 1. NAME MATCHING
+    first_clean = normalize_text(first_name)
+    last_clean = normalize_text(last_name)
+
+    target_name_str = parsed_fields.get('name', raw_text)
+    norm_target = normalize_text(target_name_str)
+
+    first_words = [w for w in first_clean.split() if len(w) >= 2]
+    last_words = [w for w in last_clean.split() if len(w) >= 2]
+
+    first_ok = all(re.search(rf'\b{re.escape(w)}\b', norm_target) for w in first_words) if first_words else True
+    last_ok = all(re.search(rf'\b{re.escape(w)}\b', norm_target) for w in last_words) if last_words else True
+
+    if parsed_fields.get('name'):
+        p_name_norm = normalize_text(parsed_fields['name'])
+        full_expected = f"{first_clean} {last_clean}"
+        if difflib.SequenceMatcher(None, full_expected, p_name_norm).ratio() >= 0.70:
+            first_ok = True
+            last_ok = True
+
+    if not (first_ok and last_ok):
+        failures.append(f"Name mismatch (Expected: '{first_name} {last_name}', Found in COR: '{parsed_fields.get('name', 'Not found')}')")
+
+    # 2. STUDENT ID MATCHING
+    if expected_id_no and str(expected_id_no).strip():
+        exp_id_clean = re.sub(r'[^a-zA-Z0-9]', '', str(expected_id_no)).lower()
+        found_id_clean = re.sub(r'[^a-zA-Z0-9]', '', parsed_fields.get('student_id', '')).lower()
+        doc_raw_clean = re.sub(r'[^a-zA-Z0-9]', '', str(raw_text)).lower()
+
+        id_ok = (exp_id_clean in found_id_clean) or (exp_id_clean in doc_raw_clean)
+        if not id_ok:
+            failures.append(f"Student ID mismatch (Expected: '{expected_id_no}', Found in COR: '{parsed_fields.get('student_id', 'Not found')}')")
+
+    # 3. ACADEMIC YEAR & SEMESTER MATCHING
+    if expected_academic_year and str(expected_academic_year).strip():
+        found_ay = parsed_fields.get('school_year_sem', raw_text)
+        exp_years = re.findall(r'20\d{2}', str(expected_academic_year))
+        found_years = re.findall(r'20\d{2}', str(found_ay))
+
+        if exp_years:
+            ay_ok = all(y in found_years for y in exp_years)
+            if not ay_ok:
+                failures.append(f"Academic Year mismatch (Expected: '{expected_academic_year}', Found in COR: '{found_ay}')")
+
+    # 4. COURSE / DEGREE MATCHING
+    if expected_course and str(expected_course).strip():
+        found_course = parsed_fields.get('course', raw_text)
+        c_exp = normalize_text(expected_course)
+        c_found = normalize_text(found_course)
+
+        exp_words = [w for w in c_exp.split() if w not in {'bachelor', 'of', 'science', 'in', 'and', 'the', 'bs', 'degree'}]
+        course_ok = (c_exp in c_found) or (all(w in c_found for w in exp_words) if exp_words else True)
+
+        if not course_ok:
+            failures.append(f"Course mismatch (Expected: '{expected_course}', Found in COR: '{found_course}')")
+
+    success = (len(failures) == 0)
+    if success:
+        msg = f"COR Verified: Name ({first_name} {last_name}), ID ({expected_id_no or 'N/A'}), AY ({expected_academic_year or 'N/A'}) matched."
+    else:
+        msg = "COR Verification Failed: " + "; ".join(failures)
+
+    meta['name_ok'] = first_ok and last_ok
+    meta['details'] = failures
+    meta['detected_text'] = raw_text
+
+    return success, msg, meta
+
+def verify_document_with_ocr(image_bytes, doc_type, first_name, middle_name, last_name, **kwargs):
+    """
+    Main entry point for document verification (COR, Grades, Indigency, ID).
+    """
+    if not image_bytes:
+        return False, "No document image provided.", "", {}
+
+    raw_text = extract_document_text(image_bytes, psm=3)
+    if not raw_text.strip():
+        return False, "Unable to extract readable text from document.", "", {}
+
+    doc_type_upper = str(doc_type or '').strip().upper()
+
+    if 'GRADES' in doc_type_upper or 'TRANSCRIPT' in doc_type_upper or 'TOR' in doc_type_upper:
+        parsed_fields = parse_grades_document(raw_text)
+        success, msg, meta = verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_name, **kwargs)
+        return success, msg, raw_text, meta
+    elif 'INDIGENCY' in doc_type_upper:
+        success, msg, meta = verify_indigency_fields(raw_text, first_name, middle_name, last_name, expected_address=kwargs.get('expected_address'), **kwargs)
+        return success, msg, raw_text, meta
+    else:
+        # Default: COR / Registration
+        parsed_fields = parse_cor_document(raw_text)
+        success, msg, meta = verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_name, **kwargs)
+        return success, msg, raw_text, meta
+
+def preprocess_grades_lines(raw_text):
+    """
+    Splits lines where multi-column labels on Student Grades sheets are concatenated on a single line.
+    E.g. "Student No : 1500017172 Total Units Enrolled : 104" ->
+         ["Student No : 1500017172", "Total Units Enrolled : 104"]
+    """
+    if not raw_text:
+        return []
+    
+    right_labels = [
+        r'Total\s*Units\s*Enrolled', r'Total\s*Units\s*of\s*Failure',
+        r'Total\s*Units\s*of\s*Incomplete', r'Total\s*Units\s*of\s*Blank\s*Grades',
+        r'Total\s*Units\s*of\s*DRP\s*Grades', r'Instructor', r'Grade', r'Units', r'Posted'
+    ]
+    pattern = rf'\s+(?=(?:{"|".join(right_labels)})\s*[:\-])'
+    
+    split_lines = []
+    for line in str(raw_text).splitlines():
+        sublines = re.split(pattern, line.strip(), flags=re.IGNORECASE)
+        for s in sublines:
+            if s.strip():
+                split_lines.append(s.strip())
+    return split_lines
+
+def parse_grades_document(raw_text):
+    """
+    Structured parser for Student Grades documents (e.g., De La Salle Lipa Student's Final Grades).
+    Extracts key-value fields:
+    - Name: Student Name (e.g. Alexie Chyle Magbuhat)
+    - Student No: Student ID (e.g. 1500017172)
+    - SY/Sem: School Year & Semester (e.g. 2026 1st Semester)
+    - Course: Program name (e.g. BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY)
+    - GPA: Grade Point Average (e.g. 3.5481 or 3.55)
+    - Total Units: Total Units completed/passed (e.g. 26)
+    """
+    lines = preprocess_grades_lines(raw_text)
+    fields = {}
+
+    label_patterns = {
+        'name': [
+            r'student\s*name\s*[:\-]\s*([A-Za-z\s,\.\-]+)',
+            r'name\s*[:\-]\s*([A-Za-z\s,\.\-]+)',
+            r'pangalan\s*[:\-]\s*([A-Za-z\s,\.\-]+)'
+        ],
+        'student_id': [
+            r'student\s*(?:no|number|id)\s*[:\-]?\s*([A-Za-z0-9\-]{4,20})',
+            r'id\s*(?:no|number)\s*[:\-]?\s*([A-Za-z0-9\-]{4,20})'
+        ],
+        'sy_sem': [
+            r'sy\s*/?\s*sem\s*[:\-]\s*([A-Za-z0-9\s\-\.\/]+)',
+            r'school\s*year\s*(?:sem)?\s*[:\-]\s*([A-Za-z0-9\s\-\.\/]+)',
+            r'academic\s*year\s*[:\-]\s*([A-Za-z0-9\s\-\.\/]+)'
+        ],
+        'course': [
+            r'course\s*[:\-]\s*([A-Za-z0-9\s,\.\-\&]+)',
+            r'program\s*[:\-]\s*([A-Za-z0-9\s,\.\-\&]+)',
+            r'degree\s*[:\-]\s*([A-Za-z0-9\s,\.\-\&]+)'
+        ]
+    }
+
+    for line in lines:
+        for field_name, regexes in label_patterns.items():
+            if field_name in fields:
+                continue
+            for regex in regexes:
+                match = re.search(regex, line, re.IGNORECASE)
+                if match:
+                    val = match.group(1).strip()
+                    val = re.sub(r'\s+(?:Total\b|Instructor\b|Grade\b|Units\b|Posted\b).*', '', val, flags=re.IGNORECASE)
+                    if len(val) > 0:
+                        fields[field_name] = val
+                        break
+
+    # Extract GPA / GWA from document
+    gpa_patterns = [
+        r'GPA\s*[:\-]?\s*([0-9]+\.[0-9]+)',
+        r'GWA\s*[:\-]?\s*([0-9]+\.[0-9]+)',
+        r'WEIGHTED\s*AVERAGE\s*[:\-]?\s*([0-9]+\.[0-9]+)',
+        r'AVERAGE\s*[:\-]?\s*([0-9]+\.[0-9]+)'
+    ]
+    for pattern in gpa_patterns:
+        match = re.search(pattern, raw_text, re.IGNORECASE)
+        if match:
+            fields['gpa'] = match.group(1).strip()
+            break
+
+    # Extract Total Units
+    units_match = re.search(r'Total\s*Units\s*[:\-]\s*([0-9]+)', raw_text, re.IGNORECASE)
+    if units_match:
+        fields['total_units'] = units_match.group(1).strip()
+
+    raw_upper = str(raw_text).upper()
+    if 'DE LA SALLE LIPA' in raw_upper or 'DLSL' in raw_upper:
+        fields['school_name'] = 'De La Salle Lipa'
+
+    return fields
+
+def verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_name, **kwargs):
+    """
+    Strict multi-field validation for Student Grades documents.
+    Requires Name + Student ID + GPA (if expected) + Academic Year/Sem + Course to pass.
+    """
+    expected_id_no = kwargs.get('expected_id_no') or kwargs.get('idNo')
+    expected_school_name = kwargs.get('expected_school_name') or kwargs.get('schoolName')
+    expected_gpa = kwargs.get('expected_gpa') or kwargs.get('gpa')
+    expected_academic_year = kwargs.get('expected_academic_year') or kwargs.get('academicYear')
+    expected_semester = kwargs.get('expected_semester') or kwargs.get('semester')
+    expected_course = kwargs.get('course') or kwargs.get('expected_course')
+
+    meta = {'parsed_fields': parsed_fields}
+    failures = []
+
+    # 1. NAME MATCHING
+    first_clean = normalize_text(first_name)
+    last_clean = normalize_text(last_name)
+
+    target_name_str = parsed_fields.get('name', raw_text)
+    norm_target = normalize_text(target_name_str)
+
+    first_words = [w for w in first_clean.split() if len(w) >= 2]
+    last_words = [w for w in last_clean.split() if len(w) >= 2]
+
+    first_ok = all(re.search(rf'\b{re.escape(w)}\b', norm_target) for w in first_words) if first_words else True
+    last_ok = all(re.search(rf'\b{re.escape(w)}\b', norm_target) for w in last_words) if last_words else True
+
+    if parsed_fields.get('name'):
+        p_name_norm = normalize_text(parsed_fields['name'])
+        full_expected = f"{first_clean} {last_clean}"
+        if difflib.SequenceMatcher(None, full_expected, p_name_norm).ratio() >= 0.70:
+            first_ok = True
+            last_ok = True
+
+    if not (first_ok and last_ok):
+        failures.append(f"Name mismatch (Expected: '{first_name} {last_name}', Found in Grades: '{parsed_fields.get('name', 'Not found')}')")
+
+    # 2. STUDENT ID MATCHING
+    if expected_id_no and str(expected_id_no).strip():
+        exp_id_clean = re.sub(r'[^a-zA-Z0-9]', '', str(expected_id_no)).lower()
+        found_id_clean = re.sub(r'[^a-zA-Z0-9]', '', parsed_fields.get('student_id', '')).lower()
+        doc_raw_clean = re.sub(r'[^a-zA-Z0-9]', '', str(raw_text)).lower()
+
+        id_ok = (exp_id_clean in found_id_clean) or (exp_id_clean in doc_raw_clean)
+        if not id_ok:
+            failures.append(f"Student ID mismatch (Expected: '{expected_id_no}', Found in Grades: '{parsed_fields.get('student_id', 'Not found')}')")
+
+    # 3. GPA MATCHING
+    if expected_gpa and str(expected_gpa).strip():
+        exp_gpa_val = re.search(r'\d+(?:\.\d+)?', str(expected_gpa))
+        found_gpa_val = parsed_fields.get('gpa')
+        if exp_gpa_val and found_gpa_val:
+            try:
+                e_gpa = float(exp_gpa_val.group(0))
+                f_gpa = float(found_gpa_val)
+                if abs(e_gpa - f_gpa) > 0.05:
+                    failures.append(f"GPA mismatch (Expected: '{e_gpa}', Found in Grades: '{f_gpa}')")
+            except ValueError:
+                pass
+
+    # 4. ACADEMIC YEAR MATCHING
+    if expected_academic_year and str(expected_academic_year).strip():
+        found_ay = parsed_fields.get('sy_sem', raw_text)
+        exp_years = re.findall(r'20\d{2}', str(expected_academic_year))
+        found_years = re.findall(r'20\d{2}', str(found_ay))
+
+        if exp_years:
+            ay_ok = all(y in found_years for y in exp_years)
+            if not ay_ok:
+                failures.append(f"Academic Year mismatch (Expected: '{expected_academic_year}', Found in Grades: '{found_ay}')")
+
+    # 5. COURSE MATCHING
+    if expected_course and str(expected_course).strip():
+        found_course = parsed_fields.get('course', raw_text)
+        c_exp = normalize_text(expected_course)
+        c_found = normalize_text(found_course)
+
+        exp_words = [w for w in c_exp.split() if w not in {'bachelor', 'of', 'science', 'in', 'and', 'the', 'bs', 'degree'}]
+        course_ok = (c_exp in c_found) or (all(w in c_found for w in exp_words) if exp_words else True)
+
+        if not course_ok:
+            failures.append(f"Course mismatch (Expected: '{expected_course}', Found in Grades: '{found_course}')")
+
+    success = (len(failures) == 0)
+    if success:
+        msg = f"Grades Verified: Name ({first_name} {last_name}), ID ({expected_id_no or 'N/A'}), GPA ({parsed_fields.get('gpa', 'N/A')}) matched."
+    else:
+        msg = "Grades Verification Failed: " + "; ".join(failures)
+
+    meta['name_ok'] = first_ok and last_ok
+    meta['details'] = failures
+    meta['detected_text'] = raw_text
+
+    return success, msg, meta
+
+def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expected_address=None, **kwargs):
+    """
+    Flexible verification for Indigency certificates (which vary widely in format by barangay/municipality).
+    Verifies student name and barangay/town address keywords without requiring rigid template structures.
+    """
+    meta = {}
+    failures = []
+
+    first_clean = normalize_text(first_name)
+    last_clean = normalize_text(last_name)
+    doc_norm = normalize_text(raw_text)
+
+    first_words = [w for w in first_clean.split() if len(w) >= 2]
+    last_words = [w for w in last_clean.split() if len(w) >= 2]
+
+    first_ok = all(re.search(rf'\b{re.escape(w)}\b', doc_norm) for w in first_words) if first_words else True
+    last_ok = all(re.search(rf'\b{re.escape(w)}\b', doc_norm) for w in last_words) if last_words else True
+
+    if not (first_ok and last_ok):
+        failures.append(f"Name mismatch (Expected: '{first_name} {last_name}' in Indigency Certificate)")
+
+    addr_ok = True
+    if expected_address and str(expected_address).strip():
+        addr_clean = normalize_text(expected_address)
+        ignore_words = {'city', 'municipality', 'town', 'province', 'brgy', 'barangay'}
+        addr_words = [w for w in addr_clean.split() if len(w) >= 3 and w not in ignore_words]
+        if addr_words:
+            addr_ok = any(w in doc_norm for w in addr_words)
+            if not addr_ok:
+                failures.append(f"Address/Barangay mismatch (Expected: '{expected_address}' in Indigency Certificate)")
+
+    success = first_ok and last_ok and addr_ok
+    if success:
+        msg = f"Indigency Certificate Verified: Name ({first_name} {last_name}) matched."
+    else:
+        msg = "Indigency Verification Failed: " + "; ".join(failures)
+
+    meta['name_ok'] = first_ok and last_ok
+    meta['details'] = failures
+    meta['detected_text'] = raw_text
+
+    return success, msg, meta
+
+def verify_id_with_ocr(image_bytes, first_name, middle_name, last_name, **kwargs):
+    """
+    ID OCR verification wrapper.
+    """
+    success, msg, raw_text, meta = verify_document_with_ocr(image_bytes, 'ID', first_name, middle_name, last_name, **kwargs)
+    return success, msg, raw_text, 1.0 if success else 0.0

@@ -8,8 +8,14 @@ from pydantic import BaseModel, Field
 import uvicorn
 from fastapi.middleware.cors import CORSMiddleware
 
-# Import face and signature verification logic from our streamlined ocr_utils
-from services.ocr_utils import verify_face_with_id, verify_signature_against_id, resolve_verification_image_bytes
+# Import face, signature, and document verification logic from our ocr_utils
+from services.ocr_utils import (
+    verify_face_with_id, 
+    verify_signature_against_id, 
+    resolve_verification_image_bytes,
+    verify_document_with_ocr,
+    verify_id_with_ocr
+)
 import cv2
 import numpy as np
 
@@ -19,8 +25,8 @@ logger = logging.getLogger("verification-service")
 
 app = FastAPI(
     title="Iskomats High-Performance Verification Service",
-    description="FastAPI-based Face & Signature matching engine for Iskomats scholarship system.",
-    version="1.0.0"
+    description="FastAPI-based Face, Signature & Document OCR matching engine for Iskomats scholarship system.",
+    version="1.1.0"
 )
 
 # Enable CORS
@@ -49,6 +55,31 @@ class SignatureFeedbackRequest(BaseModel):
     was_verified: Optional[bool] = False
     student_id: Optional[str] = 'bench_user'
 
+class DocumentVerificationRequest(BaseModel):
+    doc_type: Optional[str] = Field("COR", alias="docType")
+    first_name: Optional[str] = Field("", alias="firstName")
+    middle_name: Optional[str] = Field("", alias="middleName")
+    last_name: Optional[str] = Field("", alias="lastName")
+    image: Optional[str] = None
+    address: Optional[str] = None
+    id_no: Optional[str] = Field(None, alias="idNo")
+    school_name: Optional[str] = Field(None, alias="schoolName")
+    gpa: Optional[str] = None
+    year_level: Optional[str] = Field(None, alias="yearLevel")
+    academic_year: Optional[str] = Field(None, alias="academicYear")
+    semester: Optional[str] = None
+    course: Optional[str] = None
+
+class IDVerificationRequest(BaseModel):
+    first_name: Optional[str] = Field("", alias="firstName")
+    middle_name: Optional[str] = Field("", alias="middleName")
+    last_name: Optional[str] = Field("", alias="lastName")
+    image: Optional[str] = None
+    address: Optional[str] = None
+    id_no: Optional[str] = Field(None, alias="idNo")
+    school_name: Optional[str] = Field(None, alias="schoolName")
+    year_level: Optional[str] = Field(None, alias="yearLevel")
+
 
 # --- ENDPOINTS ---
 
@@ -59,8 +90,91 @@ async def health_check():
         "status": "healthy", 
         "service": "iskomats-verification-fastapi", 
         "timestamp": time.time(),
-        "ocr_purged": True
+        "ocr_active": True
     }
+
+@app.post("/verify/document")
+@app.post("/api/student/verification/document")
+@app.post("/student/verification/document")
+async def api_verify_document(req: DocumentVerificationRequest):
+    """
+    Structured OCR Verification for COR, Grades, Enrollment, and Indigency documents.
+    """
+    start_time = time.time()
+    try:
+        if not req.image:
+            return {"success": False, "verified": False, "message": "Missing image data", "detected_text": "", "meta": {}}
+
+        img_bytes = resolve_verification_image_bytes(req.image)
+        if not img_bytes:
+            return {"success": False, "verified": False, "message": "Invalid image data", "detected_text": "", "meta": {}}
+
+        success, message, detected_text, meta = verify_document_with_ocr(
+            img_bytes,
+            req.doc_type,
+            req.first_name,
+            req.middle_name,
+            req.last_name,
+            expected_address=req.address,
+            expected_id_no=req.id_no,
+            expected_school_name=req.school_name,
+            expected_gpa=req.gpa,
+            expected_year_level=req.year_level,
+            expected_academic_year=req.academic_year,
+            expected_semester=req.semester,
+            course=req.course
+        )
+
+        return {
+            "success": bool(success),
+            "verified": bool(success),
+            "message": str(message),
+            "detected_text": detected_text,
+            "meta": meta,
+            "process_time": time.time() - start_time
+        }
+    except Exception as e:
+        logger.error(f"Error in Document Verification: {str(e)}")
+        return {"success": False, "verified": False, "message": str(e), "detected_text": "", "meta": {}}
+
+@app.post("/verify/id")
+@app.post("/api/student/verification/id")
+@app.post("/student/verification/id")
+async def api_verify_id(req: IDVerificationRequest):
+    """
+    ID OCR verification endpoint.
+    """
+    start_time = time.time()
+    try:
+        if not req.image:
+            return {"success": False, "verified": False, "message": "Missing image data", "detected_text": "", "match_ratio": 0.0}
+
+        img_bytes = resolve_verification_image_bytes(req.image)
+        if not img_bytes:
+            return {"success": False, "verified": False, "message": "Invalid image data", "detected_text": "", "match_ratio": 0.0}
+
+        success, message, detected_text, match_ratio = verify_id_with_ocr(
+            img_bytes,
+            req.first_name,
+            req.middle_name,
+            req.last_name,
+            expected_address=req.address,
+            expected_id_no=req.id_no,
+            expected_school_name=req.school_name,
+            expected_year_level=req.year_level
+        )
+
+        return {
+            "success": bool(success),
+            "verified": bool(success),
+            "message": str(message),
+            "detected_text": detected_text,
+            "match_ratio": float(match_ratio),
+            "process_time": time.time() - start_time
+        }
+    except Exception as e:
+        logger.error(f"Error in ID Verification: {str(e)}")
+        return {"success": False, "verified": False, "message": str(e), "detected_text": "", "match_ratio": 0.0}
 
 @app.post("/verify/face")
 @app.post("/api/student/verification/face-match")

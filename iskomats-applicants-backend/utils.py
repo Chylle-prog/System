@@ -68,19 +68,19 @@ def verify_id_with_ocr(id_image_data, name, address):
         NAME_THRESHOLD    = 92   # slightly lowered — tune as needed
         ADDRESS_THRESHOLD = 68
 
-        fuzzy_pass   = name_similarity >= NAME_THRESHOLD and address_similarity >= ADDRESS_THRESHOLD
-        name_found   = all(w in extracted_text_norm for w in name_words) and name_words
-        important_addr = [w for w in address_norm.split() if len(w) >= 4]
-        addr_found   = sum(1 for w in important_addr if w in extracted_text_norm) >= max(1, len(important_addr)-1)
+        import re
+        name_words = [w for w in name_norm.split() if len(w) >= 2]
+        name_ok = all(re.search(rf'\b{re.escape(w)}\b', extracted_text_norm) for w in name_words) if name_words else False
 
-        is_verified = fuzzy_pass or (name_found and addr_found)
+        important_addr = [w for w in address_norm.split() if len(w) >= 4]
+        addr_ok = (sum(1 for w in important_addr if w in extracted_text_norm) >= max(1, len(important_addr)-1)) if important_addr else True
+
+        is_verified = name_ok and addr_ok
 
         if is_verified:
-            status = f"Verified (Name:{name_similarity:.0f}%, Addr:{address_similarity:.0f}%)"
-            if not fuzzy_pass:
-                status = f"Verified (fallback; {status})"
+            status = f"Verified (Name and Address matched)"
         else:
-            status = f"Mismatch (Name:{name_similarity:.0f}%, Addr:{address_similarity:.0f}%)"
+            status = f"Mismatch (Name OK: {name_ok}, Address OK: {addr_ok})"
 
         return is_verified, status, extracted_text
 
