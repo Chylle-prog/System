@@ -845,6 +845,22 @@ def normalize_text(text):
     return re.sub(r'[^a-z0-9\s]', ' ', str(text).lower()).strip()
 
 
+def normalize_id_number(s):
+    if not s:
+        return ""
+    normalized = str(s).lower()
+    normalized = re.sub(r'[^a-z0-9]', '', normalized)
+    substitutions = {
+        'o': '0', 'q': '0', 'd': '0',
+        'i': '1', 'l': '1',
+        'z': '2', 's': '5',
+        'g': '6', 'b': '6'
+    }
+    for char, replacement in substitutions.items():
+        normalized = normalized.replace(char, replacement)
+    return normalized
+
+
 def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None, middle_name=None):
     """
     Verifies that the student's FULL name (first + last together) appears as a
@@ -899,12 +915,19 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
             f'{last_clean} {first_clean} {mid_clean}',
             f'{last_clean} {mid_clean} {first_clean}'
         ])
+        mid_initial = mid_clean[0]
+        if mid_initial:
+            sequences_to_check.extend([
+                f'{first_clean} {mid_initial} {last_clean}',
+                f'{last_clean} {first_clean} {mid_initial}',
+                f'{last_clean} {mid_initial} {first_clean}'
+            ])
 
     def check_word_sequence_fuzzy(name_str, search_text):
-        exp_words = [w for w in normalize_text(name_str).split() if len(w) >= 2]
+        exp_words = [w for w in normalize_text(name_str).split() if len(w) >= 1]
         if not exp_words:
             return False
-        t_words = [w for w in normalize_text(search_text).split() if len(w) >= 2]
+        t_words = [w for w in normalize_text(search_text).split() if len(w) >= 1]
         
         expected_idx = 0
         last_found_idx = -1
@@ -914,11 +937,14 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
             
             # Distance check
             dist = difflib.SequenceMatcher(None, e_word, t_word).ratio()
-            if dist >= 0.60 or abs(len(e_word) - len(t_word)) <= 2 and sum(1 for c1, c2 in zip(e_word, t_word) if c1 != c2) <= 3:
+            is_match = (dist >= 0.60) or (len(e_word) == 1 and t_word == e_word) or (
+                abs(len(e_word) - len(t_word)) <= 2 and sum(1 for c1, c2 in zip(e_word, t_word) if c1 != c2) <= 3
+            )
+            if is_match:
                 if last_found_idx != -1 and (i - last_found_idx) > 5:
                     expected_idx = 0
                     last_found_idx = -1
-                    if difflib.SequenceMatcher(None, exp_words[0], t_word).ratio() >= 0.60:
+                    if difflib.SequenceMatcher(None, exp_words[0], t_word).ratio() >= 0.60 or (len(exp_words[0]) == 1 and t_word == exp_words[0]):
                         expected_idx = 1
                         last_found_idx = i
                     continue
@@ -1135,19 +1161,11 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
 
     # 2. STUDENT ID MATCHING
     if expected_id_no and str(expected_id_no).strip():
-        exp_id_clean = re.sub(r'[^a-zA-Z0-9]', '', str(expected_id_no)).lower()
-        found_id_clean = re.sub(r'[^a-zA-Z0-9]', '', parsed_fields.get('student_id', '')).lower()
-        doc_raw_clean = re.sub(r'[^a-zA-Z0-9]', '', str(raw_text)).lower()
+        exp_id_clean = normalize_id_number(expected_id_no)
+        found_id_clean = normalize_id_number(parsed_fields.get('student_id', ''))
+        doc_raw_clean = normalize_id_number(raw_text)
 
         id_ok = (exp_id_clean in found_id_clean) or (exp_id_clean in doc_raw_clean) or (found_id_clean in exp_id_clean)
-        if not id_ok and len(exp_id_clean) >= 6:
-            # Check 80%+ fuzzy digit match or presence of Registration Number / Ref No
-            digits_target = re.sub(r'\D', '', str(expected_id_no))
-            digits_raw = re.sub(r'\D', '', str(raw_text))
-            if digits_target and (digits_target in digits_raw or any(digits_target[i:i+5] in digits_raw for i in range(len(digits_target)-4))):
-                id_ok = True
-            elif 'reg' in doc_raw_clean or 'rug' in doc_raw_clean or 'ref' in doc_raw_clean:
-                id_ok = True
 
         if not id_ok:
             failures.append(f"Student ID mismatch (Expected: '{expected_id_no}', Found in COR: '{parsed_fields.get('student_id', 'Not found')}')")

@@ -1803,13 +1803,21 @@ const StudentInfo = () => {
       sequencesToCheck.push(`${normFirst} ${normMiddle} ${normLast}`);
       sequencesToCheck.push(`${normLast} ${normFirst} ${normMiddle}`);
       sequencesToCheck.push(`${normLast} ${normMiddle} ${normFirst}`);
+      
+      // Also allow sequences with middle initial (e.g. "L" instead of "Linatoc")
+      const middleInitial = normMiddle[0];
+      if (middleInitial) {
+        sequencesToCheck.push(`${normFirst} ${middleInitial} ${normLast}`);
+        sequencesToCheck.push(`${normLast} ${normFirst} ${middleInitial}`);
+        sequencesToCheck.push(`${normLast} ${middleInitial} ${normFirst}`);
+      }
     }
 
     // --- Helper: Fuzzy Sequence Matcher (allows OCR typos like 'maghubal' for 'magbuhat' in sequence) ---
     const checkWordSequenceFuzzy = (nameStr, searchText) => {
-      const expectedWords = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= 2);
+      const expectedWords = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= 1); // Allow length >= 1 for initials
       if (expectedWords.length === 0) return false;
-      const targetWords = searchText.split(/\s+/).filter(w => w.length >= 2);
+      const targetWords = searchText.split(/\s+/).filter(w => w.length >= 1);
       
       let expectedIdx = 0;
       let lastFoundIdx = -1;
@@ -1818,11 +1826,11 @@ const StudentInfo = () => {
         const tWord = targetWords[i];
         const eWord = expectedWords[expectedIdx];
 
-        if (isSimilarWord(eWord, tWord) || (normalizeNameConfusions(eWord).length >= 3 && normalizeNameConfusions(eWord) === normalizeNameConfusions(tWord))) {
+        if (isSimilarWord(eWord, tWord) || (normalizeNameConfusions(eWord).length >= 3 && normalizeNameConfusions(eWord) === normalizeNameConfusions(tWord)) || (eWord.length === 1 && tWord === eWord)) {
           if (lastFoundIdx !== -1 && (i - lastFoundIdx) > 5) {
             expectedIdx = 0;
             lastFoundIdx = -1;
-            if (isSimilarWord(expectedWords[0], tWord)) {
+            if (isSimilarWord(expectedWords[0], tWord) || (expectedWords[0].length === 1 && tWord === expectedWords[0])) {
               expectedIdx = 1;
               lastFoundIdx = i;
             }
@@ -1876,18 +1884,31 @@ const StudentInfo = () => {
     // --- Individual word checks (fallback only, used to compute first_ok / last_ok for UI display) ---
     const checkNameWordGroup = (nameStr, searchText) => {
       if (!nameStr) return true;
-      const words = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= 2);
+      const isMiddle = nameStr === middle;
+      // Allow length >= 1 for initials if checking middle name
+      const words = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= (isMiddle ? 1 : 2));
       if (words.length === 0) return true;
-      const ocrWords = searchText.split(/\s+/).filter(w => w.length >= 2);
+      const ocrWords = searchText.split(/\s+/).filter(w => w.length >= 1);
       return words.every(word => {
         const normW = normalizeForOcr(word);
         const confW = normalizeNameConfusions(word);
         if (new RegExp('\\b' + normW.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b').test(searchText)) return true;
         if (searchText.includes(normW)) return true;
-        return ocrWords.some(ocrW =>
-          isSimilarWord(normW, normalizeForOcr(ocrW)) ||
-          (confW.length >= 3 && normalizeNameConfusions(ocrW) === confW)
-        );
+        
+        // Middle name initial matching fallback
+        if (isMiddle && normW.length > 0) {
+          const initial = normW[0];
+          const rxInitial = new RegExp('\\b' + initial + '\\b|\\b' + initial + '\\.');
+          if (rxInitial.test(searchText)) return true;
+        }
+
+        return ocrWords.some(ocrW => {
+          const normOcr = normalizeForOcr(ocrW);
+          if (isSimilarWord(normW, normOcr)) return true;
+          if (confW.length >= 3 && normalizeNameConfusions(ocrW) === confW) return true;
+          if (isMiddle && normW.length > 0 && normOcr === normW[0]) return true;
+          return false;
+        });
       });
     };
 
@@ -1935,21 +1956,7 @@ const StudentInfo = () => {
       if (kvId.includes(tId) || tId.includes(kvId)) return true;
     }
 
-    // Fuzzy check: if target ID is at least 6 digits and 80%+ of digits appear in document, accept
-    const digitsOnlyTarget = String(targetId).replace(/\D/g, '');
-    const digitsOnlyText = String(text).replace(/\D/g, '');
-    if (digitsOnlyTarget.length >= 6) {
-      if (digitsOnlyText.includes(digitsOnlyTarget)) return true;
-      // Allow 1 digit mismatch
-      let matchedCount = 0;
-      for (let i = 0; i < digitsOnlyTarget.length; i++) {
-        if (digitsOnlyText.includes(digitsOnlyTarget.slice(i, i + 5))) matchedCount += 5;
-      }
-      if (matchedCount >= 5) return true;
-    }
-
-    // Default: If document has a valid student/reg number label, don't hard block
-    return true;
+    return false;
   };
 
   const schoolNameMatchesText = (text, targetSchool) => {
