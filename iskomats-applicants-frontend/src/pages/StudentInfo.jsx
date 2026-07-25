@@ -2284,7 +2284,7 @@ const StudentInfo = () => {
       img.crossOrigin = "anonymous";
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const maxDim = 800;
+        const maxDim = 1200;
         let w = img.width;
         let h = img.height;
         if (w > maxDim || h > maxDim) {
