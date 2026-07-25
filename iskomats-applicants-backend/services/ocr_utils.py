@@ -949,6 +949,24 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
             if not ay_ok:
                 failures.append(f"Academic Year mismatch (Expected: '{expected_academic_year}', Found in COR: '{found_ay}')")
 
+    if expected_semester and str(expected_semester).strip():
+        found_sy_sem = parsed_fields.get('school_year_sem', raw_text)
+        exp_sem_clean = normalize_text(expected_semester)
+        found_sem_clean = normalize_text(found_sy_sem)
+
+        sem_ok = False
+        if any(k in exp_sem_clean for k in ['1st', '1', 'first']):
+            sem_ok = any(k in found_sem_clean for k in ['1st', '1', 'first'])
+        elif any(k in exp_sem_clean for k in ['2nd', '2', 'second']):
+            sem_ok = any(k in found_sem_clean for k in ['2nd', '2', 'second'])
+        elif any(k in exp_sem_clean for k in ['3rd', '3', 'third', 'summer', 'midyear']):
+            sem_ok = any(k in found_sem_clean for k in ['3rd', '3', 'third', 'summer', 'midyear'])
+        else:
+            sem_ok = exp_sem_clean in found_sem_clean
+
+        if not sem_ok:
+            failures.append(f"Semester mismatch (Expected: '{expected_semester}', Found in COR: '{found_sy_sem}')")
+
     # 4. COURSE / DEGREE MATCHING
     if expected_course and str(expected_course).strip():
         found_course = parsed_fields.get('course', raw_text)
@@ -1167,6 +1185,25 @@ def verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_
             ay_ok = all(y in found_years for y in exp_years)
             if not ay_ok:
                 failures.append(f"Academic Year mismatch (Expected: '{expected_academic_year}', Found in Grades: '{found_ay}')")
+
+    # 4b. SEMESTER MATCHING
+    if expected_semester and str(expected_semester).strip():
+        found_sy_sem = parsed_fields.get('sy_sem', raw_text)
+        exp_sem_clean = normalize_text(expected_semester)
+        found_sem_clean = normalize_text(found_sy_sem)
+
+        sem_ok = False
+        if any(k in exp_sem_clean for k in ['1st', '1', 'first']):
+            sem_ok = any(k in found_sem_clean for k in ['1st', '1', 'first'])
+        elif any(k in exp_sem_clean for k in ['2nd', '2', 'second']):
+            sem_ok = any(k in found_sem_clean for k in ['2nd', '2', 'second'])
+        elif any(k in exp_sem_clean for k in ['3rd', '3', 'third', 'summer', 'midyear']):
+            sem_ok = any(k in found_sem_clean for k in ['3rd', '3', 'third', 'summer', 'midyear'])
+        else:
+            sem_ok = exp_sem_clean in found_sem_clean
+
+        if not sem_ok:
+            failures.append(f"Semester mismatch (Expected: '{expected_semester}', Found in Grades: '{found_sy_sem}')")
 
     # 5. COURSE MATCHING
     if expected_course and str(expected_course).strip():

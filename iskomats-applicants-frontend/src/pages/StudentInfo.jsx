@@ -2471,7 +2471,7 @@ const StudentInfo = () => {
     const course = formData.course || '';
     const videoUrl = documentVideos.mayorCOE_video || formData.mayorCOE_video;
     const year = formData.year || '';
-    const semester = formData.semester || scholarshipDetails?.semester || '1st Semester';
+    const semester = scholarshipDetails?.semester || scholarshipDetails?.sem || formData.semester || '1st Semester';
 
     if (!coeDoc) {
       showPromptMessage('Please upload your Certificate of Enrollment first.');
@@ -2528,7 +2528,7 @@ const StudentInfo = () => {
     const yearLevel = formData.yearLevel || '';
     const gpa = formData.gpa || '';
     const videoUrl = documentVideos.mayorGrades_video || formData.mayorGrades_video;
-    const semester = formData.semester || scholarshipDetails?.semester || '1st Semester';
+    const semester = scholarshipDetails?.semester || scholarshipDetails?.sem || formData.semester || '1st Semester';
 
     if (!gradesDoc) {
       showPromptMessage('Please upload your Grades document first.');
