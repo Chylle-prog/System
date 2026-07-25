@@ -1,5 +1,3 @@
-import chromadb
-from chromadb.config import Settings
 from services.chatbot.document_loader import DocumentLoader
 
 class RAGPipeline:
@@ -8,6 +6,9 @@ class RAGPipeline:
         document_loader: DocumentLoader,
         persist_dir: str,
     ):
+        import chromadb
+        from chromadb.config import Settings
+
         self.loader = document_loader
         self.client = chromadb.PersistentClient(
             path=persist_dir,

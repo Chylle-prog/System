@@ -3,7 +3,6 @@ import json
 import logging
 from flask import Blueprint, request, jsonify, Response
 from services.chatbot.gemini import GeminiService
-from services.chatbot.rag import RAGPipeline
 from services.chatbot.document_loader import DocumentLoader
 
 logger = logging.getLogger(__name__)
@@ -16,6 +15,8 @@ doc_loader = None
 
 def init_chatbot(api_key: str, model: str, documents_dir: str, persist_dir: str):
     global gemini_service, rag, doc_loader
+    from services.chatbot.rag import RAGPipeline
+
     gemini_service = GeminiService(api_key=api_key, model=model)
     doc_loader = DocumentLoader(documents_dir=documents_dir)
     rag = RAGPipeline(

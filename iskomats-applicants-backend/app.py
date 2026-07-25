@@ -81,38 +81,41 @@ app.register_blueprint(chatbot_bp)
 register_admin_routes(app)
 init_admin_socketio(socketio)
 
-# Initialize Chatbot Backend
-print("[STARTUP] Initializing Chatbot RAG Pipeline...", flush=True)
-try:
-    from blueprints.chatbot_bp import init_chatbot
-    GEMINI_API_KEY = os.getenv("GROQ_API_KEY") or os.getenv("GEMINI_API_KEY", "")
-    GEMINI_MODEL = os.getenv("GROQ_MODEL") or os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
-    CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
-    DOCUMENTS_DIR = os.getenv("DOCUMENTS_DIR", "./data")
-    gemini_service, rag, doc_loader = init_chatbot(
-        api_key=GEMINI_API_KEY, 
-        model=GEMINI_MODEL,
-        documents_dir=DOCUMENTS_DIR,
-        persist_dir=CHROMA_PERSIST_DIR
-    )
-    # Check if we need to load documents initially
-    existing_count = rag.get_stats().get("total_chunks", 0)
-    existing_files = doc_loader.list_documents()
-    if existing_count == 0 and existing_files:
-        print("[STARTUP] Vector store empty, indexing documents...", flush=True)
-        for filename in existing_files:
-            file_path = os.path.join(DOCUMENTS_DIR, filename)
-            try:
-                chunk_count = rag.add_document(filename, file_path)
-                print(f"[STARTUP] Indexed '{filename}': {chunk_count} chunks", flush=True)
-            except Exception as e:
-                print(f"[STARTUP] Failed to index '{filename}': {e}", flush=True)
-    elif existing_count > 0:
-        print(f"[STARTUP] Vector store has {existing_count} chunks, skipping re-indexing", flush=True)
-    else:
-        print("[STARTUP] No documents found in data directory", flush=True)
-except Exception as e:
-    print(f"[STARTUP] Error initializing Chatbot Backend: {e}", flush=True)
+# Initialize Chatbot Backend in background thread so port binding happens instantly (<0.2s)
+def _init_chatbot_background():
+    print("[STARTUP BACKGROUND] Initializing Chatbot RAG Pipeline...", flush=True)
+    try:
+        from blueprints.chatbot_bp import init_chatbot
+        GEMINI_API_KEY = os.getenv("GROQ_API_KEY") or os.getenv("GEMINI_API_KEY", "")
+        GEMINI_MODEL = os.getenv("GROQ_MODEL") or os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
+        CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
+        DOCUMENTS_DIR = os.getenv("DOCUMENTS_DIR", "./data")
+        gemini_service, rag, doc_loader = init_chatbot(
+            api_key=GEMINI_API_KEY, 
+            model=GEMINI_MODEL,
+            documents_dir=DOCUMENTS_DIR,
+            persist_dir=CHROMA_PERSIST_DIR
+        )
+        existing_count = rag.get_stats().get("total_chunks", 0)
+        existing_files = doc_loader.list_documents()
+        if existing_count == 0 and existing_files:
+            print("[STARTUP BACKGROUND] Vector store empty, indexing documents...", flush=True)
+            for filename in existing_files:
+                file_path = os.path.join(DOCUMENTS_DIR, filename)
+                try:
+                    chunk_count = rag.add_document(filename, file_path)
+                    print(f"[STARTUP BACKGROUND] Indexed '{filename}': {chunk_count} chunks", flush=True)
+                except Exception as e:
+                    print(f"[STARTUP BACKGROUND] Failed to index '{filename}': {e}", flush=True)
+        elif existing_count > 0:
+            print(f"[STARTUP BACKGROUND] Vector store has {existing_count} chunks, skipping re-indexing", flush=True)
+        else:
+            print("[STARTUP BACKGROUND] No documents found in data directory", flush=True)
+    except Exception as e:
+        print(f"[STARTUP BACKGROUND] Error initializing Chatbot Backend: {e}", flush=True)
+
+import threading
+threading.Thread(target=_init_chatbot_background, daemon=True).start()
 
 # Track startup completion
 APP_READY = False
