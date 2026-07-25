@@ -10,7 +10,10 @@ import shutil
 import re
 import difflib
 import platform
-import pytesseract
+try:
+    import pytesseract
+except ImportError:
+    pytesseract = None
 from project_config import get_performance_config
 
 # Get performance profile
@@ -749,7 +752,7 @@ _tesseract_initialized = False
 
 def _init_tesseract():
     global _tesseract_initialized
-    if _tesseract_initialized:
+    if _tesseract_initialized or pytesseract is None:
         return
     if platform.system() == 'Windows':
         candidates = [
@@ -770,7 +773,7 @@ def normalize_text(text):
     return re.sub(r'[^a-z0-9\s]', ' ', str(text).lower()).strip()
 
 def _run_tesseract_on_image(img, psm=3):
-    if img is None:
+    if img is None or pytesseract is None:
         return ""
     try:
         _init_tesseract()

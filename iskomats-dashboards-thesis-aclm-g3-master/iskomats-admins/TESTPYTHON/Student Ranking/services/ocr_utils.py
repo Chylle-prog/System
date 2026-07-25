@@ -6,7 +6,10 @@ import base64
 import time
 import cv2
 import numpy as np
-import pytesseract
+try:
+    import pytesseract
+except ImportError:
+    pytesseract = None
 import platform
 import multiprocessing as mp
 import re
