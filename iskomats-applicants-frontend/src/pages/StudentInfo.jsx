@@ -4433,6 +4433,26 @@ const StudentInfo = () => {
         submissionData.append('signature_data', finalSignature);
       }
 
+      const appendSmartVideo = (fieldName) => {
+        const videoValue = documentVideos[fieldName] || formData[fieldName];
+        if (!videoValue) return;
+
+        if (typeof videoValue === 'string') {
+          if (videoValue.startsWith('http')) {
+            submissionData.append(fieldName, videoValue);
+          } else if (videoValue.startsWith('blob:')) {
+            const publicUrl = formData[fieldName];
+            if (publicUrl && publicUrl.startsWith('http')) {
+              submissionData.append(fieldName, publicUrl);
+            } else {
+              console.warn(`Local blob URL found for ${fieldName} but no public URL.`);
+            }
+          }
+        } else {
+          submissionData.append(fieldName, videoValue, `${fieldName}.webm`);
+        }
+      };
+
       const docKeys = ['mayorCOE', 'mayorGrades', 'mayorIndigency'];
       docKeys.forEach(key => {
         const fileKey = `${key}_photo`;
@@ -4441,26 +4461,6 @@ const StudentInfo = () => {
         } else if (formData[fileKey] && typeof formData[fileKey] === 'string') {
           submissionData.append(fileKey, formData[fileKey]);
         }
-
-        const appendSmartVideo = (fieldName) => {
-          const videoValue = documentVideos[fieldName] || formData[fieldName];
-          if (!videoValue) return;
-
-          if (typeof videoValue === 'string') {
-            if (videoValue.startsWith('http')) {
-              submissionData.append(fieldName, videoValue);
-            } else if (videoValue.startsWith('blob:')) {
-              const publicUrl = formData[fieldName];
-              if (publicUrl && publicUrl.startsWith('http')) {
-                submissionData.append(fieldName, publicUrl);
-              } else {
-                console.warn(`Local blob URL found for ${fieldName} but no public URL.`);
-              }
-            }
-          } else {
-            submissionData.append(fieldName, videoValue, `${fieldName}.webm`);
-          }
-        };
 
         appendSmartVideo(`${key}_video`);
       });
