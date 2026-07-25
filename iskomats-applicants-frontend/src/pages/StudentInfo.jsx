@@ -153,6 +153,101 @@ const buildDraftStorageKey = (user, searchParams, scholarshipName) => {
   return `studentinfo:draft:${user}:${scholarshipKey}`;
 };
 
+const DRAFT_DB_NAME = 'iskomats_drafts_db';
+const DRAFT_STORE_NAME = 'drafts';
+
+const openDraftDB = () => {
+  return new Promise((resolve) => {
+    if (!window.indexedDB) {
+      resolve(null);
+      return;
+    }
+    try {
+      const request = window.indexedDB.open(DRAFT_DB_NAME, 1);
+      request.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(DRAFT_STORE_NAME)) {
+          db.createObjectStore(DRAFT_STORE_NAME);
+        }
+      };
+      request.onsuccess = (e) => resolve(e.target.result);
+      request.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+};
+
+const saveDraftToStorage = async (key, draftObj) => {
+  if (!key) return;
+  try {
+    const db = await openDraftDB();
+    if (db) {
+      const tx = db.transaction(DRAFT_STORE_NAME, 'readwrite');
+      const store = tx.objectStore(DRAFT_STORE_NAME);
+      store.put(draftObj, key);
+      await new Promise((res) => { tx.oncomplete = res; tx.onerror = res; });
+    }
+  } catch (e) {
+    console.warn('[DRAFT STORAGE] IndexedDB save failed:', e);
+  }
+
+  try {
+    const lightObj = {
+      currentStep: draftObj.currentStep,
+      hasOtherAssistance: draftObj.hasOtherAssistance,
+      formData: draftObj.formData,
+      verificationStates: draftObj.verificationStates,
+      timestamp: Date.now()
+    };
+    localStorage.setItem(key, JSON.stringify(lightObj));
+  } catch (e) {
+    console.warn('[DRAFT STORAGE] localStorage save failed:', e);
+  }
+};
+
+const loadDraftFromStorage = async (key) => {
+  if (!key) return null;
+  try {
+    const db = await openDraftDB();
+    if (db) {
+      const tx = db.transaction(DRAFT_STORE_NAME, 'readonly');
+      const store = tx.objectStore(DRAFT_STORE_NAME);
+      const req = store.get(key);
+      const draft = await new Promise((res) => {
+        req.onsuccess = () => res(req.result);
+        req.onerror = () => res(null);
+      });
+      if (draft) return draft;
+    }
+  } catch (e) {
+    console.warn('[DRAFT STORAGE] IndexedDB load failed:', e);
+  }
+
+  try {
+    const raw = localStorage.getItem(key) || sessionStorage.getItem(key);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+
+  return null;
+};
+
+const removeDraftFromStorage = async (key) => {
+  if (!key) return;
+  try {
+    const db = await openDraftDB();
+    if (db) {
+      const tx = db.transaction(DRAFT_STORE_NAME, 'readwrite');
+      const store = tx.objectStore(DRAFT_STORE_NAME);
+      store.delete(key);
+    }
+  } catch (e) {}
+  try {
+    localStorage.removeItem(key);
+    sessionStorage.removeItem(key);
+  } catch (e) {}
+};
+
 const serializeDraftFormData = (data) => Object.fromEntries(
   Object.entries(data).filter(([, value]) => {
     if (value === null || value === undefined || isFileLike(value)) {
@@ -1245,36 +1340,55 @@ const StudentInfo = () => {
     income: formData.parentsGrossIncome || searchParams.get('income') || '',
   };
 
-  const persistDraft = (user, nextFormData = formData, nextStep = currentStep) => {
+  const persistDraft = async (user = currentUser, nextFormData = formData, nextStep = currentStep, extraState = {}) => {
     if (!user) {
       return;
     }
 
-    sessionStorage.setItem(
-      buildDraftStorageKey(user, searchParams, scholarshipName),
-      JSON.stringify({
-        currentStep: nextStep,
-        hasOtherAssistance,
-        formData: serializeDraftFormData(nextFormData),
-        verificationStates: {
-          ocrVerified,
-          coeVerified,
-          gradesVerified,
-          idVerified,
-          faceVerified,
-          signatureVerified,
-          faceMatchResult
-        }
-      })
-    );
+    const key = buildDraftStorageKey(user, searchParams, scholarshipName);
+
+    const draftObj = {
+      currentStep: nextStep,
+      hasOtherAssistance,
+      formData: serializeDraftFormData(nextFormData),
+      photos: extraState.photos || photos,
+      schoolIdPhotos: extraState.schoolIdPhotos || schoolIdPhotos,
+      documentVideos: extraState.documentVideos || documentVideos,
+      drawnSignature: extraState.drawnSignature !== undefined ? extraState.drawnSignature : drawnSignature,
+      signaturePreview: extraState.signaturePreview !== undefined ? extraState.signaturePreview : signaturePreview,
+      idPicturePreview: extraState.idPicturePreview !== undefined ? extraState.idPicturePreview : idPicturePreview,
+      verificationStates: {
+        ocrVerified: extraState.ocrVerified !== undefined ? extraState.ocrVerified : ocrVerified,
+        coeVerified: extraState.coeVerified !== undefined ? extraState.coeVerified : coeVerified,
+        gradesVerified: extraState.gradesVerified !== undefined ? extraState.gradesVerified : gradesVerified,
+        idVerified: extraState.idVerified !== undefined ? extraState.idVerified : idVerified,
+        faceVerified: extraState.faceVerified !== undefined ? extraState.faceVerified : faceVerified,
+        signatureVerified: extraState.signatureVerified !== undefined ? extraState.signatureVerified : signatureVerified,
+        ocrStatus: extraState.ocrStatus !== undefined ? extraState.ocrStatus : ocrStatus,
+        coeStatus: extraState.coeStatus !== undefined ? extraState.coeStatus : coeStatus,
+        gradesStatus: extraState.gradesStatus !== undefined ? extraState.gradesStatus : gradesStatus,
+        idStatus: extraState.idStatus !== undefined ? extraState.idStatus : idStatus,
+        signatureStatus: extraState.signatureStatus !== undefined ? extraState.signatureStatus : signatureStatus,
+        faceMatchResult: extraState.faceMatchResult !== undefined ? extraState.faceMatchResult : faceMatchResult,
+        signatureResults: extraState.signatureResults !== undefined ? extraState.signatureResults : signatureResults,
+        indigencyResults: extraState.indigencyResults || indigencyResults,
+        coeResults: extraState.coeResults || coeResults,
+        gradesResults: extraState.gradesResults || gradesResults,
+        idResults: extraState.idResults || idResults,
+        ocrDebugLogs: extraState.ocrDebugLogs || ocrDebugLogs
+      }
+    };
+
+    await saveDraftToStorage(key, draftObj);
   };
 
-  const clearDraft = (user = currentUser) => {
+  const clearDraft = async (user = currentUser) => {
     if (!user) {
       return;
     }
 
-    sessionStorage.removeItem(buildDraftStorageKey(user, searchParams, scholarshipName));
+    const key = buildDraftStorageKey(user, searchParams, scholarshipName);
+    await removeDraftFromStorage(key);
   };
 
   const analyzeSignatureComplexity = (canvas) => {
@@ -2885,14 +2999,6 @@ const StudentInfo = () => {
     }));
 
     const draftKey = buildDraftStorageKey(user, searchParams, scholarship || scholarshipName);
-    let savedDraft = null;
-
-    try {
-      const rawDraft = sessionStorage.getItem(draftKey);
-      savedDraft = rawDraft ? JSON.parse(rawDraft) : null;
-    } catch {
-      savedDraft = null;
-    }
 
     setCurrentStep(1);
     if (scholarship) {
@@ -2900,13 +3006,7 @@ const StudentInfo = () => {
     }
 
     const loadProfile = async () => {
-      // RESET: Explicitly clear local verification flags to prevent stale state persistence across reloads
-      setOcrVerified(null);
-      setCoeVerified(null);
-      setGradesVerified(null);
-      setIdVerified(null);
-      setFaceVerified(null);
-      setSignatureVerified(null);
+      const savedDraft = await loadDraftFromStorage(draftKey);
 
       try {
         setLoadingMessage({ title: 'Loading Profile', message: 'Retrieving your information to pre-fill the application...' });
@@ -2921,8 +3021,6 @@ const StudentInfo = () => {
         let targetMiddleName = profile.middle_name || '';
         let targetLastName = profile.last_name || '';
 
-        // Only override profile parts if the search name was explicitly changed in the search form.
-        // This prevents splitFullName from mangling multi-word first names (e.g., "Alex Kyle").
         if (searchFullName && searchFullName.trim().toLowerCase() !== profileFullName.trim().toLowerCase()) {
           const parts = splitFullName(searchFullName);
           targetFirstName = parts.firstName || targetFirstName;
@@ -2978,61 +3076,47 @@ const StudentInfo = () => {
           updates.zipCode = scholarshipSearchProfile?.zip_code || profile.zip_code || profile.zipCode;
         }
 
-        // 1. Map document photos and previews from server profile
+        // 1. Map document photos from server profile if available
         const newPhotos = {};
         if (profile.has_mayorIndigency_photo) {
           const indigencyUrl = `${apiOrigin}/api/student/applicant/document/raw/indigency_doc?token=${token}`;
           newPhotos.mayorIndigency_photo = indigencyUrl;
           updates.mayorIndigency_photo = indigencyUrl;
-        } else {
-          newPhotos.mayorIndigency_photo = null;
-          updates.mayorIndigency_photo = null;
         }
 
         if (profile.has_mayorCOE_photo) {
           const coeUrl = `${apiOrigin}/api/student/applicant/document/raw/enrollment_certificate_doc?token=${token}`;
           newPhotos.mayorCOE_photo = coeUrl;
           updates.mayorCOE_photo = coeUrl;
-        } else {
-          newPhotos.mayorCOE_photo = null;
-          updates.mayorCOE_photo = null;
         }
 
         if (profile.has_mayorGrades_photo) {
           const gradesUrl = `${apiOrigin}/api/student/applicant/document/raw/grades_doc?token=${token}`;
           newPhotos.mayorGrades_photo = gradesUrl;
           updates.mayorGrades_photo = gradesUrl;
-        } else {
-          newPhotos.mayorGrades_photo = null;
-          updates.mayorGrades_photo = null;
         }
 
-        const newIdPhotos = { front: null, back: null };
+        const newIdPhotos = {};
         if (profile.has_id) {
           const frontUrl = `${apiOrigin}/api/student/applicant/document/raw/id_img_front?token=${token}`;
           newIdPhotos.front = frontUrl;
           updates.schoolIdFront = frontUrl;
-        } else {
-          updates.schoolIdFront = null;
         }
 
         if (profile.has_id_back) {
           const backUrl = `${apiOrigin}/api/student/applicant/document/raw/id_img_back?token=${token}`;
           newIdPhotos.back = backUrl;
           updates.schoolIdBack = backUrl;
-        } else {
-          updates.schoolIdBack = null;
         }
 
-        setPhotos(prev => ({
-          ...prev,
-          ...newPhotos,
-          id_front: newIdPhotos.front,
-          id_back: newIdPhotos.back
-        }));
-        setSchoolIdPhotos(newIdPhotos);
+        if (Object.keys(newPhotos).length > 0) {
+          setPhotos(prev => ({ ...prev, ...newPhotos }));
+        }
+        if (newIdPhotos.front || newIdPhotos.back) {
+          setSchoolIdPhotos(prev => ({ ...prev, ...newIdPhotos }));
+        }
 
-        // 2. Map video URLs from server profile
+        // 2. Map video URLs from server profile if available
         const nextVideos = {
           face_video: profile.id_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/face_video?token=${token}` : null,
           mayorIndigency_video: profile.indigency_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorIndigency_video?token=${token}` : null,
@@ -3041,14 +3125,16 @@ const StudentInfo = () => {
           schoolIdFront_video: profile.schoolid_front_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdFront_video?token=${token}` : null,
           schoolIdBack_video: profile.schoolid_back_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdBack_video?token=${token}` : null
         };
-        setDocumentVideos(nextVideos);
-
-        updates.face_video = nextVideos.face_video;
-        updates.mayorIndigency_video = nextVideos.mayorIndigency_video;
-        updates.mayorGrades_video = nextVideos.mayorGrades_video;
-        updates.mayorCOE_video = nextVideos.mayorCOE_video;
-        updates.schoolIdFront_video = nextVideos.schoolIdFront_video;
-        updates.schoolIdBack_video = nextVideos.schoolIdBack_video;
+        const activeVideos = {};
+        Object.keys(nextVideos).forEach(k => {
+          if (nextVideos[k]) {
+            activeVideos[k] = nextVideos[k];
+            updates[k] = nextVideos[k];
+          }
+        });
+        if (Object.keys(activeVideos).length > 0) {
+          setDocumentVideos(prev => ({ ...prev, ...activeVideos }));
+        }
 
         setFormData(prev => {
           const merged = mergeMeaningfulValues(prev, updates);
@@ -3060,49 +3146,33 @@ const StudentInfo = () => {
           };
         });
 
-        // 3. Set verification states strictly from database (source of truth)
+        // 3. Set verification states from database if present
         if (profile.indigency_verified && profile.indigency_vid_url && profile.has_mayorIndigency_photo) {
           setOcrVerified('success');
           setOcrStatus('Indigency verified successfully client-side!');
           setIndigencyResults([{ doc: 'Indigency', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Last Name": true, "Barangay Address": true } }]);
-        } else {
-          setOcrVerified(null);
-          setOcrStatus('');
-          setIndigencyResults([]);
         }
 
         if (profile.enrollment_verified && profile.enrollment_certificate_vid_url && profile.has_mayorCOE_photo) {
           setCoeVerified('success');
           setCoeStatus('COE verified successfully client-side!');
           setCoeResults([{ doc: 'Enrollment', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Last Name": true, "School Name": true } }]);
-        } else {
-          setCoeVerified(null);
-          setCoeStatus('');
-          setCoeResults([]);
         }
 
         if (profile.grades_verified && profile.grades_vid_url && profile.has_mayorGrades_photo) {
           setGradesVerified('success');
           setGradesStatus('Grades verified successfully client-side!');
           setGradesResults([{ doc: 'Grades', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Last Name": true, "GPA Requirement": true } }]);
-        } else {
-          setGradesVerified(null);
-          setGradesStatus('');
-          setGradesResults([]);
         }
 
         if (profile.id_verified && profile.schoolid_front_vid_url && profile.schoolid_back_vid_url && profile.has_id && profile.has_id_back) {
           setIdVerified('success');
           setIdStatus('School ID verified successfully client-side!');
           setIdResults([{ doc: 'SchoolID', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Last Name": true } }]);
-        } else {
-          setIdVerified(null);
-          setIdStatus('');
-          setIdResults([]);
         }
 
-        setFaceVerified(profile.face_verified && profile.id_vid_url && profile.has_profile_picture ? 'success' : null);
-        setSignatureVerified(profile.signature_verified && profile.has_signature ? 'success' : null);
+        if (profile.face_verified && profile.id_vid_url && profile.has_profile_picture) setFaceVerified('success');
+        if (profile.signature_verified && profile.has_signature) setSignatureVerified('success');
 
         if (profile.profile_picture) {
           setIdPicturePreview(profile.profile_picture);
@@ -3120,7 +3190,6 @@ const StudentInfo = () => {
 
         if (!reqNo && scholarshipNameParam) {
           try {
-            // Find reqNo by listing all scholarships and matching by name
             const allScholarships = await scholarshipAPI.getAll();
             const matchedSch = allScholarships.find(s => s.scholarship_name === scholarshipNameParam);
             if (matchedSch) {
@@ -3137,7 +3206,6 @@ const StudentInfo = () => {
             const scholarshipData = res?.scholarship || res;
             if (scholarshipData) {
               setScholarshipDetails(scholarshipData);
-              console.log('[SCHOLARSHIP] Loaded requirements:', scholarshipData);
             }
           } catch (e) {
             console.warn('[SCHOLARSHIP] Could not load scholarship details:', e);
@@ -3146,31 +3214,99 @@ const StudentInfo = () => {
       } catch (err) {
         console.warn('Could not pre-fill from profile:', err.message);
       } finally {
-        // Load other transient details from draft (excluding files/videos/verification states to prevent stale state persistence)
-        if (savedDraft?.formData) {
-          const draftForm = { ...savedDraft.formData };
-          
-          // Delete file/video fields so draft does not resurrect deleted/changed files
-          const fileKeys = [
-            'mayorIndigency_photo', 'mayorIndigency_video',
-            'mayorCOE_photo', 'mayorCOE_video',
-            'mayorGrades_photo', 'mayorGrades_video',
-            'schoolIdFront', 'schoolIdBack',
-            'schoolIdFront_video', 'schoolIdBack_video',
-            'face_video', 'profile_picture'
-          ];
-          fileKeys.forEach(k => delete draftForm[k]);
+        // Restore all unsubmitted draft data (photos, videos, signature, verification states, and text inputs)
+        if (savedDraft) {
+          if (savedDraft.formData) {
+            setFormData(prev => fillEmptyValuesOnly(prev, savedDraft.formData));
+          }
 
-          setFormData(prev => fillEmptyValuesOnly(prev, draftForm));
+          if (savedDraft.photos && Object.keys(savedDraft.photos).length > 0) {
+            setPhotos(prev => {
+              const updated = { ...prev };
+              Object.entries(savedDraft.photos).forEach(([k, v]) => {
+                if (v) updated[k] = v;
+              });
+              return updated;
+            });
+            setFormData(prev => {
+              const updated = { ...prev };
+              Object.entries(savedDraft.photos).forEach(([k, v]) => {
+                if (v) updated[k] = v;
+              });
+              return updated;
+            });
+          }
+
+          if (savedDraft.schoolIdPhotos && (savedDraft.schoolIdPhotos.front || savedDraft.schoolIdPhotos.back)) {
+            setSchoolIdPhotos(prev => ({
+              front: savedDraft.schoolIdPhotos.front || prev.front,
+              back: savedDraft.schoolIdPhotos.back || prev.back
+            }));
+            setFormData(prev => ({
+              ...prev,
+              schoolIdFront: savedDraft.schoolIdPhotos.front || prev.schoolIdFront,
+              schoolIdBack: savedDraft.schoolIdPhotos.back || prev.schoolIdBack
+            }));
+          }
+
+          if (savedDraft.documentVideos && Object.keys(savedDraft.documentVideos).length > 0) {
+            setDocumentVideos(prev => {
+              const updated = { ...prev };
+              Object.entries(savedDraft.documentVideos).forEach(([k, v]) => {
+                if (v) updated[k] = v;
+              });
+              return updated;
+            });
+            setFormData(prev => {
+              const updated = { ...prev };
+              Object.entries(savedDraft.documentVideos).forEach(([k, v]) => {
+                if (v) updated[k] = v;
+              });
+              return updated;
+            });
+          }
+
+          if (savedDraft.drawnSignature) {
+            setDrawnSignature(savedDraft.drawnSignature);
+          }
+          if (savedDraft.signaturePreview) {
+            setSignaturePreview(savedDraft.signaturePreview);
+          }
+          if (savedDraft.idPicturePreview) {
+            setIdPicturePreview(savedDraft.idPicturePreview);
+          }
+
+          const vs = savedDraft.verificationStates || {};
+          if (vs.ocrVerified !== undefined && vs.ocrVerified !== null) setOcrVerified(vs.ocrVerified);
+          if (vs.coeVerified !== undefined && vs.coeVerified !== null) setCoeVerified(vs.coeVerified);
+          if (vs.gradesVerified !== undefined && vs.gradesVerified !== null) setGradesVerified(vs.gradesVerified);
+          if (vs.idVerified !== undefined && vs.idVerified !== null) setIdVerified(vs.idVerified);
+          if (vs.faceVerified !== undefined && vs.faceVerified !== null) setFaceVerified(vs.faceVerified);
+          if (vs.signatureVerified !== undefined && vs.signatureVerified !== null) setSignatureVerified(vs.signatureVerified);
+
+          if (vs.ocrStatus) setOcrStatus(vs.ocrStatus);
+          if (vs.coeStatus) setCoeStatus(vs.coeStatus);
+          if (vs.gradesStatus) setGradesStatus(vs.gradesStatus);
+          if (vs.idStatus) setIdStatus(vs.idStatus);
+          if (vs.signatureStatus) setSignatureStatus(vs.signatureStatus);
+
+          if (vs.faceMatchResult) setFaceMatchResult(vs.faceMatchResult);
+          if (vs.signatureResults) setSignatureResults(vs.signatureResults);
+          if (vs.indigencyResults && vs.indigencyResults.length > 0) setIndigencyResults(vs.indigencyResults);
+          if (vs.coeResults && vs.coeResults.length > 0) setCoeResults(vs.coeResults);
+          if (vs.gradesResults && vs.gradesResults.length > 0) setGradesResults(vs.gradesResults);
+          if (vs.idResults && vs.idResults.length > 0) setIdResults(vs.idResults);
+          if (vs.ocrDebugLogs && Object.keys(vs.ocrDebugLogs).length > 0) setOcrDebugLogs(vs.ocrDebugLogs);
+
+          if (savedDraft.hasOtherAssistance) {
+            setHasOtherAssistance(savedDraft.hasOtherAssistance);
+          }
+
+          if (savedDraft.currentStep) {
+            setCurrentStep(savedDraft.currentStep);
+          }
         }
 
-        if (savedDraft?.hasOtherAssistance) {
-          setHasOtherAssistance(savedDraft.hasOtherAssistance);
-        }
-
-        if (savedDraft?.currentStep) {
-          setCurrentStep(savedDraft.currentStep);
-        }
         setIsInitialLoading(false);
       }
     };
@@ -3197,10 +3333,43 @@ const StudentInfo = () => {
       return;
     }
 
-    persistDraft(currentUser);
+    persistDraft(
+      currentUser,
+      formData,
+      currentStep,
+      {
+        photos,
+        schoolIdPhotos,
+        documentVideos,
+        drawnSignature,
+        signaturePreview,
+        idPicturePreview,
+        ocrVerified,
+        coeVerified,
+        gradesVerified,
+        idVerified,
+        faceVerified,
+        signatureVerified,
+        ocrStatus,
+        coeStatus,
+        gradesStatus,
+        idStatus,
+        signatureStatus,
+        faceMatchResult,
+        signatureResults,
+        indigencyResults,
+        coeResults,
+        gradesResults,
+        idResults,
+        ocrDebugLogs
+      }
+    );
   }, [
     currentUser, formData, hasOtherAssistance, currentStep, scholarshipName, searchParams,
-    ocrVerified, coeVerified, gradesVerified, idVerified, faceVerified, signatureVerified, faceMatchResult
+    photos, schoolIdPhotos, documentVideos, drawnSignature, signaturePreview, idPicturePreview,
+    ocrVerified, coeVerified, gradesVerified, idVerified, faceVerified, signatureVerified,
+    ocrStatus, coeStatus, gradesStatus, idStatus, signatureStatus, faceMatchResult, signatureResults,
+    indigencyResults, coeResults, gradesResults, idResults, ocrDebugLogs
   ]);
 
 
