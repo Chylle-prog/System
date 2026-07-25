@@ -135,11 +135,12 @@ def _init_face_models():
             from uniface.recognition import ArcFace
             import onnxruntime as ort
 
-            # Limit thread count to avoid OOM and server freeze on Render
+            # Limit thread count & disable CPU memory arena to prevent OOM on Render
             sess_options = ort.SessionOptions()
             sess_options.intra_op_num_threads = 1
             sess_options.inter_op_num_threads = 1
             sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+            sess_options.enable_cpu_mem_arena = False
             sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
             
             providers = ['CPUExecutionProvider']
@@ -218,14 +219,18 @@ def verify_face_with_id(user_photo_bytes, id_photo_bytes):
         similarity = max(0.0, min(1.0, similarity))
         print(f"[FACE] Similarity score: {similarity:.4f} (threshold: {_FACE_MATCH_THRESHOLD})", flush=True)
 
+        clear_heavy_memory()
+
         if similarity >= _FACE_MATCH_THRESHOLD:
             return True, f"Face verified successfully! (similarity: {similarity*100:.1f}%)", similarity
 
         return False, f"Face match uncertain (similarity: {similarity*100:.1f}%). Please ensure clear lighting.", similarity
     except ValueError as exc:
+        clear_heavy_memory()
         return False, str(exc), 0.0
     except Exception as exc:
         print(f"[FACE] Verification error: {exc}", flush=True)
+        clear_heavy_memory()
         return False, f"Face verification error: {str(exc)}", 0.0
 
 
