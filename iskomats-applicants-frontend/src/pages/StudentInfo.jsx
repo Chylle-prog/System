@@ -2461,6 +2461,7 @@ const StudentInfo = () => {
       const targetBarangay = barangay || formData.barangay || formData.streetBarangay || '';
       const { firstName, lastName, middleName } = formData;
       const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
+      const reqSemester = scholarshipDetails?.semester || searchParams.get('semester');
 
       if (!window.Tesseract) {
         throw new Error("WebAssembly OCR Engine (Tesseract.js) failed to load. Please check your internet connection.");
@@ -2584,7 +2585,6 @@ const StudentInfo = () => {
         const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
         const courseOk = course ? courseMatchesText(course, combinedText) : true;
         const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
-        const reqSemester = scholarshipDetails?.semester || searchParams.get('semester');
         const semOk = semesterMatchesText(combinedText, semester || formData.semester, reqSemester);
         const idOk = idNumber ? studentIdNoMatchesText(idNumber, combinedText) : true;
         const yrOk = yearLevel ? yearLevelMatchesText(combinedText, yearLevel) : true;
