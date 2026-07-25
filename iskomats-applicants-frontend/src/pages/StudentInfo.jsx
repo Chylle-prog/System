@@ -3512,43 +3512,59 @@ const StudentInfo = () => {
             setPhotos(prev => {
               const updated = { ...prev };
               Object.entries(savedDraft.photos).forEach(([k, v]) => {
-                if (v) updated[k] = v;
+                if (v && !(typeof v === 'string' && v.startsWith('blob:'))) {
+                  updated[k] = v;
+                }
               });
               return updated;
             });
             setFormData(prev => {
               const updated = { ...prev };
               Object.entries(savedDraft.photos).forEach(([k, v]) => {
-                if (v) updated[k] = v;
+                if (v && !(typeof v === 'string' && v.startsWith('blob:'))) {
+                  updated[k] = v;
+                }
               });
               return updated;
             });
           }
 
           if (savedDraft.schoolIdPhotos && (savedDraft.schoolIdPhotos.front || savedDraft.schoolIdPhotos.back)) {
-            setSchoolIdPhotos(prev => ({
-              front: savedDraft.schoolIdPhotos.front || prev.front,
-              back: savedDraft.schoolIdPhotos.back || prev.back
-            }));
-            setFormData(prev => ({
-              ...prev,
-              schoolIdFront: savedDraft.schoolIdPhotos.front || prev.schoolIdFront,
-              schoolIdBack: savedDraft.schoolIdPhotos.back || prev.schoolIdBack
-            }));
+            setSchoolIdPhotos(prev => {
+              const nextFront = savedDraft.schoolIdPhotos.front;
+              const nextBack = savedDraft.schoolIdPhotos.back;
+              return {
+                front: (nextFront && !(typeof nextFront === 'string' && nextFront.startsWith('blob:'))) ? nextFront : prev.front,
+                back: (nextBack && !(typeof nextBack === 'string' && nextBack.startsWith('blob:'))) ? nextBack : prev.back
+              };
+            });
+            setFormData(prev => {
+              const nextFront = savedDraft.schoolIdPhotos.front;
+              const nextBack = savedDraft.schoolIdPhotos.back;
+              return {
+                ...prev,
+                schoolIdFront: (nextFront && !(typeof nextFront === 'string' && nextFront.startsWith('blob:'))) ? nextFront : prev.schoolIdFront,
+                schoolIdBack: (nextBack && !(typeof nextBack === 'string' && nextBack.startsWith('blob:'))) ? nextBack : prev.schoolIdBack
+              };
+            });
           }
 
           if (savedDraft.documentVideos && Object.keys(savedDraft.documentVideos).length > 0) {
             setDocumentVideos(prev => {
               const updated = { ...prev };
               Object.entries(savedDraft.documentVideos).forEach(([k, v]) => {
-                if (v) updated[k] = v;
+                if (v && !(typeof v === 'string' && v.startsWith('blob:'))) {
+                  updated[k] = v;
+                }
               });
               return updated;
             });
             setFormData(prev => {
               const updated = { ...prev };
               Object.entries(savedDraft.documentVideos).forEach(([k, v]) => {
-                if (v) updated[k] = v;
+                if (v && !(typeof v === 'string' && v.startsWith('blob:'))) {
+                  updated[k] = v;
+                }
               });
               return updated;
             });

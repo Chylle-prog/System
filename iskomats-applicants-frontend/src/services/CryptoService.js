@@ -82,7 +82,7 @@ export const decryptDocument = async (blob, originalType = 'image/jpeg') => {
 
     return new Blob([decrypted], { type: originalType });
   } catch (error) {
-    console.error('[CRYPTO] Decryption failed:', error);
+    console.warn('[CRYPTO] Decryption failed (file might be unencrypted or key mismatched):', error.message);
     return blob;
   }
 };
