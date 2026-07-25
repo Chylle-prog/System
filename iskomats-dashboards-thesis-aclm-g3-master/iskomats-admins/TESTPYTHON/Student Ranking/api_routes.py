@@ -4260,35 +4260,65 @@ def get_announcement_image_by_index(ann_no, idx):
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
 def fetch_cloud_media_bytes(url):
-    """Fetch cloud media bytes (Supabase or HTTP) using Service Role Key authentication if needed."""
+    """Fetch cloud media bytes (Supabase or HTTP) using Service Role Key or Supabase SDK."""
     if not url or not isinstance(url, str) or not url.startswith('http'):
         return None
         
     normalized_url = normalize_supabase_url(url.strip())
+    
+    # 1. Try Supabase SDK download directly
+    try:
+        from project_config import get_supabase_client
+        supabase = get_supabase_client()
+        if supabase and 'supabase.co' in normalized_url:
+            parts = normalized_url.split('/storage/v1/object/')
+            if len(parts) > 1:
+                subpath = parts[1]
+                for prefix in ('public/', 'authenticated/', 'sign/'):
+                    if subpath.startswith(prefix):
+                        subpath = subpath[len(prefix):]
+                        break
+                if '/' in subpath:
+                    bucket_name, file_path = subpath.split('/', 1)
+                    file_path = file_path.split('?')[0]
+                    res_bytes = supabase.storage.from_(bucket_name).download(file_path)
+                    if res_bytes:
+                        return res_bytes
+    except Exception as sdk_err:
+        print(f"[CLOUD MEDIA SDK] SDK download fallback triggered for {normalized_url}: {sdk_err}", flush=True)
+
+    # 2. HTTP GET with Service Role Key / Anon Key
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ISKOMATS-AdminBackend/1.0'
     }
     
     url_to_fetch = normalized_url
-    supabase_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY') or os.environ.get('SUPABASE_KEY')
+    supabase_key = (
+        os.environ.get('SUPABASE_SERVICE_ROLE_KEY') 
+        or os.environ.get('SUPABASE_KEY') 
+        or os.environ.get('SUPABASE_ANON_KEY')
+    )
     if supabase_key and 'supabase.co' in url_to_fetch:
-        if '/object/public/' in url_to_fetch:
-            url_to_fetch = url_to_fetch.replace('/object/public/', '/object/authenticated/')
-            
         headers['apikey'] = supabase_key
         headers['Authorization'] = f"Bearer {supabase_key}"
 
+    urls_to_try = [url_to_fetch]
+    if '/object/public/' in url_to_fetch:
+        urls_to_try.insert(0, url_to_fetch.replace('/object/public/', '/object/authenticated/'))
+    elif '/object/authenticated/' in url_to_fetch:
+        urls_to_try.append(url_to_fetch.replace('/object/authenticated/', '/object/public/'))
+
     try:
         import requests
-        resp = requests.get(url_to_fetch, headers=headers, timeout=20)
-        if resp.status_code == 200:
-            return resp.content
-        else:
-            print(f"[CLOUD MEDIA FETCH] Failed HTTP {resp.status_code} for {url_to_fetch}", flush=True)
-            return None
+        for attempt_url in urls_to_try:
+            resp = requests.get(attempt_url, headers=headers, timeout=20)
+            if resp.status_code == 200 and resp.content:
+                return resp.content
+            print(f"[CLOUD MEDIA FETCH] HTTP {resp.status_code} for {attempt_url}", flush=True)
     except Exception as e:
         print(f"[CLOUD MEDIA FETCH] Error fetching {url_to_fetch}: {e}", flush=True)
-        return None
+
+    return None
 
 
 @api_bp.route('/applicant-image/<int:applicant_no>/<column_name>', methods=['GET'])
