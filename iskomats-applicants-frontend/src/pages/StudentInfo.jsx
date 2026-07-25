@@ -4442,36 +4442,33 @@ const StudentInfo = () => {
           submissionData.append(fileKey, formData[fileKey]);
         }
 
-        const videoKey = `${key}_video`;
-        const videoVal = documentVideos[videoKey];
-        if (videoVal) {
-          if (typeof videoVal === 'string' && videoVal.startsWith('http')) {
-            submissionData.append(videoKey, videoVal);
+        const appendSmartVideo = (fieldName) => {
+          const videoValue = documentVideos[fieldName] || formData[fieldName];
+          if (!videoValue) return;
+
+          if (typeof videoValue === 'string') {
+            if (videoValue.startsWith('http')) {
+              submissionData.append(fieldName, videoValue);
+            } else if (videoValue.startsWith('blob:')) {
+              const publicUrl = formData[fieldName];
+              if (publicUrl && publicUrl.startsWith('http')) {
+                submissionData.append(fieldName, publicUrl);
+              } else {
+                console.warn(`Local blob URL found for ${fieldName} but no public URL.`);
+              }
+            }
           } else {
-            submissionData.append(videoKey, videoVal, `${videoKey}.webm`);
+            submissionData.append(fieldName, videoValue, `${fieldName}.webm`);
           }
-        }
+        };
+
+        appendSmartVideo(`${key}_video`);
       });
 
-      if (documentVideos.face_video) {
-        if (typeof documentVideos.face_video === 'string' && documentVideos.face_video.startsWith('http')) {
-          submissionData.append('face_video', documentVideos.face_video);
-        } else {
-          submissionData.append('face_video', documentVideos.face_video, 'face_video.webm');
-        }
-      }
+      appendSmartVideo('face_video');
 
       ['schoolIdFront_video', 'schoolIdBack_video'].forEach((videoField) => {
-        const videoValue = documentVideos[videoField];
-        if (!videoValue) {
-          return;
-        }
-
-        if (typeof videoValue === 'string' && videoValue.startsWith('http')) {
-          submissionData.append(videoField, videoValue);
-        } else {
-          submissionData.append(videoField, videoValue, `${videoField}.webm`);
-        }
+        appendSmartVideo(videoField);
       });
 
       const result = await applicationAPI.submit(numericReqNo, submissionData, skipVerification);
