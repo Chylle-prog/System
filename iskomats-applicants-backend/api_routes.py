@@ -4326,6 +4326,10 @@ def get_applicant_image(applicant_no, column_name):
         
         # --- CLOUD STORAGE & PROXY URL RESOLUTION ---
         if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
+            # If the URL is an admin proxy pointing to itself, return 404 to avoid infinite recursion loop
+            if '/applicant-image/' in data:
+                return jsonify({'message': 'Image not found (recursive proxy)'}), 404
+
             # Check if this URL is a student proxy route pointing to another field
             if '/applicant/document/raw/' in data:
                 try:

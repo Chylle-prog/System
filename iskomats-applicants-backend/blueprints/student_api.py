@@ -2691,7 +2691,11 @@ def update_profile():
 
             for frontend_key, db_col in document_field_mapping.items():
                 if frontend_key in data:
-                    document_updates[db_col] = data[frontend_key]
+                    val = data[frontend_key]
+                    if isinstance(val, str) and ('/applicant/document/raw/' in val or '/applicant-image/' in val):
+                        print(f"[UPDATE PROFILE] Field {frontend_key} is a backend proxy URL. Skipping update.", flush=True)
+                        continue
+                    document_updates[db_col] = val
 
             if 'fatherName' in data:
                 add_update('father_name', normalize_parent_full_name(data.get('fatherName')))

@@ -634,11 +634,20 @@ const StudentInfo = () => {
           if (!ocrTriggered) {
             ocrTriggered = true;
             cleanup();
-            resolve({
-              valid: true,
-              reason: "Uploaded & Validated",
-              detectedText: accumulatedText.join("\n\n") || "No text extracted before timeout (video proof uploaded)."
-            });
+            const finalDetectedText = accumulatedText.join("\n\n");
+            if (finalDetectedText) {
+              resolve({
+                valid: true,
+                reason: "Uploaded & Validated",
+                detectedText: finalDetectedText
+              });
+            } else {
+              resolve({
+                valid: false,
+                reason: "Verification failed: No readable text extracted from video before timeout.",
+                detectedText: ""
+              });
+            }
           }
         }, 20000);
 
@@ -711,11 +720,20 @@ const StudentInfo = () => {
                   ocrTriggered = true;
                   clearTimeout(timeout);
                   cleanup();
-                  resolve({
-                    valid: true,
-                    reason: "Uploaded & Validated",
-                    detectedText: accumulatedText.join("\n\n") || "No clear text detected in video frames, but video proof is attached."
-                  });
+                  const finalDetectedText = accumulatedText.join("\n\n");
+                  if (finalDetectedText) {
+                    resolve({
+                      valid: true,
+                      reason: "Uploaded & Validated",
+                      detectedText: finalDetectedText
+                    });
+                  } else {
+                    resolve({
+                      valid: false,
+                      reason: "Verification failed: No readable text detected in video frames.",
+                      detectedText: ""
+                    });
+                  }
                 }
               })
               .catch(err => {
@@ -726,11 +744,20 @@ const StudentInfo = () => {
                   ocrTriggered = true;
                   clearTimeout(timeout);
                   cleanup();
-                  resolve({
-                    valid: true,
-                    reason: "Uploaded & Validated",
-                    detectedText: accumulatedText.join("\n\n") || "Video proof uploaded."
-                  });
+                  const finalDetectedText = accumulatedText.join("\n\n");
+                  if (finalDetectedText) {
+                    resolve({
+                      valid: true,
+                      reason: "Uploaded & Validated",
+                      detectedText: finalDetectedText
+                    });
+                  } else {
+                    resolve({
+                      valid: false,
+                      reason: "Verification failed: Unable to extract text from video.",
+                      detectedText: ""
+                    });
+                  }
                 }
               });
           } catch (err) {

@@ -773,7 +773,7 @@ def normalize_text(text):
     return re.sub(r'[^a-z0-9\s]', ' ', str(text).lower()).strip()
 
 
-def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None):
+def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None, middle_name=None):
     """
     Verifies that the student's FULL name (first + last together) appears as a
     contiguous or near-contiguous sequence in the document text — not just each
@@ -805,6 +805,8 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None)
     if not last_ok:
         last_ok  = all(re.search(rf'\b{re.escape(w)}\b', norm_raw) for w in last_words)  if last_words  else True
 
+    mid_clean   = normalize_text(middle_name or '')
+
     # ---- Full-name sequence check (the key anti-spoofing step) ----
     def build_sequence_regex(name_str):
         """Build a regex that requires all name words in order, with OCR noise allowed between."""
@@ -815,26 +817,34 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None)
         pattern = r'[^a-z0-9]{0,4}'.join(words)
         return re.compile(r'\b' + pattern + r'\b')
 
-    full_fwd = f'{first_clean} {last_clean}'  # "jose rizal"
-    full_rev = f'{last_clean} {first_clean}'  # "rizal jose" (surname-first, common in PH documents)
+    sequences_to_check = [
+        f'{first_clean} {last_clean}',
+        f'{last_clean} {first_clean}'
+    ]
+    if mid_clean:
+        sequences_to_check.extend([
+            f'{first_clean} {mid_clean} {last_clean}',
+            f'{last_clean} {first_clean} {mid_clean}',
+            f'{last_clean} {mid_clean} {first_clean}'
+        ])
 
-    rx_fwd = build_sequence_regex(full_fwd)
-    rx_rev = build_sequence_regex(full_rev)
-
-    sequence_ok = (
-        (rx_fwd and bool(rx_fwd.search(norm_target))) or
-        (rx_rev and bool(rx_rev.search(norm_target))) or
-        (rx_fwd and bool(rx_fwd.search(norm_raw))) or
-        (rx_rev and bool(rx_rev.search(norm_raw)))
-    )
+    sequence_ok = False
+    for seq in sequences_to_check:
+        rx = build_sequence_regex(seq)
+        if rx and (rx.search(norm_target) or rx.search(norm_raw)):
+            sequence_ok = True
+            break
 
     # ---- Fuzzy full-name fallback (handles heavy OCR noise on the name field) ----
     if not sequence_ok:
         # Compare expected full name against whatever the OCR extracted for the name field
-        ratio_fwd = difflib.SequenceMatcher(None, full_fwd, norm_target).ratio()
-        ratio_rev = difflib.SequenceMatcher(None, full_rev, norm_target).ratio()
+        max_ratio = 0
+        for seq in sequences_to_check:
+            ratio = difflib.SequenceMatcher(None, seq, norm_target).ratio()
+            max_ratio = max(max_ratio, ratio)
+            
         # Require >= 0.70 (stricter than before) so "Jose Laurel" vs "Jose Rizal" can't pass
-        if max(ratio_fwd, ratio_rev) >= 0.70:
+        if max_ratio >= 0.70:
             sequence_ok = True
 
     return first_ok, last_ok, sequence_ok
@@ -1011,7 +1021,7 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
     # 1. NAME MATCHING — full sequence required (not just word-by-word independently)
     target_name_str = parsed_fields.get('name', raw_text)
     first_ok, last_ok, sequence_ok = verify_name_sequence(
-        first_name, last_name, target_name_str, raw_text
+        first_name, last_name, target_name_str, raw_text, middle_name
     )
 
     if not (first_ok and last_ok and sequence_ok):
@@ -1266,7 +1276,7 @@ def verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_
     # 1. NAME MATCHING — full sequence required (not just word-by-word independently)
     target_name_str = parsed_fields.get('name', raw_text)
     first_ok, last_ok, sequence_ok = verify_name_sequence(
-        first_name, last_name, target_name_str, raw_text
+        first_name, last_name, target_name_str, raw_text, middle_name
     )
 
     if not (first_ok and last_ok and sequence_ok):
@@ -1364,7 +1374,7 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
 
     # NAME MATCHING — full sequence required (not just word-by-word independently)
     first_ok, last_ok, sequence_ok = verify_name_sequence(
-        first_name, last_name, raw_text, raw_text
+        first_name, last_name, raw_text, raw_text, middle_name
     )
 
     if not (first_ok and last_ok and sequence_ok):
