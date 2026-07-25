@@ -1698,11 +1698,17 @@ const StudentInfo = () => {
     }
 
     const labelMap = {
-      name: [/name\s*[:\-]\s*(.+)/i, /student\s*name\s*[:\-]\s*(.+)/i, /name\s*of\s*student\s*[:\-]\s*(.+)/i, /pangalan\s*[:\-]\s*(.+)/i],
-      studentId: [/student\s*(?:no|number|id)\s*[:\-]?\s*(.+)/i, /id\s*(?:no|number)\s*[:\-]?\s*(.+)/i, /sr\s*code\s*[:\-]?\s*(.+)/i, /reg\s*no\s*[:\-]?\s*(.+)/i],
-      yearLevel: [/year\s*level\s*[:\-]\s*(.+)/i, /yr\s*level\s*[:\-]\s*(.+)/i, /year\s*[:\-]\s*(.+)/i, /grade\s*level\s*[:\-]\s*(.+)/i],
-      course: [/course\s*[:\-]\s*(.+)/i, /program\s*[:\-]\s*(.+)/i, /degree\s*[:\-]\s*(.+)/i, /strand\s*[:\-]\s*(.+)/i],
-      schoolYearSem: [/school\s*year\s*(?:sem)?\s*[:\-]\s*(.+)/i, /academic\s*year\s*[:\-]\s*(.+)/i, /a\.?y\.?\s*[:\-]\s*(.+)/i, /s\.?y\.?\s*[:\-]\s*(.+)/i],
+      name: [
+        /name\s*[:\-1l\|\]\}\)]\s*(.+)/i, 
+        /student\s*name\s*[:\-1l\|\]\}\)]\s*(.+)/i, 
+        /name\s*of\s*student\s*[:\-1l\|\]\}\)]\s*(.+)/i, 
+        /pangalan\s*[:\-1l\|\]\}\)]\s*(.+)/i,
+        /name\s+(.+)/i
+      ],
+      studentId: [/student\s*(?:no|number|id)\s*[:\-1l\|\]\}\)]?\s*(.+)/i, /id\s*(?:no|number)\s*[:\-1l\|\]\}\)]?\s*(.+)/i, /sr\s*code\s*[:\-1l\|\]\}\)]?\s*(.+)/i, /reg\s*no\s*[:\-1l\|\]\}\)]?\s*(.+)/i],
+      yearLevel: [/year\s*level\s*[:\-1l\|\]\}\)]\s*(.+)/i, /yr\s*level\s*[:\-1l\|\]\}\)]\s*(.+)/i, /year\s*[:\-1l\|\]\}\)]\s*(.+)/i, /grade\s*level\s*[:\-1l\|\]\}\)]\s*(.+)/i],
+      course: [/course\s*[:\-1l\|\]\}\)]\s*(.+)/i, /program\s*[:\-1l\|\]\}\)]\s*(.+)/i, /degree\s*[:\-1l\|\]\}\)]\s*(.+)/i, /strand\s*[:\-1l\|\]\}\)]\s*(.+)/i],
+      schoolYearSem: [/school\s*year\s*(?:sem)?\s*[:\-1l\|\]\}\)]\s*(.+)/i, /academic\s*year\s*[:\-1l\|\]\}\)]\s*(.+)/i, /a\.?y\.?\s*[:\-1l\|\]\}\)]\s*(.+)/i, /s\.?y\.?\s*[:\-1l\|\]\}\)]\s*(.+)/i],
       semester: [/semester\s*[:\-]\s*(.+)/i, /sem\s*[:\-]\s*(.+)/i, /term\s*[:\-]\s*(.+)/i],
       barangay: [/barangay\s*[:\-]\s*(.+)/i, /brgy\s*[:\-]\s*(.+)/i, /resident\s*of\s*(?:brgy|barangay)?\s*[:\-]?\s*(.+)/i]
     };
