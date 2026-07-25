@@ -78,6 +78,7 @@ from services.applicant_document_service import (
     applicant_document_expr,
     applicant_document_join_sql,
     fetch_applicant_document_values,
+    normalize_supabase_url,
 )
 
 def convert_bytea_array_to_urls(bytea_array):
@@ -1147,65 +1148,59 @@ def send_announcement_emails(
     subject_prefix='New Announcement from',
     intro_prefix='You have received a new announcement from',
 ):
-    """Send announcement emails to applicants via Gmail API (runs asynchronously).
-    
-    Args:
-        title: Announcement title
-        message: Announcement message
-        provider_no: Provider number
-        provider_name: Provider name (optional)
-        send_to_all: If True, send to ALL applicants in the system. If False, send only to applicants who applied to this provider.
-    """
-    if not GMAIL_SENDER_EMAIL:
+    """Send announcement emails to applicants via Gmail API (runs asynchronously with parallel worker threads)."""
+    sender_email = (
+        os.environ.get('GMAIL_SENDER_EMAIL')
+        or os.environ.get('SMTP_SENDER_EMAIL')
+        or os.environ.get('SMTP_EMAIL')
+        or (globals().get('GMAIL_SENDER_EMAIL'))
+    )
+    if not sender_email:
         print("[EMAIL ERROR] Gmail sender email is not configured")
         return False
     
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        applicant_email_table = get_applicant_email_table(cur)
+        with get_db() as conn:
+            cur = conn.cursor()
+            applicant_email_table = get_applicant_email_table(cur)
         
-        # Get applicants based on send_to_all flag
-        if send_to_all:
-            # Send to ALL verified students in the system
-            # We join with applicants to get names if they exist
-            cur.execute(f"""
-                SELECT DISTINCT e.applicant_no, a.first_name, a.last_name, e.email_address
-                FROM {applicant_email_table} e
-                LEFT JOIN applicants a ON e.applicant_no = a.applicant_no
-                WHERE e.is_verified = TRUE AND e.email_address IS NOT NULL
-            """)
-        else:
-            # Send only to applicants who applied to this provider's scholarships
-            cur.execute(f"""
-                SELECT DISTINCT a.applicant_no, a.first_name, a.last_name, COALESCE(e.email_address, a.email) AS email_address
-                FROM applicants a
-                INNER JOIN applicant_status ast ON a.applicant_no = ast.applicant_no
-                INNER JOIN scholarships s ON ast.scholarship_no = s.req_no
-                LEFT JOIN {applicant_email_table} e ON a.applicant_no = e.applicant_no
-                WHERE s.pro_no = %s AND COALESCE(e.email_address, a.email) IS NOT NULL
-            """, (provider_no,))
+            if send_to_all:
+                cur.execute(f"""
+                    SELECT DISTINCT e.applicant_no, a.first_name, a.last_name, e.email_address
+                    FROM {applicant_email_table} e
+                    LEFT JOIN applicants a ON e.applicant_no = a.applicant_no
+                    WHERE e.is_verified = TRUE AND e.email_address IS NOT NULL
+                """)
+            else:
+                cur.execute(f"""
+                    SELECT DISTINCT a.applicant_no, a.first_name, a.last_name, COALESCE(e.email_address, a.email) AS email_address
+                    FROM applicants a
+                    INNER JOIN applicant_status ast ON a.applicant_no = ast.applicant_no
+                    INNER JOIN scholarships s ON ast.scholarship_no = s.req_no
+                    LEFT JOIN {applicant_email_table} e ON a.applicant_no = e.applicant_no
+                    WHERE s.pro_no = %s AND COALESCE(e.email_address, a.email) IS NOT NULL
+                """, (provider_no,))
         
-        applicants = cur.fetchall()
-        conn.close()
+            applicants = cur.fetchall()
         
-        if not applicants:
-            print(f"[EMAIL INFO] No applicants found to send announcement, provider {provider_no}")
-            return True
+            if not applicants:
+                print(f"[EMAIL INFO] No applicants found to send announcement, provider {provider_no}")
+                return True
         
-        print(f"[EMAIL BACKGROUND] Starting email batch job for announcement - {len(applicants)} recipients")
+            print(f"[EMAIL BACKGROUND] Starting parallel email batch job for announcement - {len(applicants)} recipients", flush=True)
         
-        provider_label = provider_name or 'ISKOMATS'
-        access_token = fetch_google_access_token()
-        success_count = 0
-        fail_count = 0
-        
-        for idx, applicant in enumerate(applicants):
-            try:
-                email_address = applicant['email_address']
-                first_name = applicant['first_name'] or 'Applicant'
+            provider_label = provider_name or 'ISKOMATS'
+            access_token = fetch_google_access_token()
+            if not access_token:
+                print("[EMAIL ERROR] Failed to obtain access token for announcement email dispatch", flush=True)
+                return False
+
+            def send_single_email(applicant):
+                try:
+                    email_address = applicant['email_address']
+                    first_name = applicant['first_name'] or 'Applicant'
                 
-                body = f"""Hello {first_name},
+                    body = f"""Hello {first_name},
 
 {intro_prefix} {provider_label}:
 
@@ -1219,41 +1214,42 @@ Please log in to your ISKOMATS account for more details.
 Best regards,
 ISKOMATS Team
 """
-                
-                # Create proper MIME email using MIMEText
-                msg = MIMEText(body)
-                msg['Subject'] = f'{subject_prefix} {provider_label}'
-                msg['From'] = GMAIL_SENDER_EMAIL
-                msg['To'] = email_address
-                
-                raw_bytes = msg.as_bytes()
-                raw_bytes = raw_bytes.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
-                encoded_message = base64.urlsafe_b64encode(raw_bytes).decode('utf-8')
-                gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
-                gmail_request = urllib_request.Request(
-                    'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
-                    data=gmail_request_body,
-                    headers={
-                        'Authorization': f'Bearer {access_token}',
-                        'Content-Type': 'application/json',
-                    },
-                    method='POST',
-                )
-                
-                with urllib_request.urlopen(gmail_request, timeout=30) as response:
-                    response.read()
-                success_count += 1
-                
-                # Log progress every 10 emails
-                if (idx + 1) % 10 == 0:
-                    print(f"[EMAIL BACKGROUND] Progress: {idx + 1}/{len(applicants)} emails sent")
-                
-            except Exception as e:
-                print(f"[EMAIL ERROR] Failed to send to {applicant['email_address']}: {str(e)}", flush=True)
-                fail_count += 1
+                    msg = MIMEText(body)
+                    msg['Subject'] = f'{subject_prefix} {provider_label}'
+                    msg['From'] = sender_email
+                    msg['To'] = email_address
+                    
+                    raw_bytes = msg.as_bytes().replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+                    encoded_message = base64.urlsafe_b64encode(raw_bytes).decode('utf-8')
+                    gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
+                    
+                    gmail_request = urllib_request.Request(
+                        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+                        data=gmail_request_body,
+                        headers={
+                            'Authorization': f'Bearer {access_token}',
+                            'Content-Type': 'application/json',
+                        },
+                        method='POST',
+                    )
+                    
+                    with urllib_request.urlopen(gmail_request, timeout=15) as response:
+                        response.read()
+                    return True
+                except Exception as e:
+                    print(f"[EMAIL ERROR] Failed to send to {applicant.get('email_address')}: {e}", flush=True)
+                    return False
+
+            from concurrent.futures import ThreadPoolExecutor
+            success_count = 0
+            fail_count = 0
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                results = list(executor.map(send_single_email, applicants))
+                success_count = sum(1 for r in results if r)
+                fail_count = len(results) - success_count
         
-        print(f"[EMAIL COMPLETE] Sent {success_count}/{len(applicants)} announcement emails (failed: {fail_count}) for provider {provider_no}", flush=True)
-        return True
+            print(f"[EMAIL COMPLETE] Sent {success_count}/{len(applicants)} announcement emails (failed: {fail_count}) for provider {provider_no}", flush=True)
+            return True
         
     except Exception as e:
         print(f"[EMAIL ERROR] Critical error in background email job: {str(e)}", flush=True)
@@ -1262,39 +1258,35 @@ ISKOMATS Team
 
 
 def notify_all_applicants(title, message, notif_type='scholarship'):
-    """Send an in-app notification to all applicants."""
-    conn = None
+    """Send an in-app notification to all applicants using a single fast set-based SQL query."""
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        applicant_email_table = get_applicant_email_table(cur)
-        cur.execute(
-            f"""
-            SELECT DISTINCT applicant_no
-            FROM {applicant_email_table}
-            WHERE is_verified = TRUE AND applicant_no IS NOT NULL
-            """
-        )
-        applicants = cur.fetchall()
-        conn.close()
-        conn = None
-
-        for applicant in applicants:
-            create_notification(
-                user_no=applicant['applicant_no'],
-                title=title,
-                message=message,
-                notif_type=notif_type,
+        with get_db() as conn:
+            cur = conn.cursor()
+            applicant_email_table = get_applicant_email_table(cur)
+            cur.execute(
+                f"""
+                INSERT INTO notifications (user_no, title, message, type, expires_at, created_at)
+                SELECT DISTINCT applicant_no, %s, %s, %s, NOW() + INTERVAL '10 days', NOW()
+                FROM {applicant_email_table}
+                WHERE is_verified = TRUE AND applicant_no IS NOT NULL
+                """,
+                (title, message, notif_type)
             )
+            conn.commit()
+            print(f"[NOTIF BATCH] Fast batch notification sent to all applicants (title='{title}')", flush=True)
     except Exception as exc:
-        print(f"[NOTIF ERROR] Failed to notify applicants: {exc}")
-    finally:
-        if conn:
-            conn.close()
+        print(f"[NOTIF ERROR] Failed to batch notify applicants: {exc}", flush=True)
 
 
 def run_background_task(target, *args, **kwargs):
-    worker = threading.Thread(target=target, args=args, kwargs=kwargs, daemon=True)
+    from flask import current_app
+    app = current_app._get_current_object()
+    
+    def context_target(*a, **kw):
+        with app.app_context():
+            target(*a, **kw)
+            
+    worker = threading.Thread(target=context_target, args=args, kwargs=kwargs, daemon=True)
     worker.start()
     return worker
 
@@ -4243,35 +4235,103 @@ def get_announcement_image_by_index(ann_no, idx):
         traceback.print_exc()
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
+def fetch_cloud_media_bytes(url):
+    """Fetch cloud media bytes (Supabase or HTTP) using Service Role Key authentication if needed."""
+    if not url or not isinstance(url, str) or not url.startswith('http'):
+        return None
+        
+    normalized_url = normalize_supabase_url(url.strip())
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ISKOMATS-AdminBackend/1.0'
+    }
+    
+    url_to_fetch = normalized_url
+    supabase_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY') or os.environ.get('SUPABASE_KEY')
+    if supabase_key and 'supabase.co' in url_to_fetch:
+        if '/object/public/' in url_to_fetch:
+            url_to_fetch = url_to_fetch.replace('/object/public/', '/object/authenticated/')
+            
+        headers['apikey'] = supabase_key
+        headers['Authorization'] = f"Bearer {supabase_key}"
+
+    try:
+        import requests
+        resp = requests.get(url_to_fetch, headers=headers, timeout=20)
+        if resp.status_code == 200:
+            return resp.content
+        else:
+            print(f"[CLOUD MEDIA FETCH] Failed HTTP {resp.status_code} for {url_to_fetch}", flush=True)
+            return None
+    except Exception as e:
+        print(f"[CLOUD MEDIA FETCH] Error fetching {url_to_fetch}: {e}", flush=True)
+        return None
+
+
 @api_bp.route('/applicant-image/<int:applicant_no>/<column_name>', methods=['GET'])
 def get_applicant_image(applicant_no, column_name):
     """Get applicant image or document as binary file on demand (Lazy Loading)"""
     allowed_columns = [
         'indigency_doc', 'enrollment_certificate_doc', 'grades_doc', 
         'schoolID_photo', 'id_img_front', 'id_img_back', 'id_pic', 'profile_picture',
-        'signature_image_data'
+        'signature_image_data',
+        'id_vid_url', 'indigency_vid_url', 'grades_vid_url',
+        'enrollment_certificate_vid_url', 'schoolid_front_vid_url', 'schoolid_back_vid_url'
     ]
     if column_name not in allowed_columns:
         return jsonify({'message': 'Invalid column name'}), 400
         
     try:
-        conn = get_db()
-        cursor = conn.cursor()
+        with get_db() as conn:
+            cursor = conn.cursor()
 
-        row = fetch_applicant_document_values(cursor, applicant_no, [column_name])
-        cursor.close()
-        conn.close()
+            row = fetch_applicant_document_values(cursor, applicant_no, [column_name])
         
-        if not row or not row[column_name]:
-            return jsonify({'message': 'Image not found'}), 404
+            if not row or not row.get(column_name):
+                return jsonify({'message': 'Image not found'}), 404
         
-        data = row[column_name]
+            data = row[column_name]
         
-        # Handle Supabase Storage URLs (MIGRATION: BYTEA -> TEXT)
-        if isinstance(data, str) and data.startswith('http'):
-            from flask import redirect
-            print(f"[APPLICANT IMAGE] Redirecting to storage: {data}")
-            return redirect(data)
+            if hasattr(data, 'tobytes'):
+                data = data.tobytes()
+            elif isinstance(data, memoryview):
+                data = bytes(data)
+        
+        # --- CLOUD STORAGE & PROXY URL RESOLUTION ---
+        if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
+            # Check if this URL is a student proxy route pointing to another field
+            if '/applicant/document/raw/' in data:
+                try:
+                    parts = data.split('/applicant/document/raw/')
+                    if len(parts) > 1:
+                        raw_field = parts[1].split('?')[0]
+                        field_mapping = {
+                            'face_video': 'id_vid_url',
+                            'mayorIndigency_video': 'indigency_vid_url',
+                            'mayorGrades_video': 'grades_vid_url',
+                            'mayorCOE_video': 'enrollment_certificate_vid_url',
+                            'schoolIdFront_video': 'schoolid_front_vid_url',
+                            'schoolIdBack_video': 'schoolid_back_vid_url',
+                            'id_front': 'id_img_front',
+                            'id_back': 'id_img_back',
+                            'face_photo': 'id_pic',
+                        }
+                        mapped_col = field_mapping.get(raw_field, raw_field)
+                        if mapped_col in allowed_columns and mapped_col != column_name:
+                            with get_db() as conn:
+                                cursor = conn.cursor()
+                                re_row = fetch_applicant_document_values(cursor, applicant_no, [mapped_col])
+                                if re_row and re_row.get(mapped_col):
+                                    data = re_row[mapped_col]
+                except Exception as ex:
+                    print(f"[APPLICANT IMAGE] Proxy resolution error: {ex}", flush=True)
+
+        if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
+            fetched_bytes = fetch_cloud_media_bytes(data)
+            if fetched_bytes:
+                data = fetched_bytes
+            else:
+                from flask import redirect
+                return redirect(normalize_supabase_url(data))
             
         # Convert memoryview to bytes if needed
         if hasattr(data, 'tobytes'):

@@ -1144,16 +1144,14 @@ def send_announcement_emails(
     subject_prefix='New Announcement from',
     intro_prefix='You have received a new announcement from',
 ):
-    """Send announcement emails to applicants via Gmail API (runs asynchronously).
-    
-    Args:
-        title: Announcement title
-        message: Announcement message
-        provider_no: Provider number
-        provider_name: Provider name (optional)
-        send_to_all: If True, send to ALL applicants in the system. If False, send only to applicants who applied to this provider.
-    """
-    if not GMAIL_SENDER_EMAIL:
+    """Send announcement emails to applicants via Gmail API (runs asynchronously with parallel worker threads)."""
+    sender_email = (
+        os.environ.get('GMAIL_SENDER_EMAIL')
+        or os.environ.get('SMTP_SENDER_EMAIL')
+        or os.environ.get('SMTP_EMAIL')
+        or (globals().get('GMAIL_SENDER_EMAIL'))
+    )
+    if not sender_email:
         print("[EMAIL ERROR] Gmail sender email is not configured")
         return False
     
@@ -1162,10 +1160,7 @@ def send_announcement_emails(
             cur = conn.cursor()
             applicant_email_table = get_applicant_email_table(cur)
         
-            # Get applicants based on send_to_all flag
             if send_to_all:
-                # Send to ALL verified students in the system
-                # We join with applicants to get names if they exist
                 cur.execute(f"""
                     SELECT DISTINCT e.applicant_no, a.first_name, a.last_name, e.email_address
                     FROM {applicant_email_table} e
@@ -1173,7 +1168,6 @@ def send_announcement_emails(
                     WHERE e.is_verified = TRUE AND e.email_address IS NOT NULL
                 """)
             else:
-                # Send only to applicants who applied to this provider's scholarships
                 cur.execute(f"""
                     SELECT DISTINCT a.applicant_no, a.first_name, a.last_name, COALESCE(e.email_address, a.email) AS email_address
                     FROM applicants a
@@ -1189,14 +1183,15 @@ def send_announcement_emails(
                 print(f"[EMAIL INFO] No applicants found to send announcement, provider {provider_no}")
                 return True
         
-            print(f"[EMAIL BACKGROUND] Starting email batch job for announcement - {len(applicants)} recipients")
+            print(f"[EMAIL BACKGROUND] Starting parallel email batch job for announcement - {len(applicants)} recipients", flush=True)
         
             provider_label = provider_name or 'ISKOMATS'
             access_token = fetch_google_access_token()
-            success_count = 0
-            fail_count = 0
-        
-            for idx, applicant in enumerate(applicants):
+            if not access_token:
+                print("[EMAIL ERROR] Failed to obtain access token for announcement email dispatch", flush=True)
+                return False
+
+            def send_single_email(applicant):
                 try:
                     email_address = applicant['email_address']
                     first_name = applicant['first_name'] or 'Applicant'
@@ -1215,17 +1210,15 @@ Please log in to your ISKOMATS account for more details.
 Best regards,
 ISKOMATS Team
 """
-                
-                    # Create proper MIME email using MIMEText
                     msg = MIMEText(body)
                     msg['Subject'] = f'{subject_prefix} {provider_label}'
-                    msg['From'] = GMAIL_SENDER_EMAIL
+                    msg['From'] = sender_email
                     msg['To'] = email_address
                     
-                    raw_bytes = msg.as_bytes()
-                    raw_bytes = raw_bytes.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+                    raw_bytes = msg.as_bytes().replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
                     encoded_message = base64.urlsafe_b64encode(raw_bytes).decode('utf-8')
                     gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
+                    
                     gmail_request = urllib_request.Request(
                         'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
                         data=gmail_request_body,
@@ -1236,20 +1229,23 @@ ISKOMATS Team
                         method='POST',
                     )
                     
-                    with urllib_request.urlopen(gmail_request, timeout=30) as response:
+                    with urllib_request.urlopen(gmail_request, timeout=15) as response:
                         response.read()
-                    success_count += 1
-                    
-                    # Log progress every 10 emails
-                    if (idx + 1) % 10 == 0:
-                        print(f"[EMAIL BACKGROUND] Progress: {idx + 1}/{len(applicants)} emails sent")
-                
+                    return True
                 except Exception as e:
-                    print(f"[EMAIL ERROR] Failed to send to {applicant['email_address']}: {str(e)}", flush=True)
-                    fail_count += 1
+                    print(f"[EMAIL ERROR] Failed to send to {applicant.get('email_address')}: {e}", flush=True)
+                    return False
+
+            from concurrent.futures import ThreadPoolExecutor
+            success_count = 0
+            fail_count = 0
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                results = list(executor.map(send_single_email, applicants))
+                success_count = sum(1 for r in results if r)
+                fail_count = len(results) - success_count
         
-        print(f"[EMAIL COMPLETE] Sent {success_count}/{len(applicants)} announcement emails (failed: {fail_count}) for provider {provider_no}", flush=True)
-        return True
+            print(f"[EMAIL COMPLETE] Sent {success_count}/{len(applicants)} announcement emails (failed: {fail_count}) for provider {provider_no}", flush=True)
+            return True
         
     except Exception as e:
         print(f"[EMAIL ERROR] Critical error in background email job: {str(e)}", flush=True)
@@ -1258,34 +1254,24 @@ ISKOMATS Team
 
 
 def notify_all_applicants(title, message, notif_type='scholarship'):
-    """Send an in-app notification to all applicants."""
-    conn = None
+    """Send an in-app notification to all applicants using a single fast set-based SQL query."""
     try:
         with get_db() as conn:
             cur = conn.cursor()
             applicant_email_table = get_applicant_email_table(cur)
             cur.execute(
                 f"""
-                SELECT DISTINCT applicant_no
+                INSERT INTO notifications (user_no, title, message, type, expires_at, created_at)
+                SELECT DISTINCT applicant_no, %s, %s, %s, NOW() + INTERVAL '10 days', NOW()
                 FROM {applicant_email_table}
                 WHERE is_verified = TRUE AND applicant_no IS NOT NULL
-                """
+                """,
+                (title, message, notif_type)
             )
-            applicants = cur.fetchall()
-            conn = None
-
-            for applicant in applicants:
-                create_notification(
-                    user_no=applicant['applicant_no'],
-                    title=title,
-                    message=message,
-                    notif_type=notif_type,
-                )
+            conn.commit()
+            print(f"[NOTIF BATCH] Fast batch notification sent to all applicants (title='{title}')", flush=True)
     except Exception as exc:
-        print(f"[NOTIF ERROR] Failed to notify applicants: {exc}")
-    finally:
-        if conn:
-            conn.close()
+        print(f"[NOTIF ERROR] Failed to batch notify applicants: {exc}", flush=True)
 
 
 def run_background_task(target, *args, **kwargs):
@@ -4222,6 +4208,38 @@ def get_announcement_image_by_index(ann_no, idx):
         traceback.print_exc()
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
+def fetch_cloud_media_bytes(url):
+    """Fetch cloud media bytes (Supabase or HTTP) using Service Role Key authentication if needed."""
+    if not url or not isinstance(url, str) or not url.startswith('http'):
+        return None
+        
+    normalized_url = normalize_supabase_url(url.strip())
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ISKOMATS-AdminBackend/1.0'
+    }
+    
+    url_to_fetch = normalized_url
+    supabase_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY') or os.environ.get('SUPABASE_KEY')
+    if supabase_key and 'supabase.co' in url_to_fetch:
+        if '/object/public/' in url_to_fetch:
+            url_to_fetch = url_to_fetch.replace('/object/public/', '/object/authenticated/')
+            
+        headers['apikey'] = supabase_key
+        headers['Authorization'] = f"Bearer {supabase_key}"
+
+    try:
+        import requests
+        resp = requests.get(url_to_fetch, headers=headers, timeout=20)
+        if resp.status_code == 200:
+            return resp.content
+        else:
+            print(f"[CLOUD MEDIA FETCH] Failed HTTP {resp.status_code} for {url_to_fetch}", flush=True)
+            return None
+    except Exception as e:
+        print(f"[CLOUD MEDIA FETCH] Error fetching {url_to_fetch}: {e}", flush=True)
+        return None
+
+
 @api_bp.route('/applicant-image/<int:applicant_no>/<column_name>', methods=['GET'])
 def get_applicant_image(applicant_no, column_name):
     """Get applicant image or document as binary file on demand (Lazy Loading)"""
@@ -4246,39 +4264,47 @@ def get_applicant_image(applicant_no, column_name):
         
             data = row[column_name]
         
-            # Materialize memoryview to bytes BEFORE closing the connection,
-            # since psycopg2 memoryview objects reference the connection buffer
-            # and become invalid after the connection context exits.
             if hasattr(data, 'tobytes'):
                 data = data.tobytes()
             elif isinstance(data, memoryview):
                 data = bytes(data)
         
-        # --- CLOUD STORAGE REDIRECT (Optimization #8) ---
-        # If the data is a string starting with http, it's a cloud URL. Redirect instead of serving bytes.
+        # --- CLOUD STORAGE & PROXY URL RESOLUTION ---
         if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
-            from flask import redirect
-            normalized_url = normalize_supabase_url(data)
-            
-            # If encryption is active, we MUST fetch the data ourselves and decrypt it
-            # instead of redirecting the browser to the encrypted file in Supabase.
-            if _fernet:
-                import requests
-                print(f"[APPLICANT IMAGE] Fetching and decrypting cloud URL for {column_name}: {normalized_url[:60]}...", flush=True)
+            # Check if this URL is a student proxy route pointing to another field
+            if '/applicant/document/raw/' in data:
                 try:
-                    resp = requests.get(normalized_url, timeout=30)
-                    if resp.status_code == 200:
-                        data = resp.content
-                        # Fall through to decryption logic below
-                    else:
-                        print(f"[APPLICANT IMAGE] Failed to fetch cloud URL: {resp.status_code}")
-                        return redirect(normalized_url) # Fallback to redirect if fetch fails
-                except Exception as e:
-                    print(f"[APPLICANT IMAGE] Request error: {e}")
-                    return redirect(normalized_url)
+                    parts = data.split('/applicant/document/raw/')
+                    if len(parts) > 1:
+                        raw_field = parts[1].split('?')[0]
+                        field_mapping = {
+                            'face_video': 'id_vid_url',
+                            'mayorIndigency_video': 'indigency_vid_url',
+                            'mayorGrades_video': 'grades_vid_url',
+                            'mayorCOE_video': 'enrollment_certificate_vid_url',
+                            'schoolIdFront_video': 'schoolid_front_vid_url',
+                            'schoolIdBack_video': 'schoolid_back_vid_url',
+                            'id_front': 'id_img_front',
+                            'id_back': 'id_img_back',
+                            'face_photo': 'id_pic',
+                        }
+                        mapped_col = field_mapping.get(raw_field, raw_field)
+                        if mapped_col in allowed_columns and mapped_col != column_name:
+                            with get_db() as conn:
+                                cursor = conn.cursor()
+                                re_row = fetch_applicant_document_values(cursor, applicant_no, [mapped_col])
+                                if re_row and re_row.get(mapped_col):
+                                    data = re_row[mapped_col]
+                except Exception as ex:
+                    print(f"[APPLICANT IMAGE] Proxy resolution error: {ex}", flush=True)
+
+        if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
+            fetched_bytes = fetch_cloud_media_bytes(data)
+            if fetched_bytes:
+                data = fetched_bytes
             else:
-                print(f"[APPLICANT IMAGE] Redirecting {column_name} (Applicant {applicant_no}) to cloud URL: {normalized_url[:60]}...", flush=True)
-                return redirect(normalized_url)
+                from flask import redirect
+                return redirect(normalize_supabase_url(data))
 
         # Convert to bytes if not already
         if not isinstance(data, (bytes, bytearray)):
