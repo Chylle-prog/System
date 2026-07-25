@@ -772,6 +772,73 @@ def normalize_text(text):
         return ""
     return re.sub(r'[^a-z0-9\s]', ' ', str(text).lower()).strip()
 
+
+def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None):
+    """
+    Verifies that the student's FULL name (first + last together) appears as a
+    contiguous or near-contiguous sequence in the document text — not just each
+    word independently.
+
+    This prevents false positives like 'Jose Laurel' matching a document that
+    contains 'Jose Rizal' simply because the first name 'Jose' is present.
+
+    Returns:
+        (first_ok, last_ok, sequence_ok)
+        - first_ok / last_ok: individual word-level presence (for UI display)
+        - sequence_ok: True only when the combined full-name appears as a sequence
+    """
+    first_clean = normalize_text(first_name or '')
+    last_clean  = normalize_text(last_name  or '')
+    norm_target = normalize_text(target_text or '')
+    norm_raw    = normalize_text(full_raw_text or target_text or '')
+
+    first_words = [w for w in first_clean.split() if len(w) >= 2]
+    last_words  = [w for w in last_clean.split()  if len(w) >= 2]
+
+    # Individual word presence (for UI / failure messages)
+    first_ok = all(re.search(rf'\b{re.escape(w)}\b', norm_target) for w in first_words) if first_words else True
+    last_ok  = all(re.search(rf'\b{re.escape(w)}\b', norm_target) for w in last_words)  if last_words  else True
+
+    # Broaden to raw text if target (parsed name field) didn't match
+    if not first_ok:
+        first_ok = all(re.search(rf'\b{re.escape(w)}\b', norm_raw) for w in first_words) if first_words else True
+    if not last_ok:
+        last_ok  = all(re.search(rf'\b{re.escape(w)}\b', norm_raw) for w in last_words)  if last_words  else True
+
+    # ---- Full-name sequence check (the key anti-spoofing step) ----
+    def build_sequence_regex(name_str):
+        """Build a regex that requires all name words in order, with OCR noise allowed between."""
+        words = [re.escape(w) for w in normalize_text(name_str).split() if len(w) >= 2]
+        if not words:
+            return None
+        # Allow up to a few noise characters between words (e.g. OCR punctuation, spaces)
+        pattern = r'[^a-z0-9]{0,4}'.join(words)
+        return re.compile(r'\b' + pattern + r'\b')
+
+    full_fwd = f'{first_clean} {last_clean}'  # "jose rizal"
+    full_rev = f'{last_clean} {first_clean}'  # "rizal jose" (surname-first, common in PH documents)
+
+    rx_fwd = build_sequence_regex(full_fwd)
+    rx_rev = build_sequence_regex(full_rev)
+
+    sequence_ok = (
+        (rx_fwd and bool(rx_fwd.search(norm_target))) or
+        (rx_rev and bool(rx_rev.search(norm_target))) or
+        (rx_fwd and bool(rx_fwd.search(norm_raw))) or
+        (rx_rev and bool(rx_rev.search(norm_raw)))
+    )
+
+    # ---- Fuzzy full-name fallback (handles heavy OCR noise on the name field) ----
+    if not sequence_ok:
+        # Compare expected full name against whatever the OCR extracted for the name field
+        ratio_fwd = difflib.SequenceMatcher(None, full_fwd, norm_target).ratio()
+        ratio_rev = difflib.SequenceMatcher(None, full_rev, norm_target).ratio()
+        # Require >= 0.70 (stricter than before) so "Jose Laurel" vs "Jose Rizal" can't pass
+        if max(ratio_fwd, ratio_rev) >= 0.70:
+            sequence_ok = True
+
+    return first_ok, last_ok, sequence_ok
+
 def _run_tesseract_on_image(img, psm=3):
     if img is None or pytesseract is None:
         return ""
@@ -910,27 +977,13 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
     meta = {'parsed_fields': parsed_fields}
     failures = []
 
-    # 1. NAME MATCHING
-    first_clean = normalize_text(first_name)
-    last_clean = normalize_text(last_name)
-
+    # 1. NAME MATCHING — full sequence required (not just word-by-word independently)
     target_name_str = parsed_fields.get('name', raw_text)
-    norm_target = normalize_text(target_name_str)
+    first_ok, last_ok, sequence_ok = verify_name_sequence(
+        first_name, last_name, target_name_str, raw_text
+    )
 
-    first_words = [w for w in first_clean.split() if len(w) >= 2]
-    last_words = [w for w in last_clean.split() if len(w) >= 2]
-
-    first_ok = all(re.search(rf'\b{re.escape(w)}\b', norm_target) for w in first_words) if first_words else True
-    last_ok = all(re.search(rf'\b{re.escape(w)}\b', norm_target) for w in last_words) if last_words else True
-
-    if parsed_fields.get('name'):
-        p_name_norm = normalize_text(parsed_fields['name'])
-        full_expected = f"{first_clean} {last_clean}"
-        if difflib.SequenceMatcher(None, full_expected, p_name_norm).ratio() >= 0.60:
-            first_ok = True
-            last_ok = True
-
-    if not (first_ok and last_ok):
+    if not (first_ok and last_ok and sequence_ok):
         failures.append(f"Name mismatch (Expected: '{first_name} {last_name}', Found in COR: '{parsed_fields.get('name', 'Not found')}')")
 
     # 2. STUDENT ID MATCHING
@@ -1173,27 +1226,13 @@ def verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_
     meta = {'parsed_fields': parsed_fields}
     failures = []
 
-    # 1. NAME MATCHING
-    first_clean = normalize_text(first_name)
-    last_clean = normalize_text(last_name)
-
+    # 1. NAME MATCHING — full sequence required (not just word-by-word independently)
     target_name_str = parsed_fields.get('name', raw_text)
-    norm_target = normalize_text(target_name_str)
+    first_ok, last_ok, sequence_ok = verify_name_sequence(
+        first_name, last_name, target_name_str, raw_text
+    )
 
-    first_words = [w for w in first_clean.split() if len(w) >= 2]
-    last_words = [w for w in last_clean.split() if len(w) >= 2]
-
-    first_ok = all(re.search(rf'\b{re.escape(w)}\b', norm_target) for w in first_words) if first_words else True
-    last_ok = all(re.search(rf'\b{re.escape(w)}\b', norm_target) for w in last_words) if last_words else True
-
-    if parsed_fields.get('name'):
-        p_name_norm = normalize_text(parsed_fields['name'])
-        full_expected = f"{first_clean} {last_clean}"
-        if difflib.SequenceMatcher(None, full_expected, p_name_norm).ratio() >= 0.70:
-            first_ok = True
-            last_ok = True
-
-    if not (first_ok and last_ok):
+    if not (first_ok and last_ok and sequence_ok):
         failures.append(f"Name mismatch (Expected: '{first_name} {last_name}', Found in Grades: '{parsed_fields.get('name', 'Not found')}')")
 
     # 2. STUDENT ID MATCHING
@@ -1281,21 +1320,17 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
     meta = {}
     failures = []
 
-    first_clean = normalize_text(first_name)
-    last_clean = normalize_text(last_name)
-    doc_norm = normalize_text(raw_text)
+    # NAME MATCHING — full sequence required (not just word-by-word independently)
+    first_ok, last_ok, sequence_ok = verify_name_sequence(
+        first_name, last_name, raw_text, raw_text
+    )
 
-    first_words = [w for w in first_clean.split() if len(w) >= 2]
-    last_words = [w for w in last_clean.split() if len(w) >= 2]
-
-    first_ok = all(re.search(rf'\b{re.escape(w)}\b', doc_norm) for w in first_words) if first_words else True
-    last_ok = all(re.search(rf'\b{re.escape(w)}\b', doc_norm) for w in last_words) if last_words else True
-
-    if not (first_ok and last_ok):
+    if not (first_ok and last_ok and sequence_ok):
         failures.append(f"Name mismatch (Expected: '{first_name} {last_name}' in Indigency Certificate)")
 
     addr_ok = True
     if expected_address and str(expected_address).strip():
+        doc_norm = normalize_text(raw_text)
         addr_clean = normalize_text(expected_address)
         ignore_words = {'city', 'municipality', 'town', 'province', 'brgy', 'barangay'}
         addr_words = [w for w in addr_clean.split() if len(w) >= 3 and w not in ignore_words]

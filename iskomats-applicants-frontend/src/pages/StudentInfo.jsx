@@ -1742,40 +1742,92 @@ const StudentInfo = () => {
     if (!normText) return { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } };
 
     const kv = extractOcrKeyValues(text);
+    // Prefer the parsed name field from document (e.g. "Name: ..."); fall back to full text
     const targetText = kv.name ? normalizeForOcr(kv.name) : normText;
 
-    const checkAllNameWords = (nameStr, textToSearch) => {
+    const normFirst = normalizeForOcr(first || '');
+    const normLast  = normalizeForOcr(last  || '');
+
+    // --- Helper: build a regex that matches a name phrase allowing up to ~3 chars of OCR noise between words ---
+    const buildNameRegex = (nameStr) => {
+      const words = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= 2);
+      if (words.length === 0) return null;
+      // Each word is re.escape'd, words separated by "any non-alpha chars + optional extra words" to handle OCR gaps
+      const escaped = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      // Allow up to 20 chars of noise between each name word (OCR can insert spaces/punctuation)
+      const pattern = escaped.join('[^a-z0-9]{0,3}(?:[a-z]{1,8}[^a-z0-9]{0,3}){0,2}');
+      return new RegExp('\\b' + pattern + '\\b');
+    };
+
+    // --- Full-name combined sequence check ---
+    // Require first + last (in either order for Philippine naming convention: "LASTNAME, FIRSTNAME") as a sequence
+    const fullNameFwd = `${normFirst} ${normLast}`;  // "jose rizal"
+    const fullNameRev = `${normLast} ${normFirst}`;  // "rizal jose" (surname-first format)
+
+    const fwdRegex = buildNameRegex(fullNameFwd);
+    const revRegex = buildNameRegex(fullNameRev);
+
+    let fullNameMatch = (fwdRegex && fwdRegex.test(targetText)) || (revRegex && revRegex.test(targetText));
+
+    // Also try against full raw text if name field lookup failed
+    if (!fullNameMatch && !kv.name) {
+      fullNameMatch = (fwdRegex && fwdRegex.test(normText)) || (revRegex && revRegex.test(normText));
+    }
+
+    // --- Fuzzy full-name similarity (handles OCR scrambling of combined name string) ---
+    let fuzzyFullOk = false;
+    if (!fullNameMatch && kv.name) {
+      const docName = normalizeForOcr(kv.name);
+      // Compute character-level similarity between expected full name and extracted name field
+      const longer  = fullNameFwd.length > docName.length ? fullNameFwd : docName;
+      const shorter = fullNameFwd.length > docName.length ? docName : fullNameFwd;
+      const dist = getLevenshteinDistance(longer, shorter);
+      const sim = longer.length > 0 ? (longer.length - dist) / longer.length : 0;
+      fuzzyFullOk = sim >= 0.65;  // 65%+ similarity of the full combined name
+
+      if (!fuzzyFullOk) {
+        // Also try surname-first format
+        const distRev = getLevenshteinDistance(longer, normalizeForOcr(fullNameRev));
+        const simRev = longer.length > 0 ? (longer.length - distRev) / longer.length : 0;
+        fuzzyFullOk = simRev >= 0.65;
+      }
+    }
+
+    // --- Individual word checks (fallback only, used to compute first_ok / last_ok for UI display) ---
+    const checkNameWordGroup = (nameStr, searchText) => {
       if (!nameStr) return true;
       const words = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= 2);
       if (words.length === 0) return true;
-
-      const ocrWords = textToSearch.split(/\s+/).filter(w => w.length >= 2);
-
-      // Require EVERY word of the name part to match (exact word, regex boundary, or high fuzzy similarity)
+      const ocrWords = searchText.split(/\s+/).filter(w => w.length >= 2);
       return words.every(word => {
         const normW = normalizeForOcr(word);
         const confW = normalizeNameConfusions(word);
-
-        if (new RegExp('\\b' + normW + '\\b').test(textToSearch) || textToSearch.includes(normW)) {
-          return true;
-        }
-        return ocrWords.some(ocrW => 
-          isSimilarWord(normW, normalizeForOcr(ocrW)) || 
+        if (new RegExp('\\b' + normW.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b').test(searchText)) return true;
+        if (searchText.includes(normW)) return true;
+        return ocrWords.some(ocrW =>
+          isSimilarWord(normW, normalizeForOcr(ocrW)) ||
           (confW.length >= 3 && normalizeNameConfusions(ocrW) === confW)
         );
       });
     };
 
-    const firstOk = checkAllNameWords(first, targetText) || (kv.name ? checkAllNameWords(first, normText) : false);
-    const lastOk = checkAllNameWords(last, targetText) || (kv.name ? checkAllNameWords(last, normText) : false);
-    const middleOk = middle ? (checkAllNameWords(middle, targetText) || (kv.name ? checkAllNameWords(middle, normText) : false)) : true;
+    const firstOk = checkNameWordGroup(first, targetText) || (kv.name ? checkNameWordGroup(first, normText) : false);
+    const lastOk  = checkNameWordGroup(last,  targetText) || (kv.name ? checkNameWordGroup(last,  normText) : false);
+    const middleOk = middle ? (checkNameWordGroup(middle, targetText) || (kv.name ? checkNameWordGroup(middle, normText) : false)) : true;
+
+    // --- Final decision: full-name sequence OR fuzzy must pass; individual word checks alone are NOT sufficient ---
+    // This prevents "Jose Laurel" from passing a doc containing "Jose Rizal" just because "Jose" matched.
+    const sequenceOk = fullNameMatch || fuzzyFullOk;
+
+    // If the sequence check failed but individual checks pass, it means only partial overlap — reject.
+    const success = sequenceOk && firstOk && lastOk;
 
     return {
-      success: firstOk && lastOk,
+      success,
       details: {
-        first_ok: firstOk,
+        first_ok:  firstOk  && sequenceOk,
         middle_ok: middleOk,
-        last_ok: lastOk
+        last_ok:   lastOk   && sequenceOk
       }
     };
   };
