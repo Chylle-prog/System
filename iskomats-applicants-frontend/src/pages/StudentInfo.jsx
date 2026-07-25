@@ -2310,23 +2310,13 @@ const StudentInfo = () => {
   };
 
   const semesterMatchesText = (text, expectedSemester, scholarshipSemesterReq = null) => {
-    const s1 = normalizeSemesterInt(expectedSemester);
     const s2 = extractSemesterFromText(text);
     const s3 = normalizeSemesterInt(scholarshipSemesterReq || scholarshipDetails?.semester);
 
-    console.log(`[3-WAY SEMESTER CHECK] Step 3 Input: ${s1}, Image OCR: ${s2}, Scholarship Req: ${s3}`);
+    console.log(`[SEMESTER CHECK] Image OCR: ${s2}, Scholarship Req: ${s3}`);
 
-    // Three-Way Verification: All available sources MUST match!
-    if (s1 !== null && s2 !== null && s1 !== s2) {
-      console.warn(`[3-WAY SEMESTER FAIL] Step 3 Input (${s1}) != Image OCR (${s2})`);
-      return false;
-    }
-    if (s1 !== null && s3 !== null && s1 !== s3) {
-      console.warn(`[3-WAY SEMESTER FAIL] Step 3 Input (${s1}) != Scholarship Req (${s3})`);
-      return false;
-    }
     if (s2 !== null && s3 !== null && s2 !== s3) {
-      console.warn(`[3-WAY SEMESTER FAIL] Image OCR (${s2}) != Scholarship Req (${s3})`);
+      console.warn(`[SEMESTER FAIL] Image OCR (${s2}) != Scholarship Req (${s3})`);
       return false;
     }
 
@@ -5769,17 +5759,7 @@ const StudentInfo = () => {
                   </div>
                 </div>
 
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Semester <span style={{ color: '#e74c3c' }}>*</span></label>
-                    <select name="semester" value={formData.semester} onChange={handleInputChange} required={currentStep === 3}>
-                      <option value="">Select Semester</option>
-                      <option value="1st Semester">1st Semester</option>
-                      <option value="2nd Semester">2nd Semester</option>
-                      <option value="Summer">Summer / Mid-Year</option>
-                    </select>
-                  </div>
-                </div>
+
 
                 <div className="form-row">
                   <div className="form-group">
