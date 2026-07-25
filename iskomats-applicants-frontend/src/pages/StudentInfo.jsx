@@ -2203,16 +2203,22 @@ const StudentInfo = () => {
     if (!text) return null;
     const lower = String(text).toLowerCase();
     
-    // Pattern 1: "School Year Sem : 2026 - 2" or "2026-2" or "2026 / 2"
-    const sySemMatch = lower.match(/(?:school\s*year\s*sem|s\.?y\.?\s*sem|sem)\s*[:\-]?\s*20\d{2}\s*[\-\/]\s*([123])/i);
+    // Pattern 1: "2026 - 2" or "2026-2" or "2026 / 2" or OCR noisy "202¢ - 2", "2024 - 2"
+    const yearSemMatch = lower.match(/\b202[0-9a-z¢§\$!]\s*[\-\/:]\s*([123])\b/i);
+    if (yearSemMatch && yearSemMatch[1]) {
+      return parseInt(yearSemMatch[1], 10);
+    }
+
+    // Pattern 2: "School Year Sem : ... 2" or "Sem : 2" or "$ch00! Yaa, gum ... 2"
+    const sySemMatch = lower.match(/(?:school\s*year\s*sem|s\.?y\.?\s*sem|sem|\$ch00!|yaa,\s*gum)\s*[:\-]?\s*(?:ay|sy|20[0-9a-z¢§\$!]{2})?\s*[\-\/:]?\s*([123])\b/i);
     if (sySemMatch && sySemMatch[1]) {
       return parseInt(sySemMatch[1], 10);
     }
 
-    // Pattern 2: "2nd sem" or "2nd semester" or "sem 2"
-    if (/\b(?:2nd|second|sem\s*2|2nd\s*sem)\b/i.test(lower)) return 2;
-    if (/\b(?:1st|first|sem\s*1|1st\s*sem)\b/i.test(lower)) return 1;
-    if (/\b(?:3rd|third|summer|midyear|sem\s*3)\b/i.test(lower)) return 3;
+    // Pattern 3: "2nd sem" or "2nd semester" or "sem 2"
+    if (/\b(?:2nd|second|sem\s*2|2nd\s*sem|semester\s*2)\b/i.test(lower)) return 2;
+    if (/\b(?:1st|first|sem\s*1|1st\s*sem|semester\s*1)\b/i.test(lower)) return 1;
+    if (/\b(?:3rd|third|summer|midyear|sem\s*3|semester\s*3)\b/i.test(lower)) return 3;
 
     return null;
   };

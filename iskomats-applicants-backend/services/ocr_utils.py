@@ -839,6 +839,37 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None)
 
     return first_ok, last_ok, sequence_ok
 
+
+def extract_semester_from_ocr_text(text):
+    """
+    Extracts semester digit (1, 2, or 3) from OCR text with support for OCR noise.
+    Matches patterns like '2026 - 2', '202¢ - 2', '2024 - 1', 'School Year Sem : ... 2', '2nd sem', '1st sem'.
+    """
+    if not text:
+        return None
+    lower = str(text).lower()
+
+    # Pattern 1: "2026 - 2" or "2026-2" or "2026 / 2" or OCR noisy "202¢ - 2", "2024 - 2"
+    year_sem_match = re.search(r'\b202[0-9a-z¢§\$!]\s*[\-\/:]\s*([123])\b', lower)
+    if year_sem_match:
+        return int(year_sem_match.group(1))
+
+    # Pattern 2: "School Year Sem : ... 2" or "Sem : 2" or "$ch00! Yaa, gum ... 2"
+    sy_sem_match = re.search(r'(?:school\s*year\s*sem|s\.?y\.?\s*sem|sem|\$ch00!|yaa,\s*gum)\s*[:\-]?\s*(?:ay|sy|20[0-9a-z¢§\$!]{2})?\s*[\-\/:]?\s*([123])\b', lower)
+    if sy_sem_match:
+        return int(sy_sem_match.group(1))
+
+    # Pattern 3: Explicit semester words
+    if re.search(r'\b(?:2nd|second|sem\s*2|2nd\s*sem|semester\s*2)\b', lower):
+        return 2
+    if re.search(r'\b(?:1st|first|sem\s*1|1st\s*sem|semester\s*1)\b', lower):
+        return 1
+    if re.search(r'\b(?:3rd|third|summer|midyear|sem\s*3|semester\s*3)\b', lower):
+        return 3
+
+    return None
+
+
 def _run_tesseract_on_image(img, psm=3):
     if img is None or pytesseract is None:
         return ""
@@ -1021,20 +1052,26 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
     if expected_semester and str(expected_semester).strip():
         found_sy_sem = parsed_fields.get('school_year_sem', raw_text)
         exp_sem_clean = normalize_text(expected_semester)
-        found_sem_clean = normalize_text(found_sy_sem)
+        
+        exp_num = 1 if any(k in exp_sem_clean for k in ['1st', '1', 'first']) else (2 if any(k in exp_sem_clean for k in ['2nd', '2', 'second']) else (3 if any(k in exp_sem_clean for k in ['3rd', '3', 'third', 'summer', 'midyear']) else None))
+        found_num = extract_semester_from_ocr_text(found_sy_sem) or extract_semester_from_ocr_text(raw_text)
 
         sem_ok = False
-        if any(k in exp_sem_clean for k in ['1st', '1', 'first']):
-            sem_ok = any(k in found_sem_clean for k in ['1st', '1', 'first', 'one'])
-        elif any(k in exp_sem_clean for k in ['2nd', '2', 'second']):
-            sem_ok = any(k in found_sem_clean for k in ['2nd', '2', 'second', 'two'])
-        elif any(k in exp_sem_clean for k in ['3rd', '3', 'third', 'summer', 'midyear']):
-            sem_ok = any(k in found_sem_clean for k in ['3rd', '3', 'third', 'summer', 'midyear'])
-        else:
-            sem_ok = exp_sem_clean in found_sem_clean
+        if exp_num is not None and found_num is not None:
+            sem_ok = (exp_num == found_num)
+        elif exp_num is not None:
+            # Fallback if no explicit year-sem hyphen digit was found
+            found_sem_clean = normalize_text(found_sy_sem)
+            if exp_num == 1:
+                sem_ok = any(k in found_sem_clean for k in ['1st', 'first', 'sem 1', 'semester 1'])
+            elif exp_num == 2:
+                sem_ok = any(k in found_sem_clean for k in ['2nd', 'second', 'sem 2', 'semester 2'])
+            elif exp_num == 3:
+                sem_ok = any(k in found_sem_clean for k in ['3rd', 'third', 'summer', 'midyear'])
 
         if not sem_ok:
-            failures.append(f"Semester mismatch (Expected: '{expected_semester}', Found in COR: '{found_sy_sem}')")
+            found_desc = f"{found_num}nd Sem" if found_num == 2 else (f"{found_num}st Sem" if found_num == 1 else (f"{found_num}rd Sem" if found_num == 3 else found_sy_sem))
+            failures.append(f"Semester mismatch (Expected: '{expected_semester}', Found in COR: '{found_desc}')")
 
     # 4. COURSE / DEGREE MATCHING
     if expected_course and str(expected_course).strip():
@@ -1273,20 +1310,25 @@ def verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_
     if expected_semester and str(expected_semester).strip():
         found_sy_sem = parsed_fields.get('sy_sem', raw_text)
         exp_sem_clean = normalize_text(expected_semester)
-        found_sem_clean = normalize_text(found_sy_sem)
+
+        exp_num = 1 if any(k in exp_sem_clean for k in ['1st', '1', 'first']) else (2 if any(k in exp_sem_clean for k in ['2nd', '2', 'second']) else (3 if any(k in exp_sem_clean for k in ['3rd', '3', 'third', 'summer', 'midyear']) else None))
+        found_num = extract_semester_from_ocr_text(found_sy_sem) or extract_semester_from_ocr_text(raw_text)
 
         sem_ok = False
-        if any(k in exp_sem_clean for k in ['1st', '1', 'first']):
-            sem_ok = any(k in found_sem_clean for k in ['1st', '1', 'first'])
-        elif any(k in exp_sem_clean for k in ['2nd', '2', 'second']):
-            sem_ok = any(k in found_sem_clean for k in ['2nd', '2', 'second'])
-        elif any(k in exp_sem_clean for k in ['3rd', '3', 'third', 'summer', 'midyear']):
-            sem_ok = any(k in found_sem_clean for k in ['3rd', '3', 'third', 'summer', 'midyear'])
-        else:
-            sem_ok = exp_sem_clean in found_sem_clean
+        if exp_num is not None and found_num is not None:
+            sem_ok = (exp_num == found_num)
+        elif exp_num is not None:
+            found_sem_clean = normalize_text(found_sy_sem)
+            if exp_num == 1:
+                sem_ok = any(k in found_sem_clean for k in ['1st', 'first', 'sem 1', 'semester 1'])
+            elif exp_num == 2:
+                sem_ok = any(k in found_sem_clean for k in ['2nd', 'second', 'sem 2', 'semester 2'])
+            elif exp_num == 3:
+                sem_ok = any(k in found_sem_clean for k in ['3rd', 'third', 'summer', 'midyear'])
 
         if not sem_ok:
-            failures.append(f"Semester mismatch (Expected: '{expected_semester}', Found in Grades: '{found_sy_sem}')")
+            found_desc = f"{found_num}nd Sem" if found_num == 2 else (f"{found_num}st Sem" if found_num == 1 else (f"{found_num}rd Sem" if found_num == 3 else found_sy_sem))
+            failures.append(f"Semester mismatch (Expected: '{expected_semester}', Found in Grades: '{found_desc}')")
 
     # 5. COURSE MATCHING
     if expected_course and str(expected_course).strip():
