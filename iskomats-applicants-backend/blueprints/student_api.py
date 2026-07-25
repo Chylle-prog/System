@@ -2702,6 +2702,15 @@ def update_profile():
                 if mother_status is not None:
                     add_update('mother_status', mother_status)
 
+            # Persist JWT token and verification timestamp into applicants table
+            auth_header = request.headers.get('Authorization')
+            if auth_header and auth_header.startswith('Bearer '):
+                token_str = auth_header.split(' ', 1)[1]
+                if applicant_has_column(cur, 'jwt_token'):
+                    add_update('jwt_token', token_str)
+                if applicant_has_column(cur, 'verification_timestamp'):
+                    add_update('verification_timestamp', datetime.utcnow())
+
             binary_fields = {
                 'profile_picture': 'profile_picture',
                 'id_pic': 'id_pic',  # legacy mapping

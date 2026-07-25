@@ -452,6 +452,24 @@ def ensure_schema_integrity(cursor):
             print(f"[MIGRATION] Adding {col} to scholarships table")
             cursor.execute(f"ALTER TABLE scholarships ADD COLUMN {col} {col_type}")
     
+    # 3. Add jwt_token and verification_timestamp columns to applicants table if missing
+    applicant_extra_cols = {
+        'jwt_token': 'TEXT',
+        'verification_timestamp': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'
+    }
+    for col, col_type in applicant_extra_cols.items():
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_name = 'applicants' AND column_name = %s
+            """,
+            (col,)
+        )
+        if read_count(cursor.fetchone()) == 0:
+            print(f"[MIGRATION] Adding {col} column to applicants table")
+            cursor.execute(f"ALTER TABLE applicants ADD COLUMN {col} {col_type}")
+
     _SCHEMA_INITIALIZED = True
 
 

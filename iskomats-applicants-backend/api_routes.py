@@ -466,6 +466,24 @@ def ensure_schema_integrity(cursor):
                 except Exception as e:
                     print(f"[MIGRATION WARNING] Failed to convert scholarships.{col}: {e}")
     
+    # 3. Add jwt_token and verification_timestamp columns to applicants table if missing
+    applicant_extra_cols = {
+        'jwt_token': 'TEXT',
+        'verification_timestamp': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'
+    }
+    for col, col_type in applicant_extra_cols.items():
+        cursor.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'applicants' AND column_name = %s
+            """,
+            (col,)
+        )
+        if not cursor.fetchone():
+            print(f"[MIGRATION] Adding {col} column to applicants table")
+            cursor.execute(f"ALTER TABLE applicants ADD COLUMN {col} {col_type}")
+
     _SCHEMA_INITIALIZED = True
 
 
