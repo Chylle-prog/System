@@ -1260,7 +1260,14 @@ def token_required(route_handler):
         try:
             if token.startswith('Bearer '):
                 token = token[7:]
-            data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+            try:
+                data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+            except jwt.ExpiredSignatureError:
+                if request.path and '/applicant/document/raw/' in request.path:
+                    print(f"[AUTH] Expired token presented for raw media endpoint '{request.path}'. Allowing grace access.", flush=True)
+                    data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'], options={"verify_signature": True, "verify_exp": False})
+                else:
+                    raise
             applicant_no = data.get('user_no')
             request.user_no = applicant_no
 

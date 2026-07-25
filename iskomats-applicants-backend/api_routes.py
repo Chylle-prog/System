@@ -4344,12 +4344,14 @@ def get_applicant_image(applicant_no, column_name):
                             'face_photo': 'id_pic',
                         }
                         mapped_col = field_mapping.get(raw_field, raw_field)
-                        if mapped_col in allowed_columns and mapped_col != column_name:
+                        if mapped_col in allowed_columns:
                             with get_db() as conn:
                                 cursor = conn.cursor()
                                 re_row = fetch_applicant_document_values(cursor, applicant_no, [mapped_col])
                                 if re_row and re_row.get(mapped_col):
-                                    data = re_row[mapped_col]
+                                    real_val = re_row[mapped_col]
+                                    if isinstance(real_val, str) and not ('/applicant/document/raw/' in real_val):
+                                        data = real_val
                 except Exception as ex:
                     print(f"[APPLICANT IMAGE] Proxy resolution error: {ex}", flush=True)
 

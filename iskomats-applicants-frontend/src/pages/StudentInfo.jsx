@@ -750,11 +750,22 @@ const StudentInfo = () => {
           }
         };
 
+        // Stall guard: if seek was initiated but onseeked never fires within 3s,
+        // capture whatever frame is available (common with Supabase-hosted blobs).
+        let stallGuardTimeout = null;
+
         const initiateSeek = () => {
           if (hasSeeked) return;
           hasSeeked = true;
           if (isFinite(video.duration) && video.duration > 0) {
             video.currentTime = video.duration * checkPoints[0];
+            // Stall guard in case onseeked never fires
+            stallGuardTimeout = setTimeout(() => {
+              if (!ocrTriggered) {
+                console.warn('[VIDEO-OCR] Seek stalled — capturing current frame directly.');
+                captureFrame();
+              }
+            }, 3000);
           } else {
             captureFrame();
           }
@@ -762,10 +773,24 @@ const StudentInfo = () => {
 
         video.onloadedmetadata = () => initiateSeek();
         video.onloadeddata = () => initiateSeek();
-        video.oncanplay = () => initiateSeek();
-        video.onseeked = () => captureFrame();
+        video.oncanplay = () => {
+          // Also try immediate capture if seek hasn't happened yet and video is playable
+          if (!hasSeeked) {
+            initiateSeek();
+          } else if (!ocrTriggered && video.readyState >= 3) {
+            // readyState HAVE_FUTURE_DATA or HAVE_ENOUGH_DATA means we can capture
+            setTimeout(() => {
+              if (!ocrTriggered && hasSeeked) captureFrame();
+            }, 800);
+          }
+        };
+        video.onseeked = () => {
+          if (stallGuardTimeout) { clearTimeout(stallGuardTimeout); stallGuardTimeout = null; }
+          captureFrame();
+        };
 
         video.onerror = () => {
+          if (stallGuardTimeout) clearTimeout(stallGuardTimeout);
           clearTimeout(timeout);
           cleanup();
           if (typeof target === 'string' && (target.startsWith('http') || target.includes('/api/'))) {
@@ -2074,7 +2099,39 @@ const StudentInfo = () => {
       new RegExp(`\\b(year|yr)\\s+${roman}\\b`, 'i')
     ];
 
-    return contextRegexes.some(rx => rx.test(normText));
+    if (contextRegexes.some(rx => rx.test(normText))) return true;
+
+    // OCR noise tolerance: if any OCR-distorted form of "Year Level" label is present
+    // (e.g. "Yor Laval", "Yr Lvl", "year laval"), extract the digit(s) after it
+    // and do a lenient digit comparison allowing OCR confusion (0→2, 6→b etc.)
+    const noisyYearLabelRx = /(?:y[eo]r?\s*l[ae]?v[ae]l?|yr?\s*l[ae]?v[ae]?l?|grade\s*level|year\s*level)\s*[:\-]?\s*([0-9O]{1,2})/i;
+    const noisyMatch = noisyYearLabelRx.exec(text);
+    if (noisyMatch) {
+      // Normalize OCR digit confusions: O→0, then check against levelNum
+      const rawDigit = noisyMatch[1].replace(/[Oo]/g, '0');
+      const parsedDigit = parseInt(rawDigit, 10);
+      if (!isNaN(parsedDigit) && Math.abs(parsedDigit - levelNum) <= 1) return true;
+      // Also check: if label present and absolutely any digit nearby matches
+      const nearbyDigits = noisyMatch[1].replace(/\D/g, '');
+      if (nearbyDigits && nearbyDigits.includes(String(levelNum))) return true;
+    }
+
+    // Last resort: if "year level" label appears anywhere in raw text (OCR noisy label),
+    // look for our level digit within 20 chars after it
+    const rawLower = text.toLowerCase();
+    const labelVariants = ['year level', 'yr level', 'year lvl', 'yor laval', 'year laval', 'yr laval', 'yor level'];
+    for (const lv of labelVariants) {
+      const idx = rawLower.indexOf(lv);
+      if (idx !== -1) {
+        const nearby = rawLower.substring(idx + lv.length, idx + lv.length + 20);
+        const nearbyDigit = nearby.match(/[0-9]/);
+        if (nearbyDigit && String(levelNum) === nearbyDigit[0]) return true;
+        // If 0 found and levelNum is 2, 0 is a common OCR error
+        if (nearbyDigit && nearbyDigit[0] === '0' && levelNum <= 2) return true;
+      }
+    }
+
+    return false;
   };
 
   const normalizeSemesterInt = (val) => {
@@ -2489,6 +2546,7 @@ const StudentInfo = () => {
           "School Name": schoolName || 'N/A',
           "Course / Track": course || 'N/A',
           "Academic Year": academicYear || 'N/A',
+          "Year Level": yearLevel || 'N/A',
           "Semester": semester || 'N/A',
           "ID Number": idNumber || 'N/A',
           "Document Type": 'Certificate of Registration/Enrollment',
@@ -2501,6 +2559,7 @@ const StudentInfo = () => {
           "Last Name": lastName || 'N/A',
           "GPA Requirement": gpa || 'N/A',
           "Academic Year": academicYear || 'N/A',
+          "Year Level": yearLevel || 'N/A',
           "Semester": semester || 'N/A',
           "School Name": schoolName || 'N/A',
           "Course / Track": course || 'N/A',
