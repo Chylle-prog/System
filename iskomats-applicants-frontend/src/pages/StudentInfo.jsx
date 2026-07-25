@@ -2099,7 +2099,7 @@ const StudentInfo = () => {
     if (sigWords.length > 0) {
       const searchArea = targetText || fixedText;
       const matchedCount = sigWords.filter(w => new RegExp('\\b' + w + '\\b').test(searchArea) || searchArea.includes(w)).length;
-      const requiredRatio = sigWords.length <= 2 ? 0.5 : 0.6;
+      const requiredRatio = sigWords.length <= 2 ? 1.0 : 0.6;
       if ((matchedCount / sigWords.length) >= requiredRatio) return true;
     }
 

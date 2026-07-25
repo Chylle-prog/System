@@ -1240,9 +1240,12 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
                     break
 
         if not course_ok:
-            exp_words = [w for w in c_exp.split() if w not in {'bachelor', 'of', 'science', 'in', 'and', 'the', 'bs', 'degree'}]
-            if exp_words and any(w in c_raw_fixed for w in exp_words):
-                course_ok = True
+            exp_words = [w for w in c_exp.split() if w not in {'bachelor', 'of', 'science', 'in', 'and', 'the', 'bs', 'degree', 'major'}]
+            if exp_words:
+                matched_count = sum(1 for w in exp_words if w in c_raw_fixed)
+                required_ratio = 1.0 if len(exp_words) <= 2 else 0.6
+                if (matched_count / len(exp_words)) >= required_ratio:
+                    course_ok = True
 
         if not course_ok:
             failures.append(f"Course mismatch (Expected: '{expected_course}', Found in COR: '{found_course}')")
