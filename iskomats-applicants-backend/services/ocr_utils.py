@@ -238,41 +238,42 @@ def verify_face_with_id(user_photo_bytes, id_photo_bytes):
         user_image = _decode_face_image(user_photo_bytes)
         id_image = _decode_face_image(id_photo_bytes)
 
-        # 1. Try UniFace ONNX neural model
-        try:
-            detector, recognizer = _init_face_models()
+        # 1. Try UniFace ONNX neural model ONLY if explicitly enabled (to avoid Gunicorn worker timeouts/502 on Render)
+        if os.environ.get("USE_NEURAL_FACE_VERIFICATION", "").lower() == "true":
+            try:
+                detector, recognizer = _init_face_models()
 
-            user_faces = detector.detect(user_image)
-            user_face = _pick_primary_face(user_faces, 'the live photo', min_area_pct=0.0, image_shape=user_image.shape)
-            
-            id_faces = detector.detect(id_image)
-            id_face = _pick_primary_face(id_faces, 'the ID image', min_area_pct=0.0, image_shape=id_image.shape)
+                user_faces = detector.detect(user_image)
+                user_face = _pick_primary_face(user_faces, 'the live photo', min_area_pct=0.0, image_shape=user_image.shape)
+                
+                id_faces = detector.detect(id_image)
+                id_face = _pick_primary_face(id_faces, 'the ID image', min_area_pct=0.0, image_shape=id_image.shape)
 
-            user_embedding = recognizer.get_normalized_embedding(user_image, user_face.landmarks)
-            id_embedding = recognizer.get_normalized_embedding(id_image, id_face.landmarks)
+                user_embedding = recognizer.get_normalized_embedding(user_image, user_face.landmarks)
+                id_embedding = recognizer.get_normalized_embedding(id_image, id_face.landmarks)
 
-            if user_embedding is not None and id_embedding is not None:
-                try:
-                    from uniface import compute_similarity
-                    similarity = float(compute_similarity(user_embedding, id_embedding, normalized=True))
-                except Exception:
-                    similarity = float(np.dot(user_embedding, id_embedding.T)[0][0])
+                if user_embedding is not None and id_embedding is not None:
+                    try:
+                        from uniface import compute_similarity
+                        similarity = float(compute_similarity(user_embedding, id_embedding, normalized=True))
+                    except Exception:
+                        similarity = float(np.dot(user_embedding, id_embedding.T)[0][0])
 
-                similarity = max(0.0, min(1.0, similarity))
-                print(f"[FACE] UniFace Similarity score: {similarity:.4f}", flush=True)
+                    similarity = max(0.0, min(1.0, similarity))
+                    print(f"[FACE] UniFace Similarity score: {similarity:.4f}", flush=True)
 
-                clear_heavy_memory()
+                    clear_heavy_memory()
 
-                if similarity >= _FACE_MATCH_THRESHOLD:
-                    return True, f"Face verified successfully! (similarity: {similarity*100:.1f}%)", similarity
+                    if similarity >= _FACE_MATCH_THRESHOLD:
+                        return True, f"Face verified successfully! (similarity: {similarity*100:.1f}%)", similarity
 
-                return False, f"Face match uncertain (similarity: {similarity*100:.1f}%). Please ensure clear lighting.", similarity
-        except ValueError:
-            raise
-        except Exception as onnx_err:
-            print(f"[FACE] ONNX model unavailable or failed ({onnx_err}), falling back to OpenCV face verification...", flush=True)
+                    return False, f"Face match uncertain (similarity: {similarity*100:.1f}%). Please ensure clear lighting.", similarity
+            except ValueError:
+                raise
+            except Exception as onnx_err:
+                print(f"[FACE] ONNX model failed ({onnx_err}), falling back to OpenCV...", flush=True)
 
-        # 2. Fallback to OpenCV face match (100% crash-proof & fast)
+        # 2. Fallback / Default: OpenCV face match (100% crash-proof & near-instant)
         verified, msg, sim = _opencv_fallback_face_match(user_image, id_image)
         clear_heavy_memory()
         return verified, msg, sim
