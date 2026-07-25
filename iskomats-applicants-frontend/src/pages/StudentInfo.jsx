@@ -2235,14 +2235,14 @@ const StudentInfo = () => {
     // OCR noise tolerance: if any OCR-distorted form of "Year Level" label is present
     // (e.g. "Yor Laval", "Yr Lvl", "year laval"), extract the digit(s) after it
     // and do a lenient digit comparison allowing OCR confusion (0→2, 6→b etc.)
-    const noisyYearLabelRx = /(?:y[eo]r?\s*l[ae]?v[ae]l?|yr?\s*l[ae]?v[ae]?l?|grade\s*level|year\s*level)\s*[:\-]?\s*([0-9O]{1,2})/i;
+    const noisyYearLabelRx = /(?:y[ouea]?r?\s*l[aeo]?v[ael]?|yr?\s*l[aeo]?v[ael]?|grade\s*level|year\s*level)\s*[:\-]?\s*([0-9OiloI\|]{1,2})/i;
     const noisyMatch = noisyYearLabelRx.exec(text);
     if (noisyMatch) {
-      // Normalize OCR digit confusions: O→0, then check against levelNum
+      // Normalize OCR digit confusions: O/0 → 1 or check proximity
       const rawDigit = noisyMatch[1].replace(/[Oo]/g, '0');
       const parsedDigit = parseInt(rawDigit, 10);
       if (!isNaN(parsedDigit) && Math.abs(parsedDigit - levelNum) <= 1) return true;
-      // Also check: if label present and absolutely any digit nearby matches
+      if (rawDigit === '0' && levelNum <= 2) return true;
       const nearbyDigits = noisyMatch[1].replace(/\D/g, '');
       if (nearbyDigits && nearbyDigits.includes(String(levelNum))) return true;
     }
@@ -2250,14 +2250,14 @@ const StudentInfo = () => {
     // Last resort: if "year level" label appears anywhere in raw text (OCR noisy label),
     // look for our level digit within 20 chars after it
     const rawLower = text.toLowerCase();
-    const labelVariants = ['year level', 'yr level', 'year lvl', 'yor laval', 'year laval', 'yr laval', 'yor level'];
+    const labelVariants = ['year level', 'yr level', 'year lvl', 'yor laval', 'year laval', 'yr laval', 'yor level', 'your lave', 'yor lave', 'your level', 'your lvl', 'yr lave'];
     for (const lv of labelVariants) {
       const idx = rawLower.indexOf(lv);
       if (idx !== -1) {
         const nearby = rawLower.substring(idx + lv.length, idx + lv.length + 20);
         const nearbyDigit = nearby.match(/[0-9]/);
         if (nearbyDigit && String(levelNum) === nearbyDigit[0]) return true;
-        // If 0 found and levelNum is 2, 0 is a common OCR error
+        // If 0 found and levelNum is 1 or 2, 0 is a common OCR error for 1
         if (nearbyDigit && nearbyDigit[0] === '0' && levelNum <= 2) return true;
       }
     }
