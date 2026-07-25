@@ -114,8 +114,18 @@ def _init_chatbot_background():
     except Exception as e:
         print(f"[STARTUP BACKGROUND] Error initializing Chatbot Backend: {e}", flush=True)
 
+def _init_face_models_background():
+    print("[STARTUP BACKGROUND] Pre-loading UniFace models...", flush=True)
+    try:
+        from services.ocr_utils import _init_face_models
+        _init_face_models()
+        print("[STARTUP BACKGROUND] UniFace models pre-loaded successfully!", flush=True)
+    except Exception as e:
+        print(f"[STARTUP BACKGROUND] UniFace pre-load note: {e}", flush=True)
+
 import threading
 threading.Thread(target=_init_chatbot_background, daemon=True).start()
+threading.Thread(target=_init_face_models_background, daemon=True).start()
 
 # Track startup completion
 APP_READY = False

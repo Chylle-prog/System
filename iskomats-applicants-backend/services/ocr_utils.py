@@ -34,7 +34,7 @@ _FACE_RECOGNIZER = None
 _FACE_MODEL_INIT_ERROR = None
 _FACE_MATCH_THRESHOLD = 0.36 
 _FACE_DETECTION_THRESHOLD = 0.25 
-_MAX_FACE_WIDTH = 320  # Match frontend resize; smaller = faster inference
+_MAX_FACE_WIDTH = 240  # Match frontend resize; smaller = faster inference
 
 def decode_base64(data):
     """Safely decode base64 strings/URIs to bytes."""
