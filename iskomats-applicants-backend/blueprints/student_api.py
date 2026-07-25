@@ -605,6 +605,7 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
             'id_img_front': 'id_verification',
             'id_img_back': 'id_verification',
             'profile_picture': 'profile_pictures',
+            'id_pic': 'face_verification',
         }
 
         folder = folder_map.get(field_name, 'others')

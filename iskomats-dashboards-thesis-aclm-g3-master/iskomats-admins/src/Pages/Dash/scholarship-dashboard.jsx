@@ -5114,6 +5114,38 @@ export default function ScholarshipDashboard({
           </div>
         </div>
 
+        {/* FACE VERIFICATION PHOTO SECTION */}
+        <div className="mb-10">
+          <h3 className="bg-[#800020] text-white px-4 py-2 text-sm font-black uppercase tracking-widest mb-4 rounded-t-lg">Face Verification Photo</h3>
+          <div className="p-6 border-2 border-gray-100 rounded-b-lg bg-gray-50/50 flex flex-col items-center justify-center">
+            {a.id_pic ? (
+              <div className="flex flex-col items-center gap-3">
+                <div
+                  className="relative group max-w-xs overflow-hidden rounded-xl border-2 border-[#800020] shadow-md bg-white cursor-pointer"
+                  onClick={() => setImageModalSrc(a.id_pic)}
+                >
+                  <img
+                    src={a.id_pic}
+                    alt="Face Verification Capture"
+                    className="w-48 h-56 object-cover rounded-lg transition-transform duration-300 group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-1">
+                    <i className="fas fa-search-plus"></i> View Image
+                  </div>
+                </div>
+                <span className="inline-flex items-center gap-1.5 bg-emerald-100 text-emerald-800 text-xs px-3 py-1 rounded-full font-bold border border-emerald-200">
+                  <i className="fas fa-user-check text-emerald-600"></i> Verified Step 4 Selfie
+                </span>
+              </div>
+            ) : (
+              <div className="text-center p-4 text-gray-400">
+                <i className="fas fa-user-slash text-3xl mb-2 text-gray-300"></i>
+                <p className="text-xs font-semibold">No face verification photo recorded for this applicant</p>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* FAMILY BACKGROUND SECTION */}
         <div className="mb-10">
           <h3 className="bg-[#800020] text-white px-4 py-2 text-sm font-black uppercase tracking-widest mb-4 rounded-t-lg">Family Background</h3>

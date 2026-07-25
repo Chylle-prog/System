@@ -6,6 +6,7 @@ APPLICANT_INLINE_MEDIA_COLUMNS = (
 
 APPLICANT_DOCUMENT_COLUMNS = (
     'signature_image_data',
+    'id_pic',
     'schoolID_photo',
     'id_img_front',
     'id_img_back',

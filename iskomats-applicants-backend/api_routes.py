@@ -3504,6 +3504,7 @@ def get_applicants(current_user_id, pro_no, role, program):
                         ({applicant_document_expr(cursor, 'grades_doc', 'a', 'ad')} IS NOT NULL) as "has_grades_doc",
                         ({applicant_document_expr(cursor, 'id_img_front', 'a', 'ad')} IS NOT NULL) as "has_id_img_front",
                         ({applicant_document_expr(cursor, 'id_img_back', 'a', 'ad')} IS NOT NULL) as "has_id_img_back",
+                        ({applicant_document_expr(cursor, 'id_pic', 'a', 'ad')} IS NOT NULL) as "has_id_pic",
                         {profile_picture_expr} as "has_profile_picture",
                         ({applicant_document_expr(cursor, 'signature_image_data', 'a', 'ad')} IS NOT NULL) as "has_signature",
                         {applicant_document_expr(cursor, 'indigency_vid_url', 'a', 'ad')} as indigency_vid_url,
@@ -3566,6 +3567,12 @@ def get_applicants(current_user_id, pro_no, role, program):
                     a['profile_picture'] = url_for('admin_api.get_applicant_image', applicant_no=app_no, column_name='profile_picture', _external=True)
                 else:
                     a['profile_picture'] = None
+
+                # Proxy face verification photo (id_pic)
+                if a.get('has_id_pic'):
+                    a['id_pic'] = url_for('admin_api.get_applicant_image', applicant_no=app_no, column_name='id_pic', _external=True)
+                else:
+                    a['id_pic'] = None
                 
                 # Ensure income is float (might be Decimal from DB)
                 if a.get('income') is not None:

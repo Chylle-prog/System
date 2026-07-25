@@ -3540,6 +3540,12 @@ def get_applicants(current_user_id, pro_no, role, program):
                 else:
                     a['profile_picture'] = None
 
+                # Resolve face verification photo (id_pic)
+                if a.get('has_id_pic'):
+                    a['id_pic'] = url_for('admin_api.get_applicant_image', applicant_no=app_no, column_name='id_pic', _external=True)
+                else:
+                    a['id_pic'] = None
+
                 # Manage signature as a lazy-loaded URL too
                 if a.get('has_signature'):
                     a['signature'] = url_for('admin_api.get_applicant_image', applicant_no=app_no, column_name='signature_image_data', _external=True)
