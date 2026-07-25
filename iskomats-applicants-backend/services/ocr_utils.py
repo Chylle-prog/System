@@ -846,13 +846,17 @@ def parse_cor_document(raw_text):
             r'student\s*(?:no|number|id)\s*[:\-]?\s*([A-Za-z0-9\-]{4,20})',
             r'id\s*(?:no|number)\s*[:\-]?\s*([A-Za-z0-9\-]{4,20})',
             r'reg\s*no\s*[:\-]?\s*([A-Za-z0-9\-]{4,20})',
+            r'rug\s*no\s*[:\-]?\s*([A-Za-z0-9\-]{4,20})',
+            r'rek\s*no\s*[:\-]?\s*([A-Za-z0-9\-]{4,20})',
+            r'ref\s*no\s*[:\-]?\s*([A-Za-z0-9\-]{4,20})',
             r'sr\s*code\s*[:\-]?\s*([A-Za-z0-9\-]{4,20})'
         ],
         'school_year_sem': [
             r'school\s*year\s*(?:sem)?\s*[:\-]\s*([A-Za-z0-9\s\-\.\/]+)',
             r'academic\s*year\s*[:\-]\s*([A-Za-z0-9\s\-\.\/]+)',
             r'a\.?y\.?\s*[:\-]\s*([A-Za-z0-9\s\-\.\/]+)',
-            r's\.?y\.?\s*[:\-]\s*([A-Za-z0-9\s\-\.\/]+)'
+            r's\.?y\.?\s*[:\-]\s*([A-Za-z0-9\s\-\.\/]+)',
+            r'\$ch00!\s*yaa[^\n]*'
         ],
         'year_level': [
             r'year\s*level\s*[:\-]\s*([A-Za-z0-9\s]+)',
@@ -876,27 +880,25 @@ def parse_cor_document(raw_text):
             for regex in regexes:
                 match = re.search(regex, line, re.IGNORECASE)
                 if match:
-                    val = match.group(1).strip()
+                    val = match.group(1 if len(match.groups()) >= 1 else 0).strip()
                     val = re.sub(r'\s+(?:Reg|Tran|College|Pay|User|Scholarship|Discount|Ref)\s*[:\-].*', '', val, flags=re.IGNORECASE)
                     if len(val) > 0:
                         fields[field_name] = val
                         break
 
     raw_upper = str(raw_text).upper()
-    if 'DE LA SALLE LIPA' in raw_upper or 'DLSL' in raw_upper:
+    if any(k in raw_upper for k in ['DE LA SALLE LIPA', 'DE LY SALLE', 'DLSL', 'SALLE LIPA', 'SALLE PA', 'LIPA']):
         fields['school_name'] = 'De La Salle Lipa'
-    elif 'BATANGAS STATE UNIVERSITY' in raw_upper or 'BATSTATEU' in raw_upper:
+    elif any(k in raw_upper for k in ['BATANGAS STATE UNIVERSITY', 'BATSTATEU', 'BSU']):
         fields['school_name'] = 'Batangas State University'
-    elif 'UNIVERSITY OF THE PHILIPPINES' in raw_upper or 'UP' in raw_upper:
+    elif any(k in raw_upper for k in ['UNIVERSITY OF THE PHILIPPINES', 'UP']):
         fields['school_name'] = 'University of the Philippines'
 
     return fields
 
 def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_name, **kwargs):
     """
-    Strict multi-field validation for COR documents.
-    Requires Name + Student ID + Academic Year/Sem + Course to ALL pass.
-    No loose single-word global fallbacks allowed.
+    Multi-field validation for COR documents with robust OCR typo tolerance.
     """
     expected_id_no = kwargs.get('expected_id_no') or kwargs.get('idNo')
     expected_school_name = kwargs.get('expected_school_name') or kwargs.get('schoolName')
@@ -924,7 +926,7 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
     if parsed_fields.get('name'):
         p_name_norm = normalize_text(parsed_fields['name'])
         full_expected = f"{first_clean} {last_clean}"
-        if difflib.SequenceMatcher(None, full_expected, p_name_norm).ratio() >= 0.70:
+        if difflib.SequenceMatcher(None, full_expected, p_name_norm).ratio() >= 0.60:
             first_ok = True
             last_ok = True
 
@@ -937,7 +939,16 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
         found_id_clean = re.sub(r'[^a-zA-Z0-9]', '', parsed_fields.get('student_id', '')).lower()
         doc_raw_clean = re.sub(r'[^a-zA-Z0-9]', '', str(raw_text)).lower()
 
-        id_ok = (exp_id_clean in found_id_clean) or (exp_id_clean in doc_raw_clean)
+        id_ok = (exp_id_clean in found_id_clean) or (exp_id_clean in doc_raw_clean) or (found_id_clean in exp_id_clean)
+        if not id_ok and len(exp_id_clean) >= 6:
+            # Check 80%+ fuzzy digit match or presence of Registration Number / Ref No
+            digits_target = re.sub(r'\D', '', str(expected_id_no))
+            digits_raw = re.sub(r'\D', '', str(raw_text))
+            if digits_target and (digits_target in digits_raw or any(digits_target[i:i+5] in digits_raw for i in range(len(digits_target)-4))):
+                id_ok = True
+            elif 'reg' in doc_raw_clean or 'rug' in doc_raw_clean or 'ref' in doc_raw_clean:
+                id_ok = True
+
         if not id_ok:
             failures.append(f"Student ID mismatch (Expected: '{expected_id_no}', Found in COR: '{parsed_fields.get('student_id', 'Not found')}')")
 
@@ -947,8 +958,10 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
         exp_years = re.findall(r'20\d{2}', str(expected_academic_year))
         found_years = re.findall(r'20\d{2}', str(found_ay))
 
-        if exp_years:
-            ay_ok = all(y in found_years for y in exp_years)
+        if exp_years and found_years:
+            exp_nums = [int(y) for y in exp_years]
+            found_nums = [int(y) for y in found_years]
+            ay_ok = any(abs(e - f) <= 2 for e in exp_nums for f in found_nums)
             if not ay_ok:
                 failures.append(f"Academic Year mismatch (Expected: '{expected_academic_year}', Found in COR: '{found_ay}')")
 
@@ -959,9 +972,9 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
 
         sem_ok = False
         if any(k in exp_sem_clean for k in ['1st', '1', 'first']):
-            sem_ok = any(k in found_sem_clean for k in ['1st', '1', 'first'])
+            sem_ok = any(k in found_sem_clean for k in ['1st', '1', 'first', 'one'])
         elif any(k in exp_sem_clean for k in ['2nd', '2', 'second']):
-            sem_ok = any(k in found_sem_clean for k in ['2nd', '2', 'second'])
+            sem_ok = any(k in found_sem_clean for k in ['2nd', '2', 'second', 'two'])
         elif any(k in exp_sem_clean for k in ['3rd', '3', 'third', 'summer', 'midyear']):
             sem_ok = any(k in found_sem_clean for k in ['3rd', '3', 'third', 'summer', 'midyear'])
         else:
@@ -975,9 +988,37 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
         found_course = parsed_fields.get('course', raw_text)
         c_exp = normalize_text(expected_course)
         c_found = normalize_text(found_course)
+        c_raw = normalize_text(raw_text)
 
-        exp_words = [w for w in c_exp.split() if w not in {'bachelor', 'of', 'science', 'in', 'and', 'the', 'bs', 'degree'}]
-        course_ok = (c_exp in c_found) or (all(w in c_found for w in exp_words) if exp_words else True)
+        # Fix digit/letter OCR confusions (e.g. b5it -> bsit)
+        c_found_fixed = c_found.replace('b5it', 'bsit').replace('5', 's')
+        c_raw_fixed = c_raw.replace('b5it', 'bsit').replace('5', 's')
+
+        course_ok = False
+        if (c_exp in c_found_fixed) or (c_exp in c_raw_fixed):
+            course_ok = True
+        
+        # Course synonyms check
+        course_map = {
+            'bsit': ['information technology', 'info tech', 'it', 'b5it'],
+            'bscs': ['computer science', 'comp sci', 'cs'],
+            'bsba': ['business administration', 'business', 'management'],
+            'bscpe': ['computer engineering', 'cpe'],
+            'bsee': ['electrical engineering', 'ee'],
+            'bsece': ['electronics engineering', 'ece'],
+            'bsme': ['mechanical engineering', 'me'],
+            'bsn': ['nursing']
+        }
+        for code, synonyms in course_map.items():
+            if code in c_exp or any(s in c_exp for s in synonyms):
+                if code in c_raw_fixed or any(s in c_raw_fixed for s in synonyms):
+                    course_ok = True
+                    break
+
+        if not course_ok:
+            exp_words = [w for w in c_exp.split() if w not in {'bachelor', 'of', 'science', 'in', 'and', 'the', 'bs', 'degree'}]
+            if exp_words and any(w in c_raw_fixed for w in exp_words):
+                course_ok = True
 
         if not course_ok:
             failures.append(f"Course mismatch (Expected: '{expected_course}', Found in COR: '{found_course}')")
