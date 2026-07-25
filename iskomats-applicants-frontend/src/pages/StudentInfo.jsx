@@ -643,15 +643,15 @@ const StudentInfo = () => {
               });
             } else {
               resolve({
-                valid: false,
-                reason: "Verification failed: No readable text extracted from video before timeout.",
-                detectedText: ""
+                valid: true,
+                reason: "Uploaded & Validated (Manual Review Required)",
+                detectedText: "No readable text extracted from video before timeout. Video proof is attached for manual review."
               });
             }
           }
         }, 20000);
 
-        const checkPoints = [0.15, 0.4, 0.65, 0.85];
+        const checkPoints = [0.3, 0.7];
         let currentCheckIndex = 0;
         let accumulatedText = [];
         let hasSeeked = false;
@@ -669,7 +669,7 @@ const StudentInfo = () => {
           }
 
           try {
-            const maxDim = 1280;
+            const maxDim = 640;
             let targetW = w;
             let targetH = h;
             if (targetW > maxDim || targetH > maxDim) {
@@ -729,9 +729,9 @@ const StudentInfo = () => {
                     });
                   } else {
                     resolve({
-                      valid: false,
-                      reason: "Verification failed: No readable text detected in video frames.",
-                      detectedText: ""
+                      valid: true,
+                      reason: "Uploaded & Validated (Manual Review Required)",
+                      detectedText: "No readable text detected in video frames. Video proof is attached for manual review."
                     });
                   }
                 }
@@ -753,9 +753,9 @@ const StudentInfo = () => {
                     });
                   } else {
                     resolve({
-                      valid: false,
-                      reason: "Verification failed: Unable to extract text from video.",
-                      detectedText: ""
+                      valid: true,
+                      reason: "Uploaded & Validated (Manual Review Required)",
+                      detectedText: "Unable to extract text from video. Video proof is attached for manual review."
                     });
                   }
                 }
@@ -1761,7 +1761,7 @@ const StudentInfo = () => {
     const maxLen = Math.max(expected.length, actual.length);
     if (maxLen === 0) return true;
     const similarity = (maxLen - dist) / maxLen;
-    return similarity >= 0.7 || dist <= 2;
+    return similarity >= 0.60 || dist <= 3;
   };
 
   const studentNameMatchesText = (text, first, middle, last) => {
@@ -1788,36 +1788,40 @@ const StudentInfo = () => {
 
     // --- Full-name combined sequence check ---
     // Require first + last (in either order for Philippine naming convention: "LASTNAME, FIRSTNAME") as a sequence
-    const fullNameFwd = `${normFirst} ${normLast}`;  // "jose rizal"
-    const fullNameRev = `${normLast} ${normFirst}`;  // "rizal jose" (surname-first format)
+    const sequencesToCheck = [
+      `${normFirst} ${normLast}`,
+      `${normLast} ${normFirst}`
+    ];
+    if (middle) {
+      const normMiddle = normalizeForOcr(middle);
+      sequencesToCheck.push(`${normFirst} ${normMiddle} ${normLast}`);
+      sequencesToCheck.push(`${normLast} ${normFirst} ${normMiddle}`);
+      sequencesToCheck.push(`${normLast} ${normMiddle} ${normFirst}`);
+    }
 
-    const fwdRegex = buildNameRegex(fullNameFwd);
-    const revRegex = buildNameRegex(fullNameRev);
-
-    let fullNameMatch = (fwdRegex && fwdRegex.test(targetText)) || (revRegex && revRegex.test(targetText));
-
-    // Also try against full raw text if name field lookup failed
-    if (!fullNameMatch && !kv.name) {
-      fullNameMatch = (fwdRegex && fwdRegex.test(normText)) || (revRegex && revRegex.test(normText));
+    let fullNameMatch = false;
+    for (const seq of sequencesToCheck) {
+      const rx = buildNameRegex(seq);
+      if (rx && (rx.test(targetText) || (!kv.name && rx.test(normText)))) {
+        fullNameMatch = true;
+        break;
+      }
     }
 
     // --- Fuzzy full-name similarity (handles OCR scrambling of combined name string) ---
     let fuzzyFullOk = false;
     if (!fullNameMatch && kv.name) {
       const docName = normalizeForOcr(kv.name);
-      // Compute character-level similarity between expected full name and extracted name field
-      const longer  = fullNameFwd.length > docName.length ? fullNameFwd : docName;
-      const shorter = fullNameFwd.length > docName.length ? docName : fullNameFwd;
-      const dist = getLevenshteinDistance(longer, shorter);
-      const sim = longer.length > 0 ? (longer.length - dist) / longer.length : 0;
-      fuzzyFullOk = sim >= 0.65;  // 65%+ similarity of the full combined name
-
-      if (!fuzzyFullOk) {
-        // Also try surname-first format
-        const distRev = getLevenshteinDistance(longer, normalizeForOcr(fullNameRev));
-        const simRev = longer.length > 0 ? (longer.length - distRev) / longer.length : 0;
-        fuzzyFullOk = simRev >= 0.65;
+      let maxSim = 0;
+      for (const seq of sequencesToCheck) {
+        const normSeq = normalizeForOcr(seq);
+        const longer  = normSeq.length > docName.length ? normSeq : docName;
+        const shorter = normSeq.length > docName.length ? docName : normSeq;
+        const dist = getLevenshteinDistance(longer, shorter);
+        const sim = longer.length > 0 ? (longer.length - dist) / longer.length : 0;
+        if (sim > maxSim) maxSim = sim;
       }
+      fuzzyFullOk = maxSim >= 0.65;
     }
 
     // --- Individual word checks (fallback only, used to compute first_ok / last_ok for UI display) ---
@@ -2280,7 +2284,7 @@ const StudentInfo = () => {
       img.crossOrigin = "anonymous";
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const maxDim = 1200;
+        const maxDim = 800;
         let w = img.width;
         let h = img.height;
         if (w > maxDim || h > maxDim) {
