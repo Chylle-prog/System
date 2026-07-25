@@ -486,6 +486,11 @@ const Login = () => {
           align-items: center;
         }
 
+        @media (max-width: 768px) {
+          .navbar-nav { display: none !important; }
+          .navbar-nav.mobile-open { display: flex !important; }
+        }
+
         .navbar-nav a {
           color: rgba(255, 255, 255, 0.9);
           font-weight: 500;
