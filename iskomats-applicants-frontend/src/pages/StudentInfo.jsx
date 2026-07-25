@@ -2622,20 +2622,19 @@ const StudentInfo = () => {
         const nameCheck = studentNameMatchesText(combinedText, firstName, middleName, lastName);
         const gpaOk = gpa ? gpaMatchesText(combinedText, gpa) : true;
         const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
-        const semOk = semesterMatchesText(combinedText, semester || formData.semester, reqSemester);
+        const semOk = semesterMatchesText(combinedText, semester || formData.semester, semester || reqSemester);
         const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
         const courseOk = course ? courseMatchesText(course, combinedText) : true;
         const idOk = idNumber ? studentIdNoMatchesText(idNumber, combinedText) : true;
-        const yrOk = yearLevel ? yearLevelMatchesText(combinedText, yearLevel) : true;
         const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
 
-        isSuccess = nameCheck.success && gpaOk && ayOk && semOk && schoolOk && courseOk && idOk && yrOk && videoOk;
+        isSuccess = nameCheck.success && gpaOk && ayOk && semOk && schoolOk && courseOk && idOk && videoOk;
         scoreDetails = {
           "First Name": nameCheck.details.first_ok,
           "Last Name": nameCheck.details.last_ok,
           "GPA Requirement": gpa ? gpaOk : null,
           "Academic Year": academicYear ? ayOk : null,
-          "Year Level": yearLevel ? yrOk : null,
+          "Year Level": null,
           "Semester": semester ? semOk : null,
           "School Name": schoolName ? schoolOk : null,
           "Course / Track": course ? courseOk : null,
@@ -2703,7 +2702,6 @@ const StudentInfo = () => {
           "Last Name": lastName || 'N/A',
           "GPA Requirement": gpa || 'N/A',
           "Academic Year": academicYear || 'N/A',
-          "Year Level": yearLevel || 'N/A',
           "Semester": semester || 'N/A',
           "School Name": schoolName || 'N/A',
           "Course / Track": course || 'N/A',
@@ -2937,7 +2935,8 @@ const StudentInfo = () => {
     const yearLevel = formData.yearLevel || '';
     const gpa = formData.gpa || '';
     const videoUrl = documentVideos.mayorGrades_video || formData.mayorGrades_video;
-    const semester = scholarshipDetails?.semester || scholarshipDetails?.sem || formData.semester || '1st Semester';
+    const currentSem = scholarshipDetails?.semester || scholarshipDetails?.sem || formData.semester || '1st Semester';
+    const expectedGradesSemester = scholarshipDetails?.grades_sem || scholarshipDetails?.gradesSem || (currentSem === '2nd' || currentSem === '2nd Semester' || currentSem === '2' ? '1st Semester' : '2nd Semester');
 
     if (!gradesDoc) {
       showPromptMessage('Please upload your Grades document first.');
@@ -2966,7 +2965,7 @@ const StudentInfo = () => {
         idNumber: formData.schoolIdNumber,
         yearLevel: formData.yearLevel,
         gpa: formData.gpa,
-        semester,
+        semester: expectedGradesSemester,
         academicYear: targetAcademicYear
       }, videoUrl);
       if (success) {
