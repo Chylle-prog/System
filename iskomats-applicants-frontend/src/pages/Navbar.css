@@ -192,11 +192,17 @@
   background: rgba(255, 255, 255, 0.15);
 }
 
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 @media (max-width: 768px) {
   .navbar {
     flex-direction: column;
     padding: 0.75rem 1.25rem;
     gap: 0;
+    overflow: visible;
   }
 
   .navbar-header {
@@ -206,40 +212,90 @@
 
   .mobile-toggle-btn {
     display: block;
+    position: relative;
+    z-index: 200;
   }
-  
-  .navbar-nav, .navbar-menu {
+
+  /* ── Guest nav (About Us / Apply Now) ── */
+  .navbar-nav {
     display: none;
     flex-direction: column;
     width: 100%;
-    padding-top: 1rem;
+    padding-top: 0.75rem;
     padding-bottom: 0.5rem;
-    gap: 1rem;
+    gap: 0.75rem;
     align-items: stretch;
     border-top: 1px solid rgba(255, 255, 255, 0.15);
     margin-top: 0.75rem;
     animation: fadeIn 0.25s ease forwards;
+    position: relative;
+    z-index: 150;
+    background: rgba(79, 13, 0, 0.98);
   }
 
-  .navbar-nav.mobile-open, .navbar-menu.mobile-open {
+  .navbar-nav.mobile-open {
     display: flex;
   }
 
-  .navbar-nav a, .profile-btn, .logout-btn, .nav-btn {
+  .navbar-nav a, .navbar-nav .nav-btn {
     width: 100%;
     text-align: center;
-    padding: 0.75rem 1rem;
+    padding: 0.7rem 1rem;
   }
 
-  .user-email {
-    text-align: center;
-    padding: 0.5rem;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
+  /* ── Logged-in menu: compact single row ── */
+  .navbar-menu {
+    display: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.6rem 0 0.4rem;
+    gap: 0.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    margin-top: 0.6rem;
+    animation: fadeIn 0.25s ease forwards;
+    position: relative;
+    z-index: 150;
+    background: rgba(79, 13, 0, 0.98);
   }
 
+  .navbar-menu.mobile-open {
+    display: flex;
+  }
+
+  /* Name chip — left side */
+  .navbar-menu .user-email {
+    font-size: 0.82rem;
+    padding: 0.3rem 0.6rem;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 20px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+    text-align: left;
+  }
+
+  /* Notification bell — stays compact */
   .notification-wrapper {
     display: flex;
     justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .notification-btn {
+    padding: 0.3rem 0.5rem;
+    font-size: 1.1rem;
+  }
+
+  /* Profile & Logout — compact pill buttons, no full-width stretch */
+  .profile-btn, .logout-btn {
+    width: auto !important;
+    padding: 0.35rem 0.9rem;
+    font-size: 0.8rem;
+    border-radius: 20px;
+    flex-shrink: 0;
   }
 }
