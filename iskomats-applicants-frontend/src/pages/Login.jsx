@@ -1074,18 +1074,7 @@ const Login = () => {
         }
 
         @media (max-width: 768px) {
-          .navbar {
-            flex-direction: column;
-            padding: 1rem 5%;
-            gap: 1rem;
-          }
-          
-          .navbar-nav {
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 1rem;
-          }
-          
+          /* Let Navbar.css handle the hamburger toggle — just keep auth layout here */
           .auth-wrapper {
             padding: 2rem 5%;
             flex-direction: column;
