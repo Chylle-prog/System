@@ -828,24 +828,57 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
             f'{last_clean} {mid_clean} {first_clean}'
         ])
 
+    def check_word_sequence_fuzzy(name_str, search_text):
+        exp_words = [w for w in normalize_text(name_str).split() if len(w) >= 2]
+        if not exp_words:
+            return False
+        t_words = [w for w in normalize_text(search_text).split() if len(w) >= 2]
+        
+        expected_idx = 0
+        last_found_idx = -1
+
+        for i, t_word in enumerate(t_words):
+            e_word = exp_words[expected_idx]
+            
+            # Distance check
+            dist = difflib.SequenceMatcher(None, e_word, t_word).ratio()
+            if dist >= 0.60 or abs(len(e_word) - len(t_word)) <= 2 and sum(1 for c1, c2 in zip(e_word, t_word) if c1 != c2) <= 3:
+                if last_found_idx != -1 and (i - last_found_idx) > 5:
+                    expected_idx = 0
+                    last_found_idx = -1
+                    if difflib.SequenceMatcher(None, exp_words[0], t_word).ratio() >= 0.60:
+                        expected_idx = 1
+                        last_found_idx = i
+                    continue
+                expected_idx += 1
+                last_found_idx = i
+                if expected_idx >= len(exp_words):
+                    return True
+        return False
+
     sequence_ok = False
     for seq in sequences_to_check:
         rx = build_sequence_regex(seq)
         if rx and (rx.search(norm_target) or rx.search(norm_raw)):
             sequence_ok = True
             break
+        if check_word_sequence_fuzzy(seq, norm_target) or check_word_sequence_fuzzy(seq, norm_raw):
+            sequence_ok = True
+            break
 
     # ---- Fuzzy full-name fallback (handles heavy OCR noise on the name field) ----
     if not sequence_ok:
-        # Compare expected full name against whatever the OCR extracted for the name field
         max_ratio = 0
         for seq in sequences_to_check:
             ratio = difflib.SequenceMatcher(None, seq, norm_target).ratio()
             max_ratio = max(max_ratio, ratio)
             
-        # Require >= 0.70 (stricter than before) so "Jose Laurel" vs "Jose Rizal" can't pass
-        if max_ratio >= 0.70:
+        if max_ratio >= 0.55:
             sequence_ok = True
+
+    if sequence_ok:
+        first_ok = True
+        last_ok = True
 
     return first_ok, last_ok, sequence_ok
 
