@@ -641,7 +641,7 @@ function studentNameMatchesText(text, first, middle, last) {
   const middleOk = middle ? (checkNameWordGroup(middle, targetText) || (kv.name ? checkNameWordGroup(middle, normText) : false)) : true;
 
   // Fallback: If last name matched and student ID / school name is in text, accept first name
-  if (!firstOk && lastOk && (/1500017172|student\s*no|de\s*la\s*salle/i.test(searchText) || /1500017172|student\s*no|de\s*la\s*salle/i.test(normText))) {
+  if (!firstOk && lastOk && (/1500017172|student\s*no|de\s*la\s*salle/i.test(targetText) || /1500017172|student\s*no|de\s*la\s*salle/i.test(normText))) {
     firstOk = true;
   }
 
