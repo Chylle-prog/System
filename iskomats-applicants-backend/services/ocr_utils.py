@@ -867,39 +867,39 @@ def parse_cor_document(raw_text):
 
     label_patterns = {
         'name': [
-            r'name\s*[:\-1l\|\]\}\)]\s*([A-Za-z\s,\.\-]+)',
-            r'student\s*name\s*[:\-1l\|\]\}\)]\s*([A-Za-z\s,\.\-]+)',
-            r'pangalan\s*[:\-1l\|\]\}\)]\s*([A-Za-z\s,\.\-]+)',
+            r'name\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z\s,\.\-]+)',
+            r'student\s*name\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z\s,\.\-]+)',
+            r'pangalan\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z\s,\.\-]+)',
             r'name\s+([A-Za-z\s,\.\-]+)'
         ],
         'student_id': [
-            r'student\s*(?:no|number|id)\s*[:\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
-            r'id\s*(?:no|number)\s*[:\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
-            r'reg\s*no\s*[:\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
-            r'rug\s*no\s*[:\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
-            r'rek\s*no\s*[:\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
-            r'ref\s*no\s*[:\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
-            r'sr\s*code\s*[:\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})'
+            r'student\s*(?:no|number|id)\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
+            r'id\s*(?:no|number)\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
+            r'reg\s*no\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
+            r'rug\s*no\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
+            r'rek\s*no\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
+            r'ref\s*no\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
+            r'sr\s*code\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})'
         ],
         'school_year_sem': [
-            r'school\s*year\s*(?:sem)?\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
-            r'academic\s*year\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
-            r'a\.?y\.?\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
-            r's\.?y\.?\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
+            r'school\s*year\s*(?:sem)?\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
+            r'academic\s*year\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
+            r'a\.?y\.?\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
+            r's\.?y\.?\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
             r'\$ch00!\s*yaa[^\n]*'
         ],
         'year_level': [
-            r'year\s*level\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s]+)',
-            r'yr\s*level\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s]+)',
-            r'grade\s*level\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s]+)'
+            r'year\s*level\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s]+)',
+            r'yr\s*level\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s]+)',
+            r'grade\s*level\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s]+)'
         ],
         'course': [
-            r'course\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s,\.\-\&]+)',
-            r'program\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s,\.\-\&]+)',
-            r'degree\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s,\.\-\&]+)'
+            r'course\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s,\.\-\&]+)',
+            r'program\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s,\.\-\&]+)',
+            r'degree\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s,\.\-\&]+)'
         ],
         'college': [
-            r'college\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s,\.\-\&]+)'
+            r'college\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s,\.\-\&]+)'
         ]
     }
 
