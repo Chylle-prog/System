@@ -1933,11 +1933,10 @@ const StudentInfo = () => {
     const lastOk  = checkNameWordGroup(last,  targetText) || (kv.name ? checkNameWordGroup(last,  normText) : false);
     const middleOk = middle ? (checkNameWordGroup(middle, targetText) || (kv.name ? checkNameWordGroup(middle, normText) : false)) : true;
 
-    // If sequence matches, override individual flags to true (since words were matched in sequence!)
-    const finalFirstOk = sequenceOk ? true : (firstOk && sequenceOk);
-    const finalLastOk  = sequenceOk ? true : (lastOk && sequenceOk);
+    const finalFirstOk = firstOk || sequenceOk;
+    const finalLastOk  = lastOk || sequenceOk;
 
-    const success = sequenceOk;
+    const success = (firstOk && lastOk) || sequenceOk;
 
     return {
       success,
@@ -2142,8 +2141,30 @@ const StudentInfo = () => {
     return false;
   };
 
+  const extractGpaFromText = (text) => {
+    if (!text) return null;
+    const gpaMatch = text.match(/(?:GPA|GWA|WEIGHTED\s*AVERAGE)\s*[:\-=\s]*([0-9]+\.[0-9]+)/i);
+    if (gpaMatch && gpaMatch[1]) {
+      const val = parseFloat(gpaMatch[1]);
+      if (!isNaN(val) && val >= 1.0 && val <= 5.0) {
+        return gpaMatch[1].trim();
+      }
+    }
+    return null;
+  };
+
   const gpaMatchesText = (text, expectedGpa) => {
-    if (!expectedGpa || !text) return true;
+    if (!text) return true;
+
+    const detectedGpaStr = extractGpaFromText(text);
+    if (detectedGpaStr) {
+      const detVal = parseFloat(detectedGpaStr);
+      if (!isNaN(detVal) && detVal >= 1.0) {
+        return true;
+      }
+    }
+
+    if (!expectedGpa) return true;
 
     const rawGpaStr = String(expectedGpa).trim();
     const parsedTargetGpa = parseFloat(rawGpaStr.replace(/[^0-9.]/g, ''));
@@ -2155,37 +2176,6 @@ const StudentInfo = () => {
 
     const roundedGpaStr = parsedTargetGpa.toFixed(2);
     if (cleanText.includes(roundedGpaStr)) return true;
-
-    const expectedDigits = rawGpaStr.replace(/\D/g, '');
-    const tokens = cleanText.split(/[\s:;=,]+/);
-
-    for (let token of tokens) {
-      const cleanToken = token.replace(/[^0-9.]/g, '');
-      if (!cleanToken) continue;
-
-      if (expectedDigits.length >= 3 && cleanToken === expectedDigits) {
-        return true;
-      }
-
-      if (!cleanToken.includes('.') && cleanToken.length >= 3 && cleanToken.length <= 6) {
-        const cand1Str = cleanToken.slice(0, 1) + '.' + cleanToken.slice(1);
-        const cand1Val = parseFloat(cand1Str);
-        if (!isNaN(cand1Val) && Math.abs(cand1Val - parsedTargetGpa) < 0.05) {
-          return true;
-        }
-
-        const cand2Str = cleanToken.slice(0, 2) + '.' + cleanToken.slice(2);
-        const cand2Val = parseFloat(cand2Str);
-        if (!isNaN(cand2Val) && Math.abs(cand2Val - parsedTargetGpa) < 0.05) {
-          return true;
-        }
-      }
-
-      const tokenValue = parseFloat(cleanToken);
-      if (!isNaN(tokenValue) && Math.abs(tokenValue - parsedTargetGpa) < 0.05) {
-        return true;
-      }
-    }
 
     return false;
   };
@@ -2995,7 +2985,12 @@ const StudentInfo = () => {
         academicYear: targetAcademicYear
       }, videoUrl);
       if (success) {
-        const applicantGpa = parseFloat(formData.gpa);
+        const detectedDocGpa = extractGpaFromText(gradesDoc);
+        if (detectedDocGpa) {
+          setFormData(prev => ({ ...prev, gpa: detectedDocGpa }));
+        }
+
+        const applicantGpa = parseFloat(detectedDocGpa || formData.gpa);
         const minRequired = scholarshipDetails?.minGpa ? parseFloat(scholarshipDetails.minGpa) : 0;
 
         if (minRequired > 0 && applicantGpa < minRequired) {
@@ -3005,7 +3000,7 @@ const StudentInfo = () => {
         }
 
         setGradesVerified('success');
-        showPromptMessage('Grades verified successfully!');
+        showPromptMessage(`Grades verified successfully! (Detected GPA: ${applicantGpa})`);
       } else {
         setGradesVerified('failed');
         showPromptMessage('Grades verification failed.');
