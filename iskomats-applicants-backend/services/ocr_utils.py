@@ -966,10 +966,8 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
         exp_years = re.findall(r'20\d{2}', str(expected_academic_year))
         found_years = re.findall(r'20\d{2}', str(found_ay))
 
-        if exp_years and found_years:
-            exp_nums = [int(y) for y in exp_years]
-            found_nums = [int(y) for y in found_years]
-            ay_ok = any(abs(e - f) <= 2 for e in exp_nums for f in found_nums)
+        if exp_years:
+            ay_ok = all(y in found_years for y in exp_years)
             if not ay_ok:
                 failures.append(f"Academic Year mismatch (Expected: '{expected_academic_year}', Found in COR: '{found_ay}')")
 
