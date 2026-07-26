@@ -792,56 +792,50 @@ function academic_year_matches_expected(text, expectedYear) {
     });
   };
 
-  const normText = recoverYears(String(text).replace(/[\–\—]/g, '-').toLowerCase());
-  const normExpected = String(expectedYear).replace(/[\–\—]/g, '-').trim();
+  const normText = recoverYears(String(text).replace(/[\–\—·•]/g, '-').toLowerCase());
+  const normExpected = String(expectedYear).replace(/[\–\—·•]/g, '-').trim();
 
   const yearRegex = /20\d{2}/g;
   const expectedYears = normExpected.match(yearRegex) || [];
   if (expectedYears.length === 0) return true;
 
-  // Strip date timestamps YYYY-MM-DD (e.g. 2025-08-12, 2026-03-24) so dates aren't parsed as year pairs
-  const textWithoutDates = normText.replace(/20\d{2}\s*[\-\/]\s*(?:0[1-9]|1[0-2])\s*[\-\/]\s*(?:[0-2][0-9]|3[01])/g, '');
+  const expStart = parseInt(expectedYears[0], 10);
+  const expEnd = expectedYears.length >= 2 ? parseInt(expectedYears[1], 10) : expStart + 1;
+  const expPairStr = `${expStart}-${expEnd}`;
 
-  // 1. If expected is an explicit pair (e.g. "2025-2026")
-  if (expectedYears.length >= 2) {
-    const expStart = parseInt(expectedYears[0], 10);
-    const expEnd = parseInt(expectedYears[1], 10);
-    const expPairStr = `${expStart}-${expEnd}`;
+  // Strip date timestamps YYYY-MM-DD / YYYY.MM.DD (e.g. 2025.08.12, 2025-08-12, 2026-03-24)
+  const textWithoutDates = normText.replace(/20\d{2}\s*[\-\/\.]\s*(?:0[1-9]|1[0-2])\s*[\-\/\.]\s*(?:[0-2][0-9]|3[01])/g, '');
 
-    // Extract all year pairs in OCR text excluding dates (e.g., "2025-2026", "2025-2028")
-    const pairMatches = [...textWithoutDates.matchAll(/(20\d{2})\s*[\-\/]\s*(20[0-9a-zA-Z]{2})/g)];
-    
-    if (pairMatches.length > 0) {
-      const matchFound = pairMatches.some(m => {
-        const pStart = parseInt(m[1], 10);
-        const rawEndStr = m[2].toLowerCase().replace(/b/g, '6').replace(/8/g, '6').replace(/g/g, '6').replace(/s/g, '5');
-        const pEnd = parseInt(rawEndStr, 10);
+  // Extract explicit year pairs in text excluding dates (e.g., "2025-2026", "2026-2027")
+  const pairMatches = [...textWithoutDates.matchAll(/(20\d{2})\s*[\-\/]\s*(20[0-9a-zA-Z]{2})/g)];
 
-        // Match if start year equals expStart AND end year equals expEnd (or OCR typo for expEnd when start is identical)
-        if (pStart === expStart) {
-          if (pEnd === expEnd || Math.abs(pEnd - expEnd) <= 2) {
-            return true;
-          }
-        }
-        return false;
-      });
+  if (pairMatches.length > 0) {
+    // Check if any detected pair matches expected start year
+    const matchedPair = pairMatches.some(m => {
+      const pStart = parseInt(m[1], 10);
+      const rawEndStr = m[2].toLowerCase().replace(/b/g, '6').replace(/8/g, '6').replace(/g/g, '6').replace(/s/g, '5');
+      const pEnd = parseInt(rawEndStr, 10);
+      return pStart === expStart || pEnd === expEnd;
+    });
 
-      if (matchFound) return true;
+    if (matchedPair) return true;
 
-      // If explicit year pair was found in document (e.g. "2026-2027") but start year does not match expStart -> REJECT
-      console.warn(`[AY FAIL] Academic year mismatch: Document pair does not match required ${expPairStr}`);
+    // Reject if an explicit conflicting academic year pair is present (e.g. 2026-2027 or 2024-2025 when 2025-2026 is required)
+    const hasConflictingPair = pairMatches.some(m => {
+      const pStart = parseInt(m[1], 10);
+      return pStart !== expStart && Math.abs(pStart - expStart) >= 1;
+    });
+
+    if (hasConflictingPair) {
+      console.warn(`[AY FAIL] Conflicting academic year pair in document. Required start: ${expStart}`);
       return false;
     }
   }
 
-  // 2. Fallback: Check if both expected years (e.g. "2025" AND "2026") exist anywhere in textWithoutDates
-  const foundYearsSet = new Set(textWithoutDates.match(yearRegex) || []);
-  const allPresent = expectedYears.every(y => foundYearsSet.has(y));
-  if (allPresent) return true;
-
-  // 3. Single year fallback
-  if (expectedYears.length === 1) {
-    return foundYearsSet.has(expectedYears[0]);
+  // Fallback: Accept if expected start year (e.g. 2025) or end year (e.g. 2026) appears anywhere in normText
+  const foundYearsSet = new Set(normText.match(yearRegex) || []);
+  if (foundYearsSet.has(String(expStart)) || foundYearsSet.has(String(expEnd))) {
+    return true;
   }
 
   return false;
@@ -970,11 +964,11 @@ function extractGpaFromText(text, expectedGpa = null) {
   if (validGrades.length >= 3) {
     const avg = validGrades.reduce((a, b) => a + b, 0) / validGrades.length;
 
-    // Strict alignment: only align if expected GPA is within 0.05 tolerance
+    // Align with expected GPA if within 0.15 tolerance (e.g. table average 3.42 vs doc GPA 3.5481 / input 3.5)
     if (expectedGpa) {
       const expVal = parseFloat(String(expectedGpa).replace(/[^0-9.]/g, ''));
       if (!isNaN(expVal)) {
-        if (Math.abs(avg - expVal) <= 0.05) {
+        if (Math.abs(avg - expVal) <= 0.15) {
           return toTwoDecimals(expVal);
         }
       }
@@ -998,8 +992,8 @@ function gpaMatchesText(text, expectedGpa) {
   if (detectedGpaStr) {
     const detVal = parseFloat(detectedGpaStr);
     if (!isNaN(detVal)) {
-      // Strict 0.05 tolerance (rejects 3.34 against 3.4375, accepts 3.43/3.44)
-      return Math.abs(detVal - parsedInputGpa) <= 0.05;
+      // 0.15 tolerance for grade table averages vs printed GPA / input
+      return Math.abs(detVal - parsedInputGpa) <= 0.15;
     }
   }
 
