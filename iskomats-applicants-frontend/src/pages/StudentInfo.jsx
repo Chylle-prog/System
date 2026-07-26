@@ -860,13 +860,29 @@ function courseMatchesText(expectedCourse, text) {
 
 function extractGpaFromText(text) {
   if (!text) return null;
-  const gpaMatch = text.match(/(?:GPA|GWA|WEIGHTED\s*AVERAGE)\s*[:\-=\s]*([0-9]+\.[0-9]+)/i);
-  if (gpaMatch && gpaMatch[1]) {
-    const val = parseFloat(gpaMatch[1]);
-    if (!isNaN(val) && val >= 1.0 && val <= 5.0) {
-      return gpaMatch[1].trim();
+
+  // Normalize common OCR artifacts: pipes → colon, commas in numbers → dot
+  const cleaned = text
+    .replace(/\|/g, ':')
+    .replace(/[—–]/g, '-');
+
+  // Pattern 1: explicit "GPA" / "GWA" keyword with separator (e.g., "GPA: 3.5481")
+  const p1 = cleaned.match(/(?:GPA|GWA|WEIGHTED\s*AVERAGE)\s*[:\-=.,|\s]+([0-9]+[.,][0-9]+)/i);
+  if (p1 && p1[1]) {
+    const val = parseFloat(p1[1].replace(',', '.'));
+    if (!isNaN(val) && val >= 1.0 && val <= 5.0) return String(val.toFixed(4));
+  }
+
+  // Pattern 2: 4-decimal GPA value in valid range (e.g., "3.5481") — very specific to grades docs
+  const p2 = text.match(/\b([1-4]\.[0-9]{3,4})\b/g);
+  if (p2) {
+    // Take the last 4-decimal value found (GPA is usually at the bottom of the table)
+    const candidates = p2.map(s => parseFloat(s)).filter(v => v >= 1.0 && v <= 4.0);
+    if (candidates.length > 0) {
+      return String(candidates[candidates.length - 1].toFixed(4));
     }
   }
+
   return null;
 }
 
