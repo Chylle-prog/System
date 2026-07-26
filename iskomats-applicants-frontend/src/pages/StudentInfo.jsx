@@ -2350,7 +2350,7 @@ const StudentInfo = () => {
     return true;
   }
 
-  const preprocessImageForOcr = (imageSource) => {
+  function preprocessImageForOcr(imageSource) {
     return new Promise((resolve) => {
       const img = new Image();
       img.crossOrigin = "anonymous";
@@ -2455,9 +2455,9 @@ const StudentInfo = () => {
         img.src = imageSource;
       }
     });
-  };
+  }
 
-  const performOcrVerification = async (docType, docParam, extraParams = {}, videoUrl = null, silent = false) => {
+  async function performOcrVerification(docType, docParam, extraParams = {}, videoUrl = null, silent = false) {
     const setStatus = (status) => {
       if (silent) return;
       if (docType === 'Indigency') { setOcrStatus(status); }
@@ -2821,11 +2821,11 @@ const StudentInfo = () => {
       setStatus(errMsg);
       return false;
     }
-  };
+  }
 
   // --- Indigency Verification Optimization ---
   const lastIndigencyScanRef = useRef({ doc: null, vid: null });
-  const handleIndigencyScan = async () => {
+  async function handleIndigencyScan() {
     const indigencyDoc = getVerificationDocumentSource(
       photos.mayorIndigency_photo,
       formData.mayorIndigency_photo
@@ -2882,9 +2882,9 @@ const StudentInfo = () => {
     } catch (err) {
       console.error('Scan Error:', err);
     }
-  };
+  }
 
-  const handleCOEScan = async () => {
+  async function handleCOEScan() {
     const coeDoc = getVerificationDocumentSource(
       photos.mayorCOE_photo,
       formData.mayorCOE_photo
@@ -2940,9 +2940,9 @@ const StudentInfo = () => {
     } catch (err) {
       console.error('Scan Error:', err);
     }
-  };
+  }
 
-  const handleGradesScan = async () => {
+  async function handleGradesScan() {
     const gradesDoc = getVerificationDocumentSource(
       photos.mayorGrades_photo,
       formData.mayorGrades_photo
@@ -3010,11 +3010,11 @@ const StudentInfo = () => {
     } catch (err) {
       console.error('Scan Error:', err);
     }
-  };
+  }
 
   // School ID Verification Optimization
   const lastIdScanRef = useRef({ front: null, back: null, frontVid: null, backVid: null });
-  const handleIdScan = async () => {
+  async function handleIdScan() {
     const idFront = getVerificationDocumentSource(
       schoolIdPhotos.front,
       formData.schoolIdFront
@@ -3095,9 +3095,9 @@ const StudentInfo = () => {
     } catch (err) {
       console.error('Scan Error:', err);
     }
-  };
+  }
 
-  const saveCurrentStepProgress = async (stepNumber = currentStep) => {
+  async function saveCurrentStepProgress(stepNumber = currentStep) {
     const payload = new FormData();
     const jsonData = {};
     let hasPayload = false;
