@@ -3687,6 +3687,8 @@ def student_server_error(_error):
 def face_match():
     """
     Standalone face verification (live photo vs ID image).
+    First tries to offload verification to the standalone FastAPI service.
+    If the service is down or times out, it falls back to local visual matching.
     """
     data = request.get_json() or {}
     face_image_data = data.get('face_image')
@@ -3698,8 +3700,30 @@ def face_match():
     try:
         face_bytes = resolve_verification_image_bytes(face_image_data)
         id_bytes = resolve_verification_image_bytes(id_image_data)
+        
+        # 1. Try Remote FastAPI Face Verification Service
+        try:
+            from services.verification_client import call_fastapi_verify_face
+            verified, message, confidence = call_fastapi_verify_face(id_bytes, face_bytes)
+            
+            # If we got a positive response or a definitive mismatch/uncertainty, return it
+            if verified or "mismatch" in str(message).lower() or "uncertain" in str(message).lower():
+                print(f"[FACE-MATCH] Verification handled via FastAPI: verified={verified}, msg='{message}'", flush=True)
+                return jsonify({
+                    'verified': verified,
+                    'message': message,
+                    'confidence': confidence
+                })
+            else:
+                # If there's an error/service down message, print and trigger local fallback
+                print(f"[FACE-MATCH] FastAPI Service returned status: {message}. Falling back to local verification...", flush=True)
+        except Exception as api_err:
+            print(f"[FACE-MATCH] FastAPI Service call failed: {api_err}. Falling back to local verification...", flush=True)
+
+        # 2. Local Fallback (using local verify_face_with_id)
         from services.ocr_utils import verify_face_with_id
         verified, message, confidence = verify_face_with_id(face_bytes, id_bytes)
+        print(f"[FACE-MATCH] Verification handled via Local Fallback: verified={verified}, msg='{message}'", flush=True)
 
         return jsonify({
             'verified': verified,
