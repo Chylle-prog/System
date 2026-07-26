@@ -82,7 +82,7 @@ export const decryptDocument = async (blob, originalType = 'image/jpeg') => {
 
     return new Blob([decrypted], { type: originalType });
   } catch (error) {
-    console.warn('[CRYPTO] Decryption failed (file might be unencrypted or key mismatched):', error.message);
+    // Unencrypted file or key mismatch - return raw blob safely without alarming console warnings
     return blob;
   }
 };
@@ -100,21 +100,21 @@ export const decryptUrl = async (url, type = 'image/jpeg') => {
     const blob = await response.blob();
     if (blob.size === 0) return url;
 
-    // Check if the payload is already an unencrypted image or video
+    // Check if the payload is already an unencrypted image, video, or PDF
     const headerBuffer = await blob.slice(0, 16).arrayBuffer();
     const headerBytes = new Uint8Array(headerBuffer);
     const isMkvWebm = headerBytes[0] === 0x1a && headerBytes[1] === 0x45 && headerBytes[2] === 0xdf && headerBytes[3] === 0xa3;
     const isMp4 = String.fromCharCode(...headerBytes.slice(4, 8)) === 'ftyp';
     const isPng = headerBytes[0] === 0x89 && headerBytes[1] === 0x50 && headerBytes[2] === 0x4e && headerBytes[3] === 0x47;
     const isJpg = headerBytes[0] === 0xff && headerBytes[1] === 0xd8 && headerBytes[2] === 0xff;
+    const isPdf = headerBytes[0] === 0x25 && headerBytes[1] === 0x50 && headerBytes[2] === 0x44 && headerBytes[3] === 0x46;
 
     let decryptedBlob = blob;
-    if (!isMkvWebm && !isMp4 && !isPng && !isJpg) {
+    if (!isMkvWebm && !isMp4 && !isPng && !isJpg && !isPdf) {
       decryptedBlob = await decryptDocument(blob, type);
     }
     return URL.createObjectURL(decryptedBlob);
   } catch (error) {
-    console.warn('[CRYPTO] Failed to fetch and decrypt URL:', url, error);
     return url;
   }
 };
