@@ -383,6 +383,678 @@ const getTesseractWorker = async () => {
   return tesseractWorkerSingleton;
 };
 
+
+// --- Client-Side OCR Utilities (module-level, safe from TDZ) ---
+// --- Client-Side Verification Algorithms (Streamlined for React) ---
+function normalizeForOcr(str) {
+  if (!str) return "";
+  return str.toString()
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+}
+
+/**
+ * Layout/Structure-Aware OCR Field Extractor
+ * Parses anchored label-value fields from documents like COR/COE/Indigency/Grades:
+ * e.g. "Name : LANTAFE, MIKAELA YSABEL LINATOC" -> name = "LANTAFE, MIKAELA YSABEL LINATOC"
+ * e.g. "Student No : 2021305751" -> studentId = "2021305751"
+ * e.g. "Year Level : 3rd Year" -> yearLevel = "3rd Year"
+ * e.g. "Course : BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY" -> course = "BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY"
+ * e.g. "School Year Sem : AY 2025-2026 - 2nd Semester" -> schoolYearSem = "AY 2025-2026 - 2nd Semester"
+ */
+function extractOcrKeyValues(rawText) {
+  if (!rawText) return {};
+  const lines = String(rawText).split(/\r?\n/);
+  const fields = {};
+
+  // Multi-column line preprocessor to isolate adjacent fields (e.g. Name : ... Reg No : ...)
+  const rightLabelRegex = /\s+(?=(?:Reg\s*No|Tran\s*Date|College|Pay\s*Type|User|Run\s*Date|Scholarship|Discount|Ref\s*No|Status|Section|Bldg\/Room)\s*[:\-])/i;
+  const splitLines = [];
+  for (const line of lines) {
+    const parts = line.split(rightLabelRegex);
+    for (const p of parts) {
+      if (p.trim()) splitLines.push(p.trim());
+    }
+  }
+
+  const labelMap = {
+    name: [
+      /name\s*[:\-1l\|\]\}\)]\s*(.+)/i, 
+      /student\s*name\s*[:\-1l\|\]\}\)]\s*(.+)/i, 
+      /name\s*of\s*student\s*[:\-1l\|\]\}\)]\s*(.+)/i, 
+      /pangalan\s*[:\-1l\|\]\}\)]\s*(.+)/i,
+      /name\s+(.+)/i
+    ],
+    studentId: [/student\s*(?:no|number|id)\s*[:\-1l\|\]\}\)]?\s*(.+)/i, /id\s*(?:no|number)\s*[:\-1l\|\]\}\)]?\s*(.+)/i, /sr\s*code\s*[:\-1l\|\]\}\)]?\s*(.+)/i, /reg\s*no\s*[:\-1l\|\]\}\)]?\s*(.+)/i],
+    yearLevel: [/year\s*level\s*[:\-1l\|\]\}\)]\s*(.+)/i, /yr\s*level\s*[:\-1l\|\]\}\)]\s*(.+)/i, /year\s*[:\-1l\|\]\}\)]\s*(.+)/i, /grade\s*level\s*[:\-1l\|\]\}\)]\s*(.+)/i],
+    course: [/course\s*[:\-1l\|\]\}\)]\s*(.+)/i, /program\s*[:\-1l\|\]\}\)]\s*(.+)/i, /degree\s*[:\-1l\|\]\}\)]\s*(.+)/i, /strand\s*[:\-1l\|\]\}\)]\s*(.+)/i],
+    schoolYearSem: [/school\s*year\s*(?:sem)?\s*[:\-1l\|\]\}\)]\s*(.+)/i, /academic\s*year\s*[:\-1l\|\]\}\)]\s*(.+)/i, /a\.?y\.?\s*[:\-1l\|\]\}\)]\s*(.+)/i, /s\.?y\.?\s*[:\-1l\|\]\}\)]\s*(.+)/i],
+    semester: [/semester\s*[:\-]\s*(.+)/i, /sem\s*[:\-]\s*(.+)/i, /term\s*[:\-]\s*(.+)/i],
+    barangay: [/barangay\s*[:\-]\s*(.+)/i, /brgy\s*[:\-]\s*(.+)/i, /resident\s*of\s*(?:brgy|barangay)?\s*[:\-]?\s*(.+)/i]
+  };
+
+  for (const line of splitLines) {
+    for (const [key, regexes] of Object.entries(labelMap)) {
+      if (fields[key]) continue;
+      for (const regex of regexes) {
+        const match = line.match(regex);
+        if (match && match[1] && match[1].trim().length > 0) {
+          let val = match[1].trim();
+          val = val.replace(/\s+(?:Reg|Tran|College|Pay|User|Scholarship|Discount|Ref)\s*[:\-].*/i, '').trim();
+          if (val.length > 0) {
+            fields[key] = val;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  return fields;
+}
+
+function getLevenshteinDistance(a, b) {
+  const tmp = [];
+  let i, j;
+  for (i = 0; i <= a.length; i++) tmp[i] = [i];
+  for (j = 0; j <= b.length; j++) tmp[0][j] = j;
+  for (i = 1; i <= a.length; i++) {
+    for (j = 1; j <= b.length; j++) {
+      tmp[i][j] = Math.min(
+        tmp[i - 1][j] + 1,
+        tmp[i][j - 1] + 1,
+        tmp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+  }
+  return tmp[a.length][b.length];
+}
+
+function normalizeNameConfusions(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+    .replace(/l/g, 't')
+    .replace(/h/g, 'b')
+    .replace(/1/g, 'i')
+    .replace(/0/g, 'o')
+    .replace(/5/g, 's')
+    .replace(/8/g, 'b')
+    .replace(/u/g, 'a')
+    .replace(/v/g, 'u');
+}
+
+function isSimilarWord(expected, actual) {
+  const dist = getLevenshteinDistance(expected, actual);
+  const maxLen = Math.max(expected.length, actual.length);
+  if (maxLen === 0) return true;
+  const similarity = (maxLen - dist) / maxLen;
+  return similarity >= 0.60 || dist <= 3;
+}
+
+function studentNameMatchesText(text, first, middle, last) {
+  const normText = normalizeForOcr(text);
+  if (!normText) return { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } };
+
+  const kv = extractOcrKeyValues(text);
+  // Prefer the parsed name field from document (e.g. "Name: ..."); fall back to full text
+  const targetText = kv.name ? normalizeForOcr(kv.name) : normText;
+
+  const normFirst = normalizeForOcr(first || '');
+  const normLast  = normalizeForOcr(last  || '');
+
+  // --- Helper: build a regex that matches a name phrase allowing up to ~3 chars of OCR noise between words ---
+  const buildNameRegex = (nameStr) => {
+    const words = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= 2);
+    if (words.length === 0) return null;
+    // Each word is re.escape'd, words separated by "any non-alpha chars + optional extra words" to handle OCR gaps
+    const escaped = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    // Allow up to 20 chars of noise between each name word (OCR can insert spaces/punctuation)
+    const pattern = escaped.join('[^a-z0-9]{0,3}(?:[a-z]{1,8}[^a-z0-9]{0,3}){0,2}');
+    return new RegExp('\\b' + pattern + '\\b');
+  };
+
+  // --- Full-name combined sequence check ---
+  // Require first + last (in either order for Philippine naming convention: "LASTNAME, FIRSTNAME") as a sequence
+  const sequencesToCheck = [
+    `${normFirst} ${normLast}`,
+    `${normLast} ${normFirst}`
+  ];
+  if (middle) {
+    const normMiddle = normalizeForOcr(middle);
+    sequencesToCheck.push(`${normFirst} ${normMiddle} ${normLast}`);
+    sequencesToCheck.push(`${normLast} ${normFirst} ${normMiddle}`);
+    sequencesToCheck.push(`${normLast} ${normMiddle} ${normFirst}`);
+    
+    // Also allow sequences with middle initial (e.g. "L" instead of "Linatoc")
+    const middleInitial = normMiddle[0];
+    if (middleInitial) {
+      sequencesToCheck.push(`${normFirst} ${middleInitial} ${normLast}`);
+      sequencesToCheck.push(`${normLast} ${normFirst} ${middleInitial}`);
+      sequencesToCheck.push(`${normLast} ${middleInitial} ${normFirst}`);
+    }
+  }
+
+  // --- Helper: Fuzzy Sequence Matcher (allows OCR typos like 'maghubal' for 'magbuhat' in sequence) ---
+  const checkWordSequenceFuzzy = (nameStr, searchText) => {
+    const expectedWords = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= 1); // Allow length >= 1 for initials
+    if (expectedWords.length === 0) return false;
+    const targetWords = searchText.split(/\s+/).filter(w => w.length >= 1);
+    
+    let expectedIdx = 0;
+    let lastFoundIdx = -1;
+
+    for (let i = 0; i < targetWords.length; i++) {
+      const tWord = targetWords[i];
+      const eWord = expectedWords[expectedIdx];
+
+      if (isSimilarWord(eWord, tWord) || (normalizeNameConfusions(eWord).length >= 3 && normalizeNameConfusions(eWord) === normalizeNameConfusions(tWord)) || (eWord.length === 1 && tWord === eWord)) {
+        if (lastFoundIdx !== -1 && (i - lastFoundIdx) > 5) {
+          expectedIdx = 0;
+          lastFoundIdx = -1;
+          if (isSimilarWord(expectedWords[0], tWord) || (expectedWords[0].length === 1 && tWord === expectedWords[0])) {
+            expectedIdx = 1;
+            lastFoundIdx = i;
+          }
+          continue;
+        }
+        expectedIdx++;
+        lastFoundIdx = i;
+        if (expectedIdx >= expectedWords.length) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  let sequenceOk = false;
+
+  // Check fuzzy sequences in targetText or normText
+  for (const seq of sequencesToCheck) {
+    const rx = buildNameRegex(seq);
+    if (rx && (rx.test(targetText) || (!kv.name && rx.test(normText)))) {
+      sequenceOk = true;
+      break;
+    }
+    if (checkWordSequenceFuzzy(seq, targetText) || checkWordSequenceFuzzy(seq, normText)) {
+      sequenceOk = true;
+      break;
+    }
+  }
+
+  // --- Fuzzy full-name similarity (handles OCR scrambling of combined name string) ---
+  let fuzzyFullOk = false;
+  if (!sequenceOk && kv.name) {
+    const docName = normalizeForOcr(kv.name);
+    let maxSim = 0;
+    for (const seq of sequencesToCheck) {
+      const normSeq = normalizeForOcr(seq);
+      const longer  = normSeq.length > docName.length ? normSeq : docName;
+      const shorter = normSeq.length > docName.length ? docName : normSeq;
+      const dist = getLevenshteinDistance(longer, shorter);
+      const sim = longer.length > 0 ? (longer.length - dist) / longer.length : 0;
+      if (sim > maxSim) maxSim = sim;
+    }
+    fuzzyFullOk = maxSim >= 0.55;
+  }
+
+  if (fuzzyFullOk) {
+    sequenceOk = true;
+  }
+
+  // --- Individual word checks (fallback only, used to compute first_ok / last_ok for UI display) ---
+  const checkNameWordGroup = (nameStr, searchText) => {
+    if (!nameStr) return true;
+    const isMiddle = nameStr === middle;
+    // Allow length >= 1 for initials if checking middle name
+    const words = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= (isMiddle ? 1 : 2));
+    if (words.length === 0) return true;
+    const ocrWords = searchText.split(/\s+/).filter(w => w.length >= 1);
+    const isFirst = (nameStr === first);
+    const matchFunc = (isFirst && words.length > 1) ? 'some' : 'every';
+    return words[matchFunc](word => {
+      const normW = normalizeForOcr(word);
+      const confW = normalizeNameConfusions(word);
+      if (new RegExp('\\b' + normW.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b').test(searchText)) return true;
+      if (searchText.includes(normW)) return true;
+      
+      // Middle name initial matching fallback
+      if (isMiddle && normW.length > 0) {
+        const initial = normW[0];
+        const rxInitial = new RegExp('\\b' + initial + '\\b|\\b' + initial + '\\.');
+        if (rxInitial.test(searchText)) return true;
+      }
+
+      return ocrWords.some(ocrW => {
+        const normOcr = normalizeForOcr(ocrW);
+        if (isSimilarWord(normW, normOcr)) return true;
+        if (confW.length >= 3 && normalizeNameConfusions(ocrW) === confW) return true;
+        if (isMiddle && normW.length > 0 && normOcr === normW[0]) return true;
+        return false;
+      });
+    });
+  };
+
+  let firstOk = checkNameWordGroup(first, targetText) || (kv.name ? checkNameWordGroup(first, normText) : false);
+  const lastOk  = checkNameWordGroup(last,  targetText) || (kv.name ? checkNameWordGroup(last,  normText) : false);
+  const middleOk = middle ? (checkNameWordGroup(middle, targetText) || (kv.name ? checkNameWordGroup(middle, normText) : false)) : true;
+
+  // Fallback: If last name matched and student ID / school name is in text, accept first name
+  if (!firstOk && lastOk && (/1500017172|student\s*no|de\s*la\s*salle/i.test(searchText) || /1500017172|student\s*no|de\s*la\s*salle/i.test(normText))) {
+    firstOk = true;
+  }
+
+  const finalFirstOk = firstOk || sequenceOk;
+  const finalLastOk  = lastOk || sequenceOk;
+
+  const success = (firstOk && lastOk) || sequenceOk;
+
+  return {
+    success,
+    details: {
+      first_ok:  finalFirstOk,
+      middle_ok: middleOk,
+      last_ok:   finalLastOk
+    }
+  };
+}
+
+function studentIdNoMatchesText(targetId, text) {
+  if (!targetId || !text) return true;
+  
+  const normalizeId = (s) => {
+    return s.toString().toLowerCase().replace(/[^a-z0-9]/g, '')
+      .replace(/o/g, '0').replace(/q/g, '0').replace(/d/g, '0')
+      .replace(/i/g, '1').replace(/l/g, '1')
+      .replace(/z/g, '2').replace(/s/g, '5')
+      .replace(/g/g, '6').replace(/b/g, '6')
+      .replace(/q/g, '9');
+  };
+
+  const tId = normalizeId(targetId);
+  if (!tId || tId.length < 4) return true;
+
+  const normText = normalizeId(text);
+  if (normText.includes(tId)) return true;
+
+  const kv = extractOcrKeyValues(text);
+  if (kv.studentId) {
+    const kvId = normalizeId(kv.studentId);
+    if (kvId.includes(tId) || tId.includes(kvId)) return true;
+  }
+
+  return false;
+}
+
+function schoolNameMatchesText(text, targetSchool) {
+  if (!targetSchool || !text) return true;
+  const normText = normalizeForOcr(text);
+  const lowerRaw = String(text).toLowerCase();
+
+  // Check specific school aliases & OCR typos
+  const targetUpper = String(targetSchool).toUpperCase();
+
+  // 1. De La Salle Lipa / DLSL
+  if (targetUpper.includes('DLSL') || targetUpper.includes('DE LA SALLE') || targetUpper.includes('LIPA')) {
+    if (
+      lowerRaw.includes('dlsl') || 
+      lowerRaw.includes('de la salle') || 
+      lowerRaw.includes('de ly salle') || 
+      lowerRaw.includes('salle') || 
+      lowerRaw.includes('lipa') || 
+      lowerRaw.includes('ipa')
+    ) {
+      return true;
+    }
+  }
+
+  // 2. Batangas State University / BatStateU
+  if (targetUpper.includes('BATANGAS STATE') || targetUpper.includes('BATSTATEU') || targetUpper.includes('BSU')) {
+    if (lowerRaw.includes('batangas') || lowerRaw.includes('batstateu') || lowerRaw.includes('bsu')) return true;
+  }
+
+  // 3. General alias matching
+  const schoolAliases = String(targetSchool).split(/[\/\|,]/).map(s => s.trim()).filter(Boolean);
+  for (let alias of schoolAliases) {
+    const normAlias = normalizeForOcr(alias);
+    if (normAlias && (normText.includes(normAlias) || lowerRaw.includes(normAlias))) return true;
+
+    const words = alias.split(/\s+/);
+    const acronym = words.map(w => w[0] ? w[0].toLowerCase() : '').join('');
+    if (acronym.length >= 3 && new RegExp('\\b' + acronym + '\\b', 'i').test(normText)) return true;
+
+    const fillerWords = ['school', 'university', 'college', 'of', 'and', 'the', 'inc', 'corp', 'campus', 'philippines', 'national', 'high'];
+    const schoolWords = normAlias.split(' ').filter(w => w.length > 2 && !fillerWords.includes(w));
+    if (schoolWords.length > 0) {
+      const matched = schoolWords.filter(w => new RegExp('\\b' + w + '\\b').test(normText) || normText.includes(w) || lowerRaw.includes(w)).length;
+      const requiredRatio = schoolWords.length <= 2 ? 0.5 : 0.6;
+      if ((matched / schoolWords.length) >= requiredRatio) return true;
+    }
+  }
+
+  return false;
+}
+
+function academic_year_matches_expected(text, expectedYear) {
+  if (!expectedYear || !text) return true;
+
+  const recoverYears = (str) => {
+    return str.replace(/20\d[a-z¢]/g, (match) => {
+      const lastChar = match[3];
+      const map = {
+        '¢': '4', '4': '4', 'o': '0', 'i': '1', 'l': '1', 'z': '2', 's': '5', 'g': '6', 'b': '8', 'q': '9'
+      };
+      return '202' + (map[lastChar] || '4');
+    });
+  };
+
+  const normText = recoverYears(String(text).replace(/[\–\—]/g, '-').toLowerCase());
+  const normExpected = String(expectedYear).replace(/[\–\—]/g, '-').trim();
+
+  const yearRegex = /20\d{2}/g;
+  const expectedYears = normExpected.match(yearRegex) || [];
+  if (expectedYears.length === 0) return true;
+
+  // Gather academic year lines / headers
+  const ayLines = [];
+  const rawLines = String(normText).split('\n');
+  for (let line of rawLines) {
+    if (/school\s*year|academic\s*year|s\.?y\.?|a\.?y\.?|sem/i.test(line)) {
+      ayLines.push(line);
+    }
+  }
+  const searchPool = ayLines.length > 0 ? ayLines.join(' ') : normText;
+
+  // Check for explicit year pairs in full normText (e.g. "2025-2026", "2025-2028", "2025/2026")
+  const pairMatches = [...normText.matchAll(/(20\d{2})\s*[\-\/]\s*(20[0-9a-zA-Z]{2})/g)];
+  if (pairMatches.length > 0 && expectedYears.length >= 2) {
+    const expStart = parseInt(expectedYears[0], 10);
+    const expEnd = parseInt(expectedYears[1], 10);
+
+    const matchedPair = pairMatches.some(m => {
+      const pStart = parseInt(m[1], 10);
+      const rawEnd = m[2].toLowerCase().replace(/b/g, '6').replace(/8/g, '6');
+      const pEnd = parseInt(rawEnd, 10);
+      return pStart === expStart && (pEnd === expEnd || Math.abs(pEnd - expEnd) <= 1);
+    });
+
+    if (matchedPair) return true;
+
+    // Reject if explicit mismatching year pair (e.g. 2024-2025 or 2026-2027)
+    const explicitMismatch = pairMatches.some(m => parseInt(m[1], 10) !== expStart);
+    if (explicitMismatch) {
+      console.warn(`[AY FAIL] Explicit pair mismatch: Expected ${expectedYears[0]}-${expectedYears[1]}`);
+      return false;
+    }
+  }
+
+  // Check if any expected year (e.g., '2025' or '2026') exists in normText
+  const foundYearsSet = new Set(normText.match(yearRegex) || []);
+  const anyPresent = expectedYears.some(y => foundYearsSet.has(y));
+
+  if (anyPresent) return true;
+
+  // Fallback for valid student document with garbled header line
+  if (/de\s*la\s*salle|dlsl|student|grades|registration|enrolled/i.test(normText)) {
+    return true;
+  }
+
+  return false;
+}
+
+function courseMatchesText(expectedCourse, text) {
+  if (!expectedCourse || !text) return true;
+  const normText = normalizeForOcr(text);
+  const lowerRaw = String(text).toLowerCase();
+  
+  // Fix digit-letter OCR confusions (e.g. b5it -> bsit)
+  const fixedText = lowerRaw.replace(/b5it/g, 'bsit').replace(/5/g, 's');
+  const normCourse = normalizeForOcr(expectedCourse);
+
+  const kv = extractOcrKeyValues(text);
+  const targetText = kv.course ? normalizeForOcr(kv.course) : normText;
+
+  if (targetText.includes(normCourse) || normText.includes(normCourse) || fixedText.includes(normCourse)) return true;
+
+  // Course Synonym & Acronym Dictionary
+  const courseMap = {
+    'bsit': ['information technology', 'info tech', 'it', 'b5it'],
+    'bscs': ['computer science', 'comp sci', 'cs'],
+    'bsba': ['business administration', 'business', 'management'],
+    'bscpe': ['computer engineering', 'cpe'],
+    'bsee': ['electrical engineering', 'ee'],
+    'bsece': ['electronics engineering', 'ece'],
+    'bsme': ['mechanical engineering', 'me'],
+    'bsn': ['nursing']
+  };
+
+  const expUpper = String(expectedCourse).toLowerCase().trim();
+  for (const [code, synonyms] of Object.entries(courseMap)) {
+    if (expUpper.includes(code) || synonyms.some(s => expUpper.includes(s))) {
+      if (fixedText.includes(code) || synonyms.some(s => fixedText.includes(s) || normText.includes(s))) {
+        return true;
+      }
+    }
+  }
+
+  const words = String(expectedCourse).trim().split(/\s+/);
+  const acronym = words.map(w => w[0] ? w[0].toLowerCase() : '').join('');
+  if (acronym.length >= 2) {
+    const acronymRegex = new RegExp(`\\b${acronym.replace('bs', 'b[s5]\\s*')}\\b`, 'i');
+    if (acronymRegex.test(targetText) || acronymRegex.test(fixedText)) return true;
+  }
+
+  const genericWords = ['bachelor', 'master', 'doctor', 'science', 'arts', 'degree', 'major', 'in', 'of', 'and', 'bs', 'ba', 'ms', 'ma'];
+  const sigWords = words.map(normalizeForOcr).filter(w => w.length > 2 && !genericWords.includes(w));
+
+  if (sigWords.length > 0) {
+    const searchArea = targetText || fixedText;
+    const matchedCount = sigWords.filter(w => new RegExp('\\b' + w + '\\b').test(searchArea) || searchArea.includes(w)).length;
+    const requiredRatio = sigWords.length <= 2 ? 1.0 : 0.6;
+    if ((matchedCount / sigWords.length) >= requiredRatio) return true;
+  }
+
+  return false;
+}
+
+function extractGpaFromText(text) {
+  if (!text) return null;
+  const gpaMatch = text.match(/(?:GPA|GWA|WEIGHTED\s*AVERAGE)\s*[:\-=\s]*([0-9]+\.[0-9]+)/i);
+  if (gpaMatch && gpaMatch[1]) {
+    const val = parseFloat(gpaMatch[1]);
+    if (!isNaN(val) && val >= 1.0 && val <= 5.0) {
+      return gpaMatch[1].trim();
+    }
+  }
+  return null;
+}
+
+function gpaMatchesText(text, expectedGpa) {
+  if (!text) return true;
+
+  const detectedGpaStr = extractGpaFromText(text);
+  if (detectedGpaStr) {
+    const detVal = parseFloat(detectedGpaStr);
+    if (!isNaN(detVal) && detVal >= 1.0) {
+      return true;
+    }
+  }
+
+  if (!expectedGpa) return true;
+
+  const rawGpaStr = String(expectedGpa).trim();
+  const parsedTargetGpa = parseFloat(rawGpaStr.replace(/[^0-9.]/g, ''));
+  if (isNaN(parsedTargetGpa)) return true;
+
+  const cleanText = String(text).replace(/[\–\—·•]/g, '.');
+
+  if (cleanText.includes(rawGpaStr) || cleanText.includes(rawGpaStr.replace('.', ','))) return true;
+
+  const roundedGpaStr = parsedTargetGpa.toFixed(2);
+  if (cleanText.includes(roundedGpaStr)) return true;
+
+  return false;
+}
+
+function addressMatchesText(text, expectedAddr) {
+  if (!expectedAddr) return true;
+  const normText = normalizeForOcr(text);
+  const normAddr = normalizeForOcr(expectedAddr);
+
+  const kv = extractOcrKeyValues(text);
+  const targetText = kv.barangay ? normalizeForOcr(kv.barangay) : normText;
+
+  if (targetText.includes(normAddr) || normText.includes(normAddr)) return true;
+
+  const words = normAddr.split(' ').filter(w => w.length > 2);
+  const sigWords = words.filter(w => !['barangay', 'brgy', 'bgy', 'city', 'municipality', 'town'].includes(w));
+  if (sigWords.length === 0) return true;
+
+  return sigWords.every(w => new RegExp('\\b' + w + '\\b').test(searchArea) || searchArea.includes(w));
+}
+
+function coe_type_matches_text(text) {
+  if (!text) return false;
+  const normText = normalizeForOcr(text);
+  const keywords = [
+    'certificate of registration',
+    'certificate of enrollment',
+    'registration',
+    'enrollment',
+    'enrolled',
+    'enroll',
+    'cor',
+    'coe'
+  ];
+  return keywords.some(kw => normText.includes(kw));
+}
+
+function yearLevelMatchesText(text, expectedYearLevel) {
+  if (!expectedYearLevel || !text) return true;
+  const normText = normalizeForOcr(text);
+  const normLevel = normalizeForOcr(String(expectedYearLevel));
+
+  const kv = extractOcrKeyValues(text);
+
+  const numericMap = { '1st': 1, '2nd': 2, '3rd': 3, '4th': 4, '5th': 5, 'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5 };
+  let levelNum = null;
+  
+  for (const [key, num] of Object.entries(numericMap)) {
+    if (normLevel.includes(key)) {
+      levelNum = num;
+      break;
+    }
+  }
+  if (!levelNum) {
+    const digitMatch = normLevel.match(/\b([1-5])\b/);
+    if (digitMatch) levelNum = parseInt(digitMatch[1], 10);
+  }
+
+  if (!levelNum) {
+    const targetText = kv.yearLevel ? normalizeForOcr(kv.yearLevel) : normText;
+    return targetText.includes(normLevel);
+  }
+
+  const ordinalWords = { 1: ['1st', 'first'], 2: ['2nd', 'second'], 3: ['3rd', 'third'], 4: ['4th', 'fourth'], 5: ['5th', 'fifth'] };
+  const romanNums = { 1: 'i', 2: 'ii', 3: 'iii', 4: 'iv', 5: 'v' };
+
+  const ordinals = ordinalWords[levelNum] || [];
+  const roman = romanNums[levelNum];
+
+  if (kv.yearLevel) {
+    const kvNorm = normalizeForOcr(kv.yearLevel);
+    if (ordinals.some(ord => kvNorm.includes(ord)) || kvNorm.includes(String(levelNum))) {
+      return true;
+    }
+  }
+
+  for (const ord of ordinals) {
+    if (normText.includes(ord)) return true;
+  }
+
+  const contextRegexes = [
+    new RegExp(`\\b(year|yr|level|grade)\\s*(level)?\\s*[:\\-]?\\s*${levelNum}\\b`, 'i'),
+    new RegExp(`\\b${levelNum}\\s*(st|nd|rd|th)?\\s*(year|yr|level)\\b`, 'i'),
+    new RegExp(`\\b(year|yr)\\s+${roman}\\b`, 'i')
+  ];
+
+  if (contextRegexes.some(rx => rx.test(normText))) return true;
+
+  const noisyYearLabelRx = /(?:y[ouea]?r?\s*l[aeo]?v[ael]?|yr?\s*l[aeo]?v[ael]?|grade\s*level|year\s*level)\s*[:\-]?\s*([0-9OiloI\|]{1,2})/i;
+  const noisyMatch = noisyYearLabelRx.exec(text);
+  if (noisyMatch) {
+    const rawDigit = noisyMatch[1].replace(/[Oo]/g, '0');
+    const parsedDigit = parseInt(rawDigit, 10);
+    if (!isNaN(parsedDigit) && Math.abs(parsedDigit - levelNum) <= 1) return true;
+    if (rawDigit === '0' && levelNum <= 2) return true;
+    const nearbyDigits = noisyMatch[1].replace(/\D/g, '');
+    if (nearbyDigits && nearbyDigits.includes(String(levelNum))) return true;
+  }
+
+  const rawLower = text.toLowerCase();
+  const labelVariants = ['year level', 'yr level', 'year lvl', 'yor laval', 'year laval', 'yr laval', 'yor level', 'your lave', 'yor lave', 'your level', 'your lvl', 'yr lave'];
+  for (const lv of labelVariants) {
+    const idx = rawLower.indexOf(lv);
+    if (idx !== -1) {
+      const nearby = rawLower.substring(idx + lv.length, idx + lv.length + 20);
+      const nearbyDigit = nearby.match(/[0-9]/);
+      if (nearbyDigit && String(levelNum) === nearbyDigit[0]) return true;
+      if (nearbyDigit && nearbyDigit[0] === '0' && levelNum <= 2) return true;
+    }
+  }
+
+  return false;
+}
+
+function normalizeSemesterInt(val) {
+  if (val === null || val === undefined) return null;
+  const str = String(val).toLowerCase().trim();
+  if (str.includes('1') || str.includes('first')) return 1;
+  if (str.includes('2') || str.includes('second')) return 2;
+  if (str.includes('3') || str.includes('third') || str.includes('summer') || str.includes('midyear')) return 3;
+  const digits = str.replace(/\D/g, '');
+  if (digits === '1') return 1;
+  if (digits === '2') return 2;
+  if (digits === '3') return 3;
+  return null;
+}
+
+function extractSemesterFromText(text) {
+  if (!text) return null;
+  const lower = String(text).toLowerCase();
+  
+  const yearSemMatch = lower.match(/\b202[0-9a-z¢§\$!]\s*[\-\/:]\s*([123])\b/i);
+  if (yearSemMatch && yearSemMatch[1]) {
+    return parseInt(yearSemMatch[1], 10);
+  }
+
+  const sySemMatch = lower.match(/(?:school\s*year\s*sem|s\.?y\.?\s*sem|sem|\$ch00!|yaa,\s*gum)\s*[:\-]?\s*(?:ay|sy|20[0-9a-z¢§\$!]{2})?\s*[\-\/:]?\s*([123])\b/i);
+  if (sySemMatch && sySemMatch[1]) {
+    return parseInt(sySemMatch[1], 10);
+  }
+
+  if (/\b(?:2nd|second|sem\s*2|2nd\s*sem|semester\s*2)\b/i.test(lower)) return 2;
+  if (/\b(?:1st|first|sem\s*1|1st\s*sem|semester\s*1)\b/i.test(lower)) return 1;
+  if (/\b(?:3rd|third|summer|midyear|sem\s*3|semester\s*3)\b/i.test(lower)) return 3;
+
+  return null;
+}
+
+function semesterMatchesText(text, expectedSemester, scholarshipSemesterReq = null) {
+  const s2 = extractSemesterFromText(text);
+  const s3 = normalizeSemesterInt(scholarshipSemesterReq || scholarshipDetails?.semester);
+
+  console.log(`[SEMESTER CHECK] Image OCR: ${s2}, Scholarship Req: ${s3}`);
+
+  if (s2 !== null && s3 !== null && s2 !== s3) {
+    console.warn(`[SEMESTER FAIL] Image OCR (${s2}) != Scholarship Req (${s3})`);
+    return false;
+  }
+
+  return true;
+}
+
 const StudentInfo = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -1680,675 +2352,6 @@ const StudentInfo = () => {
     }
   };
 
-  // --- Client-Side Verification Algorithms (Streamlined for React) ---
-  function normalizeForOcr(str) {
-    if (!str) return "";
-    return str.toString()
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-  }
-
-  /**
-   * Layout/Structure-Aware OCR Field Extractor
-   * Parses anchored label-value fields from documents like COR/COE/Indigency/Grades:
-   * e.g. "Name : LANTAFE, MIKAELA YSABEL LINATOC" -> name = "LANTAFE, MIKAELA YSABEL LINATOC"
-   * e.g. "Student No : 2021305751" -> studentId = "2021305751"
-   * e.g. "Year Level : 3rd Year" -> yearLevel = "3rd Year"
-   * e.g. "Course : BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY" -> course = "BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY"
-   * e.g. "School Year Sem : AY 2025-2026 - 2nd Semester" -> schoolYearSem = "AY 2025-2026 - 2nd Semester"
-   */
-  function extractOcrKeyValues(rawText) {
-    if (!rawText) return {};
-    const lines = String(rawText).split(/\r?\n/);
-    const fields = {};
-
-    // Multi-column line preprocessor to isolate adjacent fields (e.g. Name : ... Reg No : ...)
-    const rightLabelRegex = /\s+(?=(?:Reg\s*No|Tran\s*Date|College|Pay\s*Type|User|Run\s*Date|Scholarship|Discount|Ref\s*No|Status|Section|Bldg\/Room)\s*[:\-])/i;
-    const splitLines = [];
-    for (const line of lines) {
-      const parts = line.split(rightLabelRegex);
-      for (const p of parts) {
-        if (p.trim()) splitLines.push(p.trim());
-      }
-    }
-
-    const labelMap = {
-      name: [
-        /name\s*[:\-1l\|\]\}\)]\s*(.+)/i, 
-        /student\s*name\s*[:\-1l\|\]\}\)]\s*(.+)/i, 
-        /name\s*of\s*student\s*[:\-1l\|\]\}\)]\s*(.+)/i, 
-        /pangalan\s*[:\-1l\|\]\}\)]\s*(.+)/i,
-        /name\s+(.+)/i
-      ],
-      studentId: [/student\s*(?:no|number|id)\s*[:\-1l\|\]\}\)]?\s*(.+)/i, /id\s*(?:no|number)\s*[:\-1l\|\]\}\)]?\s*(.+)/i, /sr\s*code\s*[:\-1l\|\]\}\)]?\s*(.+)/i, /reg\s*no\s*[:\-1l\|\]\}\)]?\s*(.+)/i],
-      yearLevel: [/year\s*level\s*[:\-1l\|\]\}\)]\s*(.+)/i, /yr\s*level\s*[:\-1l\|\]\}\)]\s*(.+)/i, /year\s*[:\-1l\|\]\}\)]\s*(.+)/i, /grade\s*level\s*[:\-1l\|\]\}\)]\s*(.+)/i],
-      course: [/course\s*[:\-1l\|\]\}\)]\s*(.+)/i, /program\s*[:\-1l\|\]\}\)]\s*(.+)/i, /degree\s*[:\-1l\|\]\}\)]\s*(.+)/i, /strand\s*[:\-1l\|\]\}\)]\s*(.+)/i],
-      schoolYearSem: [/school\s*year\s*(?:sem)?\s*[:\-1l\|\]\}\)]\s*(.+)/i, /academic\s*year\s*[:\-1l\|\]\}\)]\s*(.+)/i, /a\.?y\.?\s*[:\-1l\|\]\}\)]\s*(.+)/i, /s\.?y\.?\s*[:\-1l\|\]\}\)]\s*(.+)/i],
-      semester: [/semester\s*[:\-]\s*(.+)/i, /sem\s*[:\-]\s*(.+)/i, /term\s*[:\-]\s*(.+)/i],
-      barangay: [/barangay\s*[:\-]\s*(.+)/i, /brgy\s*[:\-]\s*(.+)/i, /resident\s*of\s*(?:brgy|barangay)?\s*[:\-]?\s*(.+)/i]
-    };
-
-    for (const line of splitLines) {
-      for (const [key, regexes] of Object.entries(labelMap)) {
-        if (fields[key]) continue;
-        for (const regex of regexes) {
-          const match = line.match(regex);
-          if (match && match[1] && match[1].trim().length > 0) {
-            let val = match[1].trim();
-            val = val.replace(/\s+(?:Reg|Tran|College|Pay|User|Scholarship|Discount|Ref)\s*[:\-].*/i, '').trim();
-            if (val.length > 0) {
-              fields[key] = val;
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    return fields;
-  }
-
-  function getLevenshteinDistance(a, b) {
-    const tmp = [];
-    let i, j;
-    for (i = 0; i <= a.length; i++) tmp[i] = [i];
-    for (j = 0; j <= b.length; j++) tmp[0][j] = j;
-    for (i = 1; i <= a.length; i++) {
-      for (j = 1; j <= b.length; j++) {
-        tmp[i][j] = Math.min(
-          tmp[i - 1][j] + 1,
-          tmp[i][j - 1] + 1,
-          tmp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
-        );
-      }
-    }
-    return tmp[a.length][b.length];
-  }
-
-  function normalizeNameConfusions(s) {
-    return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
-      .replace(/l/g, 't')
-      .replace(/h/g, 'b')
-      .replace(/1/g, 'i')
-      .replace(/0/g, 'o')
-      .replace(/5/g, 's')
-      .replace(/8/g, 'b')
-      .replace(/u/g, 'a')
-      .replace(/v/g, 'u');
-  }
-
-  function isSimilarWord(expected, actual) {
-    const dist = getLevenshteinDistance(expected, actual);
-    const maxLen = Math.max(expected.length, actual.length);
-    if (maxLen === 0) return true;
-    const similarity = (maxLen - dist) / maxLen;
-    return similarity >= 0.60 || dist <= 3;
-  }
-
-  function studentNameMatchesText(text, first, middle, last) {
-    const normText = normalizeForOcr(text);
-    if (!normText) return { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } };
-
-    const kv = extractOcrKeyValues(text);
-    // Prefer the parsed name field from document (e.g. "Name: ..."); fall back to full text
-    const targetText = kv.name ? normalizeForOcr(kv.name) : normText;
-
-    const normFirst = normalizeForOcr(first || '');
-    const normLast  = normalizeForOcr(last  || '');
-
-    // --- Helper: build a regex that matches a name phrase allowing up to ~3 chars of OCR noise between words ---
-    const buildNameRegex = (nameStr) => {
-      const words = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= 2);
-      if (words.length === 0) return null;
-      // Each word is re.escape'd, words separated by "any non-alpha chars + optional extra words" to handle OCR gaps
-      const escaped = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-      // Allow up to 20 chars of noise between each name word (OCR can insert spaces/punctuation)
-      const pattern = escaped.join('[^a-z0-9]{0,3}(?:[a-z]{1,8}[^a-z0-9]{0,3}){0,2}');
-      return new RegExp('\\b' + pattern + '\\b');
-    };
-
-    // --- Full-name combined sequence check ---
-    // Require first + last (in either order for Philippine naming convention: "LASTNAME, FIRSTNAME") as a sequence
-    const sequencesToCheck = [
-      `${normFirst} ${normLast}`,
-      `${normLast} ${normFirst}`
-    ];
-    if (middle) {
-      const normMiddle = normalizeForOcr(middle);
-      sequencesToCheck.push(`${normFirst} ${normMiddle} ${normLast}`);
-      sequencesToCheck.push(`${normLast} ${normFirst} ${normMiddle}`);
-      sequencesToCheck.push(`${normLast} ${normMiddle} ${normFirst}`);
-      
-      // Also allow sequences with middle initial (e.g. "L" instead of "Linatoc")
-      const middleInitial = normMiddle[0];
-      if (middleInitial) {
-        sequencesToCheck.push(`${normFirst} ${middleInitial} ${normLast}`);
-        sequencesToCheck.push(`${normLast} ${normFirst} ${middleInitial}`);
-        sequencesToCheck.push(`${normLast} ${middleInitial} ${normFirst}`);
-      }
-    }
-
-    // --- Helper: Fuzzy Sequence Matcher (allows OCR typos like 'maghubal' for 'magbuhat' in sequence) ---
-    const checkWordSequenceFuzzy = (nameStr, searchText) => {
-      const expectedWords = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= 1); // Allow length >= 1 for initials
-      if (expectedWords.length === 0) return false;
-      const targetWords = searchText.split(/\s+/).filter(w => w.length >= 1);
-      
-      let expectedIdx = 0;
-      let lastFoundIdx = -1;
-
-      for (let i = 0; i < targetWords.length; i++) {
-        const tWord = targetWords[i];
-        const eWord = expectedWords[expectedIdx];
-
-        if (isSimilarWord(eWord, tWord) || (normalizeNameConfusions(eWord).length >= 3 && normalizeNameConfusions(eWord) === normalizeNameConfusions(tWord)) || (eWord.length === 1 && tWord === eWord)) {
-          if (lastFoundIdx !== -1 && (i - lastFoundIdx) > 5) {
-            expectedIdx = 0;
-            lastFoundIdx = -1;
-            if (isSimilarWord(expectedWords[0], tWord) || (expectedWords[0].length === 1 && tWord === expectedWords[0])) {
-              expectedIdx = 1;
-              lastFoundIdx = i;
-            }
-            continue;
-          }
-          expectedIdx++;
-          lastFoundIdx = i;
-          if (expectedIdx >= expectedWords.length) {
-            return true;
-          }
-        }
-      }
-      return false;
-    };
-
-    let sequenceOk = false;
-
-    // Check fuzzy sequences in targetText or normText
-    for (const seq of sequencesToCheck) {
-      const rx = buildNameRegex(seq);
-      if (rx && (rx.test(targetText) || (!kv.name && rx.test(normText)))) {
-        sequenceOk = true;
-        break;
-      }
-      if (checkWordSequenceFuzzy(seq, targetText) || checkWordSequenceFuzzy(seq, normText)) {
-        sequenceOk = true;
-        break;
-      }
-    }
-
-    // --- Fuzzy full-name similarity (handles OCR scrambling of combined name string) ---
-    let fuzzyFullOk = false;
-    if (!sequenceOk && kv.name) {
-      const docName = normalizeForOcr(kv.name);
-      let maxSim = 0;
-      for (const seq of sequencesToCheck) {
-        const normSeq = normalizeForOcr(seq);
-        const longer  = normSeq.length > docName.length ? normSeq : docName;
-        const shorter = normSeq.length > docName.length ? docName : normSeq;
-        const dist = getLevenshteinDistance(longer, shorter);
-        const sim = longer.length > 0 ? (longer.length - dist) / longer.length : 0;
-        if (sim > maxSim) maxSim = sim;
-      }
-      fuzzyFullOk = maxSim >= 0.55;
-    }
-
-    if (fuzzyFullOk) {
-      sequenceOk = true;
-    }
-
-    // --- Individual word checks (fallback only, used to compute first_ok / last_ok for UI display) ---
-    const checkNameWordGroup = (nameStr, searchText) => {
-      if (!nameStr) return true;
-      const isMiddle = nameStr === middle;
-      // Allow length >= 1 for initials if checking middle name
-      const words = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= (isMiddle ? 1 : 2));
-      if (words.length === 0) return true;
-      const ocrWords = searchText.split(/\s+/).filter(w => w.length >= 1);
-      const isFirst = (nameStr === first);
-      const matchFunc = (isFirst && words.length > 1) ? 'some' : 'every';
-      return words[matchFunc](word => {
-        const normW = normalizeForOcr(word);
-        const confW = normalizeNameConfusions(word);
-        if (new RegExp('\\b' + normW.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b').test(searchText)) return true;
-        if (searchText.includes(normW)) return true;
-        
-        // Middle name initial matching fallback
-        if (isMiddle && normW.length > 0) {
-          const initial = normW[0];
-          const rxInitial = new RegExp('\\b' + initial + '\\b|\\b' + initial + '\\.');
-          if (rxInitial.test(searchText)) return true;
-        }
-
-        return ocrWords.some(ocrW => {
-          const normOcr = normalizeForOcr(ocrW);
-          if (isSimilarWord(normW, normOcr)) return true;
-          if (confW.length >= 3 && normalizeNameConfusions(ocrW) === confW) return true;
-          if (isMiddle && normW.length > 0 && normOcr === normW[0]) return true;
-          return false;
-        });
-      });
-    };
-
-    let firstOk = checkNameWordGroup(first, targetText) || (kv.name ? checkNameWordGroup(first, normText) : false);
-    const lastOk  = checkNameWordGroup(last,  targetText) || (kv.name ? checkNameWordGroup(last,  normText) : false);
-    const middleOk = middle ? (checkNameWordGroup(middle, targetText) || (kv.name ? checkNameWordGroup(middle, normText) : false)) : true;
-
-    // Fallback: If last name matched and student ID / school name is in text, accept first name
-    if (!firstOk && lastOk && (/1500017172|student\s*no|de\s*la\s*salle/i.test(searchText) || /1500017172|student\s*no|de\s*la\s*salle/i.test(normText))) {
-      firstOk = true;
-    }
-
-    const finalFirstOk = firstOk || sequenceOk;
-    const finalLastOk  = lastOk || sequenceOk;
-
-    const success = (firstOk && lastOk) || sequenceOk;
-
-    return {
-      success,
-      details: {
-        first_ok:  finalFirstOk,
-        middle_ok: middleOk,
-        last_ok:   finalLastOk
-      }
-    };
-  }
-
-  function studentIdNoMatchesText(targetId, text) {
-    if (!targetId || !text) return true;
-    
-    const normalizeId = (s) => {
-      return s.toString().toLowerCase().replace(/[^a-z0-9]/g, '')
-        .replace(/o/g, '0').replace(/q/g, '0').replace(/d/g, '0')
-        .replace(/i/g, '1').replace(/l/g, '1')
-        .replace(/z/g, '2').replace(/s/g, '5')
-        .replace(/g/g, '6').replace(/b/g, '6')
-        .replace(/q/g, '9');
-    };
-
-    const tId = normalizeId(targetId);
-    if (!tId || tId.length < 4) return true;
-
-    const normText = normalizeId(text);
-    if (normText.includes(tId)) return true;
-
-    const kv = extractOcrKeyValues(text);
-    if (kv.studentId) {
-      const kvId = normalizeId(kv.studentId);
-      if (kvId.includes(tId) || tId.includes(kvId)) return true;
-    }
-
-    return false;
-  }
-
-  function schoolNameMatchesText(text, targetSchool) {
-    if (!targetSchool || !text) return true;
-    const normText = normalizeForOcr(text);
-    const lowerRaw = String(text).toLowerCase();
-
-    // Check specific school aliases & OCR typos
-    const targetUpper = String(targetSchool).toUpperCase();
-
-    // 1. De La Salle Lipa / DLSL
-    if (targetUpper.includes('DLSL') || targetUpper.includes('DE LA SALLE') || targetUpper.includes('LIPA')) {
-      if (
-        lowerRaw.includes('dlsl') || 
-        lowerRaw.includes('de la salle') || 
-        lowerRaw.includes('de ly salle') || 
-        lowerRaw.includes('salle') || 
-        lowerRaw.includes('lipa') || 
-        lowerRaw.includes('ipa')
-      ) {
-        return true;
-      }
-    }
-
-    // 2. Batangas State University / BatStateU
-    if (targetUpper.includes('BATANGAS STATE') || targetUpper.includes('BATSTATEU') || targetUpper.includes('BSU')) {
-      if (lowerRaw.includes('batangas') || lowerRaw.includes('batstateu') || lowerRaw.includes('bsu')) return true;
-    }
-
-    // 3. General alias matching
-    const schoolAliases = String(targetSchool).split(/[\/\|,]/).map(s => s.trim()).filter(Boolean);
-    for (let alias of schoolAliases) {
-      const normAlias = normalizeForOcr(alias);
-      if (normAlias && (normText.includes(normAlias) || lowerRaw.includes(normAlias))) return true;
-
-      const words = alias.split(/\s+/);
-      const acronym = words.map(w => w[0] ? w[0].toLowerCase() : '').join('');
-      if (acronym.length >= 3 && new RegExp('\\b' + acronym + '\\b', 'i').test(normText)) return true;
-
-      const fillerWords = ['school', 'university', 'college', 'of', 'and', 'the', 'inc', 'corp', 'campus', 'philippines', 'national', 'high'];
-      const schoolWords = normAlias.split(' ').filter(w => w.length > 2 && !fillerWords.includes(w));
-      if (schoolWords.length > 0) {
-        const matched = schoolWords.filter(w => new RegExp('\\b' + w + '\\b').test(normText) || normText.includes(w) || lowerRaw.includes(w)).length;
-        const requiredRatio = schoolWords.length <= 2 ? 0.5 : 0.6;
-        if ((matched / schoolWords.length) >= requiredRatio) return true;
-      }
-    }
-
-    return false;
-  }
-
-  function academic_year_matches_expected(text, expectedYear) {
-    if (!expectedYear || !text) return true;
-
-    const recoverYears = (str) => {
-      return str.replace(/20\d[a-z¢]/g, (match) => {
-        const lastChar = match[3];
-        const map = {
-          '¢': '4', '4': '4', 'o': '0', 'i': '1', 'l': '1', 'z': '2', 's': '5', 'g': '6', 'b': '8', 'q': '9'
-        };
-        return '202' + (map[lastChar] || '4');
-      });
-    };
-
-    const normText = recoverYears(String(text).replace(/[\–\—]/g, '-').toLowerCase());
-    const normExpected = String(expectedYear).replace(/[\–\—]/g, '-').trim();
-
-    const yearRegex = /20\d{2}/g;
-    const expectedYears = normExpected.match(yearRegex) || [];
-    if (expectedYears.length === 0) return true;
-
-    // Gather academic year lines / headers
-    const ayLines = [];
-    const rawLines = String(normText).split('\n');
-    for (let line of rawLines) {
-      if (/school\s*year|academic\s*year|s\.?y\.?|a\.?y\.?|sem/i.test(line)) {
-        ayLines.push(line);
-      }
-    }
-    const searchPool = ayLines.length > 0 ? ayLines.join(' ') : normText;
-
-    // Check for explicit year pairs in full normText (e.g. "2025-2026", "2025-2028", "2025/2026")
-    const pairMatches = [...normText.matchAll(/(20\d{2})\s*[\-\/]\s*(20[0-9a-zA-Z]{2})/g)];
-    if (pairMatches.length > 0 && expectedYears.length >= 2) {
-      const expStart = parseInt(expectedYears[0], 10);
-      const expEnd = parseInt(expectedYears[1], 10);
-
-      const matchedPair = pairMatches.some(m => {
-        const pStart = parseInt(m[1], 10);
-        const rawEnd = m[2].toLowerCase().replace(/b/g, '6').replace(/8/g, '6');
-        const pEnd = parseInt(rawEnd, 10);
-        return pStart === expStart && (pEnd === expEnd || Math.abs(pEnd - expEnd) <= 1);
-      });
-
-      if (matchedPair) return true;
-
-      // Reject if explicit mismatching year pair (e.g. 2024-2025 or 2026-2027)
-      const explicitMismatch = pairMatches.some(m => parseInt(m[1], 10) !== expStart);
-      if (explicitMismatch) {
-        console.warn(`[AY FAIL] Explicit pair mismatch: Expected ${expectedYears[0]}-${expectedYears[1]}`);
-        return false;
-      }
-    }
-
-    // Check if any expected year (e.g., '2025' or '2026') exists in normText
-    const foundYearsSet = new Set(normText.match(yearRegex) || []);
-    const anyPresent = expectedYears.some(y => foundYearsSet.has(y));
-
-    if (anyPresent) return true;
-
-    // Fallback for valid student document with garbled header line
-    if (/de\s*la\s*salle|dlsl|student|grades|registration|enrolled/i.test(normText)) {
-      return true;
-    }
-
-    return false;
-  }
-
-  function courseMatchesText(expectedCourse, text) {
-    if (!expectedCourse || !text) return true;
-    const normText = normalizeForOcr(text);
-    const lowerRaw = String(text).toLowerCase();
-    
-    // Fix digit-letter OCR confusions (e.g. b5it -> bsit)
-    const fixedText = lowerRaw.replace(/b5it/g, 'bsit').replace(/5/g, 's');
-    const normCourse = normalizeForOcr(expectedCourse);
-
-    const kv = extractOcrKeyValues(text);
-    const targetText = kv.course ? normalizeForOcr(kv.course) : normText;
-
-    if (targetText.includes(normCourse) || normText.includes(normCourse) || fixedText.includes(normCourse)) return true;
-
-    // Course Synonym & Acronym Dictionary
-    const courseMap = {
-      'bsit': ['information technology', 'info tech', 'it', 'b5it'],
-      'bscs': ['computer science', 'comp sci', 'cs'],
-      'bsba': ['business administration', 'business', 'management'],
-      'bscpe': ['computer engineering', 'cpe'],
-      'bsee': ['electrical engineering', 'ee'],
-      'bsece': ['electronics engineering', 'ece'],
-      'bsme': ['mechanical engineering', 'me'],
-      'bsn': ['nursing']
-    };
-
-    const expUpper = String(expectedCourse).toLowerCase().trim();
-    for (const [code, synonyms] of Object.entries(courseMap)) {
-      if (expUpper.includes(code) || synonyms.some(s => expUpper.includes(s))) {
-        if (fixedText.includes(code) || synonyms.some(s => fixedText.includes(s) || normText.includes(s))) {
-          return true;
-        }
-      }
-    }
-
-    const words = String(expectedCourse).trim().split(/\s+/);
-    const acronym = words.map(w => w[0] ? w[0].toLowerCase() : '').join('');
-    if (acronym.length >= 2) {
-      const acronymRegex = new RegExp(`\\b${acronym.replace('bs', 'b[s5]\\s*')}\\b`, 'i');
-      if (acronymRegex.test(targetText) || acronymRegex.test(fixedText)) return true;
-    }
-
-    const genericWords = ['bachelor', 'master', 'doctor', 'science', 'arts', 'degree', 'major', 'in', 'of', 'and', 'bs', 'ba', 'ms', 'ma'];
-    const sigWords = words.map(normalizeForOcr).filter(w => w.length > 2 && !genericWords.includes(w));
-
-    if (sigWords.length > 0) {
-      const searchArea = targetText || fixedText;
-      const matchedCount = sigWords.filter(w => new RegExp('\\b' + w + '\\b').test(searchArea) || searchArea.includes(w)).length;
-      const requiredRatio = sigWords.length <= 2 ? 1.0 : 0.6;
-      if ((matchedCount / sigWords.length) >= requiredRatio) return true;
-    }
-
-    return false;
-  }
-
-  function extractGpaFromText(text) {
-    if (!text) return null;
-    const gpaMatch = text.match(/(?:GPA|GWA|WEIGHTED\s*AVERAGE)\s*[:\-=\s]*([0-9]+\.[0-9]+)/i);
-    if (gpaMatch && gpaMatch[1]) {
-      const val = parseFloat(gpaMatch[1]);
-      if (!isNaN(val) && val >= 1.0 && val <= 5.0) {
-        return gpaMatch[1].trim();
-      }
-    }
-    return null;
-  }
-
-  function gpaMatchesText(text, expectedGpa) {
-    if (!text) return true;
-
-    const detectedGpaStr = extractGpaFromText(text);
-    if (detectedGpaStr) {
-      const detVal = parseFloat(detectedGpaStr);
-      if (!isNaN(detVal) && detVal >= 1.0) {
-        return true;
-      }
-    }
-
-    if (!expectedGpa) return true;
-
-    const rawGpaStr = String(expectedGpa).trim();
-    const parsedTargetGpa = parseFloat(rawGpaStr.replace(/[^0-9.]/g, ''));
-    if (isNaN(parsedTargetGpa)) return true;
-
-    const cleanText = String(text).replace(/[\–\—·•]/g, '.');
-
-    if (cleanText.includes(rawGpaStr) || cleanText.includes(rawGpaStr.replace('.', ','))) return true;
-
-    const roundedGpaStr = parsedTargetGpa.toFixed(2);
-    if (cleanText.includes(roundedGpaStr)) return true;
-
-    return false;
-  }
-
-  function addressMatchesText(text, expectedAddr) {
-    if (!expectedAddr) return true;
-    const normText = normalizeForOcr(text);
-    const normAddr = normalizeForOcr(expectedAddr);
-
-    const kv = extractOcrKeyValues(text);
-    const targetText = kv.barangay ? normalizeForOcr(kv.barangay) : normText;
-
-    if (targetText.includes(normAddr) || normText.includes(normAddr)) return true;
-
-    const words = normAddr.split(' ').filter(w => w.length > 2);
-    const sigWords = words.filter(w => !['barangay', 'brgy', 'bgy', 'city', 'municipality', 'town'].includes(w));
-    if (sigWords.length === 0) return true;
-
-    return sigWords.every(w => new RegExp('\\b' + w + '\\b').test(searchArea) || searchArea.includes(w));
-  }
-
-  function coe_type_matches_text(text) {
-    if (!text) return false;
-    const normText = normalizeForOcr(text);
-    const keywords = [
-      'certificate of registration',
-      'certificate of enrollment',
-      'registration',
-      'enrollment',
-      'enrolled',
-      'enroll',
-      'cor',
-      'coe'
-    ];
-    return keywords.some(kw => normText.includes(kw));
-  }
-
-  function yearLevelMatchesText(text, expectedYearLevel) {
-    if (!expectedYearLevel || !text) return true;
-    const normText = normalizeForOcr(text);
-    const normLevel = normalizeForOcr(String(expectedYearLevel));
-
-    const kv = extractOcrKeyValues(text);
-
-    const numericMap = { '1st': 1, '2nd': 2, '3rd': 3, '4th': 4, '5th': 5, 'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5 };
-    let levelNum = null;
-    
-    for (const [key, num] of Object.entries(numericMap)) {
-      if (normLevel.includes(key)) {
-        levelNum = num;
-        break;
-      }
-    }
-    if (!levelNum) {
-      const digitMatch = normLevel.match(/\b([1-5])\b/);
-      if (digitMatch) levelNum = parseInt(digitMatch[1], 10);
-    }
-
-    if (!levelNum) {
-      const targetText = kv.yearLevel ? normalizeForOcr(kv.yearLevel) : normText;
-      return targetText.includes(normLevel);
-    }
-
-    const ordinalWords = { 1: ['1st', 'first'], 2: ['2nd', 'second'], 3: ['3rd', 'third'], 4: ['4th', 'fourth'], 5: ['5th', 'fifth'] };
-    const romanNums = { 1: 'i', 2: 'ii', 3: 'iii', 4: 'iv', 5: 'v' };
-
-    const ordinals = ordinalWords[levelNum] || [];
-    const roman = romanNums[levelNum];
-
-    if (kv.yearLevel) {
-      const kvNorm = normalizeForOcr(kv.yearLevel);
-      if (ordinals.some(ord => kvNorm.includes(ord)) || kvNorm.includes(String(levelNum))) {
-        return true;
-      }
-    }
-
-    for (const ord of ordinals) {
-      if (normText.includes(ord)) return true;
-    }
-
-    const contextRegexes = [
-      new RegExp(`\\b(year|yr|level|grade)\\s*(level)?\\s*[:\\-]?\\s*${levelNum}\\b`, 'i'),
-      new RegExp(`\\b${levelNum}\\s*(st|nd|rd|th)?\\s*(year|yr|level)\\b`, 'i'),
-      new RegExp(`\\b(year|yr)\\s+${roman}\\b`, 'i')
-    ];
-
-    if (contextRegexes.some(rx => rx.test(normText))) return true;
-
-    const noisyYearLabelRx = /(?:y[ouea]?r?\s*l[aeo]?v[ael]?|yr?\s*l[aeo]?v[ael]?|grade\s*level|year\s*level)\s*[:\-]?\s*([0-9OiloI\|]{1,2})/i;
-    const noisyMatch = noisyYearLabelRx.exec(text);
-    if (noisyMatch) {
-      const rawDigit = noisyMatch[1].replace(/[Oo]/g, '0');
-      const parsedDigit = parseInt(rawDigit, 10);
-      if (!isNaN(parsedDigit) && Math.abs(parsedDigit - levelNum) <= 1) return true;
-      if (rawDigit === '0' && levelNum <= 2) return true;
-      const nearbyDigits = noisyMatch[1].replace(/\D/g, '');
-      if (nearbyDigits && nearbyDigits.includes(String(levelNum))) return true;
-    }
-
-    const rawLower = text.toLowerCase();
-    const labelVariants = ['year level', 'yr level', 'year lvl', 'yor laval', 'year laval', 'yr laval', 'yor level', 'your lave', 'yor lave', 'your level', 'your lvl', 'yr lave'];
-    for (const lv of labelVariants) {
-      const idx = rawLower.indexOf(lv);
-      if (idx !== -1) {
-        const nearby = rawLower.substring(idx + lv.length, idx + lv.length + 20);
-        const nearbyDigit = nearby.match(/[0-9]/);
-        if (nearbyDigit && String(levelNum) === nearbyDigit[0]) return true;
-        if (nearbyDigit && nearbyDigit[0] === '0' && levelNum <= 2) return true;
-      }
-    }
-
-    return false;
-  }
-
-  function normalizeSemesterInt(val) {
-    if (val === null || val === undefined) return null;
-    const str = String(val).toLowerCase().trim();
-    if (str.includes('1') || str.includes('first')) return 1;
-    if (str.includes('2') || str.includes('second')) return 2;
-    if (str.includes('3') || str.includes('third') || str.includes('summer') || str.includes('midyear')) return 3;
-    const digits = str.replace(/\D/g, '');
-    if (digits === '1') return 1;
-    if (digits === '2') return 2;
-    if (digits === '3') return 3;
-    return null;
-  }
-
-  function extractSemesterFromText(text) {
-    if (!text) return null;
-    const lower = String(text).toLowerCase();
-    
-    const yearSemMatch = lower.match(/\b202[0-9a-z¢§\$!]\s*[\-\/:]\s*([123])\b/i);
-    if (yearSemMatch && yearSemMatch[1]) {
-      return parseInt(yearSemMatch[1], 10);
-    }
-
-    const sySemMatch = lower.match(/(?:school\s*year\s*sem|s\.?y\.?\s*sem|sem|\$ch00!|yaa,\s*gum)\s*[:\-]?\s*(?:ay|sy|20[0-9a-z¢§\$!]{2})?\s*[\-\/:]?\s*([123])\b/i);
-    if (sySemMatch && sySemMatch[1]) {
-      return parseInt(sySemMatch[1], 10);
-    }
-
-    if (/\b(?:2nd|second|sem\s*2|2nd\s*sem|semester\s*2)\b/i.test(lower)) return 2;
-    if (/\b(?:1st|first|sem\s*1|1st\s*sem|semester\s*1)\b/i.test(lower)) return 1;
-    if (/\b(?:3rd|third|summer|midyear|sem\s*3|semester\s*3)\b/i.test(lower)) return 3;
-
-    return null;
-  }
-
-  function semesterMatchesText(text, expectedSemester, scholarshipSemesterReq = null) {
-    const s2 = extractSemesterFromText(text);
-    const s3 = normalizeSemesterInt(scholarshipSemesterReq || scholarshipDetails?.semester);
-
-    console.log(`[SEMESTER CHECK] Image OCR: ${s2}, Scholarship Req: ${s3}`);
-
-    if (s2 !== null && s3 !== null && s2 !== s3) {
-      console.warn(`[SEMESTER FAIL] Image OCR (${s2}) != Scholarship Req (${s3})`);
-      return false;
-    }
-
-    return true;
-  }
 
   function preprocessImageForOcr(imageSource) {
     return new Promise((resolve) => {
