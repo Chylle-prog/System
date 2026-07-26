@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   FaBan,
-  FaBars,
   FaChartBar,
   FaCheckCircle,
   FaChevronDown,
@@ -57,8 +56,6 @@ function splitFullName(fullName) {
     lastName: parts[parts.length - 1],
   };
 }
-
-
 
 function normalizeAccount(account) {
   return {
@@ -129,7 +126,6 @@ export default function Dash() {
   const [submenus, setSubmenus] = useState({ reports: false });
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const userName = localStorage.getItem('userName') || 'Admin';
 
   const [accountModal, setAccountModal] = useState({ open: false, mode: 'add', data: null });
@@ -171,7 +167,6 @@ export default function Dash() {
   const [logsLoading, setLogsLoading] = useState(true);
   const [providersLoading, setProvidersLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [lastCreatedPassword, setLastCreatedPassword] = useState('');
   const [processingId, setProcessingId] = useState(null); // Track which account is being processed
   const [pageError, setPageError] = useState('');
   const [pageSuccess, setPageSuccess] = useState('');
@@ -443,12 +438,8 @@ export default function Dash() {
 
       setAccountModal({ open: false, mode: 'add', data: null });
       if (accountModal.mode === 'add') {
-        const successMsg = 'Account created successfully!';
-        const passwordInfo = lastCreatedPassword ? ` Default password: ${lastCreatedPassword}` : '';
-        setPageSuccess(successMsg + passwordInfo);
-        setTimeout(() => setPageSuccess(''), 5000);
-        // Clear stored password after showing
-        setLastCreatedPassword('');
+        setPageSuccess('Account created successfully!');
+        setTimeout(() => setPageSuccess(''), 3000);
       } else {
         setPageSuccess('Account updated successfully!');
         setTimeout(() => setPageSuccess(''), 3000);
@@ -599,43 +590,36 @@ export default function Dash() {
   ];
 
   return (
-    <div className="h-[100dvh] overflow-hidden flex bg-gradient-to-br from-gray-50 to-blue-50/30 pt-20 fixed-sidebar-layout relative w-full">
-      {/* Mobile overlay */}
-      {mobileMenuOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-30 lg:hidden mt-20"
-          onClick={() => setMobileMenuOpen(false)}
-        />
-      )}
+    <div className="min-h-screen flex bg-gradient-to-br from-gray-50 to-blue-50/30 pt-20 fixed-sidebar-layout">
       <aside
         onMouseEnter={() => setSidebarCollapsed(false)}
         onMouseLeave={() => setSidebarCollapsed(true)}
-        className={`fixed left-0 top-20 bottom-0 flex-shrink-0 bg-gradient-to-b from-[#800020] to-[#650018] text-white shadow-xl flex flex-col overflow-hidden transition-all duration-300 ease-in-out z-40 w-64 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-64'}`}
+        className={`fixed left-0 top-20 bottom-0 bg-gradient-to-b from-[#800020] to-[#650018] text-white shadow-xl flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'w-20' : 'w-64'}`}
       >
-        <h2 className={`text-center font-bold py-6 flex items-center justify-center gap-2 border-b border-white/10 transition-all ${(sidebarCollapsed && !mobileMenuOpen) ? 'px-2' : 'px-4'}`}>
-          <FaTachometerAlt className={`flex-shrink-0 transition-all ${(sidebarCollapsed && !mobileMenuOpen) ? 'text-2xl' : 'text-lg'}`} />
-          {(!sidebarCollapsed || mobileMenuOpen) && <span className="text-xl font-bold whitespace-nowrap">Iskomats Admin</span>}
+        <h2 className={`text-center font-bold py-6 flex items-center justify-center gap-2 border-b border-white/10 transition-all ${sidebarCollapsed ? 'px-2' : 'px-4'}`}>
+          <FaTachometerAlt className={`flex-shrink-0 transition-all ${sidebarCollapsed ? 'text-2xl' : 'text-lg'}`} />
+          {!sidebarCollapsed && <span className="text-xl font-bold whitespace-nowrap">Iskomats Admin</span>}
         </h2>
         <nav className="flex-1 space-y-2 overflow-y-auto transition-all">
-          <div className={`${(sidebarCollapsed && !mobileMenuOpen) ? 'px-1' : 'px-4'} py-6 space-y-2`}>
-            <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-3 rounded-xl transition-all ${activeTab === 'dashboard' ? 'bg-white/20' : 'hover:bg-white/10'} ${(sidebarCollapsed && !mobileMenuOpen) ? 'justify-center p-3' : 'px-4 py-3'}`}>
+          <div className={`${sidebarCollapsed ? 'px-1' : 'px-4'} py-6 space-y-2`}>
+            <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-3 rounded-xl transition-all ${activeTab === 'dashboard' ? 'bg-white/20' : 'hover:bg-white/10'} ${sidebarCollapsed ? 'justify-center p-3' : 'px-4 py-3'}`}>
               <FaTachometerAlt className="flex-shrink-0" />
-              {(!sidebarCollapsed || mobileMenuOpen) && <span>Dashboard</span>}
+              {!sidebarCollapsed && <span>Dashboard</span>}
             </button>
-            <button onClick={() => setActiveTab('manage-accounts')} className={`w-full flex items-center gap-3 rounded-xl transition-all ${activeTab === 'manage-accounts' ? 'bg-white/20' : 'hover:bg-white/10'} ${(sidebarCollapsed && !mobileMenuOpen) ? 'justify-center p-3' : 'px-4 py-3'}`}>
+            <button onClick={() => setActiveTab('manage-accounts')} className={`w-full flex items-center gap-3 rounded-xl transition-all ${activeTab === 'manage-accounts' ? 'bg-white/20' : 'hover:bg-white/10'} ${sidebarCollapsed ? 'justify-center p-3' : 'px-4 py-3'}`}>
               <FaUsersCog className="flex-shrink-0" />
-              {(!sidebarCollapsed || mobileMenuOpen) && <span>Manage Accounts</span>}
+              {!sidebarCollapsed && <span>Manage Accounts</span>}
             </button>
 
             <div className="space-y-1">
-              <button onClick={() => toggleSubmenu('reports')} className={`w-full flex items-center justify-between rounded-xl hover:bg-white/10 transition-all ${(sidebarCollapsed && !mobileMenuOpen) ? 'justify-center p-3' : 'px-4 py-3'}`}>
+              <button onClick={() => toggleSubmenu('reports')} className={`w-full flex items-center justify-between rounded-xl hover:bg-white/10 transition-all ${sidebarCollapsed ? 'justify-center p-3' : 'px-4 py-3'}`}>
                 <div className="flex items-center gap-3">
                   <FaChartBar className="flex-shrink-0" />
-                  {(!sidebarCollapsed || mobileMenuOpen) && <span>Reports</span>}
+                  {!sidebarCollapsed && <span>Reports</span>}
                 </div>
-                {(!sidebarCollapsed || mobileMenuOpen) && <FaChevronDown className={`transition-transform ${submenus.reports ? 'rotate-180' : ''}`} />}
+                {!sidebarCollapsed && <FaChevronDown className={`transition-transform ${submenus.reports ? 'rotate-180' : ''}`} />}
               </button>
-              {submenus.reports && (!sidebarCollapsed || mobileMenuOpen) && (
+              {submenus.reports && !sidebarCollapsed && (
                 <div className="ml-4 space-y-1 mt-1 border-l border-white/20 pl-2">
                   <button onClick={() => setActiveTab('account-reports')} className={`w-full text-left px-4 py-2 rounded-lg text-sm hover:bg-white/10 ${activeTab === 'account-reports' ? 'bg-white/20' : ''}`}>Account Reports</button>
                   <button onClick={() => setActiveTab('activity-reports')} className={`w-full text-left px-4 py-2 rounded-lg text-sm hover:bg-white/10 ${activeTab === 'activity-reports' ? 'bg-white/20' : ''}`}>Activity Reports</button>
@@ -644,438 +628,389 @@ export default function Dash() {
             </div>
           </div>
         </nav>
-        <div className={`border-t border-white/10 space-y-3 transition-all ${(sidebarCollapsed && !mobileMenuOpen) ? 'p-2' : 'p-4'}`}>
-          <button onClick={() => setReportModal({ open: true })} className={`w-full py-3 bg-white text-[#800020] font-black rounded-xl shadow-lg hover:bg-gray-100 transition-all flex items-center justify-center gap-2 ${(sidebarCollapsed && !mobileMenuOpen) ? 'p-3' : 'px-4'}`}>
+        <div className={`border-t border-white/10 space-y-3 transition-all ${sidebarCollapsed ? 'p-2' : 'p-4'}`}>
+          <button onClick={() => setReportModal({ open: true })} className={`w-full py-3 bg-white text-[#800020] font-black rounded-xl shadow-lg hover:bg-gray-100 transition-all flex items-center justify-center gap-2 ${sidebarCollapsed ? 'p-3' : 'px-4'}`}>
             <FaPrint className="flex-shrink-0" />
-            {(!sidebarCollapsed || mobileMenuOpen) && <span className="whitespace-nowrap">Generate Report</span>}
+            {!sidebarCollapsed && <span className="whitespace-nowrap">Generate Report</span>}
           </button>
-          <button onClick={() => loadDashboardData(false)} className={`w-full py-3 bg-white/10 text-white font-black rounded-xl hover:bg-white/15 transition-all text-xs uppercase tracking-widest flex items-center justify-center gap-2 ${(sidebarCollapsed && !mobileMenuOpen) ? 'p-3' : 'px-4'}`}>
+          <button onClick={() => loadDashboardData(false)} className={`w-full py-3 bg-white/10 text-white font-black rounded-xl hover:bg-white/15 transition-all text-xs uppercase tracking-widest flex items-center justify-center gap-2 ${sidebarCollapsed ? 'p-3' : 'px-4'}`}>
             <span className="flex-shrink-0">•••••••••••</span>
-            {(!sidebarCollapsed || mobileMenuOpen) && <span className="whitespace-nowrap">Refresh Data</span>}
+            {!sidebarCollapsed && <span className="whitespace-nowrap">Refresh Data</span>}
           </button>
         </div>
       </aside>
 
-      <main className={`transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} flex-1 flex flex-col h-full overflow-y-auto px-4 md:px-10 py-6 md:py-10 scroll-smooth custom-scrollbar border-l border-r border-gray-200/80 shadow-[inset_10px_0_15px_-10px_rgba(0,0,0,0.05)] w-full relative`}>
-        <div className="w-full max-w-7xl mx-auto flex-1 flex flex-col">
-          <div className="flex-shrink-0 mb-4 w-full">
-            <header className="bg-white rounded-2xl shadow-sm px-4 md:px-8 py-4 md:py-5 flex items-center justify-between border border-gray-100 gap-2 sm:gap-4 w-full">
-              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                <button
-                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                  className="lg:hidden p-2 bg-gray-100 text-[#800020] rounded-xl hover:bg-gray-200 transition-colors shadow-sm shrink-0"
-                >
-                  <FaBars />
-                </button>
-                <div className="min-w-0">
-                  <h1 className="text-lg sm:text-xl md:text-2xl font-black text-[#800020] tracking-tight uppercase truncate">{activeTab.replace('-', ' ')}</h1>
-                  <p className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-widest mt-1 hidden sm:block truncate">Database-Backed Administrator Control Panel</p>
-                </div>
+      <main className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-24' : 'ml-[17rem]'} flex-1 flex flex-col overflow-y-auto px-10 py-10 scroll-smooth custom-scrollbar border-l border-r border-gray-200/80 shadow-[inset_10px_0_15px_-10px_rgba(0,0,0,0.05)]`} style={{ height: 'calc(100vh - 5rem)', position: 'relative' }}>
+        <div className="flex-shrink-0 mb-4">
+          <header className="bg-white rounded-2xl shadow-sm px-8 py-5 flex items-center justify-between border border-gray-100">
+            <div>
+              <h1 className="text-2xl font-black text-[#800020] tracking-tight uppercase">{activeTab.replace('-', ' ')}</h1>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Database-Backed Administrator Control Panel</p>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-sm font-black text-gray-900">{userName}</p>
+                <p className="text-[10px] font-bold text-green-600 uppercase">Live Database Mode</p>
               </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <div className="text-right hidden sm:block">
-                  <p className="text-sm font-black text-gray-900">{userName}</p>
-                  <p className="text-[10px] font-bold text-green-600 uppercase">Live Database Mode</p>
-                </div>
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#800020] flex items-center justify-center text-white font-black shrink-0 shadow-sm text-sm sm:text-base">
-                  {userName.charAt(0)}
-                </div>
+              <div className="w-10 h-10 rounded-full bg-[#800020] flex items-center justify-center text-white font-black">
+                {userName.charAt(0)}
               </div>
-            </header>
+            </div>
+          </header>
 
-            {pageError && (
-              <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 px-6 py-4 text-sm font-bold text-red-700">
-                {pageError}
-              </div>
-            )}
+          {pageError && (
+            <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 px-6 py-4 text-sm font-bold text-red-700">
+              {pageError}
+            </div>
+          )}
 
-            {pageSuccess && (
-              <div className="mt-4 rounded-2xl border border-green-100 bg-green-50 px-6 py-4 text-sm font-bold text-green-700">
-                {pageSuccess}
-              </div>
-            )}
-          </div>
+          {pageSuccess && (
+            <div className="mt-4 rounded-2xl border border-green-100 bg-green-50 px-6 py-4 text-sm font-bold text-green-700">
+              {pageSuccess}
+            </div>
+          )}
+        </div>
 
-          <div className="flex-1 flex flex-col">
-            {isLoading ? (
-              <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-10 text-center h-full flex items-center justify-center">
-                <p className="text-sm font-black uppercase tracking-widest text-gray-500">Loading dashboard data from PostgreSQL...</p>
-              </div>
-            ) : (
-              <>
-                {activeTab === 'dashboard' && (
-                  <div className="space-y-8">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {dashboardCards.map((card) => (
-                        <div key={card.label} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 hover:shadow-md transition-all">
-                          <div className="flex justify-between items-start mb-4">
-                            <div className="p-3 rounded-2xl" style={{ backgroundColor: `${card.color}15`, color: card.color }}>{card.icon}</div>
-                            <span className="text-[10px] font-black text-green-600 bg-green-50 px-2 py-1 rounded-md">DB</span>
-                          </div>
-                          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{card.label}</p>
-                          <h3 className="text-3xl font-black text-gray-900 mt-1">{card.value}</h3>
+        <div className="flex-1 overflow-hidden">
+          {isLoading ? (
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-10 text-center h-full flex items-center justify-center">
+              <p className="text-sm font-black uppercase tracking-widest text-gray-500">Loading dashboard data from PostgreSQL...</p>
+            </div>
+          ) : (
+            <>
+              {activeTab === 'dashboard' && (
+                <div className="space-y-8">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {dashboardCards.map((card) => (
+                      <div key={card.label} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 hover:shadow-md transition-all">
+                        <div className="flex justify-between items-start mb-4">
+                          <div className="p-3 rounded-2xl" style={{ backgroundColor: `${card.color}15`, color: card.color }}>{card.icon}</div>
+                          <span className="text-[10px] font-black text-green-600 bg-green-50 px-2 py-1 rounded-md">DB</span>
                         </div>
-                      ))}
+                        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{card.label}</p>
+                        <h3 className="text-3xl font-black text-gray-900 mt-1">{card.value}</h3>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div className="lg:col-span-2 bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+                      <div className="p-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
+                        <h3 className="font-black text-gray-900 uppercase tracking-widest text-xs">System Audit Stream</h3>
+                        <button onClick={() => setActiveTab('activity-reports')} className="text-xs font-bold text-[#800020] hover:underline">Full Audit</button>
+                      </div>
+                      <div className="divide-y divide-gray-50">
+                        {activities.length === 0 ? (
+                          <div className="p-6 text-sm font-bold text-gray-400">No audit records found.</div>
+                        ) : (
+                          activities.slice(0, 6).map((activity) => (
+                            <div key={activity.id} className="p-4 flex items-center gap-4 hover:bg-gray-50 transition-colors">
+                              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white ${activity.status === 'success' ? 'bg-green-500' : activity.status === 'pending' ? 'bg-yellow-500' : 'bg-red-500'}`}>
+                                {getActivityIcon(activity.status)}
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex justify-between items-center mb-0.5 gap-4">
+                                  <span className="text-sm font-black text-gray-900">{activity.user}</span>
+                                  <span className="text-[10px] font-bold text-gray-400 uppercase">{formatActivityTimestamp(activity.date)}</span>
+                                </div>
+                                <p className="text-xs text-gray-500">{activity.activity} - <span className="text-[#800020] font-bold">{activity.scholarship}</span></p>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                      <div className="lg:col-span-2 bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-                        <div className="p-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
-                          <h3 className="font-black text-gray-900 uppercase tracking-widest text-xs">System Audit Stream</h3>
-                          <button onClick={() => setActiveTab('activity-reports')} className="text-xs font-bold text-[#800020] hover:underline">Full Audit</button>
-                        </div>
-                        <div className="divide-y divide-gray-50 max-h-[350px] overflow-y-auto custom-scrollbar">
-                          {activities.length === 0 ? (
-                            <div className="p-6 text-sm font-bold text-gray-400">No audit records found.</div>
+                    <div className="space-y-8">
+                      <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+                        <h4 className="font-black text-gray-900 uppercase tracking-widest text-xs mb-6 border-l-4 border-[#800020] pl-4">Program Distribution</h4>
+                        <div className="space-y-6">
+                          {providerStats.length === 0 ? (
+                            <p className="text-sm font-bold text-gray-400">No scholarship providers found.</p>
                           ) : (
-                            activities.map((activity) => (
-                              <div key={activity.id} className="p-4 flex items-center gap-4 hover:bg-gray-50 transition-colors">
-                                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white ${activity.status === 'success' ? 'bg-green-500' : activity.status === 'pending' ? 'bg-yellow-500' : 'bg-red-500'}`}>
-                                  {getActivityIcon(activity.status)}
-                                </div>
-                                <div className="flex-1">
-                                  <div className="flex justify-between items-center mb-0.5 gap-4">
-                                    <span className="text-sm font-black text-gray-900">{activity.user}</span>
-                                    <span className="text-[10px] font-bold text-gray-400 uppercase">{formatActivityTimestamp(activity.date)}</span>
+                            providerStats.map((provider) => {
+                              const percentage = accounts.length > 0 ? (provider.totalAccounts / accounts.length) * 100 : 0;
+                              return (
+                                <div key={provider.pro_no} className="space-y-2">
+                                  <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-gray-500 gap-2">
+                                    <span>{provider.provider_name}</span>
+                                    <span className="text-right flex gap-2">
+                                      <span style={{ color: '#800020' }}>••••••••••• {provider.usersCount}</span>
+                                      <span style={{ color: '#16a34a' }}>•••••••••••{provider.applicantsCount}</span>
+                                    </span>
                                   </div>
-                                  <p className="text-xs text-gray-500">{activity.activity} - <span className="text-[#800020] font-bold">{activity.scholarship}</span></p>
+                                  <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
+                                    <div className="bg-[#800020] h-full rounded-full" style={{ width: `${percentage}%` }}></div>
+                                  </div>
                                 </div>
-                              </div>
-                            ))
+                              );
+                            })
                           )}
                         </div>
                       </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-                      <div className="space-y-8">
-                        <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-                          <h4 className="font-black text-gray-900 uppercase tracking-widest text-xs mb-6 border-l-4 border-[#800020] pl-4">Program Distribution</h4>
-                          <div className="space-y-6 max-h-[350px] overflow-y-auto custom-scrollbar pr-2">
-                            {providerStats.length === 0 ? (
-                              <p className="text-sm font-bold text-gray-400">No scholarship providers found.</p>
-                            ) : (
-                              providerStats.map((provider) => {
-                                const percentage = accounts.length > 0 ? (provider.totalAccounts / accounts.length) * 100 : 0;
-                                return (
-                                  <div key={provider.pro_no} className="space-y-2">
-                                    <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-gray-500 gap-2">
-                                      <span>{provider.provider_name}</span>
-                                      <span className="text-right flex gap-2">
-                                        <span style={{ color: '#800020' }}>••••••••••• {provider.usersCount}</span>
-                                        <span style={{ color: '#16a34a' }}>•••••••••••{provider.applicantsCount}</span>
-                                      </span>
-                                    </div>
-                                    <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
-                                      <div className="bg-[#800020] h-full rounded-full" style={{ width: `${percentage}%` }}></div>
-                                    </div>
+              {activeTab === 'manage-accounts' && (
+                <div className="flex flex-col h-full space-y-4">
+                  <div className="flex-shrink-0 flex justify-between items-center bg-white p-4 rounded-3xl shadow-sm border border-gray-100 gap-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <div className="flex bg-gray-100 p-1 rounded-2xl">
+                        {['Admin', 'Applicant'].map((type) => (
+                          <button key={type} onClick={() => setAccountType(type)} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${accountType === type ? 'bg-white text-[#800020] shadow-sm' : 'text-gray-500 hover:bg-white/50'}`}>
+                            {type === 'Applicant' ? 'Students' : `${type}s`}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="text-xs text-gray-400 font-bold">FILTER:</div>
+                      <select value={managedAcctProgramFilter} onChange={(event) => setManagedAcctProgramFilter(event.target.value)} className="px-4 py-2 bg-gray-100 border-none rounded-xl text-xs font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]">
+                        <option value="All">All Programs</option>
+                        <option value="No Scholarship">No Scholarship</option>
+                        {availablePrograms.map((program) => (
+                          <option key={program} value={program}>{program}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => loadDashboardData(false)}
+                        className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-all flex items-center gap-2 text-xs font-bold uppercase tracking-wider"
+                        title="Refresh Accounts"
+                      >
+                        <FaSyncAlt className={`transition-transform duration-500 ${isLoading ? 'animate-spin' : ''}`} />
+                        <span>Refresh</span>
+                      </button>
+                      <button onClick={() => openAccountModal('add')} className="px-6 py-2 bg-[#800020] text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-[#800020]/20 flex items-center gap-2 hover:bg-[#650018] transition-all">
+                        <FaPlus /> New {accountType === 'Applicant' ? 'Student' : accountType}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col flex-1">
+                    <div className="flex-shrink-0 p-6 border-b border-gray-50 flex items-center gap-4">
+                      <div className="relative flex-1">
+                        <FaSearch className="absolute left-4 top-3.5 text-gray-300" />
+                        <input value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} type="text" placeholder="Search by name, email, or ID..." className="w-full pl-12 pr-4 py-3 bg-gray-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-[#800020]" />
+                      </div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-50/50 text-left border-b border-gray-100">
+                            <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Identified User</th>
+                            <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Scholarship</th>
+                            <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Account Status</th>
+                            <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Joined</th>
+                            <th className="px-8 py-4 text-right font-black text-gray-400 uppercase tracking-widest text-[10px]">Control</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {filteredManagedAccounts.map((account) => {
+                            const statusStyle = statusClasses(account.status);
+                            return (
+                              <tr key={account.id} className="hover:bg-gray-50/50 transition-colors">
+                                <td className="px-8 py-5">
+                                  <p className="font-black text-gray-900">{account.name}</p>
+                                  <p className="text-xs text-gray-400">{account.email}</p>
+                                </td>
+                                <td className="px-8 py-5">
+                                  <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-gray-100 bg-gray-50 text-gray-600">{formatScholarshipLabel(account.scholarship)}</span>
+                                </td>
+                                <td className="px-8 py-5">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`w-2 h-2 rounded-full ${statusStyle.dot}`}></span>
+                                    <span className={`text-[10px] font-black uppercase tracking-widest ${statusStyle.text}`}>{account.status}</span>
                                   </div>
-                                );
-                              })
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === 'manage-accounts' && (
-                  <div className="flex flex-col space-y-4">
-                    <div className="flex-shrink-0 flex justify-between items-center bg-white p-4 rounded-3xl shadow-sm border border-gray-100 gap-4 flex-wrap w-full">
-                      <div className="flex items-center gap-3 flex-wrap w-full xl:w-auto justify-center xl:justify-start">
-                        <div className="flex bg-gray-100 p-1 rounded-2xl w-full sm:w-auto">
-                          {['Admin', 'Applicant'].map((type) => (
-                            <button key={type} onClick={() => setAccountType(type)} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-xl text-[10px] sm:text-xs font-black transition-all ${accountType === type ? 'bg-white text-[#800020] shadow-sm' : 'text-gray-500 hover:bg-white/50'}`}>
-                              {type === 'Applicant' ? 'Students' : `${type}s`}
-                            </button>
-                          ))}
-                        </div>
-                        <div className="text-xs text-gray-400 font-bold hidden sm:block">FILTER:</div>
-                        <select value={managedAcctProgramFilter} onChange={(event) => setManagedAcctProgramFilter(event.target.value)} className="w-full sm:w-auto px-4 py-2 bg-gray-100 border-none rounded-xl text-xs font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]">
-                          <option value="All">All Programs</option>
-                          <option value="No Scholarship">No Scholarship</option>
-                          {availablePrograms.map((program) => (
-                            <option key={program} value={program}>{program}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="flex items-center gap-2 sm:gap-3 flex-wrap w-full xl:w-auto justify-center xl:justify-end">
-                        <button
-                          onClick={() => loadDashboardData(false)}
-                          className="px-3 sm:px-4 py-2 sm:py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-all flex items-center gap-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider flex-1 sm:flex-none justify-center"
-                          title="Refresh Accounts"
-                        >
-                          <FaSyncAlt className={`transition-transform duration-500 text-sm sm:text-base ${isLoading ? 'animate-spin' : ''}`} />
-                          <span>Refresh</span>
-                        </button>
-                        <button onClick={() => openAccountModal('add')} className="px-4 sm:px-6 py-2 sm:py-2.5 bg-[#800020] text-white rounded-xl font-black text-[10px] sm:text-xs uppercase tracking-widest shadow-lg shadow-[#800020]/20 flex items-center justify-center gap-2 hover:bg-[#650018] transition-all flex-1 sm:flex-none">
-                          <FaPlus className="text-sm sm:text-base" /> <span className="truncate">New {accountType === 'Applicant' ? 'Student' : accountType}</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const admins = [
-                              { email: 'vilma@iskomats.ph', password: 'password123', firstName: 'Vilma', lastName: 'Admin', scholarship: 'Vilma' },
-                              { email: 'africa@iskomats.ph', password: 'password123', firstName: 'Africa', lastName: 'Admin', scholarship: 'Africa' },
-                              { email: 'ched@iskomats.ph', password: 'password123', firstName: 'CHED', lastName: 'Admin', scholarship: 'Tulong Dunong Program' },
-                            ];
-                            try {
-                              for (const admin of admins) {
-                                const response = await adminAPI.createAccount({
-                                  email: admin.email,
-                                  password: admin.password,
-                                  role: 'admin',
-                                  firstName: admin.firstName,
-                                  lastName: admin.lastName,
-                                  scholarship: admin.scholarship,
-                                });
-                                const created = response.data?.account;
-                                if (created) {
-                                  const normalized = buildCreatedAccount(created, 'Admin');
-                                  setAccounts((prev) => [normalized, ...prev]);
-                                }
-                              }
-                              setPageSuccess('Accounts for Vilma, Africa, and CHED created successfully!');
-                            } catch (err) {
-                              setPageError(err.response?.data?.message || err.message || 'Failed to create scholarship admin accounts.');
-                            }
-                          }}
-                          className="px-4 sm:px-5 py-2 sm:py-2.5 bg-emerald-700 text-white rounded-xl font-black text-[10px] sm:text-xs uppercase tracking-widest shadow-lg shadow-emerald-700/20 flex items-center justify-center gap-2 hover:bg-emerald-800 transition-all flex-1 sm:flex-none"
-                        >
-                          <FaPlus className="text-sm sm:text-base" /> <span className="truncate">Add 3 Provider Admins (Vilma, Africa, CHED)</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-x-auto flex flex-col custom-scrollbar pb-2">
-                      <div className="min-w-[800px] flex flex-col flex-1">
-                        <div className="flex-shrink-0 p-6 border-b border-gray-50 flex items-center gap-4">
-                          <div className="relative flex-1">
-                            <FaSearch className="absolute left-4 top-3.5 text-gray-300" />
-                            <input value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} type="text" placeholder="Search by name, email, or ID..." className="w-full pl-12 pr-4 py-3 bg-gray-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-[#800020]" />
-                          </div>
-                        </div>
-                        <div>
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="bg-gray-50/50 text-left border-b border-gray-100">
-                                <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4 font-black text-gray-400 uppercase tracking-widest text-[9px] sm:text-[10px]">Identified User</th>
-                                <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4 font-black text-gray-400 uppercase tracking-widest text-[9px] sm:text-[10px]">Scholarship</th>
-                                <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4 font-black text-gray-400 uppercase tracking-widest text-[9px] sm:text-[10px]">Account Status</th>
-                                <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4 font-black text-gray-400 uppercase tracking-widest text-[9px] sm:text-[10px]">Joined</th>
-                                <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4 text-right font-black text-gray-400 uppercase tracking-widest text-[9px] sm:text-[10px]">Control</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-50">
-                              {filteredManagedAccounts.map((account) => {
-                                const statusStyle = statusClasses(account.status);
-                                return (
-                                  <tr key={account.id} className="hover:bg-gray-50/50 transition-colors">
-                                    <td className="px-4 sm:px-6 md:px-8 py-3 sm:py-5">
-                                      <p className="font-black text-gray-900 text-xs sm:text-sm">{account.name}</p>
-                                      <p className="text-[10px] sm:text-xs text-gray-400">{account.email}</p>
-                                    </td>
-                                    <td className="px-4 sm:px-6 md:px-8 py-3 sm:py-5">
-                                      <span className="px-2 sm:px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-widest border border-gray-100 bg-gray-50 text-gray-600">{formatScholarshipLabel(account.scholarship)}</span>
-                                    </td>
-                                    <td className="px-4 sm:px-6 md:px-8 py-3 sm:py-5">
-                                      <div className="flex items-center gap-2">
-                                        <span className={`w-2 h-2 rounded-full ${statusStyle.dot}`}></span>
-                                        <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest ${statusStyle.text}`}>{account.status}</span>
-                                      </div>
-                                    </td>
-                                    <td className="px-4 sm:px-6 md:px-8 py-3 sm:py-5 text-[10px] sm:text-xs text-gray-400 font-mono">{formatDate(account.joined)}</td>
-                                    <td className="px-4 sm:px-8 py-4 sm:py-5 text-right space-x-1 sm:space-x-2">
-                                      {processingId === account.id ? (
-                                        <div className="inline-flex items-center px-4 py-2 text-[10px] sm:text-xs font-bold text-gray-400 bg-gray-50 rounded-lg animate-pulse">
-                                          Processing...
-                                        </div>
-                                      ) : (
-                                        <>
-                                          <button onClick={() => openAccountModal('edit', account)} className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="EditAccount"><FaUserEdit className="text-sm sm:text-base" /></button>
-                                          <button onClick={() => requestLockAccount(account)} className={`p-1.5 sm:p-2 rounded-lg transition-all ${account.locked ? 'text-orange-600 hover:bg-orange-50' : 'text-slate-600 hover:bg-slate-50'}`} title={account.locked ? "Unlock Account" : "Lock Account"}>{account.locked ? <FaLock className="text-sm sm:text-base" /> : <FaUnlock className="text-sm sm:text-base" />}</button>
-                                          <button onClick={() => requestDeleteAccount(account)} className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all" title="Delete Account"><FaTrash className="text-sm sm:text-base" /></button>
-                                        </>
-                                      )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                              {filteredManagedAccounts.length === 0 && (
-                                <tr>
-                                  <td colSpan="5" className="px-4 sm:px-6 md:px-8 py-8 sm:py-12 text-center text-sm font-bold text-gray-400">No database-backed accounts matched your filters.</td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === 'account-reports' && (
-                  <div className="flex flex-col space-y-4">
-                    <div className="flex-shrink-0 flex flex-col xl:flex-row justify-between items-start xl:items-center bg-white p-6 rounded-3xl shadow-sm border border-gray-100 gap-4 mb-2 w-full">
-                      <h2 className="text-xl font-black text-gray-900 uppercase">Account Distribution</h2>
-                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-wrap w-full xl:w-auto">
-                        <div className="relative w-full sm:w-auto sm:flex-1 md:flex-none">
-                          <FaSearch className="absolute left-3 top-3.5 text-gray-300 text-xs" />
-                          <input value={accReportFilter.search} onChange={(event) => setAccReportFilter({ ...accReportFilter, search: event.target.value })} placeholder="Search accounts..." className="w-full pl-8 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]" />
-                        </div>
-                        <select value={accReportFilter.program} onChange={(event) => setAccReportFilter({ ...accReportFilter, program: event.target.value })} className="w-full sm:w-auto sm:flex-1 md:flex-none px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]">
-                          <option value="All">All Programs</option>
-                          <option value="No Scholarship">No Scholarship</option>
-                          {availablePrograms.map((program) => (
-                            <option key={program} value={program}>{program}</option>
-                          ))}
-                        </select>
-                        <select value={accReportFilter.role} onChange={(event) => setAccReportFilter({ ...accReportFilter, role: event.target.value })} className="w-full sm:w-auto sm:flex-1 md:flex-none px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]">
-                          <option value="All">All Roles</option>
-                          <option value="Admin">Admin</option>
-                          <option value="Scholar">Scholar</option>
-                        </select>
-                        <button onClick={() => exportToExcel(filteredAccountReport, 'Account_Distribution_Report')} className="w-full sm:w-auto sm:flex-1 md:flex-none px-4 sm:px-6 py-2 bg-[#800020] text-white rounded-xl font-black text-[10px] sm:text-xs uppercase tracking-widest shadow-lg shadow-[#800020]/20 flex items-center justify-center gap-2">
-                          <FaFileExcel className="text-sm sm:text-base" /> Export ({filteredAccountReport.length})
-                        </button>
-                      </div>
-                    </div>
-                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-x-auto flex flex-col custom-scrollbar pb-2">
-                      <div className="min-w-[800px] flex flex-col flex-1">
-                        <div>
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="bg-gray-50/50 text-left border-b border-gray-100">
-                                <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4 font-black text-gray-400 uppercase tracking-widest text-[9px] sm:text-[10px]">Identified User</th>
-                                <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4 font-black text-gray-400 uppercase tracking-widest text-[9px] sm:text-[10px]">System Role</th>
-                                <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4 font-black text-gray-400 uppercase tracking-widest text-[9px] sm:text-[10px]">Scholarship Program</th>
-                                <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4 font-black text-gray-400 uppercase tracking-widest text-[9px] sm:text-[10px]">Account Status</th>
-                                <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4 font-black text-gray-400 uppercase tracking-widest text-[9px] sm:text-[10px]">Registration Date</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-50">
-                              {filteredAccountReport.map((account) => {
-                                const statusStyle = statusClasses(account.status);
-                                return (
-                                  <tr key={account.id} className="hover:bg-gray-50/50 transition-colors">
-                                    <td className="px-4 sm:px-6 md:px-8 py-3 sm:py-5">
-                                      <p className="font-black text-gray-900 text-xs sm:text-sm">{account.name}</p>
-                                      <p className="text-[10px] sm:text-xs text-gray-400">{account.email}</p>
-                                    </td>
-                                    <td className="px-4 sm:px-6 md:px-8 py-3 sm:py-5">
-                                      <span className={`px-2 py-1 rounded text-[9px] sm:text-[10px] font-black uppercase tracking-widest ${account.role === 'admin' ? 'bg-purple-50 text-purple-600 border border-purple-100' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>{account.role}</span>
-                                    </td>
-                                    <td className="px-4 sm:px-6 md:px-8 py-3 sm:py-5 font-bold text-gray-600 text-xs sm:text-sm">{formatScholarshipLabel(account.scholarship)}</td>
-                                    <td className="px-4 sm:px-6 md:px-8 py-3 sm:py-5">
-                                      <div className="flex items-center gap-2">
-                                        <span className={`w-2 h-2 rounded-full ${statusStyle.dot}`}></span>
-                                        <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest ${statusStyle.text}`}>{account.status}</span>
-                                      </div>
-                                    </td>
-                                    <td className="px-4 sm:px-6 md:px-8 py-3 sm:py-5 text-[10px] sm:text-xs text-gray-400 font-mono">{formatDate(account.joined)}</td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === 'activity-reports' && (
-                  <div className="flex flex-col space-y-4">
-                    <div className="flex-shrink-0 flex flex-col xl:flex-row justify-between items-start xl:items-center bg-white p-6 rounded-3xl border border-gray-100 shadow-sm gap-4 mb-2 w-full">
-                      <h2 className="text-xl font-black text-gray-900 uppercase">Audit Intelligence</h2>
-                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-wrap w-full xl:w-auto">
-                        <div className="relative w-full sm:w-auto sm:flex-1 md:flex-none">
-                          <FaSearch className="absolute left-3 top-3.5 text-gray-300 text-xs" />
-                          <input value={actReportFilter.search} onChange={(event) => setActReportFilter({ ...actReportFilter, search: event.target.value })} placeholder="Search logs..." className="w-full pl-8 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]" />
-                        </div>
-                        <select value={actReportFilter.program} onChange={(event) => setActReportFilter({ ...actReportFilter, program: event.target.value })} className="w-full sm:w-auto sm:flex-1 md:flex-none px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]">
-                          <option value="All">All Programs</option>
-                          <option value="No Scholarship">No Scholarship</option>
-                          {availablePrograms.map((program) => (
-                            <option key={program} value={program}>{program}</option>
-                          ))}
-                        </select>
-                        <select value={actReportFilter.action} onChange={(event) => setActReportFilter({ ...actReportFilter, action: event.target.value })} className="w-full sm:w-auto sm:flex-1 md:flex-none px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]">
-                          <option value="All">All Actions</option>
-                          {ACTION_EVENT_OPTIONS.map((action) => (
-                            <option key={action.value} value={action.value}>{action.label}</option>
-                          ))}
-                        </select>
-                        <button onClick={() => exportToExcel(filteredActivityReport, 'Activity_Log')} className="w-full sm:w-auto sm:flex-1 md:flex-none px-4 sm:px-6 py-2 bg-[#800020] text-white rounded-xl font-black text-[10px] sm:text-xs uppercase tracking-widest hover:opacity-90 transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#800020]/20">
-                          <FaFileExcel className="text-sm sm:text-base" /> Export ({filteredActivityReport.length})
-                        </button>
-                      </div>
-                    </div>
-                    <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-x-auto flex flex-col custom-scrollbar pb-2">
-                      <div className="min-w-[800px] flex flex-col flex-1">
-                        <div>
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="bg-gray-50/50 text-left text-[9px] sm:text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100">
-                                <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4">Actor</th>
-                                <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4">Action Event</th>
-                                <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4">Scholarship</th>
-                                <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4">Temporal Mark</th>
-                                <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4 text-center">Status</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-50">
-                              {filteredActivityReport.map((activity) => (
-                                <tr key={activity.id} className="hover:bg-gray-50/50 transition-colors">
-                                  <td className="px-4 sm:px-6 md:px-8 py-3 sm:py-4 font-black text-gray-900 text-xs sm:text-sm">{activity.user}</td>
-                                  <td className="px-4 sm:px-6 md:px-8 py-3 sm:py-4">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-[#800020] opacity-30">{getActivityTypeIcon(activity.activity)}</span>
-                                      <span className="font-bold text-gray-600 text-[10px] sm:text-xs">{activity.activity}</span>
+                                </td>
+                                <td className="px-8 py-5 text-xs text-gray-400 font-mono">{formatDate(account.joined)}</td>
+                                <td className="px-8 py-5 text-right space-x-2">
+                                  {processingId === account.id ? (
+                                    <div className="inline-flex items-center px-4 py-2 text-xs font-bold text-gray-400 bg-gray-50 rounded-lg animate-pulse">
+                                      Processing...
                                     </div>
-                                  </td>
-                                  <td className="px-4 sm:px-6 md:px-8 py-3 sm:py-4"><span className="text-[9px] sm:text-[10px] font-black text-[#800020] border border-[#800020]/20 px-2 py-0.5 rounded uppercase tracking-widest">{formatScholarshipLabel(activity.scholarship)}</span></td>
-                                  <td className="px-4 sm:px-6 md:px-8 py-3 sm:py-4 font-mono text-[10px] sm:text-xs text-gray-400 italic">{formatActivityTimestamp(activity.date)}</td>
-                                  <td className="px-4 sm:px-6 md:px-8 py-3 sm:py-4 text-center"><div className="flex justify-center">{getActivityIcon(activity.status)}</div></td>
-                                </tr>
-                              ))}
-                              {filteredActivityReport.length === 0 && (
-                                <tr>
-                                  <td colSpan="5" className="px-4 sm:px-6 md:px-8 py-8 sm:py-12 text-center text-sm font-bold text-gray-400">No audit records matched your filters.</td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
+                                  ) : (
+                                    <>
+                                      <button onClick={() => openAccountModal('edit', account)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="EditAccount"><FaUserEdit /></button>
+                                      <button onClick={() => requestLockAccount(account)} className={`p-2 rounded-lg transition-all ${account.locked ? 'text-orange-600 hover:bg-orange-50' : 'text-slate-600 hover:bg-slate-50'}`} title={account.locked ? "Unlock Account" : "Lock Account"}>{account.locked ? <FaLock /> : <FaUnlock />}</button>
+                                      <button onClick={() => requestDeleteAccount(account)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all" title="Delete Account"><FaTrash /></button>
+                                    </>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {filteredManagedAccounts.length === 0 && (
+                            <tr>
+                              <td colSpan="5" className="px-8 py-12 text-center text-sm font-bold text-gray-400">No database-backed accounts matched your filters.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
-                )}
-              </>
-            )}
-          </div>
+                </div>
+              )}
+
+              {activeTab === 'account-reports' && (
+                <div className="flex flex-col h-full space-y-4">
+                  <div className="flex-shrink-0 flex justify-between items-center bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex-wrap gap-4 mb-2">
+                    <h2 className="text-xl font-black text-gray-900 uppercase">Account Distribution</h2>
+                    <div className="flex items-center gap-3 flex-wrap mb-2">
+                      <div className="relative">
+                        <FaSearch className="absolute left-3 top-3 text-gray-300 text-xs" />
+                        <input value={accReportFilter.search} onChange={(event) => setAccReportFilter({ ...accReportFilter, search: event.target.value })} placeholder="Search accounts..." className="pl-8 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]" />
+                      </div>
+                      <select value={accReportFilter.program} onChange={(event) => setAccReportFilter({ ...accReportFilter, program: event.target.value })} className="px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]">
+                        <option value="All">All Programs</option>
+                        <option value="No Scholarship">No Scholarship</option>
+                        {availablePrograms.map((program) => (
+                          <option key={program} value={program}>{program}</option>
+                        ))}
+                      </select>
+                      <select value={accReportFilter.role} onChange={(event) => setAccReportFilter({ ...accReportFilter, role: event.target.value })} className="px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]">
+                        <option value="All">All Roles</option>
+                        <option value="Admin">Admin</option>
+                        <option value="Scholar">Scholar</option>
+                      </select>
+                      <button onClick={() => exportToExcel(filteredAccountReport, 'Account_Distribution_Report')} className="px-6 py-2 bg-[#800020] text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-[#800020]/20 flex items-center gap-2">
+                        <FaFileExcel /> Export ({filteredAccountReport.length})
+                      </button>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col flex-1">
+                    <div className="flex-1 overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-50/50 text-left border-b border-gray-100">
+                            <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Identified User</th>
+                            <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">System Role</th>
+                            <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Scholarship Program</th>
+                            <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Account Status</th>
+                            <th className="px-8 py-4 font-black text-gray-400 uppercase tracking-widest text-[10px]">Registration Date</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {filteredAccountReport.map((account) => {
+                            const statusStyle = statusClasses(account.status);
+                            return (
+                              <tr key={account.id} className="hover:bg-gray-50/50 transition-colors">
+                                <td className="px-8 py-5">
+                                  <p className="font-black text-gray-900">{account.name}</p>
+                                  <p className="text-xs text-gray-400">{account.email}</p>
+                                </td>
+                                <td className="px-8 py-5">
+                                  <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${account.role === 'admin' ? 'bg-purple-50 text-purple-600 border border-purple-100' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>{account.role}</span>
+                                </td>
+                                <td className="px-8 py-5 font-bold text-gray-600">{formatScholarshipLabel(account.scholarship)}</td>
+                                <td className="px-8 py-5">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`w-2 h-2 rounded-full ${statusStyle.dot}`}></span>
+                                    <span className={`text-[10px] font-black uppercase tracking-widest ${statusStyle.text}`}>{account.status}</span>
+                                  </div>
+                                </td>
+                                <td className="px-8 py-5 text-xs text-gray-400 font-mono">{formatDate(account.joined)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'activity-reports' && (
+                <div className="flex flex-col h-full space-y-4">
+                  <div className="flex-shrink-0 bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex justify-between items-center flex-wrap gap-4 mb-2">
+                    <h2 className="text-xl font-black text-gray-900 uppercase">Audit Intelligence</h2>
+                    <div className="flex items-center gap-3 flex-wrap mb-2">
+                      <div className="relative">
+                        <FaSearch className="absolute left-3 top-3 text-gray-300 text-xs" />
+                        <input value={actReportFilter.search} onChange={(event) => setActReportFilter({ ...actReportFilter, search: event.target.value })} placeholder="Search logs..." className="pl-8 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]" />
+                      </div>
+                      <select value={actReportFilter.program} onChange={(event) => setActReportFilter({ ...actReportFilter, program: event.target.value })} className="px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]">
+                        <option value="All">All Programs</option>
+                        <option value="No Scholarship">No Scholarship</option>
+                        {availablePrograms.map((program) => (
+                          <option key={program} value={program}>{program}</option>
+                        ))}
+                      </select>
+                      <select value={actReportFilter.action} onChange={(event) => setActReportFilter({ ...actReportFilter, action: event.target.value })} className="px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]">
+                        <option value="All">All Actions</option>
+                        {ACTION_EVENT_OPTIONS.map((action) => (
+                          <option key={action.value} value={action.value}>{action.label}</option>
+                        ))}
+                      </select>
+                      <button onClick={() => exportToExcel(filteredActivityReport, 'Activity_Log')} className="px-6 py-2 bg-[#800020] text-white rounded-xl font-black text-xs uppercase tracking-widest hover:opacity-90 transition-all flex items-center gap-2 shadow-lg shadow-[#800020]/20">
+                        <FaFileExcel /> Export ({filteredActivityReport.length})
+                      </button>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col flex-1">
+                    <div className="flex-1 overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-50/50 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100">
+                            <th className="px-8 py-4">Actor</th>
+                            <th className="px-8 py-4">Action Event</th>
+                            <th className="px-8 py-4">Scholarship</th>
+                            <th className="px-8 py-4">Temporal Mark</th>
+                            <th className="px-8 py-4 text-center">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {filteredActivityReport.map((activity) => (
+                            <tr key={activity.id} className="hover:bg-gray-50/50 transition-colors">
+                              <td className="px-8 py-4 font-black text-gray-900">{activity.user}</td>
+                              <td className="px-8 py-4">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[#800020] opacity-30">{getActivityTypeIcon(activity.activity)}</span>
+                                  <span className="font-bold text-gray-600">{activity.activity}</span>
+                                </div>
+                              </td>
+                              <td className="px-8 py-4"><span className="text-[10px] font-black text-[#800020] border border-[#800020]/20 px-2 py-0.5 rounded uppercase tracking-widest">{formatScholarshipLabel(activity.scholarship)}</span></td>
+                              <td className="px-8 py-4 font-mono text-xs text-gray-400 italic">{formatActivityTimestamp(activity.date)}</td>
+                              <td className="px-8 py-4 text-center"><div className="flex justify-center">{getActivityIcon(activity.status)}</div></td>
+                            </tr>
+                          ))}
+                          {filteredActivityReport.length === 0 && (
+                            <tr>
+                              <td colSpan="5" className="px-8 py-12 text-center text-sm font-bold text-gray-400">No audit records matched your filters.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </main>
 
       {accountModal.open && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur z-50 overflow-y-auto p-4 sm:p-6">
-          <div className="min-h-full flex items-center justify-center py-4 sm:py-8">
-            <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-4rem)] overflow-hidden shadow-2xl border border-gray-200 flex flex-col">
+          <div className="min-h-full flex items-start justify-center py-4 sm:py-8">
+            <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-4rem)] overflow-hidden shadow-2xl border border-gray-200 flex flex-col">
               {/* Header */}
-              <div className="bg-[#800020] px-5 py-4 sm:px-8 sm:py-6 text-white shrink-0">
-                <h3 className="text-xl sm:text-2xl font-black uppercase tracking-wide">{accountModal.mode === 'edit' ? 'Edit Account' : 'Create Account'}</h3>
-                <p className="text-[10px] sm:text-xs font-bold opacity-80 uppercase tracking-widest mt-1">ISKOMATS Identity Access</p>
+              <div className="bg-[#800020] px-6 py-6 sm:px-10 sm:py-8 text-white shrink-0">
+                <h3 className="text-2xl font-black uppercase tracking-wide">{accountModal.mode === 'edit' ? 'Edit Account' : 'Create Account'}</h3>
+                <p className="text-xs font-bold opacity-80 uppercase tracking-widest mt-1">ISKOMATS Identity Access</p>
               </div>
 
               {/* Form */}
-              <form onSubmit={handleAccountSubmit} className="flex-1 overflow-y-auto px-5 py-4 sm:px-8 sm:py-6 space-y-4 sm:space-y-6 custom-scrollbar">
+              <form onSubmit={handleAccountSubmit} className="flex-1 overflow-y-auto px-6 py-6 sm:px-10 sm:py-8 space-y-8">
                 {/* Full Name */}
                 <div>
-                  <label className="text-[10px] sm:text-xs font-black text-gray-500 uppercase tracking-widest block mb-1 sm:mb-2">Legal Full Name</label>
+                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-3">Legal Full Name</label>
                   <input
                     required
                     value={accountForm.fullName}
                     onChange={(event) => setAccountForm({ ...accountForm, fullName: event.target.value })}
-                    className="w-full p-2.5 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all"
+                    className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all"
                     placeholder=""
                   />
                 </div>
@@ -1083,22 +1018,22 @@ export default function Dash() {
                 {/* Email & Username */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div>
-                    <label className="text-[10px] sm:text-xs font-black text-gray-500 uppercase tracking-widest block mb-1 sm:mb-2">Email Address</label>
+                    <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-3">Email Address</label>
                     <input
                       required
                       type="email"
                       value={accountForm.email}
                       onChange={(event) => setAccountForm({ ...accountForm, email: event.target.value })}
-                      className="w-full p-2.5 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all"
+                      className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all"
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] sm:text-xs font-black text-gray-500 uppercase tracking-widest block mb-1 sm:mb-2">Username</label>
+                    <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-3">Username</label>
                     <input
                       required
                       value={accountForm.username}
                       onChange={(event) => setAccountForm({ ...accountForm, username: event.target.value })}
-                      className="w-full p-2.5 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all"
+                      className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all"
                     />
                   </div>
                 </div>
@@ -1106,22 +1041,22 @@ export default function Dash() {
                 {/* System Role & Scholarship */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div>
-                    <label className="text-[10px] sm:text-xs font-black text-gray-500 uppercase tracking-widest block mb-1 sm:mb-2">System Role</label>
+                    <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-3">System Role</label>
                     <select
                       value={accountForm.role}
                       onChange={(event) => setAccountForm({ ...accountForm, role: event.target.value })}
-                      className="w-full p-2.5 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all cursor-pointer"
+                      className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all cursor-pointer"
                     >
                       <option value="Admin">Admin</option>
                       <option value="Scholar">Scholar</option>
                     </select>
                   </div>
                   <div>
-                    <label className="text-[10px] sm:text-xs font-black text-gray-500 uppercase tracking-widest block mb-1 sm:mb-2">Scholarship Program</label>
+                    <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-3">Scholarship Program</label>
                     <select
                       value={accountForm.scholarship}
                       onChange={(event) => setAccountForm({ ...accountForm, scholarship: event.target.value })}
-                      className="w-full p-2.5 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all cursor-pointer"
+                      className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all cursor-pointer"
                     >
                       <option value="All">No Scholarship</option>
                       {availablePrograms.map((program) => (
@@ -1133,11 +1068,11 @@ export default function Dash() {
 
                 {/* Access Status */}
                 <div>
-                  <label className="text-[10px] sm:text-xs font-black text-gray-500 uppercase tracking-widest block mb-1 sm:mb-2">Access Status</label>
+                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-3">Access Status</label>
                   <select
                     value={accountForm.status}
                     onChange={(event) => setAccountForm({ ...accountForm, status: event.target.value })}
-                    className="w-full p-3 sm:p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all cursor-pointer"
+                    className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all cursor-pointer"
                   >
                     <option value="Active">Active</option>
                     <option value="Inactive">Inactive</option>
@@ -1146,30 +1081,30 @@ export default function Dash() {
 
                 {/* Password */}
                 <div>
-                  <label className="text-[10px] sm:text-xs font-black text-gray-500 uppercase tracking-widest block mb-1 sm:mb-2">{accountModal.mode === 'edit' ? 'New Passcode' : 'Secure Passcode'}</label>
+                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-3">{accountModal.mode === 'edit' ? 'New Passcode' : 'Secure Passcode'}</label>
                   <input
                     required={accountModal.mode === 'add'}
                     type="password"
                     value={accountForm.password}
                     onChange={(event) => setAccountForm({ ...accountForm, password: event.target.value })}
-                    className="w-full p-2.5 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all"
+                    className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all"
                     placeholder={accountModal.mode === 'edit' ? 'Leave blank to keep the current password' : ''}
                   />
                 </div>
 
                 {/* Buttons */}
-                <div className="sticky bottom-0 bg-white pt-2 sm:pt-4 pb-1 flex flex-row gap-3 sm:gap-4">
+                <div className="sticky bottom-0 bg-white pt-6 pb-1 flex flex-col-reverse sm:flex-row gap-4 sm:gap-6">
                   <button
                     type="button"
                     onClick={() => setAccountModal({ open: false, mode: 'add', data: null })}
-                    className="flex-1 py-3 text-gray-500 font-black uppercase text-[10px] sm:text-xs tracking-widest hover:text-gray-700 transition-colors"
+                    className="flex-1 py-4 text-gray-500 font-black uppercase text-xs tracking-widest hover:text-gray-700 transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="flex-1 py-3 bg-[#800020] text-white font-black uppercase rounded-2xl text-[10px] sm:text-xs tracking-widest shadow-lg shadow-[#800020]/30 hover:bg-[#650018] transition-all disabled:opacity-60"
+                    className="flex-1 py-4 bg-[#800020] text-white font-black uppercase rounded-2xl text-xs tracking-widest shadow-lg shadow-[#800020]/30 hover:bg-[#650018] transition-all disabled:opacity-60"
                   >
                     {isSubmitting ? 'Processing...' : 'Confirm'}
                   </button>
@@ -1182,25 +1117,25 @@ export default function Dash() {
 
       {reportModal.open && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-lg max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-4rem)] flex flex-col overflow-hidden shadow-2xl border border-white/20 animate-in zoom-in duration-300">
-            <div className="bg-gradient-to-br from-gray-900 to-black p-6 sm:p-10 text-white relative shrink-0">
-              <FaChartBar className="absolute -top-6 -right-6 text-[100px] sm:text-[160px] opacity-10 rotate-12" />
-              <h3 className="text-xl sm:text-3xl font-black uppercase tracking-tighter leading-none">Intelligence<br />Reports</h3>
-              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase tracking-[2px] sm:tracking-[4px] mt-2 sm:mt-4">Database Export Engine</p>
+          <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl border border-white/20 animate-in zoom-in duration-300">
+            <div className="bg-gradient-to-br from-gray-900 to-black p-10 text-white relative">
+              <FaChartBar className="absolute -top-6 -right-6 text-[160px] opacity-10 rotate-12" />
+              <h3 className="text-3xl font-black uppercase tracking-tighter leading-none">Intelligence<br />Reports</h3>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-[4px] mt-4">Database Export Engine</p>
             </div>
-            <form onSubmit={handleGenerateReport} className="p-4 sm:p-8 space-y-4 sm:space-y-6 overflow-y-auto flex-1 custom-scrollbar">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                <div className="col-span-1 sm:col-span-2">
-                  <label className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Target Data Module</label>
+            <form onSubmit={handleGenerateReport} className="p-10 space-y-8">
+              <div className="grid grid-cols-2 gap-6">
+                <div className="col-span-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Target Data Module</label>
                   <div className="grid grid-cols-2 gap-2">
                     {['Accounts', 'Activities'].map((type) => (
-                      <button type="button" key={type} onClick={() => setReportForm({ ...reportForm, type })} className={`py-2.5 sm:py-4 rounded-xl sm:rounded-2xl text-[9px] sm:text-[10px] font-black uppercase tracking-widest transition-all ${reportForm.type === type ? 'bg-[#800020] text-white shadow-lg' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>{type}</button>
+                      <button type="button" key={type} onClick={() => setReportForm({ ...reportForm, type })} className={`py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${reportForm.type === type ? 'bg-[#800020] text-white shadow-lg' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>{type}</button>
                     ))}
                   </div>
                 </div>
                 <div>
-                  <label className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Program Filter</label>
-                  <select value={reportForm.program} onChange={(event) => setReportForm({ ...reportForm, program: event.target.value })} className="w-full p-2.5 sm:p-4 bg-gray-50 border-none rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black focus:ring-2 focus:ring-[#800020] outline-none">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Program Filter</label>
+                  <select value={reportForm.program} onChange={(event) => setReportForm({ ...reportForm, program: event.target.value })} className="w-full p-4 bg-gray-50 border-none rounded-2xl text-xs font-black focus:ring-2 focus:ring-[#800020] outline-none">
                     <option value="All">All Programs</option>
                     {availablePrograms.map((program) => (
                       <option key={program} value={program}>{program}</option>
@@ -1208,17 +1143,17 @@ export default function Dash() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Export Format</label>
-                  <div className="flex items-center gap-1 sm:gap-2 bg-gray-50 p-1 rounded-xl sm:rounded-2xl">
-                    <button type="button" onClick={() => setReportForm({ ...reportForm, format: 'Excel' })} className={`flex-1 py-2 sm:py-3 rounded-lg sm:rounded-xl flex items-center justify-center ${reportForm.format === 'Excel' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-400'}`}><FaFileExcel /></button>
-                    <button type="button" onClick={() => setReportForm({ ...reportForm, format: 'PDF' })} className={`flex-1 py-2 sm:py-3 rounded-lg sm:rounded-xl flex items-center justify-center ${reportForm.format === 'PDF' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-400'}`}><FaFilePdf /></button>
-                    <button type="button" onClick={() => setReportForm({ ...reportForm, format: 'CSV' })} className={`flex-1 py-2 sm:py-3 rounded-lg sm:rounded-xl flex items-center justify-center ${reportForm.format === 'CSV' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400'}`}><FaFileCsv /></button>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Export Format</label>
+                  <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-2xl">
+                    <button type="button" onClick={() => setReportForm({ ...reportForm, format: 'Excel' })} className={`flex-1 py-3 rounded-xl flex items-center justify-center ${reportForm.format === 'Excel' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-400'}`}><FaFileExcel /></button>
+                    <button type="button" onClick={() => setReportForm({ ...reportForm, format: 'PDF' })} className={`flex-1 py-3 rounded-xl flex items-center justify-center ${reportForm.format === 'PDF' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-400'}`}><FaFilePdf /></button>
+                    <button type="button" onClick={() => setReportForm({ ...reportForm, format: 'CSV' })} className={`flex-1 py-3 rounded-xl flex items-center justify-center ${reportForm.format === 'CSV' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400'}`}><FaFileCsv /></button>
                   </div>
                 </div>
               </div>
-              <div className="flex gap-3 sm:gap-4 pt-2 sm:pt-4">
-                <button type="button" onClick={() => setReportModal({ open: false })} className="flex-1 py-3 sm:py-5 font-black text-gray-400 hover:text-gray-600 rounded-2xl sm:rounded-3xl transition-all uppercase text-[9px] sm:text-[10px] tracking-widest">Dismiss</button>
-                <button type="submit" className="flex-1 py-3 sm:py-5 bg-black text-white font-black rounded-2xl sm:rounded-3xl shadow-xl hover:bg-gray-800 transition-all uppercase text-[9px] sm:text-[10px] tracking-[2px] sm:tracking-[3px] flex items-center justify-center gap-2">
+              <div className="flex gap-4 pt-4">
+                <button type="button" onClick={() => setReportModal({ open: false })} className="flex-1 py-5 font-black text-gray-400 hover:text-gray-600 rounded-3xl transition-all uppercase text-[10px] tracking-widest">Dismiss</button>
+                <button type="submit" className="flex-1 py-5 bg-black text-white font-black rounded-3xl shadow-2xl hover:bg-gray-800 transition-all uppercase text-[10px] tracking-[3px] flex items-center justify-center gap-2">
                   <FaPrint /> Generate
                 </button>
               </div>
@@ -1229,7 +1164,7 @@ export default function Dash() {
 
       {confirmModal.open && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xl z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-8 sm:p-12 max-w-sm w-full text-center shadow-2xl border border-white/20">
+          <div className="bg-white rounded-3xl p-12 max-w-sm w-full text-center shadow-2xl border border-white/20">
             <div className={`w-28 h-28 rounded-full mx-auto flex items-center justify-center mb-8 ${confirmModal.type === 'Delete' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
               <FaExclamationCircle className="text-5xl animate-bounce" />
             </div>

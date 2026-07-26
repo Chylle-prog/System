@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   FaLock,
@@ -119,7 +119,7 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-2.5 sm:p-4 lg:p-8 relative overflow-y-auto bg-black">
+    <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 relative overflow-hidden bg-black">
       <div
         className="absolute inset-0 z-0"
         style={{
@@ -128,42 +128,38 @@ const Login = () => {
           backgroundPosition: 'center',
         }}
       />
-      <div className="absolute inset-0 z-0 bg-gradient-to-b from-black/75 via-black/55 to-black/85" />
+      <div className="absolute inset-0 z-0 bg-gradient-to-b from-black/70 via-black/50 to-black/80" />
 
-      <div className="w-[92%] max-w-xs sm:max-w-md md:max-w-lg lg:max-w-3xl xl:max-w-4xl relative z-10 my-auto transition-all duration-300">
-        <div className="bg-white/10 backdrop-blur-2xl rounded-2xl sm:rounded-3xl shadow-2xl border border-white/30 overflow-hidden">
+      <div className="w-full max-w-4xl relative z-10">
+        <div className="bg-white/10 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/30 overflow-hidden">
           <div className="flex flex-col lg:flex-row">
 
-            {/* Left Header / Branding Banner with Responsive Picture Adjustment */}
-            <div className="bg-gradient-to-r from-[#800020] to-[#650018] p-3.5 sm:p-5 lg:p-8 flex flex-row lg:flex-col items-center justify-center gap-3 lg:gap-0 text-left lg:text-center lg:w-2/5 border-b lg:border-b-0 lg:border-r border-white/10 shrink-0">
-              <div className="w-10 h-10 sm:w-14 sm:h-14 lg:w-20 lg:h-20 xl:w-24 xl:h-24 bg-white/10 backdrop-blur-md rounded-xl sm:rounded-2xl lg:rounded-3xl flex items-center justify-center p-1.5 sm:p-2 shadow-lg border border-white/20 shrink-0 lg:mb-4 lg:mx-auto transition-all">
+            <div className="bg-gradient-to-r from-[#800020] to-[#650018] p-6 lg:p-7 text-center lg:w-2/5 flex flex-col justify-center items-center border-r border-white/10">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 bg-white/10 backdrop-blur-md rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl border border-white/20 p-2">
                 <img src={logo} alt="Iskomats Logo" className="w-full h-full object-contain" />
               </div>
 
-              <div>
-                <h1 className="text-base sm:text-xl lg:text-2xl xl:text-3xl font-bold text-white mb-0 lg:mb-2">
-                  Welcome Back
-                </h1>
-                <p className="text-white/85 text-[11px] sm:text-xs lg:text-sm">
-                  Sign in to your account
-                </p>
-              </div>
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white mb-3">
+                Welcome Back
+              </h1>
+              <p className="text-white/90 text-sm sm:text-base">
+                Sign in to your account
+              </p>
             </div>
 
-            {/* Form Section Tightly Scaled to Content */}
-            <div className="p-3.5 sm:p-5 lg:p-7 lg:w-3/5">
+            <div className="p-4 sm:p-6 lg:p-8 lg:w-3/5">
               {formData.error && (
-                <div className={`text-white p-2.5 sm:p-3 rounded-xl mb-3 sm:mb-4 text-xs text-center ${formData.error.includes('Setup complete') ? 'bg-green-600' : 'bg-red-600'}`}>
+                <div className="bg-red-600 text-white p-4 rounded-xl mb-6 text-sm text-center">
                   {formData.error}
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
-                <div className="space-y-2.5 sm:space-y-3.5">
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="space-y-4">
                   <div className="form-group">
-                    <label className="block text-white text-xs font-semibold mb-1 sm:mb-1.5">Email Address</label>
+                    <label className="block text-white text-sm font-semibold mb-2">Email Address</label>
                     <div className="relative group">
-                      <div className="absolute inset-y-0 left-0 pl-3 sm:pl-3.5 flex items-center pointer-events-none text-white/40 group-focus-within:text-white transition-colors text-xs">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-white/40 group-focus-within:text-white transition-colors">
                         <FaEnvelope />
                       </div>
                       <input
@@ -171,7 +167,7 @@ const Login = () => {
                         name="email"
                         value={formData.email}
                         onChange={handleChange}
-                        className="w-full bg-white/5 border border-white/20 rounded-xl py-2 sm:py-2.5 pl-9 sm:pl-10 pr-3.5 text-xs text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#800020]/50 focus:border-[#800020] transition-all"
+                        className="w-full bg-white/5 border border-white/20 rounded-xl py-3 pl-11 pr-4 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#800020]/50 focus:border-[#800020] transition-all"
                         placeholder="admin@iskomats.ph"
                         required
                       />
@@ -179,11 +175,11 @@ const Login = () => {
                   </div>
 
                   <div className="form-group">
-                    <div className="flex justify-between items-center mb-1 sm:mb-1.5">
-                      <label className="text-white text-xs font-semibold">Password</label>
+                    <div className="flex justify-between items-center mb-2">
+                      <label className="text-white text-sm font-semibold">Password</label>
                     </div>
                     <div className="relative group">
-                      <div className="absolute inset-y-0 left-0 pl-3 sm:pl-3.5 flex items-center pointer-events-none text-white/40 group-focus-within:text-white transition-colors text-xs">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-white/40 group-focus-within:text-white transition-colors">
                         <FaLock />
                       </div>
                       <input
@@ -191,20 +187,20 @@ const Login = () => {
                         name="password"
                         value={formData.password}
                         onChange={handleChange}
-                        className="w-full bg-white/5 border border-white/20 rounded-xl py-2 sm:py-2.5 pl-9 sm:pl-10 pr-9 sm:pr-10 text-xs text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#800020]/50 focus:border-[#800020] transition-all"
+                        className="w-full bg-white/5 border border-white/20 rounded-xl py-3 pl-11 pr-12 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#800020]/50 focus:border-[#800020] transition-all"
                         placeholder="•••••••••••"
                         required
                       />
                       <button
                         type="button"
                         onClick={togglePassword}
-                        className="absolute inset-y-0 right-0 pr-3 sm:pr-3.5 flex items-center text-white/40 hover:text-white transition-colors text-xs"
+                        className="absolute inset-y-0 right-0 pr-4 flex items-center text-white/40 hover:text-white transition-colors"
                       >
                         {formData.showPassword ? <FaEyeSlash /> : <FaEye />}
                       </button>
                     </div>
-                    <div className="mt-1 text-right">
-                      <a href="/forget-password" onClick={(e) => { e.preventDefault(); navigate('/forget-password'); }} className="text-[11px] text-white/60 hover:text-white hover:underline transition-colors">
+                    <div className="mt-2 text-right">
+                      <a href="/forget-password" onClick={(e) => { e.preventDefault(); navigate('/forget-password'); }} className="text-xs text-white/60 hover:text-white hover:underline transition-colors">
                         Forgot password?
                       </a>
                     </div>
@@ -214,11 +210,11 @@ const Login = () => {
                 <button
                   type="submit"
                   disabled={formData.isLoading}
-                  className="w-full py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-[#800020] to-[#650018] text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 hover:-translate-y-0.5 transition disabled:opacity-60 shadow-md shadow-black/20"
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-[#800020] to-[#650018] text-white font-bold flex items-center justify-center gap-3 hover:-translate-y-1 transition disabled:opacity-60 shadow-lg shadow-black/20"
                 >
                   {formData.isLoading ? (
                     <>
-                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                      <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
                       Signing in...
                     </>
                   ) : (
@@ -230,10 +226,8 @@ const Login = () => {
                 </button>
               </form>
 
-
-
-              <div className="pt-3 sm:pt-4 text-center mt-1 text-xs text-white/80">
-                <p className="text-[10px] sm:text-xs text-white/60">
+              <div className="pt-6 text-center border-t border-white/20 mt-6 text-sm text-white/80">
+                <p className="text-xs text-white/60 mt-2">
                   &copy; 2025 Iskomats Scholarships
                 </p>
               </div>
