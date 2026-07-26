@@ -799,43 +799,52 @@ function academic_year_matches_expected(text, expectedYear) {
   const expectedYears = normExpected.match(yearRegex) || [];
   if (expectedYears.length === 0) return true;
 
+  // Strip date timestamps YYYY-MM-DD (e.g. 2025-08-12, 2026-03-24) so dates aren't parsed as year pairs
+  const textWithoutDates = normText.replace(/20\d{2}\s*[\-\/]\s*(?:0[1-9]|1[0-2])\s*[\-\/]\s*(?:[0-2][0-9]|3[01])/g, '');
+
   // 1. If expected is an explicit pair (e.g. "2025-2026")
   if (expectedYears.length >= 2) {
     const expStart = parseInt(expectedYears[0], 10);
     const expEnd = parseInt(expectedYears[1], 10);
     const expPairStr = `${expStart}-${expEnd}`;
 
-    // Extract all year pairs in OCR text (e.g., "2026-2027", "2025-2026")
-    const pairMatches = [...normText.matchAll(/(20\d{2})\s*[\-\/]\s*(20[0-9a-zA-Z]{2})/g)];
-
+    // Extract all year pairs in OCR text excluding dates (e.g., "2025-2026", "2025-2028")
+    const pairMatches = [...textWithoutDates.matchAll(/(20\d{2})\s*[\-\/]\s*(20[0-9a-zA-Z]{2})/g)];
+    
     if (pairMatches.length > 0) {
-      // Check if any detected pair matches expStart and expEnd exactly
-      const exactMatch = pairMatches.some(m => {
+      const matchFound = pairMatches.some(m => {
         const pStart = parseInt(m[1], 10);
-        const rawEnd = m[2].toLowerCase().replace(/b/g, '6').replace(/8/g, '6').replace(/s/g, '5');
-        const pEnd = parseInt(rawEnd, 10);
-        return pStart === expStart && pEnd === expEnd;
+        const rawEndStr = m[2].toLowerCase().replace(/b/g, '6').replace(/8/g, '6').replace(/g/g, '6').replace(/s/g, '5');
+        const pEnd = parseInt(rawEndStr, 10);
+
+        // Match if start year equals expStart AND end year equals expEnd (or OCR typo for expEnd when start is identical)
+        if (pStart === expStart) {
+          if (pEnd === expEnd || Math.abs(pEnd - expEnd) <= 2) {
+            return true;
+          }
+        }
+        return false;
       });
 
-      if (exactMatch) return true;
+      if (matchFound) return true;
 
-      // If explicit year pairs were found in document but none match expected pair exactly -> REJECT
+      // If explicit year pair was found in document (e.g. "2026-2027") but start year does not match expStart -> REJECT
       console.warn(`[AY FAIL] Academic year mismatch: Document pair does not match required ${expPairStr}`);
       return false;
     }
   }
 
-  // 2. If expected is a single year (e.g. "2025")
+  // 2. Fallback: Check if both expected years (e.g. "2025" AND "2026") exist anywhere in textWithoutDates
+  const foundYearsSet = new Set(textWithoutDates.match(yearRegex) || []);
+  const allPresent = expectedYears.every(y => foundYearsSet.has(y));
+  if (allPresent) return true;
+
+  // 3. Single year fallback
   if (expectedYears.length === 1) {
-    const targetYear = expectedYears[0];
-    const foundYearsSet = new Set(normText.match(yearRegex) || []);
-    return foundYearsSet.has(targetYear);
+    return foundYearsSet.has(expectedYears[0]);
   }
 
-  // 3. Fallback: Require ALL expected years to be present in normText
-  const foundYearsSet = new Set(normText.match(yearRegex) || []);
-  const allPresent = expectedYears.every(y => foundYearsSet.has(y));
-  return allPresent;
+  return false;
 }
 
 function courseMatchesText(expectedCourse, text) {
