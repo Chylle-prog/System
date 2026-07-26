@@ -2685,6 +2685,14 @@ const StudentInfo = () => {
         resultsList = [{ doc: 'Indigency', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
       }
 
+      // Build combinedText BEFORE debugRequirements block (used in Grades branch)
+      let combinedText = "";
+      if (docType === 'SchoolID') {
+        combinedText = `[DOCUMENT OCR TEXT]\n${detectedText || 'No text recognized.'}\n\n[FRONT ID VIDEO OCR LOGS]\n${frontVidCheck?.detectedText || 'No text logs.'}\n\n[BACK ID VIDEO OCR LOGS]\n${backVidCheck?.detectedText || 'No text logs.'}`;
+      } else {
+        combinedText = `[DOCUMENT OCR TEXT]\n${detectedText || 'No text recognized.'}\n\n[VIDEO OCR CHECK LOGS]\n${videoCheck?.detectedText || 'No video text log available.'}`;
+      }
+
       let debugRequirements = {};
       if (docType === 'SchoolID') {
         const videoOk = (!videoUrl?.front || (frontVidCheck && frontVidCheck.valid)) && (!videoUrl?.back || (backVidCheck && backVidCheck.valid));
@@ -2737,13 +2745,6 @@ const StudentInfo = () => {
           "Town / City": townCity || 'N/A',
           "Video Proof": videoOk ? 'Uploaded & Validated' : (videoCheck?.reason || 'No Text Detected in Video')
         };
-      }
-
-      let combinedText = "";
-      if (docType === 'SchoolID') {
-        combinedText = `[DOCUMENT OCR TEXT]\n${detectedText || 'No text recognized.'}\n\n[FRONT ID VIDEO OCR LOGS]\n${frontVidCheck?.detectedText || 'No text logs.'}\n\n[BACK ID VIDEO OCR LOGS]\n${backVidCheck?.detectedText || 'No text logs.'}`;
-      } else {
-        combinedText = `[DOCUMENT OCR TEXT]\n${detectedText || 'No text recognized.'}\n\n[VIDEO OCR CHECK LOGS]\n${videoCheck?.detectedText || 'No video text log available.'}`;
       }
 
       setOcrDebugLogs((prev) => ({
