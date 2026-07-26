@@ -419,7 +419,7 @@ def _extract_signature_from_id_back(id_img):
         if aspect < 0.22:
             continue
 
-        if aspect > 5.5 or (aspect > 4.0 and h < 8): 
+        if aspect > 2.8 or (aspect > 2.0 and h < 16): 
             continue
         
         peri = cv2.arcLength(cnt, True)
