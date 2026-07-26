@@ -5926,9 +5926,11 @@ const StudentInfo = () => {
                       type="number"
                       name="gpa"
                       value={formData.gpa}
-                      style={{ backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }}
-                      placeholder="GPA pre-filled from profile"
+                      onChange={handleInputChange}
+                      placeholder="e.g. 3.50"
                       step="0.01"
+                      min="1.00"
+                      max="4.00"
                       required={currentStep === 3}
                     />
                   </div>
