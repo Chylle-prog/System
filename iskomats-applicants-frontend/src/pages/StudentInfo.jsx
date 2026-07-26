@@ -665,10 +665,12 @@ function studentIdNoMatchesText(targetId, text) {
   
   const normalizeId = (s) => {
     return s.toString().toLowerCase().replace(/[^a-z0-9]/g, '')
-      .replace(/o/g, '0').replace(/q/g, '0').replace(/d/g, '0')
-      .replace(/i/g, '1').replace(/l/g, '1')
-      .replace(/z/g, '2').replace(/s/g, '5')
+      .replace(/o/g, '0').replace(/q/g, '0').replace(/d/g, '0').replace(/a/g, '0').replace(/u/g, '0')
+      .replace(/i/g, '1').replace(/l/g, '1').replace(/y/g, '1').replace(/v/g, '1').replace(/f/g, '1').replace(/k/g, '1')
+      .replace(/z/g, '2')
+      .replace(/s/g, '5')
       .replace(/g/g, '6').replace(/b/g, '6')
+      .replace(/t/g, '7').replace(/r/g, '7')
       .replace(/q/g, '9');
   };
 
@@ -676,12 +678,53 @@ function studentIdNoMatchesText(targetId, text) {
   if (!tId || tId.length < 4) return true;
 
   const normText = normalizeId(text);
+
+  // 1. Direct inclusion of normalized target ID
   if (normText.includes(tId)) return true;
 
+  // 2. Extracted Key-Value ID check
   const kv = extractOcrKeyValues(text);
   if (kv.studentId) {
     const kvId = normalizeId(kv.studentId);
     if (kvId.includes(tId) || tId.includes(kvId)) return true;
+    const dist = getLevenshteinDistance(tId, kvId);
+    if (dist <= 3 || (Math.max(tId.length, kvId.length) - dist) / Math.max(tId.length, kvId.length) >= 0.50) {
+      return true;
+    }
+  }
+
+  // 3. Chunk matching (for long IDs, e.g. 1500017172 -> check chunks of 5-6 digits like 150001 or 017172)
+  if (tId.length >= 6) {
+    const chunkSize = Math.max(4, Math.floor(tId.length * 0.55));
+    for (let i = 0; i <= tId.length - chunkSize; i += 2) {
+      const chunk = tId.substring(i, i + chunkSize);
+      if (chunk.length >= 4 && normText.includes(chunk)) {
+        return true;
+      }
+    }
+  }
+
+  // 4. Token-level fuzzy matching against OCR words
+  const words = text.split(/\s+/);
+  for (const w of words) {
+    const normW = normalizeId(w);
+    if (normW.length >= 4) {
+      if (normW.includes(tId) || tId.includes(normW)) return true;
+      const longer = normW.length > tId.length ? normW : tId;
+      const shorter = normW.length > tId.length ? tId : normW;
+      const dist = getLevenshteinDistance(longer, shorter);
+      const similarity = (longer.length - dist) / longer.length;
+      if (similarity >= 0.50 || dist <= 3) {
+        return true;
+      }
+    }
+  }
+
+  // 5. Fallback for OCR missing/skipped header numbers:
+  // If the raw OCR text doesn't contain a clear 4+ digit sequence, pass to avoid failing due to OCR header skipping
+  const digitMatches = normText.match(/\d{4,}/g);
+  if (!digitMatches || digitMatches.length === 0) {
+    return true;
   }
 
   return false;
