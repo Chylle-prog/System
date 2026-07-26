@@ -2153,7 +2153,7 @@ const StudentInfo = () => {
     return false;
   };
 
-  const extractGpaFromText = (text) => {
+  function extractGpaFromText(text) {
     if (!text) return null;
     const gpaMatch = text.match(/(?:GPA|GWA|WEIGHTED\s*AVERAGE)\s*[:\-=\s]*([0-9]+\.[0-9]+)/i);
     if (gpaMatch && gpaMatch[1]) {
@@ -2163,9 +2163,9 @@ const StudentInfo = () => {
       }
     }
     return null;
-  };
+  }
 
-  const gpaMatchesText = (text, expectedGpa) => {
+  function gpaMatchesText(text, expectedGpa) {
     if (!text) return true;
 
     const detectedGpaStr = extractGpaFromText(text);
@@ -2190,9 +2190,9 @@ const StudentInfo = () => {
     if (cleanText.includes(roundedGpaStr)) return true;
 
     return false;
-  };
+  }
 
-  const addressMatchesText = (text, expectedAddr) => {
+  function addressMatchesText(text, expectedAddr) {
     if (!expectedAddr) return true;
     const normText = normalizeForOcr(text);
     const normAddr = normalizeForOcr(expectedAddr);
@@ -2206,9 +2206,8 @@ const StudentInfo = () => {
     const sigWords = words.filter(w => !['barangay', 'brgy', 'bgy', 'city', 'municipality', 'town'].includes(w));
     if (sigWords.length === 0) return true;
 
-    const searchArea = targetText || normText;
     return sigWords.every(w => new RegExp('\\b' + w + '\\b').test(searchArea) || searchArea.includes(w));
-  };
+  }
 
   const coe_type_matches_text = (text) => {
     if (!text) return false;
@@ -2997,7 +2996,8 @@ const StudentInfo = () => {
         academicYear: targetAcademicYear
       }, videoUrl);
       if (success) {
-        const detectedDocGpa = extractGpaFromText(gradesDoc);
+        const ocrText = ocrDebugLogs?.Grades?.detectedText || '';
+        const detectedDocGpa = extractGpaFromText(ocrText);
         if (detectedDocGpa) {
           setFormData(prev => ({ ...prev, gpa: detectedDocGpa }));
         }
