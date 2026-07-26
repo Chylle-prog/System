@@ -903,18 +903,36 @@ def parse_cor_document(raw_text):
         ]
     }
 
+    # Prioritize explicit Student No / Student ID over Reg No
+    student_no_val = None
+    reg_no_val = None
+
     for line in lines:
+        if not student_no_val:
+            m_stud = re.search(r'student\s*(?:no|number|id)\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})', line, re.IGNORECASE)
+            if m_stud:
+                student_no_val = m_stud.group(1).strip()
+        if not reg_no_val:
+            m_reg = re.search(r'(?:reg|ref|rug|rek|sr)\s*(?:no|code)?\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})', line, re.IGNORECASE)
+            if m_reg:
+                reg_no_val = m_reg.group(1).strip()
+
         for field_name, regexes in label_patterns.items():
-            if field_name in fields:
+            if field_name in fields or field_name == 'student_id':
                 continue
             for regex in regexes:
                 match = re.search(regex, line, re.IGNORECASE)
                 if match:
                     val = match.group(1 if len(match.groups()) >= 1 else 0).strip()
-                    val = re.sub(r'\s+(?:Reg|Tran|College|Pay|User|Scholarship|Discount|Ref)\s*[:\-].*', '', val, flags=re.IGNORECASE)
+                    val = re.sub(r'\s+(?:Reg|Tran|College|Pay|User|Scholarship|Discount|Ref)\s*[:=\+\-].*', '', val, flags=re.IGNORECASE)
                     if len(val) > 0:
                         fields[field_name] = val
                         break
+
+    if student_no_val:
+        fields['student_id'] = student_no_val
+    elif reg_no_val:
+        fields['student_id'] = reg_no_val
 
     raw_upper = str(raw_text).upper()
     if any(k in raw_upper for k in ['DE LA SALLE LIPA', 'DE LY SALLE', 'DLSL', 'SALLE LIPA', 'SALLE PA', 'LIPA']):

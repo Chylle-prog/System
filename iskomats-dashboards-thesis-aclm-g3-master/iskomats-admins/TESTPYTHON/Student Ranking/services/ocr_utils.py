@@ -867,54 +867,72 @@ def parse_cor_document(raw_text):
 
     label_patterns = {
         'name': [
-            r'name\s*[:\-1l\|\]\}\)]\s*([A-Za-z\s,\.\-]+)',
-            r'student\s*name\s*[:\-1l\|\]\}\)]\s*([A-Za-z\s,\.\-]+)',
-            r'pangalan\s*[:\-1l\|\]\}\)]\s*([A-Za-z\s,\.\-]+)',
+            r'name\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z\s,\.\-]+)',
+            r'student\s*name\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z\s,\.\-]+)',
+            r'pangalan\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z\s,\.\-]+)',
             r'name\s+([A-Za-z\s,\.\-]+)'
         ],
         'student_id': [
-            r'student\s*(?:no|number|id)\s*[:\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
-            r'id\s*(?:no|number)\s*[:\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
-            r'reg\s*no\s*[:\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
-            r'rug\s*no\s*[:\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
-            r'rek\s*no\s*[:\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
-            r'ref\s*no\s*[:\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
-            r'sr\s*code\s*[:\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})'
+            r'student\s*(?:no|number|id)\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
+            r'id\s*(?:no|number)\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
+            r'reg\s*no\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
+            r'rug\s*no\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
+            r'rek\s*no\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
+            r'ref\s*no\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
+            r'sr\s*code\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})'
         ],
         'school_year_sem': [
-            r'school\s*year\s*(?:sem)?\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
-            r'academic\s*year\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
-            r'a\.?y\.?\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
-            r's\.?y\.?\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
+            r'school\s*year\s*(?:sem)?\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
+            r'academic\s*year\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
+            r'a\.?y\.?\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
+            r's\.?y\.?\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
             r'\$ch00!\s*yaa[^\n]*'
         ],
         'year_level': [
-            r'year\s*level\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s]+)',
-            r'yr\s*level\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s]+)',
-            r'grade\s*level\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s]+)'
+            r'year\s*level\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s]+)',
+            r'yr\s*level\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s]+)',
+            r'grade\s*level\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s]+)'
         ],
         'course': [
-            r'course\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s,\.\-\&]+)',
-            r'program\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s,\.\-\&]+)',
-            r'degree\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s,\.\-\&]+)'
+            r'course\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s,\.\-\&]+)',
+            r'program\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s,\.\-\&]+)',
+            r'degree\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s,\.\-\&]+)'
         ],
         'college': [
-            r'college\s*[:\-1l\|\]\}\)]\s*([A-Za-z0-9\s,\.\-\&]+)'
+            r'college\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s,\.\-\&]+)'
         ]
     }
 
+    # Prioritize explicit Student No / Student ID over Reg No
+    student_no_val = None
+    reg_no_val = None
+
     for line in lines:
+        if not student_no_val:
+            m_stud = re.search(r'student\s*(?:no|number|id)\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})', line, re.IGNORECASE)
+            if m_stud:
+                student_no_val = m_stud.group(1).strip()
+        if not reg_no_val:
+            m_reg = re.search(r'(?:reg|ref|rug|rek|sr)\s*(?:no|code)?\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})', line, re.IGNORECASE)
+            if m_reg:
+                reg_no_val = m_reg.group(1).strip()
+
         for field_name, regexes in label_patterns.items():
-            if field_name in fields:
+            if field_name in fields or field_name == 'student_id':
                 continue
             for regex in regexes:
                 match = re.search(regex, line, re.IGNORECASE)
                 if match:
                     val = match.group(1 if len(match.groups()) >= 1 else 0).strip()
-                    val = re.sub(r'\s+(?:Reg|Tran|College|Pay|User|Scholarship|Discount|Ref)\s*[:\-].*', '', val, flags=re.IGNORECASE)
+                    val = re.sub(r'\s+(?:Reg|Tran|College|Pay|User|Scholarship|Discount|Ref)\s*[:=\+\-].*', '', val, flags=re.IGNORECASE)
                     if len(val) > 0:
                         fields[field_name] = val
                         break
+
+    if student_no_val:
+        fields['student_id'] = student_no_val
+    elif reg_no_val:
+        fields['student_id'] = reg_no_val
 
     raw_upper = str(raw_text).upper()
     if any(k in raw_upper for k in ['DE LA SALLE LIPA', 'DE LY SALLE', 'DLSL', 'SALLE LIPA', 'SALLE PA', 'LIPA']):
