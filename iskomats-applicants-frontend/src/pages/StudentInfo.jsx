@@ -872,28 +872,30 @@ function extractGpaFromText(text) {
 
 function gpaMatchesText(text, expectedGpa) {
   if (!text) return true;
-
-  const detectedGpaStr = extractGpaFromText(text);
-  if (detectedGpaStr) {
-    const detVal = parseFloat(detectedGpaStr);
-    if (!isNaN(detVal) && detVal >= 1.0) {
-      return true;
-    }
-  }
-
   if (!expectedGpa) return true;
 
   const rawGpaStr = String(expectedGpa).trim();
-  const parsedTargetGpa = parseFloat(rawGpaStr.replace(/[^0-9.]/g, ''));
-  if (isNaN(parsedTargetGpa)) return true;
+  const parsedInputGpa = parseFloat(rawGpaStr.replace(/[^0-9.]/g, ''));
+  if (isNaN(parsedInputGpa)) return true;
 
+  // Try to extract document GPA (e.g., "GPA: 3.5481")
+  const detectedGpaStr = extractGpaFromText(text);
+  if (detectedGpaStr) {
+    const detVal = parseFloat(detectedGpaStr);
+    if (!isNaN(detVal)) {
+      // Allow 0.15 tolerance for OCR rounding differences (e.g., 3.5 vs 3.5481)
+      return Math.abs(detVal - parsedInputGpa) <= 0.15;
+    }
+  }
+
+  // Fallback: scan raw text for the exact GPA string
   const cleanText = String(text).replace(/[\–\—·•]/g, '.');
-
   if (cleanText.includes(rawGpaStr) || cleanText.includes(rawGpaStr.replace('.', ','))) return true;
 
-  const roundedGpaStr = parsedTargetGpa.toFixed(2);
+  const roundedGpaStr = parsedInputGpa.toFixed(2);
   if (cleanText.includes(roundedGpaStr)) return true;
 
+  // If no GPA found in document at all, skip validation (document might be low-res)
   return false;
 }
 
@@ -2640,19 +2642,21 @@ const StudentInfo = () => {
         detectedText = await runOcrOnImage(resolvedParam, "Grades Transcript");
         const combinedText = detectedText + " " + (videoCheck?.detectedText || "");
         const nameCheck = studentNameMatchesText(combinedText, firstName, middleName, lastName);
-        const gpaOk = gpa ? gpaMatchesText(combinedText, gpa) : true;
+        const gpaOk = gpa ? gpaMatchesText(detectedText, gpa) : true;
         const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
         const semOk = semesterMatchesText(combinedText, semester || formData.semester, semester || reqSemester);
         const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
         const courseOk = course ? courseMatchesText(course, combinedText) : true;
         const idOk = idNumber ? studentIdNoMatchesText(idNumber, combinedText) : true;
         const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
+        const detectedDocGpa = extractGpaFromText(detectedText);
 
         isSuccess = nameCheck.success && gpaOk && ayOk && semOk && schoolOk && courseOk && idOk && videoOk;
         scoreDetails = {
           "First Name": nameCheck.details.first_ok,
           "Last Name": nameCheck.details.last_ok,
-          "GPA Requirement": gpa ? gpaOk : null,
+          "GPA (Document)": detectedDocGpa ? true : null,
+          "GPA (Input)": gpa ? gpaOk : null,
           "Academic Year": academicYear ? ayOk : null,
           "Year Level": null,
           "Semester": semester ? semOk : null,
@@ -2663,7 +2667,7 @@ const StudentInfo = () => {
         };
         finalMessage = isSuccess 
           ? "Grades verified successfully client-side!" 
-          : (!videoOk ? (videoCheck?.reason || "Grades video proof failed validation.") : "Grades verification mismatch.");
+          : (!videoOk ? (videoCheck?.reason || "Grades video proof failed validation.") : !gpaOk ? `GPA mismatch: document shows ${detectedDocGpa || 'N/A'}, you entered ${gpa}.` : "Grades verification mismatch.");
         resultsList = [{ doc: 'Grades', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
       }
       else if (docType === 'Indigency') {
@@ -2725,10 +2729,12 @@ const StudentInfo = () => {
         };
       } else if (docType === 'Grades') {
         const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
+        const detectedDocGpa = extractGpaFromText(detectedText);
         debugRequirements = {
           "First Name": firstName || 'N/A',
           "Last Name": lastName || 'N/A',
-          "GPA Requirement": extractGpaFromText(combinedText) || gpa || 'N/A',
+          "GPA (Document)": detectedDocGpa || 'Not detected',
+          "GPA (Input)": gpa || 'N/A',
           "Academic Year": academicYear || 'N/A',
           "Semester": semester || 'N/A',
           "School Name": schoolName || 'N/A',
