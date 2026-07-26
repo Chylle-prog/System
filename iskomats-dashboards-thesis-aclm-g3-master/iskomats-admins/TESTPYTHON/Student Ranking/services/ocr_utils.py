@@ -1070,6 +1070,9 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name, middle_name, las
     elif 'INDIGENCY' in doc_type_upper:
         success, msg, meta = verify_indigency_fields(raw_text, first_name, middle_name, last_name, expected_address=kwargs.get('expected_address'), **kwargs)
         return success, msg, raw_text, meta
+    elif 'ID' in doc_type_upper or 'IDENTIFICATION' in doc_type_upper or 'SCHOOLID' in doc_type_upper:
+        success, msg, meta = verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs)
+        return success, msg, raw_text, meta
     else:
         # Default: COR / Registration
         parsed_fields = parse_cor_document(raw_text)
@@ -1313,6 +1316,59 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
         msg = "Indigency Verification Failed: " + "; ".join(failures)
 
     meta['name_ok'] = first_ok and last_ok
+    meta['details'] = failures
+    meta['detected_text'] = raw_text
+
+    return success, msg, meta
+
+def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
+    """
+    Dedicated verification logic for School ID cards.
+    Validates applicant name, student ID number, and school name from ID OCR text.
+    """
+    meta = {}
+    failures = []
+    
+    doc_norm = normalize_text(raw_text)
+    
+    # 1. Name Verification
+    first_ok, last_ok, seq_ok = verify_name_sequence(first_name, last_name, raw_text, full_raw_text=raw_text, middle_name=middle_name)
+    name_matched = seq_ok or (first_ok and last_ok)
+    if not name_matched:
+        failures.append(f"Name mismatch (Expected: '{first_name} {last_name}' on ID)")
+
+    # 2. Student ID Number (if expected_id_no provided)
+    expected_id_no = kwargs.get('expected_id_no')
+    id_ok = True
+    if expected_id_no:
+        clean_expected_id = normalize_id_number(expected_id_no)
+        clean_raw_id_text = normalize_id_number(raw_text)
+        id_ok = clean_expected_id in clean_raw_id_text if clean_expected_id else True
+        if not id_ok:
+            failures.append(f"ID Number mismatch (Expected: '{expected_id_no}' on ID)")
+
+    # 3. School Name (if expected_school_name provided)
+    expected_school = kwargs.get('expected_school_name')
+    school_ok = True
+    if expected_school:
+        clean_school = normalize_text(expected_school)
+        school_words = [w for w in clean_school.split() if len(w) >= 3 and w not in {'university', 'college', 'school', 'inc', 'of', 'de', 'la', 'salle'}]
+        if school_words:
+            school_ok = any(w in doc_norm for w in school_words)
+        else:
+            school_ok = clean_school in doc_norm
+        if not school_ok:
+            failures.append(f"School name mismatch (Expected: '{expected_school}' on ID)")
+
+    success = (first_ok and last_ok) and (id_ok or school_ok)
+    if success:
+        msg = f"School ID Verified: Name ({first_name} {last_name}) and ID details matched."
+    else:
+        msg = "School ID Verification Failed: " + ("; ".join(failures) if failures else "Details could not be verified on ID.")
+
+    meta['name_ok'] = first_ok and last_ok
+    meta['id_ok'] = id_ok
+    meta['school_ok'] = school_ok
     meta['details'] = failures
     meta['detected_text'] = raw_text
 
