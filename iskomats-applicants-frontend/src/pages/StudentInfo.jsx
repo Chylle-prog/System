@@ -2045,24 +2045,34 @@ const StudentInfo = () => {
     const expectedYears = normExpected.match(yearRegex) || [];
     if (expectedYears.length === 0) return true;
 
-    const foundYears = normText.match(yearRegex) || [];
-    if (foundYears.length === 0) {
-      // If document contains 'school year' or 'sy' or 'ay' or date stamps, accept
-      if (/school\s*year|s\.?y\.?|academic\s*year|a\.?y\.?|enrolled|registration/i.test(text)) {
-        return true;
+    // Gather academic year lines / headers
+    const ayLines = [];
+    const rawLines = String(normText).split('\n');
+    for (let line of rawLines) {
+      if (/school\s*year|academic\s*year|s\.?y\.?|a\.?y\.?|sem/i.test(line)) {
+        ayLines.push(line);
       }
-      return false;
+    }
+    const searchPool = ayLines.length > 0 ? ayLines.join(' ') : normText;
+
+    // Check for explicit year pairs in search pool (e.g. "2024-2025", "2024 - 2025", "2024/2025")
+    const pairMatches = [...searchPool.matchAll(/(20\d{2})\s*[\-\/]\s*(20\d{2})/g)];
+    if (pairMatches.length > 0 && expectedYears.length >= 2) {
+      const expPair = [expectedYears[0], expectedYears[1]];
+      const matchesExplicitPair = pairMatches.some(m => m[1] === expPair[0] && m[2] === expPair[1]);
+      if (!matchesExplicitPair) {
+        console.warn(`[AY FAIL] Explicit pair mismatch: Expected ${expPair.join('-')} vs Document ${pairMatches[0][1]}-${pairMatches[0][2]}`);
+        return false;
+      }
     }
 
-    // Check if any expected year is present or within +/- 2 years of found years
-    for (let expYr of expectedYears) {
-      const expNum = parseInt(expYr, 10);
-      for (let foundYr of foundYears) {
-        const foundNum = parseInt(foundYr, 10);
-        if (Math.abs(expNum - foundNum) <= 2) {
-          return true;
-        }
-      }
+    // Check if ALL expected years (e.g., ['2025', '2026']) exist in the search pool
+    const foundYearsSet = new Set(searchPool.match(yearRegex) || []);
+    const allPresent = expectedYears.every(y => foundYearsSet.has(y));
+
+    if (!allPresent) {
+      console.warn(`[AY FAIL] Not all expected years ${expectedYears.join(', ')} found in document pool:`, Array.from(foundYearsSet));
+      return false;
     }
 
     return true;
