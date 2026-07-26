@@ -911,18 +911,21 @@ function extractGpaFromText(text) {
     .replace(/GBA/gi, 'GPA')
     .replace(/G\.P\.A/gi, 'GPA');
 
-  // 1. Explicit keyword pattern (e.g. "GPA: 3.5481", "GPA 3.54", "GPA 35481")
-  const p1 = cleaned.match(/(?:GPA|GWA|WEIGHTED\s*AVERAGE|GRADE\s*POINT)\s*[:\-=.,|\s]+([1-4][.,\s]?[0-9]{2,4})/i);
+  // 1. Explicit keyword pattern (e.g. "GPA: 3.5481", "GPA 3.54")
+  const p1 = cleaned.match(/(?:GPA|GWA|WEIGHTED\s*AVERAGE|GRADE\s*POINT)\s*[:\-=.,|\s]+([1-4][.,][0-9]{2,4})/i);
   if (p1 && p1[1]) {
-    let raw = p1[1].replace(',', '.').replace(/\s+/g, '');
-    if (!raw.includes('.') && raw.length >= 3) {
-      raw = raw[0] + '.' + raw.substring(1);
-    }
-    const val = parseFloat(raw);
+    const val = parseFloat(p1[1].replace(',', '.'));
     if (!isNaN(val) && val >= 1.0 && val <= 4.0) return String(val.toFixed(4));
   }
 
-  // 2. Any 3 to 4 decimal place number in valid GPA range (1.000 to 4.000)
+  // 2. Value immediately before "Total Units" table footer (e.g. "3.5481 Total Units: 26")
+  const pUnits = cleaned.match(/([1-4]\.[0-9]{2,4})\s*[:\-=.,|\s]*(?:Total\s*Units?|Units?)/i);
+  if (pUnits && pUnits[1]) {
+    const val = parseFloat(pUnits[1]);
+    if (!isNaN(val) && val >= 1.0 && val <= 4.0) return String(val.toFixed(4));
+  }
+
+  // 3. Any 3 to 4 decimal place number in valid GPA range (1.000 to 4.000)
   const p2 = text.match(/\b([1-4]\.[0-9]{2,4})\b/g);
   if (p2 && p2.length > 0) {
     const candidates = p2.map(s => parseFloat(s)).filter(v => v >= 1.0 && v <= 4.0);
@@ -932,17 +935,6 @@ function extractGpaFromText(text) {
         return String(fourDecimals[fourDecimals.length - 1].toFixed(4));
       }
       return String(candidates[candidates.length - 1].toFixed(2));
-    }
-  }
-
-  // 3. 5-digit integer in range 10000..40000 (e.g. 35481 -> 3.5481)
-  const p3 = text.match(/\b([1-4][0-9]{4})\b/g);
-  if (p3 && p3.length > 0) {
-    for (const rawInt of p3) {
-      const val = parseFloat(rawInt[0] + '.' + rawInt.substring(1));
-      if (val >= 1.0 && val <= 4.0) {
-        return String(val.toFixed(4));
-      }
     }
   }
 
