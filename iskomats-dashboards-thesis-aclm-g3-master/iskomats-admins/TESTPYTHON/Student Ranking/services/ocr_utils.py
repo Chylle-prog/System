@@ -944,6 +944,53 @@ def parse_cor_document(raw_text):
 
     return fields
 
+def verify_academic_year_strict(expected_academic_year, found_ay_text, raw_text):
+    """
+    Strict Academic Year validation.
+    Ensures that if expected AY is '2025-2026' (years 2025 and 2026):
+    - Both years MUST appear in an academic year header/line in the document.
+    - If the document contains a different year pair (e.g. 2026-2027), it is rejected.
+    """
+    if not expected_academic_year or not str(expected_academic_year).strip():
+        return True, ""
+    
+    exp_str = str(expected_academic_year).strip()
+    exp_years = re.findall(r'20\d{2}', exp_str)
+    if not exp_years:
+        return True, ""
+
+    # Gather academic year lines / headers
+    ay_lines = []
+    if found_ay_text and found_ay_text != raw_text:
+        ay_lines.append(str(found_ay_text))
+        
+    for line in str(raw_text or '').splitlines():
+        if any(k in line.lower() for k in ['school year', 'academic year', 'sy', 'ay', 's.y.', 'a.y.']):
+            ay_lines.append(line)
+
+    search_pool = " ".join(ay_lines) if ay_lines else str(raw_text or '')
+
+    # Extract all 4-digit years in the AY header area
+    found_years = set(re.findall(r'20\d{2}', search_pool))
+
+    # Check 1: All required expected years (e.g. ['2025', '2026']) must be present in AY lines
+    all_present = all(y in found_years for y in exp_years)
+
+    # Check 2: If document contains explicit year pair (e.g. 2026-2027), it must match expected year pair
+    year_pairs = re.findall(r'(20\d{2})\s*[\-\/]\s*(20\d{2})', search_pool)
+    if year_pairs and len(exp_years) >= 2:
+        exp_pair = (exp_years[0], exp_years[1])
+        pair_match = any((p[0] == exp_pair[0] and p[1] == exp_pair[1]) for p in year_pairs)
+        if not pair_match:
+            doc_pair_str = f"{year_pairs[0][0]}-{year_pairs[0][1]}"
+            return False, f"Academic Year mismatch (Expected: '{exp_str}', Found in document: '{doc_pair_str}')"
+
+    if not all_present:
+        found_str = ", ".join(sorted(found_years)) if found_years else "None found"
+        return False, f"Academic Year mismatch (Expected: '{exp_str}', Found in document header: '{found_str}')"
+
+    return True, ""
+
 def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_name, **kwargs):
     """
     Multi-field validation for COR documents with robust OCR typo tolerance.
@@ -980,14 +1027,10 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
 
     # 3. ACADEMIC YEAR & SEMESTER MATCHING
     if expected_academic_year and str(expected_academic_year).strip():
-        found_ay = parsed_fields.get('school_year_sem', raw_text)
-        exp_years = re.findall(r'20\d{2}', str(expected_academic_year))
-        found_years = re.findall(r'20\d{2}', str(found_ay))
-
-        if exp_years:
-            ay_ok = all(y in found_years for y in exp_years)
-            if not ay_ok:
-                failures.append(f"Academic Year mismatch (Expected: '{expected_academic_year}', Found in COR: '{found_ay}')")
+        found_ay = parsed_fields.get('school_year_sem', '')
+        ay_ok, ay_msg = verify_academic_year_strict(expected_academic_year, found_ay, raw_text)
+        if not ay_ok:
+            failures.append(ay_msg)
 
     if expected_semester and str(expected_semester).strip():
         found_sy_sem = parsed_fields.get('school_year_sem', raw_text)
@@ -1243,14 +1286,10 @@ def verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_
 
     # 4. ACADEMIC YEAR MATCHING
     if expected_academic_year and str(expected_academic_year).strip():
-        found_ay = parsed_fields.get('sy_sem', raw_text)
-        exp_years = re.findall(r'20\d{2}', str(expected_academic_year))
-        found_years = re.findall(r'20\d{2}', str(found_ay))
-
-        if exp_years:
-            ay_ok = all(y in found_years for y in exp_years)
-            if not ay_ok:
-                failures.append(f"Academic Year mismatch (Expected: '{expected_academic_year}', Found in Grades: '{found_ay}')")
+        found_ay = parsed_fields.get('sy_sem', '')
+        ay_ok, ay_msg = verify_academic_year_strict(expected_academic_year, found_ay, raw_text)
+        if not ay_ok:
+            failures.append(ay_msg)
 
     # 4b. SEMESTER MATCHING
     if expected_semester and str(expected_semester).strip():
