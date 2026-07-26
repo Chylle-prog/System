@@ -938,14 +938,36 @@ function extractGpaFromText(text) {
     }
   }
 
-  // 4. Subject Grades Average Fallback (extract individual subject grades like 3.50, 3.25, 3.75, 4.00)
-  const p4 = text.match(/\b([1-4]\.[0-9]{1,2})\b/g);
-  if (p4 && p4.length >= 3) {
-    const gradeVals = p4.map(s => parseFloat(s)).filter(v => v >= 1.0 && v <= 4.0);
-    if (gradeVals.length >= 3) {
-      const avg = gradeVals.reduce((a, b) => a + b, 0) / gradeVals.length;
-      return String(avg.toFixed(2));
+  // 4. Subject Grades Table Extraction (handles decimal and non-decimal OCR grade tokens)
+  // Standard Philippine college grades: 1.00, 1.25, 1.50, 1.75, 2.00, 2.25, 2.50, 2.75, 3.00, 3.25, 3.50, 3.75, 4.00
+  // OCR tokens can appear as 3.50, 3.25, 3.75 or 350, 325, 330, 375, 300, 400
+  const validGrades = [];
+  const tokens = text.split(/\s+/);
+  for (const tok of tokens) {
+    const cleanTok = tok.replace(/[^0-9.]/g, '');
+    if (cleanTok.includes('.')) {
+      const v = parseFloat(cleanTok);
+      if (!isNaN(v) && v >= 1.0 && v <= 4.0) validGrades.push(v);
+    } else if (cleanTok.length === 3) {
+      const intV = parseInt(cleanTok, 10);
+      let parsedV = null;
+      if (intV === 330) parsedV = 3.50; // Common Tesseract OCR typo for 3.50
+      else if (intV >= 100 && intV <= 400) {
+        const candidate = intV / 100;
+        const rem = intV % 25;
+        if (rem === 0 || intV === 300 || intV === 325 || intV === 350 || intV === 375 || intV === 400) {
+          parsedV = candidate;
+        }
+      }
+      if (parsedV !== null && parsedV >= 1.0 && parsedV <= 4.0) {
+        validGrades.push(parsedV);
+      }
     }
+  }
+
+  if (validGrades.length >= 3) {
+    const avg = validGrades.reduce((a, b) => a + b, 0) / validGrades.length;
+    return String(avg.toFixed(4));
   }
 
   return null;
@@ -976,9 +998,7 @@ function gpaMatchesText(text, expectedGpa) {
   const roundedGpaStr = parsedInputGpa.toFixed(2);
   if (cleanText.includes(roundedGpaStr)) return true;
 
-  // If no GPA pattern could be extracted from document text due to OCR noise,
-  // soft-pass if the input GPA is a valid number (so missing tiny footer text doesn't fail 100% verified docs)
-  return true;
+  return false;
 }
 
 function addressMatchesText(text, expectedAddr) {
@@ -2737,7 +2757,7 @@ const StudentInfo = () => {
         scoreDetails = {
           "First Name": nameCheck.details.first_ok,
           "Last Name": nameCheck.details.last_ok,
-          "GPA (Document)": (detectedDocGpa || gpaOk) ? true : null,
+          "GPA (Document)": detectedDocGpa ? true : null,
           "GPA (Input)": gpa ? gpaOk : null,
           "Academic Year": academicYear ? ayOk : null,
           "Year Level": null,
@@ -2815,7 +2835,7 @@ const StudentInfo = () => {
         debugRequirements = {
           "First Name": firstName || 'N/A',
           "Last Name": lastName || 'N/A',
-          "GPA (Document)": detectedDocGpa || gpa || 'N/A',
+          "GPA (Document)": detectedDocGpa || 'Not detected',
           "GPA (Input)": gpa || 'N/A',
           "Academic Year": academicYear || 'N/A',
           "Semester": semester || 'N/A',
