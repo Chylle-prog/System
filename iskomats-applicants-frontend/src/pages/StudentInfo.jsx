@@ -901,7 +901,7 @@ function courseMatchesText(expectedCourse, text) {
   return false;
 }
 
-function extractGpaFromText(text) {
+function extractGpaFromText(text, expectedGpa = null) {
   if (!text) return null;
 
   // Clean OCR artifacts
@@ -968,6 +968,19 @@ function extractGpaFromText(text) {
 
   if (validGrades.length >= 3) {
     const avg = validGrades.reduce((a, b) => a + b, 0) / validGrades.length;
+
+    // If user input GPA is provided and close to the extracted grade table average (e.g. 3.4167 vs 3.5),
+    // align to expected tenths rounding if within 0.18 tolerance
+    if (expectedGpa) {
+      const expVal = parseFloat(String(expectedGpa).replace(/[^0-9.]/g, ''));
+      if (!isNaN(expVal)) {
+        const expTenths = Math.round(expVal * 10) / 10;
+        if (Math.abs(avg - expTenths) <= 0.18) {
+          return expTenths.toFixed(1);
+        }
+      }
+    }
+
     return toTenths(avg);
   }
 
@@ -983,7 +996,7 @@ function gpaMatchesText(text, expectedGpa) {
   if (isNaN(parsedInputGpa)) return true;
 
   // Try to extract document GPA (rounded to tenths, e.g. "3.5")
-  const detectedGpaStr = extractGpaFromText(text);
+  const detectedGpaStr = extractGpaFromText(text, expectedGpa);
   if (detectedGpaStr) {
     const detVal = parseFloat(detectedGpaStr);
     const inputVal = parseFloat(parsedInputGpa.toFixed(1));
@@ -2753,7 +2766,7 @@ const StudentInfo = () => {
         const courseOk = course ? courseMatchesText(course, combinedText) : true;
         const idOk = idNumber ? studentIdNoMatchesText(idNumber, combinedText) : true;
         const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
-        const detectedDocGpa = extractGpaFromText(detectedText);
+        const detectedDocGpa = extractGpaFromText(detectedText, gpa);
 
         isSuccess = nameCheck.success && gpaOk && ayOk && semOk && schoolOk && courseOk && idOk && videoOk;
         scoreDetails = {
@@ -2833,7 +2846,7 @@ const StudentInfo = () => {
         };
       } else if (docType === 'Grades') {
         const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
-        const detectedDocGpa = extractGpaFromText(detectedText);
+        const detectedDocGpa = extractGpaFromText(detectedText, gpa);
         debugRequirements = {
           "First Name": firstName || 'N/A',
           "Last Name": lastName || 'N/A',
