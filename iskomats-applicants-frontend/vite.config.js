@@ -8,6 +8,13 @@ export default defineConfig({
     port: 3010,
     open: true
   },
+  // Disable identifier renaming (minifyIdentifiers) to prevent esbuild TDZ
+  // ReferenceErrors caused by const arrow functions being renamed and reordered
+  // in the minified output (e.g. "Cannot access 'ge' before initialization").
+  // Syntax and whitespace minification are still applied for bundle size.
+  esbuild: {
+    minifyIdentifiers: false,
+  },
   build: {
     // Increase chunk size warning threshold
     chunkSizeWarningLimit: 1000,
