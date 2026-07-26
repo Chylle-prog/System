@@ -903,21 +903,21 @@ function extractGpaFromText(text, expectedGpa = null) {
     .replace(/GBA/gi, 'GPA')
     .replace(/G\.P\.A/gi, 'GPA');
 
-  // Helper: round any number to 1 decimal place (tenths, e.g. 3.5481 -> "3.5")
-  const toTenths = (val) => (Math.round(val * 10) / 10).toFixed(1);
+  // Helper: format number to 2 decimal places (e.g. 3.4375 -> "3.44")
+  const toTwoDecimals = (val) => (Math.round(val * 100) / 100).toFixed(2);
 
-  // 1. Explicit keyword pattern (e.g. "GPA: 3.5481", "GPA 3.54")
+  // 1. Explicit keyword pattern (e.g. "GPA: 3.4375", "GPA 3.44")
   const p1 = cleaned.match(/(?:GPA|GWA|WEIGHTED\s*AVERAGE|GRADE\s*POINT)\s*[:\-=.,|\s]+([1-4][.,][0-9]{2,4})/i);
   if (p1 && p1[1]) {
     const val = parseFloat(p1[1].replace(',', '.'));
-    if (!isNaN(val) && val >= 1.0 && val <= 4.0) return toTenths(val);
+    if (!isNaN(val) && val >= 1.0 && val <= 4.0) return toTwoDecimals(val);
   }
 
-  // 2. Value immediately before "Total Units" table footer (e.g. "3.5481 Total Units: 26")
+  // 2. Value immediately before "Total Units" table footer (e.g. "3.4375 Total Units: 24")
   const pUnits = cleaned.match(/([1-4]\.[0-9]{2,4})\s*[:\-=.,|\s]*(?:Total\s*Units?|Units?)/i);
   if (pUnits && pUnits[1]) {
     const val = parseFloat(pUnits[1]);
-    if (!isNaN(val) && val >= 1.0 && val <= 4.0) return toTenths(val);
+    if (!isNaN(val) && val >= 1.0 && val <= 4.0) return toTwoDecimals(val);
   }
 
   // 3. Any 3 to 4 decimal place number in valid GPA range (1.000 to 4.000)
@@ -927,13 +927,13 @@ function extractGpaFromText(text, expectedGpa = null) {
     if (candidates.length > 0) {
       const fourDecimals = candidates.filter(v => v.toString().split('.')[1]?.length >= 3);
       if (fourDecimals.length > 0) {
-        return toTenths(fourDecimals[fourDecimals.length - 1]);
+        return toTwoDecimals(fourDecimals[fourDecimals.length - 1]);
       }
-      return toTenths(candidates[candidates.length - 1]);
+      return toTwoDecimals(candidates[candidates.length - 1]);
     }
   }
 
-  // 4. Subject Grades Table Extraction (handles decimal and non-decimal OCR grade tokens)
+  // 4. Subject Grades Table Extraction
   const validGrades = [];
   const tokens = text.split(/\s+/);
   for (const tok of tokens) {
@@ -961,19 +961,17 @@ function extractGpaFromText(text, expectedGpa = null) {
   if (validGrades.length >= 3) {
     const avg = validGrades.reduce((a, b) => a + b, 0) / validGrades.length;
 
-    // If user input GPA is provided and close to the extracted grade table average (e.g. 3.4167 vs 3.5),
-    // align to expected tenths rounding if within 0.18 tolerance
+    // Strict alignment: only align if expected GPA is within 0.05 tolerance
     if (expectedGpa) {
       const expVal = parseFloat(String(expectedGpa).replace(/[^0-9.]/g, ''));
       if (!isNaN(expVal)) {
-        const expTenths = Math.round(expVal * 10) / 10;
-        if (Math.abs(avg - expTenths) <= 0.18) {
-          return expTenths.toFixed(1);
+        if (Math.abs(avg - expVal) <= 0.05) {
+          return toTwoDecimals(expVal);
         }
       }
     }
 
-    return toTenths(avg);
+    return toTwoDecimals(avg);
   }
 
   return null;
@@ -987,22 +985,19 @@ function gpaMatchesText(text, expectedGpa) {
   const parsedInputGpa = parseFloat(rawGpaStr.replace(/[^0-9.]/g, ''));
   if (isNaN(parsedInputGpa)) return true;
 
-  // Try to extract document GPA (rounded to tenths, e.g. "3.5")
   const detectedGpaStr = extractGpaFromText(text, expectedGpa);
   if (detectedGpaStr) {
     const detVal = parseFloat(detectedGpaStr);
-    const inputVal = parseFloat(parsedInputGpa.toFixed(1));
     if (!isNaN(detVal)) {
-      // Allow 0.2 tolerance for tenths rounding (e.g. 3.5 vs 3.4/3.5/3.6)
-      return Math.abs(detVal - inputVal) <= 0.2;
+      // Strict 0.05 tolerance (rejects 3.34 against 3.4375, accepts 3.43/3.44)
+      return Math.abs(detVal - parsedInputGpa) <= 0.05;
     }
   }
 
-  // Fallback: scan raw text for exact or rounded GPA string
   const cleanText = String(text).replace(/[\–\—·•]/g, '.');
   if (cleanText.includes(rawGpaStr) || cleanText.includes(rawGpaStr.replace('.', ','))) return true;
 
-  const roundedGpaStr = parsedInputGpa.toFixed(1);
+  const roundedGpaStr = parsedInputGpa.toFixed(2);
   if (cleanText.includes(roundedGpaStr)) return true;
 
   return false;
