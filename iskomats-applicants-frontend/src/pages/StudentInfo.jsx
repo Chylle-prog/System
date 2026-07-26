@@ -1547,23 +1547,39 @@ const StudentInfo = () => {
   };
 
   const handleSignatureScan = async () => {
-    const idBack = schoolIdPhotos.back || formData.schoolIdBack;
-    const currentSignature = drawnSignature || formData.applicantSignatureName;
+    const rawIdBack = getVerificationDocumentSource(
+      schoolIdPhotos.back,
+      formData.schoolIdBack,
+      photos.id_back
+    );
+    const rawSignature = drawnSignature || formData.applicantSignatureName || signaturePreview;
 
-    if (!currentSignature) {
-      showPromptMessage('Please provide your signature first using the digital pad.');
+    if (!rawSignature) {
+      showPromptMessage('Please provide your signature first using the digital pad or photo upload.');
       return;
     }
 
-    if (!idBack) {
-      showPromptMessage('Reference ID (Back) not found. Please upload it in Step 3 first.');
+    if (!rawIdBack) {
+      showPromptMessage('Reference ID (Back) not found. Please upload your School ID Back in Step 3 first.');
       return;
     }
 
+    let pInterval = null;
     try {
       setSignatureVerified('verifying');
       setSignatureStatus('Analyzing handwriting patterns...');
       setScanProgress(20);
+
+      // Normalize images to base64 Data URLs so the backend receives clean image bytes
+      const currentSignature = await normalizeVerificationImage(rawSignature);
+      const normalizedIdBack = await normalizeVerificationImage(rawIdBack);
+
+      if (!currentSignature || !normalizedIdBack) {
+        setSignatureVerified('failed');
+        setSignatureStatus('Could not process signature or Back ID image format.');
+        showPromptMessage('Could not process signature or Back ID image format.');
+        return;
+      }
 
       // 1. Get complexity score (prefer pre-calculated signatureStats.score from saveSignature)
       let scoreToCheck = signatureStats.score;
@@ -1586,14 +1602,14 @@ const StudentInfo = () => {
 
       console.log('[SIGNATURE] Checking complexity score before match:', scoreToCheck);
 
-      const pInterval = setInterval(() => {
+      pInterval = setInterval(() => {
         setScanProgress(p => p < 90 ? p + (Math.random() * 15) : p);
       }, 100);
 
-      const result = await applicantAPI.verifySignatureAgainstIdBack(currentSignature, idBack);
+      const result = await applicantAPI.verifySignatureAgainstIdBack(currentSignature, normalizedIdBack);
       console.log('[SIGNATURE] API match response received:', result);
 
-      clearInterval(pInterval);
+      if (pInterval) clearInterval(pInterval);
       setScanProgress(100);
 
       // Clone result to avoid mutation failures if response object is frozen
@@ -1617,6 +1633,7 @@ const StudentInfo = () => {
         setSignatureStatus(finalResult.message || 'Signature mismatch. Please ensure you sign as you did on your ID.');
       }
     } catch (err) {
+      if (pInterval) clearInterval(pInterval);
       console.error('Signature Verification Error:', err);
       setSignatureVerified('failed');
       setSignatureStatus(`Technical Issue: ${err.message}`);
@@ -6399,8 +6416,8 @@ const StudentInfo = () => {
                       <div style={{ fontSize: '0.65rem', color: '#6366f1', fontWeight: '800', background: '#eef2ff', padding: '3px 8px', borderRadius: '6px' }}>BACK ID</div>
                     </div>
                     <div style={{ height: '220px', border: '2px dashed #cbd5e1', borderRadius: '15px', overflow: 'hidden', background: '#f8fafc', position: 'relative' }}>
-                      {(schoolIdPhotos.back || formData.schoolIdBack) ? (
-                        <img src={schoolIdPhotos.back || formData.schoolIdBack} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="Reference Back ID" />
+                      {(schoolIdPhotos.back || formData.schoolIdBack || photos.id_back) ? (
+                        <img src={getVerificationDocumentSource(schoolIdPhotos.back, formData.schoolIdBack, photos.id_back)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="Reference Back ID" />
                       ) : (
                         <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', textAlign: 'center', padding: '1rem' }}>
                           <i className="fas fa-id-card" style={{ fontSize: '2rem', marginBottom: '10px' }}></i>
@@ -6446,7 +6463,7 @@ const StudentInfo = () => {
                             <button
                               type="button"
                               onClick={handleSignatureScan}
-                              disabled={signatureVerified === 'verifying' || !(schoolIdPhotos.back || formData.schoolIdBack)}
+                              disabled={signatureVerified === 'verifying' || !(schoolIdPhotos.back || formData.schoolIdBack || photos.id_back)}
                               style={{
                                 width: '100%',
                                 padding: '0.6rem',
