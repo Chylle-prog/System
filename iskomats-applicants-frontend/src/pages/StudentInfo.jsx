@@ -1681,14 +1681,14 @@ const StudentInfo = () => {
   };
 
   // --- Client-Side Verification Algorithms (Streamlined for React) ---
-  const normalizeForOcr = (str) => {
+  function normalizeForOcr(str) {
     if (!str) return "";
     return str.toString()
         .toLowerCase()
         .replace(/[^a-z0-9\s]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
-  };
+  }
 
   /**
    * Layout/Structure-Aware OCR Field Extractor
@@ -1699,7 +1699,7 @@ const StudentInfo = () => {
    * e.g. "Course : BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY" -> course = "BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY"
    * e.g. "School Year Sem : AY 2025-2026 - 2nd Semester" -> schoolYearSem = "AY 2025-2026 - 2nd Semester"
    */
-  const extractOcrKeyValues = (rawText) => {
+  function extractOcrKeyValues(rawText) {
     if (!rawText) return {};
     const lines = String(rawText).split(/\r?\n/);
     const fields = {};
@@ -1748,9 +1748,9 @@ const StudentInfo = () => {
     }
 
     return fields;
-  };
+  }
 
-  const getLevenshteinDistance = (a, b) => {
+  function getLevenshteinDistance(a, b) {
     const tmp = [];
     let i, j;
     for (i = 0; i <= a.length; i++) tmp[i] = [i];
@@ -1765,9 +1765,9 @@ const StudentInfo = () => {
       }
     }
     return tmp[a.length][b.length];
-  };
+  }
 
-  const normalizeNameConfusions = (s) => {
+  function normalizeNameConfusions(s) {
     return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
       .replace(/l/g, 't')
       .replace(/h/g, 'b')
@@ -1777,17 +1777,17 @@ const StudentInfo = () => {
       .replace(/8/g, 'b')
       .replace(/u/g, 'a')
       .replace(/v/g, 'u');
-  };
+  }
 
-  const isSimilarWord = (expected, actual) => {
+  function isSimilarWord(expected, actual) {
     const dist = getLevenshteinDistance(expected, actual);
     const maxLen = Math.max(expected.length, actual.length);
     if (maxLen === 0) return true;
     const similarity = (maxLen - dist) / maxLen;
     return similarity >= 0.60 || dist <= 3;
-  };
+  }
 
-  const studentNameMatchesText = (text, first, middle, last) => {
+  function studentNameMatchesText(text, first, middle, last) {
     const normText = normalizeForOcr(text);
     if (!normText) return { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } };
 
@@ -1953,9 +1953,9 @@ const StudentInfo = () => {
         last_ok:   finalLastOk
       }
     };
-  };
+  }
 
-  const studentIdNoMatchesText = (targetId, text) => {
+  function studentIdNoMatchesText(targetId, text) {
     if (!targetId || !text) return true;
     
     const normalizeId = (s) => {
@@ -1980,9 +1980,9 @@ const StudentInfo = () => {
     }
 
     return false;
-  };
+  }
 
-  const schoolNameMatchesText = (text, targetSchool) => {
+  function schoolNameMatchesText(text, targetSchool) {
     if (!targetSchool || !text) return true;
     const normText = normalizeForOcr(text);
     const lowerRaw = String(text).toLowerCase();
@@ -2029,9 +2029,9 @@ const StudentInfo = () => {
     }
 
     return false;
-  };
+  }
 
-  const academic_year_matches_expected = (text, expectedYear) => {
+  function academic_year_matches_expected(text, expectedYear) {
     if (!expectedYear || !text) return true;
 
     const recoverYears = (str) => {
@@ -2096,9 +2096,9 @@ const StudentInfo = () => {
     }
 
     return false;
-  };
+  }
 
-  const courseMatchesText = (expectedCourse, text) => {
+  function courseMatchesText(expectedCourse, text) {
     if (!expectedCourse || !text) return true;
     const normText = normalizeForOcr(text);
     const lowerRaw = String(text).toLowerCase();
@@ -2151,7 +2151,7 @@ const StudentInfo = () => {
     }
 
     return false;
-  };
+  }
 
   function extractGpaFromText(text) {
     if (!text) return null;
@@ -2209,7 +2209,7 @@ const StudentInfo = () => {
     return sigWords.every(w => new RegExp('\\b' + w + '\\b').test(searchArea) || searchArea.includes(w));
   }
 
-  const coe_type_matches_text = (text) => {
+  function coe_type_matches_text(text) {
     if (!text) return false;
     const normText = normalizeForOcr(text);
     const keywords = [
@@ -2223,9 +2223,9 @@ const StudentInfo = () => {
       'coe'
     ];
     return keywords.some(kw => normText.includes(kw));
-  };
+  }
 
-  const yearLevelMatchesText = (text, expectedYearLevel) => {
+  function yearLevelMatchesText(text, expectedYearLevel) {
     if (!expectedYearLevel || !text) return true;
     const normText = normalizeForOcr(text);
     const normLevel = normalizeForOcr(String(expectedYearLevel));
@@ -2276,13 +2276,9 @@ const StudentInfo = () => {
 
     if (contextRegexes.some(rx => rx.test(normText))) return true;
 
-    // OCR noise tolerance: if any OCR-distorted form of "Year Level" label is present
-    // (e.g. "Yor Laval", "Yr Lvl", "year laval"), extract the digit(s) after it
-    // and do a lenient digit comparison allowing OCR confusion (0→2, 6→b etc.)
     const noisyYearLabelRx = /(?:y[ouea]?r?\s*l[aeo]?v[ael]?|yr?\s*l[aeo]?v[ael]?|grade\s*level|year\s*level)\s*[:\-]?\s*([0-9OiloI\|]{1,2})/i;
     const noisyMatch = noisyYearLabelRx.exec(text);
     if (noisyMatch) {
-      // Normalize OCR digit confusions: O/0 → 1 or check proximity
       const rawDigit = noisyMatch[1].replace(/[Oo]/g, '0');
       const parsedDigit = parseInt(rawDigit, 10);
       if (!isNaN(parsedDigit) && Math.abs(parsedDigit - levelNum) <= 1) return true;
@@ -2291,8 +2287,6 @@ const StudentInfo = () => {
       if (nearbyDigits && nearbyDigits.includes(String(levelNum))) return true;
     }
 
-    // Last resort: if "year level" label appears anywhere in raw text (OCR noisy label),
-    // look for our level digit within 20 chars after it
     const rawLower = text.toLowerCase();
     const labelVariants = ['year level', 'yr level', 'year lvl', 'yor laval', 'year laval', 'yr laval', 'yor level', 'your lave', 'yor lave', 'your level', 'your lvl', 'yr lave'];
     for (const lv of labelVariants) {
@@ -2301,15 +2295,14 @@ const StudentInfo = () => {
         const nearby = rawLower.substring(idx + lv.length, idx + lv.length + 20);
         const nearbyDigit = nearby.match(/[0-9]/);
         if (nearbyDigit && String(levelNum) === nearbyDigit[0]) return true;
-        // If 0 found and levelNum is 1 or 2, 0 is a common OCR error for 1
         if (nearbyDigit && nearbyDigit[0] === '0' && levelNum <= 2) return true;
       }
     }
 
     return false;
-  };
+  }
 
-  const normalizeSemesterInt = (val) => {
+  function normalizeSemesterInt(val) {
     if (val === null || val === undefined) return null;
     const str = String(val).toLowerCase().trim();
     if (str.includes('1') || str.includes('first')) return 1;
@@ -2320,33 +2313,30 @@ const StudentInfo = () => {
     if (digits === '2') return 2;
     if (digits === '3') return 3;
     return null;
-  };
+  }
 
-  const extractSemesterFromText = (text) => {
+  function extractSemesterFromText(text) {
     if (!text) return null;
     const lower = String(text).toLowerCase();
     
-    // Pattern 1: "2026 - 2" or "2026-2" or "2026 / 2" or OCR noisy "202¢ - 2", "2024 - 2"
     const yearSemMatch = lower.match(/\b202[0-9a-z¢§\$!]\s*[\-\/:]\s*([123])\b/i);
     if (yearSemMatch && yearSemMatch[1]) {
       return parseInt(yearSemMatch[1], 10);
     }
 
-    // Pattern 2: "School Year Sem : ... 2" or "Sem : 2" or "$ch00! Yaa, gum ... 2"
     const sySemMatch = lower.match(/(?:school\s*year\s*sem|s\.?y\.?\s*sem|sem|\$ch00!|yaa,\s*gum)\s*[:\-]?\s*(?:ay|sy|20[0-9a-z¢§\$!]{2})?\s*[\-\/:]?\s*([123])\b/i);
     if (sySemMatch && sySemMatch[1]) {
       return parseInt(sySemMatch[1], 10);
     }
 
-    // Pattern 3: "2nd sem" or "2nd semester" or "sem 2"
     if (/\b(?:2nd|second|sem\s*2|2nd\s*sem|semester\s*2)\b/i.test(lower)) return 2;
     if (/\b(?:1st|first|sem\s*1|1st\s*sem|semester\s*1)\b/i.test(lower)) return 1;
     if (/\b(?:3rd|third|summer|midyear|sem\s*3|semester\s*3)\b/i.test(lower)) return 3;
 
     return null;
-  };
+  }
 
-  const semesterMatchesText = (text, expectedSemester, scholarshipSemesterReq = null) => {
+  function semesterMatchesText(text, expectedSemester, scholarshipSemesterReq = null) {
     const s2 = extractSemesterFromText(text);
     const s3 = normalizeSemesterInt(scholarshipSemesterReq || scholarshipDetails?.semester);
 
@@ -2358,7 +2348,7 @@ const StudentInfo = () => {
     }
 
     return true;
-  };
+  }
 
   const preprocessImageForOcr = (imageSource) => {
     return new Promise((resolve) => {
