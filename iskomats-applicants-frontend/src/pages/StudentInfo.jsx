@@ -227,7 +227,7 @@ const loadDraftFromStorage = async (key) => {
   try {
     const raw = localStorage.getItem(key) || sessionStorage.getItem(key);
     if (raw) return JSON.parse(raw);
-  } catch (e) {}
+  } catch (e) { }
 
   return null;
 };
@@ -241,11 +241,11 @@ const removeDraftFromStorage = async (key) => {
       const store = tx.objectStore(DRAFT_STORE_NAME);
       store.delete(key);
     }
-  } catch (e) {}
+  } catch (e) { }
   try {
     localStorage.removeItem(key);
     sessionStorage.removeItem(key);
-  } catch (e) {}
+  } catch (e) { }
 };
 
 const serializeDraftFormData = (data) => Object.fromEntries(
@@ -389,10 +389,10 @@ const getTesseractWorker = async () => {
 function normalizeForOcr(str) {
   if (!str) return "";
   return str.toString()
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
@@ -421,9 +421,9 @@ function extractOcrKeyValues(rawText) {
 
   const labelMap = {
     name: [
-      /name\s*[:\-1l\|\]\}\)]\s*(.+)/i, 
-      /student\s*name\s*[:\-1l\|\]\}\)]\s*(.+)/i, 
-      /name\s*of\s*student\s*[:\-1l\|\]\}\)]\s*(.+)/i, 
+      /name\s*[:\-1l\|\]\}\)]\s*(.+)/i,
+      /student\s*name\s*[:\-1l\|\]\}\)]\s*(.+)/i,
+      /name\s*of\s*student\s*[:\-1l\|\]\}\)]\s*(.+)/i,
       /pangalan\s*[:\-1l\|\]\}\)]\s*(.+)/i,
       /name\s+(.+)/i
     ],
@@ -501,7 +501,7 @@ function studentNameMatchesText(text, first, middle, last) {
   const targetText = kv.name ? normalizeForOcr(kv.name) : normText;
 
   const normFirst = normalizeForOcr(first || '');
-  const normLast  = normalizeForOcr(last  || '');
+  const normLast = normalizeForOcr(last || '');
 
   // --- Helper: build a regex that matches a name phrase allowing up to ~3 chars of OCR noise between words ---
   const buildNameRegex = (nameStr) => {
@@ -525,7 +525,7 @@ function studentNameMatchesText(text, first, middle, last) {
     sequencesToCheck.push(`${normFirst} ${normMiddle} ${normLast}`);
     sequencesToCheck.push(`${normLast} ${normFirst} ${normMiddle}`);
     sequencesToCheck.push(`${normLast} ${normMiddle} ${normFirst}`);
-    
+
     // Also allow sequences with middle initial (e.g. "L" instead of "Linatoc")
     const middleInitial = normMiddle[0];
     if (middleInitial) {
@@ -540,7 +540,7 @@ function studentNameMatchesText(text, first, middle, last) {
     const expectedWords = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= 1); // Allow length >= 1 for initials
     if (expectedWords.length === 0) return false;
     const targetWords = searchText.split(/\s+/).filter(w => w.length >= 1);
-    
+
     let expectedIdx = 0;
     let lastFoundIdx = -1;
 
@@ -590,7 +590,7 @@ function studentNameMatchesText(text, first, middle, last) {
     let maxSim = 0;
     for (const seq of sequencesToCheck) {
       const normSeq = normalizeForOcr(seq);
-      const longer  = normSeq.length > docName.length ? normSeq : docName;
+      const longer = normSeq.length > docName.length ? normSeq : docName;
       const shorter = normSeq.length > docName.length ? docName : normSeq;
       const dist = getLevenshteinDistance(longer, shorter);
       const sim = longer.length > 0 ? (longer.length - dist) / longer.length : 0;
@@ -618,7 +618,7 @@ function studentNameMatchesText(text, first, middle, last) {
       const confW = normalizeNameConfusions(word);
       if (new RegExp('\\b' + normW.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b').test(searchText)) return true;
       if (searchText.includes(normW)) return true;
-      
+
       // Middle name initial matching fallback
       if (isMiddle && normW.length > 0) {
         const initial = normW[0];
@@ -637,7 +637,7 @@ function studentNameMatchesText(text, first, middle, last) {
   };
 
   let firstOk = checkNameWordGroup(first, targetText) || (kv.name ? checkNameWordGroup(first, normText) : false);
-  const lastOk  = checkNameWordGroup(last,  targetText) || (kv.name ? checkNameWordGroup(last,  normText) : false);
+  const lastOk = checkNameWordGroup(last, targetText) || (kv.name ? checkNameWordGroup(last, normText) : false);
   const middleOk = middle ? (checkNameWordGroup(middle, targetText) || (kv.name ? checkNameWordGroup(middle, normText) : false)) : true;
 
   // Fallback: If last name matched and student ID / school name is in text, accept first name
@@ -646,23 +646,23 @@ function studentNameMatchesText(text, first, middle, last) {
   }
 
   const finalFirstOk = firstOk || sequenceOk;
-  const finalLastOk  = lastOk || sequenceOk;
+  const finalLastOk = lastOk || sequenceOk;
 
   const success = (firstOk && lastOk) || sequenceOk;
 
   return {
     success,
     details: {
-      first_ok:  finalFirstOk,
+      first_ok: finalFirstOk,
       middle_ok: middleOk,
-      last_ok:   finalLastOk
+      last_ok: finalLastOk
     }
   };
 }
 
 function studentIdNoMatchesText(targetId, text) {
   if (!targetId || !text) return true;
-  
+
   const normalizeId = (s) => {
     return s.toString().toLowerCase().replace(/[^a-z0-9]/g, '')
       .replace(/o/g, '0').replace(/q/g, '0').replace(/d/g, '0').replace(/a/g, '0').replace(/u/g, '0')
@@ -741,11 +741,11 @@ function schoolNameMatchesText(text, targetSchool) {
   // 1. De La Salle Lipa / DLSL
   if (targetUpper.includes('DLSL') || targetUpper.includes('DE LA SALLE') || targetUpper.includes('LIPA')) {
     if (
-      lowerRaw.includes('dlsl') || 
-      lowerRaw.includes('de la salle') || 
-      lowerRaw.includes('de ly salle') || 
-      lowerRaw.includes('salle') || 
-      lowerRaw.includes('lipa') || 
+      lowerRaw.includes('dlsl') ||
+      lowerRaw.includes('de la salle') ||
+      lowerRaw.includes('de ly salle') ||
+      lowerRaw.includes('salle') ||
+      lowerRaw.includes('lipa') ||
       lowerRaw.includes('ipa')
     ) {
       return true;
@@ -807,7 +807,7 @@ function academic_year_matches_expected(text, expectedYear) {
 
     // Extract all year pairs in OCR text (e.g., "2026-2027", "2025-2026")
     const pairMatches = [...normText.matchAll(/(20\d{2})\s*[\-\/]\s*(20[0-9a-zA-Z]{2})/g)];
-    
+
     if (pairMatches.length > 0) {
       // Check if any detected pair matches expStart and expEnd exactly
       const exactMatch = pairMatches.some(m => {
@@ -842,7 +842,7 @@ function courseMatchesText(expectedCourse, text) {
   if (!expectedCourse || !text) return true;
   const normText = normalizeForOcr(text);
   const lowerRaw = String(text).toLowerCase();
-  
+
   // Fix digit-letter OCR confusions (e.g. b5it -> bsit)
   const fixedText = lowerRaw.replace(/b5it/g, 'bsit').replace(/5/g, 's');
   const normCourse = normalizeForOcr(expectedCourse);
@@ -1045,7 +1045,7 @@ function yearLevelMatchesText(text, expectedYearLevel) {
 
   const numericMap = { '1st': 1, '2nd': 2, '3rd': 3, '4th': 4, '5th': 5, 'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5 };
   let levelNum = null;
-  
+
   for (const [key, num] of Object.entries(numericMap)) {
     if (normLevel.includes(key)) {
       levelNum = num;
@@ -1129,7 +1129,7 @@ function normalizeSemesterInt(val) {
 function extractSemesterFromText(text) {
   if (!text) return null;
   const lower = String(text).toLowerCase();
-  
+
   const yearSemMatch = lower.match(/\b202[0-9a-z¢§\$!]\s*[\-\/:]\s*([123])\b/i);
   if (yearSemMatch && yearSemMatch[1]) {
     return parseInt(yearSemMatch[1], 10);
@@ -1353,14 +1353,14 @@ const StudentInfo = () => {
                 const headerBytes = new Uint8Array(headerBuffer);
                 const isMkvWebm = headerBytes[0] === 0x1a && headerBytes[1] === 0x45 && headerBytes[2] === 0xdf && headerBytes[3] === 0xa3;
                 const isMp4 = String.fromCharCode(...headerBytes.slice(4, 8)) === 'ftyp';
-                
+
                 let decryptedBlob = blob;
                 if (!isMkvWebm && !isMp4) {
                   // Explicitly decrypt on client side only if the file is still encrypted
                   const { decryptDocument } = await import('../services/CryptoService');
                   decryptedBlob = await decryptDocument(blob, 'video/mp4');
                 }
-                
+
                 createdBlobUrl = URL.createObjectURL(decryptedBlob);
                 srcUrl = createdBlobUrl;
               } else {
@@ -1402,7 +1402,7 @@ const StudentInfo = () => {
             video.removeAttribute('src');
             video.load();
             video.remove();
-          } catch (e) {}
+          } catch (e) { }
           if (createdBlobUrl) {
             URL.revokeObjectURL(createdBlobUrl);
           }
@@ -1479,7 +1479,7 @@ const StudentInfo = () => {
                 data[i + 2] = contrastGray;
               }
               ctx.putImageData(imgData, 0, 0);
-            } catch (e) {}
+            } catch (e) { }
 
             getTesseractWorker()
               .then(worker => worker.recognize(canvas))
@@ -1607,7 +1607,7 @@ const StudentInfo = () => {
 
         video.src = srcUrl;
         video.load();
-        video.play().catch(() => {});
+        video.play().catch(() => { });
       });
     } catch (err) {
       if (createdBlobUrl) URL.revokeObjectURL(createdBlobUrl);
@@ -2225,7 +2225,7 @@ const StudentInfo = () => {
     const ctx = canvas.getContext('2d');
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
-    
+
     let inkPixels = 0;
     let points = [];
     let minX = canvas.width, maxX = 0;
@@ -2237,7 +2237,7 @@ const StudentInfo = () => {
         const pixelIdx = i / 4;
         const x = pixelIdx % canvas.width;
         const y = Math.floor(pixelIdx / canvas.width);
-        
+
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
         if (y < minY) minY = y;
@@ -2295,8 +2295,8 @@ const StudentInfo = () => {
     let junctions = 0;
     const neighborOffsets = [
       [-2, -2], [0, -2], [2, -2],
-      [-2, 0],          [2, 0],
-      [-2, 2],  [0, 2],  [2, 2]
+      [-2, 0], [2, 0],
+      [-2, 2], [0, 2], [2, 2]
     ];
 
     points.forEach(p => {
@@ -2309,7 +2309,7 @@ const StudentInfo = () => {
       });
       if (neighbors > 2) junctions++;
     });
-    
+
     const normalizedMass = Math.min(1, inkPixels / 3000);
     const normalizedJunctions = Math.min(1, junctions / 120);
     let score = (normalizedMass * 0.3) + (normalizedJunctions * 0.7);
@@ -2361,7 +2361,7 @@ const StudentInfo = () => {
 
       // 1. Get complexity score (prefer pre-calculated signatureStats.score from saveSignature)
       let scoreToCheck = signatureStats.score;
-      
+
       // Fallback: if pad is somehow still mounted, calculate it now
       if (scoreToCheck === undefined && sigPad.current) {
         const canvas = sigPad.current.getCanvas();
@@ -2372,10 +2372,10 @@ const StudentInfo = () => {
           setSignatureStats({ inkMass: comp.mass, junctions: comp.junctions, score: comp.score });
         }
       }
-      
+
       if (scoreToCheck === undefined) {
         // Safe fallback if not pre-calculated and pad is hidden
-        scoreToCheck = 1.0; 
+        scoreToCheck = 1.0;
       }
 
       console.log('[SIGNATURE] Checking complexity score before match:', scoreToCheck);
@@ -2518,13 +2518,13 @@ const StudentInfo = () => {
               const x2 = Math.min(w - 1, x + s2);
               const y1 = Math.max(0, y - s2);
               const y2 = Math.min(h - 1, y + s2);
-              
+
               const count = (x2 - x1 + 1) * (y2 - y1 + 1);
               let sum = integral[y2 * w + x2];
               if (x1 > 0) sum -= integral[y2 * w + (x1 - 1)];
               if (y1 > 0) sum -= integral[(y1 - 1) * w + x2];
               if (x1 > 0 && y1 > 0) sum += integral[(y1 - 1) * w + (x1 - 1)];
-              
+
               const pixelIdx = idx * 4;
               if (grayscale[idx] * count < sum * (100 - t) / 100) {
                 data[pixelIdx] = 0;
@@ -2622,7 +2622,7 @@ const StudentInfo = () => {
 
       const runOcrOnImage = async (imgSource, stepName = "") => {
         if (!silent) setStatus(`Scanning ${stepName} image with WebAssembly Worker...`);
-        
+
         activeOcrLogger = (m) => {
           if (!silent && m.status === 'recognizing text') {
             setScanProgress(Math.round(m.progress * 90));
@@ -2691,7 +2691,7 @@ const StudentInfo = () => {
         const idOk = idNumber ? (studentIdNoMatchesText(idNumber, combinedFrontText) || studentIdNoMatchesText(idNumber, combinedBackText)) : true;
         const schoolOk = schoolName ? (schoolNameMatchesText(combinedFrontText, schoolName) || schoolNameMatchesText(combinedBackText, schoolName)) : true;
         const ayOk = academicYear ? (academic_year_matches_expected(combinedFrontText, academicYear) || academic_year_matches_expected(combinedBackText, academicYear)) : true;
-        
+
         const videoOk = (!fVid || (frontVidCheck && frontVidCheck.valid)) && (!bVid || (backVidCheck && backVidCheck.valid));
 
         isSuccess = nameOk && idOk && schoolOk && ayOk && videoOk;
@@ -2704,13 +2704,13 @@ const StudentInfo = () => {
           "Academic Year": academicYear ? ayOk : null,
           "Video Proof": videoOk
         };
-        finalMessage = isSuccess 
-          ? "School ID verified successfully client-side!" 
-          : (!videoOk 
-              ? `Video Proof mismatch: ${(!frontVidCheck?.valid ? frontVidCheck?.reason : '')} ${(!backVidCheck?.valid ? backVidCheck?.reason : '')}`.trim() 
-              : "School ID verification mismatch.");
+        finalMessage = isSuccess
+          ? "School ID verified successfully client-side!"
+          : (!videoOk
+            ? `Video Proof mismatch: ${(!frontVidCheck?.valid ? frontVidCheck?.reason : '')} ${(!backVidCheck?.valid ? backVidCheck?.reason : '')}`.trim()
+            : "School ID verification mismatch.");
         resultsList = [{ doc: 'SchoolID', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
-      } 
+      }
       else if (docType === 'Enrollment') {
         detectedText = await runOcrOnImage(resolvedParam, "COE/COR");
         const combinedText = detectedText + " " + (videoCheck?.detectedText || "");
@@ -2737,8 +2737,8 @@ const StudentInfo = () => {
           "Document Type": coeTypeOk,
           "Video Proof": videoOk
         };
-        finalMessage = isSuccess 
-          ? "Enrollment verified successfully client-side!" 
+        finalMessage = isSuccess
+          ? "Enrollment verified successfully client-side!"
           : (!videoOk ? (videoCheck?.reason || "Enrollment video proof failed validation.") : "Enrollment verification mismatch.");
         resultsList = [{ doc: 'Enrollment', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
       }
@@ -2769,8 +2769,8 @@ const StudentInfo = () => {
           "ID Number": idNumber ? idOk : null,
           "Video Proof": videoOk
         };
-        finalMessage = isSuccess 
-          ? "Grades verified successfully client-side!" 
+        finalMessage = isSuccess
+          ? "Grades verified successfully client-side!"
           : (!videoOk ? (videoCheck?.reason || "Grades video proof failed validation.") : !gpaOk ? `GPA mismatch: document shows ${detectedDocGpa || 'N/A'}, you entered ${gpa}.` : "Grades verification mismatch.");
         resultsList = [{ doc: 'Grades', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
       }
@@ -2887,7 +2887,7 @@ const StudentInfo = () => {
       if (isSuccess) {
         setVerified('success');
         setStatus(finalMessage);
-        
+
         const viewResults = resultsList.map(r => ({
           doc: r.doc,
           verified: r.verified,
@@ -3930,7 +3930,7 @@ const StudentInfo = () => {
           const g = data[i + 1];
           const b = data[i + 2];
           const isSkin = (r > 45 && g > 35 && b > 15 && Math.max(r, g, b) - Math.min(r, g, b) > 12 && Math.abs(r - g) > 8 && r > g && r > b) ||
-                         (r > 200 && g > 180 && b > 170 && Math.abs(r - g) <= 25 && r > b && g > b);
+            (r > 200 && g > 180 && b > 170 && Math.abs(r - g) <= 25 && r > b && g > b);
           if (isSkin) skinPixels++;
         }
 
@@ -3983,12 +3983,12 @@ const StudentInfo = () => {
 
     const dataUrl = finalCanvas.toDataURL('image/jpeg', 0.8);
     setPhotos(prev => ({ ...prev, [activeCameraField]: dataUrl }));
-    
+
     if (activeCameraField === 'face_photo') {
       setFaceVerificationPreview(dataUrl);
       setFaceVerified(null);
     }
-    
+
     closeCamera();
   };
 
@@ -4271,7 +4271,7 @@ const StudentInfo = () => {
       const complexity = analyzeSignatureComplexity(canvas, strokes);
       console.log('[SIGNATURE] Drawing complexity check:', complexity);
       setSignatureStats({ inkMass: complexity.mass, junctions: complexity.junctions, score: complexity.score });
-      
+
       const dataUrl = canvas.toDataURL('image/png');
       setFormData(prev => ({ ...prev, applicantSignatureName: dataUrl }));
       setShowSignaturePad(false);
@@ -5317,7 +5317,7 @@ const StudentInfo = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ color: localStorage.getItem('debug_skip_alternate_check') === 'true' ? '#10b981' : '#ef4444' }}>●</span>
           <span>Alt Account Check: {localStorage.getItem('debug_skip_alternate_check') === 'true' ? 'Bypassed' : 'Enabled'}</span>
-          <button 
+          <button
             type="button"
             onClick={() => {
               const isBypassed = localStorage.getItem('debug_skip_alternate_check') === 'true';
@@ -5926,7 +5926,6 @@ const StudentInfo = () => {
                       type="number"
                       name="gpa"
                       value={formData.gpa}
-                      readOnly
                       style={{ backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }}
                       placeholder="GPA pre-filled from profile"
                       step="0.01"
@@ -6765,18 +6764,18 @@ const StudentInfo = () => {
                         <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1rem', textAlign: 'center' }}>Take a live photo using your camera to verify your identity.</p>
 
                         <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
-                          <div style={{ 
-                            border: '2px solid #fff', 
-                            borderRadius: '15px', 
-                            width: '220px', 
-                            height: '240px', 
-                            display: 'flex', 
+                          <div style={{
+                            border: '2px solid #fff',
+                            borderRadius: '15px',
+                            width: '220px',
+                            height: '240px',
+                            display: 'flex',
                             flexDirection: 'column',
-                            alignItems: 'center', 
-                            justifyContent: 'center', 
-                            background: '#e1e8f0', 
-                            position: 'relative', 
-                            overflow: 'hidden', 
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: '#e1e8f0',
+                            position: 'relative',
+                            overflow: 'hidden',
                             boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)',
                             padding: photos.face_photo ? '0' : '1.5rem'
                           }}>
@@ -6784,16 +6783,16 @@ const StudentInfo = () => {
                               <>
                                 <img src={photos.face_photo} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Face Verification" />
                                 <div style={{ position: 'absolute', bottom: '10px', left: '0', right: '0', display: 'flex', justifyContent: 'center', gap: '8px', padding: '0 10px' }}>
-                                  <button 
-                                    type="button" 
-                                    onClick={() => openCamera('face_photo')} 
+                                  <button
+                                    type="button"
+                                    onClick={() => openCamera('face_photo')}
                                     style={{ background: 'rgba(255,255,255,0.9)', color: 'var(--primary)', border: 'none', borderRadius: '10px', padding: '6px 12px', fontSize: '0.75rem', fontWeight: '800', cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '5px' }}
                                   >
                                     <i className="fas fa-camera"></i> Retake
                                   </button>
-                                  <button 
-                                    type="button" 
-                                    onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); }} 
+                                  <button
+                                    type="button"
+                                    onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); }}
                                     style={{ background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', borderRadius: '10px', padding: '6px 12px', fontSize: '0.75rem', fontWeight: '800', cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '5px' }}
                                   >
                                     <i className="fas fa-trash"></i> Remove
@@ -6801,17 +6800,17 @@ const StudentInfo = () => {
                                 </div>
                               </>
                             ) : (
-                              <button 
-                                type="button" 
-                                onClick={() => openCamera('face_photo')} 
-                                style={{ 
-                                  border: '2px solid var(--primary)', 
-                                  background: 'white', 
-                                  color: 'var(--primary)', 
-                                  cursor: 'pointer', 
-                                  display: 'flex', 
-                                  flexDirection: 'column', 
-                                  alignItems: 'center', 
+                              <button
+                                type="button"
+                                onClick={() => openCamera('face_photo')}
+                                style={{
+                                  border: '2px solid var(--primary)',
+                                  background: 'white',
+                                  color: 'var(--primary)',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'center',
                                   justifyContent: 'center',
                                   gap: '12px',
                                   padding: '1.5rem',
@@ -7038,8 +7037,8 @@ const StudentInfo = () => {
               height: '75%',
               borderRadius: '50%',
               border: `4px dashed ${faceDetected ? '#10b981' : 'rgba(255,255,255,0.75)'}`,
-              boxShadow: faceDetected 
-                ? '0 0 25px rgba(16, 185, 129, 0.8), inset 0 0 20px rgba(16, 185, 129, 0.3)' 
+              boxShadow: faceDetected
+                ? '0 0 25px rgba(16, 185, 129, 0.8), inset 0 0 20px rgba(16, 185, 129, 0.3)'
                 : '0 0 15px rgba(59, 130, 246, 0.5)',
               transition: 'all 0.3s ease',
               pointerEvents: 'none'
