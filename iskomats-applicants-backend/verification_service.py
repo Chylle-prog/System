@@ -235,10 +235,16 @@ async def api_signature_match(req: SignatureMatchRequest):
             if img is None:
                 return None
             if isinstance(img, str):
-                return img
-            if isinstance(img, np.ndarray):
-                _, buffer = cv2.imencode('.png', img)
-                return f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+                if img.startswith('data:image'):
+                    return img
+                return None
+            if isinstance(img, np.ndarray) and img.size > 0:
+                try:
+                    _, buffer = cv2.imencode('.png', img)
+                    return f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+                except Exception as e:
+                    print(f"[VERIFICATION SERVICE] imencode error: {e}", flush=True)
+                    return None
             return None
 
         processed_submitted = _to_base64(sub_img)

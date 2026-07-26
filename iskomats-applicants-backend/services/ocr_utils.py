@@ -307,10 +307,13 @@ def verify_face_with_id(user_photo_bytes, id_photo_bytes):
 # ─── Signature Matching Wrappers ──────────────────────────────────────────────
 
 def _prepare_signature_preview(sig_img):
-    if sig_img is None:
+    if sig_img is None or not isinstance(sig_img, np.ndarray) or sig_img.size == 0:
         return None
-    _, buffer = cv2.imencode('.png', sig_img)
-    return f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+    try:
+        _, buffer = cv2.imencode('.png', sig_img)
+        return f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+    except Exception:
+        return None
 
 def _decode_cv_image(image_bytes, white_background=False):
     data = decode_base64(image_bytes)

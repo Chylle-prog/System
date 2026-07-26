@@ -3765,27 +3765,27 @@ def signature_match():
         student_id = getattr(request, 'user_no', None)
         verified, message, confidence, sub_img, ext_img, matcher_sub_img, matcher_ref_img = verify_signature_against_id(signature_bytes, id_back_bytes, student_id=student_id)
         
-        # Convert images to base64 for frontend display
-        processed_submitted = None
-        extracted_signature = None
-        matcher_submitted = None
-        matcher_reference = None
-        
-        if sub_img is not None:
-            _, buffer = cv2.imencode('.png', sub_img)
-            processed_submitted = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
-             
-        if ext_img is not None:
-            _, buffer = cv2.imencode('.png', ext_img)
-            extracted_signature = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+        # Convert images to base64 safely for frontend display
+        def safe_imencode(img):
+            if img is None:
+                return None
+            if isinstance(img, str):
+                if img.startswith('data:image'):
+                    return img
+                return None
+            if isinstance(img, np.ndarray) and img.size > 0:
+                try:
+                    _, buffer = cv2.imencode('.png', img)
+                    return f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+                except Exception as e:
+                    print(f"[SIGNATURE API] imencode failed: {e}", flush=True)
+                    return None
+            return None
 
-        if matcher_sub_img is not None:
-            _, buffer = cv2.imencode('.png', matcher_sub_img)
-            matcher_submitted = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
-
-        if matcher_ref_img is not None:
-            _, buffer = cv2.imencode('.png', matcher_ref_img)
-            matcher_reference = f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+        processed_submitted = safe_imencode(sub_img)
+        extracted_signature = safe_imencode(ext_img)
+        matcher_submitted = safe_imencode(matcher_sub_img)
+        matcher_reference = safe_imencode(matcher_ref_img)
         
         # Ensure all values are native Python types (not numpy types)
         # Scale confidence to 0-100 to match Verifier Bench UI expectations
