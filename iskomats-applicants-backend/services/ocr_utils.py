@@ -946,10 +946,11 @@ def parse_cor_document(raw_text):
 
 def verify_academic_year_strict(expected_academic_year, found_ay_text, raw_text):
     """
-    Strict Academic Year validation.
-    Ensures that if expected AY is '2025-2026' (years 2025 and 2026):
-    - Both years MUST appear in an academic year header/line in the document.
-    - If the document contains a different year pair (e.g. 2026-2027), it is rejected.
+    Strict Academic Year validation with OCR digit typo tolerance (e.g. 2026 misread as 2028).
+    Ensures that:
+    - AY 2024-2025 vs required 2025-2026 -> FAILS (Start year 2024 != 2025).
+    - AY 2026-2027 vs required 2025-2026 -> FAILS (Start year 2026 != 2025).
+    - AY 2025-2026 (or OCR 2025-2028) vs required 2025-2026 -> MATCHES.
     """
     if not expected_academic_year or not str(expected_academic_year).strip():
         return True, ""
@@ -970,21 +971,35 @@ def verify_academic_year_strict(expected_academic_year, found_ay_text, raw_text)
 
     search_pool = " ".join(ay_lines) if ay_lines else str(raw_text or '')
 
-    # Extract all 4-digit years in the AY header area
+    # Extract explicit year pairs from search pool like '2025-2026', '2025-2028', '2025/2026'
+    year_pairs = re.findall(r'(20\d{2})\s*[\-\/]\s*(20[0-9a-zA-Z]{2})', search_pool)
+    
+    if len(exp_years) >= 2:
+        exp_start = int(exp_years[0])
+        exp_end = int(exp_years[1])
+
+        if year_pairs:
+            matched_pair = False
+            for p_start_str, p_end_str in year_pairs:
+                try:
+                    p_start = int(p_start_str)
+                    clean_p_end = p_end_str.lower().replace('b', '6').replace('8', '6') if p_end_str.endswith('8') or p_end_str.endswith('b') else p_end_str
+                    p_end = int(clean_p_end) if clean_p_end.isdigit() else p_start + 1
+
+                    if p_start == exp_start and (p_end == exp_end or abs(p_end - exp_end) <= 1):
+                        matched_pair = True
+                        break
+                except ValueError:
+                    continue
+
+            if not matched_pair:
+                doc_pair_str = f"{year_pairs[0][0]}-{year_pairs[0][1]}"
+                return False, f"Academic Year mismatch (Expected: '{exp_str}', Found in document: '{doc_pair_str}')"
+            return True, ""
+
+    # Fallback year search
     found_years = set(re.findall(r'20\d{2}', search_pool))
-
-    # Check 1: All required expected years (e.g. ['2025', '2026']) must be present in AY lines
     all_present = all(y in found_years for y in exp_years)
-
-    # Check 2: If document contains explicit year pair (e.g. 2026-2027), it must match expected year pair
-    year_pairs = re.findall(r'(20\d{2})\s*[\-\/]\s*(20\d{2})', search_pool)
-    if year_pairs and len(exp_years) >= 2:
-        exp_pair = (exp_years[0], exp_years[1])
-        pair_match = any((p[0] == exp_pair[0] and p[1] == exp_pair[1]) for p in year_pairs)
-        if not pair_match:
-            doc_pair_str = f"{year_pairs[0][0]}-{year_pairs[0][1]}"
-            return False, f"Academic Year mismatch (Expected: '{exp_str}', Found in document: '{doc_pair_str}')"
-
     if not all_present:
         found_str = ", ".join(sorted(found_years)) if found_years else "None found"
         return False, f"Academic Year mismatch (Expected: '{exp_str}', Found in document header: '{found_str}')"

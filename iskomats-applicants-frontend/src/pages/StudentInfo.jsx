@@ -2055,15 +2055,24 @@ const StudentInfo = () => {
     }
     const searchPool = ayLines.length > 0 ? ayLines.join(' ') : normText;
 
-    // Check for explicit year pairs in search pool (e.g. "2024-2025", "2024 - 2025", "2024/2025")
-    const pairMatches = [...searchPool.matchAll(/(20\d{2})\s*[\-\/]\s*(20\d{2})/g)];
+    // Check for explicit year pairs in search pool (e.g. "2025-2026", "2025-2028", "2025/2026")
+    const pairMatches = [...searchPool.matchAll(/(20\d{2})\s*[\-\/]\s*(20[0-9a-zA-Z]{2})/g)];
     if (pairMatches.length > 0 && expectedYears.length >= 2) {
-      const expPair = [expectedYears[0], expectedYears[1]];
-      const matchesExplicitPair = pairMatches.some(m => m[1] === expPair[0] && m[2] === expPair[1]);
-      if (!matchesExplicitPair) {
-        console.warn(`[AY FAIL] Explicit pair mismatch: Expected ${expPair.join('-')} vs Document ${pairMatches[0][1]}-${pairMatches[0][2]}`);
+      const expStart = parseInt(expectedYears[0], 10);
+      const expEnd = parseInt(expectedYears[1], 10);
+
+      const matchedPair = pairMatches.some(m => {
+        const pStart = parseInt(m[1], 10);
+        const rawEnd = m[2].toLowerCase().replace(/b/g, '6').replace(/8/g, '6');
+        const pEnd = parseInt(rawEnd, 10);
+        return pStart === expStart && (pEnd === expEnd || Math.abs(pEnd - expEnd) <= 1);
+      });
+
+      if (!matchedPair) {
+        console.warn(`[AY FAIL] Explicit pair mismatch: Expected ${expectedYears[0]}-${expectedYears[1]} vs Document ${pairMatches[0][1]}-${pairMatches[0][2]}`);
         return false;
       }
+      return true;
     }
 
     // Check if ALL expected years (e.g., ['2025', '2026']) exist in the search pool
