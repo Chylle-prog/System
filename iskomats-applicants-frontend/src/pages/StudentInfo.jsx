@@ -906,36 +906,33 @@ function extractGpaFromText(text, expectedGpa = null) {
     .replace(/GBA/gi, 'GPA')
     .replace(/G\.P\.A/gi, 'GPA');
 
-  // Helper: round to nearest tenth (e.g. 3.5481 -> "3.5") to reduce OCR margin of error
-  const toOneTenth = (val) => (Math.round(val * 10) / 10).toFixed(1);
+  // Helper: round to nearest hundredth (e.g. 3.5481 -> "3.55", 3.44 -> "3.44")
+  const toTwoDecimals = (val) => (Math.round(val * 100) / 100).toFixed(2);
 
   // 1. Explicit keyword pattern (e.g. "GPA: 3.5481", "GBA v. ..." is excluded since v ≠ digit)
   const p1 = cleaned.match(/(?:GPA|GWA|WEIGHTED\s*AVERAGE|GRADE\s*POINT)\s*[:\-=.,|\s]+([1-4][.,][0-9]{2,4})/i);
   if (p1 && p1[1]) {
     const val = parseFloat(p1[1].replace(',', '.'));
-    if (!isNaN(val) && val >= 1.0 && val <= 4.0) return toOneTenth(val);
+    if (!isNaN(val) && val >= 1.0 && val <= 4.0) return toTwoDecimals(val);
   }
 
   // 2. Value immediately before "Total Units" table footer (e.g. "3.5481 Total Units: 26")
   const pUnits = cleaned.match(/([1-4]\.[0-9]{2,4})\s*[:\-=.,|\s]*(?:Total\s*Units?|Units?)/i);
   if (pUnits && pUnits[1]) {
     const val = parseFloat(pUnits[1]);
-    if (!isNaN(val) && val >= 1.0 && val <= 4.0) return toOneTenth(val);
+    if (!isNaN(val) && val >= 1.0 && val <= 4.0) return toTwoDecimals(val);
   }
 
-  // 3. Any 4-decimal place number in valid GPA range (e.g. "3.5481" printed in footer).
-  //    Require ≥3 decimals to avoid mistaking 2dp subject grades (3.50, 3.75) for the overall GPA.
+  // 3. Any 3-to-4 decimal place number in valid GPA range (e.g. "3.5481" printed in footer).
   const p2 = text.match(/\b([1-4]\.[0-9]{3,4})\b/g);
   if (p2 && p2.length > 0) {
     const candidates = p2.map(s => parseFloat(s)).filter(v => v >= 1.0 && v <= 4.0);
     if (candidates.length > 0) {
-      return toOneTenth(candidates[candidates.length - 1]);
+      return toTwoDecimals(candidates[candidates.length - 1]);
     }
   }
 
-  // NOTE: Grade table averaging (old method 4) is intentionally REMOVED.
-  // Averaging individual subject grades produces circular matches: any user GPA within ±0.15
-  // of the noisy average self-confirms. Return null so gpaMatchesText passes gracefully.
+  // NOTE: Grade table averaging is intentionally REMOVED to avoid circular matches.
   return null;
 }
 
@@ -948,26 +945,23 @@ function gpaMatchesText(text, expectedGpa) {
   const parsedInputGpa = parseFloat(rawGpaStr.replace(/[^0-9.]/g, ''));
   if (isNaN(parsedInputGpa)) return true;
 
-  // Round input GPA to nearest tenth for comparison
-  const roundedInputGpa = Math.round(parsedInputGpa * 10) / 10;
+  // Round input GPA to nearest hundredth for comparison
+  const roundedInputGpa = Math.round(parsedInputGpa * 100) / 100;
 
-  // extractGpaFromText only returns a value if it finds an EXPLICITLY LABELED GPA
-  // (keyword match or before "Total Units") — not from grade averaging.
-  // If null, OCR could not reliably find a printed GPA -> pass gracefully.
   const detectedGpaStr = extractGpaFromText(text, null);  // pass null so no alignment bias
   if (detectedGpaStr !== null) {
-    const detVal = parseFloat(detectedGpaStr); // already rounded to 1dp
+    const detVal = parseFloat(detectedGpaStr); // already rounded to 2dp
     if (!isNaN(detVal)) {
-      // 0.05 tolerance — both values are rounded to nearest tenth
-      return Math.abs(detVal - roundedInputGpa) <= 0.05;
+      // 0.03 tolerance catches minor rounding edge cases (e.g. 3.548 vs 3.55)
+      return Math.abs(detVal - roundedInputGpa) <= 0.03;
     }
   }
 
   // Labeled GPA not found in document (common with noisy OCR scans).
-  // Fall back to raw text search for the user's GPA string as a last resort.
   const cleanText = String(text).replace(/[\u2013\u2014\u00b7\u2022]/g, '.');
-  const tenthStr = roundedInputGpa.toFixed(1);
-  if (cleanText.includes(tenthStr)) return true;
+  const hundredthStr = roundedInputGpa.toFixed(2);
+  if (cleanText.includes(hundredthStr)) return true;
+  if (cleanText.includes(rawGpaStr) || cleanText.includes(rawGpaStr.replace('.', ','))) return true;
 
   // OCR could not confirm OR deny the GPA — pass to avoid false rejections on noisy scans.
   return true;
@@ -5938,16 +5932,16 @@ const StudentInfo = () => {
                       onBlur={e => {
                         const v = parseFloat(e.target.value);
                         if (!isNaN(v)) {
-                          setFormData(prev => ({ ...prev, gpa: (Math.round(v * 10) / 10).toFixed(1) }));
+                          setFormData(prev => ({ ...prev, gpa: (Math.round(v * 100) / 100).toFixed(2) }));
                         }
                       }}
-                      placeholder="e.g. 3.5"
-                      step="0.1"
-                      min="1.0"
-                      max="4.0"
+                      placeholder="e.g. 3.44"
+                      step="0.01"
+                      min="1.00"
+                      max="4.00"
                       required={currentStep === 3}
                     />
-                    <small style={{ color: '#64748b', fontSize: '0.75rem' }}>Rounded to nearest tenth (e.g. 3.5)</small>
+                    <small style={{ color: '#64748b', fontSize: '0.75rem' }}>Rounded to hundredths (e.g. 3.44)</small>
                   </div>
                 </div>
 

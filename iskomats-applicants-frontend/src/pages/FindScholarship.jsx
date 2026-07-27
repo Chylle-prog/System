@@ -237,7 +237,7 @@ const FindScholarship = () => {
   const handleScholarshipSearch = async (e) => {
     e.preventDefault();
 
-    const rawGpa = Math.round(parseFloat(formData.gpa) * 10) / 10;  // round to nearest tenth
+    const rawGpa = Math.round(parseFloat(formData.gpa) * 100) / 100;  // round to nearest hundredth
     const gpa = convertGpaToPercentage(rawGpa, formData.university);
     const income = parseInt(formData.income);
 
@@ -1115,20 +1115,20 @@ const FindScholarship = () => {
                   onBlur={e => {
                     const v = parseFloat(e.target.value);
                     if (!isNaN(v)) {
-                      const rounded = (Math.round(v * 10) / 10).toFixed(1);
+                      const rounded = (Math.round(v * 100) / 100).toFixed(2);
                       setFormData(prev => ({
                         ...prev,
                         gpa: rounded
                       }));
                     }
                   }}
-                  step="0.1"
+                  step="0.01"
                   min="0"
                   max="4"
-                  placeholder="e.g., 3.5"
+                  placeholder="e.g., 3.44"
                   required
                 />
-                <small style={{ color: 'var(--text-soft)', fontSize: '0.72rem' }}>Rounded to nearest tenth</small>
+                <small style={{ color: 'var(--text-soft)', fontSize: '0.72rem' }}>Rounded to hundredths (e.g. 3.44)</small>
               </div>
 
               {/* Income field with live indicator */}
