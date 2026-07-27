@@ -3993,6 +3993,7 @@ const StudentInfo = () => {
     if (activeCameraField === 'face_photo') {
       setFaceVerificationPreview(dataUrl);
       setFaceVerified(null);
+      setFaceMatchResult(null);
     }
 
     closeCamera();
@@ -4013,6 +4014,7 @@ const StudentInfo = () => {
         if (type === 'face_photo') {
           setFaceVerificationPreview(compressedBase64);
           setFaceVerified(null);
+          setFaceMatchResult(null);
         } else if (type === 'mayorIndigency_photo') {
           setOcrVerified(null);
           setOcrStatus('');
@@ -4038,6 +4040,7 @@ const StudentInfo = () => {
     if (type === 'face_photo') {
       setFaceVerificationPreview(null);
       setFaceVerified(null);
+      setFaceMatchResult(null);
     } else if (type === 'mayorIndigency_photo') {
       setOcrVerified(null);
       setOcrStatus('');
@@ -6830,14 +6833,14 @@ const StudentInfo = () => {
                                 <div style={{ position: 'absolute', bottom: '10px', left: '0', right: '0', display: 'flex', justifyContent: 'center', gap: '8px', padding: '0 10px' }}>
                                   <button
                                     type="button"
-                                    onClick={() => openCamera('face_photo')}
+                                    onClick={() => { setFaceMatchResult(null); setFaceVerified(null); openCamera('face_photo'); }}
                                     style={{ background: 'rgba(255,255,255,0.9)', color: 'var(--primary)', border: 'none', borderRadius: '10px', padding: '6px 12px', fontSize: '0.75rem', fontWeight: '800', cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '5px' }}
                                   >
                                     <i className="fas fa-camera"></i> Retake
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); }}
+                                    onClick={() => { removePhoto('face_photo'); setFaceMatchResult(null); setFaceVerified(null); }}
                                     style={{ background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', borderRadius: '10px', padding: '6px 12px', fontSize: '0.75rem', fontWeight: '800', cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '5px' }}
                                   >
                                     <i className="fas fa-trash"></i> Remove

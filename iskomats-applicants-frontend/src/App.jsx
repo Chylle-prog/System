@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider } from './contexts/AuthContext';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import PrivateRoute from './pages/PrivateRoute';
+import ChatbotDesign from './components/ChatbotDesign';
 
 // Static imports for lightweight pages
 import Homepage from './pages/Homepage';
@@ -93,6 +94,7 @@ function App() {
       <Router>
         <AuthProvider>
           <RouteContent />
+          <ChatbotDesign apiUrl={import.meta.env.VITE_CHATBOT_API_URL || import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:8000'} />
         </AuthProvider>
       </Router>
     </GoogleOAuthProvider>

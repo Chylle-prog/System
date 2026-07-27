@@ -15,7 +15,12 @@ try:
     import pytesseract
 except ImportError:
     pytesseract = None
-from project_config import get_performance_config
+
+try:
+    from project_config import get_performance_config
+except ImportError:
+    def get_performance_config():
+        return {'threads_per_process': 1}
 
 # Get performance profile
 _perf = get_performance_config()
