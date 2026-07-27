@@ -934,11 +934,10 @@ function extractGpaFromText(text, expectedGpa = null) {
     if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
   }
 
-  // 2. Value immediately before "Total Units" table footer (e.g. "3.5481 Total Units: 26" or "35461 Total Units")
-  const pUnits = cleaned.match(/([1-5][.,0-9]{1,5})\s*[:\-=.,|\s]*(?:Total\s*Units?|Units?)/i);
+  // 2. Value immediately before "Total Units" table footer (must contain explicit decimal point to avoid matching Student No digits)
+  const pUnits = cleaned.match(/([1-5]\.[0-9]{1,4})\s*[:\-=.,|\s]*(?:Total\s*Units?|Units?)/i);
   if (pUnits && pUnits[1]) {
-    const rawDigits = pUnits[1].replace(',', '.').trim();
-    const val = rawDigits.includes('.') ? parseFloat(rawDigits) : parseFloat(rawDigits[0] + '.' + rawDigits.slice(1));
+    const val = parseFloat(pUnits[1]);
     if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
   }
   // 3. Compute weighted average from subject grades table if footer label was garbled (e.g. "3.75 3.0", "3.50 30", "2.50 3.0")

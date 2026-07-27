@@ -1520,7 +1520,7 @@ def parse_grades_document(raw_text):
     # Extract GPA / GWA from document (e.g. GPA: 3.5481 or GPA 35461)
     gpa_patterns = [
         r'(?:GPA|GWA|GBA|WEIGHTED\s*AVERAGE|GRADE\s*POINT|GENERAL\s*WEIGHTED|FINAL\s*GRADE)\s*[:\-=.,|\sA-Za-z]*?([1-5][.,0-9]{1,5})\b',
-        r'([1-5][.,0-9]{1,5})\s*[:\-=.,|\s]*(?:Total\s*Units?|Units?)'
+        r'([1-5]\.[0-9]{1,4})\s*[:\-=.,|\s]*(?:Total\s*Units?|Units?)'
     ]
     for pattern in gpa_patterns:
         match = re.search(pattern, raw_text, re.IGNORECASE)
