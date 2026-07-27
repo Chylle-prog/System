@@ -1081,20 +1081,68 @@ const Login = () => {
         @media (max-width: 768px) {
           /* Let Navbar.css handle the hamburger toggle — just keep auth layout here */
           .auth-wrapper {
-            padding: 1.5rem 4%;
+            padding: 2rem 5%;
             flex-direction: column;
           }
           
           .auth-card {
-            padding: 1.75rem 1.5rem;
+            padding: 2rem 1.5rem;
             max-width: 100%;
-            border-radius: 24px;
           }
 
           .profile-card {
             padding: 2rem 1.5rem;
             max-width: 100%;
-            border-radius: 28px;
+          }
+          
+          .auth-header h2 {
+            font-size: 1.8rem;
+          }
+          
+          .auth-header p {
+            font-size: 1rem;
+          }
+          
+          .form-group label {
+            font-size: 0.9rem;
+          }
+          
+          .form-group input,
+          .form-group select {
+            padding: 0.8rem 1rem 0.8rem 3rem !important;
+            font-size: 0.95rem;
+          }
+
+          .input-wrapper input,
+          .profile-input-wrapper input,
+          .profile-input-wrapper select {
+            padding-left: 3rem !important;
+          }
+          
+          .submit-btn {
+            padding: 0.8rem;
+            font-size: 0.95rem;
+          }
+          
+          .toggle-btn {
+            padding: 0.6rem 1.5rem;
+            font-size: 0.9rem;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .auth-wrapper {
+            padding: 1rem 3%;
+          }
+          
+          .auth-card {
+            padding: 1.5rem;
+            border-radius: 20px;
+          }
+
+          .profile-card {
+            padding: 1.5rem;
+            border-radius: 20px;
           }
           
           .auth-header h2 {
@@ -1102,79 +1150,29 @@ const Login = () => {
           }
           
           .auth-header p {
-            font-size: 0.85rem;
-          }
-          
-          .form-group label {
-            font-size: 0.75rem;
-          }
-          
-          .form-group input,
-          .form-group select {
-            padding: 0.75rem 1rem 0.75rem 2.8rem !important;
-            font-size: 0.85rem;
-          }
-
-          .input-wrapper input,
-          .profile-input-wrapper input,
-          .profile-input-wrapper select {
-            padding-left: 2.8rem !important;
-          }
-          
-          .submit-btn {
-            padding: 0.75rem;
             font-size: 0.9rem;
           }
           
-          .toggle-btn {
-            padding: 0.55rem 1.35rem;
-            font-size: 0.85rem;
-          }
-        }
-
-        @media (max-width: 480px) {
-          .auth-wrapper {
-            padding: 1rem 2.5%;
-          }
-          
-          .auth-card {
-            padding: 1.35rem 1.1rem;
-            border-radius: 20px;
-          }
-
-          .profile-card {
-            padding: 1.5rem 1.1rem;
-            border-radius: 24px;
-          }
-          
-          .auth-header h2 {
-            font-size: 1.35rem;
-          }
-          
-          .auth-header p {
-            font-size: 0.8rem;
-          }
-          
           .form-group input,
           .form-group select {
-            padding: 0.65rem 0.85rem 0.65rem 2.5rem !important;
-            font-size: 0.8rem;
+            padding: 0.7rem 0.9rem 0.7rem 3rem !important;
+            font-size: 0.9rem;
           }
 
           .input-wrapper input,
           .profile-input-wrapper input,
           .profile-input-wrapper select {
-            padding-left: 2.5rem !important;
+            padding-left: 3rem !important;
           }
           
           .submit-btn {
             padding: 0.7rem;
-            font-size: 0.85rem;
+            font-size: 0.9rem;
           }
           
           .toggle-btn {
-            padding: 0.45rem 1.1rem;
-            font-size: 0.8rem;
+            padding: 0.5rem 1.2rem;
+            font-size: 0.85rem;
           }
           
           .profile-form .form-row {
@@ -1183,12 +1181,12 @@ const Login = () => {
           }
           
           .photo-upload-area {
-            padding: 1.25rem;
+            padding: 1.5rem;
           }
           
           .photo-preview {
-            width: 100px;
-            height: 100px;
+            width: 120px;
+            height: 120px;
           }
         }
       `}</style>

@@ -437,60 +437,6 @@ const ForgotPassword = () => {
         @keyframes spin {
           to { transform: rotate(360deg); }
         }
-
-        @media (max-width: 768px) {
-          .auth-wrapper {
-            padding: 2rem 5%;
-          }
-          
-          .auth-card {
-            padding: 2rem 1.5rem;
-            border-radius: 24px;
-          }
-          
-          .auth-header h2 {
-            font-size: 1.5rem;
-          }
-          
-          .auth-header p {
-            font-size: 0.85rem;
-            margin-bottom: 1.2rem;
-          }
-          
-          .form-group label {
-            font-size: 0.75rem;
-          }
-          
-          .input-wrapper input {
-            padding: 0.75rem 1rem 0.75rem 2.8rem;
-            font-size: 0.85rem;
-          }
-          
-          .submit-btn,
-          .resend-btn {
-            padding: 0.8rem;
-            font-size: 0.85rem;
-          }
-        }
-
-        @media (max-width: 480px) {
-          .auth-wrapper {
-            padding: 1.5rem 3%;
-          }
-          
-          .auth-card {
-            padding: 1.5rem 1.2rem;
-            border-radius: 20px;
-          }
-          
-          .auth-header h2 {
-            font-size: 1.35rem;
-          }
-          
-          .auth-header p {
-            font-size: 0.8rem;
-          }
-        }
       `}</style>
 
       <nav className="navbar">
