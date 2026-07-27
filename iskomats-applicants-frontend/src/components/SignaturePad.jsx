@@ -1,20 +1,21 @@
 import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
 
-const SignaturePad = forwardRef(({ onSignatureChange, width = 300, height = 150 }, ref) => {
+const SignaturePad = forwardRef(({ 
+  onSignatureChange, 
+  width = 500, 
+  height = 200,
+  penColor = "#000"
+}, ref) => {
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [isEmpty, setIsEmpty] = useState(true);
-  const drawingPathRef = useRef([]);
 
   useImperativeHandle(ref, () => ({
     clear: () => {
       const canvas = canvasRef.current;
-      if (!canvas) return;
       const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = 'white';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      drawingPathRef.current = [];
       setIsEmpty(true);
       if (onSignatureChange) onSignatureChange(null);
     },
@@ -22,98 +23,88 @@ const SignaturePad = forwardRef(({ onSignatureChange, width = 300, height = 150 
     getTrimmedCanvas: () => {
       return canvasRef.current;
     },
-    getCanvas: () => canvasRef.current,
-    getDrawingPath: () => drawingPathRef.current
+    toDataURL: (type) => {
+      return canvasRef.current.toDataURL(type);
+    }
   }));
 
-  const initCanvas = () => {
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
-    // Set internal resolution to match display size
-    const rect = canvas.getBoundingClientRect();
-    const ratio = Math.max(window.devicePixelRatio || 1, 1);
-    
-    canvas.width = rect.width * ratio;
-    canvas.height = rect.height * ratio;
-    
+
     const ctx = canvas.getContext('2d');
-    ctx.scale(ratio, ratio);
     
-    // Styling for smooth lines
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2.5;
+    // Set initial canvas state - Match Verifier Bench specs
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = penColor;
+    ctx.lineWidth = 2.5; // EXACT match with Verifier Bench
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    
-    // Fill background
-    ctx.fillStyle = 'white';
-    ctx.fillRect(0, 0, rect.width, rect.height);
-  };
-
-  useEffect(() => {
-    initCanvas();
-    window.addEventListener('resize', initCanvas);
-    return () => window.removeEventListener('resize', initCanvas);
-  }, []);
+  }, [penColor]);
 
   const getCoordinates = (e) => {
     const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    
     const rect = canvas.getBoundingClientRect();
+    
+    // Handle both mouse and touch events
     const clientX = e.clientX || (e.touches && e.touches[0].clientX);
     const clientY = e.clientY || (e.touches && e.touches[0].clientY);
     
-    return {
-      x: clientX - rect.left,
-      y: clientY - rect.top
-    };
+    // Scale coordinates EXACTLY like Verifier Bench
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    const x = (clientX - rect.left) * scaleX;
+    const y = (clientY - rect.top) * scaleY;
+    
+    return { x, y };
   };
 
   const startDrawing = (e) => {
+    if (e.touches) e.preventDefault();
+    
     setIsDrawing(true);
     setIsEmpty(false);
-    const { x, y } = getCoordinates(e);
+    const coords = getCoordinates(e);
     const ctx = canvasRef.current.getContext('2d');
+    
     ctx.beginPath();
-    ctx.moveTo(x, y);
-    drawingPathRef.current.push([{ x, y }]);
+    ctx.moveTo(coords.x, coords.y);
   };
 
   const draw = (e) => {
     if (!isDrawing) return;
-    const { x, y } = getCoordinates(e);
+    if (e.touches) e.preventDefault();
+    
     const ctx = canvasRef.current.getContext('2d');
-    ctx.lineTo(x, y);
+    const coords = getCoordinates(e);
+    
+    ctx.lineTo(coords.x, coords.y);
     ctx.stroke();
-
-    const currentStroke = drawingPathRef.current[drawingPathRef.current.length - 1];
-    if (currentStroke) {
-      currentStroke.push({ x, y });
-    }
   };
 
   const stopDrawing = () => {
     if (isDrawing) {
       setIsDrawing(false);
       const canvas = canvasRef.current;
-      const signatureData = canvas.toDataURL('image/png');
+      const signatureData = canvas.toDataURL();
       if (onSignatureChange) onSignatureChange(signatureData);
     }
   };
 
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+    <div className="signature-pad-container" style={{ width: '100%', overflow: 'hidden' }}>
       <canvas
         ref={canvasRef}
+        width={width}
+        height={height}
         style={{
-          width: '100%',
-          height: '100%',
-          touchAction: 'none',
           cursor: 'crosshair',
+          touchAction: 'none',
+          backgroundColor: 'white',
           display: 'block',
-          backgroundColor: 'white'
+          width: '100%'
         }}
         onMouseDown={startDrawing}
         onMouseMove={draw}

@@ -1,19 +1,54 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { applicantAPI } from '../services/api';
-import { SCHOOLS, BARANGAYS } from '../utils/constants';
+import iskoLogo from '../assets/iskologo.png';
+
+const SCHOOL_OPTIONS = [
+  "DLSL/De La Salle Lipa",
+  "NU/National University Lipa",
+  "Batangas State University",
+  "Kolehiyo ng Lungsod ng Lipa",
+  "Philippine State College of Aeronautics",
+  "Lipa City Colleges",
+  "University of Batangas",
+  "New Era University",
+  "Batangas College of Arts and Sciences",
+  "Royal British College",
+  "STI Academic Center",
+  "AMA Computer College",
+  "ICT-ED"
+];
+
+const BARANGAY_OPTIONS = [
+  "Adya", "Anilao", "Anilao-Labac", "Antipolo del Norte", "Antipolo del Sur",
+  "Bagong Pook", "Balintawak", "Banaybanay", "Bolbok", "Bugtong na Pulo",
+  "Bulacnin", "Bulaklakan", "Calamias", "Cumba", "Dagatan", "Duhatan",
+  "Halang", "Inosluban", "Kayumanggi", "Latag", "Lodlod", "Lumbang",
+  "Mabini", "Malagonlong", "Malitlit", "Marauoy", "Mataas na Lupa",
+  "Munting Pulo", "Pagolingin Bata", "Pagolingin East", "Pagolingin West",
+  "Pangao", "Pinagkawitan", "Pinagtongulan", "Plaridel",
+  "Poblacion Barangay 1", "Poblacion Barangay 2", "Poblacion Barangay 3",
+  "Poblacion Barangay 4", "Poblacion Barangay 5", "Poblacion Barangay 6",
+  "Poblacion Barangay 7", "Poblacion Barangay 8", "Poblacion Barangay 9",
+  "Poblacion Barangay 9-A", "Poblacion Barangay 10", "Poblacion Barangay 11",
+  "Poblacion Barangay 12", "Pusil", "Quezon", "Rizal", "Sabang",
+  "Sampaguita", "San Benito", "San Carlos", "San Celestino", "San Francisco",
+  "San Guillermo", "San Isidro", "San Jose", "San Lucas", "San Salvador",
+  "San Sebastian (Balagbag)", "Santo Niño", "Santo Toribio", "Sico",
+  "Talisay", "Tambo", "Tangob", "Tanguay", "Tibig", "Tipacan"
+];
 
 const Profile = () => {
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
   const [error, setError] = useState(null);
-  const [rawProfilePictureFile, setRawProfilePictureFile] = useState(null);
   const [formData, setFormData] = useState({
     firstName: '',
     middleName: '',
@@ -25,7 +60,6 @@ const Profile = () => {
     townCityMunicipality: 'Lipa City',
     province: 'Batangas',
     zipCode: '4217',
-    course: '',
     profile_picture: null
   });
 
@@ -56,7 +90,6 @@ const Profile = () => {
     // Load user data from API
     const loadUserProfile = async () => {
       const user = localStorage.getItem('currentUser');
-      const email = user;
 
       if (!user) {
         navigate('/login');
@@ -64,7 +97,7 @@ const Profile = () => {
       }
 
       setCurrentUser(user);
-      setLoadingMessage({ title: 'Loading Profile', message: 'Retrieving your information from the database...' });
+      setLoadingMessage({ title: 'Loading Profile', message: 'Retrieving your information...' });
       setShowLoadingOverlay(true);
       setIsLoading(true);
       setError(null);
@@ -74,12 +107,10 @@ const Profile = () => {
         setUserProfile(profile);
         setShowEditForm(false);
       } catch (err) {
-        // If no profile exists yet or any error, show edit form so the user can fill it in
         if (err.message.includes('404') || err.message.includes('not found') || err.message.includes('Profile not found')) {
           setUserProfile(null);
           setShowEditForm(true);
         } else {
-          // Non-404 error: log it but still show the edit form so the page isn't blank
           setError(err.message);
           setUserProfile(null);
           setShowEditForm(true);
@@ -94,16 +125,15 @@ const Profile = () => {
     loadUserProfile();
 
     return () => {
-      document.head.removeChild(fontAwesomeLink);
-      document.head.removeChild(googleFontsLink);
-      document.head.removeChild(googleFontsDisplay);
-      document.head.removeChild(googleFontsSheet);
+      if (document.head.contains(fontAwesomeLink)) document.head.removeChild(fontAwesomeLink);
+      if (document.head.contains(googleFontsLink)) document.head.removeChild(googleFontsLink);
+      if (document.head.contains(googleFontsDisplay)) document.head.removeChild(googleFontsDisplay);
+      if (document.head.contains(googleFontsSheet)) document.head.removeChild(googleFontsSheet);
     };
   }, [navigate]);
 
   useEffect(() => {
     if (currentUser && userProfile) {
-      // Load existing profile data - handle snake_case and camelCase field names consistently
       setFormData({
         firstName: userProfile.first_name || userProfile.firstName || '',
         middleName: userProfile.middle_name || userProfile.middleName || '',
@@ -115,11 +145,9 @@ const Profile = () => {
         townCityMunicipality: userProfile.town_city_municipality || userProfile.townCity || 'Lipa City',
         province: userProfile.province || 'Batangas',
         zipCode: userProfile.zip_code || userProfile.zipCode || '4217',
-        course: userProfile.course || '',
         profile_picture: userProfile.profile_picture || null
       });
     } else if (currentUser) {
-      // New user, show edit form
       setShowEditForm(true);
       setFormData({
         firstName: '',
@@ -132,7 +160,6 @@ const Profile = () => {
         townCityMunicipality: 'Lipa City',
         province: 'Batangas',
         zipCode: '4217',
-        course: '',
         profile_picture: null
       });
     }
@@ -141,14 +168,10 @@ const Profile = () => {
   const handleProfilePictureUpload = (e) => {
     const file = e.target.files[0];
     if (file && window.compressImage) {
-      setRawProfilePictureFile(file);
       window.compressImage(file, 400).then(compressedBase64 => {
         setFormData(prev => ({ ...prev, profile_picture: compressedBase64 }));
-        // Logically update it in DB immediately on select for better UX, or wait for submit?
-        // Let's wait for submit to be consistent with the rest of the form.
       });
     } else if (file) {
-      setRawProfilePictureFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
         setFormData(prev => ({ ...prev, profile_picture: reader.result }));
@@ -156,7 +179,6 @@ const Profile = () => {
       reader.readAsDataURL(file);
     }
   };
-
 
   const logout = () => {
     localStorage.removeItem('currentUser');
@@ -175,9 +197,8 @@ const Profile = () => {
     e.preventDefault();
 
     try {
-      setLoadingMessage({ title: 'Updating Profile', message: 'Saving your changes to the database...' });
+      setLoadingMessage({ title: 'Updating Profile', message: 'Saving changes to database...' });
       setShowLoadingOverlay(true);
-
       const profileData = {
         firstName: formData.firstName,
         middleName: formData.middleName,
@@ -189,14 +210,11 @@ const Profile = () => {
         townCity: formData.townCityMunicipality,
         province: formData.province,
         zipCode: formData.zipCode,
-        course: formData.course,
         profile_picture: formData.profile_picture
       };
 
-      // Update profile via API
-      const updatedData = await applicantAPI.updateProfile(profileData);
+      await applicantAPI.updateProfile(profileData);
 
-      // Create a local merged profile to update UI immediately
       const locallyUpdatedProfile = {
         ...userProfile,
         first_name: formData.firstName,
@@ -209,19 +227,12 @@ const Profile = () => {
         town_city_municipality: formData.townCityMunicipality,
         province: formData.province,
         zip_code: formData.zipCode,
-        course: formData.course,
         profile_picture: formData.profile_picture || userProfile?.profile_picture || null
       };
 
       setUserProfile(locallyUpdatedProfile);
-
-      // Show success modal
       setShowSuccessModal(true);
 
-      // After success, wait briefly then close modal and hide loading overlay
-      // We don't automatically close the edit form here to prevent UI flicker; 
-      // the useEffect will handle the transition based on the userProfile state change if needed,
-      // but typically we'll want a deliberate close.
       const isNewProfile = !userProfile?.town_city_municipality;
 
       setTimeout(() => {
@@ -229,11 +240,10 @@ const Profile = () => {
         setShowEditForm(false);
         setShowLoadingOverlay(false);
 
-        // Redirect new users to portal after first profile setup
         if (isNewProfile) {
           navigate('/portal');
         }
-      }, 2000);
+      }, 1500);
     } catch (err) {
       setError(err.message || 'Failed to update profile');
       console.error('Error updating profile:', err);
@@ -241,12 +251,16 @@ const Profile = () => {
     }
   };
 
-  const showEditProfile = () => {
-    setShowEditForm(true);
+  const getFirstName = () => {
+    return userProfile?.first_name || formData.firstName || 'Student';
   };
 
-  const getFirstName = () => {
-    return userProfile?.first_name || 'Student';
+  const getFullName = () => {
+    const fn = userProfile?.first_name || formData.firstName || '';
+    const mn = userProfile?.middle_name || formData.middleName || '';
+    const ln = userProfile?.last_name || formData.lastName || '';
+    const full = [fn, mn, ln].filter(Boolean).join(' ');
+    return full || 'No name provided';
   };
 
   const formatBirthdate = (birthdate) => {
@@ -267,62 +281,465 @@ const Profile = () => {
           box-sizing: border-box;
         }
 
+        :root {
+          --primary: #4F0D00;
+          --primary-light: #7A1A05;
+          --primary-soft: #ffe8e3;
+          --accent: #d9534f;
+          --gray-bg: #f8fafc;
+          --gray-100: #f1f5f9;
+          --gray-200: #e2e8f0;
+          --gray-300: #cbd5e1;
+          --gray-600: #475569;
+          --text-main: #0f172a;
+          --text-muted: #64748b;
+          --white: #ffffff;
+          --shadow-card: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.03);
+          --shadow-lg: 0 20px 30px -10px rgba(79, 13, 0, 0.15);
+        }
+
         body {
           font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-          background-color: #f9fafc;
-          color: #121826;
+          background-color: #f4f6f9;
+          color: var(--text-main);
           line-height: 1.5;
         }
 
-        :root {
-          --primary: #4F0D00;
-          --primary-light: #8b3a1f;
-          --accent: #4F0D00;
-          --accent-soft: #ffe8e3;
-          --gray-1: #f4f6fa;
-          --gray-2: #e2e8f0;
-          --gray-3: #b0c0d0;
-          --text-dark: #121826;
+        /* Navbar Styling */
+        .navbar {
+          background-color: var(--primary);
+          padding: 0.75rem 5%;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          position: sticky;
+          top: 0;
+          z-index: 100;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.12);
         }
 
-        .loading-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
+        .navbar-header-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          width: auto;
+        }
+
+        .navbar-brand {
+          display: flex;
+          align-items: center;
+          gap: 0.6rem;
+          text-decoration: none;
+        }
+
+        .navbar-brand-logo {
+          height: 36px;
+          width: 36px;
+          object-fit: contain;
+          border-radius: 50%;
+        }
+
+        .navbar-brand-text {
+          font-size: 1.4rem;
+          font-weight: 800;
+          color: white;
+          letter-spacing: -0.02em;
+        }
+
+        .navbar-toggle-btn {
+          display: none;
+          background: rgba(255, 255, 255, 0.15);
+          border: none;
+          color: white;
+          font-size: 1.1rem;
+          cursor: pointer;
+          width: 38px;
+          height: 38px;
+          border-radius: 8px;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .navbar-menu {
+          display: flex;
+          gap: 1rem;
+          align-items: center;
+        }
+
+        .navbar-menu span {
+          color: rgba(255, 255, 255, 0.9);
+          font-weight: 500;
+          font-size: 0.9rem;
+          margin-right: 0.5rem;
+        }
+
+        .nav-btn {
+          background: rgba(255, 255, 255, 0.12);
+          padding: 0.45rem 1.1rem;
+          border-radius: 30px;
+          border: 1px solid rgba(255, 255, 255, 0.25);
+          color: white;
+          font-weight: 600;
+          font-size: 0.85rem;
+          transition: all 0.2s;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.4rem;
+        }
+
+        .nav-btn:hover {
+          background: rgba(255, 255, 255, 0.25);
+          border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        /* Profile Layout Container */
+        .profile-container {
+          max-width: 900px;
+          margin: 1.25rem auto 2.5rem;
+          padding: 0 1rem;
+        }
+
+        .back-button {
+          background: white;
+          border: 1px solid var(--gray-200);
+          padding: 0.45rem 1.1rem;
+          border-radius: 30px;
+          font-weight: 600;
+          color: var(--text-muted);
+          margin-bottom: 1rem;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          font-size: 0.85rem;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.4rem;
+          box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+        }
+
+        .back-button:hover {
+          background: var(--gray-100);
+          color: var(--primary);
+          border-color: var(--gray-300);
+        }
+
+        /* Welcome Banner */
+        .welcome-banner {
+          background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+          border-radius: 16px;
+          padding: 1.2rem 1.5rem;
+          color: white;
+          margin-bottom: 1.2rem;
+          box-shadow: var(--shadow-card);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 0.8rem;
+        }
+
+        .welcome-banner h2 {
+          font-size: 1.4rem;
+          font-weight: 800;
+          line-height: 1.2;
+        }
+
+        .welcome-banner h2 span {
+          color: #ffc0b0;
+        }
+
+        .welcome-banner p {
+          color: rgba(255, 255, 255, 0.85);
+          font-size: 0.85rem;
+          margin-top: 0.2rem;
+        }
+
+        /* Main Profile Card */
+        .profile-card {
+          background: var(--white);
+          border-radius: 16px;
+          border: 1px solid var(--gray-200);
+          box-shadow: var(--shadow-card);
+          overflow: hidden;
+        }
+
+        /* Header block in card */
+        .card-header-bar {
+          padding: 1.2rem 1.5rem;
+          background: #ffffff;
+          border-bottom: 1px solid var(--gray-200);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 1rem;
+        }
+
+        .profile-identity {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+        }
+
+        .avatar-box {
+          width: 72px;
+          height: 72px;
+          border-radius: 50%;
+          background: var(--primary-soft);
+          color: var(--primary);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 2rem;
+          border: 3px solid white;
+          box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+          overflow: hidden;
+          position: relative;
+          flex-shrink: 0;
+        }
+
+        .avatar-box img {
           width: 100%;
           height: 100%;
-          background: rgba(0, 0, 0, 0.75);
-          backdrop-filter: blur(10px);
+          object-fit: cover;
+        }
+
+        .identity-text h3 {
+          font-size: 1.25rem;
+          font-weight: 700;
+          color: var(--primary);
+          margin-bottom: 0.15rem;
+        }
+
+        .identity-text p {
+          font-size: 0.85rem;
+          color: var(--text-muted);
+          font-weight: 500;
+        }
+
+        .action-btn {
+          background: var(--primary);
+          color: white;
+          border: none;
+          padding: 0.5rem 1.25rem;
+          border-radius: 25px;
+          font-weight: 600;
+          font-size: 0.85rem;
+          cursor: pointer;
+          transition: all 0.2s;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.4rem;
+          box-shadow: 0 3px 8px rgba(79, 13, 0, 0.2);
+          white-space: nowrap;
+        }
+
+        .action-btn:hover {
+          background: var(--primary-light);
+          transform: translateY(-1px);
+        }
+
+        .action-btn.secondary {
+          background: var(--gray-100);
+          color: var(--text-main);
+          border: 1px solid var(--gray-300);
+          box-shadow: none;
+        }
+
+        .action-btn.secondary:hover {
+          background: var(--gray-200);
+        }
+
+        /* Card Content Body */
+        .card-body {
+          padding: 1.25rem 1.5rem;
+        }
+
+        .section-title {
+          font-size: 0.75rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: var(--primary);
+          margin: 1rem 0 0.75rem;
+          padding-bottom: 0.35rem;
+          border-bottom: 1.5px solid var(--primary-soft);
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+        }
+
+        .section-title:first-of-type {
+          margin-top: 0;
+        }
+
+        /* Responsive Form Layout Grid */
+        .form-grid {
+          display: grid;
+          grid-template-columns: repeat(12, 1fr);
+          gap: 0.75rem 1rem;
+        }
+
+        .col-12 { grid-column: span 12; }
+        .col-8  { grid-column: span 8; }
+        .col-6  { grid-column: span 6; }
+        .col-4  { grid-column: span 4; }
+        .col-3  { grid-column: span 3; }
+
+        .field-group {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .field-group label {
+          font-size: 0.72rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          color: var(--text-muted);
+          margin-bottom: 0.3rem;
+        }
+
+        .field-input, .field-display {
+          width: 100%;
+          padding: 0.55rem 0.85rem;
+          border-radius: 8px;
+          font-size: 0.88rem;
+          font-family: inherit;
+          transition: all 0.15s ease;
+        }
+
+        .field-display {
+          background-color: var(--gray-bg);
+          border: 1px solid var(--gray-200);
+          color: var(--text-main);
+          font-weight: 500;
+          min-height: 38px;
+          display: flex;
+          align-items: center;
+        }
+
+        .field-input {
+          border: 1.5px solid var(--gray-200);
+          background: white;
+          color: var(--text-main);
+        }
+
+        .field-input:focus {
+          outline: none;
+          border-color: var(--primary);
+          box-shadow: 0 0 0 3px rgba(79, 13, 0, 0.1);
+        }
+
+        .field-input:disabled {
+          background-color: var(--gray-bg);
+          cursor: not-allowed;
+          color: var(--gray-600);
+        }
+
+        /* Form Footer Buttons */
+        .form-footer {
+          margin-top: 1.5rem;
+          padding-top: 1rem;
+          border-top: 1px solid var(--gray-200);
+          display: flex;
+          justify-content: flex-end;
+          gap: 0.75rem;
+        }
+
+        /* Profile picture edit area */
+        .avatar-upload-row {
+          display: flex;
+          align-items: center;
+          gap: 1.2rem;
+          padding: 0.8rem;
+          background: var(--gray-bg);
+          border-radius: 12px;
+          border: 1px dashed var(--gray-300);
+          margin-bottom: 1.25rem;
+        }
+
+        .avatar-preview-box {
+          width: 64px;
+          height: 64px;
+          border-radius: 50%;
+          background: white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 1.5rem;
+          color: var(--primary);
+          overflow: hidden;
+          position: relative;
+          border: 2px solid var(--primary-soft);
+          flex-shrink: 0;
+        }
+
+        .avatar-preview-box img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .upload-info h4 {
+          font-size: 0.9rem;
+          font-weight: 700;
+          color: var(--primary);
+        }
+
+        .upload-info p {
+          font-size: 0.78rem;
+          color: var(--text-muted);
+          margin-bottom: 0.4rem;
+        }
+
+        .file-select-btn {
+          position: relative;
+          display: inline-block;
+          overflow: hidden;
+        }
+
+        .file-select-btn input[type="file"] {
+          position: absolute;
+          left: 0;
+          top: 0;
+          opacity: 0;
+          width: 100%;
+          height: 100%;
+          cursor: pointer;
+        }
+
+        /* Modals & Overlays */
+        .loading-overlay {
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background: rgba(0, 0, 0, 0.6);
+          backdrop-filter: blur(4px);
           display: none;
           justify-content: center;
           align-items: center;
           z-index: 9999;
-          animation: fadeIn 0.3s ease;
         }
 
-        .loading-overlay.active {
-          display: flex;
-        }
+        .loading-overlay.active { display: flex; }
 
         .loading-modal {
           background: white;
-          padding: 3.5rem;
-          border-radius: 40px;
+          padding: 2rem 2.5rem;
+          border-radius: 20px;
           text-align: center;
-          box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
-          max-width: 450px;
+          box-shadow: var(--shadow-lg);
+          max-width: 380px;
           width: 90%;
-          border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         .loading-spinner {
-          width: 60px;
-          height: 60px;
-          border: 6px solid #ffe8e3;
-          border-top: 6px solid var(--primary);
+          width: 44px;
+          height: 44px;
+          border: 4px solid var(--primary-soft);
+          border-top: 4px solid var(--primary);
           border-radius: 50%;
-          margin: 0 auto 1.8rem;
-          animation: spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+          margin: 0 auto 1.2rem;
+          animation: spin 0.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
         }
 
         @keyframes spin {
@@ -330,914 +747,479 @@ const Profile = () => {
           100% { transform: rotate(360deg); }
         }
 
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-          --text-soft: #3f4a5c;
-          --white: #ffffff;
-          --success: #0f7b5a;
-          --success-bg: #e1f7f0;
-          --warning: #b65f22;
-          --warning-bg: #ffefe3;
-          --danger: #b13e3e;
-          --danger-bg: #fee9e9;
-          --shadow-sm: 0 4px 10px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.05);
-          --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.04), 0 4px 10px rgba(0, 20, 40, 0.03);
-          --shadow-lg: 0 20px 40px -12px rgba(0, 40, 80, 0.2);
-          --border-light: 1px solid rgba(0, 0, 0, 0.05);
-        }
-
-        .navbar {
-          background: var(--primary);
-          padding: 0.9rem 5%;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          border-bottom: var(--border-light);
-          position: sticky;
-          top: 0;
-          z-index: 100;
-          backdrop-filter: blur(8px);
-          background-color: rgba(79, 13, 0, 0.95);
-        }
-
-        .navbar-brand {
-          font-size: 1.65rem;
-          font-weight: 800;
-          letter-spacing: -0.02em;
-          color: white;
-          text-decoration: none;
-        }
-
-        .navbar-menu {
-          display: flex;
-          gap: 2.5rem;
-          align-items: center;
-        }
-
-        .navbar-menu span {
-          color: rgba(255, 255, 255, 0.9);
-          font-weight: 500;
-          font-size: 0.95rem;
-        }
-
-        .logout-btn {
-          background: transparent;
-          padding: 0.5rem 1.5rem;
-          border-radius: 40px;
-          border: 1.5px solid rgba(255, 255, 255, 0.3);
-          color: white;
-          font-weight: 600;
-          font-size: 0.9rem;
-          transition: all 0.2s;
-          cursor: pointer;
-        }
-
-        .logout-btn:hover {
-          background: rgba(255, 255, 255, 0.1);
-          border-color: rgba(255, 255, 255, 0.6);
-          color: white;
-        }
-
-        .profile-btn {
-          background: transparent;
-          padding: 0.5rem 1.5rem;
-          border-radius: 40px;
-          border: 1.5px solid rgba(255, 255, 255, 0.3);
-          color: white;
-          font-weight: 600;
-          font-size: 0.9rem;
-          transition: all 0.2s;
-          cursor: pointer;
-          margin-right: 1rem;
-        }
-
-        .profile-btn:hover {
-          background: rgba(255, 255, 255, 0.1);
-          border-color: rgba(255, 255, 255, 0.6);
-          color: white;
-        }
-
-        .profile-container {
-          max-width: 800px;
-          margin: 2rem auto;
-          padding: 0 1rem;
-        }
-
-        .profile-container h2 {
-          color: var(--primary);
-          font-size: 1.8rem;
-          font-weight: 700;
-          text-align: left;
-          margin-bottom: 1.5rem;
-        }
-
-        .profile-picture-upload {
-          display: flex;
-          align-items: center;
-          gap: 2rem;
-          margin-bottom: 2rem;
-        }
-
-        .profile-pic {
-          width: 100px;
-          height: 100px;
-          border-radius: 50%;
-          background: var(--gray-1);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 2.5rem;
-          color: var(--text-soft);
-          border: 3px solid var(--gray-2);
-          position: relative;
-          overflow: hidden;
-        }
-
-        .profile-display-section {
-          background: var(--white);
-          padding: 2.5rem;
-          border-radius: 24px;
-          box-shadow: var(--shadow-sm);
-          border: var(--border-light);
-          margin-bottom: 2rem;
-        }
-
-        .profile-display-header {
-          display: flex;
-          align-items: center;
-          gap: 2rem;
-          margin-bottom: 2rem;
-          padding-bottom: 2rem;
-          border-bottom: 1px solid var(--gray-2);
-        }
-
-        .profile-info h3 {
-          color: var(--primary);
-          font-size: 1.8rem;
-          font-weight: 700;
-          margin-bottom: 0.5rem;
-        }
-
-        .profile-info p {
-          color: var(--text-soft);
-          font-size: 0.95rem;
-          margin-bottom: 0.3rem;
-        }
-
-        .profile-info .email {
-          color: var(--primary);
-          font-weight: 500;
-        }
-
-        .profile-details {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-          gap: 1.5rem;
-        }
-
-        .detail-item {
-          padding: 1rem;
-          background: var(--gray-1);
-          border-radius: 12px;
-          border: 1px solid var(--gray-2);
-        }
-
-        .detail-item .label {
-          font-size: 0.8rem;
-          color: var(--text-soft);
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          margin-bottom: 0.5rem;
-        }
-
-        .detail-item .value {
-          font-size: 1rem;
-          color: var(--text-dark);
-          font-weight: 500;
-        }
-
-        .edit-profile-btn {
-          background: var(--primary);
-          color: white;
-          border: none;
-          padding: 0.8rem 2rem;
-          border-radius: 40px;
-          font-weight: 600;
-          font-size: 0.95rem;
-          cursor: pointer;
-          transition: all 0.2s;
-          box-shadow: var(--shadow-sm);
-          margin-top: 1rem;
-        }
-
-        .edit-profile-btn:hover {
-          background: #3d0a00;
-          transform: translateY(-2px);
-          box-shadow: var(--shadow-md);
-        }
-
-        .form-section {
-          display: none;
-        }
-
-        .form-section.active {
-          display: block;
-        }
-
-        .welcome-header {
-          text-align: center;
-          margin: 2rem 0 3rem 0;
-          padding: 2rem;
-          background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
-          border-radius: 20px;
-          color: white;
-          box-shadow: var(--shadow-md);
-        }
-
-        .welcome-header h2 {
-          color: white;
-          font-size: 2rem;
-          font-weight: 700;
-          margin-bottom: 0.5rem;
-          text-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .welcome-header p {
-          color: rgba(255,255,255,0.9);
-          font-size: 1.1rem;
-          margin: 0;
-        }
-
-        .welcome-header span {
-          color: #ffb199;
-          font-weight: 800;
-        }
-
-        .form-group {
-          margin-bottom: 1.5rem;
-        }
-
-        .form-group label {
-          display: block;
-          font-weight: 600;
-          font-size: 0.85rem;
-          text-transform: uppercase;
-          letter-spacing: 0.3px;
-          color: var(--primary-light);
-          margin-bottom: 0.4rem;
-        }
-
-        .form-group input, .form-group textarea, .form-group select {
-          width: 100%;
-          padding: 0.9rem 1.2rem;
-          border: 1.5px solid var(--gray-2);
-          border-radius: 18px;
-          font-size: 0.95rem;
-          transition: 0.15s;
-          background: var(--gray-1);
-          font-family: 'Inter', sans-serif;
-        }
-
-        .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
-          outline: none;
-          border-color: var(--accent);
-          background: var(--white);
-          box-shadow: 0 0 0 4px rgba(79,13,0,0.08);
-        }
-
-        .submit-btn {
-          width: 100%;
-          padding: 1rem;
-          background: var(--primary);
-          color: white;
-          border: none;
-          border-radius: 40px;
-          font-weight: 700;
-          font-size: 1rem;
-          cursor: pointer;
-          transition: 0.15s;
-          box-shadow: var(--shadow-sm);
-        }
-
-        .submit-btn:hover {
-          background: #3d0a00;
-          transform: scale(1.01);
-        }
-
-        .back-button {
-          background: none;
-          border: 1.5px solid var(--gray-2);
-          padding: 0.5rem 1.5rem;
-          border-radius: 40px;
-          font-weight: 600;
-          color: var(--text-soft);
-          margin-bottom: 2rem;
-          cursor: pointer;
-          transition: 0.1s;
-        }
-
-        .back-button:hover {
-          background: #f1f5f9;
-          border-color: var(--gray-3);
-        }
-
         .success-modal {
-          display: none;
           position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
+          top: 0; left: 0; right: 0; bottom: 0;
           background: rgba(0, 0, 0, 0.5);
-          z-index: 1000;
+          display: none;
           align-items: center;
           justify-content: center;
+          z-index: 10000;
         }
 
-        .success-modal.active {
-          display: flex;
-        }
+        .success-modal.active { display: flex; }
 
         .success-modal .modal-content {
           background: white;
           padding: 2rem;
-          border-radius: 20px;
+          border-radius: 18px;
           text-align: center;
           box-shadow: var(--shadow-lg);
-          max-width: 400px;
+          max-width: 360px;
+          width: 90%;
         }
 
-        .success-modal h3 {
-          color: var(--success);
-          font-size: 1.5rem;
-          margin-bottom: 1rem;
-        }
-
-        .success-modal p {
-          color: var(--text-soft);
-          margin-bottom: 1.5rem;
-        }
-
-        .success-modal .close-btn {
-          background: var(--success);
-          color: white;
-          border: none;
-          padding: 0.8rem 2rem;
-          border-radius: 40px;
-          font-weight: 600;
-          cursor: pointer;
-        }
-
-        @media (max-width: 1024px) {
-          .profile-container {
-            max-width: 100%;
-            padding: 0 2rem;
-          }
-          
-          .profile-display-section {
-            padding: 2rem;
-          }
-          
-          .profile-edit-section {
-            padding: 2rem;
-          }
-        }
-
+        /* Responsive Breakpoints */
         @media (max-width: 768px) {
           .navbar {
-            flex-direction: column;
-            padding: 1rem 5%;
-            gap: 1rem;
+            position: relative;
+            padding: 0.75rem 4%;
           }
-          
-          .navbar-menu {
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 1rem;
-          }
-          
-          .profile-container {
-            padding: 0 1rem;
-          }
-          
-          .welcome-header {
-            margin: 1rem 0 2rem 0;
-            padding: 1.5rem;
-          }
-          
-          .welcome-header h2 {
-            font-size: 1.6rem;
-          }
-          
-          .welcome-header p {
-            font-size: 1rem;
-          }
-          
-          .profile-display-section {
-            padding: 1.5rem;
-          }
-          
-          .profile-display-header {
-            flex-direction: column;
-            text-align: center;
-            gap: 1.5rem;
-          }
-          
-          .profile-pic {
-            width: 120px;
-            height: 120px;
-          }
-          
-          .profile-info h3 {
-            font-size: 1.4rem;
-          }
-          
-          .profile-info p {
-            font-size: 1rem;
-          }
-          
-          .profile-edit-section {
-            padding: 1.5rem;
-          }
-          
-          .form-row {
-            flex-direction: column;
-            gap: 0;
-          }
-          
-          .form-group {
-            margin-bottom: 1rem;
-          }
-          
-          .form-group label {
-            font-size: 0.85rem;
-          }
-          
-          .form-group input,
-          .form-group select,
-          .form-group textarea {
-            padding: 0.8rem 1rem;
-            font-size: 0.9rem;
-          }
-          
-          .photo-upload-section {
-            padding: 1.5rem;
-          }
-          
-          .photo-upload-section h4 {
-            font-size: 1rem;
-          }
-          
-          .photo-upload-area {
-            padding: 1.5rem;
-          }
-          
-          .photo-preview {
-            width: 120px;
-            height: 120px;
-          }
-          
-          .form-actions {
-            flex-direction: column;
-            gap: 1rem;
-          }
-          
-          .save-btn,
-          .cancel-btn {
+
+          .navbar-header-row {
             width: 100%;
-            padding: 0.8rem;
+          }
+
+          .navbar-toggle-btn {
+            display: flex;
+          }
+
+          .navbar-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            width: 100%;
+            background: var(--primary);
+            flex-direction: column;
+            padding: 1rem;
+            gap: 0.6rem;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            border-top: 1px solid rgba(255,255,255,0.1);
+          }
+
+          .navbar-menu.active {
+            display: flex;
+          }
+
+          .navbar-menu span {
+            margin-right: 0;
+            margin-bottom: 0.4rem;
+          }
+
+          .nav-btn {
+            width: 100%;
+            justify-content: center;
+          }
+
+          .col-4, .col-6, .col-8 {
+            grid-column: span 6;
+          }
+
+          .card-header-bar {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.8rem;
+          }
+
+          .action-btn {
+            width: 100%;
+            justify-content: center;
           }
         }
 
-        @media (max-width: 480px) {
-          .navbar {
-            padding: 0.8rem 3%;
-          }
-          
-          .navbar-menu span {
-            font-size: 0.85rem;
-          }
-          
+        @media (max-width: 520px) {
           .profile-container {
-            padding: 0 0.5rem;
+            padding: 0 0.6rem;
+            margin-top: 0.8rem;
           }
-          
-          .welcome-header {
+
+          .welcome-banner {
+            padding: 1rem;
+            border-radius: 12px;
+          }
+
+          .welcome-banner h2 { font-size: 1.2rem; }
+          .welcome-banner p { font-size: 0.78rem; }
+
+          .card-header-bar, .card-body {
             padding: 1rem;
           }
-          
-          .welcome-header h2 {
-            font-size: 1.4rem;
+
+          .col-3, .col-4, .col-6, .col-8 {
+            grid-column: span 12;
           }
-          
-          .welcome-header p {
-            font-size: 0.9rem;
+
+          .form-grid {
+            gap: 0.6rem;
           }
-          
-          .profile-display-section {
-            padding: 1rem;
+
+          .field-group label {
+            font-size: 0.68rem;
           }
-          
-          .profile-pic {
-            width: 100px;
-            height: 100px;
+
+          .field-input, .field-display {
+            padding: 0.45rem 0.7rem;
+            font-size: 0.84rem;
           }
-          
-          .profile-info h3 {
-            font-size: 1.2rem;
+
+          .avatar-box {
+            width: 56px;
+            height: 56px;
+            font-size: 1.5rem;
           }
-          
-          .profile-info p {
-            font-size: 0.9rem;
-          }
-          
-          .profile-edit-section {
-            padding: 1rem;
-          }
-          
-          .form-group input,
-          .form-group select,
-          .form-group textarea {
-            padding: 0.7rem 0.9rem;
-            font-size: 0.85rem;
-          }
-          
-          .photo-upload-section {
-            padding: 1rem;
-          }
-          
-          .photo-upload-area {
-            padding: 1rem;
-          }
-          
-          .photo-preview {
-            width: 100px;
-            height: 100px;
-          }
-          
-          .save-btn,
-          .cancel-btn {
-            padding: 0.7rem;
-            font-size: 0.9rem;
+
+          .identity-text h3 {
+            font-size: 1.1rem;
           }
         }
       `}</style>
 
+      {/* Top Navbar */}
       <nav className="navbar">
-        <Link to="/" className="navbar-brand">iskoMats</Link>
-        <div className="navbar-menu">
-          <span>{currentUser}</span>
-          <button className="profile-btn" onClick={() => navigate('/profile')}>Profile</button>
-          <button className="logout-btn" onClick={logout}>
-            <i className="fas fa-sign-out-alt" style={{ marginRight: '6px' }}></i>Logout
+        <div className="navbar-header-row">
+          <Link to="/portal" className="navbar-brand" onClick={() => setMobileMenuOpen(false)}>
+            <img src={iskoLogo} alt="iskoMats Logo" className="navbar-brand-logo" />
+            <span className="navbar-brand-text">iskoMats</span>
+          </Link>
+          <button
+            className="navbar-toggle-btn"
+            aria-label="Toggle navigation menu"
+            onClick={() => setMobileMenuOpen(prev => !prev)}
+          >
+            <i className={mobileMenuOpen ? "fas fa-times" : "fas fa-bars"}></i>
+          </button>
+        </div>
+        <div className={`navbar-menu ${mobileMenuOpen ? 'active' : ''}`}>
+          <span><i className="fas fa-user-circle" style={{ marginRight: '5px' }}></i>{currentUser}</span>
+          <button className="nav-btn" onClick={() => { setMobileMenuOpen(false); navigate('/profile'); }}>
+            <i className="fas fa-id-card"></i> Profile
+          </button>
+          <button className="nav-btn" onClick={() => { setMobileMenuOpen(false); logout(); }}>
+            <i className="fas fa-sign-out-alt"></i> Logout
           </button>
         </div>
       </nav>
 
-      {/* Profile Display Section */}
-      <section>
-        <div className="profile-container">
-          <button className="back-button" onClick={() => navigate('/portal')}>
-            <i className="fas fa-arrow-left"></i> Back to Portal
-          </button>
+      {/* Main Content Area */}
+      <main className="profile-container">
+        <button className="back-button" onClick={() => navigate('/portal')}>
+          <i className="fas fa-arrow-left"></i> Back to Portal
+        </button>
 
-          {/* Welcome Header */}
-          <div className="welcome-header">
+        {/* Welcome Header */}
+        <div className="welcome-banner">
+          <div>
             <h2>Welcome, <span>{getFirstName()}</span>!</h2>
             <p>Manage your profile and keep your information up to date</p>
           </div>
-
-          {/* Profile Display View */}
-          {userProfile && !showEditForm && (
-            <div className="form-section active">
-              <div className="profile-display-header">
-                <div className="profile-pic">
-                  {userProfile.profile_picture ? (
-                    <img src={userProfile.profile_picture} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <i className="fas fa-user-circle"></i>
-                  )}
-                </div>
-                <div className="profile-info">
-                  <h3>
-                    {userProfile.first_name && userProfile.last_name ? `${userProfile.first_name} ${userProfile.last_name}` : 'No name provided'}
-                    {userProfile.email_verified && (
-                      <i className="fas fa-check-circle" style={{ color: '#28a745', fontSize: '1.1rem', marginLeft: '8px' }} title="Verified Account"></i>
-                    )}
-                  </h3>
-                  <p className="email">{currentUser}</p>
-                </div>
-              </div>
-
-              <div className="profile-details">
-
-                <div className="form-group">
-                  <label>First name</label>
-                  <input
-                    type="text"
-                    value={userProfile.first_name || ''}
-                    disabled
-                    style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Middle name</label>
-                  <input
-                    type="text"
-                    value={userProfile.middle_name || ''}
-                    disabled
-                    style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Last name</label>
-                  <input
-                    type="text"
-                    value={userProfile.last_name || ''}
-                    disabled
-                    style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Birthdate</label>
-                  <input
-                    type="text"
-                    value={formatBirthdate(userProfile.birthdate)}
-                    disabled
-                    style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>University / School</label>
-                  <input
-                    type="text"
-                    value={userProfile.school || ''}
-                    disabled
-                    style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Phone number</label>
-                  <input
-                    type="tel"
-                    value={userProfile.mobile_no || ''}
-                    disabled
-                    style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Street / Barangay</label>
-                  <input
-                    type="text"
-                    value={userProfile.street_brgy || ''}
-                    disabled
-                    style={{ backgroundColor: 'var(--gray-1)', cursor: 'not-allowed' }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Town / City / Municipality</label>
-                  <input
-                    type="text"
-                    value={userProfile ? (userProfile.town_city_municipality || userProfile.townCity || 'Lipa City') : 'Lipa City'}
-                    disabled
-                    style={{ backgroundColor: '#f4f6fa', cursor: 'not-allowed', color: '#666' }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Province</label>
-                  <input
-                    type="text"
-                    value={userProfile?.province || 'Batangas'}
-                    disabled
-                    style={{ backgroundColor: '#f4f6fa', cursor: 'not-allowed', color: '#666' }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Zip Code</label>
-                  <input
-                    type="text"
-                    value={userProfile ? (userProfile.zip_code || userProfile.zipCode || '4217') : '4217'}
-                    disabled
-                    style={{ backgroundColor: '#f4f6fa', cursor: 'not-allowed', color: '#666' }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Course / Program</label>
-                  <input
-                    type="text"
-                    value={userProfile?.course || 'Not specified'}
-                    disabled
-                    style={{ backgroundColor: '#f4f6fa', cursor: 'not-allowed', color: '#666' }}
-                  />
-                </div>
-                <button className="edit-profile-btn" onClick={showEditProfile} style={{ width: 'auto', marginTop: '1rem' }}>
-                  <i className="fas fa-edit" style={{ marginRight: '8px' }}></i> Edit Profile
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Profile Edit Form */}
-          {showEditForm && (
-            <div className="form-section active">
-              <h2>{userProfile ? 'Edit Profile' : 'Complete Profile'}</h2>
-              {error && <div style={{ color: 'var(--danger)', marginBottom: '1rem', padding: '0.8rem', backgroundColor: 'var(--danger-bg)', borderRadius: '8px' }}>{error}</div>}
-
-              <div className="profile-picture-upload">
-                <div className="profile-pic" style={{ width: '120px', height: '120px', position: 'relative' }}>
-                  {formData.profile_picture ? (
-                    <img src={formData.profile_picture} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <i className="fas fa-user"></i>
-                  )}
-                  <div style={{
-                    position: 'absolute',
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    background: 'rgba(0,0,0,0.5)',
-                    color: 'white',
-                    fontSize: '0.7rem',
-                    padding: '4px 0',
-                    cursor: 'pointer'
-                  }}>
-                    <i className="fas fa-camera"></i> Change
-                  </div>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleProfilePictureUpload}
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: '100%',
-                      height: '100%',
-                      opacity: 0,
-                      cursor: 'pointer'
-                    }}
-                  />
-                </div>
-                <div style={{ textAlign: 'left' }}>
-                  <h4 style={{ color: 'var(--primary)', marginBottom: '0.5rem' }}>Profile Picture</h4>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--text-soft)' }}>Upload a formal 2x2 picture</p>
-                </div>
-              </div>
-
-              <form onSubmit={handleProfileSubmit}>
-                <div className="form-group">
-                  <label>First name</label>
-                  <input
-                    type="text"
-                    name="firstName"
-                    value={formData.firstName}
-                    onChange={handleInputChange}
-                    placeholder="e.g., Maria"
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Middle name</label>
-                  <input
-                    type="text"
-                    name="middleName"
-                    value={formData.middleName}
-                    onChange={handleInputChange}
-                    placeholder="e.g., Dela Cruz"
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Last name</label>
-                  <input
-                    type="text"
-                    name="lastName"
-                    value={formData.lastName}
-                    onChange={handleInputChange}
-                    placeholder="e.g., Santos"
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Birthdate</label>
-                  <input
-                    type="date"
-                    name="birthdate"
-                    value={formData.birthdate}
-                    onChange={handleInputChange}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>University / School</label>
-                  <select
-                    name="school"
-                    value={formData.school}
-                    onChange={handleInputChange}
-                    required
-                  >
-                    <option value="">Select School</option>
-                    {SCHOOLS.map(school => (
-                      <option key={school} value={school}>{school}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label>Phone number</label>
-                  <input
-                    type="tel"
-                    name="mobileNo"
-                    value={formData.mobileNo}
-                    onChange={handleInputChange}
-                    placeholder="+63 ..."
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Street / Barangay</label>
-                  <select
-                    name="streetBrgy"
-                    value={formData.streetBrgy}
-                    onChange={handleInputChange}
-                    required
-                  >
-                    <option value="">Select Barangay</option>
-                    {BARANGAYS.map(brgy => (
-                      <option key={brgy} value={brgy}>{brgy}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label>Town / City / Municipality</label>
-                  <input
-                    type="text"
-                    name="townCityMunicipality"
-                    value={formData.townCityMunicipality}
-                    readOnly
-                    style={{ backgroundColor: '#f0f0f0', cursor: 'not-allowed', color: '#666' }}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Province</label>
-                  <input
-                    type="text"
-                    name="province"
-                    value={formData.province}
-                    readOnly
-                    style={{ backgroundColor: '#f0f0f0', cursor: 'not-allowed', color: '#666' }}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Zip Code</label>
-                  <input
-                    type="text"
-                    name="zipCode"
-                    value={formData.zipCode}
-                    readOnly
-                    style={{ backgroundColor: '#f0f0f0', cursor: 'not-allowed', color: '#666' }}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Course / Program *</label>
-                  <input
-                    type="text"
-                    name="course"
-                    value={formData.course}
-                    onChange={handleInputChange}
-                    placeholder="e.g. BS Information Technology"
-                    required
-                  />
-                </div>
-                <button type="submit" className="submit-btn">
-                  {userProfile ? 'Update Profile →' : 'Create Profile →'}
-                </button>
-              </form>
-            </div>
-          )}
         </div>
-      </section>
 
-      {/* Modal success pop-up */}
+        {/* Main Profile Card Container */}
+        <div className="profile-card">
+          {/* Card Top Identity Header */}
+          <div className="card-header-bar">
+            <div className="profile-identity">
+              <div className="avatar-box">
+                {(showEditForm ? formData.profile_picture : userProfile?.profile_picture) ? (
+                  <img src={showEditForm ? formData.profile_picture : userProfile?.profile_picture} alt="Profile Avatar" />
+                ) : (
+                  <i className="fas fa-user"></i>
+                )}
+              </div>
+              <div className="identity-text">
+                <h3>{getFullName()}</h3>
+                <p><i className="fas fa-envelope" style={{ marginRight: '6px' }}></i>{currentUser}</p>
+              </div>
+            </div>
+
+            {/* Header Action Button */}
+            {!showEditForm && userProfile && (
+              <button className="action-btn" onClick={() => setShowEditForm(true)}>
+                <i className="fas fa-user-edit"></i> Edit Profile
+              </button>
+            )}
+
+            {showEditForm && userProfile && (
+              <button className="action-btn secondary" onClick={() => setShowEditForm(false)}>
+                <i className="fas fa-times"></i> Cancel
+              </button>
+            )}
+          </div>
+
+          {/* Card Body */}
+          <div className="card-body">
+            {error && (
+              <div style={{ color: 'var(--accent)', marginBottom: '1rem', padding: '0.65rem 0.9rem', backgroundColor: '#fee2e2', borderRadius: '8px', fontSize: '0.85rem' }}>
+                <i className="fas fa-exclamation-circle" style={{ marginRight: '6px' }}></i>{error}
+              </div>
+            )}
+
+            {/* VIEW DISPLAY MODE */}
+            {!showEditForm && userProfile && (
+              <div>
+                {/* Personal Section */}
+                <div className="section-title">
+                  <i className="fas fa-user"></i> Personal Information
+                </div>
+                <div className="form-grid">
+                  <div className="field-group col-4">
+                    <label>First Name</label>
+                    <div className="field-display">{userProfile.first_name || '—'}</div>
+                  </div>
+                  <div className="field-group col-4">
+                    <label>Middle Name</label>
+                    <div className="field-display">{userProfile.middle_name || '—'}</div>
+                  </div>
+                  <div className="field-group col-4">
+                    <label>Last Name</label>
+                    <div className="field-display">{userProfile.last_name || '—'}</div>
+                  </div>
+                  <div className="field-group col-6">
+                    <label>Birthdate</label>
+                    <div className="field-display">{formatBirthdate(userProfile.birthdate)}</div>
+                  </div>
+                  <div className="field-group col-6">
+                    <label>Phone Number</label>
+                    <div className="field-display">{userProfile.mobile_no || '—'}</div>
+                  </div>
+                </div>
+
+                {/* Academic Section */}
+                <div className="section-title">
+                  <i className="fas fa-graduation-cap"></i> Academic Information
+                </div>
+                <div className="form-grid">
+                  <div className="field-group col-12">
+                    <label>University / School</label>
+                    <div className="field-display">{userProfile.school || '—'}</div>
+                  </div>
+                </div>
+
+                {/* Address Section */}
+                <div className="section-title">
+                  <i className="fas fa-map-marker-alt"></i> Address & Location
+                </div>
+                <div className="form-grid">
+                  <div className="field-group col-6">
+                    <label>Street / Barangay</label>
+                    <div className="field-display">{userProfile.street_brgy || '—'}</div>
+                  </div>
+                  <div className="field-group col-6">
+                    <label>Town / City</label>
+                    <div className="field-display">{userProfile.town_city_municipality || userProfile.townCity || 'Lipa City'}</div>
+                  </div>
+                  <div className="field-group col-6">
+                    <label>Province</label>
+                    <div className="field-display">{userProfile.province || 'Batangas'}</div>
+                  </div>
+                  <div className="field-group col-6">
+                    <label>Zip Code</label>
+                    <div className="field-display">{userProfile.zip_code || userProfile.zipCode || '4217'}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* EDIT FORM MODE */}
+            {showEditForm && (
+              <form onSubmit={handleProfileSubmit}>
+                {/* Profile Picture Upload Row */}
+                <div className="avatar-upload-row">
+                  <div className="avatar-preview-box">
+                    {formData.profile_picture ? (
+                      <img src={formData.profile_picture} alt="Preview" />
+                    ) : (
+                      <i className="fas fa-user"></i>
+                    )}
+                  </div>
+                  <div className="upload-info">
+                    <h4>Profile Picture</h4>
+                    <p>Upload a formal 2x2 picture</p>
+                    <div className="file-select-btn">
+                      <button type="button" className="action-btn secondary" style={{ padding: '0.35rem 0.9rem', fontSize: '0.78rem' }}>
+                        <i className="fas fa-camera"></i> Change Photo
+                      </button>
+                      <input type="file" accept="image/*" onChange={handleProfilePictureUpload} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Personal Section */}
+                <div className="section-title">
+                  <i className="fas fa-user"></i> Personal Information
+                </div>
+                <div className="form-grid">
+                  <div className="field-group col-4">
+                    <label>First Name *</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      name="firstName"
+                      value={formData.firstName}
+                      onChange={handleInputChange}
+                      placeholder="e.g. Maria"
+                      required
+                    />
+                  </div>
+                  <div className="field-group col-4">
+                    <label>Middle Name</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      name="middleName"
+                      value={formData.middleName}
+                      onChange={handleInputChange}
+                      placeholder="e.g. Dela Cruz"
+                    />
+                  </div>
+                  <div className="field-group col-4">
+                    <label>Last Name *</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      name="lastName"
+                      value={formData.lastName}
+                      onChange={handleInputChange}
+                      placeholder="e.g. Santos"
+                      required
+                    />
+                  </div>
+                  <div className="field-group col-6">
+                    <label>Birthdate *</label>
+                    <input
+                      type="date"
+                      className="field-input"
+                      name="birthdate"
+                      value={formData.birthdate}
+                      onChange={handleInputChange}
+                      required
+                    />
+                  </div>
+                  <div className="field-group col-6">
+                    <label>Phone Number *</label>
+                    <input
+                      type="tel"
+                      className="field-input"
+                      name="mobileNo"
+                      value={formData.mobileNo}
+                      onChange={handleInputChange}
+                      placeholder="09XXXXXXXXX"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Academic Section */}
+                <div className="section-title">
+                  <i className="fas fa-graduation-cap"></i> Academic Information
+                </div>
+                <div className="form-grid">
+                  <div className="field-group col-12">
+                    <label>University / School *</label>
+                    <select
+                      className="field-input"
+                      name="school"
+                      value={formData.school}
+                      onChange={handleInputChange}
+                      required
+                    >
+                      <option value="">Select School</option>
+                      {SCHOOL_OPTIONS.map(sch => (
+                        <option key={sch} value={sch}>{sch}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Address Section */}
+                <div className="section-title">
+                  <i className="fas fa-map-marker-alt"></i> Address & Location
+                </div>
+                <div className="form-grid">
+                  <div className="field-group col-6">
+                    <label>Street / Barangay *</label>
+                    <select
+                      className="field-input"
+                      name="streetBrgy"
+                      value={formData.streetBrgy}
+                      onChange={handleInputChange}
+                      required
+                    >
+                      <option value="">Select Barangay</option>
+                      {BARANGAY_OPTIONS.map(brgy => (
+                        <option key={brgy} value={brgy}>{brgy}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field-group col-6">
+                    <label>Town / City</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      name="townCityMunicipality"
+                      value={formData.townCityMunicipality}
+                      disabled
+                    />
+                  </div>
+                  <div className="field-group col-6">
+                    <label>Province</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      name="province"
+                      value={formData.province}
+                      disabled
+                    />
+                  </div>
+                  <div className="field-group col-6">
+                    <label>Zip Code</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      name="zipCode"
+                      value={formData.zipCode}
+                      disabled
+                    />
+                  </div>
+                </div>
+
+                {/* Form Footer Action */}
+                <div className="form-footer">
+                  {userProfile && (
+                    <button type="button" className="action-btn secondary" onClick={() => setShowEditForm(false)}>
+                      Cancel
+                    </button>
+                  )}
+                  <button type="submit" className="action-btn">
+                    <i className="fas fa-save"></i> {userProfile ? 'Save Changes' : 'Create Profile'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      </main>
+
+      {/* Success Modal */}
       <div className={`success-modal ${showSuccessModal ? 'active' : ''}`}>
         <div className="modal-content">
-          <h3 style={{ color: 'var(--success)' }}>Profile Updated!</h3>
-          <p>Your profile has been successfully saved.</p>
+          <div style={{ fontSize: '2.5rem', color: '#10b981', marginBottom: '0.5rem' }}>
+            <i className="fas fa-check-circle"></i>
+          </div>
+          <h3 style={{ color: 'var(--primary)', marginBottom: '0.4rem', fontWeight: '800' }}>Profile Saved!</h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem' }}>Your profile details have been successfully updated.</p>
         </div>
       </div>
 
-      {/* Loading overlay */}
+      {/* Loading Overlay */}
       <div className={`loading-overlay ${showLoadingOverlay ? 'active' : ''}`}>
         <div className="loading-modal">
           <div className="loading-spinner"></div>
-          <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
+          <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.25rem', marginBottom: '0.4rem' }}>
             {loadingMessage.title}
           </h3>
-          <p style={{ color: 'var(--text-soft)', fontSize: '1rem' }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem' }}>
             {loadingMessage.message}
           </p>
         </div>

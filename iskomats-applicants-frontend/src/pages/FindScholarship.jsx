@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { applicantAPI, scholarshipAPI } from '../services/api';
+import iskoLogo from '../assets/iskologo.png';
 
 const FIND_SCHOLARSHIP_FORM_KEY = 'findScholarshipForm';
 const FIND_SCHOLARSHIP_PROFILE_KEY = 'findScholarshipProfile';
@@ -11,6 +12,7 @@ const FindScholarship = () => {
   const { userProfile: globalProfile } = useAuth();
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showFormView, setShowFormView] = useState(true);
   const [showResultsView, setShowResultsView] = useState(false);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
@@ -423,7 +425,7 @@ const FindScholarship = () => {
 
         .navbar {
           background: var(--primary);
-          padding: 0.9rem 5%;
+          padding: 0.85rem 4%;
           display: flex;
           justify-content: space-between;
           align-items: center;
@@ -435,12 +437,116 @@ const FindScholarship = () => {
           background-color: rgba(79, 13, 0, 0.95);
         }
 
+        .navbar-header-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
         .navbar-brand {
-          font-size: 1.65rem;
+          display: flex;
+          align-items: center;
+          gap: 0.65rem;
+          font-size: 1.55rem;
           font-weight: 800;
           letter-spacing: -0.02em;
           color: white;
           text-decoration: none;
+          transition: transform 0.2s ease, opacity 0.2s ease;
+        }
+
+        .navbar-brand:hover {
+          opacity: 0.95;
+        }
+
+        .navbar-brand-logo {
+          height: 36px;
+          width: 36px;
+          object-fit: contain;
+          filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.3));
+          border-radius: 50%;
+        }
+
+        .navbar-brand-text {
+          font-size: 1.55rem;
+          font-weight: 800;
+          letter-spacing: -0.02em;
+          color: white;
+          text-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+        }
+
+        .navbar-toggle-btn {
+          display: none;
+          background: rgba(255, 255, 255, 0.12);
+          border: 1px solid rgba(255, 255, 255, 0.25);
+          color: white;
+          font-size: 1.2rem;
+          cursor: pointer;
+          width: 38px;
+          height: 38px;
+          border-radius: 10px;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
+        }
+
+        .navbar-toggle-btn:hover {
+          background: rgba(255, 255, 255, 0.25);
+        }
+
+        .navbar-menu {
+          display: flex;
+          gap: 1.25rem;
+          align-items: center;
+        }
+
+        @media (max-width: 768px) {
+          .navbar {
+            position: relative;
+            padding: 0.7rem 4%;
+          }
+
+          .navbar-header-row {
+            width: 100%;
+          }
+
+          .navbar-toggle-btn {
+            display: flex;
+          }
+
+          .navbar-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            width: 100%;
+            background: rgba(45, 8, 0, 0.97);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            flex-direction: column;
+            padding: 1.2rem 1.25rem 1.5rem;
+            gap: 0.75rem;
+            align-items: stretch;
+            border-top: 1px solid rgba(255, 255, 255, 0.12);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            box-sizing: border-box;
+          }
+
+          .navbar-menu.active {
+            display: flex;
+          }
+
+          .logout-btn {
+            width: 100%;
+            justify-content: center;
+            padding: 0.65rem 1rem;
+            font-size: 0.9rem;
+            font-weight: 700;
+            border-radius: 12px;
+            box-sizing: border-box;
+          }
         }
 
         .navbar-menu {
@@ -520,16 +626,17 @@ const FindScholarship = () => {
 
         .submit-btn {
           width: 100%;
-          padding: 1rem;
+          padding: clamp(0.75rem, 2vw, 1rem);
           background: var(--primary);
           color: white;
           border: none;
           border-radius: 40px;
           font-weight: 700;
-          font-size: 1rem;
+          font-size: clamp(0.9rem, 2vw, 1rem);
           cursor: pointer;
           transition: 0.15s;
           box-shadow: var(--shadow-sm);
+          box-sizing: border-box;
         }
 
         .submit-btn:hover {
@@ -540,27 +647,32 @@ const FindScholarship = () => {
         .feedback-form {
           max-width: 600px;
           background: var(--white);
-          padding: 2.5rem;
-          border-radius: 38px;
+          padding: clamp(1.25rem, 3vw, 2.5rem);
+          border-radius: 32px;
           box-shadow: var(--shadow-sm);
           border: var(--border-light);
-          margin: 2rem auto;
+          margin: 1.5rem auto;
+          box-sizing: border-box;
         }
 
         .back-button {
           background: none;
           border: 1.5px solid var(--gray-2);
-          padding: 0.5rem 1.5rem;
+          padding: clamp(0.45rem, 1.5vw, 0.6rem) clamp(1rem, 2.5vw, 1.5rem);
           border-radius: 40px;
           font-weight: 600;
           color: var(--text-soft);
-          margin-bottom: 2rem;
           margin-top: 1.5rem;
+          margin-bottom: 1.5rem;
           cursor: pointer;
           transition: 0.1s;
-          font-size: 0.9rem;
+          font-size: clamp(0.8rem, 1.6vw, 0.9rem);
           text-decoration: none;
-          display: inline-block;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.5rem;
+          box-sizing: border-box;
+          max-width: 100%;
         }
 
         .back-button:hover {
@@ -925,10 +1037,22 @@ const FindScholarship = () => {
       `}</style>
 
       <nav className="navbar">
-        <Link to="/portal" className="navbar-brand">iskoMats</Link>
-        <div className="navbar-menu">
+        <div className="navbar-header-row">
+          <Link to="/portal" className="navbar-brand" onClick={() => setMobileMenuOpen(false)}>
+            <img src={iskoLogo} alt="iskoMats Logo" className="navbar-brand-logo" />
+            <span className="navbar-brand-text">iskoMats</span>
+          </Link>
+          <button 
+            className="navbar-toggle-btn" 
+            aria-label="Toggle navigation menu"
+            onClick={() => setMobileMenuOpen(prev => !prev)}
+          >
+            <i className={mobileMenuOpen ? "fas fa-times" : "fas fa-bars"}></i>
+          </button>
+        </div>
+        <div className={`navbar-menu ${mobileMenuOpen ? 'active' : ''}`}>
           <span>{globalProfile?.first_name || userProfile?.first_name || localStorage.getItem('userFirstName') || currentUser}</span>
-          <button className="logout-btn" onClick={logout}>
+          <button className="logout-btn" onClick={() => { setMobileMenuOpen(false); logout(); }}>
             <i className="fas fa-sign-out-alt" style={{ marginRight: '6px' }}></i>Logout
           </button>
         </div>

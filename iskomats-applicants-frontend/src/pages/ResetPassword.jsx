@@ -14,6 +14,11 @@ const ResetPassword = () => {
     isLoading: false,
     error: "",
     success: false,
+    strength: {
+      score: 0,
+      label: "Weak",
+      color: "#ef4444"
+    }
   });
 
   const token = useMemo(() => routeToken || new URLSearchParams(window.location.search).get('token') || '', [routeToken]);
@@ -24,6 +29,11 @@ const ResetPassword = () => {
     fontAwesomeLink.rel = 'stylesheet';
     fontAwesomeLink.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css';
     document.head.appendChild(fontAwesomeLink);
+
+    const googleFontsLink = document.createElement('link');
+    googleFontsLink.rel = 'stylesheet';
+    googleFontsLink.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap';
+    document.head.appendChild(googleFontsLink);
 
     // Add Google Fonts link
     const googleFontsSheet = document.createElement('link');
@@ -37,14 +47,37 @@ const ResetPassword = () => {
     };
   }, []);
 
+  const calculateStrength = (pass) => {
+    let score = 0;
+    if (pass.length > 8) score++;
+    if (/[A-Z]/.test(pass)) score++;
+    if (/[0-9]/.test(pass)) score++;
+    if (/[^A-Za-z0-9]/.test(pass)) score++;
+
+    const labels = ["Very Weak", "Weak", "Medium", "Strong", "Very Strong"];
+    const colors = ["#ef4444", "#f97316", "#facc15", "#84cc16", "#22c55e"];
+
+    return {
+      score,
+      label: labels[score],
+      color: colors[score]
+    };
+  };
+
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({
+    const newFormData = {
       ...formData,
       [name]: value,
       error: "",
       success: false
-    });
+    };
+
+    if (name === 'newPassword') {
+      newFormData.strength = calculateStrength(value);
+    }
+
+    setFormData(newFormData);
   };
 
   const togglePassword = (field) => {
@@ -128,8 +161,37 @@ const ResetPassword = () => {
           left: 0;
           width: 100%;
           height: 100%;
-          background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.8));
+          background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(79, 13, 0, 0.4), rgba(0, 0, 0, 0.9));
           z-index: -1;
+        }
+
+        @keyframes slideUp {
+          from { transform: translateY(40px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+
+        @keyframes checkPop {
+          0% { transform: scale(0); }
+          70% { transform: scale(1.2); }
+          100% { transform: scale(1); }
+        }
+
+        .auth-card {
+          animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+          border: 1px solid rgba(255, 255, 255, 0.25);
+          overflow: hidden;
+          position: relative;
+        }
+
+        .auth-card::after {
+          content: '';
+          position: absolute;
+          top: -50%;
+          right: -50%;
+          width: 200%;
+          height: 200%;
+          background: radial-gradient(circle, rgba(255,255,255,0.03) 0%, transparent 70%);
+          pointer-events: none;
         }
 
         :root {
@@ -287,36 +349,6 @@ const ResetPassword = () => {
           pointer-events: none;
         }
 
-        .toggle-btn {
-          position: absolute;
-          right: 0.75rem;
-          top: 50%;
-          transform: translateY(-50%);
-          background: none;
-          border: none;
-          color: var(--primary);
-          cursor: pointer;
-          font-size: 0.95rem;
-          padding: 0.5rem;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 2rem;
-          height: 2rem;
-          z-index: 10;
-          border-radius: 6px;
-          transition: var(--transition);
-        }
-
-        .toggle-btn:hover {
-          color: var(--primary-light);
-          background: rgba(79, 13, 0, 0.05);
-        }
-
-        .toggle-btn:active {
-          background: rgba(79, 13, 0, 0.1);
-        }
-
         .input-wrapper input,
         .input-wrapper select {
           width: 100%;
@@ -344,7 +376,6 @@ const ResetPassword = () => {
           color: var(--text-dark);
         }
 
-        /* Prevent white-on-white text during Chrome autofill */
         .input-wrapper input:-webkit-autofill,
         .input-wrapper input:-webkit-autofill:hover,
         .input-wrapper input:-webkit-autofill:focus {
@@ -364,14 +395,34 @@ const ResetPassword = () => {
           text-align: center;
         }
 
+        .strength-meter {
+          height: 6px;
+          width: 100%;
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 3px;
+          margin-top: 0.8rem;
+          margin-bottom: 0.5rem;
+          overflow: hidden;
+          position: relative;
+        }
+
+        .strength-bar {
+          height: 100%;
+          transition: width 0.5s ease, background-color 0.5s ease;
+        }
+
+        .strength-text {
+          font-size: 0.75rem;
+          font-weight: 600;
+          display: flex;
+          justify-content: space-between;
+          color: rgba(255, 255, 255, 0.6);
+        }
+
         .success-icon {
           text-align: center;
           margin-bottom: 1.5rem;
-        }
-
-        .success-icon i {
-          font-size: 3rem;
-          color: #16a34a;
+          animation: checkPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
         }
 
         .success-content h3 {
@@ -404,7 +455,6 @@ const ResetPassword = () => {
           box-shadow: var(--shadow-md);
           text-transform: uppercase;
           letter-spacing: 0.5px;
-          font-size: 0.9rem;
         }
 
         .submit-btn:hover:not(:disabled) {
@@ -451,28 +501,6 @@ const ResetPassword = () => {
           transform: translateY(-2px);
           filter: brightness(1.08);
         }
-
-        .footer {
-          margin-top: 1.5rem;
-          text-align: center;
-          color: rgba(255, 255, 255, 0.8);
-          font-size: 0.9rem;
-        }
-
-        .footer button {
-          background: none;
-          border: none;
-          color: white;
-          cursor: pointer;
-          font-weight: 700;
-          margin-left: 0.5rem;
-          transition: var(--transition);
-          text-decoration: underline;
-        }
-
-        .footer button:hover {
-          color: var(--primary-light);
-        }
       `}</style>
 
       <nav className="navbar">
@@ -514,14 +542,30 @@ const ResetPassword = () => {
                     required
                     disabled={formData.isLoading}
                   />
-                  <button
-                    type="button"
-                    className="toggle-btn"
-                    onClick={() => togglePassword("showPassword")}
-                  >
-                    <i className={`fas ${formData.showPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i>
-                  </button>
+                  <i 
+                    className={`fas ${formData.showPassword ? 'fa-eye-slash' : 'fa-eye'} toggle-password`}
+                    onClick={() => setFormData({...formData, showPassword: !formData.showPassword})}
+                    style={{ left: 'auto', right: '1.2rem', cursor: 'pointer', pointerEvents: 'auto', color: 'var(--primary)' }}
+                  ></i>
                 </div>
+                
+                {formData.newPassword && (
+                  <div className="strength-container" style={{ marginTop: '0.5rem' }}>
+                    <div className="strength-meter">
+                      <div 
+                        className="strength-bar" 
+                        style={{ 
+                          width: `${(formData.strength.score / 4) * 100}%`,
+                          backgroundColor: formData.strength.color
+                        }}
+                      ></div>
+                    </div>
+                    <div className="strength-text">
+                      <span>Password Strength</span>
+                      <span style={{ color: formData.strength.color }}>{formData.strength.label}</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="form-group">

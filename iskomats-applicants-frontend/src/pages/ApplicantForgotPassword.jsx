@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { authAPI } from '../services/api';
 import lipaBg from '../assets/lipa.jpg';
+import Navbar from './Navbar';
 
 const ApplicantForgotPassword = () => {
   const navigate = useNavigate();
@@ -118,8 +119,18 @@ const ApplicantForgotPassword = () => {
           left: 0;
           width: 100%;
           height: 100%;
-          background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.8));
+          background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(79, 13, 0, 0.4), rgba(0, 0, 0, 0.9));
           z-index: -1;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+          from { transform: translateY(30px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
 
         :root {
@@ -140,55 +151,7 @@ const ApplicantForgotPassword = () => {
           --transition: all 0.25s ease;
         }
 
-        .navbar {
-          background: rgba(79, 13, 0, 0.9);
-          backdrop-filter: blur(14px);
-          -webkit-backdrop-filter: blur(14px);
-          padding: 0.9rem 5%;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          position: sticky;
-          top: 0;
-          z-index: 100;
-          border-bottom: 1px solid rgba(255, 255, 240, 0.15);
-          box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
-        }
 
-        .navbar-brand {
-          font-size: 1.8rem;
-          font-weight: 800;
-          letter-spacing: -0.02em;
-          background: linear-gradient(130deg, #fff, #ffd6cc);
-          -webkit-background-clip: text;
-          background-clip: text;
-          color: transparent;
-          text-decoration: none;
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-        }
-
-        .navbar-nav {
-          display: flex;
-          gap: 2.5rem;
-          align-items: center;
-        }
-
-        .navbar-nav a {
-          color: rgba(255, 255, 255, 0.9);
-          font-weight: 500;
-          font-size: 0.95rem;
-          text-decoration: none;
-          transition: var(--transition);
-          position: relative;
-          padding: 0.25rem 0;
-          cursor: pointer;
-        }
-
-        .navbar-nav a:hover {
-          color: white;
-        }
 
         .auth-wrapper {
           flex: 1;
@@ -205,13 +168,27 @@ const ApplicantForgotPassword = () => {
           background: rgba(255, 255, 255, 0.12);
           backdrop-filter: blur(24px);
           -webkit-backdrop-filter: blur(24px);
-          border-radius: 40px;
-          padding: 2rem 3rem 2.5rem;
+          border-radius: clamp(20px, 4vw, 40px);
+          padding: clamp(1.25rem, 4vw, 2.5rem);
           box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5);
-          border: 1px solid rgba(255, 255, 255, 0.3);
+          border: 1px solid rgba(255, 255, 255, 0.25);
           transition: var(--transition);
-          animation: cardFloat 0.8s ease-out;
+          animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1);
           margin: 0 auto;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .auth-card::before {
+          content: '';
+          position: absolute;
+          top: -50%;
+          left: -50%;
+          width: 200%;
+          height: 200%;
+          background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%);
+          pointer-events: none;
+          z-index: 0;
         }
 
         @keyframes cardFloat {
@@ -231,8 +208,10 @@ const ApplicantForgotPassword = () => {
         }
 
         .auth-header {
-          margin-bottom: 1.5rem;
+          margin-bottom: 2rem;
           text-align: center;
+          position: relative;
+          z-index: 1;
         }
 
         .auth-header h2 {
@@ -444,112 +423,281 @@ const ApplicantForgotPassword = () => {
         }
       `}</style>
 
-      <nav className="navbar">
-        <a href="/" className="navbar-brand">
-          <i className="fas fa-graduation-cap" style={{ fontSize: '2rem' }}></i>
-          iskoMats
-        </a>
-        <div className="navbar-nav">
-          <a href="/">Home</a>
-          <a href="/">About Us</a>
-          <a href="/">Contact Info</a>
-        </div>
-      </nav>
+      <style>{`
+        @keyframes pulseGlow {
+          0%, 100% { box-shadow: 0 0 25px rgba(220, 60, 20, 0.3), inset 0 0 15px rgba(255, 255, 255, 0.1); }
+          50% { box-shadow: 0 0 45px rgba(255, 100, 50, 0.5), inset 0 0 25px rgba(255, 255, 255, 0.2); }
+        }
+        @keyframes subtleFloat {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-6px); }
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        .auth-wrapper {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 2rem 1rem;
+          min-height: calc(100vh - 80px);
+        }
+        .verify-card {
+          width: 100%;
+          max-width: 480px;
+          background: rgba(26, 12, 10, 0.82);
+          backdrop-filter: blur(28px);
+          -webkit-backdrop-filter: blur(28px);
+          border-radius: 28px;
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7), 0 0 40px rgba(79, 13, 0, 0.25);
+          overflow: hidden;
+          position: relative;
+          z-index: 10;
+          animation: subtleFloat 6s ease-in-out infinite;
+          margin: 0 auto;
+        }
+        .verify-card-header {
+          padding: 36px 32px 20px;
+          text-align: center;
+          position: relative;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .icon-badge {
+          width: 72px;
+          height: 72px;
+          margin: 0 auto 18px;
+          background: linear-gradient(135deg, #6e1302 0%, #3d0a00 100%);
+          border-radius: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 30px;
+          color: #ffffff;
+          border: 1px solid rgba(255, 255, 255, 0.25);
+          box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.2);
+          animation: pulseGlow 3s infinite ease-in-out;
+        }
+        .verify-title {
+          color: #ffffff;
+          font-size: 26px;
+          font-weight: 800;
+          letter-spacing: -0.5px;
+          margin: 0 0 8px;
+        }
+        .verify-subtitle {
+          color: rgba(255, 255, 255, 0.75);
+          font-size: 14px;
+          line-height: 1.5;
+          margin: 0;
+        }
+        .verify-card-body {
+          padding: 28px 32px 36px;
+        }
+        .form-group {
+          margin-bottom: 20px;
+        }
+        .form-group label {
+          display: block;
+          color: rgba(255, 255, 255, 0.9);
+          font-size: 13px;
+          font-weight: 700;
+          letter-spacing: 0.5px;
+          margin-bottom: 8px;
+          text-transform: uppercase;
+        }
+        .input-wrapper {
+          position: relative;
+          width: 100%;
+          display: flex;
+          align-items: center;
+        }
+        .input-wrapper i {
+          position: absolute;
+          left: 16px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: rgba(255, 255, 255, 0.6);
+          font-size: 16px;
+          pointer-events: none;
+          z-index: 2;
+        }
+        .input-wrapper input {
+          width: 100%;
+          box-sizing: border-box;
+          padding: 14px 16px 14px 44px;
+          background: rgba(255, 255, 255, 0.08);
+          border: 1.5px solid rgba(255, 255, 255, 0.18);
+          border-radius: 16px;
+          color: #ffffff;
+          font-size: 15px;
+          font-weight: 500;
+          transition: all 0.25s ease;
+          outline: none;
+        }
+        .input-wrapper input:focus {
+          background: rgba(255, 255, 255, 0.12);
+          border-color: rgba(255, 255, 255, 0.4);
+          box-shadow: 0 0 0 4px rgba(220, 60, 20, 0.2);
+        }
+        .btn-primary-action {
+          width: 100%;
+          padding: 14px 24px;
+          background: linear-gradient(135deg, #7f1d1d 0%, #4c0519 100%);
+          color: #ffffff;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 30px;
+          font-size: 15px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.25s ease;
+          box-shadow: 0 8px 24px rgba(127, 29, 29, 0.4);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+        }
+        .btn-primary-action:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 12px 28px rgba(127, 29, 29, 0.6);
+        }
+        .btn-secondary-action {
+          width: 100%;
+          padding: 12px 24px;
+          background: rgba(255, 255, 255, 0.08);
+          color: #ffffff;
+          border: 1px solid rgba(255, 255, 255, 0.25);
+          border-radius: 30px;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.25s ease;
+          margin-top: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .btn-secondary-action:hover {
+          background: rgba(255, 255, 255, 0.15);
+        }
+        .alert-error {
+          padding: 12px 16px;
+          background: rgba(239, 68, 68, 0.15);
+          border: 1px solid rgba(239, 68, 68, 0.3);
+          border-radius: 14px;
+          color: #fca5a5;
+          font-size: 13px;
+          margin-bottom: 18px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .alert-success {
+          padding: 12px 16px;
+          background: rgba(16, 185, 129, 0.15);
+          border: 1px solid rgba(16, 185, 129, 0.3);
+          border-radius: 14px;
+          color: #6ee7b7;
+          font-size: 13px;
+          margin-bottom: 18px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+      `}</style>
+
+      <Navbar />
 
       <div className="auth-wrapper">
-        <div className="auth-card">
-          <div className="auth-header">
-            <h2>Reset Your Password</h2>
-            <p>
+        <div className="verify-card">
+          <div className="verify-card-header">
+            <div className="icon-badge">
+              <i className="fas fa-lock" />
+            </div>
+            <h2 className="verify-title">Reset Your Password</h2>
+            <p className="verify-subtitle">
               {formData.isSubmitted 
-                ? "Check your email for reset instructions"
-                : "Enter your email address and we'll send you a link to reset your password"
+                ? "Check your email for password reset instructions."
+                : "Enter your email address and we'll send you a link to reset your password."
               }
             </p>
           </div>
 
-          {!formData.isSubmitted ? (
-            <form onSubmit={handleSubmit}>
-              <div className="info-banner">
-                <i className="fas fa-info-circle"></i> You will receive a password reset link at your email
-              </div>
-
-              <div className="form-group">
-                <label>Email Address</label>
-                <div className="input-wrapper">
-                  <i className="far fa-envelope"></i>
-                  <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    placeholder="name@university.edu.ph"
-                    required
-                    disabled={formData.isLoading}
-                  />
+          <div className="verify-card-body">
+            {!formData.isSubmitted ? (
+              <form onSubmit={handleSubmit}>
+                <div className="form-group">
+                  <label>Email Address</label>
+                  <div className="input-wrapper">
+                    <i className="far fa-envelope"></i>
+                    <input
+                      type="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      placeholder="name@university.edu.ph"
+                      required
+                      disabled={formData.isLoading}
+                    />
+                  </div>
                 </div>
-              </div>
 
-              {formData.error && (
-                <div className="error-box">
-                  {formData.error}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                className="submit-btn"
-                disabled={formData.isLoading}
-              >
-                {formData.isLoading ? (
-                  <>
-                    <div className="spinner"></div>
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <i className="fas fa-paper-plane"></i>
-                    Send Reset Link
-                  </>
+                {formData.error && (
+                  <div className="alert-error">
+                    <i className="fas fa-exclamation-circle" />
+                    <span>{formData.error}</span>
+                  </div>
                 )}
-              </button>
-            </form>
-          ) : (
-            <div style={{ textAlign: 'center' }}>
-              <div className="success-icon">
-                <i className="fas fa-check-circle"></i>
-              </div>
-              
-              <div className="success-content">
-                <h3>Reset Link Sent!</h3>
-                <p>
-                  We've sent a password reset link to:
-                </p>
-                <div className="email-display">
-                  {formData.email}
+
+                <button
+                  type="submit"
+                  className="btn-primary-action"
+                  disabled={formData.isLoading}
+                >
+                  {formData.isLoading ? (
+                    <span>Sending Reset Link...</span>
+                  ) : (
+                    <>
+                      <span>Send Reset Link</span>
+                      <i className="fas fa-paper-plane" />
+                    </>
+                  )}
+                </button>
+
+                <button 
+                  type="button" 
+                  onClick={handleBackToLogin}
+                  className="btn-secondary-action"
+                >
+                  Back to Login
+                </button>
+              </form>
+            ) : (
+              <div style={{ textAlign: 'center' }}>
+                <div className="alert-success">
+                  <i className="fas fa-check-circle" />
+                  <span>Password reset email has been sent!</span>
                 </div>
-                <p style={{ color: 'var(--text-soft)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
-                  Please check your email and follow the instructions to reset your password. 
-                  If you don't receive the email within a few minutes, please check your spam folder.
+                <p style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: '14px', lineHeight: '1.6', marginBottom: '20px' }}>
+                  Please check your inbox at <strong>{formData.email}</strong> for instructions to reset your password.
                 </p>
-                <p style={{ color: 'var(--text-soft)', fontSize: '0.8rem', backgroundColor: 'rgba(79, 13, 0, 0.03)', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem' }}>
-                  <i className="fas fa-lock"></i> Make sure the reset link opens on this website: <strong>{APPLICANT_PORTAL_URL}</strong>
-                </p>
+                <button
+                  onClick={handleResendEmail}
+                  disabled={formData.isLoading}
+                  className="btn-primary-action"
+                >
+                  {formData.isLoading ? "Resending Email..." : "Resend Reset Link"}
+                </button>
+                <button 
+                  type="button" 
+                  onClick={handleBackToLogin}
+                  className="btn-secondary-action"
+                >
+                  Back to Login
+                </button>
               </div>
-
-              <button
-                onClick={handleResendEmail}
-                disabled={formData.isLoading}
-                className="resend-btn"
-              >
-                {formData.isLoading ? "Resending..." : "Resend Email"}
-              </button>
-            </div>
-          )}
-
-          <div className="footer">
-            Remember your password?
-            <button onClick={handleBackToLogin}>Sign In</button>
+            )}
           </div>
         </div>
       </div>

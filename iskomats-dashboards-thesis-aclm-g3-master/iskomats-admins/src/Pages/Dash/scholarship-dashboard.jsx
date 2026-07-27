@@ -10,6 +10,8 @@ import {
   FaStar,
   FaTachometerAlt,
   FaTimesCircle,
+  FaBars,
+  FaTimes,
   FaEnvelope,
   FaEnvelopeOpen,
   FaFilter,
@@ -544,6 +546,7 @@ export default function ScholarshipDashboard({
 
   const [section, setSection] = useState('dashboard'); // dashboard | finder | manage | track | reports | inbox | view-applicant
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [reportsView, setReportsView] = useState('tables'); // analytics | tables
   const [trackTab, setTrackTab] = useState('all'); // pending | all | accepted | declined
   const [analyticsScholarshipFilter, setAnalyticsScholarshipFilter] = useState('all');
@@ -930,41 +933,49 @@ export default function ScholarshipDashboard({
   const loadApplicants = async () => {
     try {
       const response = await scholarshipAPI.getApplicants(providerKey);
-      if (response.data.success) {
-        const allApplicantsRaw = response.data.applicants || [];
+      let allApplicantsRaw = (response.data && response.data.success) ? (response.data.applicants || []) : [];
 
-        // Deduplicate applicants to avoid multiple rows for the same student (e.g. if they applied to multiple scholarships)
-        // We prioritize Accepted > Declined > Pending status for the display record
-        const applicantMap = new Map();
-        allApplicantsRaw.forEach(app => {
-          const id = String(app.applicant_no || app.id);
-          const existing = applicantMap.get(id);
+      // Deduplicate applicants to avoid multiple rows for the same student
+      const applicantMap = new Map();
+      allApplicantsRaw.forEach(app => {
+        const id = String(app.applicant_no || app.id);
+        const existing = applicantMap.get(id);
 
-          if (!existing) {
+        if (!existing) {
+          applicantMap.set(id, app);
+        } else {
+          const statusPriority = { 'Accepted': 4, 'Rejected': 3, 'Cancelled': 2, 'Pending': 1 };
+          if (statusPriority[app.status] > statusPriority[existing.status]) {
             applicantMap.set(id, app);
-          } else {
-            const statusPriority = { 'Accepted': 4, 'Rejected': 3, 'Cancelled': 2, 'Pending': 1 };
-            if (statusPriority[app.status] > statusPriority[existing.status]) {
-              applicantMap.set(id, app);
-            }
           }
-        });
+        }
+      });
 
-        const uniqueApplicants = Array.from(applicantMap.values());
-        const historicalData = calculateHistoricalData(allApplicantsRaw); // Use raw data for history/stats
+      const uniqueApplicants = Array.from(applicantMap.values());
+      const historicalData = calculateHistoricalData(allApplicantsRaw);
 
-        setData(prev => ({
-          ...prev,
-          applicants: uniqueApplicants.filter(a => a.status === 'Pending'),
-          accepted: uniqueApplicants.filter(a => a.status === 'Accepted'),
-          rejected: uniqueApplicants.filter(a => a.status === 'Rejected'),
-          declined: uniqueApplicants.filter(a => a.status === 'Declined' || a.status === 'Rejected'),
-          cancelled: uniqueApplicants.filter(a => a.status === 'Cancelled'),
-          historicalData
-        }));
-      }
+      setData(prev => ({
+        ...prev,
+        applicants: uniqueApplicants.filter(a => a.status === 'Pending'),
+        accepted: uniqueApplicants.filter(a => a.status === 'Accepted'),
+        rejected: uniqueApplicants.filter(a => a.status === 'Rejected'),
+        declined: uniqueApplicants.filter(a => a.status === 'Declined' || a.status === 'Rejected'),
+        cancelled: uniqueApplicants.filter(a => a.status === 'Cancelled'),
+        historicalData
+      }));
     } catch (error) {
       console.error(`Failed to load ${providerName} applicants:`, error);
+      const emptyApplicants = [];
+      const historicalData = calculateHistoricalData(emptyApplicants);
+      setData(prev => ({
+        ...prev,
+        applicants: [],
+        accepted: [],
+        rejected: [],
+        declined: [],
+        cancelled: [],
+        historicalData
+      }));
     }
   };
 
@@ -2586,28 +2597,49 @@ export default function ScholarshipDashboard({
     });
 
     sortMessages(messages).forEach((m) => {
-      const key = (m.applicant_no || m.studentEmail || m.studentName || '').toString();
+      // Resolve the applicant_no safely
+      let resolvedApplicantNo = m.applicant_no ? m.applicant_no.toString() : '';
+
+      if (!resolvedApplicantNo && m.room) {
+        // If room is e.g. "2006+1", first part is the applicant number
+        const parts = m.room.split('+');
+        if (parts.length > 0 && parts[0]) {
+          resolvedApplicantNo = parts[0].toString();
+        }
+      }
+
+      if (!resolvedApplicantNo) {
+        // Find in allKnownApplicants by email or name
+        const match = allKnownApplicants.find(a => 
+          (m.studentEmail && (a.email === m.studentEmail || a.emailAddress === m.studentEmail)) ||
+          (m.studentName && a.name?.toLowerCase() === m.studentName.toLowerCase())
+        );
+        if (match) {
+          resolvedApplicantNo = (match.applicant_no || match.id || '').toString();
+        }
+      }
+
+      const key = resolvedApplicantNo || (m.studentEmail || m.studentName || m.room || '').toString();
       if (!key) return;
 
       if (!grouped[key]) {
         // Find actual applicant name for this ID from local data state if not already seeded
         const applicant = allKnownApplicants.find(a =>
-          a.applicant_no?.toString() === m.applicant_no?.toString() ||
-          a.id?.toString() === m.applicant_no?.toString()
+          (a.applicant_no || a.id || '').toString() === key
         );
 
         let initialName = m.studentName;
         if (applicant && applicant.name) {
           initialName = applicant.name;
         } else if (m.studentName === 'System' || /(?:Scholarship|Dunong) Program$/i.test(m.studentName || '')) {
-          initialName = `Applicant ${m.applicant_no || ''}`;
+          initialName = `Applicant ${key}`;
         }
 
         grouped[key] = {
           studentName: initialName,
-          studentEmail: m.studentEmail,
-          studentPhone: m.studentPhone,
-          applicant_no: m.applicant_no,
+          studentEmail: m.studentEmail || (applicant?.email || applicant?.emailAddress),
+          studentPhone: m.studentPhone || (applicant?.mobileNumber || applicant?.phone),
+          applicant_no: key,
           messages: [],
           unreadCount: 0,
           lastMessage: null,
@@ -2726,43 +2758,43 @@ export default function ScholarshipDashboard({
 
   const renderDashboard = () => {
     return (
-      <div className="space-y-8 animate-in fade-in duration-300">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {[
             { label: 'Total Applicants', value: stats.total, icon: <FaUsers />, color: '#800020' },
             { label: 'Accepted Scholars', value: stats.accepted, icon: <FaCheckCircle />, color: '#16a34a' },
             { label: 'Pending Reviews', value: stats.pending, icon: <FaClock />, color: '#d97706' }
           ].map((kpi, i) => (
-            <div key={i} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 hover:shadow-md transition-all">
-              <div className="flex justify-between items-start mb-4">
-                <div className="p-3 rounded-2xl" style={{ backgroundColor: `${kpi.color}15`, color: kpi.color }}>{kpi.icon}</div>
+            <div key={i} className="bg-white p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-sm border border-gray-100 hover:shadow-md transition-all">
+              <div className="flex justify-between items-start mb-3 sm:mb-4">
+                <div className="p-2.5 sm:p-3 rounded-2xl" style={{ backgroundColor: `${kpi.color}15`, color: kpi.color }}>{kpi.icon}</div>
                 <span className="text-[10px] font-black text-green-600 bg-green-50 px-2 py-1 rounded-md">LIVE</span>
               </div>
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{kpi.label}</p>
-              <h3 className="text-3xl font-black text-gray-900 mt-1">{kpi.value}</h3>
+              <p className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-widest">{kpi.label}</p>
+              <h3 className="text-2xl sm:text-3xl font-black text-gray-900 mt-1">{kpi.value}</h3>
             </div>
           ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8">
           {/* Recent Applicants */}
-          <div className="bg-white rounded-3xl shadow-md border border-gray-100 overflow-hidden">
-            <div className="p-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
-              <h3 className="font-black text-gray-900 uppercase tracking-widest text-xs">Recent Applicants</h3>
+          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-md border border-gray-100 overflow-hidden">
+            <div className="p-4 sm:p-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
+              <h3 className="font-black text-gray-900 uppercase tracking-widest text-[11px] sm:text-xs">Recent Applicants</h3>
               <button onClick={() => setSection('track')} className="text-xs font-bold text-[#800020] hover:underline">View All</button>
             </div>
-            <div className="divide-y divide-gray-50">
+            <div className="divide-y divide-gray-50 max-h-96 overflow-y-auto">
               {data.applicants.slice(0, 15).map((app, idx) => (
-                <div key={idx} className="p-4 flex items-center gap-4 hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => viewApplicantFn(idx, 'all')}>
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#800020] to-[#650018] flex items-center justify-center text-white font-semibold">
+                <div key={idx} className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4 hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => viewApplicantFn(idx, 'all')}>
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#800020] to-[#650018] flex items-center justify-center text-white font-semibold flex-shrink-0 text-sm">
                     {(app.firstName?.[0] || app.name?.[0] || '').toUpperCase()}
                   </div>
-                  <div className="flex-1">
-                    <div className="flex justify-between items-center mb-0.5">
-                      <span className="text-sm font-black text-gray-900">{app.lastName ? `${app.firstName} ${app.lastName}` : app.name}</span>
-                      <span className="text-[10px] font-bold text-[#800020] bg-rose-50 px-2 py-0.5 rounded-full">{app.course}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-center mb-0.5 gap-2">
+                      <span className="text-xs sm:text-sm font-black text-gray-900 truncate">{app.lastName ? `${app.firstName} ${app.lastName}` : app.name}</span>
+                      <span className="text-[9px] sm:text-[10px] font-bold text-[#800020] bg-rose-50 px-2 py-0.5 rounded-full flex-shrink-0">{app.course}</span>
                     </div>
-                    <p className="text-xs text-gray-500 line-clamp-1">{app.street ? `${app.barangay}, ${app.municipality}` : app.location}</p>
+                    <p className="text-[11px] sm:text-xs text-gray-500 line-clamp-1">{app.street ? `${app.barangay}, ${app.municipality}` : app.location}</p>
                   </div>
                 </div>
               ))}
@@ -2774,21 +2806,21 @@ export default function ScholarshipDashboard({
 
 
           {/* Recent Messages */}
-          <div className="bg-white rounded-3xl shadow-md border border-gray-100 overflow-hidden">
-            <div className="p-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
-              <h3 className="font-black text-gray-900 uppercase tracking-widest text-xs">Recent Messages</h3>
+          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-md border border-gray-100 overflow-hidden">
+            <div className="p-4 sm:p-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
+              <h3 className="font-black text-gray-900 uppercase tracking-widest text-[11px] sm:text-xs">Recent Messages</h3>
               <button onClick={() => setSection('inbox')} className="text-xs font-bold text-[#800020] hover:underline">View Inbox</button>
             </div>
-            <div className="divide-y divide-gray-50">
+            <div className="divide-y divide-gray-50 max-h-96 overflow-y-auto">
               {allMessages.slice(0, 15).map(msg => (
-                <div key={msg.id} className="p-4 flex items-center gap-4 hover:bg-gray-50 transition-colors">
-                  <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-white bg-blue-500"><FaEnvelope /></div>
-                  <div className="flex-1">
-                    <div className="flex justify-between items-center mb-0.5">
-                      <span className="text-sm font-black text-gray-900">{msg.studentName}</span>
-                      <span className="text-[10px] font-bold text-gray-400 uppercase">{formatDate(msg.timestamp)}</span>
+                <div key={msg.id} className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4 hover:bg-gray-50 transition-colors">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center text-white bg-blue-500 flex-shrink-0 text-sm"><FaEnvelope /></div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-center mb-0.5 gap-2">
+                      <span className="text-xs sm:text-sm font-black text-gray-900 truncate">{msg.studentName}</span>
+                      <span className="text-[9px] sm:text-[10px] font-bold text-gray-400 uppercase flex-shrink-0">{formatDate(msg.timestamp)}</span>
                     </div>
-                    <p className="text-xs text-gray-500 line-clamp-1">{msg.message}</p>
+                    <p className="text-[11px] sm:text-xs text-gray-500 line-clamp-1">{msg.message}</p>
                   </div>
                 </div>
               ))}
@@ -2807,12 +2839,12 @@ export default function ScholarshipDashboard({
     const totalOpenSlots = scholarshipFinderResults.reduce((sum, post) => sum + (Number(post.availableSlots) || 0), 0);
 
     return (
-      <section className="space-y-6">
-        <div className="bg-white rounded-3xl shadow-md border border-gray-100 p-8">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
-            <div className="flex-1">
-              <h2 className="text-2xl font-black text-gray-900">Scholarship Slot Tracking</h2>
-              <p className="text-gray-500 font-medium">Monitor open slots and matching demand for all programs</p>
+      <section className="space-y-4 sm:space-y-6 animate-in fade-in duration-300">
+        <div className="bg-white rounded-2xl sm:rounded-3xl shadow-md border border-gray-100 p-4 sm:p-6 lg:p-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-xl sm:text-2xl font-black text-gray-900 truncate">Scholarship Slot Tracking</h2>
+              <p className="text-xs sm:text-sm text-gray-500 font-medium">Monitor open slots and matching demand for all programs</p>
             </div>
             <button
               type="button"
@@ -2822,42 +2854,42 @@ export default function ScholarshipDashboard({
                 setManageMode('create');
                 setSection('manage');
               }}
-              className="px-5 py-3 rounded-2xl bg-[#800020] text-white font-bold shadow-sm hover:bg-[#650018] transition-colors"
+              className="w-full sm:w-auto px-4 py-2.5 sm:px-5 sm:py-3 rounded-xl sm:rounded-2xl bg-[#800020] text-white font-bold text-xs sm:text-sm shadow-sm hover:bg-[#650018] transition-colors text-center"
             >
               Add Scholarship Post
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-              <p className="text-xs font-black uppercase tracking-widest text-emerald-700 mb-2">Open Scholarships</p>
-              <p className="text-3xl font-black text-emerald-900">{openScholarships}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
+            <div className="rounded-xl sm:rounded-2xl border border-emerald-100 bg-emerald-50 p-3.5 sm:p-4">
+              <p className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-emerald-700 mb-1 sm:mb-2">Open Scholarships</p>
+              <p className="text-2xl sm:text-3xl font-black text-emerald-900">{openScholarships}</p>
             </div>
-            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
-              <p className="text-xs font-black uppercase tracking-widest text-blue-700 mb-2">Open Slots</p>
-              <p className="text-3xl font-black text-blue-900">{totalOpenSlots}</p>
+            <div className="rounded-xl sm:rounded-2xl border border-blue-100 bg-blue-50 p-3.5 sm:p-4">
+              <p className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-blue-700 mb-1 sm:mb-2">Open Slots</p>
+              <p className="text-2xl sm:text-3xl font-black text-blue-900">{totalOpenSlots}</p>
             </div>
-            <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
-              <p className="text-xs font-black uppercase tracking-widest text-amber-700 mb-2">Visible Posts</p>
-              <p className="text-3xl font-black text-amber-900">{scholarshipFinderResults.length}</p>
+            <div className="rounded-xl sm:rounded-2xl border border-amber-100 bg-amber-50 p-3.5 sm:p-4">
+              <p className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-amber-700 mb-1 sm:mb-2">Visible Posts</p>
+              <p className="text-2xl sm:text-3xl font-black text-amber-900">{scholarshipFinderResults.length}</p>
             </div>
           </div>
 
-          <div className="flex flex-col lg:flex-row gap-3 mb-6">
-            <div className="flex-1 flex items-center gap-3 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <FaSearch className="text-[#800020]" />
+          <div className="flex flex-col sm:flex-row gap-3 mb-4 sm:mb-6">
+            <div className="flex-1 flex items-center gap-3 rounded-xl sm:rounded-2xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 sm:px-4 sm:py-3">
+              <FaSearch className="text-[#800020] flex-shrink-0" />
               <input
                 type="text"
                 value={finderSearch}
                 onChange={(event) => setFinderSearch(event.target.value)}
                 placeholder="Search by scholarship, location, term, or year"
-                className="w-full bg-transparent outline-none text-sm font-medium text-gray-700"
+                className="w-full bg-transparent outline-none text-xs sm:text-sm font-medium text-gray-700"
               />
             </div>
             <select
               value={finderAvailabilityFilter}
               onChange={(event) => setFinderAvailabilityFilter(event.target.value)}
-              className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700"
+              className="rounded-xl sm:rounded-2xl border border-gray-200 bg-white px-3.5 py-2.5 sm:px-4 sm:py-3 text-xs sm:text-sm font-semibold text-gray-700 outline-none"
             >
               <option value="all">All Scholarships</option>
               <option value="open">Open Slots Only</option>
@@ -2949,31 +2981,31 @@ export default function ScholarshipDashboard({
   const renderManage = () => {
     if (manageMode === 'list') {
       return (
-        <section className="bg-white p-8 rounded-2xl shadow-md border border-gray-50">
-          <div className="flex items-center justify-between gap-3 flex-wrap mb-6">
-            <div className="flex bg-gray-100 p-1 rounded-xl shadow-inner mb-4 md:mb-0">
+        <section className="bg-white p-4 sm:p-6 lg:p-8 rounded-2xl shadow-md border border-gray-50 animate-in fade-in duration-300">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
+            <div className="flex bg-gray-100 p-1 rounded-xl shadow-inner w-full sm:w-auto">
               <button
                 onClick={() => setManageTab('scholarship')}
-                className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${manageTab === 'scholarship' ? 'bg-[#800020] text-white shadow-md' : 'text-gray-500 hover:text-[#800020]'}`}
+                className={`flex-1 sm:flex-initial px-3.5 py-2 sm:px-6 sm:py-2 rounded-lg font-bold text-xs sm:text-sm transition-all text-center ${manageTab === 'scholarship' ? 'bg-[#800020] text-white shadow-md' : 'text-gray-500 hover:text-[#800020]'}`}
               >
                 Scholarship Posts
               </button>
               <button
                 onClick={() => setManageTab('announcement')}
-                className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${manageTab === 'announcement' ? 'bg-[#800020] text-white shadow-md' : 'text-gray-500 hover:text-[#800020]'}`}
+                className={`flex-1 sm:flex-initial px-3.5 py-2 sm:px-6 sm:py-2 rounded-lg font-bold text-xs sm:text-sm transition-all text-center ${manageTab === 'announcement' ? 'bg-[#800020] text-white shadow-md' : 'text-gray-500 hover:text-[#800020]'}`}
               >
                 Announcements
               </button>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
-                <FaSearch className="text-[#800020]" />
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 w-full sm:w-auto">
+              <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200 flex-1 min-w-0">
+                <FaSearch className="text-[#800020] flex-shrink-0" />
                 <input
                   type="text"
                   placeholder={`Search ${manageTab}s...`}
                   value={manageSearch}
                   onChange={(e) => setManageSearch(e.target.value)}
-                  className="bg-transparent border-none outline-none text-xs font-medium w-32 md:w-48"
+                  className="bg-transparent border-none outline-none text-xs font-medium w-full"
                 />
               </div>
               <button
@@ -2982,14 +3014,14 @@ export default function ScholarshipDashboard({
                   resetForm();
                   setManageMode('create');
                 }}
-                className="px-4 py-2 rounded-lg bg-[#800020] text-white font-semibold flex items-center gap-2 hover:bg-[#650018] transition-colors"
+                className="w-full sm:w-auto px-3.5 py-2 sm:px-4 sm:py-2 rounded-lg bg-[#800020] text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 hover:bg-[#650018] transition-colors flex-shrink-0"
               >
                 <FaPlus /> {manageTab === 'scholarship' ? 'Add Post' : 'Add Announcement'}
               </button>
             </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {manageTab === 'scholarship' ? (
               filteredScholarshipPosts.length > 0 ? (
                 filteredScholarshipPosts.map((post) => {
@@ -3003,37 +3035,37 @@ export default function ScholarshipDashboard({
                     isNew = diffDays <= 3;
                   }
                   return (
-                    <div key={post.reqNo || post.id} className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h4 className="text-lg font-semibold text-[#800020]">
+                    <div key={post.reqNo || post.id} className="border border-gray-200 rounded-xl p-3.5 sm:p-5 hover:shadow-md transition-shadow">
+                      <div className="flex flex-col sm:flex-row items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            <h4 className="text-base sm:text-lg font-semibold text-[#800020]">
                               {post.scholarshipName || post.title}
                             </h4>
                             {isNew && (
-                              <span className="ml-2 px-2 py-0.5 rounded bg-yellow-200 text-yellow-900 text-xs font-bold">NEW</span>
+                              <span className="px-2 py-0.5 rounded bg-yellow-200 text-yellow-900 text-[10px] sm:text-xs font-bold">NEW</span>
                             )}
                           </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-600">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-xs sm:text-sm text-gray-600">
                             <div><strong>Deadline:</strong> {formatDate(post.deadline)}</div>
                             <div><strong>Slots:</strong> {post.slots}</div>
                             <div><strong>Location:</strong> {post.location}</div>
                             <div><strong>Min GPA:</strong> {post.minGpa}%</div>
                             <div><strong>Term:</strong> {post.semester} {post.year}</div>
                           </div>
-                          <p className="text-sm text-gray-700 mt-3 line-clamp-2">{post.description}</p>
-                          <div className="text-xs text-gray-500 mt-3">
+                          <p className="text-xs sm:text-sm text-gray-700 mt-2.5 sm:mt-3 line-clamp-2">{post.description}</p>
+                          <div className="text-[10px] sm:text-xs text-gray-500 mt-2 sm:mt-3">
                             Date Created: {formatDate(post.dateCreated)}
                           </div>
                         </div>
-                        <div className="flex gap-2 ml-4">
+                        <div className="flex gap-2 self-end sm:self-auto flex-shrink-0">
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               editPost(post);
                             }}
-                            className="p-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+                            className="p-2 sm:p-2.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors text-xs sm:text-sm"
                             title="Edit Post"
                           >
                             <FaEdit />
@@ -3041,7 +3073,7 @@ export default function ScholarshipDashboard({
                           <button
                             type="button"
                             onClick={() => deletePost(post.reqNo || post.id)}
-                            className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
+                            className="p-2 sm:p-2.5 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors text-xs sm:text-sm"
                             title="Delete Post"
                           >
                             <FaTrash />
@@ -3146,29 +3178,29 @@ export default function ScholarshipDashboard({
     }
 
     return (
-      <section className="bg-white p-8 rounded-2xl shadow-md border border-gray-50">
-        <div className="flex items-center justify-between gap-3 mb-6">
-          <h3 className="text-xl font-semibold text-[#800020]">
+      <section className="bg-white p-4 sm:p-6 lg:p-8 rounded-2xl shadow-md border border-gray-50 animate-in fade-in duration-300">
+        <div className="flex flex-row items-center justify-between gap-3 mb-4 sm:mb-6">
+          <h3 className="text-base sm:text-lg lg:text-xl font-bold text-[#800020] min-w-0 flex-1">
             {manageMode === 'edit' ? `Edit ${manageTab === 'scholarship' ? 'Scholarship Post' : 'Announcement'}` : `Create New ${manageTab === 'scholarship' ? 'Scholarship Post' : 'Announcement'}`}
           </h3>
           <button
             type="button"
             onClick={() => setManageMode('list')}
-            className="px-4 py-2 rounded-lg bg-gray-500 text-white font-semibold hover:bg-gray-600 transition-colors"
+            className="whitespace-nowrap px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg bg-gray-500 text-white font-semibold text-xs sm:text-sm hover:bg-gray-600 transition-colors flex-shrink-0"
           >
             Back to List
           </button>
         </div>
 
-        <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={(e) => { e.preventDefault(); manageTab === 'scholarship' ? saveScholarshipPost() : saveAnnouncement(); }}>
+        <form className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4" onSubmit={(e) => { e.preventDefault(); manageTab === 'scholarship' ? saveScholarshipPost() : saveAnnouncement(); }}>
           <div className="md:col-span-2">
-            <label className="block text-sm font-semibold text-[#800020] mb-1">Title *</label>
+            <label className="block text-xs sm:text-sm font-semibold text-[#800020] mb-1">Title *</label>
             <input
               type="text"
               name={manageTab === 'scholarship' ? 'scholarshipName' : 'title'}
               value={manageTab === 'scholarship' ? formData.scholarshipName : formData.title}
               onChange={handleFormChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-xs sm:text-sm"
               placeholder={manageTab === 'scholarship' ? scholarshipPlaceholder : "e.g. System Maintenance"}
               required
             />
@@ -3177,70 +3209,70 @@ export default function ScholarshipDashboard({
           {manageTab === 'scholarship' ? (
             <>
               <div>
-                <label className="block text-sm font-semibold text-[#800020] mb-1">Deadline *</label>
+                <label className="block text-xs sm:text-sm font-semibold text-[#800020] mb-1">Deadline *</label>
                 <input
                   type="date"
                   name="deadline"
                   value={formData.deadline}
                   onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-xs sm:text-sm"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-[#800020] mb-1">Min. GPA (%) *</label>
+                <label className="block text-xs sm:text-sm font-semibold text-[#800020] mb-1">Min. GPA (%) *</label>
                 <input
                   type="number"
                   name="minGpa"
                   value={formData.minGpa}
                   onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-xs sm:text-sm"
                   placeholder="e.g. 85"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-[#800020] mb-1">Slots *</label>
+                <label className="block text-xs sm:text-sm font-semibold text-[#800020] mb-1">Slots *</label>
                 <input
                   type="number"
                   name="slots"
                   value={formData.slots}
                   onChange={handleFormChange}
                   min="1"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-xs sm:text-sm"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-[#800020] mb-1">Location *</label>
+                <label className="block text-xs sm:text-sm font-semibold text-[#800020] mb-1">Location *</label>
                 <input
                   type="text"
                   name="location"
                   value={formData.location}
                   onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-xs sm:text-sm"
                   placeholder="Eligible location"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-[#800020] mb-1">Parent Income Limit (PHP)</label>
+                <label className="block text-xs sm:text-sm font-semibold text-[#800020] mb-1">Parent Income Limit (PHP)</label>
                 <input
                   type="number"
                   name="parentFinance"
                   value={formData.parentFinance}
                   onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-xs sm:text-sm"
                   placeholder="Maximum annual income"
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-[#800020] mb-1">Semester for ID and COE *</label>
+                <label className="block text-xs sm:text-sm font-semibold text-[#800020] mb-1">Semester for ID and COE *</label>
                 <select
                   name="semester"
                   value={formData.semester}
                   onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-xs sm:text-sm"
                   required
                 >
                   <option value="">Select Semester</option>
@@ -3250,26 +3282,26 @@ export default function ScholarshipDashboard({
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-[#800020] mb-1">Academic Year for ID and COE*</label>
+                <label className="block text-xs sm:text-sm font-semibold text-[#800020] mb-1">Academic Year for ID and COE*</label>
                 <input
                   type="text"
                   name="year"
                   value={formData.year}
                   onChange={handleFormChange}
                   onBlur={handleAcademicYearBlur}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-xs sm:text-sm"
                   placeholder="e.g. 2025-2026"
                   required
                 />
-                <p className="text-xs text-gray-500 mt-1">Use the YYYY-YYYY format (e.g., 2025-2026).</p>
+                <p className="text-[10px] sm:text-xs text-gray-500 mt-1">Use the YYYY-YYYY format (e.g., 2025-2026).</p>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-[#800020] mb-1">Semester for Grades *</label>
+                <label className="block text-xs sm:text-sm font-semibold text-[#800020] mb-1">Semester for Grades *</label>
                 <select
                   name="grades_sem"
                   value={formData.grades_sem}
                   onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-xs sm:text-sm"
                   required
                 >
                   <option value="">Select Semester</option>
@@ -3279,24 +3311,24 @@ export default function ScholarshipDashboard({
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-[#800020] mb-1">Year for Grades *</label>
+                <label className="block text-xs sm:text-sm font-semibold text-[#800020] mb-1">Year for Grades *</label>
                 <input
                   type="text"
                   name="grades_year"
                   value={formData.grades_year}
                   onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-xs sm:text-sm"
                   placeholder="e.g. 2024-2025"
                   required
                 />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-[#800020] mb-1">Description *</label>
+                <label className="block text-xs sm:text-sm font-semibold text-[#800020] mb-1">Description *</label>
                 <textarea
                   name="description"
                   value={formData.description}
                   onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 min-h-[120px]"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-xs sm:text-sm min-h-[120px]"
                   placeholder="Full details about the scholarship..."
                   required
                 />
@@ -3305,24 +3337,24 @@ export default function ScholarshipDashboard({
           ) : (
             <>
               <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-[#800020] mb-1">Announcement Content *</label>
+                <label className="block text-xs sm:text-sm font-semibold text-[#800020] mb-1">Announcement Content *</label>
                 <textarea
                   name="content"
                   value={formData.content}
                   onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 min-h-[150px]"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-xs sm:text-sm min-h-[150px]"
                   placeholder="Write your announcement here..."
                   required
                 />
               </div>
 
               <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-[#800020] mb-3">
+                <label className="block text-xs sm:text-sm font-semibold text-[#800020] mb-2">
                   <FaImage className="inline mr-2" />
                   Announcement Images
                 </label>
 
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[#800020] transition-colors">
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 sm:p-6 text-center hover:border-[#800020] transition-colors">
                   <input
                     type="file"
                     id="announcement-image-upload"
@@ -3333,17 +3365,17 @@ export default function ScholarshipDashboard({
                   />
                   <label
                     htmlFor="announcement-image-upload"
-                    className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-[#800020] text-white rounded-lg hover:bg-[#650018] transition-colors"
+                    className="cursor-pointer inline-flex items-center gap-2 px-3.5 py-2 sm:px-4 sm:py-2 bg-[#800020] text-white rounded-lg text-xs sm:text-sm font-semibold hover:bg-[#650018] transition-colors"
                   >
                     <FaUpload />
                     Choose Images
                   </label>
-                  <p className="text-sm text-gray-500 mt-2">Upload announcement photos, banners, or related images</p>
+                  <p className="text-xs sm:text-sm text-gray-500 mt-2">Upload announcement photos, banners, or related images</p>
                 </div>
 
                 {announcementImages.length > 0 && (
                   <div className="mt-4">
-                    <h4 className="text-sm font-semibold text-[#800020] mb-2">Uploaded Images ({announcementImages.length})</h4>
+                    <h4 className="text-xs sm:text-sm font-semibold text-[#800020] mb-2">Uploaded Images ({announcementImages.length})</h4>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       {announcementImages.map((image, i) => (
                         <div key={image.id || i} className="relative group">
@@ -3376,25 +3408,25 @@ export default function ScholarshipDashboard({
               </div>
 
               <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-[#800020] mb-2">Send to:</label>
-                <div className="flex gap-6">
-                  <label className="flex items-center gap-2 cursor-pointer">
+                <label className="block text-xs sm:text-sm font-semibold text-[#800020] mb-2">Send to:</label>
+                <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-6">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs sm:text-sm">
                     <input
                       type="radio"
                       name="sendToAllApplicants"
                       checked={formData.sendToAllApplicants === true}
                       onChange={() => setFormData({ ...formData, sendToAllApplicants: true })}
-                      className="w-4 h-4"
+                      className="w-4 h-4 text-[#800020] focus:ring-[#800020]"
                     />
                     <span className="text-gray-700">All Applicants (Recommended)</span>
                   </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs sm:text-sm">
                     <input
                       type="radio"
                       name="sendToAllApplicants"
                       checked={formData.sendToAllApplicants === false}
                       onChange={() => setFormData({ ...formData, sendToAllApplicants: false })}
-                      className="w-4 h-4"
+                      className="w-4 h-4 text-[#800020] focus:ring-[#800020]"
                     />
                     <span className="text-gray-700">{applicantsOnlyLabel}</span>
                   </label>
@@ -3403,11 +3435,11 @@ export default function ScholarshipDashboard({
             </>
           )}
 
-          <div className="md:col-span-2 flex justify-end gap-2">
-            <button type="button" onClick={() => setManageMode('list')} className="px-4 py-2 rounded-lg bg-gray-500 text-white font-semibold hover:bg-gray-600 transition-colors" disabled={isSaving}>
+          <div className="md:col-span-2 flex flex-col sm:flex-row justify-end gap-2.5 sm:gap-3 mt-2">
+            <button type="button" onClick={() => setManageMode('list')} className="w-full sm:w-auto px-4 py-2 sm:px-6 sm:py-2.5 rounded-lg bg-gray-500 text-white font-semibold text-xs sm:text-sm hover:bg-gray-600 transition-colors text-center" disabled={isSaving}>
               Cancel
             </button>
-            <button type="submit" disabled={isSaving} className={`px-4 py-2 rounded-lg bg-[#800020] text-white font-semibold hover:bg-[#650018] transition-colors ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}>
+            <button type="submit" disabled={isSaving} className={`w-full sm:w-auto px-4 py-2 sm:px-6 sm:py-2.5 rounded-lg bg-[#800020] text-white font-semibold text-xs sm:text-sm hover:bg-[#650018] transition-colors text-center ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}>
               {isSaving ? 'Saving...' : `${manageMode === 'edit' ? 'Update' : 'Publish'} ${manageTab === 'scholarship' ? 'Post' : 'Announcement'}`}
             </button>
           </div>
@@ -3510,98 +3542,106 @@ export default function ScholarshipDashboard({
     const cancelledList = cancelledTagged;
 
     return (
-      <section className="bg-white p-8 rounded-2xl shadow-md border border-gray-50">
-        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-          <h3 className="text-xl font-semibold text-[#800020]">{trackTitle}</h3>
+      <section className="bg-white p-3 sm:p-6 lg:p-8 rounded-2xl shadow-md border border-gray-50 animate-in fade-in duration-300">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 mb-4">
+          <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-[#800020] break-words min-w-0">{trackTitle}</h3>
           {trackScholarshipFilter !== 'all' && trackScholarshipFilter !== 'deleted' && (
             <button
               type="button"
               onClick={recommendStudents}
-              className="px-4 py-2 rounded-lg bg-[#800020] text-white font-semibold flex items-center gap-2 hover:bg-[#650018] transition-colors"
+              className="w-full sm:w-auto px-3 py-2 sm:px-4 sm:py-2 rounded-lg bg-[#800020] text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 hover:bg-[#650018] transition-colors flex-shrink-0"
             >
-              <FaRobot /> Recommended Student Applicants
+              <FaRobot /> <span className="hidden xs:inline">Recommended</span><span className="xs:hidden">AI</span> Student Applicants
             </button>
           )}
         </div>
 
-        <div className="flex flex-wrap gap-2 mb-4 justify-between items-center">
-          <div className="flex gap-2">
-            {['all', 'pending', 'accepted', 'rejected', 'cancelled'].map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setTrackTab(t)}
-                className={`px-4 py-2 rounded-lg font-semibold flex items-center gap-2 ${trackTab === t ? 'bg-[#800020] text-white' : 'bg-[#800020]/10 text-[#800020] border border-[#800020]'
-                  }`}
-              >
-                {t === 'pending' && <FaClock />}
-                {t === 'all' && <FaUsers />}
-                {t === 'accepted' && <FaCheckCircle />}
-                {t === 'rejected' && <FaTimesCircle />}
-                {t === 'cancelled' && <FaTrashAlt />}
-                {t === 'pending' ? 'Pending' : t === 'all' ? 'All Applicants' : t.charAt(0).toUpperCase() + t.slice(1)}
-              </button>
-            ))}
+        <div className="flex flex-col gap-2.5 mb-4">
+          {/* Tab row + Export button: stacked on mobile, side-by-side on sm+ */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            {/* Tabs — horizontally scrollable */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none -mx-1 px-1 flex-1">
+              {['all', 'pending', 'accepted', 'rejected', 'cancelled'].map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTrackTab(t)}
+                  className={`px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-semibold text-[10px] sm:text-sm flex items-center gap-1 sm:gap-1.5 whitespace-nowrap flex-shrink-0 ${trackTab === t ? 'bg-[#800020] text-white' : 'bg-[#800020]/10 text-[#800020] border border-[#800020]'
+                    }`}
+                >
+                  {t === 'pending' && <FaClock className="text-[10px] sm:text-xs" />}
+                  {t === 'all' && <FaUsers className="text-[10px] sm:text-xs" />}
+                  {t === 'accepted' && <FaCheckCircle className="text-[10px] sm:text-xs" />}
+                  {t === 'rejected' && <FaTimesCircle className="text-[10px] sm:text-xs" />}
+                  {t === 'cancelled' && <FaTrashAlt className="text-[10px] sm:text-xs" />}
+                  {t === 'pending' ? 'Pending' : t === 'all' ? 'All' : t.charAt(0).toUpperCase() + t.slice(1)}
+                </button>
+              ))}
+            </div>
+            {/* Export button — full width below tabs on mobile, auto-width beside tabs on sm+ */}
+            <button
+              type="button"
+              onClick={() => exportToExcel('track')}
+              className="w-full sm:w-auto px-3 py-2 sm:px-4 sm:py-2 rounded-lg bg-green-600 text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 hover:bg-green-700 transition-colors shadow-sm flex-shrink-0 whitespace-nowrap"
+            >
+              <FaFileExcel /> <span>Export to Excel</span>
+            </button>
           </div>
-
-          <button
-            type="button"
-            onClick={() => exportToExcel('track')}
-            className="px-4 py-2 rounded-lg bg-green-600 text-white font-semibold flex items-center gap-2 hover:bg-green-700 transition-colors shadow-sm"
-          >
-            <FaFileExcel /> Export Tracking List
-          </button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4 mb-6">
-          <div className="flex items-center gap-2 bg-gray-50 px-4 py-3 rounded-xl border border-gray-200 flex-1 max-w-md shadow-sm">
-            <FaSearch className="text-[#800020]" />
+        <div className="flex flex-col gap-2.5 mb-4">
+          <div className="flex items-center gap-2 bg-gray-50 px-3 py-2.5 sm:px-4 sm:py-3 rounded-xl border border-gray-200 w-full shadow-sm">
+            <FaSearch className="text-[#800020] flex-shrink-0 text-xs sm:text-sm" />
             <input
               type="text"
               placeholder="Search by name, school, or address..."
               value={searchTrack}
               onChange={(e) => setSearchTrack(e.target.value)}
-              className="bg-transparent border-none outline-none w-full text-sm font-medium"
+              className="bg-transparent border-none outline-none w-full text-xs sm:text-sm font-medium"
             />
           </div>
-          <select
-            value={trackScholarshipFilter}
-            onChange={(e) => setTrackScholarshipFilter(e.target.value)}
-            className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none font-bold text-[#800020] shadow-sm focus:ring-2 focus:ring-[#800020] transition-all"
-          >
-            <option value="all">All Scholarship Types</option>
-            {scholarshipFilterOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={trackScholarshipFilter}
+              onChange={(e) => setTrackScholarshipFilter(e.target.value)}
+              className="flex-1 min-w-[120px] px-2.5 py-2 sm:px-4 sm:py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs sm:text-sm outline-none font-bold text-[#800020] shadow-sm focus:ring-2 focus:ring-[#800020] transition-all"
+            >
+              <option value="all">All Scholarships</option>
+              {scholarshipFilterOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
 
-          <button
-            type="button"
-            onClick={() => setSortByPoints(prev => !prev)}
-            className={`px-4 py-3 rounded-xl text-sm outline-none font-bold shadow-sm transition-all flex items-center gap-2 border ${sortByPoints
-              ? 'bg-[#800020] text-white border-[#800020] hover:bg-[#650018]'
-              : 'bg-gray-50 text-[#800020] border-gray-200 hover:bg-gray-100'
-              }`}
-          >
-            <FaStar className={sortByPoints ? 'text-yellow-400' : 'text-[#800020]/75'} />
-            {sortByPoints ? 'Sorted by Points' : 'Sort by Points'}
-          </button>
+            <button
+              type="button"
+              onClick={() => setSortByPoints(prev => !prev)}
+              className={`px-2.5 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs sm:text-sm outline-none font-bold shadow-sm transition-all flex items-center justify-center gap-1.5 border flex-shrink-0 ${sortByPoints
+                ? 'bg-[#800020] text-white border-[#800020] hover:bg-[#650018]'
+                : 'bg-gray-50 text-[#800020] border-gray-200 hover:bg-gray-100'
+                }`}
+            >
+              <FaStar className={sortByPoints ? 'text-yellow-400' : 'text-[#800020]/75'} />
+              <span className="hidden sm:inline">{sortByPoints ? 'Sorted by Points' : 'Sort by Points'}</span>
+              <span className="sm:hidden">Points</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setShowTrackAdvancedSearch((prev) => !prev)}
-            className="px-4 py-3 rounded-xl border border-[#800020] text-[#800020] font-semibold text-sm hover:bg-[#800020]/10 transition-colors flex items-center gap-2"
-          >
-            <FaFilter />
-            {showTrackAdvancedSearch ? 'Hide Filters' : 'Advanced Search'}
-            {trackActiveFilterCount > 0 && (
-              <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-[#800020] text-white text-[10px] font-black">
-                {trackActiveFilterCount}
-              </span>
-            )}
-          </button>
+            <button
+              type="button"
+              onClick={() => setShowTrackAdvancedSearch((prev) => !prev)}
+              className="px-2.5 py-2 sm:px-4 sm:py-2.5 rounded-xl border border-[#800020] text-[#800020] font-semibold text-xs sm:text-sm hover:bg-[#800020]/10 transition-colors flex items-center justify-center gap-1.5 flex-shrink-0"
+            >
+              <FaFilter />
+              <span className="hidden sm:inline">{showTrackAdvancedSearch ? 'Hide Filters' : 'Advanced Search'}</span>
+              <span className="sm:hidden">Filter</span>
+              {trackActiveFilterCount > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-[#800020] text-white text-[10px] font-black">
+                  {trackActiveFilterCount}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
 
         {showTrackAdvancedSearch && renderAdvancedSearchPanel(
@@ -3618,9 +3658,9 @@ export default function ScholarshipDashboard({
           </p>
         )}
 
-        <div className="overflow-y-auto rounded-xl border border-gray-200" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+        <div className="overflow-x-auto overflow-y-auto rounded-xl border border-gray-200 min-h-[320px]" style={{ maxHeight: 'calc(100vh - 400px)' }}>
           <table className="w-full text-sm">
-            <thead>
+            <thead className="sticky top-0 z-20 bg-[#800020] text-white">
               <tr className="bg-[#800020] text-white select-none">
                 <th className="px-4 py-3 text-left font-semibold relative sort-dropdown-container">
                   <div className="flex items-center gap-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === 'name' ? null : 'name'); }}>
@@ -3628,7 +3668,7 @@ export default function ScholarshipDashboard({
                     <FaChevronDown className={`text-white/70 text-[10px] transition-transform ${activeDropdown === 'name' ? 'rotate-180' : ''}`} />
                   </div>
                   {activeDropdown === 'name' && (
-                    <div className="absolute left-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-50 text-gray-800 font-normal py-2 px-3">
+                    <div className="absolute left-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-2xl z-50 text-gray-800 font-normal py-2 px-3">
                       <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort Name</div>
                       <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
                         <input
@@ -3658,7 +3698,7 @@ export default function ScholarshipDashboard({
                     <FaChevronDown className={`text-white/70 text-[10px] transition-transform ${activeDropdown === 'grade' ? 'rotate-180' : ''}`} />
                   </div>
                   {activeDropdown === 'grade' && (
-                    <div className="absolute left-0 mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-xl z-50 text-gray-800 font-normal py-2 px-3">
+                    <div className="absolute left-0 mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-2xl z-50 text-gray-800 font-normal py-2 px-3">
                       <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort Grade</div>
                       <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
                         <input
@@ -3688,7 +3728,7 @@ export default function ScholarshipDashboard({
                     <FaChevronDown className={`text-white/70 text-[10px] transition-transform ${activeDropdown === 'financial' ? 'rotate-180' : ''}`} />
                   </div>
                   {activeDropdown === 'financial' && (
-                    <div className="absolute left-0 mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-xl z-50 text-gray-800 font-normal py-2 px-3">
+                    <div className="absolute right-0 mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-2xl z-50 text-gray-800 font-normal py-2 px-3">
                       <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort Financial</div>
                       <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
                         <input
@@ -3718,7 +3758,7 @@ export default function ScholarshipDashboard({
                     <FaChevronDown className={`text-white/70 text-[10px] transition-transform ${activeDropdown === 'points' ? 'rotate-180' : ''}`} />
                   </div>
                   {activeDropdown === 'points' && (
-                    <div className="absolute left-0 mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-xl z-50 text-gray-800 font-normal py-2 px-3">
+                    <div className="absolute right-0 mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-2xl z-50 text-gray-800 font-normal py-2 px-3">
                       <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort Points</div>
                       <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
                         <input
@@ -3748,7 +3788,7 @@ export default function ScholarshipDashboard({
                     <FaChevronDown className={`text-white/70 text-[10px] transition-transform ${activeDropdown === 'schoolCourse' ? 'rotate-180' : ''}`} />
                   </div>
                   {activeDropdown === 'schoolCourse' && (
-                    <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-50 text-gray-800 font-normal py-2 px-3">
+                    <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-2xl z-50 text-gray-800 font-normal py-2 px-3">
                       <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort School & Course</div>
                       <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
                         <input
@@ -3778,7 +3818,7 @@ export default function ScholarshipDashboard({
                     <FaChevronDown className={`text-white/70 text-[10px] transition-transform ${activeDropdown === 'contactAddress' ? 'rotate-180' : ''}`} />
                   </div>
                   {activeDropdown === 'contactAddress' && (
-                    <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-50 text-gray-800 font-normal py-2 px-3">
+                    <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-2xl z-50 text-gray-800 font-normal py-2 px-3">
                       <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort Contact & Address</div>
                       <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
                         <input
@@ -3812,28 +3852,28 @@ export default function ScholarshipDashboard({
                   const processingState = getApplicantProcessingState(a);
                   return (
                     <tr key={`pending-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{a.applicant_no}</span>
-                          <div className="font-semibold">{a.name}</div>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{a.applicant_no}</span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700">Pending</span>
                         </div>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700">Pending</span>
+                        <div className="font-semibold text-sm">{a.name}</div>
                       </td>
-                      <td className="px-4 py-3">{a.grade}</td>
-                      <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                      <td className="px-3 py-2 text-sm">{a.grade}</td>
+                      <td className="px-3 py-2 text-sm">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       {renderPointsCell(a)}
-                      <td className="px-4 py-3 text-xs">
-                        <div className="font-bold text-[#800020]">{a.school}</div>
-                        <div className="text-[10px] text-gray-500 font-medium">{a.course || 'No Course Provided'}</div>
+                      <td className="px-3 py-2 text-xs">
+                        <div className="font-bold text-[#800020] leading-tight">{a.school}</div>
+                        <div className="text-[10px] text-gray-500">{a.course || 'No Course'}</div>
                       </td>
-                      <td className="px-4 py-3 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-between gap-3">
+                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2">
                           <button type="button" onClick={() => viewApplicantFn(idx, 'all')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
                             View
                           </button>
                           {processingState && (
-                            <span className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#800020]">
+                            <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-[#800020]">
                               <FaSpinner className="animate-spin text-xs" />
                               {processingState.requestedStatus === 'Accepted' ? 'Approving' : 'Rejecting'}
                             </span>
@@ -3851,24 +3891,24 @@ export default function ScholarshipDashboard({
                   const processingState = getApplicantProcessingState(a);
                   return (
                     <tr key={`all-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{a.applicant_no}</span>
-                          <div className="font-semibold">{a.name}</div>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{a.applicant_no}</span>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${statusColors[a._listType] || 'bg-yellow-100 text-yellow-700'}`}>{statusLabels[a._listType] || 'Pending'}</span>
                           {processingState && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
                         </div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusColors[a._listType] || 'bg-yellow-100 text-yellow-700'}`}>{statusLabels[a._listType] || 'Pending'}</span>
+                        <div className="font-semibold text-sm">{a.name}</div>
                       </td>
-                      <td className="px-4 py-3">{a.grade}</td>
-                      <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                      <td className="px-3 py-2 text-sm">{a.grade}</td>
+                      <td className="px-3 py-2 text-sm">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       {renderPointsCell(a)}
-                      <td className="px-4 py-3 text-xs">
-                        <div className="font-bold text-[#800020]">{a.school}</div>
-                        <div className="text-[10px] text-gray-500 font-medium">{a.course || 'No Course Provided'}</div>
+                      <td className="px-3 py-2 text-xs">
+                        <div className="font-bold text-[#800020] leading-tight">{a.school}</div>
+                        <div className="text-[10px] text-gray-500">{a.course || 'No Course'}</div>
                       </td>
-                      <td className="px-4 py-3 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-between gap-3">
+                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2">
                           <button type="button" onClick={() => viewApplicantFn(a._listIdx, a._listType)} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors" disabled={!!processingState}>
                             View
                           </button>
@@ -3883,19 +3923,23 @@ export default function ScholarshipDashboard({
                   const idx = a._listIdx;
                   return (
                     <tr key={`accepted-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
-                      <td className="px-4 py-3 flex items-center gap-2">
-                        {a.name}
-                        {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{a.applicant_no}</span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">Accepted</span>
+                          {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
+                        </div>
+                        <div className="font-semibold text-sm">{a.name}</div>
                       </td>
-                      <td className="px-4 py-3">{a.grade}</td>
-                      <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                      <td className="px-3 py-2 text-sm">{a.grade}</td>
+                      <td className="px-3 py-2 text-sm">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       {renderPointsCell(a)}
-                      <td className="px-4 py-3 text-xs">
-                        <div className="font-bold text-[#800020]">{a.school}</div>
-                        <div className="text-[10px] text-gray-500 font-medium">{a.course || 'No Course Provided'}</div>
+                      <td className="px-3 py-2 text-xs">
+                        <div className="font-bold text-[#800020] leading-tight">{a.school}</div>
+                        <div className="text-[10px] text-gray-500">{a.course || 'No Course'}</div>
                       </td>
-                      <td className="px-4 py-3 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
+                      <td className="px-3 py-2">
                         <div className="flex gap-1">
                           <button type="button" onClick={() => viewApplicantFn(idx, 'accepted')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
                             View
@@ -3911,19 +3955,23 @@ export default function ScholarshipDashboard({
                   const idx = a._listIdx;
                   return (
                     <tr key={`rejected-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
-                      <td className="px-4 py-3 flex items-center gap-2">
-                        {a.name}
-                        {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{a.applicant_no}</span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">Rejected</span>
+                          {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
+                        </div>
+                        <div className="font-semibold text-sm">{a.name}</div>
                       </td>
-                      <td className="px-4 py-3">{a.grade}</td>
-                      <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                      <td className="px-3 py-2 text-sm">{a.grade}</td>
+                      <td className="px-3 py-2 text-sm">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       {renderPointsCell(a)}
-                      <td className="px-4 py-3 text-xs">
-                        <div className="font-bold text-[#800020]">{a.school}</div>
-                        <div className="text-[10px] text-gray-500 font-medium">{a.course || 'No Course Provided'}</div>
+                      <td className="px-3 py-2 text-xs">
+                        <div className="font-bold text-[#800020] leading-tight">{a.school}</div>
+                        <div className="text-[10px] text-gray-500">{a.course || 'No Course'}</div>
                       </td>
-                      <td className="px-4 py-3 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
+                      <td className="px-3 py-2">
                         <div className="flex gap-1">
                           <button type="button" onClick={() => viewApplicantFn(idx, 'rejected')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
                             View
@@ -3939,19 +3987,23 @@ export default function ScholarshipDashboard({
                   const idx = a._listIdx;
                   return (
                     <tr key={`cancelled-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
-                      <td className="px-4 py-3 flex items-center gap-2">
-                        {a.name}
-                        {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{a.applicant_no}</span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">Cancelled</span>
+                          {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
+                        </div>
+                        <div className="font-semibold text-sm">{a.name}</div>
                       </td>
-                      <td className="px-4 py-3">{a.grade}</td>
-                      <td className="px-4 py-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                      <td className="px-3 py-2 text-sm">{a.grade}</td>
+                      <td className="px-3 py-2 text-sm">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       {renderPointsCell(a)}
-                      <td className="px-4 py-3 text-xs">
-                        <div className="font-bold text-[#800020]">{a.school}</div>
-                        <div className="text-[10px] text-gray-500 font-medium">{a.course || 'No Course Provided'}</div>
+                      <td className="px-3 py-2 text-xs">
+                        <div className="font-bold text-[#800020] leading-tight">{a.school}</div>
+                        <div className="text-[10px] text-gray-500">{a.course || 'No Course'}</div>
                       </td>
-                      <td className="px-4 py-3 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
+                      <td className="px-3 py-2">
                         <div className="flex gap-1">
                           <button type="button" onClick={() => viewApplicantFn(idx, 'cancelled')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
                             View
@@ -4120,10 +4172,10 @@ export default function ScholarshipDashboard({
     return (
       <div className="space-y-6">
         {/* Header with Export Buttons */}
-        <div className="flex items-center justify-between gap-3 flex-wrap report-header relative">
-          <div>
-            <h3 className="text-2xl font-bold text-[#800020] report-title">{reportTitle}</h3>
-            <p className="text-gray-500 text-sm report-subtitle">Comprehensive KPI report and periodic trends</p>
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 report-header relative">
+          <div className="min-w-0 flex-1 text-center lg:text-left">
+            <h3 className="text-lg sm:text-2xl font-bold text-[#800020] report-title break-words leading-tight">{reportTitle}</h3>
+            <p className="text-gray-500 text-xs sm:text-sm report-subtitle mt-0.5">Comprehensive KPI report and periodic trends</p>
             <p className="print-only text-[10px] text-gray-400 mt-2 font-bold italic">Generated on: {new Date().toLocaleString()}</p>
           </div>
 
@@ -4131,41 +4183,41 @@ export default function ScholarshipDashboard({
           <div className="print-only absolute right-0 top-0">
             <img src={iskomatsLogo} alt="Iskomats Logo" className="h-14 w-auto object-contain opacity-90" />
           </div>
-          <div className="flex gap-4 items-center flex-wrap">
-            <div className="flex bg-gray-100 p-1 rounded-xl">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 flex-wrap w-full lg:w-auto">
+            <div className="flex bg-gray-100 p-1 rounded-xl w-full sm:w-auto">
               <button
                 onClick={() => setReportsView('analytics')}
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${reportsView === 'analytics' ? 'bg-white text-[#800020] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`flex-1 sm:flex-initial px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs font-bold transition-all text-center ${reportsView === 'analytics' ? 'bg-white text-[#800020] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >Analytics</button>
               <button
                 onClick={() => setReportsView('tables')}
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${reportsView === 'tables' ? 'bg-white text-[#800020] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`flex-1 sm:flex-initial px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs font-bold transition-all text-center ${reportsView === 'tables' ? 'bg-white text-[#800020] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >Tables</button>
             </div>
             <select
               value={analyticsScholarshipFilter}
               onChange={(e) => setAnalyticsScholarshipFilter(e.target.value)}
-              className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-[#800020] shadow-sm focus:ring-2 focus:ring-[#800020] transition-all outline-none"
+              className="w-full sm:w-auto px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-[#800020] shadow-sm focus:ring-2 focus:ring-[#800020] transition-all outline-none"
             >
               <option value="all">All Scholarship Types</option>
               {scholarshipFilterOptions.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
-            <div className="flex gap-2">
+            <div className="flex flex-row items-center gap-2 w-full sm:w-auto">
               <button
                 type="button"
                 onClick={exportToExcel}
-                className="px-6 py-2 rounded-xl bg-white border border-gray-200 text-gray-700 font-bold flex items-center gap-2 hover:bg-gray-50 transition-all shadow-sm"
+                className="flex-1 sm:flex-initial px-3 py-2 rounded-xl bg-white border border-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-gray-50 transition-all shadow-sm"
               >
-                <FaPrint className="text-green-600" /> Export to Excel
+                <FaPrint className="text-green-600 flex-shrink-0" /> <span className="truncate">Export</span>
               </button>
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="px-6 py-2 rounded-xl bg-[#800020] text-white font-bold flex items-center gap-2 hover:opacity-90 transition-all shadow-lg"
+                className="flex-1 sm:flex-initial px-3 py-2 rounded-xl bg-[#800020] text-white text-xs font-bold flex items-center justify-center gap-1.5 hover:opacity-90 transition-all shadow-lg"
               >
-                <FaPrint /> Print PDF
+                <FaPrint className="flex-shrink-0" /> <span className="truncate">Print PDF</span>
               </button>
             </div>
           </div>
@@ -4558,31 +4610,31 @@ export default function ScholarshipDashboard({
               </div>
 
               {/* DETAILED APPLICANT LISTS TABLES */}
-              <div className="space-y-8 mt-10">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-2 border-gray-100 pb-2">
-                  <h4 className="text-xl font-black text-[#800020] uppercase">Applicant Status Lists</h4>
-                  <div className="flex items-center gap-2">
+              <div className="space-y-6 mt-8">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b-2 border-gray-100 pb-2">
+                  <h4 className="text-base sm:text-lg font-black text-[#800020] uppercase tracking-wide">Applicant Status Lists</h4>
+                  <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-1 -mx-2 px-2 flex-nowrap w-full sm:w-auto">
                     <button
                       onClick={() => setReportTab('pending')}
-                      className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${reportTab === 'pending' ? 'bg-amber-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                      className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-[10px] sm:text-xs font-black transition-all whitespace-nowrap ${reportTab === 'pending' ? 'bg-amber-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
                     >
                       PENDING
                     </button>
                     <button
                       onClick={() => setReportTab('accepted')}
-                      className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${reportTab === 'accepted' ? 'bg-green-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                      className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-[10px] sm:text-xs font-black transition-all whitespace-nowrap ${reportTab === 'accepted' ? 'bg-green-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
                     >
                       ACCEPTED
                     </button>
                     <button
                       onClick={() => setReportTab('rejected')}
-                      className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${reportTab === 'rejected' ? 'bg-red-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                      className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-[10px] sm:text-xs font-black transition-all whitespace-nowrap ${reportTab === 'rejected' ? 'bg-red-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
                     >
                       REJECTED
                     </button>
                     <button
                       onClick={() => setReportTab('cancelled')}
-                      className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${reportTab === 'cancelled' ? 'bg-slate-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                      className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-[10px] sm:text-xs font-black transition-all whitespace-nowrap ${reportTab === 'cancelled' ? 'bg-slate-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
                     >
                       CANCELLED
                     </button>
@@ -4950,36 +5002,39 @@ export default function ScholarshipDashboard({
     };
 
     return (
-      <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 max-w-5xl mx-auto my-4 overflow-y-auto max-h-[90vh]">
-        <div className="flex items-center justify-between mb-8 pb-6 border-b-2 border-[#800020]">
-          <div className="flex items-center gap-6">
-            <div className="w-20 h-20 rounded-2xl bg-gray-50 border-2 border-gray-100 p-1 shadow-sm overflow-hidden flex-shrink-0">
+      <section className="relative bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 p-3 sm:p-6 lg:p-8 max-w-5xl mx-auto my-2 sm:my-4 overflow-y-auto max-h-[90vh] animate-in fade-in duration-300">
+        {/* Close button — always top-right */}
+        <button
+          onClick={() => { setViewApplicant(null); setSection('track'); }}
+          className="absolute top-3 right-3 p-1.5 hover:bg-gray-100 rounded-lg transition-colors z-10"
+          aria-label="Close"
+        >
+          <FaTimesCircle className="text-gray-400 text-xl" />
+        </button>
+        <div className="flex flex-col gap-4 mb-5 sm:mb-8 pb-4 sm:pb-6 border-b-2 border-[#800020]">
+          <div className="flex flex-row items-start gap-3 sm:gap-6">
+            <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl bg-gray-50 border-2 border-gray-100 p-0.5 shadow-sm overflow-hidden flex-shrink-0">
               {a.profile_picture ? (
-                <DecryptedMedia src={a.profile_picture} type="image/jpeg" className="w-full h-full object-cover rounded-xl" />
+                <DecryptedMedia src={a.profile_picture} type="image/jpeg" className="w-full h-full object-cover rounded-lg sm:rounded-xl" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-gray-200 text-gray-400">
-                  <FaUsers className="text-2xl" />
+                  <FaUsers className="text-xl sm:text-2xl" />
                 </div>
               )}
-              {/* School ID No. display under profile picture */}
-              <div className="mt-2 text-center">
-                <span className="block text-[10px] font-black text-gray-400 uppercase">School ID No.</span>
-                <span className="block font-bold text-gray-800">{a.school_id_no || 'N/A'}</span>
-              </div>
             </div>
-            <div>
-              <h2 className="text-2xl font-black text-[#800020] uppercase tracking-tight flex items-center gap-2 mb-1">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg sm:text-2xl font-black text-[#800020] uppercase tracking-tight flex items-center gap-2 mb-1 break-words">
                 {a.name || `${a.firstName} ${a.lastName}`}
-                {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-sm" />}
+                {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-sm flex-shrink-0" />}
               </h2>
-              <div className="flex items-center gap-2">
-                <span className="bg-[#800020] text-white px-3 py-1 rounded-lg text-xs font-black font-mono shadow-sm tracking-widest">APPLICANT ID: {a.applicant_no || 'N/A'}</span>
-                {/* Removed 'Awaiting Review' label as per requirements */}
+              <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                <span className="bg-[#800020] text-white px-2.5 py-0.5 rounded-lg text-[9px] sm:text-xs font-black font-mono shadow-sm tracking-widest">APPLICANT ID: {a.applicant_no || 'N/A'}</span>
               </div>
+              <div className="text-[10px] text-gray-400 font-semibold">School ID: {a.school_id_no || 'N/A'}</div>
             </div>
           </div>
-          <div className="flex gap-2 mt-2">
-            <span className={`flex items-center justify-center px-4 py-1.5 rounded-full text-xs font-bold uppercase ${listType === 'accepted' ? 'bg-green-100 text-green-700' :
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`flex items-center justify-center px-3 py-1.5 rounded-full text-xs font-bold uppercase ${listType === 'accepted' ? 'bg-green-100 text-green-700' :
               listType === 'rejected' ? 'bg-red-100 text-red-700' :
                 listType === 'cancelled' ? 'bg-gray-100 text-gray-700' :
                   'bg-yellow-100 text-yellow-700'
@@ -4989,126 +5044,120 @@ export default function ScholarshipDashboard({
                   listType === 'cancelled' ? 'Cancelled' :
                     'Pending Review'}
             </span>
-            <div className="flex gap-2 mb-4">
+            <div className="flex flex-wrap gap-1.5">
               <button
                 type="button"
                 onClick={() => handleSendSchoolVerification(a)}
                 disabled={schoolVerifSent[dispatchKey]}
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${schoolVerifSent[dispatchKey] ? 'bg-green-100 text-green-700 cursor-default' : 'bg-[#800020] text-white hover:bg-[#650018]'}`}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold transition-all shadow-sm ${schoolVerifSent[dispatchKey] ? 'bg-green-100 text-green-700 cursor-default' : 'bg-[#800020] text-white hover:bg-[#650018]'}`}
               >
-                <FaPaperPlane /> {schoolVerifSent[dispatchKey] ? 'School Dispatch Sent' : 'Send for School Verification'}
+                <FaPaperPlane className="flex-shrink-0" /> <span className="hidden sm:inline">{schoolVerifSent[dispatchKey] ? 'School Dispatch Sent' : 'Send for School Verification'}</span><span className="sm:hidden">{schoolVerifSent[dispatchKey] ? 'Sent' : 'School Verif'}</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleSendIndigencyVerification(a)}
                 disabled={indigencyVerifSent[dispatchKey]}
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${indigencyVerifSent[dispatchKey] ? 'bg-green-100 text-green-700 cursor-default' : 'bg-[#800020] text-white hover:bg-[#650018]'}`}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold transition-all shadow-sm ${indigencyVerifSent[dispatchKey] ? 'bg-green-100 text-green-700 cursor-default' : 'bg-[#800020] text-white hover:bg-[#650018]'}`}
               >
-                <FaPaperPlane /> {indigencyVerifSent[dispatchKey] ? 'City Hall Dispatch Sent' : 'Verify Indigency (City Hall)'}
+                <FaPaperPlane className="flex-shrink-0" /> <span className="hidden sm:inline">{indigencyVerifSent[dispatchKey] ? 'City Hall Dispatch Sent' : 'Verify Indigency (City Hall)'}</span><span className="sm:hidden">{indigencyVerifSent[dispatchKey] ? 'Sent' : 'Indigency'}</span>
               </button>
             </div>
-            <button
-              onClick={() => { setViewApplicant(null); setSection('track'); }}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <FaTimesCircle className="text-gray-400 text-xl" />
-            </button>
           </div>
         </div>
 
         {/* STUDENT INFORMATION SECTION */}
-        <div className="mb-10">
-          <h3 className="bg-[#800020] text-white px-4 py-2 text-sm font-black uppercase tracking-widest mb-4 rounded-t-lg">Student Information</h3>
-          <div className="grid grid-cols-1 md:grid-cols-4 border-2 border-gray-100 rounded-b-lg overflow-hidden">
-            <div className="p-4 border-b md:border-b-0 md:border-r border-gray-100 bg-gray-50/50">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Last Name</p>
-              <p className="font-bold text-gray-800">{a.lastName || (a.name && a.name.split(' ').pop())}</p>
+        <div className="mb-8">
+          <h3 className="bg-[#800020] text-white px-3 sm:px-4 py-2 text-xs sm:text-sm font-black uppercase tracking-widest mb-0 rounded-t-lg">Student Information</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 border-2 border-gray-100 rounded-b-lg overflow-hidden">
+            <div className="p-2.5 sm:p-3 border-b border-r border-gray-100 bg-gray-50/50">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Last Name</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm break-words">{a.lastName || (a.name && a.name.split(' ').pop())}</p>
             </div>
-            <div className="p-4 border-b md:border-b-0 md:border-r border-gray-100 bg-gray-50/50">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">First Name</p>
-              <p className="font-bold text-gray-800">{a.firstName || (a.name && a.name.split(' ')[0])}</p>
+            <div className="p-2.5 sm:p-3 border-b border-r border-gray-100 bg-gray-50/50">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">First Name</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm break-words">{a.firstName || (a.name && a.name.split(' ')[0])}</p>
             </div>
-            <div className="p-4 border-b md:border-b-0 md:border-r border-gray-100 bg-gray-50/50">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Middle Name</p>
-              <p className="font-bold text-gray-800">{a.middleName || 'N/A'}</p>
+            <div className="p-2.5 sm:p-3 border-b border-r border-gray-100 bg-gray-50/50">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Middle Name</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.middleName || 'N/A'}</p>
             </div>
-            <div className="p-4 bg-gray-50/50">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Maiden Name</p>
-              <p className="font-bold text-gray-800">{a.maidenName || 'N/A'}</p>
-            </div>
-
-            <div className="p-4 border-t border-r border-gray-100">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Street &amp; Barangay</p>
-              <p className="font-bold text-gray-800">{a.streetBrgy || (a.location && a.location.split(',')[0]) || 'N/A'}</p>
-            </div>
-            <div className="p-4 border-t border-r border-gray-100">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Town/City/Municipality</p>
-              <p className="font-bold text-gray-800">{a.municipality || 'N/A'}</p>
-            </div>
-            <div className="p-4 border-t border-r border-gray-100">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Province</p>
-              <p className="font-bold text-gray-800">{a.province || 'N/A'}</p>
-            </div>
-            <div className="p-4 border-t border-gray-100">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Zip Code</p>
-              <p className="font-bold text-gray-800">{a.zipCode || 'N/A'}</p>
+            <div className="p-2.5 sm:p-3 border-b border-gray-100 bg-gray-50/50">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Maiden Name</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.maidenName || 'N/A'}</p>
             </div>
 
-            <div className="p-4 border-t border-r border-gray-100">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Date of Birth</p>
-              <p className="font-bold text-gray-800">{a.dob || 'N/A'}</p>
+            <div className="p-2.5 sm:p-3 border-b border-r border-gray-100">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Street &amp; Barangay</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm break-words">{a.streetBrgy || (a.location && a.location.split(',')[0]) || 'N/A'}</p>
             </div>
-            <div className="p-4 border-t border-r border-gray-100">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Place of Birth</p>
-              <p className="font-bold text-gray-800">{a.pob || 'N/A'}</p>
+            <div className="p-2.5 sm:p-3 border-b border-r border-gray-100">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Town/City/Municipality</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.municipality || 'N/A'}</p>
             </div>
-            <div className="p-4 border-t border-r border-gray-100">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Sex</p>
-              <p className="font-bold text-gray-800">{a.sex || 'N/A'}</p>
+            <div className="p-2.5 sm:p-3 border-b border-r border-gray-100">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Province</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.province || 'N/A'}</p>
             </div>
-            <div className="p-4 border-t border-gray-100">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Citizenship</p>
-              <p className="font-bold text-gray-800">{a.citizenship || 'Filipino'}</p>
-            </div>
-
-            <div className="p-4 border-t border-r border-gray-100 col-span-2">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">E-mail Address</p>
-              <p className="font-bold text-gray-800 truncate">{a.emailAddress || a.email || (a.studentContact && a.studentContact.email) || 'N/A'}</p>
-            </div>
-            <div className="p-4 border-t border-r border-gray-100">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Mobile Number</p>
-              <p className="font-bold text-gray-800">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}</p>
-            </div>
-            <div className="p-4 border-t border-gray-100">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Course</p>
-              <p className="font-bold text-gray-800">{a.course || 'N/A'}</p>
+            <div className="p-2.5 sm:p-3 border-b border-gray-100">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Zip Code</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.zipCode || 'N/A'}</p>
             </div>
 
-            <div className="p-4 border-t border-r border-gray-100 col-span-2">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">School Attended</p>
-              <p className="font-bold text-gray-800">{a.school || 'N/A'}</p>
+            <div className="p-2.5 sm:p-3 border-b border-r border-gray-100">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Date of Birth</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.dob || 'N/A'}</p>
             </div>
-            <div className="p-4 border-t border-r border-gray-100 col-span-2">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">School Location</p>
-              <p className="font-bold text-gray-800">{a.schoolAddress || 'N/A'}</p>
+            <div className="p-2.5 sm:p-3 border-b border-r border-gray-100">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Place of Birth</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.pob || 'N/A'}</p>
             </div>
-            <div className="p-4 border-t border-r border-gray-100">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">School ID Number</p>
-              <p className="font-bold text-gray-800">{a.school_id_no || 'N/A'}</p>
+            <div className="p-2.5 sm:p-3 border-b border-r border-gray-100">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Sex</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.sex || 'N/A'}</p>
             </div>
-            <div className="p-4 border-t border-gray-100">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Year Level</p>
-              <p className="font-bold text-gray-800">{a.year || 'N/A'}</p>
-            </div>
-
-            <div className="p-4 border-t border-gray-100">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">School Sector</p>
-              <p className="font-bold text-gray-800">{a.schoolSector || 'N/A'}</p>
+            <div className="p-2.5 sm:p-3 border-b border-gray-100">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Citizenship</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.citizenship || 'Filipino'}</p>
             </div>
 
-            <div className="p-4 border-t border-gray-100 col-span-2">
-              <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Merits/Awards</p>
-              <p className="font-bold text-gray-800 whitespace-pre-wrap">{a.meritsAwardsReceived || 'N/A'}</p>
+            <div className="p-2.5 sm:p-3 border-b border-r border-gray-100 col-span-2">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">E-mail Address</p>
+              <p className="font-bold text-gray-800 truncate text-xs sm:text-sm">{a.emailAddress || a.email || (a.studentContact && a.studentContact.email) || 'N/A'}</p>
+            </div>
+            <div className="p-2.5 sm:p-3 border-b border-r border-gray-100">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Mobile Number</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}</p>
+            </div>
+            <div className="p-2.5 sm:p-3 border-b border-gray-100">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Course</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.course || 'N/A'}</p>
+            </div>
+
+            <div className="p-2.5 sm:p-3 border-b border-r border-gray-100 col-span-2">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">School Attended</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.school || 'N/A'}</p>
+            </div>
+            <div className="p-2.5 sm:p-3 border-b border-gray-100 col-span-2">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">School Location</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.schoolAddress || 'N/A'}</p>
+            </div>
+            <div className="p-2.5 sm:p-3 border-b border-r border-gray-100">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">School ID Number</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.school_id_no || 'N/A'}</p>
+            </div>
+            <div className="p-2.5 sm:p-3 border-b border-gray-100">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Year Level</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.year || 'N/A'}</p>
+            </div>
+
+            <div className="p-2.5 sm:p-3 border-b border-r border-gray-100">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">School Sector</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.schoolSector || 'N/A'}</p>
+            </div>
+
+            <div className="p-2.5 sm:p-3 col-span-2 border-b border-gray-100">
+              <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Merits/Awards</p>
+              <p className="font-bold text-gray-800 whitespace-pre-wrap text-xs sm:text-sm">{a.meritsAwardsReceived || 'N/A'}</p>
             </div>
 
           </div>
@@ -5147,10 +5196,10 @@ export default function ScholarshipDashboard({
         </div>
 
         {/* FAMILY BACKGROUND SECTION */}
-        <div className="mb-10">
-          <h3 className="bg-[#800020] text-white px-4 py-2 text-sm font-black uppercase tracking-widest mb-4 rounded-t-lg">Family Background</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 border-2 border-gray-100 rounded-lg overflow-hidden">
-            <div className="p-4 border-b md:border-b-0 md:border-r border-gray-100 bg-gray-50/50">
+        <div className="mb-8">
+          <h3 className="bg-[#800020] text-white px-3 sm:px-4 py-2 text-xs sm:text-sm font-black uppercase tracking-widest mb-0 rounded-t-lg">Family Background</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 border-2 border-gray-100 rounded-b-lg overflow-hidden">
+            <div className="p-3 sm:p-4 border-b sm:border-b-0 sm:border-r border-gray-100 bg-gray-50/50">
               <p className="text-[10px] font-black text-gray-400 uppercase mb-3">Father Information</p>
               <div className="space-y-2">
                 <p className="text-sm"><strong>Name:</strong> {familyData.father.name}</p>
@@ -5173,7 +5222,7 @@ export default function ScholarshipDashboard({
                 <p className="text-sm"><strong>Phone:</strong> {familyData.father.phone}</p>
               </div>
             </div>
-            <div className="p-4 bg-gray-50/50">
+            <div className="p-3 sm:p-4 bg-gray-50/50">
               <p className="text-[10px] font-black text-gray-400 uppercase mb-3">Mother Information</p>
               <div className="space-y-2">
                 <p className="text-sm"><strong>Name:</strong> {familyData.mother.name}</p>
@@ -5196,11 +5245,11 @@ export default function ScholarshipDashboard({
                 <p className="text-sm"><strong>Phone:</strong> {familyData.mother.phone}</p>
               </div>
             </div>
-            <div className="p-4 border-t border-r border-gray-100">
+            <div className="p-3 sm:p-4 border-t border-gray-100 sm:border-r">
               <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Parents Gross Income</p>
-              <p className="font-bold text-[#800020]">PHP {familyData.grossIncome}</p>
+              <p className="font-bold text-[#800020] text-sm sm:text-base">PHP {familyData.grossIncome}</p>
             </div>
-            <div className="p-4 border-t border-gray-100">
+            <div className="p-3 sm:p-4 border-t border-gray-100">
               <p className="text-[10px] font-black text-gray-400 uppercase mb-1">No. of Siblings</p>
               <p className="font-bold text-gray-800">{familyData.siblingsCount}</p>
             </div>
@@ -5208,23 +5257,23 @@ export default function ScholarshipDashboard({
         </div>
 
         {/* DOCUMENTS SECTION */}
-        <div className="mb-10">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="bg-[#800020] text-white px-4 py-2 text-sm font-black uppercase tracking-widest rounded-lg">Uploaded Documents</h3>
-            <div className="flex gap-3">
-              <div className="bg-yellow-50 border border-yellow-200 px-3 py-1 rounded-full flex items-center gap-2">
-                <span className="text-[10px] font-black text-[#800020] uppercase">Avg Grade:</span>
-                <span className="text-sm font-black text-gray-800">{a.grade}</span>
+        <div className="mb-8">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <h3 className="bg-[#800020] text-white px-3 sm:px-4 py-2 text-xs sm:text-sm font-black uppercase tracking-widest rounded-lg">Uploaded Documents</h3>
+            <div className="flex gap-1.5 sm:gap-3 flex-wrap">
+              <div className="bg-yellow-50 border border-yellow-200 px-2 sm:px-3 py-1 rounded-full flex items-center gap-1.5">
+                <span className="text-[9px] sm:text-[10px] font-black text-[#800020] uppercase">Avg Grade:</span>
+                <span className="text-xs sm:text-sm font-black text-gray-800">{a.grade}</span>
               </div>
-              <div className="bg-rose-50 border border-rose-200 px-3 py-1 rounded-full flex items-center gap-2">
-                <span className="text-[10px] font-black text-[#800020] uppercase">Income:</span>
-                <span className="text-sm font-black text-gray-800">
+              <div className="bg-rose-50 border border-rose-200 px-2 sm:px-3 py-1 rounded-full flex items-center gap-1.5">
+                <span className="text-[9px] sm:text-[10px] font-black text-[#800020] uppercase">Income:</span>
+                <span className="text-xs sm:text-sm font-black text-gray-800">
                   {getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}
                 </span>
               </div>
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 border-2 border-gray-100 rounded-lg">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6 p-3 sm:p-6 border-2 border-gray-100 rounded-lg">
             <div className="space-y-2">
               <p className="text-[10px] font-black text-gray-500 uppercase flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#800020]"></span> Indigency Proof
@@ -5262,10 +5311,11 @@ export default function ScholarshipDashboard({
 
 
         {/* SIGNATURE SECTION */}
-        <div className="mt-12 pt-8 border-t-2 border-dashed border-gray-200">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-8 text-center md:text-left">
-            <div className="max-w-xs w-full">
-              <div className="border-b-2 border-gray-300 mb-2 h-20 flex items-center justify-center overflow-hidden">
+        <div className="mt-8 sm:mt-12 pt-6 sm:pt-8 border-t-2 border-dashed border-gray-200">
+          <div className="flex flex-col sm:flex-row items-stretch justify-between gap-4 sm:gap-8">
+            {/* Signature box */}
+            <div className="flex-1 flex flex-col text-center sm:text-left">
+              <div className="border-b-2 border-gray-300 mb-2 h-20 flex items-end justify-center overflow-hidden pb-1">
                 {a.signature ? (
                   <DecryptedMedia
                     src={a.signature}
@@ -5274,33 +5324,34 @@ export default function ScholarshipDashboard({
                     onClick={() => setImageModalSrc(a.signature)}
                   />
                 ) : (
-                  <span className="text-gray-300 italic text-sm">No signature on file</span>
+                  <span className="text-gray-300 italic text-sm pb-1">No signature on file</span>
                 )}
               </div>
               <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Signature over Printed Name of Applicant</p>
               <p className="font-bold text-gray-800 text-sm italic underline">{a.firstName} {a.lastName}</p>
             </div>
 
-            <div className="max-w-xs w-full">
+            {/* Date box */}
+            <div className="flex-1 flex flex-col text-center sm:text-left">
               <div className="border-b-2 border-gray-300 mb-2 h-20 flex items-end justify-center pb-2">
-                <p className="font-bold text-gray-800">{new Date().toLocaleDateString()}</p>
+                <p className="font-bold text-gray-800 text-base">{new Date().toLocaleDateString()}</p>
               </div>
               <p className="text-[10px] font-black text-gray-400 uppercase">Date Accomplished</p>
             </div>
           </div>
-          <p className="text-center text-[10px] text-gray-400 italic mt-8 font-medium">
+          <p className="text-center text-[10px] text-gray-400 italic mt-6 sm:mt-8 font-medium">
             I hereby certify that the foregoing statements are true and correct.
           </p>
         </div>
 
-        <div className="sticky bottom-0 bg-white/80 backdrop-blur-md pt-6 mt-8 border-t border-gray-100 flex gap-3 justify-end">
+        <div className="sticky bottom-0 bg-white/95 backdrop-blur-md pt-4 sm:pt-6 mt-6 sm:mt-8 border-t border-gray-100 flex flex-col sm:flex-row gap-2.5 sm:gap-3 justify-end">
           {isPending && (
             <>
               <button
                 type="button"
                 onClick={acceptApplicant}
                 disabled={Boolean(getApplicantProcessingState(a))}
-                className="px-8 py-3 rounded-xl bg-green-600 text-white font-black uppercase tracking-widest text-xs hover:bg-green-700 shadow-lg shadow-green-100 transition-all flex items-center gap-2 disabled:cursor-not-allowed disabled:bg-green-300 disabled:shadow-none"
+                className="w-full sm:w-auto px-6 py-2.5 sm:px-8 sm:py-3 rounded-xl bg-green-600 text-white font-black uppercase tracking-widest text-xs hover:bg-green-700 shadow-lg shadow-green-100 transition-all flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:bg-green-300 disabled:shadow-none"
               >
                 <FaCheckCircle /> Approve
               </button>
@@ -5308,7 +5359,7 @@ export default function ScholarshipDashboard({
                 type="button"
                 onClick={declineApplicant}
                 disabled={Boolean(getApplicantProcessingState(a))}
-                className="px-8 py-3 rounded-xl bg-red-600 text-white font-black uppercase tracking-widest text-xs hover:bg-red-700 shadow-lg shadow-red-100 transition-all flex items-center gap-2 disabled:cursor-not-allowed disabled:bg-red-300 disabled:shadow-none"
+                className="w-full sm:w-auto px-6 py-2.5 sm:px-8 sm:py-3 rounded-xl bg-red-600 text-white font-black uppercase tracking-widest text-xs hover:bg-red-700 shadow-lg shadow-red-100 transition-all flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:bg-red-300 disabled:shadow-none"
               >
                 <FaTimesCircle /> Decline
               </button>
@@ -5317,7 +5368,7 @@ export default function ScholarshipDashboard({
           <button
             type="button"
             onClick={() => { setViewApplicant(null); setSection('track'); }}
-            className="px-8 py-3 rounded-xl bg-gray-100 text-gray-600 font-black uppercase tracking-widest text-xs hover:bg-gray-200 transition-all"
+            className="w-full sm:w-auto px-6 py-2.5 sm:px-8 sm:py-3 rounded-xl bg-gray-100 text-gray-600 font-black uppercase tracking-widest text-xs hover:bg-gray-200 transition-all text-center"
           >
             Close Dossier
           </button>
@@ -5328,42 +5379,42 @@ export default function ScholarshipDashboard({
 
 
   const renderInbox = () => (
-    <div className="flex flex-col h-[calc(100vh-8rem)] bg-gradient-to-br from-gray-50 to-blue-50/30">
-      <div className="relative overflow-hidden bg-gradient-to-br from-[#800020] via-[#650018] to-[#a00028] rounded-2xl shadow-xl p-6 text-white mb-4">
+    <div className="flex flex-col h-[calc(100vh-6.5rem)] sm:h-[calc(100vh-8rem)] bg-gradient-to-br from-gray-50 to-blue-50/30 animate-in fade-in duration-300">
+      <div className="relative overflow-hidden bg-gradient-to-br from-[#800020] via-[#650018] to-[#a00028] rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 text-white mb-3 sm:mb-4 flex-shrink-0">
         <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.06\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-80" />
-        <div className="relative flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
-              <FaInbox className="text-xl text-white" />
+        <div className="relative flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center flex-shrink-0">
+              <FaInbox className="text-lg sm:text-xl text-white" />
             </div>
-            <div>
-              <h2 className="text-xl font-bold">{messengerTitle}</h2>
-              <p className="text-white/90 text-sm">Hello, {userFirstName}! {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}</p>
+            <div className="min-w-0">
+              <h2 className="text-base sm:text-xl font-bold truncate">{messengerTitle}</h2>
+              <p className="text-white/90 text-xs sm:text-sm truncate">Hello, {userFirstName}! {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}</p>
             </div>
           </div>
-          <button type="button" onClick={() => setSection('track')} className="px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors text-white font-medium">
+          <button type="button" onClick={() => setSection('track')} className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors text-white font-medium text-xs sm:text-sm flex-shrink-0">
             Track
           </button>
         </div>
       </div>
 
-      <div className="flex-1 flex gap-4 overflow-hidden">
-        <div className="w-80 flex-shrink-0 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col">
-          <div className="p-4 border-b border-gray-100">
-            <div className="flex items-center gap-2 mb-3">
-              <FaSearch className="text-gray-400" />
+      <div className="flex-1 flex flex-col md:flex-row gap-3 sm:gap-4 overflow-hidden">
+        <div className={`w-full md:w-80 flex-shrink-0 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 flex flex-col ${currentConversation ? 'hidden md:flex' : 'flex'}`}>
+          <div className="p-3 sm:p-4 border-b border-gray-100">
+            <div className="flex items-center gap-2 mb-2 sm:mb-3">
+              <FaSearch className="text-gray-400 flex-shrink-0" />
               <input
                 type="text"
                 placeholder="Search conversations..."
                 value={inboxSearch}
                 onChange={(e) => setInboxSearch(e.target.value)}
-                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020] text-sm"
+                className="flex-1 px-3 py-1.5 sm:py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020] text-xs sm:text-sm"
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-1.5 sm:gap-2">
               <button
                 onClick={() => setInboxFilter('all')}
-                className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${inboxFilter === 'all'
+                className={`px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-medium transition-colors ${inboxFilter === 'all'
                   ? 'bg-[#800020] text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
@@ -5372,7 +5423,7 @@ export default function ScholarshipDashboard({
               </button>
               <button
                 onClick={() => setInboxFilter('pending')}
-                className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${inboxFilter === 'pending'
+                className={`px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-medium transition-colors ${inboxFilter === 'pending'
                   ? 'bg-yellow-500 text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
@@ -5381,7 +5432,7 @@ export default function ScholarshipDashboard({
               </button>
               <button
                 onClick={() => setInboxFilter('accepted')}
-                className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${inboxFilter === 'accepted'
+                className={`px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-medium transition-colors ${inboxFilter === 'accepted'
                   ? 'bg-green-500 text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
@@ -5410,7 +5461,6 @@ export default function ScholarshipDashboard({
                           socketService.loadHistory(room);
                         } else {
                           console.warn('No room found for conversation:', conv);
-                          // Fallback room construction if room is still missing
                           const fallbackRoom = `${conv.applicant_no}+${activeProviderNo}`;
                           markConversationAsRead(conv.applicant_no, fallbackRoom);
                           setViewMessage({
@@ -5420,31 +5470,31 @@ export default function ScholarshipDashboard({
                           socketService.loadHistory(fallbackRoom);
                         }
                       }}
-                      className={`p-4 cursor-pointer transition-colors border-l-4 ${isActive
+                      className={`p-3 sm:p-4 cursor-pointer transition-colors border-l-4 ${isActive
                         ? 'bg-blue-100 border-l-4 border-[#800020] shadow-sm'
                         : `border-l-4 border-transparent hover:bg-blue-50/50 ${conv.unreadCount > 0 ? 'bg-blue-50/30' : ''}`
                         }`}
                     >
                       <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#800020] to-[#650018] flex items-center justify-center text-white font-semibold flex-shrink-0">
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#800020] to-[#650018] flex items-center justify-center text-white font-semibold flex-shrink-0 text-sm">
                           {conv.studentName.charAt(0).toUpperCase()}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-1">
-                            <span className="font-semibold text-gray-900 truncate text-sm">{conv.studentName}</span>
+                            <span className="font-semibold text-gray-900 truncate text-xs sm:text-sm">{conv.studentName}</span>
                             {conv.unreadCount > 0 && (
-                              <span className="ml-2 px-2 py-0.5 bg-blue-600 text-white text-xs font-bold rounded-full flex-shrink-0">
+                              <span className="ml-2 px-2 py-0.5 bg-blue-600 text-white text-[10px] sm:text-xs font-bold rounded-full flex-shrink-0">
                                 {conv.unreadCount}
                               </span>
                             )}
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-gray-100 text-gray-700 border border-gray-200">
+                            <span className="px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold uppercase bg-gray-100 text-gray-700 border border-gray-200 flex-shrink-0">
                               {getStudentStatus(conv.studentEmail, conv.studentName, conv.lastMessage?.studentStatus)}
                             </span>
                             <p className="text-xs text-gray-600 truncate mb-1 flex-1">{conv.lastMessage?.subject || ''}</p>
                           </div>
-                          <span className="text-xs text-gray-400">{conv.lastMessage ? formatDate(conv.lastMessage.timestamp) : ''}</span>
+                          <span className="text-[10px] sm:text-xs text-gray-400">{conv.lastMessage ? formatDate(conv.lastMessage.timestamp) : ''}</span>
                         </div>
                       </div>
                     </div>
@@ -5460,85 +5510,99 @@ export default function ScholarshipDashboard({
           </div>
         </div>
 
-        <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden">
-          {currentConversation && currentMessage ? (
+        <div className={`flex-1 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden ${currentConversation ? 'flex' : 'hidden md:flex'}`}>
+          {currentConversation ? (
             <>
-              <div className="p-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#800020] to-[#650018] flex items-center justify-center text-white font-semibold">
+              <div className="p-3 sm:p-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setViewMessage(null)}
+                    className="md:hidden p-1.5 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold text-xs flex-shrink-0"
+                  >
+                    ← Back
+                  </button>
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#800020] to-[#650018] flex items-center justify-center text-white font-semibold flex-shrink-0 text-sm">
                     {currentConversation.studentName.charAt(0).toUpperCase()}
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-gray-900">{currentConversation.studentName}</h3>
-                    <p className="text-xs text-gray-500">{currentConversation.studentEmail}</p>
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-gray-900 truncate text-xs sm:text-sm">{currentConversation.studentName}</h3>
+                    <p className="text-[11px] sm:text-xs text-gray-500 truncate">{currentConversation.studentEmail}</p>
                     <p className="text-[10px] text-gray-500">
                       Status: <span className="font-semibold">{getStudentStatus(currentConversation.studentEmail, currentConversation.studentName, currentConversation.lastMessage?.studentStatus)}</span>
                     </p>
                   </div>
                 </div>
-                <button type="button" onClick={() => setViewMessage(null)} className="text-sm text-gray-600 hover:text-[#800020]">
+                <button type="button" onClick={() => setViewMessage(null)} className="text-xs sm:text-sm text-gray-600 hover:text-[#800020] flex-shrink-0 hidden md:block">
                   Back
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                {currentConversationMessages.map((msg) => {
-                  const isFromMe = msg.is_student_sender === false || adminSenderAliases.has(normalizeProviderIdentity(msg.username || msg.studentName));
-                  return (
-                    <div key={msg.id} className={`flex ${isFromMe ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[80%] rounded-2xl p-4 shadow-sm border ${isFromMe
-                        ? 'bg-[#800020] text-white border-[#800020]'
-                        : 'bg-gray-50 text-gray-900 border-gray-200'
-                        }`}>
-                        <div className="flex items-center justify-between mb-2 gap-8">
-                          <span className={`font-semibold text-xs ${isFromMe ? 'text-white/90' : 'text-[#800020]'}`}>
-                            {isFromMe ? 'Me' : (msg.studentName || msg.username || 'Applicant')}
-                          </span>
-                          <span className={`text-[10px] flex items-center gap-1 ${isFromMe ? 'text-white/70' : 'text-gray-500'}`}>
-                            <FaClock className="text-[10px]" /> {formatDate(msg.timestamp)}
-                          </span>
-                        </div>
-                        <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.message}</p>
-                        {!isFromMe && (
-                          <div className="mt-2 flex items-center justify-end">
-                            <button
-                              type="button"
-                              onClick={() => toggleStar(msg.id)}
-                              className={`p-1.5 rounded-lg transition-colors ${msg.starred ? 'text-yellow-500 bg-yellow-50' : 'text-gray-300 hover:bg-gray-100'}`}
-                            >
-                              <FaStar size={12} />
-                            </button>
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 sm:space-y-4 bg-white">
+                {currentConversationMessages.length > 0 ? (
+                  currentConversationMessages.map((msg) => {
+                    const isFromMe = msg.is_student_sender === false || adminSenderAliases.has(normalizeProviderIdentity(msg.username || msg.studentName));
+                    return (
+                      <div key={msg.id} className={`flex ${isFromMe ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[90%] sm:max-w-[80%] rounded-2xl p-3 sm:p-4 shadow-sm border ${isFromMe
+                          ? 'bg-[#800020] text-white border-[#800020]'
+                          : 'bg-gray-50 text-gray-900 border-gray-200'
+                          }`}>
+                          <div className="flex items-center justify-between mb-1.5 sm:mb-2 gap-4">
+                            <span className={`font-semibold text-[11px] sm:text-xs ${isFromMe ? 'text-white/90' : 'text-[#800020]'}`}>
+                              {isFromMe ? 'Me' : (msg.studentName || msg.username || 'Applicant')}
+                            </span>
+                            <span className={`text-[9px] sm:text-[10px] flex items-center gap-1 ${isFromMe ? 'text-white/70' : 'text-gray-500'}`}>
+                              <FaClock className="text-[9px]" /> {formatDate(msg.timestamp)}
+                            </span>
                           </div>
-                        )}
+                          <p className="text-xs sm:text-sm whitespace-pre-wrap leading-relaxed">{msg.message}</p>
+                          {!isFromMe && (
+                            <div className="mt-1.5 flex items-center justify-end">
+                              <button
+                                type="button"
+                                onClick={() => toggleStar(msg.id)}
+                                className={`p-1 rounded-lg transition-colors ${msg.starred ? 'text-yellow-500 bg-yellow-50' : 'text-gray-300 hover:bg-gray-100'}`}
+                              >
+                                <FaStar size={12} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-gray-400 italic py-8">
+                    <FaInbox className="text-3xl mb-2 text-gray-300" />
+                    <p className="text-xs">No messages in this chat yet. Send a message to start the conversation!</p>
+                  </div>
+                )}
                 <div ref={inboxMessagesEndRef} />
               </div>
 
-              <div className="p-4 border-t border-gray-200 bg-gray-50">
+              <div className="p-3 sm:p-4 border-t border-gray-200 bg-gray-50">
                 <div className="flex gap-2">
                   <textarea
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}
                     placeholder="Type a message..."
-                    className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#800020] resize-none"
+                    className="flex-1 px-3 py-2 sm:px-4 sm:py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#800020] resize-none text-xs sm:text-sm bg-white"
                     rows={2}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
-                        if (replyText.trim()) sendReply(currentMessage.id);
+                        if (replyText.trim()) sendReply(currentMessage?.id || currentConversation.applicant_no);
                       }
                     }}
                   />
                   <button
                     type="button"
-                    onClick={() => sendReply(currentMessage.id)}
+                    onClick={() => sendReply(currentMessage?.id || currentConversation.applicant_no)}
                     disabled={!replyText.trim()}
-                    className="px-6 py-3 rounded-xl bg-[#800020] text-white font-semibold hover:bg-[#650018] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    className="px-4 py-2 sm:px-6 sm:py-3 rounded-xl bg-[#800020] text-white font-semibold hover:bg-[#650018] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 text-xs sm:text-sm flex-shrink-0"
                   >
-                    <FaPaperPlane /> Send
+                    <FaPaperPlane /> <span className="hidden sm:inline">Send</span>
                   </button>
                 </div>
               </div>
@@ -5546,9 +5610,9 @@ export default function ScholarshipDashboard({
           ) : (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center px-6">
-                <FaInbox className="text-6xl text-gray-300 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-gray-800 mb-2">Select a conversation</h3>
-                <p className="text-gray-500">All applicants (pending/accepted/rejected/cancelled) can message here.</p>
+                <FaInbox className="text-5xl sm:text-6xl text-gray-300 mx-auto mb-3 sm:mb-4" />
+                <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-1 sm:mb-2">Select a conversation</h3>
+                <p className="text-xs sm:text-sm text-gray-500">All applicants (pending/accepted/rejected/cancelled) can message here.</p>
               </div>
             </div>
           )}
@@ -5558,27 +5622,44 @@ export default function ScholarshipDashboard({
   );
 
   return (
-    <div className="min-h-screen flex bg-gradient-to-br from-gray-50 to-blue-50/30 pt-20 fixed-sidebar-layout">
+    <div className="min-h-screen flex bg-gradient-to-br from-gray-50 to-blue-50/30 pt-16 sm:pt-20 fixed-sidebar-layout">
+      {/* Mobile Drawer Overlay Backdrop */}
+      {isMobileSidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
+          onClick={() => setIsMobileSidebarOpen(false)}
+        />
+      )}
+
       <aside
         onMouseEnter={() => setSidebarCollapsed(false)}
         onMouseLeave={() => setSidebarCollapsed(true)}
-        className={`fixed left-0 top-20 bottom-0 bg-gradient-to-b from-[#800020] to-[#650018] text-white shadow-2xl flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'w-20' : 'w-72'}`}
+        className={`fixed left-0 top-16 sm:top-20 bottom-0 z-50 bg-gradient-to-b from-[#800020] to-[#650018] text-white shadow-2xl flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${
+          isMobileSidebarOpen ? 'translate-x-0 w-72' : '-translate-x-full md:translate-x-0'
+        } ${sidebarCollapsed ? 'md:w-20' : 'md:w-72'}`}
       >
-        <div className={`border-b border-white/10 mb-2 flex items-center justify-center transition-all ${sidebarCollapsed ? 'p-3' : 'p-8'}`}>
-          <div className="flex flex-col items-center text-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-md p-2 shadow-inner border border-white/20 flex items-center justify-center group overflow-hidden flex-shrink-0">
+        <div className={`border-b border-white/10 mb-2 flex items-center justify-between transition-all ${sidebarCollapsed ? 'p-3' : 'p-6 sm:p-8'}`}>
+          <div className="flex flex-col items-center text-center gap-2 sm:gap-4 w-full">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-white/10 backdrop-blur-md p-2 shadow-inner border border-white/20 flex items-center justify-center group overflow-hidden flex-shrink-0">
               <img src={logo} alt="Scholarship Logo" className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-500" />
             </div>
-            {!sidebarCollapsed && (
+            {(!sidebarCollapsed || isMobileSidebarOpen) && (
               <div>
-                <h2 className="text-xl font-black tracking-tight leading-tight uppercase">{sidebarTitle}</h2>
-                <p className="text-[10px] font-bold text-rose-200 tracking-[0.2em] uppercase opacity-70">{sidebarSubtitle}</p>
+                <h2 className="text-base sm:text-xl font-black tracking-tight leading-tight uppercase">{sidebarTitle}</h2>
+                <p className="text-[9px] sm:text-[10px] font-bold text-rose-200 tracking-[0.2em] uppercase opacity-70">{sidebarSubtitle}</p>
               </div>
             )}
           </div>
+          <button
+            type="button"
+            onClick={() => setIsMobileSidebarOpen(false)}
+            className="md:hidden text-white/70 hover:text-white p-1"
+          >
+            <FaTimes className="text-xl" />
+          </button>
         </div>
         <nav className="flex-1 overflow-y-auto transition-all">
-          <div className={`${sidebarCollapsed ? 'px-1' : 'px-2'} py-4 space-y-1`}>
+          <div className={`${sidebarCollapsed && !isMobileSidebarOpen ? 'px-1' : 'px-2'} py-4 space-y-1`}>
             {[
               { id: 'dashboard', label: 'Dashboard', icon: <FaTachometerAlt /> },
               { id: 'finder', label: 'Slot Tracking', icon: <FaSearch /> },
@@ -5590,29 +5671,40 @@ export default function ScholarshipDashboard({
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setSection(item.id)}
+                onClick={() => {
+                  setSection(item.id);
+                  setIsMobileSidebarOpen(false);
+                }}
                 className={`w-full flex items-center transition-all rounded-xl ${section === item.id ? 'bg-white/20' : 'hover:bg-white/10'
-                  } ${sidebarCollapsed ? 'justify-center p-3' : 'justify-start px-4 py-3 gap-3'}`}
+                  } ${sidebarCollapsed && !isMobileSidebarOpen ? 'justify-center p-3' : 'justify-start px-4 py-3 gap-3'}`}
               >
                 <span className="flex-shrink-0 text-lg">{item.icon}</span>
-                {!sidebarCollapsed && <span className="whitespace-nowrap">{item.label}</span>}
+                {(!sidebarCollapsed || isMobileSidebarOpen) && <span className="whitespace-nowrap font-medium text-sm sm:text-base">{item.label}</span>}
               </button>
             ))}
           </div>
         </nav>
       </aside>
 
-      <main className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-24' : 'ml-[19rem]'} flex-1 flex flex-col overflow-y-auto px-10 py-10 custom-scrollbar border-l border-r border-gray-200/80 shadow-[inset_10px_0_15px_-10px_rgba(0,0,0,0.05)]`} style={{ maxHeight: 'calc(100vh - 5rem)' }}>
-        <header className="bg-white rounded-2xl shadow-sm px-8 py-5 mb-8 flex items-center justify-between border border-gray-100">
-          <div className="flex items-center gap-2 text-[#800020] font-bold text-xl">
-            {dashboardTitle}
+      <main className={`transition-all duration-300 ml-0 ${sidebarCollapsed ? 'md:ml-20' : 'md:ml-72'} flex-1 flex flex-col overflow-y-auto px-3 sm:px-6 lg:px-10 py-4 sm:py-6 lg:py-10 custom-scrollbar border-l border-r border-gray-200/80 shadow-[inset_10px_0_15px_-10px_rgba(0,0,0,0.05)]`} style={{ maxHeight: 'calc(100vh - 4rem)' }}>
+        <header className="bg-white rounded-2xl shadow-sm px-3.5 sm:px-6 lg:px-8 py-3 sm:py-4 lg:py-5 mb-4 sm:mb-6 lg:mb-8 flex flex-row items-center justify-between gap-2 sm:gap-4 border border-gray-100">
+          <div className="flex items-center gap-2 sm:gap-3 text-[#800020] font-bold text-sm sm:text-lg lg:text-xl min-w-0 flex-1">
+            <button
+              type="button"
+              onClick={() => setIsMobileSidebarOpen(prev => !prev)}
+              className="md:hidden p-2 rounded-xl bg-rose-50 text-[#800020] hover:bg-rose-100 transition-colors flex-shrink-0"
+              title="Open Sidebar"
+            >
+              <FaBars className="text-sm sm:text-base" />
+            </button>
+            <span className="truncate font-black tracking-tight">{dashboardTitle}</span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
             <div className="text-right">
-              <p className="text-xs text-gray-500 font-medium whitespace-nowrap">Welcome back,</p>
-              <p className="text-sm font-bold text-gray-900 whitespace-nowrap">{userName}</p>
+              <p className="text-[10px] sm:text-xs text-gray-500 font-medium whitespace-nowrap hidden sm:block">Welcome back,</p>
+              <p className="text-xs sm:text-sm font-bold text-gray-900 whitespace-nowrap">{userName}</p>
             </div>
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#800020] to-[#650018] flex items-center justify-center text-white font-bold shadow-sm border-2 border-white">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#800020] to-[#650018] flex items-center justify-center text-white font-bold text-xs sm:text-base shadow-sm border-2 border-white flex-shrink-0">
               {userFirstName.charAt(0).toUpperCase()}
             </div>
           </div>

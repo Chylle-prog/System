@@ -1,50 +1,77 @@
 .navbar {
   background: rgba(79, 13, 0, 0.95);
-  backdrop-filter: blur(8px);
-  padding: 0.9rem 5%;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 0.65rem 5%;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: var(--border-light);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
   position: sticky;
   top: 0;
-  z-index: 100;
+  z-index: 1000;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.navbar-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: auto;
+}
+
+.navbar-toggle-btn {
+  display: none;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: white;
+  font-size: 1.15rem;
+  cursor: pointer;
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  aspect-ratio: 1 / 1;
+  border-radius: 10px;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.navbar-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
 }
 
 .navbar-brand {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.65rem;
   text-decoration: none;
   color: white;
   transition: var(--transition);
 }
 
-.navbar-brand:hover {
-  color: rgba(255, 255, 255, 0.9);
-}
-
 .navbar-brand-logo {
-  height: 40px;
-  width: auto;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
-  transition: transform 0.3s ease;
-}
-
-.navbar-brand-logo:hover {
-  transform: scale(1.05);
+  height: 38px;
+  width: 38px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.3));
+  border-radius: 50%;
 }
 
 .navbar-brand-text {
-  font-size: 1.65rem;
+  font-size: 1.4rem;
   font-weight: 800;
   letter-spacing: -0.02em;
   color: white;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 .navbar-nav {
   display: flex;
-  gap: 2.5rem;
+  gap: clamp(1rem, 2vw, 2.5rem);
   align-items: center;
 }
 
@@ -57,6 +84,7 @@
   position: relative;
   padding: 0.25rem 0;
   white-space: nowrap;
+  text-decoration: none;
 }
 
 .navbar-nav a::after {
@@ -80,53 +108,93 @@
 
 .navbar-nav .nav-btn {
   background: white;
-  color: var(--primary);
-  padding: 0.6rem 1.8rem;
+  color: var(--primary, #4F0D00);
+  padding: 0.55rem 1.6rem;
   border-radius: 40px;
   border: none;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 0.9rem;
   cursor: pointer;
   transition: var(--transition);
   box-shadow: 0 8px 16px -8px rgba(0, 0, 0, 0.2);
   white-space: nowrap;
+  text-align: center;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.navbar-nav .nav-btn::after {
+  display: none !important;
 }
 
 .navbar-nav .nav-btn:hover {
   background: #ffefe8;
-  transform: translateY(-3px);
+  transform: translateY(-2px);
   box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.3);
 }
 
 .navbar-menu {
   display: flex;
-  gap: 2.5rem;
+  gap: 0.85rem;
   align-items: center;
 }
 
-.navbar-menu .user-email {
-  color: rgba(255, 255, 255, 0.9);
-  font-weight: 500;
-  font-size: 0.95rem;
+.navbar-user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.14);
+  padding: 0.4rem 0.9rem;
+  border-radius: 30px;
+  color: white;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  max-width: 180px;
+}
+
+.navbar-user-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .profile-btn, .logout-btn {
-  background: transparent;
-  padding: 0.5rem 1.5rem;
-  border-radius: 40px;
-  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.14);
+  padding: 0.5rem 1.25rem;
+  border-radius: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
   color: white;
   font-weight: 600;
-  font-size: 0.9rem;
-  transition: all 0.2s;
+  font-size: 0.88rem;
+  transition: all 0.2s ease;
   cursor: pointer;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
 }
 
-.profile-btn:hover, .logout-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.6);
+.logout-btn {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #fee2e2;
+}
+
+.profile-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: white;
+  transform: translateY(-1px);
+}
+
+.logout-btn:hover {
+  background: rgba(220, 38, 38, 0.45);
+  border-color: #fca5a5;
+  color: white;
+  transform: translateY(-1px);
 }
 
 .notification-wrapper {
@@ -138,164 +206,192 @@
   background: transparent;
   border: none;
   color: white;
-  font-size: 1.3rem;
+  font-size: 1.2rem;
   cursor: pointer;
   position: relative;
-  padding: 0.5rem 0.8rem;
+  width: auto;
+  height: auto;
+  padding: 0.35rem;
   display: flex;
   align-items: center;
-  transition: all 0.2s;
-  border-radius: 50%;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.notification-btn .notif-label {
+  display: none;
 }
 
 .notification-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  opacity: 0.85;
+  transform: scale(1.1);
 }
 
 .notification-badge {
   position: absolute;
-  top: 0;
-  right: 2px;
-  background: #ff6b6b;
+  top: -3px;
+  right: -5px;
+  background: #ef4444;
   color: white;
-  font-size: 0.7rem;
-  font-weight: 700;
-  min-width: 18px;
-  height: 18px;
-  border-radius: 18px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 4px;
-  border: 2px solid var(--primary);
+  padding: 0 3px;
+  border: 1.5px solid #4F0D00;
 }
 
-.navbar-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+.nav-icon {
+  margin-right: 8px;
+  display: none !important;
 }
 
-.mobile-toggle-btn {
-  display: none;
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
-  font-size: 1.25rem;
-  padding: 0.4rem 0.8rem;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: var(--transition);
-}
-
-.mobile-toggle-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
+/* Phone & Tablet Responsive Navigation */
 @media (max-width: 768px) {
+  .nav-icon {
+    display: inline-block !important;
+  }
+
   .navbar {
-    flex-direction: column;
-    padding: 0.75rem 1.25rem;
-    gap: 0;
-    overflow: visible;
-  }
-
-  .navbar-header {
-    width: 100%;
-    justify-content: space-between;
-  }
-
-  .mobile-toggle-btn {
-    display: block;
     position: relative;
-    z-index: 200;
+    padding: 0.6rem 4%;
   }
 
-  /* ── Guest nav (About Us / Apply Now) ── */
-  .navbar-nav {
-    display: none;
-    flex-direction: column;
+  .navbar-header-row {
     width: 100%;
-    padding-top: 0.75rem;
-    padding-bottom: 0.5rem;
-    gap: 0.75rem;
-    align-items: stretch;
-    border-top: 1px solid rgba(255, 255, 255, 0.15);
-    margin-top: 0.75rem;
-    animation: fadeIn 0.25s ease forwards;
-    position: relative;
-    z-index: 150;
-    background: rgba(79, 13, 0, 0.98);
-  }
-
-  .navbar-nav.mobile-open {
     display: flex;
+    justify-content: space-between;
+    align-items: center;
   }
 
-  .navbar-nav a, .navbar-nav .nav-btn {
+  .navbar-toggle-btn {
+    display: flex !important;
+  }
+
+  .navbar-nav, .navbar-menu {
+    display: none !important;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    background: rgba(45, 8, 0, 0.97);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    flex-direction: column;
+    padding: 1rem 1.25rem 1.25rem;
+    gap: 0.65rem;
+    align-items: stretch;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    box-sizing: border-box;
+    animation: navSlideDown 0.25s ease-out forwards;
+  }
+
+  .navbar-nav.active, .navbar-menu.active {
+    display: flex !important;
+  }
+
+  .navbar-user-chip {
+    max-width: 100%;
+    width: 100%;
+    justify-content: center;
+    padding: 0.6rem;
+    font-size: 0.95rem;
+    background: rgba(255, 255, 255, 0.1);
+    box-sizing: border-box;
+  }
+
+  .navbar-brand-logo {
+    height: 32px;
+    width: 32px;
+  }
+
+  .navbar-brand-text {
+    font-size: 1.2rem;
+  }
+
+  .navbar-nav a {
+    font-size: 0.88rem;
+    font-weight: 600;
+    padding: 0.6rem 0.85rem;
     width: 100%;
     text-align: center;
-    padding: 0.7rem 1rem;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    color: white;
+    box-sizing: border-box;
   }
 
-  /* ── Logged-in menu: compact single row ── */
-  .navbar-menu {
+  .navbar-nav a::after {
     display: none;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
+  }
+
+  .navbar-nav .nav-btn, .profile-btn, .logout-btn {
     width: 100%;
-    padding: 0.6rem 0 0.4rem;
-    gap: 0.5rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.15);
-    margin-top: 0.6rem;
-    animation: fadeIn 0.25s ease forwards;
-    position: relative;
-    z-index: 150;
-    background: rgba(79, 13, 0, 0.98);
-  }
-
-  .navbar-menu.mobile-open {
-    display: flex;
-  }
-
-  /* Name chip — left side */
-  .navbar-menu .user-email {
-    font-size: 0.82rem;
-    padding: 0.3rem 0.6rem;
-    background: rgba(255, 255, 255, 0.12);
-    border-radius: 20px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 120px;
-    text-align: left;
-  }
-
-  /* Notification bell — stays compact */
-  .notification-wrapper {
-    display: flex;
+    max-width: 100%;
     justify-content: center;
-    flex-shrink: 0;
+    padding: 0.65rem 1rem;
+    font-size: 0.9rem;
+    font-weight: 700;
+    border-radius: 12px;
+    box-sizing: border-box;
+  }
+
+  .notification-wrapper {
+    width: 100%;
   }
 
   .notification-btn {
-    padding: 0.3rem 0.5rem;
+    width: 100%;
+    height: auto;
+    border-radius: 12px;
+    padding: 0.65rem 1rem;
+    justify-content: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+
+  .notification-btn .notif-label {
+    display: inline-block;
+  }
+}
+
+@media (max-width: 480px) {
+  .navbar {
+    padding: 0.55rem 3%;
+  }
+
+  .navbar-brand-logo {
+    height: 28px;
+    width: 28px;
+  }
+
+  .navbar-brand-text {
     font-size: 1.1rem;
   }
 
-  /* Profile & Logout — compact pill buttons, no full-width stretch */
-  .profile-btn, .logout-btn {
-    width: auto !important;
-    padding: 0.35rem 0.9rem;
-    font-size: 0.8rem;
-    border-radius: 20px;
-    flex-shrink: 0;
+  .navbar-toggle-btn {
+    width: 34px;
+    height: 34px;
+    font-size: 1.05rem;
+  }
+}
+
+@keyframes navSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

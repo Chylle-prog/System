@@ -1,29 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import Navbar from './Navbar';
-import ChatbotDesign from '../components/ChatbotDesign';
 import { useAuth } from '../contexts/AuthContext';
 import './HomePage.css';
 
 const HomePage = () => {
   const { currentUser } = useAuth();
-  const location = useLocation();
   const [activeModal, setActiveModal] = useState(null);
   const [activeFAQ, setActiveFAQ] = useState(null);
   const [activeCategory, setActiveCategory] = useState('all');
-
-  useEffect(() => {
-    const targetId = location.state?.scrollTo || (location.hash ? location.hash.replace('#', '') : null);
-    if (targetId) {
-      const timer = setTimeout(() => {
-        const element = document.getElementById(targetId);
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth' });
-        }
-      }, 150);
-      return () => clearTimeout(timer);
-    }
-  }, [location]);
 
   const scrollToSection = (sectionId) => {
     const element = document.getElementById(sectionId);
@@ -189,7 +174,7 @@ const HomePage = () => {
   };
 
   return (
-    <>
+    <div className="homepage-wrapper">
       <Navbar />
       
       <section className="homepage">
@@ -320,9 +305,9 @@ const HomePage = () => {
                 </div>
                 <div className="contact-info">
                   <h3>Email Us</h3>
-                  <p>support@iskomats.com</p>
-                  <p>community-affairs@yahoo.com</p>
-                  <p>cado.lipa@gmail.com</p>
+                  <p className="contact-email">support@iskomats.com</p>
+                  <p className="contact-email">community-affairs@yahoo.com</p>
+                  <p className="contact-email">cado.lipa@gmail.com</p>
                   <span className="contact-subtitle">We respond within 24 hours</span>
                 </div>
               </div>
@@ -341,7 +326,8 @@ const HomePage = () => {
                   <span style={{fontSize: '1.5rem'}}>📍</span>
                 </div>
                 <div className="contact-info">
-                  <p>Lipa City Hall, President Jose P. Laurel Highway, Ayala Highway, Lipa City, 4217 Batangas</p>
+                  <h3>Visit Us</h3>
+                  <p className="contact-address">Lipa City Hall, President Jose P. Laurel Highway, Ayala Highway, Lipa City, 4217 Batangas</p>
                   <span className="contact-subtitle">Walk-ins welcome</span>
                 </div>
               </div>
@@ -357,6 +343,19 @@ const HomePage = () => {
           </div>
         </div>
       </section>
+
+      {/* Site Footer */}
+      <footer className="site-footer">
+        <div className="footer-container">
+          <div className="footer-brand">
+            <img src="/iskologo.png" alt="iskoMats Logo" className="footer-logo" />
+            <span className="footer-brand-name">iskoMats</span>
+          </div>
+          <p className="footer-copyright">
+            &copy; {new Date().getFullYear()} iskoMats - Lipa City Scholarship Management System. All rights reserved.
+          </p>
+        </div>
+      </footer>
 
       {/* Scholarship Modal */}
       {activeModal && (
@@ -399,10 +398,7 @@ const HomePage = () => {
           </div>
         </div>
       )}
-
-      {/* Chatbot */}
-      <ChatbotDesign apiUrl={import.meta.env.VITE_CHATBOT_API_URL || import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:8000'} />
-    </>
+    </div>
   );
 };
 

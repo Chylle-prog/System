@@ -4,7 +4,6 @@ import { authAPI, applicantAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { GoogleLogin } from '@react-oauth/google';
 import lipaBg from '../assets/lipa.jpg';
-import { SCHOOLS, BARANGAYS } from '../utils/constants';
 import Navbar from './Navbar';
 
 
@@ -21,7 +20,6 @@ const Login = () => {
   const [showEmailAlreadyRegisteredOverlay, setShowEmailAlreadyRegisteredOverlay] = useState(false);
   const [showSuspensionModal, setShowSuspensionModal] = useState(false);
   const [profilePicture, setProfilePicture] = useState(null);
-  const [rawProfilePictureFile, setRawProfilePictureFile] = useState(null);
   const [isLoginLoading, setIsLoginLoading] = useState(false);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
@@ -101,7 +99,7 @@ const Login = () => {
 
       localStorage.setItem('currentUser', email);
       localStorage.setItem('authToken', response.token);
-      localStorage.setItem('applicantNo', response.applicant_no || '');
+      localStorage.setItem('applicantNo', response.applicant_no);
       setShowError(false);
 
       // Navigate based on profile completion
@@ -261,6 +259,7 @@ const Login = () => {
       
       const email = localStorage.getItem('currentUser');
 
+      // Use the exact names expected by the backend field_mapping
       const profilePayload = {
         firstName,
         middleName,
@@ -273,9 +272,10 @@ const Login = () => {
         townCity: townCityMunicipality,
         province,
         zipCode,
-        profile_picture: profilePicture
       };
       
+      if (profilePicture) profilePayload.profile_picture = profilePicture;
+
       await applicantAPI.updateProfile(profilePayload);
 
       // Refresh global Auth state to ensure PrivateRoute recognizes the profile as complete
@@ -302,18 +302,11 @@ const Login = () => {
     const file = e.target.files[0];
     if (!file) return;
 
-    setRawProfilePictureFile(file);
-    if (window.compressImage) {
-      window.compressImage(file, 400).then(compressedBase64 => {
-        setProfilePicture(compressedBase64);
-      });
-    } else {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        setProfilePicture(ev.target.result);
-      };
-      reader.readAsDataURL(file);
-    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setProfilePicture(ev.target.result);
+    };
+    reader.readAsDataURL(file);
   };
 
   const closeRegistrationModal = () => {
@@ -344,7 +337,7 @@ const Login = () => {
 
       localStorage.setItem('currentUser', email);
       localStorage.setItem('authToken', response.token);
-      localStorage.setItem('applicantNo', response.applicant_no || '');
+      localStorage.setItem('applicantNo', response.applicant_no);
       setShowError(false);
 
       // 2. Navigate based on profile status
@@ -445,80 +438,7 @@ const Login = () => {
           --transition: all 0.25s ease;
         }
 
-        .navbar {
-          background: rgba(79, 13, 0, 0.9);
-          backdrop-filter: blur(14px);
-          -webkit-backdrop-filter: blur(14px);
-          padding: 0.9rem 5%;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          position: sticky;
-          top: 0;
-          z-index: 100;
-          border-bottom: 1px solid rgba(255, 255, 240, 0.15);
-          box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
-        }
 
-        .navbar-brand {
-          font-size: 1.8rem;
-          font-weight: 800;
-          letter-spacing: -0.02em;
-          background: linear-gradient(130deg, #fff, #ffd6cc);
-          -webkit-background-clip: text;
-          background-clip: text;
-          color: transparent;
-          text-decoration: none;
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-        }
-
-        .navbar-brand img {
-          height: 56px;
-          margin-right: 16px;
-          vertical-align: middle;
-        }
-
-        .navbar-nav {
-          display: flex;
-          gap: 2.5rem;
-          align-items: center;
-        }
-
-        @media (max-width: 768px) {
-          .navbar-nav { display: none !important; }
-          .navbar-nav.mobile-open { display: flex !important; }
-        }
-
-        .navbar-nav a {
-          color: rgba(255, 255, 255, 0.9);
-          font-weight: 500;
-          font-size: 0.95rem;
-          text-decoration: none;
-          transition: var(--transition);
-          position: relative;
-          padding: 0.25rem 0;
-        }
-
-        .navbar-nav a::after {
-          content: '';
-          position: absolute;
-          bottom: -2px;
-          left: 0;
-          width: 0;
-          height: 2px;
-          background: linear-gradient(90deg, #ffb6a0, #ffe4db);
-          transition: width 0.25s ease;
-        }
-
-        .navbar-nav a:hover::after {
-          width: 100%;
-        }
-
-        .navbar-nav a:hover {
-          color: white;
-        }
 
         .auth-wrapper {
           flex: 1;
@@ -535,8 +455,8 @@ const Login = () => {
           background: rgba(255, 255, 255, 0.12);
           backdrop-filter: blur(24px);
           -webkit-backdrop-filter: blur(24px);
-          border-radius: 40px;
-          padding: 1.5rem 2.5rem 2rem;
+          border-radius: clamp(20px, 4vw, 40px);
+          padding: clamp(1.25rem, 4vw, 2.5rem);
           box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5);
           border: 1px solid rgba(255, 255, 255, 0.3);
           transition: var(--transition);
@@ -545,47 +465,64 @@ const Login = () => {
         }
 
         .profile-card {
-          max-width: 720px;
-          width: 100%;
+          max-width: 760px;
+          width: 92%;
+          max-height: calc(100vh - 80px);
+          overflow-y: auto;
           background: rgba(255, 255, 255, 0.12);
           backdrop-filter: blur(24px);
           -webkit-backdrop-filter: blur(24px);
-          border-radius: 56px;
-          padding: 3rem 3.5rem;
-          box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5);
-          border: 1px solid rgba(255, 255, 255, 0.3);
+          border-radius: 28px;
+          padding: 1.5rem 2rem;
+          box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
+          border: 1px solid rgba(255, 255, 255, 0.25);
           animation: cardFloat 0.7s ease-out;
           margin: 0 auto;
         }
 
+        .profile-card::-webkit-scrollbar {
+          width: 6px;
+        }
+        .profile-card::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 10px;
+        }
+        .profile-card::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.25);
+          border-radius: 10px;
+        }
+
         .profile-card h2 {
-          font-size: 2.22rem;
+          font-size: 1.6rem;
           font-weight: 800;
           color: white;
           text-align: center;
-          margin-bottom: 2.2rem;
+          margin-bottom: 1rem;
+          text-shadow: 0 2px 10px rgba(0,0,0,0.3);
         }
 
         .profile-pic-container {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 1.2rem;
-          margin-bottom: 2.5rem;
+          justify-content: center;
+          gap: 0.6rem;
+          margin-bottom: 1rem;
         }
 
         .profile-pic-preview {
-          width: 140px;
-          height: 140px;
+          width: 80px;
+          height: 80px;
           border-radius: 50%;
-          background: #fff5f2;
+          background: rgba(255, 255, 255, 0.2);
           display: flex;
           align-items: center;
           justify-content: center;
-          border: 4px solid #fff;
-          box-shadow: 0 10px 25px rgba(79, 13, 0, 0.12);
+          border: 3px solid rgba(255, 255, 255, 0.8);
+          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
           overflow: hidden;
           position: relative;
+          flex-shrink: 0;
         }
 
         .profile-pic-preview img {
@@ -595,55 +532,71 @@ const Login = () => {
         }
 
         .profile-pic-preview i {
-          font-size: 3rem;
-          color: #ffccbc;
+          font-size: 1.8rem;
+          color: rgba(255, 255, 255, 0.8);
         }
 
         .upload-photo-btn {
-          background: #fff;
-          border: 2px dashed #ffab91;
-          padding: 0.6rem 1.4rem;
+          background: rgba(255, 255, 255, 0.18);
+          border: 1.5px dashed rgba(255, 255, 255, 0.5);
+          padding: 0.4rem 1rem;
           border-radius: 30px;
-          font-size: 0.9rem;
+          font-size: 0.82rem;
           font-weight: 600;
-          color: var(--primary);
+          color: white;
           cursor: pointer;
           transition: var(--transition);
           display: flex;
           align-items: center;
-          gap: 0.6rem;
+          gap: 0.4rem;
+          backdrop-filter: blur(8px);
         }
 
         .upload-photo-btn:hover {
-          background: #fff3f0;
-          border-color: var(--primary);
-          transform: scale(1.05);
+          background: rgba(255, 255, 255, 0.3);
+          border-color: white;
+          transform: translateY(-1px);
         }
 
-        .profile-grid {
+        .profile-grid-3 {
           display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 0.75rem;
         }
 
-        @media (max-width: 600px) {
-          .profile-grid {
-            grid-template-columns: 1fr;
+        .profile-grid-2 {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 0.75rem;
+        }
+
+        @media (max-width: 580px) {
+          .profile-grid-3 {
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.4rem;
+          }
+          .profile-grid-2 {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.4rem;
+          }
+          .profile-card {
+            padding: 1.25rem 0.85rem;
+            width: 96%;
           }
         }
 
         .profile-form-group {
-          margin-bottom: 1.2rem;
+          margin-bottom: 0.8rem;
         }
 
         .profile-form-group label {
           display: block;
           font-weight: 700;
-          font-size: 0.8rem;
+          font-size: 0.75rem;
           text-transform: uppercase;
-          letter-spacing: 0.6px;
-          color: rgba(255, 255, 255, 0.8);
-          margin-bottom: 0.5rem;
+          letter-spacing: 0.5px;
+          color: rgba(255, 255, 255, 0.9);
+          margin-bottom: 0.3rem;
         }
 
         .profile-input-wrapper {
@@ -654,52 +607,49 @@ const Login = () => {
 
         .profile-input-wrapper i {
           position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
+          left: 0.9rem;
+          color: rgba(255, 255, 255, 0.75);
+          font-size: 0.9rem;
+          pointer-events: none;
+          z-index: 2;
         }
 
-        .profile-input-wrapper input,
-        .profile-input-wrapper select {
-          border: none;
-          border-radius: 12px;
-          background: rgba(255, 255, 255, 0.08);
-          color: white;
-          font-size: 1rem;
-          transition: all 0.3s ease;
+        .profile-input-wrapper input, .profile-input-wrapper select {
           width: 100%;
-          backdrop-filter: blur(5px);
-          padding: 1rem 1.2rem 1rem 2.8rem;
+          padding: 0.7rem 0.9rem 0.7rem 2.5rem;
+          border: 1px solid rgba(255, 255, 255, 0.25);
+          border-radius: 14px;
+          font-size: 0.9rem;
+          background: rgba(255, 255, 255, 0.15);
+          color: white;
+          transition: var(--transition);
           appearance: none;
         }
 
-        .profile-input-wrapper select {
-          cursor: pointer;
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='white'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
-          background-repeat: no-repeat;
-          background-position: right 1rem center;
-          background-size: 1.2rem;
-          padding-right: 2.5rem;
-        }
-
-        .profile-form-group .profile-input-wrapper input:focus,
-        .profile-form-group .profile-input-wrapper select:focus {
-          outline: none;
-          background: rgba(255, 255, 255, 0.15);
-          box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
-        }
-
-        .profile-form-group .profile-input-wrapper input::placeholder {
-          color: rgba(255, 255, 255, 0.4);
-        }
-        
-        .profile-form-group .profile-input-wrapper select option {
-          background: #1a1a1a;
+        .profile-input-wrapper select option {
+          background: #230b06;
           color: white;
         }
 
-        .profile-input-wrapper input:focus + i {
-          color: var(--primary);
+        .profile-input-wrapper input::placeholder {
+          color: rgba(255, 255, 255, 0.5);
+        }
+
+        .profile-input-wrapper input:focus, .profile-input-wrapper select:focus {
+          outline: none;
+          border-color: rgba(255, 255, 255, 0.6);
+          background: rgba(255, 255, 255, 0.25);
+          color: white;
+          box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15);
+        }
+
+        .profile-input-wrapper input[readonly], 
+        .profile-input-wrapper input.readonly-field {
+          background: rgba(0, 0, 0, 0.25) !important;
+          border: 1px solid rgba(255, 255, 255, 0.2) !important;
+          color: rgba(255, 255, 255, 0.9) !important;
+          cursor: not-allowed !important;
+          font-weight: 600;
         }
 
 
@@ -753,24 +703,37 @@ const Login = () => {
           margin-bottom: 0.4rem;
         }
 
-        .input-wrapper {
+        .profile-input-wrapper, .input-wrapper {
           position: relative;
+          width: 100%;
           display: flex;
           align-items: center;
         }
 
-        .input-wrapper i {
+        .profile-input-wrapper i, .input-wrapper i {
           position: absolute;
-          left: 1.2rem;
-          color: var(--gray-3);
-          font-size: 1rem;
+          left: 1.1rem;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 20px;
+          height: 20px;
+          color: rgba(18, 24, 38, 0.65);
+          font-size: 0.95rem;
+          line-height: 1;
           transition: var(--transition);
           pointer-events: none;
+          z-index: 2;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0;
+          padding: 0;
         }
 
         .input-wrapper input {
           width: 100%;
-          padding: 0.85rem 1.2rem 0.85rem 2.8rem;
+          box-sizing: border-box;
+          padding: 0.85rem 1.2rem 0.85rem 2.75rem;
           border: 1px solid rgba(255, 255, 255, 0.2);
           border-radius: 30px;
           font-size: 0.95rem;
@@ -929,23 +892,24 @@ const Login = () => {
         }
 
         .error-message {
-          background: rgba(239, 68, 68, 0.1);
-          border: 1.5px solid rgba(239, 68, 68, 0.3);
-          border-radius: 20px;
-          padding: 1rem 1.5rem;
-          margin-bottom: 1.5rem;
+          background: rgba(220, 38, 38, 0.35);
+          border: 1px solid rgba(248, 113, 113, 0.5);
+          border-radius: 14px;
+          padding: 0.75rem 1rem;
+          margin-bottom: 1rem;
           display: flex;
           align-items: center;
-          gap: 0.8rem;
-          color: #dc2626;
-          font-size: 0.9rem;
-          font-weight: 500;
+          gap: 0.75rem;
+          color: #fee2e2;
+          font-size: 0.88rem;
+          font-weight: 600;
+          backdrop-filter: blur(8px);
           animation: errorShake 0.5s ease-in-out;
         }
 
         .error-message i {
           font-size: 1.1rem;
-          color: #dc2626;
+          color: #fca5a5;
         }
 
         @keyframes errorShake {
@@ -1079,7 +1043,6 @@ const Login = () => {
         }
 
         @media (max-width: 768px) {
-          /* Let Navbar.css handle the hamburger toggle — just keep auth layout here */
           .auth-wrapper {
             padding: 2rem 5%;
             flex-direction: column;
@@ -1109,14 +1072,8 @@ const Login = () => {
           
           .form-group input,
           .form-group select {
-            padding: 0.8rem 1rem 0.8rem 3rem !important;
+            padding: 0.8rem 1rem;
             font-size: 0.95rem;
-          }
-
-          .input-wrapper input,
-          .profile-input-wrapper input,
-          .profile-input-wrapper select {
-            padding-left: 3rem !important;
           }
           
           .submit-btn {
@@ -1132,47 +1089,71 @@ const Login = () => {
 
         @media (max-width: 480px) {
           .auth-wrapper {
-            padding: 1rem 3%;
+            padding: 0.85rem 3%;
+            min-height: calc(100vh - 60px);
           }
           
-          .auth-card {
-            padding: 1.5rem;
-            border-radius: 20px;
+          .auth-card, .profile-card {
+            padding: 1.25rem 1.1rem !important;
+            border-radius: 20px !important;
+            max-width: 95% !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
           }
 
-          .profile-card {
-            padding: 1.5rem;
-            border-radius: 20px;
+          .auth-header {
+            margin-bottom: 0.85rem !important;
           }
-          
+
           .auth-header h2 {
-            font-size: 1.5rem;
+            font-size: 1.35rem !important;
+            margin-bottom: 0.2rem !important;
           }
           
           .auth-header p {
-            font-size: 0.9rem;
+            font-size: 0.82rem !important;
+            line-height: 1.35 !important;
+          }
+
+          .form-group {
+            margin-bottom: 0.85rem !important;
+          }
+
+          .form-group label {
+            font-size: 0.72rem !important;
+            margin-bottom: 0.25rem !important;
           }
           
-          .form-group input,
-          .form-group select {
-            padding: 0.7rem 0.9rem 0.7rem 3rem !important;
-            font-size: 0.9rem;
+          .profile-input-wrapper i, .input-wrapper i {
+            left: 0.9rem !important;
+            width: 18px !important;
+            height: 18px !important;
+            font-size: 0.88rem !important;
           }
 
           .input-wrapper input,
           .profile-input-wrapper input,
           .profile-input-wrapper select {
-            padding-left: 3rem !important;
+            padding: 0.65rem 0.9rem 0.65rem 2.5rem !important;
+            font-size: 0.85rem !important;
+            border-radius: 24px !important;
           }
           
           .submit-btn {
-            padding: 0.7rem;
-            font-size: 0.9rem;
+            padding: 0.65rem !important;
+            font-size: 0.88rem !important;
+            border-radius: 24px !important;
+            margin-top: 0.4rem !important;
+          }
+
+          .or-divider {
+            margin: 0.85rem 0 !important;
+            font-size: 0.78rem !important;
           }
           
           .toggle-btn {
-            padding: 0.5rem 1.2rem;
-            font-size: 0.85rem;
+            padding: 0.45rem 1rem !important;
+            font-size: 0.82rem !important;
           }
           
           .profile-form .form-row {
@@ -1181,12 +1162,12 @@ const Login = () => {
           }
           
           .photo-upload-area {
-            padding: 1.5rem;
+            padding: 1.2rem;
           }
           
           .photo-preview {
-            width: 120px;
-            height: 120px;
+            width: 100px;
+            height: 100px;
           }
         }
       `}</style>
@@ -1218,7 +1199,7 @@ const Login = () => {
                   <label>Email</label>
                   <div className="input-wrapper">
                     <i className="far fa-envelope"></i>
-                    <input type="email" name="email" placeholder="name@university.edu.ph" required defaultValue={localStorage.getItem('currentUser') || ''} />
+                    <input type="email" name="email" placeholder="name@university.edu.ph" required />
                   </div>
                 </div>
                 <div className="form-group">
@@ -1233,11 +1214,28 @@ const Login = () => {
                     <>
                       <i className="fas fa-spinner fa-spin" style={{marginRight: '8px'}}></i>Loading...
                     </>
-                   ) : (
+                  ) : (
                     <>Log in</>
                   )}
                 </button>
-                <div className="forgot-password">
+                {/* Social Login Options */}
+                <div className="social-signup">
+                  <div className="divider">
+                    <span>Or log in with</span>
+                  </div>
+                  <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
+                    <GoogleLogin
+                      onSuccess={handleGoogleSuccess}
+                      onError={handleGoogleError}
+                      theme="outline"
+                      size="large"
+                      width="100%"
+                      shape="pill"
+                      text="continue_with"
+                    />
+                  </div>
+                </div>
+               <div className="forgot-password">
                   <a href="#" onClick={handleForgotPassword} style={{ color: 'rgba(255,255,255,0.7)', textDecoration: 'none', fontSize: '0.9rem' }}>
                     Forgot password?
                   </a>
@@ -1270,27 +1268,26 @@ const Login = () => {
                   </div>
                 </div>
                 <button type="submit" className="submit-btn">Create account</button>
+
+                {/* Social Sign-up Options */}
+                <div className="social-signup">
+                  <div className="divider">
+                    <span>Or sign up with</span>
+                  </div>
+                  <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
+                    <GoogleLogin
+                      onSuccess={handleGoogleSuccess}
+                      onError={handleGoogleError}
+                      theme="outline"
+                      size="large"
+                      width="100%"
+                      shape="pill"
+                      text="signup_with"
+                    />
+                  </div>
+                </div>
               </form>
             )}
-
-            {/* Shared Social Login Options */}
-            <div className="social-signup">
-              <div className="divider">
-                <span>Or {isLogin ? 'log in' : 'sign up'} with</span>
-              </div>
-              <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center' }}>
-                <GoogleLogin
-                  key="shared-google-login"
-                  onSuccess={handleGoogleSuccess}
-                  onError={handleGoogleError}
-                  theme="outline"
-                  size="large"
-                  width="350"
-                  shape="pill"
-                  text={isLogin ? "continue_with" : "signup_with"}
-                />
-              </div>
-            </div>
 
             <div className="toggle-auth">
               <span>
@@ -1336,7 +1333,7 @@ const Login = () => {
                 </label>
               </div>
 
-              <div className="profile-grid">
+              <div className="profile-grid-3">
                 <div className="profile-form-group">
                   <label>First Name</label>
                   <div className="profile-input-wrapper">
@@ -1347,18 +1344,20 @@ const Login = () => {
                 <div className="profile-form-group">
                   <label>Middle Name</label>
                   <div className="profile-input-wrapper">
+                    <i className="far fa-user"></i>
                     <input type="text" name="middleName" placeholder="Enter Middle Name" />
                   </div>
                 </div>
                 <div className="profile-form-group">
                   <label>Last Name</label>
                   <div className="profile-input-wrapper">
+                    <i className="far fa-user"></i>
                     <input type="text" name="lastName" placeholder="Enter Last Name" required />
                   </div>
                 </div>
               </div>
 
-              <div className="profile-grid">
+              <div className="profile-grid-2">
                 <div className="profile-form-group">
                   <label>Birthdate</label>
                   <div className="profile-input-wrapper">
@@ -1375,24 +1374,36 @@ const Login = () => {
                 </div>
               </div>
 
+              <div className="profile-grid-2">
                 <div className="profile-form-group">
                   <label>University / School</label>
                   <div className="profile-input-wrapper">
                     <i className="fas fa-university"></i>
-                    <select name="school" required style={{ width: '100%' }}>
-                      <option value="">Select School</option>
-                      {SCHOOLS.map(school => (
-                        <option key={school} value={school}>{school}</option>
-                      ))}
+                    <select name="school" required>
+                      <option value="" disabled selected>Select University / School</option>
+                      <option value="DLSL/De La Salle Lipa">DLSL/De La Salle Lipa</option>
+                      <option value="NU/National University Lipa">NU/National University Lipa</option>
+                      <option value="Batangas State University">Batangas State University</option>
+                      <option value="Kolehiyo ng Lungsod ng Lipa">Kolehiyo ng Lungsod ng Lipa</option>
+                      <option value="Philippine State College of Aeronautics">Philippine State College of Aeronautics</option>
+                      <option value="Lipa City Colleges">Lipa City Colleges</option>
+                      <option value="University of Batangas">University of Batangas</option>
+                      <option value="New Era University">New Era University</option>
+                      <option value="Batangas College of Arts and Sciences">Batangas College of Arts and Sciences</option>
+                      <option value="Royal British College">Royal British College</option>
+                      <option value="STI Academic Center">STI Academic Center</option>
+                      <option value="AMA Computer College">AMA Computer College</option>
+                      <option value="ICT-ED">ICT-ED</option>
                     </select>
                   </div>
                 </div>
 
-              <div className="profile-form-group">
-                <label>Course / Program</label>
-                <div className="profile-input-wrapper">
-                  <i className="fas fa-graduation-cap"></i>
-                  <input type="text" name="course" placeholder="e.g. BS Computer Science" required />
+                <div className="profile-form-group">
+                  <label>Course / Program</label>
+                  <div className="profile-input-wrapper">
+                    <i className="fas fa-graduation-cap"></i>
+                    <input type="text" name="course" placeholder="e.g. BS Computer Science" required />
+                  </div>
                 </div>
               </div>
 
@@ -1400,37 +1411,35 @@ const Login = () => {
                 <label>Street & Barangay</label>
                 <div className="profile-input-wrapper">
                   <i className="fas fa-map-marker-alt"></i>
-                  <select name="streetBrgy" required style={{ width: '100%' }}>
-                    <option value="">Select Barangay</option>
-                    {BARANGAYS.map(brgy => (
-                      <option key={brgy} value={brgy}>{brgy}</option>
-                    ))}
-                  </select>
+                  <input type="text" name="streetBrgy" placeholder="Enter Street & Barangay" required />
                 </div>
               </div>
 
-              <div className="profile-grid">
+              <div className="profile-grid-3">
                 <div className="profile-form-group">
                   <label>Town / City</label>
                   <div className="profile-input-wrapper">
-                    <input type="text" name="townCityMunicipality" value="Lipa City" readOnly style={{ opacity: 0.8, cursor: 'not-allowed' }} />
+                    <i className="fas fa-city"></i>
+                    <input type="text" name="townCityMunicipality" value="Lipa City" readOnly className="readonly-field" />
                   </div>
                 </div>
                 <div className="profile-form-group">
                   <label>Province</label>
                   <div className="profile-input-wrapper">
-                    <input type="text" name="province" value="Batangas" readOnly style={{ opacity: 0.8, cursor: 'not-allowed' }} />
+                    <i className="fas fa-map"></i>
+                    <input type="text" name="province" value="Batangas" readOnly className="readonly-field" />
                   </div>
                 </div>
                 <div className="profile-form-group">
                   <label>Zip Code</label>
                   <div className="profile-input-wrapper">
-                    <input type="text" name="zipCode" value="4217" readOnly style={{ opacity: 0.8, cursor: 'not-allowed' }} />
+                    <i className="fas fa-mail-bulk"></i>
+                    <input type="text" name="zipCode" value="4217" readOnly className="readonly-field" />
                   </div>
                 </div>
               </div>
 
-              <button type="submit" className="submit-btn" style={{marginTop: '1.5rem'}}>
+              <button type="submit" className="submit-btn" style={{marginTop: '1.25rem'}}>
                 Finish Setup →
               </button>
             </form>

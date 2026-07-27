@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { authAPI, applicantAPI } from '../services/api';
 import { useAuth } from "../contexts/AuthContext";
 import lipaBg from '../assets/lipa.jpg';
+import Navbar from './Navbar';
 
 const VerifyEmail = () => {
   const navigate = useNavigate();
@@ -34,7 +35,7 @@ const VerifyEmail = () => {
     // Add Google Fonts link
     const googleFontsSheet = document.createElement('link');
     googleFontsSheet.rel = 'stylesheet';
-    googleFontsSheet.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap';
+    googleFontsSheet.href = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap';
     document.head.appendChild(googleFontsSheet);
 
     return () => {
@@ -51,7 +52,7 @@ const VerifyEmail = () => {
     }
 
     // Safety: If the user is already authenticated and has a complete profile,
-    // they shouldn't be here. Redirect them to the portal.
+    // redirect them to the portal.
     const authToken = localStorage.getItem('authToken');
     if (authToken && fetchProfile) {
       fetchProfile(registrationEmail).then(profile => {
@@ -139,25 +140,26 @@ const VerifyEmail = () => {
       const response = await authAPI.verifyEmail(formData.verificationCode, email);
       
       // Update global auth state
-      if (response.token) {
+      if (response && response.token) {
         localStorage.setItem('authToken', response.token);
-        localStorage.setItem('applicantNo', response.applicant_no || response.user_no);
-        
-        if (email) {
-          localStorage.setItem('currentUser', email);
-          setCurrentUserState(email);
-          fetchProfile(email);
-        }
+        localStorage.setItem('applicantNo', response.applicant_no || response.user_no || 'APP-2026-001');
+      }
+      
+      const activeEmail = email || localStorage.getItem('registrationEmail') || '';
+      if (activeEmail) {
+        localStorage.setItem('currentUser', activeEmail);
+        if (setCurrentUserState) setCurrentUserState(activeEmail);
+        if (fetchProfile) fetchProfile(activeEmail);
       }
 
       setVerificationState("success");
       setFormData({ ...formData, success: true, isLoading: false });
       setShowLoadingOverlay(false);
       
-      // Redirect to profile setup after 2 seconds
+      // Redirect to profile setup after 1.5 seconds
       setTimeout(() => {
         navigate('/login?setup=true');
-      }, 2000);
+      }, 1500);
     } catch (error) {
       if (error?.message === 'This session has expired') {
         handleExpiredSession();
@@ -218,379 +220,387 @@ const VerifyEmail = () => {
   };
 
   return (
-    <>
+    <div style={{
+      minHeight: '100vh',
+      width: '100%',
+      position: 'relative',
+      display: 'flex',
+      flexDirection: 'column',
+      background: `linear-gradient(135deg, rgba(2, 20, 12, 0.92) 0%, rgba(5, 45, 28, 0.88) 50%, rgba(2, 15, 10, 0.95) 100%), url(${lipaBg}) center/cover no-repeat fixed`,
+      fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif",
+      boxSizing: 'border-box',
+      overflowX: 'hidden'
+    }}>
+      <Navbar />
       <style>{`
-        body.verify-bg {
-          background: url(${lipaBg}) center/cover no-repeat fixed !important;
-          min-height: 100vh;
+        @keyframes pulseGlowGreen {
+          0%, 100% { box-shadow: 0 0 25px rgba(16, 185, 129, 0.4), inset 0 0 15px rgba(255, 255, 255, 0.2); }
+          50% { box-shadow: 0 0 45px rgba(52, 211, 153, 0.7), inset 0 0 25px rgba(255, 255, 255, 0.3); }
         }
-        .verify-bg-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100vw;
-          height: 100vh;
-          background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.8));
-          z-index: 0;
-          pointer-events: none;
+        @keyframes subtleFloat {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-6px); }
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        .auth-wrapper {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 2rem 1rem;
+          min-height: calc(100vh - 80px);
+        }
+        .verify-card {
+          width: 100%;
+          max-width: 410px;
+          background: rgba(4, 28, 18, 0.85);
+          backdrop-filter: blur(28px);
+          -webkit-backdrop-filter: blur(28px);
+          border-radius: 24px;
+          border: 1px solid rgba(52, 211, 153, 0.25);
+          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7), 0 0 50px rgba(16, 185, 129, 0.35);
+          overflow: hidden;
+          position: relative;
+          z-index: 10;
+          animation: subtleFloat 6s ease-in-out infinite;
+          transition: all 0.3s ease;
+          margin: 0 auto;
+        }
+        .verify-card-header {
+          padding: 24px 24px 16px;
+          text-align: center;
+          position: relative;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .icon-badge {
+          width: 60px;
+          height: 60px;
+          margin: 0 auto 12px;
+          background: linear-gradient(135deg, #059669 0%, #044e3a 100%);
+          border-radius: 18px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 26px;
+          color: #ffffff;
+          border: 1px solid rgba(52, 211, 153, 0.4);
+          box-shadow: 0 10px 24px rgba(4, 78, 58, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.3);
+          animation: pulseGlowGreen 3s infinite ease-in-out;
+        }
+        .verify-title {
+          color: #ffffff;
+          font-size: 22px;
+          font-weight: 800;
+          letter-spacing: -0.5px;
+          margin: 0 0 6px;
+        }
+        .verify-subtitle {
+          color: rgba(255, 255, 255, 0.75);
+          font-size: 13px;
+          line-height: 1.45;
+          margin: 0;
+        }
+        .verify-card-body {
+          padding: 20px 24px 24px;
+        }
+        .code-input {
+          width: 100%;
+          padding: 10px 14px;
+          background: rgba(255, 255, 255, 0.08) !important;
+          border: 1.5px solid rgba(255, 255, 255, 0.18) !important;
+          border-radius: 12px !important;
+          color: #ffffff !important;
+          font-size: 18px !important;
+          font-weight: 700 !important;
+          letter-spacing: 4px !important;
+          text-align: center !important;
+          box-sizing: border-box;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+          outline: none !important;
+          box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        .code-input::placeholder {
+          color: rgba(255, 255, 255, 0.3) !important;
+          letter-spacing: 2px !important;
+          font-weight: 500 !important;
+          font-size: 14px !important;
+        }
+        .code-input:focus {
+          background: rgba(255, 255, 255, 0.15) !important;
+          border-color: #059669 !important;
+          box-shadow: 0 0 20px rgba(52, 211, 153, 0.3), inset 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+        }
+        .btn-primary-action {
+          width: 100%;
+          padding: 11px 20px;
+          background: linear-gradient(135deg, #059669 0%, #044e3a 100%);
+          color: #ffffff;
+          border: 1px solid rgba(52, 211, 153, 0.3);
+          border-radius: 30px;
+          font-size: 14px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          box-shadow: 0 8px 20px rgba(4, 78, 58, 0.4);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+        }
+        .btn-primary-action:hover:not(:disabled) {
+          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+          transform: translateY(-2px);
+          box-shadow: 0 12px 26px rgba(16, 185, 129, 0.5);
+        }
+        .btn-primary-action:active:not(:disabled) {
+          transform: translateY(0);
+        }
+        .btn-secondary-action {
+          width: 100%;
+          padding: 9px 16px;
+          background: rgba(255, 255, 255, 0.06);
+          color: rgba(255, 255, 255, 0.9);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 30px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          margin-bottom: 8px;
+        }
+        .btn-secondary-action:hover:not(:disabled) {
+          background: rgba(255, 255, 255, 0.12);
+          border-color: rgba(255, 255, 255, 0.4);
+          color: #ffffff;
+        }
+        .btn-link-action {
+          background: none;
+          border: none;
+          color: rgba(255, 255, 255, 0.7);
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 500;
+          text-decoration: underline;
+          transition: color 0.3s ease;
+        }
+        .btn-link-action:hover {
+          color: #ffffff;
+        }
+        .alert-error {
+          background: rgba(220, 38, 38, 0.2);
+          border: 1px solid rgba(239, 68, 68, 0.4);
+          color: #fca5a5;
+          padding: 14px 18px;
+          border-radius: 12px;
+          margin-bottom: 24px;
+          font-size: 14px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          backdrop-filter: blur(8px);
+        }
+        .alert-success {
+          background: rgba(16, 185, 129, 0.2);
+          border: 1px solid rgba(52, 211, 153, 0.4);
+          color: #6ee7b7;
+          padding: 14px 18px;
+          border-radius: 12px;
+          margin-bottom: 24px;
+          font-size: 14px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          backdrop-filter: blur(8px);
         }
         .loading-overlay {
           position: fixed;
           top: 0;
           left: 0;
-          width: 100%;
-          height: 100%;
-          background: rgba(0, 0, 0, 0.75);
-          backdrop-filter: blur(10px);
+          width: 100vw;
+          height: 100vh;
+          background: rgba(10, 2, 1, 0.85);
+          backdrop-filter: blur(14px);
+          -webkit-backdrop-filter: blur(14px);
           display: none;
           justify-content: center;
           align-items: center;
-          z-index: 9999;
-          animation: fadeIn 0.3s ease;
+          z-index: 99999;
         }
         .loading-overlay.active {
           display: flex;
         }
-        .loading-modal {
-          background: white;
-          padding: 3.5rem;
-          border-radius: 40px;
-          text-align: center;
-          box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
-          max-width: 450px;
-          width: 90%;
+        .loading-modal-card {
+          background: rgba(30, 14, 12, 0.95);
           border: 1px solid rgba(255, 255, 255, 0.2);
+          padding: 40px;
+          border-radius: 28px;
+          text-align: center;
+          box-shadow: 0 30px 70px rgba(0, 0, 0, 0.8);
+          max-width: 400px;
+          width: 85%;
         }
-        .loading-spinner {
-          width: 60px;
-          height: 60px;
-          border: 6px solid #ffe8e3;
-          border-top: 6px solid #4F0D00;
+        .spinner-ring {
+          width: 54px;
+          height: 54px;
+          border: 5px solid rgba(255, 255, 255, 0.1);
+          border-top: 5px solid #ff6b4a;
           border-radius: 50%;
-          margin: 0 auto 1.8rem;
-          animation: spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-        }
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
+          margin: 0 auto 20px;
+          animation: spin 0.9s cubic-bezier(0.5, 0.1, 0.5, 0.9) infinite;
         }
       `}</style>
 
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: `url(${lipaBg}) center/cover no-repeat fixed`,
-        position: 'relative',
-        padding: '20px',
-        fontFamily: 'Inter, sans-serif'
-      }}>
-        <div className="verify-bg-overlay" />
-        <div style={{
-          width: '95%',
-          maxWidth: '550px',
-          background: 'rgba(255, 255, 255, 0.12)',
-          backdropFilter: 'blur(24px)',
-          borderRadius: '24px',
-          boxShadow: '0 40px 80px rgba(0, 0, 0, 0.5)',
-          border: '1px solid rgba(255, 255, 255, 0.3)',
-          overflow: 'hidden',
-          zIndex: 1
-        }}>
-        {/* Header */}
-        <div style={{
-          background: 'rgba(255, 255, 255, 0.05)',
-          padding: '25px 30px',
-          textAlign: 'center',
-          color: 'white',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
-        }}>
-          <div style={{
-            width: '60px',
-            height: '60px',
-            backgroundColor: 'rgba(255, 255, 255, 0.2)',
-            borderRadius: '12px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 20px',
-            fontSize: '28px'
-          }}>
-            {verificationState === "success" ? "✓" : verificationState === "error" ? "⚠" : "✉"}
+      {/* Main Glassmorphic Card */}
+      <div className="auth-wrapper">
+        <div className="verify-card">
+          {/* Header */}
+          <div className="verify-card-header">
+            <div className="icon-badge">
+              {verificationState === "success" ? (
+                <i className="fas fa-check-circle" style={{ color: '#34d399' }} />
+              ) : verificationState === "error" ? (
+                <i className="fas fa-exclamation-triangle" style={{ color: '#fca5a5' }} />
+              ) : (
+                <i className="fas fa-envelope-open-text" />
+              )}
+            </div>
+
+            <h1 className="verify-title">
+              {verificationState === "success" ? "Email Verified!" : "Verify Your Email"}
+            </h1>
+            <p className="verify-subtitle">
+              {verificationState === "success" 
+                ? "Your account email has been successfully authenticated."
+                : email 
+                  ? `Enter the verification code sent to ${email}`
+                  : "Enter the verification code sent to your registered email address"}
+            </p>
           </div>
 
-          <h1 style={{
-            fontSize: '28px',
-            fontWeight: 'bold',
-            margin: '0 0 10px'
-          }}>
-            {verificationState === "success" ? "Email Verified!" : "Verify Your Email"}
-          </h1>
-          <p style={{
-            fontSize: '14px',
-            opacity: 0.9,
-            margin: 0
-          }}>
-            {verificationState === "success" 
-              ? "Your email has been verified successfully."
-              : "Enter the verification code sent to your email"}
-          </p>
-        </div>
-
-        {/* Content */}
-        <div style={{ padding: '25px 30px' }}>
-          {verificationState === "auto-verifying" && (
-            <div style={{ textAlign: 'center' }}>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                border: '4px solid #ddd',
-                borderTop: '4px solid #4F0D00',
-                borderRadius: '50%',
-                margin: '0 auto 20px',
-                animation: 'spin 1s linear infinite'
-              }} />
-              <p style={{ color: '#666' }}>Verifying your email...</p>
-              <style>{`
-                @keyframes spin {
-                  to { transform: rotate(360deg); }
-                }
-              `}</style>
-            </div>
-          )}
-
-          {verificationState === "success" && (
-            <div style={{ textAlign: 'center' }}>
-              <p style={{
-                color: '#666',
-                marginBottom: '30px',
-                fontSize: '14px'
-              }}>
-                Your profile has been saved and you will be redirected to login in a few seconds...
-              </p>
-              <button
-                onClick={handleBackToLogin}
-                style={{
-                  width: '100%',
-                  padding: '12px 20px',
-                  backgroundColor: '#4F0D00',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '16px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease'
-                }}
-                onMouseEnter={(e) => e.target.style.backgroundColor = '#3d0a00'}
-                onMouseLeave={(e) => e.target.style.backgroundColor = '#4F0D00'}
-              >
-                Go to Login
-              </button>
-            </div>
-          )}
-
-          {(verificationState === "input" || verificationState === "error") && (
-            <>
-              {formData.error && (
-                <div style={{
-                  backgroundColor: '#fee',
-                  color: '#c33',
-                  padding: '12px',
-                  borderRadius: '6px',
-                  marginBottom: '20px',
-                  fontSize: '14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px'
-                }}>
-                  <span>⚠</span>
-                  {formData.error}
-                </div>
-              )}
-
-              <form onSubmit={handleSubmit} style={{ marginBottom: '30px' }}>
-                <style>{`
-                  .verify-input:focus {
-                    background: rgba(255, 255, 255, 0.6) !important;
-                    border-color: white !important;
-                    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.1) !important;
-                    outline: none !important;
-                  }
-                  .verify-input:-webkit-autofill,
-                  .verify-input:-webkit-autofill:hover,
-                  .verify-input:-webkit-autofill:focus {
-                    -webkit-text-fill-color: var(--text-dark);
-                    -webkit-box-shadow: 0 0 0px 1000px rgba(255, 255, 255, 0.5) inset;
-                    transition: background-color 5000s ease-in-out 0s;
-                  }
-                `}</style>
-                <div style={{ marginBottom: '20px' }}>
-                  <label style={{
-                    display: 'block',
-                    color: 'rgba(255, 255, 255, 0.9)',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    marginBottom: '8px'
-                  }}>
-                    Verification Code
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.verificationCode}
-                    onChange={handleChange}
-                    placeholder="Enter code"
-                    maxLength="50"
-                    required
-                    style={{
-                      width: '100%',
-                      padding: '12px 15px',
-                      background: 'rgba(255, 255, 255, 0.4)',
-                      border: '1px solid rgba(255, 255, 255, 0.2)',
-                      borderRadius: '12px',
-                      color: 'var(--text-dark)',
-                      fontSize: '18px',
-                      letterSpacing: '4px',
-                      textAlign: 'center',
-                      boxSizing: 'border-box',
-                      transition: 'all 0.3s ease',
-                      fontFamily: 'Inter, sans-serif',
-                      fontWeight: '600'
-                    }}
-                    className="verify-input"
-                  />
-                  <p style={{
-                    color: 'rgba(255, 255, 255, 0.6)',
-                    fontSize: '12px',
-                    marginTop: '8px',
-                    margin: '8px 0 0'
-                  }}>
-                    Check your email for the verification code
-                  </p>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={formData.isLoading}
-                  style={{
-                    width: '100%',
-                    padding: '12px 20px',
-                    backgroundColor: formData.isLoading ? '#ccc' : '#4F0D00',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    fontSize: '16px',
-                    fontWeight: 'bold',
-                    cursor: formData.isLoading ? 'not-allowed' : 'pointer',
-                    transition: 'all 0.3s ease',
-                    opacity: formData.isLoading ? 0.6 : 1
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!formData.isLoading) e.target.style.backgroundColor = '#3d0a00';
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!formData.isLoading) e.target.style.backgroundColor = '#4F0D00';
-                  }}
-                >
-                  {formData.isLoading ? "Verifying..." : "Verify Email"}
-                </button>
-              </form>
-
-              {formData.success && (
-                <div style={{
-                  backgroundColor: '#ecfdf5',
-                  color: '#047857',
-                  padding: '12px',
-                  borderRadius: '6px',
-                  marginBottom: '20px',
-                  fontSize: '14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px'
-                }}>
-                  <span>✓</span>
-                  Verification email has been resent to {email}
-                </div>
-              )}
-
-              <div style={{ textAlign: 'center' }}>
-                <button
-                  type="button"
-                  onClick={handleResendEmail}
-                  disabled={formData.isLoading}
-                  style={{
-                    width: '100%',
-                    padding: '12px 20px',
-                    backgroundColor: 'transparent',
-                    color: 'white',
-                    border: '2px solid rgba(255, 255, 255, 0.5)',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    fontWeight: 'bold',
-                    cursor: formData.isLoading ? 'not-allowed' : 'pointer',
-                    transition: 'all 0.3s ease',
-                    marginBottom: '15px',
-                    opacity: formData.isLoading ? 0.6 : 1
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!formData.isLoading) {
-                      e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-                      e.target.style.borderColor = 'white';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!formData.isLoading) {
-                      e.target.style.backgroundColor = 'transparent';
-                      e.target.style.borderColor = 'rgba(255, 255, 255, 0.5)';
-                    }
-                  }}
-                >
-                  {formData.isLoading ? "Sending..." : "Resend Verification Email"}
-                </button>
+          {/* Card Body Content */}
+          <div className="verify-card-body">
+            {/* Auto-verifying State */}
+            {verificationState === "auto-verifying" && (
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <div className="spinner-ring" />
+                <p style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: '15px', fontWeight: '500' }}>
+                  Verifying your email token...
+                </p>
               </div>
+            )}
 
+            {/* Success State */}
+            {verificationState === "success" && (
               <div style={{ textAlign: 'center' }}>
+                <p style={{ color: 'rgba(255, 255, 255, 0.85)', marginBottom: '28px', fontSize: '15px', lineHeight: '1.6' }}>
+                  Your profile setup is ready. You will be redirected to complete your account configuration in a moment.
+                </p>
                 <button
                   onClick={handleBackToLogin}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'rgba(255, 255, 255, 0.8)',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    textDecoration: 'underline',
-                    transition: 'color 0.3s ease'
-                  }}
-                  onMouseEnter={(e) => e.target.style.color = 'white'}
-                  onMouseLeave={(e) => e.target.style.color = 'rgba(255, 255, 255, 0.8)'}
+                  className="btn-primary-action"
                 >
-                  Back to Login
+                  <span>Proceed to Login</span>
+                  <i className="fas fa-arrow-right" />
                 </button>
               </div>
-            </>
-          )}
+            )}
+
+            {/* Input / Error / Loading States */}
+            {(verificationState === "input" || verificationState === "error" || verificationState === "loading") && (
+              <>
+                {formData.error && (
+                  <div className="alert-error">
+                    <i className="fas fa-exclamation-circle" style={{ fontSize: '18px' }} />
+                    <span>{formData.error}</span>
+                  </div>
+                )}
+
+                {formData.success && (
+                  <div className="alert-success">
+                    <i className="fas fa-check-circle" style={{ fontSize: '18px' }} />
+                    <span>Verification code has been resent to your email!</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleSubmit} style={{ marginBottom: '28px' }}>
+                  <div style={{ marginBottom: '24px' }}>
+                    <label style={{
+                      display: 'block',
+                      color: 'rgba(255, 255, 255, 0.9)',
+                      fontSize: '13px',
+                      fontWeight: '700',
+                      letterSpacing: '0.5px',
+                      marginBottom: '10px',
+                      textTransform: 'uppercase'
+                    }}>
+                      Enter 6–Digit Verification Code
+                    </label>
+                    <input
+                      type="text"
+                      maxLength="6"
+                      value={formData.verificationCode}
+                      onChange={(e) => setFormData({ ...formData, verificationCode: e.target.value.replace(/[^0-9]/g, '') })}
+                      placeholder="E.G. 123456"
+                      className="code-input"
+                      disabled={formData.isLoading}
+                      required
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="btn-primary-action"
+                    disabled={formData.isLoading}
+                  >
+                    {formData.isLoading ? (
+                      <span>Verifying...</span>
+                    ) : (
+                      <>
+                        <span>Verify Code</span>
+                        <i className="fas fa-shield-alt" />
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <button
+                    type="button"
+                    onClick={handleResendEmail}
+                    className="btn-secondary-action"
+                    disabled={formData.isLoading}
+                  >
+                    {formData.isLoading ? "Sending..." : "Resend Verification Code"}
+                  </button>
+
+                  <button
+                    onClick={handleBackToLogin}
+                    className="btn-link-action"
+                  >
+                    Back to Login
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
-    </div>
 
-      {/* Loading overlay */}
+      {/* Loading Modal Overlay */}
       <div className={`loading-overlay ${showLoadingOverlay ? 'active' : ''}`}>
-        <div className="loading-modal">
-          <div className="loading-spinner"></div>
-          <h3 style={{ color: '#4F0D00', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
+        <div className="loading-modal-card">
+          <div className="spinner-ring" />
+          <h3 style={{ color: '#ffffff', fontWeight: '800', fontSize: '1.4rem', marginBottom: '8px' }}>
             {loadingMessage.title}
           </h3>
-          <p style={{ color: '#666', fontSize: '1rem' }}>
+          <p style={{ color: 'rgba(255, 255, 255, 0.75)', fontSize: '0.95rem', margin: 0 }}>
             {loadingMessage.message}
           </p>
         </div>
       </div>
-    </>
+    </div>
   );
 };
 

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { API_ORIGIN } from '../services/api';
 
 /**
  * VideoUploader Component (Repurposed from VideoRecorder)
@@ -11,7 +10,7 @@ import { API_ORIGIN } from '../services/api';
  * @param {string} initialVideoUrl - Existing video URL to show as preview
  * @param {boolean} isUploading - Whether the video is currently uploading
  */
-const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoUrl, isUploading = false, uploadProgress = 0, containerStyle = {}, disabled = false, hideButton = false, fieldName }) => {
+const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoUrl, isUploading = false, containerStyle = {}, disabled = false, hideButton = false }) => {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [fileName, setFileName] = useState('');
   const [videoError, setVideoError] = useState(null);
@@ -22,19 +21,12 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
     console.log('VideoRecorder useEffect triggered:', {
       initialVideoUrl,
       currentPreviewUrl: previewUrl,
-      label,
-      fieldName
+      label
     });
     
     if (initialVideoUrl) {
-      let targetUrl = initialVideoUrl;
-      if (typeof targetUrl === 'string' && targetUrl.startsWith('http') && !targetUrl.includes('/applicant/document/raw/')) {
-        const token = localStorage.getItem('authToken');
-        const apiOrigin = API_ORIGIN;
-        targetUrl = `${apiOrigin}/api/student/applicant/document/raw/${fieldName || 'video'}?token=${token}`;
-      }
-      console.log(`Setting preview URL for ${label}:`, targetUrl);
-      setPreviewUrl(targetUrl);
+      console.log(`Setting preview URL for ${label}:`, initialVideoUrl);
+      setPreviewUrl(initialVideoUrl);
       setFileName('Existing saved video');
       setVideoError(null);
     } else if (!previewUrl || !previewUrl.startsWith('blob:')) {
@@ -42,7 +34,7 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
       setFileName('');
       setVideoError(null);
     }
-  }, [initialVideoUrl, fieldName]);
+  }, [initialVideoUrl]);
 
   const openFilePicker = () => {
     if (disabled) return;
@@ -120,41 +112,8 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
           justifyContent: 'center',
           backdropFilter: 'blur(2px)'
         }}>
-          <div style={{ position: 'relative', width: '60px', height: '60px', marginBottom: '10px' }}>
-            <svg style={{ transform: 'rotate(-90deg)', width: '60px', height: '60px' }}>
-              <circle
-                cx="30"
-                cy="30"
-                r="26"
-                stroke="#f3f3f3"
-                strokeWidth="4"
-                fill="none"
-              />
-              <circle
-                cx="30"
-                cy="30"
-                r="26"
-                stroke="var(--primary)"
-                strokeWidth="4"
-                fill="none"
-                strokeDasharray="163.36"
-                strokeDashoffset={163.36 - (163.36 * (uploadProgress || 0)) / 100}
-                style={{ transition: 'stroke-dashoffset 0.3s ease' }}
-              />
-            </svg>
-            <div style={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              fontSize: '0.75rem',
-              fontWeight: 'bold',
-              color: 'var(--primary)'
-            }}>
-              {uploadProgress || 0}%
-            </div>
-          </div>
-          <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--primary)', letterSpacing: '0.5px' }}>UPLOADING VIDEO...</span>
+          <div className="loading-spinner" style={{ width: '30px', height: '30px', border: '3px solid #f3f3f3', borderTop: '3px solid var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: '10px' }}></div>
+          <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--primary)' }}>Uploading...</span>
         </div>
       )}
 
@@ -240,10 +199,8 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
           ) : (
             <>
               <video 
-                src={previewUrl.includes('#t=') ? previewUrl : `${previewUrl}#t=0.1`} 
+                src={previewUrl} 
                 controls 
-                preload="metadata"
-                playsInline
                 onError={() => setVideoError('Video preview failed')}
                 style={{ 
                   width: '100%', 
