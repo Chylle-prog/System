@@ -906,21 +906,21 @@ function extractGpaFromText(text, expectedGpa = null) {
     .replace(/GBA/gi, 'GPA')
     .replace(/G\.P\.A/gi, 'GPA');
 
-  // Helper: format number to 2 decimal places (e.g. 3.4375 -> "3.44")
-  const toTwoDecimals = (val) => (Math.round(val * 100) / 100).toFixed(2);
+  // Helper: round to nearest tenth (e.g. 3.5481 -> "3.5") to reduce OCR margin of error
+  const toOneTenth = (val) => (Math.round(val * 10) / 10).toFixed(1);
 
-  // 1. Explicit keyword pattern (e.g. "GPA: 3.4375", "GPA 3.44")
+  // 1. Explicit keyword pattern (e.g. "GPA: 3.5481", "GPA: 3.50")
   const p1 = cleaned.match(/(?:GPA|GWA|WEIGHTED\s*AVERAGE|GRADE\s*POINT)\s*[:\-=.,|\s]+([1-4][.,][0-9]{2,4})/i);
   if (p1 && p1[1]) {
     const val = parseFloat(p1[1].replace(',', '.'));
-    if (!isNaN(val) && val >= 1.0 && val <= 4.0) return toTwoDecimals(val);
+    if (!isNaN(val) && val >= 1.0 && val <= 4.0) return toOneTenth(val);
   }
 
-  // 2. Value immediately before "Total Units" table footer (e.g. "3.4375 Total Units: 24")
+  // 2. Value immediately before "Total Units" table footer (e.g. "3.5481 Total Units: 26")
   const pUnits = cleaned.match(/([1-4]\.[0-9]{2,4})\s*[:\-=.,|\s]*(?:Total\s*Units?|Units?)/i);
   if (pUnits && pUnits[1]) {
     const val = parseFloat(pUnits[1]);
-    if (!isNaN(val) && val >= 1.0 && val <= 4.0) return toTwoDecimals(val);
+    if (!isNaN(val) && val >= 1.0 && val <= 4.0) return toOneTenth(val);
   }
 
   // 3. Any 3 to 4 decimal place number in valid GPA range (1.000 to 4.000)
@@ -930,9 +930,9 @@ function extractGpaFromText(text, expectedGpa = null) {
     if (candidates.length > 0) {
       const fourDecimals = candidates.filter(v => v.toString().split('.')[1]?.length >= 3);
       if (fourDecimals.length > 0) {
-        return toTwoDecimals(fourDecimals[fourDecimals.length - 1]);
+        return toOneTenth(fourDecimals[fourDecimals.length - 1]);
       }
-      return toTwoDecimals(candidates[candidates.length - 1]);
+      return toOneTenth(candidates[candidates.length - 1]);
     }
   }
 
@@ -964,17 +964,17 @@ function extractGpaFromText(text, expectedGpa = null) {
   if (validGrades.length >= 3) {
     const avg = validGrades.reduce((a, b) => a + b, 0) / validGrades.length;
 
-    // Align with expected GPA if within 0.15 tolerance (e.g. table average 3.42 vs doc GPA 3.5481 / input 3.5)
+    // Align with expected GPA if within 0.15 tolerance (both rounded to nearest tenth)
     if (expectedGpa) {
       const expVal = parseFloat(String(expectedGpa).replace(/[^0-9.]/g, ''));
       if (!isNaN(expVal)) {
         if (Math.abs(avg - expVal) <= 0.15) {
-          return toTwoDecimals(expVal);
+          return toOneTenth(expVal);
         }
       }
     }
 
-    return toTwoDecimals(avg);
+    return toOneTenth(avg);
   }
 
   return null;
@@ -988,20 +988,22 @@ function gpaMatchesText(text, expectedGpa) {
   const parsedInputGpa = parseFloat(rawGpaStr.replace(/[^0-9.]/g, ''));
   if (isNaN(parsedInputGpa)) return true;
 
+  // Round input GPA to nearest tenth for comparison
+  const roundedInputGpa = Math.round(parsedInputGpa * 10) / 10;
+
   const detectedGpaStr = extractGpaFromText(text, expectedGpa);
   if (detectedGpaStr) {
-    const detVal = parseFloat(detectedGpaStr);
+    const detVal = parseFloat(detectedGpaStr); // already rounded to 1dp by extractGpaFromText
     if (!isNaN(detVal)) {
-      // 0.15 tolerance for grade table averages vs printed GPA / input
-      return Math.abs(detVal - parsedInputGpa) <= 0.15;
+      // 0.05 tolerance — both values are rounded to nearest tenth, so 0.05 catches rounding edge cases
+      return Math.abs(detVal - roundedInputGpa) <= 0.05;
     }
   }
 
   const cleanText = String(text).replace(/[\–\—·•]/g, '.');
+  const tenthStr = roundedInputGpa.toFixed(1);
+  if (cleanText.includes(tenthStr)) return true;
   if (cleanText.includes(rawGpaStr) || cleanText.includes(rawGpaStr.replace('.', ','))) return true;
-
-  const roundedGpaStr = parsedInputGpa.toFixed(2);
-  if (cleanText.includes(roundedGpaStr)) return true;
 
   return false;
 }
@@ -3109,7 +3111,9 @@ const StudentInfo = () => {
         const ocrText = ocrDebugLogs?.Grades?.detectedText || '';
         const detectedDocGpa = extractGpaFromText(ocrText);
         if (detectedDocGpa) {
-          setFormData(prev => ({ ...prev, gpa: detectedDocGpa }));
+          // Round auto-filled GPA to nearest tenth
+          const roundedDetected = (Math.round(parseFloat(detectedDocGpa) * 10) / 10).toFixed(1);
+          setFormData(prev => ({ ...prev, gpa: roundedDetected }));
         }
 
         const applicantGpa = parseFloat(detectedDocGpa || formData.gpa);
@@ -5973,12 +5977,19 @@ const StudentInfo = () => {
                       name="gpa"
                       value={formData.gpa}
                       onChange={handleInputChange}
-                      placeholder="e.g. 3.50"
-                      step="0.01"
-                      min="1.00"
-                      max="4.00"
+                      onBlur={e => {
+                        const v = parseFloat(e.target.value);
+                        if (!isNaN(v)) {
+                          setFormData(prev => ({ ...prev, gpa: (Math.round(v * 10) / 10).toFixed(1) }));
+                        }
+                      }}
+                      placeholder="e.g. 3.5"
+                      step="0.1"
+                      min="1.0"
+                      max="4.0"
                       required={currentStep === 3}
                     />
+                    <small style={{ color: '#64748b', fontSize: '0.75rem' }}>Rounded to nearest tenth (e.g. 3.5)</small>
                   </div>
                 </div>
 
