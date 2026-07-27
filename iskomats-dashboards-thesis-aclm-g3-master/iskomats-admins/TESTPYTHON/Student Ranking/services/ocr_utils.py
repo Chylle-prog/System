@@ -1026,7 +1026,11 @@ def _run_tesseract_on_image(img, psm=3):
         h, w = gray.shape[:2]
         if w < 1000:
             scale = 1000.0 / w
-            gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
+            gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LINEAR)
+        elif w > 1600:
+            scale = 1600.0 / w
+            gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+
         text = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 1')
         return text.strip()
     except Exception as e:

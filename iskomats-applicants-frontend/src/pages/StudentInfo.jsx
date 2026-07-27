@@ -2581,13 +2581,18 @@ const StudentInfo = () => {
       }
 
       // Resolve/decrypt proxy URLs to local blob URLs for robust local OCR scanning
+      // Resolve/decrypt proxy URLs to local blob URLs for robust local OCR scanning
       let resolvedParam = docParam;
       if (docType === 'SchoolID') {
-        const resolvedFront = docParam.front ? await applicantAPI.resolveDocument('id_img_front', docParam.front) : null;
-        const resolvedBack = docParam.back ? await applicantAPI.resolveDocument('id_img_back', docParam.back) : null;
+        const [resolvedFront, resolvedBack] = await Promise.all([
+          docParam.front ? applicantAPI.resolveDocument('id_img_front', docParam.front) : Promise.resolve(null),
+          docParam.back ? applicantAPI.resolveDocument('id_img_back', docParam.back) : Promise.resolve(null)
+        ]);
         if (!silent) setStatus("Enhancing School ID images for OCR scanner...");
-        const enhancedFront = resolvedFront ? await preprocessImageForOcr(resolvedFront) : null;
-        const enhancedBack = resolvedBack ? await preprocessImageForOcr(resolvedBack) : null;
+        const [enhancedFront, enhancedBack] = await Promise.all([
+          resolvedFront ? preprocessImageForOcr(resolvedFront) : Promise.resolve(null),
+          resolvedBack ? preprocessImageForOcr(resolvedBack) : Promise.resolve(null)
+        ]);
         resolvedParam = { front: enhancedFront, back: enhancedBack };
       } else {
         const fieldMap = {
@@ -2619,44 +2624,25 @@ const StudentInfo = () => {
       let scoreDetails = {};
       let finalMessage = "";
       let resultsList = [];
-
-      // Validate Video Proof for non-SchoolID documents
       let videoCheck = null;
-      if (docType !== 'SchoolID') {
-        const videoToCheck = Array.isArray(videoUrl) ? videoUrl[0] : videoUrl;
-        if (videoToCheck) {
-          if (!silent) setStatus("Confirming document text in verification video...");
-          let videoFieldName = 'video';
-          if (docType === 'Indigency') videoFieldName = 'mayorIndigency_video';
-          else if (docType === 'Enrollment') videoFieldName = 'mayorCOE_video';
-          else if (docType === 'Grades') videoFieldName = 'mayorGrades_video';
-
-          videoCheck = await validateVideoLiveness(videoToCheck, videoFieldName);
-        }
-      }
-
-      // SchoolID Video validation variables
       let frontVidCheck = null;
       let backVidCheck = null;
 
       if (docType === 'SchoolID') {
-        const frontText = await runOcrOnImage(resolvedParam.front, "School ID Front");
-        const backText = await runOcrOnImage(resolvedParam.back, "School ID Back");
-        detectedText = `[FRONT ID TEXT]\n${frontText}\n\n[BACK ID TEXT]\n${backText}`;
-
-        // Validate School ID Videos
         const fVid = videoUrl?.front;
         const bVid = videoUrl?.back;
 
-        if (fVid) {
-          if (!silent) setStatus("Confirming text in front School ID video...");
-          frontVidCheck = await validateVideoLiveness(fVid, 'schoolIdFront_video');
-        }
+        if (!silent) setStatus("Scanning School ID and validating video proof concurrently...");
+        const [frontText, backText, fVidRes, bVidRes] = await Promise.all([
+          runOcrOnImage(resolvedParam.front, "School ID Front"),
+          runOcrOnImage(resolvedParam.back, "School ID Back"),
+          fVid ? validateVideoLiveness(fVid, 'schoolIdFront_video') : Promise.resolve(null),
+          bVid ? validateVideoLiveness(bVid, 'schoolIdBack_video') : Promise.resolve(null)
+        ]);
 
-        if (bVid) {
-          if (!silent) setStatus("Confirming text in back School ID video...");
-          backVidCheck = await validateVideoLiveness(bVid, 'schoolIdBack_video');
-        }
+        frontVidCheck = fVidRes;
+        backVidCheck = bVidRes;
+        detectedText = `[FRONT ID TEXT]\n${frontText}\n\n[BACK ID TEXT]\n${backText}`;
 
         const combinedFrontText = frontText + " " + (frontVidCheck?.detectedText || "");
         const combinedBackText = backText + " " + (backVidCheck?.detectedText || "");
@@ -2691,86 +2677,108 @@ const StudentInfo = () => {
             : "School ID verification mismatch.");
         resultsList = [{ doc: 'SchoolID', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
       }
-      else if (docType === 'Enrollment') {
-        detectedText = await runOcrOnImage(resolvedParam, "COE/COR");
-        const combinedText = detectedText + " " + (videoCheck?.detectedText || "");
-        const nameCheck = studentNameMatchesText(combinedText, firstName, middleName, lastName);
-        const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
-        const courseOk = course ? courseMatchesText(course, combinedText) : true;
-        const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
-        const semOk = semesterMatchesText(combinedText, semester || formData.semester, reqSemester);
-        const idOk = idNumber ? studentIdNoMatchesText(idNumber, combinedText) : true;
-        const yrOk = yearLevel ? yearLevelMatchesText(combinedText, yearLevel) : true;
-        const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
-        const coeTypeOk = coe_type_matches_text(combinedText);
+      else {
+        // Grades, Enrollment, or Indigency
+        const videoToCheck = Array.isArray(videoUrl) ? videoUrl[0] : videoUrl;
+        let videoFieldName = 'video';
+        if (docType === 'Indigency') videoFieldName = 'mayorIndigency_video';
+        else if (docType === 'Enrollment') videoFieldName = 'mayorCOE_video';
+        else if (docType === 'Grades') videoFieldName = 'mayorGrades_video';
 
-        isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk && yrOk && videoOk && coeTypeOk;
-        scoreDetails = {
-          "First Name": nameCheck.details.first_ok,
-          "Last Name": nameCheck.details.last_ok,
-          "School Name": schoolName ? schoolOk : null,
-          "Course / Track": course ? courseOk : null,
-          "Academic Year": academicYear ? ayOk : null,
-          "Year Level": yearLevel ? yrOk : null,
-          "Semester": (semester || reqSemester) ? semOk : null,
-          "ID Number": idNumber ? idOk : null,
-          "Document Type": coeTypeOk,
-          "Video Proof": videoOk
+        const stepLabelMap = {
+          'Enrollment': 'COE/COR',
+          'Grades': 'Grades Transcript',
+          'Indigency': 'Certificate of Indigency'
         };
-        finalMessage = isSuccess
-          ? "Enrollment verified successfully client-side!"
-          : (!videoOk ? (videoCheck?.reason || "Enrollment video proof failed validation.") : "Enrollment verification mismatch.");
-        resultsList = [{ doc: 'Enrollment', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
-      }
-      else if (docType === 'Grades') {
-        detectedText = await runOcrOnImage(resolvedParam, "Grades Transcript");
-        const combinedText = detectedText + " " + (videoCheck?.detectedText || "");
-        const nameCheck = studentNameMatchesText(combinedText, firstName, middleName, lastName);
-        const gpaOk = gpa ? gpaMatchesText(detectedText, gpa) : true;
-        const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
-        const semOk = semesterMatchesText(combinedText, semester || formData.semester, semester || reqSemester);
-        const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
-        const courseOk = course ? courseMatchesText(course, combinedText) : true;
-        const idOk = idNumber ? studentIdNoMatchesText(idNumber, combinedText) : true;
-        const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
-        const detectedDocGpa = extractGpaFromText(detectedText, gpa);
 
-        isSuccess = nameCheck.success && gpaOk && ayOk && semOk && schoolOk && courseOk && idOk && videoOk;
-        scoreDetails = {
-          "First Name": nameCheck.details.first_ok,
-          "Last Name": nameCheck.details.last_ok,
-          "GPA (Document)": detectedDocGpa ? (gpaOk ? true : false) : (gpa ? false : null),
-          "GPA (Input)": gpa ? (gpaOk ? true : false) : null,
-          "Academic Year": academicYear ? ayOk : null,
-          "Year Level": null,
-          "Semester": semester ? semOk : null,
-          "School Name": schoolName ? schoolOk : null,
-          "Course / Track": course ? courseOk : null,
-          "ID Number": idNumber ? idOk : null,
-          "Video Proof": videoOk
-        };
-        finalMessage = isSuccess
-          ? "Grades verified successfully client-side!"
-          : (!videoOk ? (videoCheck?.reason || "Grades video proof failed validation.") : !gpaOk ? `GPA mismatch: document shows ${detectedDocGpa || 'N/A'}, you entered ${gpa}.` : "Grades verification mismatch.");
-        resultsList = [{ doc: 'Grades', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
-      }
-      else if (docType === 'Indigency') {
-        detectedText = await runOcrOnImage(resolvedParam, "Certificate of Indigency");
-        const combinedText = detectedText + " " + (videoCheck?.detectedText || "");
-        const nameCheck = studentNameMatchesText(combinedText, firstName, middleName, lastName);
-        const addrOk = targetBarangay ? addressMatchesText(combinedText, targetBarangay) : true;
-        const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
+        if (!silent) setStatus(`Scanning ${docType} document and validating video proof concurrently...`);
 
-        isSuccess = nameCheck.success && addrOk && videoOk;
-        scoreDetails = {
-          "First Name": nameCheck.details.first_ok,
-          "Last Name": nameCheck.details.last_ok,
-          "Barangay Address": targetBarangay ? addrOk : null,
-          "Town / City": townCity ? true : null,
-          "Video Proof": videoOk
-        };
-        finalMessage = isSuccess ? "Indigency verified successfully client-side!" : (!videoOk ? (videoCheck?.reason || "Indigency video proof failed validation.") : "Indigency verification mismatch.");
-        resultsList = [{ doc: 'Indigency', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
+        const [detectedTextRes, videoCheckRes] = await Promise.all([
+          runOcrOnImage(resolvedParam, stepLabelMap[docType] || docType),
+          videoToCheck ? validateVideoLiveness(videoToCheck, videoFieldName) : Promise.resolve(null)
+        ]);
+
+        detectedText = detectedTextRes;
+        videoCheck = videoCheckRes;
+
+        if (docType === 'Enrollment') {
+          const combinedText = detectedText + " " + (videoCheck?.detectedText || "");
+          const nameCheck = studentNameMatchesText(combinedText, firstName, middleName, lastName);
+          const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
+          const courseOk = course ? courseMatchesText(course, combinedText) : true;
+          const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
+          const semOk = semesterMatchesText(combinedText, semester || formData.semester, reqSemester);
+          const idOk = idNumber ? studentIdNoMatchesText(idNumber, combinedText) : true;
+          const yrOk = yearLevel ? yearLevelMatchesText(combinedText, yearLevel) : true;
+          const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
+          const coeTypeOk = coe_type_matches_text(combinedText);
+
+          isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk && yrOk && videoOk && coeTypeOk;
+          scoreDetails = {
+            "First Name": nameCheck.details.first_ok,
+            "Last Name": nameCheck.details.last_ok,
+            "School Name": schoolName ? schoolOk : null,
+            "Course / Track": course ? courseOk : null,
+            "Academic Year": academicYear ? ayOk : null,
+            "Year Level": yearLevel ? yrOk : null,
+            "Semester": (semester || reqSemester) ? semOk : null,
+            "ID Number": idNumber ? idOk : null,
+            "Document Type": coeTypeOk,
+            "Video Proof": videoOk
+          };
+          finalMessage = isSuccess
+            ? "Enrollment verified successfully client-side!"
+            : (!videoOk ? (videoCheck?.reason || "Enrollment video proof failed validation.") : "Enrollment verification mismatch.");
+          resultsList = [{ doc: 'Enrollment', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
+        }
+        else if (docType === 'Grades') {
+          const combinedText = detectedText + " " + (videoCheck?.detectedText || "");
+          const nameCheck = studentNameMatchesText(combinedText, firstName, middleName, lastName);
+          const gpaOk = gpa ? gpaMatchesText(detectedText, gpa) : true;
+          const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
+          const semOk = semesterMatchesText(combinedText, semester || formData.semester, semester || reqSemester);
+          const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
+          const courseOk = course ? courseMatchesText(course, combinedText) : true;
+          const idOk = idNumber ? studentIdNoMatchesText(idNumber, combinedText) : true;
+          const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
+          const detectedDocGpa = extractGpaFromText(detectedText, gpa);
+
+          isSuccess = nameCheck.success && gpaOk && ayOk && semOk && schoolOk && courseOk && idOk && videoOk;
+          scoreDetails = {
+            "First Name": nameCheck.details.first_ok,
+            "Last Name": nameCheck.details.last_ok,
+            "GPA (Document)": detectedDocGpa ? (gpaOk ? true : false) : (gpa ? false : null),
+            "GPA (Input)": gpa ? (gpaOk ? true : false) : null,
+            "Academic Year": academicYear ? ayOk : null,
+            "Year Level": null,
+            "Semester": semester ? semOk : null,
+            "School Name": schoolName ? schoolOk : null,
+            "Course / Track": course ? courseOk : null,
+            "ID Number": idNumber ? idOk : null,
+            "Video Proof": videoOk
+          };
+          finalMessage = isSuccess
+            ? "Grades verified successfully client-side!"
+            : (!videoOk ? (videoCheck?.reason || "Grades video proof failed validation.") : !gpaOk ? `GPA mismatch: document shows ${detectedDocGpa || 'N/A'}, you entered ${gpa}.` : "Grades verification mismatch.");
+          resultsList = [{ doc: 'Grades', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
+        }
+        else if (docType === 'Indigency') {
+          const combinedText = detectedText + " " + (videoCheck?.detectedText || "");
+          const nameCheck = studentNameMatchesText(combinedText, firstName, middleName, lastName);
+          const addrOk = targetBarangay ? addressMatchesText(combinedText, targetBarangay) : true;
+          const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
+
+          isSuccess = nameCheck.success && addrOk && videoOk;
+          scoreDetails = {
+            "First Name": nameCheck.details.first_ok,
+            "Last Name": nameCheck.details.last_ok,
+            "Barangay Address": targetBarangay ? addrOk : null,
+            "Town / City": townCity ? true : null,
+            "Video Proof": videoOk
+          };
+          finalMessage = isSuccess ? "Indigency verified successfully client-side!" : (!videoOk ? (videoCheck?.reason || "Indigency video proof failed validation.") : "Indigency verification mismatch.");
+          resultsList = [{ doc: 'Indigency', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
+        }
       }
 
       // Build combinedText BEFORE debugRequirements block (used in Grades branch)
