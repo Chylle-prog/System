@@ -1469,17 +1469,26 @@ def parse_grades_document(raw_text):
                         fields[field_name] = val
                         break
 
-    # Extract GPA / GWA from document (e.g. GPA: 3.5481 or GPA 350)
+    # Extract GPA / GWA from document (e.g. GPA: 3.5481 or GPA 35461)
     gpa_patterns = [
-        r'(?:GPA|GWA|GBA|WEIGHTED\s*AVERAGE|GRADE\s*POINT|GENERAL\s*WEIGHTED|FINAL\s*GRADE)\s*[:\-=.,|\sA-Za-z]*?([1-5][.,][0-9]{1,4})',
-        r'(?:GPA|GWA|GBA|WEIGHTED\s*AVERAGE|GRADE\s*POINT|AVERAGE|GENERAL\s*WEIGHTED|FINAL\s*GRADE)\s*[:\-=.,|\sA-Za-z]*?([1-5][0-9]{2})\b',
-        r'([1-5]\.[0-9]{1,4})\s*[:\-=.,|\s]*(?:Total\s*Units?|Units?)'
+        r'(?:GPA|GWA|GBA|WEIGHTED\s*AVERAGE|GRADE\s*POINT|GENERAL\s*WEIGHTED|FINAL\s*GRADE)\s*[:\-=.,|\sA-Za-z]*?([1-5][.,0-9]{1,5})\b',
+        r'([1-5][.,0-9]{1,5})\s*[:\-=.,|\s]*(?:Total\s*Units?|Units?)'
     ]
     for pattern in gpa_patterns:
         match = re.search(pattern, raw_text, re.IGNORECASE)
         if match:
-            raw_val = match.group(1).replace(',', '.').strip()
-            val = float(raw_val) if '.' in raw_val else float(raw_val) / 100.0
+            raw_digits = match.group(1).replace(',', '.').strip()
+            if '.' in raw_digits:
+                val = float(raw_digits)
+            else:
+                if len(raw_digits) in (4, 5):
+                    val = float(raw_digits[0] + '.' + raw_digits[1:])
+                elif len(raw_digits) == 3:
+                    val = float(raw_digits) / 100.0
+                elif len(raw_digits) == 2:
+                    val = float(raw_digits) / 10.0
+                else:
+                    val = float(raw_digits)
             if 1.0 <= val <= 5.0:
                 fields['gpa'] = f"{val:.2f}"
                 break
@@ -1495,7 +1504,7 @@ def parse_grades_document(raw_text):
         fields['total_units'] = units_match.group(1).strip()
 
     raw_upper = str(raw_text).upper()
-    if 'DE LA SALLE LIPA' in raw_upper or 'DLSL' in raw_upper:
+    if any(k in raw_upper for k in ['DE LA SALLE LIPA', 'DLSL', 'OFFICE OF THE COLLEGE REGISTRAR', 'COLLEGE REGISTRAR', 'STUDENT\'S FINAL GRADES', 'STUDENTS FINAL GRADES', 'LAUREL']):
         fields['school_name'] = 'De La Salle Lipa'
 
     return fields

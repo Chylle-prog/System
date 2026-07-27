@@ -746,7 +746,11 @@ function schoolNameMatchesText(text, targetSchool) {
       lowerRaw.includes('de ly salle') ||
       lowerRaw.includes('salle') ||
       lowerRaw.includes('lipa') ||
-      lowerRaw.includes('ipa')
+      lowerRaw.includes('ipa') ||
+      lowerRaw.includes('college registrar') ||
+      lowerRaw.includes('office of the college') ||
+      lowerRaw.includes('laurel') ||
+      lowerRaw.includes('students final grades')
     ) {
       return true;
     }
@@ -909,24 +913,32 @@ function extractGpaFromText(text, expectedGpa = null) {
   // Helper: round to nearest hundredth (e.g. 3.5481 -> "3.55", 3.44 -> "3.44")
   const toTwoDecimals = (val) => (Math.round(val * 100) / 100).toFixed(2);
 
-  // 1. Explicit keyword pattern with decimal (e.g. "GPA: 3.54", "GWA = 1.75", "GBA ... 3.55", "FINAL GRADE 3.36")
-  const p1 = cleaned.match(/(?:GPA|GWA|WEIGHTED\s*AVERAGE|GRADE\s*POINT|AVERAGE|GENERAL\s*WEIGHTED|FINAL\s*GRADE)\s*[:\-=.,|\sA-Za-z]*?([1-5][.,][0-9]{1,4})/i);
-  if (p1 && p1[1]) {
-    const val = parseFloat(p1[1].replace(',', '.'));
+  // 1. Explicit keyword pattern (e.g. "GPA: 3.54", "GPA: 35461", "GWA = 1.75", "GPA 350")
+  const kwMatch = cleaned.match(/(?:GPA|GWA|WEIGHTED\s*AVERAGE|GRADE\s*POINT|AVERAGE|GENERAL\s*WEIGHTED|FINAL\s*GRADE)\s*[:\-=.,|\sA-Za-z]*?([1-5][.,0-9]{1,5})\b/i);
+  if (kwMatch && kwMatch[1]) {
+    const rawDigits = kwMatch[1].replace(',', '.').trim();
+    let val;
+    if (rawDigits.includes('.')) {
+      val = parseFloat(rawDigits);
+    } else {
+      if (rawDigits.length === 5 || rawDigits.length === 4) {
+        val = parseFloat(rawDigits[0] + '.' + rawDigits.slice(1));
+      } else if (rawDigits.length === 3) {
+        val = parseFloat(rawDigits) / 100.0;
+      } else if (rawDigits.length === 2) {
+        val = parseFloat(rawDigits) / 10.0;
+      } else {
+        val = parseFloat(rawDigits);
+      }
+    }
     if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
   }
 
-  // 2. Explicit keyword pattern with 3-digit integer (e.g. "GPA 350", "GWA 175", "GBA 330")
-  const p2 = cleaned.match(/(?:GPA|GWA|WEIGHTED\s*AVERAGE|GRADE\s*POINT|AVERAGE|GENERAL\s*WEIGHTED|FINAL\s*GRADE)\s*[:\-=.,|\sA-Za-z]*?([1-5][0-9]{2})\b/i);
-  if (p2 && p2[1]) {
-    const val = parseFloat(p2[1]) / 100.0;
-    if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
-  }
-
-  // 3. Value immediately before "Total Units" table footer (e.g. "3.5481 Total Units: 26")
-  const pUnits = cleaned.match(/([1-5]\.[0-9]{1,4})\s*[:\-=.,|\s]*(?:Total\s*Units?|Units?)/i);
+  // 2. Value immediately before "Total Units" table footer (e.g. "3.5481 Total Units: 26" or "35461 Total Units")
+  const pUnits = cleaned.match(/([1-5][.,0-9]{1,5})\s*[:\-=.,|\s]*(?:Total\s*Units?|Units?)/i);
   if (pUnits && pUnits[1]) {
-    const val = parseFloat(pUnits[1]);
+    const rawDigits = pUnits[1].replace(',', '.').trim();
+    const val = rawDigits.includes('.') ? parseFloat(rawDigits) : parseFloat(rawDigits[0] + '.' + rawDigits.slice(1));
     if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
   }
 
