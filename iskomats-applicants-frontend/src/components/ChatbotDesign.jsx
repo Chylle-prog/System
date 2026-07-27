@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from 'react'
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 
 function ChatbotDesign({
@@ -90,7 +90,7 @@ function ChatbotDesign({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [messages, isTyping, streamingText])
+  }, [messages, isTyping])
 
   useEffect(() => {
     if (isOpen && animateShow) {
@@ -145,167 +145,131 @@ function ChatbotDesign({
     setShowHistory(false)
   }
 
-  const handleDeleteRequest = (e, session) => {
+  const handleDeleteClick = (e, session) => {
     e.stopPropagation()
-    setDeleteConfirm(session)
+    setDeleteConfirm({ sessionId: session.id, title: session.title })
   }
 
   const handleDeleteConfirmed = () => {
-    if (!deleteConfirm) return
-    const idToDelete = deleteConfirm.id
-    const remaining = sessionHistory.filter((s) => s.id !== idToDelete)
-    setDeleteConfirm(null)
-
-    if (remaining.length === 0) {
-      const displayName = userName || 'scholar'
-      const freshId = Date.now()
-      const freshSession = {
-        id: freshId,
-        title: 'Welcome session',
-        preview: `${botName} introduction.`,
-        messages: [
-          { id: 1, sender: 'bot', text: `Hi there 👋 Welcome, ${displayName}!`, timestamp: '' },
-          { id: 2, sender: 'bot', text: 'How can I help you today?', timestamp: '' },
-        ],
-        date: 'Today',
-      }
-      setSessionHistory([freshSession])
-      setActiveSession(freshId)
-    } else {
-      setSessionHistory(remaining)
-      if (activeSession === idToDelete) {
-        setActiveSession(remaining[0].id)
-      }
+    const id = deleteConfirm.sessionId
+    const remaining = sessionHistory.filter((s) => s.id !== id)
+    setSessionHistory(remaining)
+    if (activeSession === id) {
+      if (remaining.length > 0) setActiveSession(remaining[0].id)
+      else setActiveSession(null)
     }
-    setShowHistory(false)
+    setDeleteConfirm(null)
   }
 
-  const handleSend = async (e) => {
-    if (e) e.preventDefault()
+  const addMessageToSession = useCallback((text, sender, sessionId) => {
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    const msg = { id: Date.now() + Math.random(), sender, text, timestamp: time }
+    setSessionHistory((cur) =>
+      cur.map((s) => {
+        if (s.id !== sessionId) return s
+        const updated = [...s.messages, msg]
+        const userMsgs = updated.filter((m) => m.sender === 'user')
+        let title = s.title
+        if (userMsgs.length === 1 && (s.title === 'New Chat' || s.title === 'Welcome session')) {
+          title = userMsgs[0].text.length > 30 ? userMsgs[0].text.slice(0, 27) + '…' : userMsgs[0].text
+        }
+        const preview = userMsgs.map((m) => m.text).join(' · ').slice(0, 60) || s.preview
+        return { ...s, messages: updated, title, preview }
+      }),
+    )
+  }, [])
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
     const text = inputValue.trim()
     if (!text || isTyping) return
 
-    const userMsgId = Date.now()
-    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-
-    setSessionHistory((prev) =>
-      prev.map((s) => {
-        if (s.id === activeSession) {
-          const isFirstUserMsg = !s.messages.some((m) => m.sender === 'user')
-          return {
-            ...s,
-            title: isFirstUserMsg ? text.slice(0, 24) + (text.length > 24 ? '…' : '') : s.title,
-            preview: text.slice(0, 32) + (text.length > 32 ? '…' : ''),
-            messages: [...s.messages, { id: userMsgId, sender: 'user', text, timestamp: timeStr }],
-          }
-        }
-        return s;
-      }),
-    )
-
+    const sessionId = activeSession
+    addMessageToSession(text, 'user', sessionId)
     setInputValue('')
     setIsTyping(true)
     setStreamingText('')
+
+    const activeMsgs = sessionHistory.find(s => s.id === sessionId)?.messages || []
+    const history = activeMsgs.map(m => ({
+      role: m.sender === 'user' ? 'user' : 'assistant',
+      content: m.text,
+    }))
+
+    const controller = new AbortController()
+    abortRef.current = controller
     streamingTextRef.current = ''
 
-    const currentActiveId = activeSession
     const safeUrl = typeof apiUrl === 'string' && apiUrl ? apiUrl : 'http://localhost:8000';
     const cleanUrl = safeUrl.endsWith('/') ? safeUrl.slice(0, -1) : safeUrl;
 
     try {
-      abortRef.current = new AbortController()
       const response = await fetch(`${cleanUrl}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, user_name: userName || 'scholar' }),
-        signal: abortRef.current.signal,
+        body: JSON.stringify({ message: text, history, session_id: String(sessionId) }),
+        signal: controller.signal,
       })
 
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      if (!response.ok) throw new Error(`Backend error: ${response.status}`)
 
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
+      let fullText = ''
 
       while (true) {
-        const { value, done } = await reader.read()
-        if (done) break
-        const chunk = decoder.decode(value, { stream: true })
+        const { done: streamDone, value } = await reader.read()
+        if (streamDone) break
 
-        if (chunk.includes('data:')) {
-          const lines = chunk.split('\n')
-          for (const line of lines) {
-            if (line.startsWith('data:')) {
-              const payload = line.slice(5).trim()
-              if (payload === '[DONE]') continue
-              try {
-                const parsed = JSON.parse(payload)
-                if (parsed.text) {
-                  streamingTextRef.current += parsed.text
-                  setStreamingText(streamingTextRef.current)
-                }
-              } catch {
-                streamingTextRef.current += payload
-                setStreamingText(streamingTextRef.current)
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              if (data.token) {
+                fullText += data.token
+                streamingTextRef.current = fullText
+                setStreamingText(fullText)
               }
-            }
+              if (data.error) {
+                fullText = `Error: ${data.error}`
+              }
+            } catch { /* skip malformed JSON */ }
           }
-        } else {
-          try {
-            const parsed = JSON.parse(chunk)
-            streamingTextRef.current = parsed.reply || parsed.response || parsed.message || chunk
-          } catch {
-            streamingTextRef.current += chunk
-          }
-          setStreamingText(streamingTextRef.current)
         }
       }
 
-      const finalReply = streamingTextRef.current.trim() || 'No response received.'
-      const botMsgId = Date.now() + 1
-      const botTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-
-      setSessionHistory((prev) =>
-        prev.map((s) => {
-          if (s.id === currentActiveId) {
-            return {
-              ...s,
-              messages: [...s.messages, { id: botMsgId, sender: 'bot', text: finalReply, timestamp: botTimeStr }],
-            }
-          }
-          return s
-        }),
-      )
-    } catch (err) {
-      if (err.name === 'AbortError') return
-
-      let fallbackText = "I can assist you with scholarship guidelines, document uploads, grade requirements, and application status tracking!"
-      const lower = text.toLowerCase();
-      if (lower.includes('requirement') || lower.includes('document')) {
-        fallbackText = "Requirements usually include your Certificate of Indigency, Certificate of Enrollment (COE), latest Grades / Transcript of Records, and a valid School ID.";
-      } else if (lower.includes('gpa') || lower.includes('grade')) {
-        fallbackText = "Scholarships require maintaining a minimum GPA (typically 80% or 3.0+ equivalent) without failing grades.";
-      } else if (lower.includes('apply') || lower.includes('how')) {
-        fallbackText = "You can apply by navigating to 'Find Scholarship', selecting a scholarship that matches your course and barangay, and filling out the application wizard!";
+      if (fullText) {
+        addMessageToSession(fullText, 'bot', sessionId)
       }
-
-      const botMsgId = Date.now() + 1
-      const botTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      setSessionHistory((prev) =>
-        prev.map((s) => {
-          if (s.id === currentActiveId) {
-            return {
-              ...s,
-              messages: [...s.messages, { id: botMsgId, sender: 'bot', text: fallbackText, timestamp: botTimeStr }],
-            }
-          }
-          return s
-        }),
-      )
-    } finally {
-      setIsTyping(false)
       setStreamingText('')
-      streamingTextRef.current = ''
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        const stopped = streamingTextRef.current
+        if (stopped) {
+          addMessageToSession(stopped + '\n\n*[Stopped]*', 'bot', sessionId)
+        }
+        setStreamingText('')
+        streamingTextRef.current = ''
+      } else {
+        let fallbackText = "I can assist you with scholarship guidelines, document uploads, grade requirements, and application status tracking!"
+        const lower = text.toLowerCase();
+        if (lower.includes('requirement') || lower.includes('document')) {
+          fallbackText = "Requirements usually include your Certificate of Indigency, Certificate of Enrollment (COE), latest Grades / Transcript of Records, and a valid School ID.";
+        } else if (lower.includes('gpa') || lower.includes('grade')) {
+          fallbackText = "Scholarships require maintaining a minimum GPA (typically 80% or 3.0+ equivalent) without failing grades.";
+        } else if (lower.includes('apply') || lower.includes('how')) {
+          fallbackText = "You can apply by navigating to 'Find Scholarship', selecting a scholarship that matches your course and barangay, and filling out the application wizard!";
+        }
+        addMessageToSession(fallbackText, 'bot', sessionId)
+        setStreamingText('')
+      }
+    } finally {
       abortRef.current = null
+      streamingTextRef.current = ''
+      setIsTyping(false)
     }
   }
 
@@ -370,7 +334,6 @@ function ChatbotDesign({
   const content = (
     <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: '14px', lineHeight: '1.5', color: '#374151' }}>
       <style>{`
-        .iskobots-design-root *, .iskobots-design-root *::before, .iskobots-design-root *::after { box-sizing: border-box; }
         @keyframes animate-bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-100%); } }
         @keyframes animate-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
         .flex { display: flex; }
@@ -542,35 +505,22 @@ function ChatbotDesign({
         }
       `}</style>
 
-      <div className="iskobots-design-root">
+      <div>
         {/* ── Floating Trigger ── */}
         {!isOpen && (
           <button
             onClick={handleOpen}
             type="button"
-            className="iskobots-mobile-trigger"
+            className="fixed z-[999] w-12 h-12 rounded-full text-white border-none cursor-pointer flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95 iskobots-mobile-trigger"
             style={{
-              position: 'fixed',
-              bottom: '24px',
-              right: '24px',
-              width: '56px',
-              height: '56px',
-              borderRadius: '50%',
+              ...posStyle,
               backgroundColor: primaryColor,
-              color: '#ffffff',
-              border: 'none',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
               boxShadow: `0 8px 28px ${primaryColor}66`,
               zIndex: zIndex,
-              transition: 'transform 0.25s ease, box-shadow 0.25s ease',
-              ...posStyle,
             }}
             aria-label={`Open ${botName} chat`}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: '26px', height: '26px' }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-6 h-6">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             </svg>
           </button>
@@ -579,32 +529,18 @@ function ChatbotDesign({
         {/* ── Chat Widget ── */}
         {isOpen && (
           <div
-            className="iskobots-mobile-widget"
+            className="fixed z-[999] flex flex-col w-[320px] max-w-[calc(100vw-32px)] h-[440px] max-h-[calc(100vh-80px)] bg-white rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.2)] overflow-hidden iskobots-mobile-widget"
             style={{
-              position: 'fixed',
-              bottom: '24px',
-              right: '24px',
-              width: '360px',
-              maxWidth: 'calc(100vw - 32px)',
-              height: '500px',
-              maxHeight: 'calc(100vh - 80px)',
-              backgroundColor: '#ffffff',
-              borderRadius: '20px',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+              ...posStyle,
               zIndex: zIndex,
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-              border: '1px solid rgba(0,0,0,0.08)',
               opacity: animateShow ? 1 : 0,
               transform: animateShow ? 'translateY(0) scale(1)' : 'translateY(16px) scale(0.96)',
               transition: 'opacity 250ms ease-out, transform 250ms ease-out',
               ...(viewportHeight ? { height: `${viewportHeight}px`, maxHeight: `${viewportHeight}px`, bottom: 0 } : {}),
-              ...posStyle,
             }}
           >
             {/* ── Header ── */}
-            <div className="px-4 py-3 flex items-center justify-between shrink-0" style={{ backgroundColor: primaryColor, color: '#fff' }}>
+            <div className="px-4 py-3 flex items-center justify-between shrink-0" style={{ backgroundColor: primaryColor }}>
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-full bg-white/20 grid place-items-center shrink-0">
                   <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" className="w-4 h-4">
@@ -623,35 +559,34 @@ function ChatbotDesign({
                   </p>
                 </div>
               </div>
-
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-0.5">
                 <button
-                  type="button"
-                  onClick={() => setShowHistory((v) => !v)}
-                  className="w-7 h-7 rounded-full text-white/70 hover:text-white hover:bg-white/10 flex items-center justify-center transition-colors border-none cursor-pointer"
+                  onClick={() => { setShowHistory((s) => !s); setSearchQuery('') }}
+                  className={`p-1.5 rounded-full border-none cursor-pointer transition-colors bg-transparent flex items-center justify-center ${showHistory ? 'text-white bg-white/20' : 'text-white/70 hover:text-white hover:bg-white/10'}`}
                   title="Chat history"
+                  type="button"
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <polyline points="12 6 12 12 16 14"></polyline>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4">
+                    <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                   </svg>
                 </button>
                 <button
-                  type="button"
                   onClick={handleNewChat}
-                  className="w-7 h-7 rounded-full text-white/70 hover:text-white hover:bg-white/10 flex items-center justify-center transition-colors border-none cursor-pointer"
+                  className="p-1.5 rounded-full text-white/70 hover:text-white hover:bg-white/10 border-none cursor-pointer transition-colors bg-transparent flex items-center justify-center"
                   title="New chat"
+                  type="button"
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4">
                     <line x1="12" y1="5" x2="12" y2="19"></line>
                     <line x1="5" y1="12" x2="19" y2="12"></line>
                   </svg>
                 </button>
+                <div className="w-px h-4 bg-white/20 mx-1" />
                 <button
-                  type="button"
                   onClick={handleClose}
-                  className="w-7 h-7 rounded-full text-white/70 hover:text-white hover:bg-white/10 flex items-center justify-center transition-colors border-none cursor-pointer ml-1"
-                  title="Close chat"
+                  className="p-1.5 rounded-full text-white/70 hover:text-white hover:bg-white/10 border-none cursor-pointer transition-colors bg-transparent flex items-center justify-center"
+                  title="Close"
+                  type="button"
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4">
                     <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -661,165 +596,224 @@ function ChatbotDesign({
               </div>
             </div>
 
-            {/* ── History Panel ── */}
-            {showHistory && (
-              <div className="absolute inset-0 z-20 bg-white flex flex-col pt-[52px]">
-                <div className="px-3 py-2 border-b border-gray-100">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search history..."
-                    className="w-full px-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-xl outline-none"
-                  />
+            {/* ── Body ── */}
+            <div className="flex-1 flex flex-col min-h-0 relative">
+
+              {/* ── History Panel ── */}
+              {showHistory && (
+                <div className="absolute inset-0 bg-white z-20 flex flex-col">
+                  <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-3 shrink-0">
+                    <button
+                      onClick={() => setShowHistory(false)}
+                      className="p-1.5 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-200 border-none cursor-pointer transition-colors bg-transparent flex items-center gap-1.5"
+                      type="button"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                      </svg>
+                      <span className="text-xs font-semibold">Back</span>
+                    </button>
+                    <span className="text-sm font-bold text-gray-700 flex-1 text-left">Chat History</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ backgroundColor: `${primaryColor}1a`, color: primaryColor }}>
+                      {sessionHistory.length}
+                    </span>
+                  </div>
+
+                  <div className="px-3 py-2.5 border-b border-gray-100 shrink-0">
+                    <div className="relative">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                      </svg>
+                      <input
+                        type="text"
+                        placeholder="Search chats..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full text-xs bg-gray-100 border border-transparent rounded-full pl-8 pr-4 py-2 focus:outline-none focus:bg-white text-gray-700 placeholder-gray-400 transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto py-2 px-2">
+                    {filteredHistory.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-12 text-gray-400 gap-2">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-8 h-8 text-gray-300">
+                          <circle cx="11" cy="11" r="8"></circle>
+                          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        <p className="text-xs m-0">No sessions found</p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-1">
+                        {filteredHistory.map((item) => {
+                          const isActive = item.id === activeSession
+                          return (
+                            <div key={item.id} className="relative group/item rounded-xl overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => handleSessionClick(item.id)}
+                                className={`w-full text-left px-3 py-3 cursor-pointer transition-all duration-150 border rounded-xl ${
+                                  isActive
+                                    ? 'shadow-sm'
+                                    : 'bg-transparent border-transparent hover:bg-gray-50 hover:border-gray-200'
+                                }`}
+                                style={isActive ? { backgroundColor: `${primaryColor}14`, borderColor: `${primaryColor}40` } : undefined}
+                              >
+                                <div className="flex items-center gap-2 mb-0.5">
+                                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: isActive ? primaryColor : '#d1d5db' }} />
+                                  <p className={`m-0 text-left text-xs font-semibold truncate ${isActive ? '' : 'text-gray-700'}`} style={isActive ? { color: primaryColor } : undefined}>
+                                    {item.title}
+                                  </p>
+                                </div>
+                                <p className="m-0 text-left text-[11px] text-gray-400 truncate pl-3.5">{item.preview}</p>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => handleDeleteClick(e, item)}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full text-gray-300 hover:text-rose-500 hover:bg-rose-50 border-none cursor-pointer opacity-0 group-hover/item:opacity-100 transition-all duration-150 bg-transparent"
+                                title="Delete session"
+                              >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                                  <polyline points="3 6 5 6 21 6"></polyline>
+                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
+                                  <path d="M10 11v6M14 11v6"></path>
+                                </svg>
+                              </button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="px-3 py-3 border-t border-gray-100 shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleNewChat}
+                      className="w-full py-2.5 rounded-xl text-white text-xs font-bold border-none cursor-pointer transition-colors"
+                      style={{ backgroundColor: primaryColor }}
+                    >
+                      + New Chat
+                    </button>
+                  </div>
                 </div>
-                <div className="flex-1 overflow-y-auto p-2">
-                  {filteredHistory.length === 0 ? (
-                    <p className="text-center text-xs text-gray-400 py-8">No chats found.</p>
-                  ) : (
-                    filteredHistory.map((s) => (
-                      <div
+              )}
+
+              {/* ── Messages ── */}
+              <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3 min-h-0" style={{ backgroundColor: '#f7f7f7' }}>
+                {renderedMessages}
+
+                {isTyping && (
+                  <div className="flex justify-start">
+                    <div className="bg-white border border-gray-100 shadow-sm rounded-2xl rounded-bl-sm px-4 py-3 flex gap-1 items-center">
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                  </div>
+                )}
+
+                {messages.length <= 2 && !isTyping && suggestions.length > 0 && (
+                  <div className="flex flex-col items-end gap-2 mt-1">
+                    {suggestions.map((s) => (
+                      <button
                         key={s.id}
-                        onClick={() => handleSessionClick(s.id)}
-                        className={`group/item flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-colors ${
-                          s.id === activeSession ? 'bg-gray-100 font-semibold' : 'hover:bg-gray-50'
-                        }`}
+                        type="button"
+                        onClick={() => handleSuggestion(s.text)}
+                        className="text-white text-xs font-medium px-4 py-2.5 rounded-2xl rounded-br-sm border-none cursor-pointer transition-all duration-200 hover:shadow-md active:scale-95"
+                        style={{ backgroundColor: primaryColor }}
                       >
-                        <div className="truncate flex-1 pr-2">
-                          <p className="m-0 text-xs text-gray-800 truncate">{s.title}</p>
-                          <p className="m-0 text-[10px] text-gray-400 truncate">{s.preview}</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(e) => handleDeleteRequest(e, s)}
-                          className="opacity-0 group-hover/item:opacity-100 p-1 text-gray-400 hover:text-rose-500 rounded border-none cursor-pointer transition-opacity"
-                          title="Delete session"
-                        >
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* ── Input bar ── */}
+              <form
+                onSubmit={handleSubmit}
+                className="px-3 py-3 bg-white border-t border-gray-100 flex items-center gap-2 shrink-0"
+              >
+                <input
+                  ref={inputRef}
+                  type="text"
+                  placeholder="Write your message..."
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { handleSubmit(e) } }}
+                  aria-label="Chat input"
+                  className="flex-1 text-sm text-gray-700 placeholder-gray-400 bg-gray-100 border border-transparent rounded-full px-4 py-2.5 outline-none focus:bg-white transition-colors"
+                />
+                {isTyping ? (
+                  <button
+                    type="button"
+                    onClick={handleStop}
+                    className="w-9 h-9 shrink-0 rounded-full bg-rose-500 text-white border-none cursor-pointer flex items-center justify-center transition-all duration-200 hover:bg-rose-600 hover:shadow-md active:scale-95"
+                    title="Stop generating"
+                  >
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                      <rect x="6" y="6" width="12" height="12" rx="2" />
+                    </svg>
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    className="w-9 h-9 shrink-0 rounded-full text-white border-none cursor-pointer flex items-center justify-center transition-all duration-200 hover:shadow-md active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none"
+                    style={{ backgroundColor: primaryColor }}
+                    disabled={!inputValue.trim()}
+                    title="Send"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                      <line x1="22" y1="2" x2="11" y2="13"></line>
+                      <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                  </button>
+                )}
+              </form>
+
+              {/* ── Delete Confirmation ── */}
+              {deleteConfirm && (
+                <div className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                  <div className="bg-white rounded-2xl shadow-xl w-full max-w-[280px] overflow-hidden">
+                    <div className="p-5 text-left">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-9 h-9 rounded-full bg-rose-100 grid place-items-center shrink-0">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="#e11d48" strokeWidth="2" className="w-4 h-4">
                             <polyline points="3 6 5 6 21 6"></polyline>
                             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
                           </svg>
-                        </button>
+                        </div>
+                        <p className="m-0 text-sm font-bold text-gray-800">Delete chat?</p>
                       </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* ── Messages List ── */}
-            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-gray-50/50">
-              {renderedMessages}
-              {isTyping && !streamingText && (
-                <div className="flex items-center gap-1.5 text-gray-400 text-xs py-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* ── Suggestions ── */}
-            {suggestions.length > 0 && messages.length <= 2 && (
-              <div className="px-3 py-2 border-t border-gray-100 flex gap-1.5 overflow-x-auto bg-white shrink-0">
-                {suggestions.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => handleSuggestion(s.text)}
-                    className="whitespace-nowrap px-3 py-1.5 text-xs text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-full border-none cursor-pointer transition-colors shrink-0"
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* ── Input Form ── */}
-            <form onSubmit={handleSend} className="p-3 border-t border-gray-100 flex items-center gap-2 bg-white shrink-0">
-              <input
-                ref={inputRef}
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                placeholder="Ask IskoBots..."
-                style={{
-                  flex: 1,
-                  padding: '8px 16px',
-                  fontSize: '14px',
-                  backgroundColor: '#f3f4f6',
-                  borderRadius: '9999px',
-                  border: 'none',
-                  outline: 'none',
-                  color: '#1f2937',
-                }}
-              />
-              {isTyping ? (
-                <button
-                  type="button"
-                  onClick={handleStop}
-                  className="w-9 h-9 shrink-0 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center cursor-pointer hover:bg-gray-300 transition-colors border-none"
-                  title="Stop generating"
-                >
-                  <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-                    <rect x="6" y="6" width="12" height="12" rx="2" />
-                  </svg>
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  className="w-9 h-9 shrink-0 rounded-full text-white border-none cursor-pointer flex items-center justify-center transition-all duration-200 hover:shadow-md active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none"
-                  style={{ backgroundColor: primaryColor }}
-                  disabled={!inputValue.trim()}
-                  title="Send"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                    <line x1="22" y1="2" x2="11" y2="13"></line>
-                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                  </svg>
-                </button>
-              )}
-            </form>
-
-            {/* ── Delete Confirmation ── */}
-            {deleteConfirm && (
-              <div className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-                <div className="bg-white rounded-2xl shadow-xl w-full max-w-[280px] overflow-hidden">
-                  <div className="p-5 text-left">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="w-9 h-9 rounded-full bg-rose-100 grid place-items-center shrink-0">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="#e11d48" strokeWidth="2" className="w-4 h-4">
-                          <polyline points="3 6 5 6 21 6"></polyline>
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
-                        </svg>
-                      </div>
-                      <p className="m-0 text-sm font-bold text-gray-800">Delete chat?</p>
+                      <p className="m-0 text-xs text-gray-500 leading-relaxed">
+                        "<span className="font-semibold text-gray-700">{deleteConfirm.title}</span>" will be permanently removed. This cannot be undone.
+                      </p>
                     </div>
-                    <p className="m-0 text-xs text-gray-500 leading-relaxed">
-                      "<span className="font-semibold text-gray-700">{deleteConfirm.title}</span>" will be permanently removed. This cannot be undone.
-                    </p>
-                  </div>
-                  <div className="flex border-t border-gray-100">
-                    <button
-                      type="button"
-                      onClick={() => setDeleteConfirm(null)}
-                      className="flex-1 py-3 text-sm text-gray-600 font-semibold border-none cursor-pointer hover:bg-gray-50 transition-colors bg-transparent border-r border-gray-100"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleDeleteConfirmed}
-                      className="flex-1 py-3 text-sm text-rose-600 font-bold border-none cursor-pointer hover:bg-rose-50 transition-colors bg-transparent"
-                    >
-                      Delete
-                    </button>
+                    <div className="flex border-t border-gray-100">
+                      <button
+                        type="button"
+                        onClick={() => setDeleteConfirm(null)}
+                        className="flex-1 py-3 text-sm text-gray-600 font-semibold border-none cursor-pointer hover:bg-gray-50 transition-colors bg-transparent border-r border-gray-100"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDeleteConfirmed}
+                        className="flex-1 py-3 text-sm text-rose-600 font-bold border-none cursor-pointer hover:bg-rose-50 transition-colors bg-transparent"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
+            </div>
           </div>
         )}
       </div>
