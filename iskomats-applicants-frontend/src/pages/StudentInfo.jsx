@@ -663,72 +663,49 @@ function studentNameMatchesText(text, first, middle, last) {
 function studentIdNoMatchesText(targetId, text) {
   if (!targetId || !text) return true;
 
-  const normalizeId = (s) => {
-    return s.toString().toLowerCase().replace(/[^a-z0-9]/g, '')
-      .replace(/o/g, '0').replace(/q/g, '0').replace(/d/g, '0').replace(/a/g, '0').replace(/u/g, '0')
-      .replace(/i/g, '1').replace(/l/g, '1').replace(/y/g, '1').replace(/v/g, '1').replace(/f/g, '1').replace(/k/g, '1')
-      .replace(/z/g, '2')
-      .replace(/s/g, '5')
-      .replace(/g/g, '6').replace(/b/g, '6')
-      .replace(/t/g, '7').replace(/r/g, '7')
-      .replace(/q/g, '9');
-  };
+  // Strip everything except digits for student ID comparison
+  // Student IDs are numeric - we must NOT conflate letters with digits
+  const digitsOnly = (s) => String(s).replace(/[^0-9]/g, '');
 
-  const tId = normalizeId(targetId);
-  if (!tId || tId.length < 4) return true;
+  const tDigits = digitsOnly(targetId);
+  if (!tDigits || tDigits.length < 4) return true;  // too short to validate
 
-  const normText = normalizeId(text);
+  // --- 1. Exact digit match in raw text ---
+  // Extract all digit sequences from OCR text that are the same length (±1) as the target ID
+  const ocrDigitSeqs = String(text).match(/\d{4,}/g) || [];
 
-  // 1. Direct inclusion of normalized target ID
-  if (normText.includes(tId)) return true;
+  for (const seq of ocrDigitSeqs) {
+    const seqClean = digitsOnly(seq);
+    if (seqClean === tDigits) return true;  // exact match
 
-  // 2. Extracted Key-Value ID check
+    // For long IDs (8+ digits): allow at most 1 digit error (OCR misread of a single character)
+    if (tDigits.length >= 8 && seqClean.length === tDigits.length) {
+      const dist = getLevenshteinDistance(tDigits, seqClean);
+      if (dist <= 1) return true;
+    }
+
+    // For shorter IDs (4-7 digits): require exact match only
+    if (tDigits.length < 8 && seqClean === tDigits) return true;
+  }
+
+  // --- 2. Key-value extracted student ID (e.g. "Student No: 1500017172") ---
   const kv = extractOcrKeyValues(text);
   if (kv.studentId) {
-    const kvId = normalizeId(kv.studentId);
-    if (kvId.includes(tId) || tId.includes(kvId)) return true;
-    const dist = getLevenshteinDistance(tId, kvId);
-    if (dist <= 3 || (Math.max(tId.length, kvId.length) - dist) / Math.max(tId.length, kvId.length) >= 0.50) {
-      return true;
+    const kvDigits = digitsOnly(kv.studentId);
+    if (kvDigits === tDigits) return true;
+    // Allow 1-digit error for long IDs when extracted from a labeled field
+    if (tDigits.length >= 8 && kvDigits.length === tDigits.length) {
+      const dist = getLevenshteinDistance(tDigits, kvDigits);
+      if (dist <= 1) return true;
     }
   }
 
-  // 3. Chunk matching (for long IDs, e.g. 1500017172 -> check chunks of 5-6 digits like 150001 or 017172)
-  if (tId.length >= 6) {
-    const chunkSize = Math.max(4, Math.floor(tId.length * 0.55));
-    for (let i = 0; i <= tId.length - chunkSize; i += 2) {
-      const chunk = tId.substring(i, i + chunkSize);
-      if (chunk.length >= 4 && normText.includes(chunk)) {
-        return true;
-      }
-    }
-  }
-
-  // 4. Token-level fuzzy matching against OCR words
-  const words = text.split(/\s+/);
-  for (const w of words) {
-    const normW = normalizeId(w);
-    if (normW.length >= 4) {
-      if (normW.includes(tId) || tId.includes(normW)) return true;
-      const longer = normW.length > tId.length ? normW : tId;
-      const shorter = normW.length > tId.length ? tId : normW;
-      const dist = getLevenshteinDistance(longer, shorter);
-      const similarity = (longer.length - dist) / longer.length;
-      if (similarity >= 0.50 || dist <= 3) {
-        return true;
-      }
-    }
-  }
-
-  // 5. Fallback for OCR missing/skipped header numbers:
-  // If the raw OCR text doesn't contain a clear 4+ digit sequence, pass to avoid failing due to OCR header skipping
-  const digitMatches = normText.match(/\d{4,}/g);
-  if (!digitMatches || digitMatches.length === 0) {
-    return true;
-  }
+  // --- 3. Fallback: if OCR extracted NO digit sequences at all (e.g. blurry scan), pass to avoid hard failure ---
+  if (ocrDigitSeqs.length === 0) return true;
 
   return false;
 }
+
 
 function schoolNameMatchesText(text, targetSchool) {
   if (!targetSchool || !text) return true;
