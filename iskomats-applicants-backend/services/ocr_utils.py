@@ -515,10 +515,37 @@ def _sface_verify(user_image, id_image):
     face_u = max(faces_u, key=lambda f: f[2] * f[3])
     face_i = max(faces_i, key=lambda f: f[2] * f[3])
 
-    # Check facial landmark detection confidence (detect hand/face cover)
+    # 1. Lighting & Luminance Validation
+    x, y, w, h = int(face_u[0]), int(face_u[1]), int(face_u[2]), int(face_u[3])
+    x0, y0 = max(0, x), max(0, y)
+    x1, y1 = min(w_u, x + w), min(h_u, y + h)
+    face_crop = user_image[y0:y1, x0:x1]
+
+    if face_crop.size > 0:
+        gray_crop = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY) if len(face_crop.shape) == 3 else face_crop
+        mean_lum = float(np.mean(gray_crop))
+
+        if mean_lum < 45:
+            return False, "Lighting is too dark or dim. Please turn on your room lights or face a light source before taking your photo.", 0.0
+        if mean_lum > 238:
+            return False, "Photo is overexposed or too bright. Please adjust your lighting before taking your photo.", 0.0
+
+        # 2. Hand / Object Obstruction Edge Detection (Laplacian Variance in upper face)
+        h_c = gray_crop.shape[0]
+        upper_face = gray_crop[int(h_c * 0.15):int(h_c * 0.65), :]
+        if upper_face.size > 0:
+            lap_var = cv2.Laplacian(upper_face, cv2.CV_64F).var()
+            if lap_var > 650:
+                return False, "Facial features are obstructed by your hand or an object. Please remove any hands, fingers, or objects covering your face.", 0.0
+
+    # 3. Landmark Distance & Symmetry Check
     score_u = face_u[-1]
-    if score_u < 0.65:
-        return False, "Facial features are partially covered or obstructed (e.g. hand over face/eye). Please remove any obstructions and face the camera directly.", 0.0
+    re_x, re_y = face_u[4], face_u[5]
+    le_x, le_y = face_u[6], face_u[7]
+    eye_dist = np.sqrt((re_x - le_x)**2 + (re_y - le_y)**2)
+
+    if score_u < 0.72 or eye_dist < (w * 0.22):
+        return False, "Facial features or eyes are partially covered (e.g. hand over eye/cheek). Please remove any obstructions and face the camera directly.", 0.0
 
     aligned_u = recognizer.alignCrop(user_image, face_u)
     aligned_i = recognizer.alignCrop(id_image, face_i)
@@ -529,8 +556,8 @@ def _sface_verify(user_image, id_image):
     raw_sim = recognizer.match(feat_u, feat_i, cv2.FaceRecognizerSF_FR_COSINE)
     similarity = max(0.0, min(1.0, float(raw_sim)))
 
-    # OpenCV SFace Cosine Threshold: >= 0.363 indicates same identity
-    threshold = 0.363
+    # Strict SFace Cosine Threshold: >= 0.45 for verified identity
+    threshold = 0.45
     is_verified = raw_sim >= threshold
     msg = (
         f"Facial identity verified! (similarity: {similarity*100:.1f}%)"
