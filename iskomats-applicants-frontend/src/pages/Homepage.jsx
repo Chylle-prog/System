@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Navbar from './Navbar';
+import ChatbotDesign from '../components/ChatbotDesign';
 import { useAuth } from '../contexts/AuthContext';
 import './HomePage.css';
 
@@ -398,6 +399,9 @@ const HomePage = () => {
           </div>
         </div>
       )}
+
+      {/* IskoBots AI Chatbot */}
+      <ChatbotDesign />
     </div>
   );
 };

@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { applicantAPI, applicationAPI, scholarshipAPI, announcementAPI, notificationAPI, API_ORIGIN } from '../services/api';
 import socketService from '../services/socket';
 import iskoLogo from '../assets/iskologo.png';
+import ChatbotDesign from '../components/ChatbotDesign';
 
 const ensureAbsoluteUrl = (url) => {
   if (!url) return url;
@@ -4266,6 +4267,9 @@ const Portal = () => {
           </p>
         </div>
       </footer>
+
+      {/* IskoBots AI Chatbot */}
+      <ChatbotDesign />
     </div>
   );
 };
