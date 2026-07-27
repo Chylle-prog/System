@@ -200,13 +200,13 @@ def _pick_primary_face(faces, image_label, min_area_pct=0.0, image_shape=None):
 
 def _opencv_fallback_face_match(user_image, id_image):
     """
-    Rebuilt High-Precision Face Verification Engine:
-    1. Strict face detection on live photo (requires valid, unobstructed face).
-    2. Framing & boundary check (rejects cut-off faces at camera frame edges).
-    3. Aspect ratio & coverage check (detects hand/object coverage or sideways angle).
-    4. Blurriness Laplacian check.
-    5. Multi-feature matching (Equalized Template Match + ORB Keypoints + Sobel Edge Gradient SSIM).
-    6. Strict 0.52+ composite similarity threshold.
+    Backlight-Resilient & Adaptive High-Precision Face Engine:
+    1. CLAHE Lighting Equalization (illuminates backlit faces/shadows).
+    2. Multi-Cascade Detection (default, alt, alt2).
+    3. Intelligent Margin Guard (margin <= 3px, allows natural hair/shoulder webcam positioning).
+    4. Smart Crop Fallback (crops center face region if webcam lighting dims cascade confidence).
+    5. Multi-Feature Matching (Template + ORB + Sobel Edge SSIM).
+    6. Fair 0.45+ verification threshold.
     """
     gray_user = cv2.cvtColor(user_image, cv2.COLOR_BGR2GRAY) if len(user_image.shape) == 3 else user_image
     gray_id = cv2.cvtColor(id_image, cv2.COLOR_BGR2GRAY) if len(id_image.shape) == 3 else id_image
@@ -214,102 +214,105 @@ def _opencv_fallback_face_match(user_image, id_image):
     hu, wu = gray_user.shape[:2]
     hi, wi = gray_id.shape[:2]
 
+    # Apply CLAHE to equalize backlighting & window shadows
+    try:
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        eq_user_full = clahe.apply(gray_user)
+        eq_id_full = clahe.apply(gray_id)
+    except Exception:
+        eq_user_full = gray_user
+        eq_id_full = gray_id
+
     user_crop = None
     id_crop = None
     user_bbox = None
 
     if hasattr(cv2, 'CascadeClassifier'):
-        try:
-            cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-            face_cascade = cv2.CascadeClassifier(cascade_path)
-            
-            user_faces = face_cascade.detectMultiScale(gray_user, scaleFactor=1.1, minNeighbors=4, minSize=(50, 50))
-            if len(user_faces) == 0:
-                alt_cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_alt.xml'
-                if os.path.exists(alt_cascade_path):
-                    alt_cascade = cv2.CascadeClassifier(alt_cascade_path)
-                    user_faces = alt_cascade.detectMultiScale(gray_user, scaleFactor=1.1, minNeighbors=3, minSize=(40, 40))
+        for cascade_name in ['haarcascade_frontalface_default.xml', 'haarcascade_frontalface_alt.xml', 'haarcascade_frontalface_alt2.xml']:
+            try:
+                path = cv2.data.haarcascades + cascade_name
+                if not os.path.exists(path):
+                    continue
+                face_cascade = cv2.CascadeClassifier(path)
+                
+                # Test on CLAHE enhanced gray image
+                user_faces = face_cascade.detectMultiScale(eq_user_full, scaleFactor=1.08, minNeighbors=3, minSize=(30, 30))
+                if len(user_faces) == 0:
+                    user_faces = face_cascade.detectMultiScale(gray_user, scaleFactor=1.08, minNeighbors=2, minSize=(30, 30))
 
-            id_faces = face_cascade.detectMultiScale(gray_id, scaleFactor=1.1, minNeighbors=3, minSize=(25, 25))
+                if len(user_faces) > 0:
+                    ux, uy, uw, uh = max(user_faces, key=lambda b: b[2] * b[3])
+                    user_bbox = (ux, uy, uw, uh)
+                    user_crop = eq_user_full[uy:uy+uh, ux:ux+uw]
 
-            if len(user_faces) > 0:
-                ux, uy, uw, uh = max(user_faces, key=lambda b: b[2] * b[3])
-                user_bbox = (ux, uy, uw, uh)
-                user_crop = gray_user[uy:uy+uh, ux:ux+uw]
-            
-            if len(id_faces) > 0:
-                ix, iy, iw, ih = max(id_faces, key=lambda b: b[2] * b[3])
-                id_crop = gray_id[iy:iy+ih, ix:ix+iw]
-        except Exception as e:
-            print(f"[FACE] Haar Cascade error: {e}", flush=True)
+                id_faces = face_cascade.detectMultiScale(eq_id_full, scaleFactor=1.08, minNeighbors=2, minSize=(20, 20))
+                if len(id_faces) > 0:
+                    ix, iy, iw, ih = max(id_faces, key=lambda b: b[2] * b[3])
+                    id_crop = eq_id_full[iy:iy+ih, ix:ix+iw]
 
-    # 1. Enforce live face presence - reject if no face detected in live photo
-    if user_crop is None or user_bbox is None:
-        return False, "No clear face detected in live photo. Please position your face clearly in front of the camera.", 0.0
+                if user_crop is not None:
+                    break
+            except Exception as e:
+                print(f"[FACE] Cascade detection error ({cascade_name}): {e}", flush=True)
 
-    # 2. Enforce bounding box framing - reject if face is cut off at frame border
-    ux, uy, uw, uh = user_bbox
-    margin = 15
-    if ux <= margin or uy <= margin or (ux + uw) >= (wu - margin) or (uy + uh) >= (hu - margin):
-        return False, "Face is partially cut off at camera frame edge. Please center your face in the camera view.", 0.0
+    # 1. Fallback crop if cascade missed due to backlighting or webcam contrast
+    if user_crop is None:
+        ux, uy, uw, uh = int(wu * 0.20), int(hu * 0.10), int(wu * 0.60), int(hu * 0.80)
+        user_bbox = (ux, uy, uw, uh)
+        user_crop = eq_user_full[uy:uy+uh, ux:ux+uw]
 
-    # 3. Enforce size & aspect ratio (detect hand/object coverage or sideways angle)
-    coverage = (uw * uh) / float(wu * hu)
-    aspect_ratio = float(uh) / float(uw)
-    if coverage < 0.04:
-        return False, "Face is too far from the camera. Please move closer.", 0.0
-    if aspect_ratio < 0.75 or aspect_ratio > 1.70:
-        return False, "Face is partially covered or turned sideways. Please remove hands/objects and face straight ahead.", 0.0
-
-    # 4. Check image blurriness
-    laplacian_var = cv2.Laplacian(user_crop, cv2.CV_64F).var()
-    if laplacian_var < 20.0:
-        return False, "Live photo is too blurry. Please hold steady and try again.", 0.0
-
-    # Fallback crop for ID card if cascade missed small laminate face
     if id_crop is None:
-        id_crop = gray_id[int(hi*0.25):int(hi*0.95), int(wi*0.05):int(wi*0.75)]
+        id_crop = eq_id_full[int(hi * 0.25):int(hi * 0.95), int(wi * 0.05):int(wi * 0.75)]
+
+    # 2. Boundary check (only reject if 90%+ cut off out of bounds)
+    ux, uy, uw, uh = user_bbox
+    margin = 3
+    if ux < margin and (ux + uw) < (wu * 0.3):
+        return False, "Face is cut off on the left side. Please center your face in the camera view.", 0.0
+    if (ux + uw) > (wu - margin) and ux > (wu * 0.7):
+        return False, "Face is cut off on the right side. Please center your face in the camera view.", 0.0
+
+    # 3. Check for severe hand/object coverage (extremely thin or wide crops)
+    aspect_ratio = float(uh) / float(max(1, uw))
+    if aspect_ratio < 0.65 or aspect_ratio > 1.95:
+        return False, "Face is partially covered or severely angled. Please face straight ahead without covering your face.", 0.0
 
     # Resize crops to standard 128x128
     user_crop_resized = cv2.resize(user_crop, (128, 128))
     id_crop_resized = cv2.resize(id_crop, (128, 128))
 
-    # Apply histogram equalization to normalize lighting
-    eq_user = cv2.equalizeHist(user_crop_resized)
-    eq_id = cv2.equalizeHist(id_crop_resized)
-
-    # A. Template Correlation
-    res = cv2.matchTemplate(eq_user, eq_id, cv2.TM_CCOEFF_NORMED)
+    # A. Equalized Template Matching
+    res = cv2.matchTemplate(user_crop_resized, id_crop_resized, cv2.TM_CCOEFF_NORMED)
     _, max_val, _, _ = cv2.minMaxLoc(res)
     tmpl_score = max(0.0, min(1.0, (float(max_val) + 1.0) / 2.0))
 
-    # B. ORB Keypoint Matching
+    # B. ORB Keypoint Feature Matching
     orb_score = 0.0
     try:
         orb = cv2.ORB_create(nfeatures=500)
-        kp1, des1 = orb.detectAndCompute(eq_user, None)
-        kp2, des2 = orb.detectAndCompute(eq_id, None)
+        kp1, des1 = orb.detectAndCompute(user_crop_resized, None)
+        kp2, des2 = orb.detectAndCompute(id_crop_resized, None)
         if des1 is not None and des2 is not None and len(des1) > 0 and len(des2) > 0:
             bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
             matches = bf.match(des1, des2)
-            good_matches = [m for m in matches if m.distance < 55]
+            good_matches = [m for m in matches if m.distance < 60]
             orb_ratio = len(good_matches) / max(10.0, min(len(kp1), len(kp2)))
             orb_score = min(1.0, orb_ratio * 1.6)
     except Exception:
         pass
 
     # C. Sobel Edge Gradient SSIM
-    sobel_u = cv2.Sobel(eq_user, cv2.CV_32F, 1, 1)
-    sobel_i = cv2.Sobel(eq_id, cv2.CV_32F, 1, 1)
+    sobel_u = cv2.Sobel(user_crop_resized, cv2.CV_32F, 1, 1)
+    sobel_i = cv2.Sobel(id_crop_resized, cv2.CV_32F, 1, 1)
     edge_res = cv2.matchTemplate(sobel_u, sobel_i, cv2.TM_CCOEFF_NORMED)
     _, max_edge, _, _ = cv2.minMaxLoc(edge_res)
     edge_score = max(0.0, min(1.0, (float(max_edge) + 1.0) / 2.0))
 
     # Composite Similarity Index
-    composite_sim = (0.40 * tmpl_score) + (0.35 * orb_score) + (0.25 * edge_score)
+    composite_sim = (0.45 * tmpl_score) + (0.35 * orb_score) + (0.20 * edge_score)
 
-    verified = (composite_sim >= 0.52)
-    msg = f"Facial identity verified! (similarity: {composite_sim*100:.1f}%)" if verified else f"Facial features do not match your ID photo (similarity: {composite_sim*100:.1f}%). Please face the camera clearly without obstructions."
+    verified = (composite_sim >= 0.45)
+    msg = f"Facial identity verified! (similarity: {composite_sim*100:.1f}%)" if verified else f"Facial features do not match your ID photo (similarity: {composite_sim*100:.1f}%). Please ensure clear lighting and face the camera directly."
     return verified, msg, composite_sim
 
 
