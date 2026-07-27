@@ -42,7 +42,7 @@ _FACE_RECOGNIZER = None
 _FACE_MODEL_INIT_ERROR = None
 _FACE_MATCH_THRESHOLD = 0.36 
 _FACE_DETECTION_THRESHOLD = 0.25 
-_MAX_FACE_WIDTH = 640  # 640px optimal for face detection on ID cards
+_MAX_FACE_WIDTH = 380  # 380px optimal for face detection inference speed and precision
 
 def _decode_face_image(image_bytes):
     """Decode raw image bytes, base64 data URIs, or URLs into an OpenCV BGR image."""
@@ -181,10 +181,11 @@ def _init_face_models():
             from uniface.recognition import ArcFace
             import onnxruntime as ort
 
-            # Limit thread count & disable CPU memory arena to prevent OOM on Render
+            # Multi-threaded ONNX execution for fast face detection
             sess_options = ort.SessionOptions()
-            sess_options.intra_op_num_threads = 1
-            sess_options.inter_op_num_threads = 1
+            num_threads = min(4, max(1, os.cpu_count() or 2))
+            sess_options.intra_op_num_threads = num_threads
+            sess_options.inter_op_num_threads = num_threads
             sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
             sess_options.enable_cpu_mem_arena = False
             sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
@@ -193,7 +194,7 @@ def _init_face_models():
 
             _FACE_DETECTOR = _create_uniface_model(RetinaFace, providers, sess_options)
             _FACE_RECOGNIZER = _create_uniface_model(ArcFace, providers, sess_options)
-            print("[FACE] UniFace RetinaFace and ArcFace initialized on CPU (Single-Threaded).", flush=True)
+            print(f"[FACE] UniFace RetinaFace and ArcFace initialized on CPU ({num_threads} threads).", flush=True)
         except Exception as exc:
             _FACE_MODEL_INIT_ERROR = f"Failed to initialize UniFace models: {str(exc)}"
             print(f"[FACE] {_FACE_MODEL_INIT_ERROR}", flush=True)
