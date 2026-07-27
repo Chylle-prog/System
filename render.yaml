@@ -13,5 +13,7 @@ services:
         value: https://iskomats-applicants.surge.sh
       - key: ADMIN_FRONTEND_URL
         value: https://iskomats-admin.surge.sh
+      - key: USE_NEURAL_FACE_VERIFICATION
+        value: "true"
     # Docker automatically runs the Dockerfile in the rootDir
     # so we don't need a buildCommand or startCommand here.
