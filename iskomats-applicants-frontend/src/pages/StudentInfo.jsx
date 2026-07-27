@@ -1231,7 +1231,7 @@ const StudentInfo = () => {
   const renderInlineRequirementsChecklist = (docType) => {
     if (!showAllRequirementsChecklist) return null;
     const log = ocrDebugLogs[docType];
-    if (!log || !log.requirements || Object.keys(log.requirements).length === 0) return null;
+    if (!log || !log.requirements || Object.keys(log.requirements).length === 0 || log.status === 'Scanning') return null;
 
     return (
       <div style={{ marginTop: '12px', borderTop: '1px solid rgba(0,0,0,0.08)', paddingTop: '10px' }}>
@@ -2683,6 +2683,21 @@ const StudentInfo = () => {
         setVerified('verifying');
         setStatus(`Initializing in-browser WebAssembly OCR Engine...`);
         setScanProgress(5);
+        if (docType === 'Indigency') setIndigencyResults([]);
+        else if (docType === 'Enrollment') setCoeResults([]);
+        else if (docType === 'Grades') setGradesResults([]);
+        else if (docType === 'SchoolID') setIdResults([]);
+
+        setOcrDebugLogs((prev) => ({
+          ...prev,
+          [docType]: {
+            status: 'Scanning',
+            detectedText: '',
+            requirements: {},
+            scoreDetails: {},
+            timestamp: Date.now()
+          }
+        }));
       }
 
       let { townCity, barangay, schoolName, idNumber, yearLevel, gpa, course, semester, academicYear } = extraParams;
@@ -5913,12 +5928,20 @@ const StudentInfo = () => {
                         </button>
 
                         {ocrVerified === 'verifying' && (
-                          <div style={{ width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0', marginTop: '1rem' }}>
-                            <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
+                          <div style={{ marginTop: '1rem' }}>
+                            <div style={{ width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                              <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
+                            </div>
+                            {ocrStatus && (
+                              <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: '10px', color: '#1d4ed8', fontSize: '0.82rem', fontWeight: '700' }}>
+                                <i className="fas fa-spinner fa-spin"></i>
+                                <span>{ocrStatus}</span>
+                              </div>
+                            )}
                           </div>
                         )}
 
-                        {ocrStatus && (
+                        {ocrStatus && ocrVerified !== 'verifying' && (
                           <div className={`validation-status-card ${ocrVerified === 'success' ? 'success' : (ocrVerified === 'failed' ? 'failed' : 'processing')}`} style={{ marginTop: '1rem' }}>
                             <div className={`status-icon ${ocrVerified === 'success' ? 'success' : (ocrVerified === 'failed' ? 'failed' : 'processing')}`}>
                               <i className={`fas ${ocrVerified === 'success' ? 'fa-check' : (ocrVerified === 'failed' ? 'fa-circle-xmark' : 'fa-magnifying-glass')}`}></i>
@@ -6368,12 +6391,20 @@ const StudentInfo = () => {
                     </button>
 
                     {idVerified === 'verifying' && (
-                      <div style={{ width: '100%', height: '8px', background: '#f1f5f9', borderRadius: '10px', marginTop: '1rem', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-                        <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
+                      <div style={{ marginTop: '1rem' }}>
+                        <div style={{ width: '100%', height: '8px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                          <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
+                        </div>
+                        {idStatus && (
+                          <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: '10px', color: '#1d4ed8', fontSize: '0.82rem', fontWeight: '700' }}>
+                            <i className="fas fa-spinner fa-spin"></i>
+                            <span>{idStatus}</span>
+                          </div>
+                        )}
                       </div>
                     )}
 
-                    {idStatus && (
+                    {idStatus && idVerified !== 'verifying' && (
                       <div className={`validation-status-card ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`} style={{ marginTop: '1.2rem' }}>
                         <div className={`status-icon ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`}>
                           <i className={`fas ${idVerified === 'success' ? 'fa-check' : (idVerified === 'failed' ? 'fa-circle-xmark' : 'fa-magnifying-glass')}`}></i>
@@ -6500,12 +6531,20 @@ const StudentInfo = () => {
                             </button>
 
                             {coeVerified === 'verifying' && (
-                              <div style={{ width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-                                <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
+                              <div style={{ marginTop: '0.5rem' }}>
+                                <div style={{ width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                                  <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
+                                </div>
+                                {coeStatus && (
+                                  <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: '10px', color: '#1d4ed8', fontSize: '0.82rem', fontWeight: '700' }}>
+                                    <i className="fas fa-spinner fa-spin"></i>
+                                    <span>{coeStatus}</span>
+                                  </div>
+                                )}
                               </div>
                             )}
 
-                            {coeStatus && (
+                            {coeStatus && coeVerified !== 'verifying' && (
                               <div className={`validation-status-card ${coeVerified === 'success' ? 'success' : (coeVerified === 'failed' ? 'failed' : 'processing')}`}>
                                 <div className={`status-icon ${coeVerified === 'success' ? 'success' : (coeVerified === 'failed' ? 'failed' : 'processing')}`}>
                                   <i className={`fas ${coeVerified === 'success' ? 'fa-check' : (coeVerified === 'failed' ? 'fa-circle-xmark' : 'fa-info-circle')}`}></i>
@@ -6632,12 +6671,20 @@ const StudentInfo = () => {
                               </button>
 
                               {gradesVerified === 'verifying' && (
-                                <div style={{ width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-                                  <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
+                                <div style={{ marginTop: '0.5rem' }}>
+                                  <div style={{ width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                                    <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
+                                  </div>
+                                  {gradesStatus && (
+                                    <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: '10px', color: '#1d4ed8', fontSize: '0.82rem', fontWeight: '700' }}>
+                                      <i className="fas fa-spinner fa-spin"></i>
+                                      <span>{gradesStatus}</span>
+                                    </div>
+                                  )}
                                 </div>
                               )}
 
-                              {gradesStatus && (
+                              {gradesStatus && gradesVerified !== 'verifying' && (
                                 <div className={`validation-status-card ${gradesVerified === 'success' ? 'success' : (gradesVerified === 'failed' ? 'failed' : 'processing')}`}>
                                   <div className={`status-icon ${gradesVerified === 'success' ? 'success' : (gradesVerified === 'failed' ? 'failed' : 'processing')}`}>
                                     <i className={`fas ${gradesVerified === 'success' ? 'fa-check' : (gradesVerified === 'failed' ? 'fa-circle-xmark' : 'fa-info-circle')}`}></i>
