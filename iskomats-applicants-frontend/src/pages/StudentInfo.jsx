@@ -948,22 +948,36 @@ function gpaMatchesText(text, expectedGpa) {
   // Round input GPA to nearest hundredth for comparison
   const roundedInputGpa = Math.round(parsedInputGpa * 100) / 100;
 
-  const detectedGpaStr = extractGpaFromText(text, null);  // pass null so no alignment bias
+  // 1. Explicit labeled GPA check (e.g. "GPA: 3.55" or "GWA: 3.55")
+  const detectedGpaStr = extractGpaFromText(text, null);
   if (detectedGpaStr !== null) {
-    const detVal = parseFloat(detectedGpaStr); // already rounded to 2dp
+    const detVal = parseFloat(detectedGpaStr); // rounded to 2dp
     if (!isNaN(detVal)) {
-      // 0.03 tolerance catches minor rounding edge cases (e.g. 3.548 vs 3.55)
-      return Math.abs(detVal - roundedInputGpa) <= 0.03;
+      // Must be within 0.05 tolerance of input
+      return Math.abs(detVal - roundedInputGpa) <= 0.05;
     }
   }
 
-  // Labeled GPA not found in document (common with noisy OCR scans).
+  // 2. Direct string inclusion check
   const cleanText = String(text).replace(/[\u2013\u2014\u00b7\u2022]/g, '.');
   const hundredthStr = roundedInputGpa.toFixed(2);
-  if (cleanText.includes(hundredthStr)) return true;
-  if (cleanText.includes(rawGpaStr) || cleanText.includes(rawGpaStr.replace('.', ','))) return true;
+  const tenthStr = roundedInputGpa.toFixed(1);
+  if (cleanText.includes(hundredthStr) || cleanText.includes(tenthStr) || cleanText.includes(rawGpaStr) || cleanText.includes(rawGpaStr.replace('.', ','))) {
+    return true;
+  }
 
-  // OCR could not confirm OR deny the GPA — pass to avoid false rejections on noisy scans.
+  // 3. Number list matching: find all GPA-like decimal numbers in document text (e.g. 3.5481, 3.55)
+  const gpaCandidates = (cleanText.match(/\b[1-4]\.[0-9]{2,4}\b/g) || [])
+    .map(n => parseFloat(n))
+    .filter(v => !isNaN(v) && v >= 1.0 && v <= 4.0);
+
+  if (gpaCandidates.length > 0) {
+    // If document contains GPA numbers, check if input is close to any candidate (within 0.05)
+    const matchesAny = gpaCandidates.some(c => Math.abs(c - roundedInputGpa) <= 0.05);
+    return matchesAny;
+  }
+
+  // 4. If no decimal numbers exist in OCR text at all (unclear scan), pass to avoid hard crash
   return true;
 }
 
@@ -3450,7 +3464,7 @@ const StudentInfo = () => {
           motherOccupation: profile.mother_occupation || '',
           motherPhoneNumber: profile.mother_phone_no || '',
           parentsGrossIncome: urlIncome || scholarshipSearchProfile?.income || profile.financial_income_of_parents || '',
-          gpa: urlGpa || scholarshipSearchProfile?.gpa || profile.overall_gpa || '',
+          gpa: savedDraft?.formData?.gpa || urlGpa || scholarshipSearchProfile?.gpa || profile.overall_gpa || '',
           numberOfSiblings: profile.sibling_no || '',
           course: profile.course || '',
           meritsAwardsReceived: profile.merits_awards_received || ''
@@ -3531,8 +3545,10 @@ const StudentInfo = () => {
 
         setFormData(prev => {
           const merged = mergeMeaningfulValues(prev, updates);
+          const preservedGpa = (prev.gpa && String(prev.gpa).trim()) ? prev.gpa : (savedDraft?.formData?.gpa || updates.gpa);
           return {
             ...merged,
+            gpa: preservedGpa,
             firstName: targetFirstName,
             lastName: targetLastName,
             middleName: targetMiddleName
@@ -3610,7 +3626,13 @@ const StudentInfo = () => {
         // Restore all unsubmitted draft data (photos, videos, signature, verification states, and text inputs)
         if (savedDraft) {
           if (savedDraft.formData) {
-            setFormData(prev => fillEmptyValuesOnly(prev, savedDraft.formData));
+            setFormData(prev => {
+              const filled = fillEmptyValuesOnly(prev, savedDraft.formData);
+              if (savedDraft.formData.gpa) {
+                filled.gpa = savedDraft.formData.gpa;
+              }
+              return filled;
+            });
           }
 
           if (savedDraft.photos && Object.keys(savedDraft.photos).length > 0) {
