@@ -1494,11 +1494,11 @@ def parse_grades_document(raw_text):
                 break
 
     if 'gpa' not in fields:
-        # Calculate weighted average from subject grade table (e.g. "3.75 3.0", "3.50 3.0", "2.50 3.0")
-        grade_matches = re.findall(r'\b([1-5]\.[0-5]0?)\s+([1-9]\.0?)\b', raw_text)
+        # Calculate weighted average from subject grade table (supports 3.0, 30, 3.00, etc.)
+        grade_matches = re.findall(r'\b([1-5]\.[0-9]{1,2})\s+([1-9]\.0?|30|3\.0)\b', raw_text)
         if grade_matches and len(grade_matches) >= 3:
-            total_pts = sum(float(g) * float(u) for g, u in grade_matches)
-            total_u = sum(float(u) for g, u in grade_matches)
+            total_pts = sum(float(g) * (3.0 if u == '30' else float(u)) for g, u in grade_matches)
+            total_u = sum((3.0 if u == '30' else float(u)) for g, u in grade_matches)
             if total_u > 0:
                 calc_gpa = total_pts / total_u
                 if 1.0 <= calc_gpa <= 5.0:
