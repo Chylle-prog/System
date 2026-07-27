@@ -2449,7 +2449,7 @@ const StudentInfo = () => {
       img.crossOrigin = "anonymous";
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const maxDim = 1200;
+        const maxDim = 2000; // 2000px width ensures small table text like GPA: 3.4375 is sharp and crystal clear for Tesseract
         let w = img.width;
         let h = img.height;
         if (w > maxDim || h > maxDim) {

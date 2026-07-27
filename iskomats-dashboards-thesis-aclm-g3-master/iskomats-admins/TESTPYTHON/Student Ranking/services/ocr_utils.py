@@ -1024,11 +1024,11 @@ def _run_tesseract_on_image(img, psm=3):
         _init_tesseract()
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
         h, w = gray.shape[:2]
-        if w < 1000:
-            scale = 1000.0 / w
-            gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LINEAR)
-        elif w > 1600:
+        if w < 1600:
             scale = 1600.0 / w
+            gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LINEAR)
+        elif w > 2400:
+            scale = 2400.0 / w
             gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
 
         text = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 1')
