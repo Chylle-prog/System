@@ -15,6 +15,7 @@ numpy
 Pillow
 uniface
 onnxruntime
+deepface
 google-auth
 google-auth-oauthlib
 google-api-python-client
