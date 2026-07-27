@@ -200,58 +200,117 @@ def _pick_primary_face(faces, image_label, min_area_pct=0.0, image_shape=None):
 
 def _opencv_fallback_face_match(user_image, id_image):
     """
-    Ultra-lightweight OpenCV Haar-cascade face detector + histogram/feature matcher.
-    If CascadeClassifier is missing (e.g. minimal headless builds), it falls back
-    to a direct center-crop correlation match to ensure 100% reliability.
+    Rebuilt High-Precision Face Verification Engine:
+    1. Strict face detection on live photo (requires valid, unobstructed face).
+    2. Framing & boundary check (rejects cut-off faces at camera frame edges).
+    3. Aspect ratio & coverage check (detects hand/object coverage or sideways angle).
+    4. Blurriness Laplacian check.
+    5. Multi-feature matching (Equalized Template Match + ORB Keypoints + Sobel Edge Gradient SSIM).
+    6. Strict 0.52+ composite similarity threshold.
     """
     gray_user = cv2.cvtColor(user_image, cv2.COLOR_BGR2GRAY) if len(user_image.shape) == 3 else user_image
     gray_id = cv2.cvtColor(id_image, cv2.COLOR_BGR2GRAY) if len(id_image.shape) == 3 else id_image
 
+    hu, wu = gray_user.shape[:2]
+    hi, wi = gray_id.shape[:2]
+
     user_crop = None
     id_crop = None
+    user_bbox = None
 
     if hasattr(cv2, 'CascadeClassifier'):
         try:
             cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
             face_cascade = cv2.CascadeClassifier(cascade_path)
             
-            user_faces = face_cascade.detectMultiScale(gray_user, scaleFactor=1.1, minNeighbors=3, minSize=(30, 30))
-            id_faces = face_cascade.detectMultiScale(gray_id, scaleFactor=1.1, minNeighbors=2, minSize=(20, 20))
+            user_faces = face_cascade.detectMultiScale(gray_user, scaleFactor=1.1, minNeighbors=4, minSize=(50, 50))
+            if len(user_faces) == 0:
+                alt_cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_alt.xml'
+                if os.path.exists(alt_cascade_path):
+                    alt_cascade = cv2.CascadeClassifier(alt_cascade_path)
+                    user_faces = alt_cascade.detectMultiScale(gray_user, scaleFactor=1.1, minNeighbors=3, minSize=(40, 40))
+
+            id_faces = face_cascade.detectMultiScale(gray_id, scaleFactor=1.1, minNeighbors=3, minSize=(25, 25))
 
             if len(user_faces) > 0:
                 ux, uy, uw, uh = max(user_faces, key=lambda b: b[2] * b[3])
+                user_bbox = (ux, uy, uw, uh)
                 user_crop = gray_user[uy:uy+uh, ux:ux+uw]
             
             if len(id_faces) > 0:
                 ix, iy, iw, ih = max(id_faces, key=lambda b: b[2] * b[3])
                 id_crop = gray_id[iy:iy+ih, ix:ix+iw]
         except Exception as e:
-            print(f"[FACE] Haar Cascade failed or unavailable: {e}", flush=True)
+            print(f"[FACE] Haar Cascade error: {e}", flush=True)
 
-    # Center-crop fallback if face detection is missing or failed to find faces
-    if user_crop is None:
-        hu, wu = gray_user.shape[:2]
-        user_crop = gray_user[int(hu*0.25):int(hu*0.75), int(wu*0.25):int(wu*0.75)]
+    # 1. Enforce live face presence - reject if no face detected in live photo
+    if user_crop is None or user_bbox is None:
+        return False, "No clear face detected in live photo. Please position your face clearly in front of the camera.", 0.0
+
+    # 2. Enforce bounding box framing - reject if face is cut off at frame border
+    ux, uy, uw, uh = user_bbox
+    margin = 15
+    if ux <= margin or uy <= margin or (ux + uw) >= (wu - margin) or (uy + uh) >= (hu - margin):
+        return False, "Face is partially cut off at camera frame edge. Please center your face in the camera view.", 0.0
+
+    # 3. Enforce size & aspect ratio (detect hand/object coverage or sideways angle)
+    coverage = (uw * uh) / float(wu * hu)
+    aspect_ratio = float(uh) / float(uw)
+    if coverage < 0.04:
+        return False, "Face is too far from the camera. Please move closer.", 0.0
+    if aspect_ratio < 0.75 or aspect_ratio > 1.70:
+        return False, "Face is partially covered or turned sideways. Please remove hands/objects and face straight ahead.", 0.0
+
+    # 4. Check image blurriness
+    laplacian_var = cv2.Laplacian(user_crop, cv2.CV_64F).var()
+    if laplacian_var < 20.0:
+        return False, "Live photo is too blurry. Please hold steady and try again.", 0.0
+
+    # Fallback crop for ID card if cascade missed small laminate face
     if id_crop is None:
-        hi, wi = gray_id.shape[:2]
-        id_crop = gray_id[int(hi*0.25):int(hi*0.75), int(wi*0.25):int(wi*0.75)]
+        id_crop = gray_id[int(hi*0.25):int(hi*0.95), int(wi*0.05):int(wi*0.75)]
 
-    # Resize crops to 100x100
-    user_crop_resized = cv2.resize(user_crop, (100, 100))
-    id_crop_resized = cv2.resize(id_crop, (100, 100))
+    # Resize crops to standard 128x128
+    user_crop_resized = cv2.resize(user_crop, (128, 128))
+    id_crop_resized = cv2.resize(id_crop, (128, 128))
 
-    # Calculate histogram similarity
-    hist_user = cv2.calcHist([user_crop_resized], [0], None, [64], [0, 256])
-    hist_id = cv2.calcHist([id_crop_resized], [0], None, [64], [0, 256])
-    cv2.normalize(hist_user, hist_user, 0, 1, cv2.NORM_MINMAX)
-    cv2.normalize(hist_id, hist_id, 0, 1, cv2.NORM_MINMAX)
+    # Apply histogram equalization to normalize lighting
+    eq_user = cv2.equalizeHist(user_crop_resized)
+    eq_id = cv2.equalizeHist(id_crop_resized)
 
-    sim = float(cv2.compareHist(hist_user, hist_id, cv2.HISTCMP_CORREL))
-    sim = max(0.0, min(1.0, (sim + 1.0) / 2.0))
+    # A. Template Correlation
+    res = cv2.matchTemplate(eq_user, eq_id, cv2.TM_CCOEFF_NORMED)
+    _, max_val, _, _ = cv2.minMaxLoc(res)
+    tmpl_score = max(0.0, min(1.0, (float(max_val) + 1.0) / 2.0))
 
-    # 0.35 threshold is very safe and reliable for correlation
-    verified = (sim >= 0.35)
-    return verified, f"Face verified via visual correlation (similarity: {sim*100:.1f}%)", sim
+    # B. ORB Keypoint Matching
+    orb_score = 0.0
+    try:
+        orb = cv2.ORB_create(nfeatures=500)
+        kp1, des1 = orb.detectAndCompute(eq_user, None)
+        kp2, des2 = orb.detectAndCompute(eq_id, None)
+        if des1 is not None and des2 is not None and len(des1) > 0 and len(des2) > 0:
+            bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+            matches = bf.match(des1, des2)
+            good_matches = [m for m in matches if m.distance < 55]
+            orb_ratio = len(good_matches) / max(10.0, min(len(kp1), len(kp2)))
+            orb_score = min(1.0, orb_ratio * 1.6)
+    except Exception:
+        pass
+
+    # C. Sobel Edge Gradient SSIM
+    sobel_u = cv2.Sobel(eq_user, cv2.CV_32F, 1, 1)
+    sobel_i = cv2.Sobel(eq_id, cv2.CV_32F, 1, 1)
+    edge_res = cv2.matchTemplate(sobel_u, sobel_i, cv2.TM_CCOEFF_NORMED)
+    _, max_edge, _, _ = cv2.minMaxLoc(edge_res)
+    edge_score = max(0.0, min(1.0, (float(max_edge) + 1.0) / 2.0))
+
+    # Composite Similarity Index
+    composite_sim = (0.40 * tmpl_score) + (0.35 * orb_score) + (0.25 * edge_score)
+
+    verified = (composite_sim >= 0.52)
+    msg = f"Facial identity verified! (similarity: {composite_sim*100:.1f}%)" if verified else f"Facial features do not match your ID photo (similarity: {composite_sim*100:.1f}%). Please face the camera clearly without obstructions."
+    return verified, msg, composite_sim
 
 
 def verify_face_with_id(user_photo_bytes, id_photo_bytes):
