@@ -2549,17 +2549,31 @@ def get_applicant_document_raw(field_name):
                     else:
                         from flask import redirect
                         return redirect(normalized_url)
-            else:
-                if isinstance(value, str):
-                    value = value.encode('utf-8')
-                elif hasattr(value, 'tobytes'):
-                    value = value.tobytes()
-                else:
-                    value = bytes(value)
-
-                # Ensure we decrypt binary data
-                from services.crypto_service import decrypt_if_encrypted
+            
+            # Ensure we decrypt and normalize binary / base64 image data
+            from services.crypto_service import decrypt_if_encrypted
+            if isinstance(value, (bytes, bytearray, str)):
                 value = decrypt_if_encrypted(value)
+
+            # Convert base64 text/data URI to binary JPEG/PNG bytes
+            if isinstance(value, str):
+                if value.startswith('data:') and ';base64,' in value:
+                    try:
+                        value = base64.b64decode(value.split(';base64,')[1])
+                    except Exception:
+                        value = value.encode('utf-8')
+                else:
+                    try:
+                        decoded = base64.b64decode(value)
+                        value = decoded if len(decoded) > 10 else value.encode('utf-8')
+                    except Exception:
+                        value = value.encode('utf-8')
+            elif hasattr(value, 'tobytes'):
+                value = value.tobytes()
+            elif isinstance(value, memoryview):
+                value = bytes(value)
+            elif not isinstance(value, (bytes, bytearray)):
+                value = bytes(value)
 
             mime_type = 'image/jpeg'
             if field_name == 'signature_image_data' or value.startswith(b'\x89PNG'):

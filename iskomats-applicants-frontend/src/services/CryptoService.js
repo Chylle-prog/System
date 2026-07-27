@@ -105,6 +105,13 @@ export const decryptUrl = async (url, type = 'image/jpeg') => {
     const blob = await response.blob();
     if (blob.size === 0) return url;
 
+    const textData = await blob.text();
+    if (textData.startsWith('data:') && textData.includes(';base64,')) {
+      const res = await fetch(textData);
+      const decBlob = await res.blob();
+      return URL.createObjectURL(decBlob);
+    }
+
     // Check if the payload is already an unencrypted image, video, or PDF
     const headerBuffer = await blob.slice(0, 16).arrayBuffer();
     const headerBytes = new Uint8Array(headerBuffer);
