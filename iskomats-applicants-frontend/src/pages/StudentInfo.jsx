@@ -909,7 +909,7 @@ function extractGpaFromText(text, expectedGpa = null) {
   // Helper: round to nearest tenth (e.g. 3.5481 -> "3.5") to reduce OCR margin of error
   const toOneTenth = (val) => (Math.round(val * 10) / 10).toFixed(1);
 
-  // 1. Explicit keyword pattern (e.g. "GPA: 3.5481", "GPA: 3.50")
+  // 1. Explicit keyword pattern (e.g. "GPA: 3.5481", "GBA v. ..." is excluded since v ≠ digit)
   const p1 = cleaned.match(/(?:GPA|GWA|WEIGHTED\s*AVERAGE|GRADE\s*POINT)\s*[:\-=.,|\s]+([1-4][.,][0-9]{2,4})/i);
   if (p1 && p1[1]) {
     const val = parseFloat(p1[1].replace(',', '.'));
@@ -923,62 +923,22 @@ function extractGpaFromText(text, expectedGpa = null) {
     if (!isNaN(val) && val >= 1.0 && val <= 4.0) return toOneTenth(val);
   }
 
-  // 3. Any 3 to 4 decimal place number in valid GPA range (1.000 to 4.000)
-  const p2 = text.match(/\b([1-4]\.[0-9]{2,4})\b/g);
+  // 3. Any 4-decimal place number in valid GPA range (e.g. "3.5481" printed in footer).
+  //    Require ≥3 decimals to avoid mistaking 2dp subject grades (3.50, 3.75) for the overall GPA.
+  const p2 = text.match(/\b([1-4]\.[0-9]{3,4})\b/g);
   if (p2 && p2.length > 0) {
     const candidates = p2.map(s => parseFloat(s)).filter(v => v >= 1.0 && v <= 4.0);
     if (candidates.length > 0) {
-      const fourDecimals = candidates.filter(v => v.toString().split('.')[1]?.length >= 3);
-      if (fourDecimals.length > 0) {
-        return toOneTenth(fourDecimals[fourDecimals.length - 1]);
-      }
       return toOneTenth(candidates[candidates.length - 1]);
     }
   }
 
-  // 4. Subject Grades Table Extraction
-  const validGrades = [];
-  const tokens = text.split(/\s+/);
-  for (const tok of tokens) {
-    const cleanTok = tok.replace(/[^0-9.]/g, '');
-    if (cleanTok.includes('.')) {
-      const v = parseFloat(cleanTok);
-      if (!isNaN(v) && v >= 1.0 && v <= 4.0) validGrades.push(v);
-    } else if (cleanTok.length === 3) {
-      const intV = parseInt(cleanTok, 10);
-      let parsedV = null;
-      if (intV === 330) parsedV = 3.50; // Common Tesseract OCR typo for 3.50
-      else if (intV >= 100 && intV <= 400) {
-        const candidate = intV / 100;
-        const rem = intV % 25;
-        if (rem === 0 || intV === 300 || intV === 325 || intV === 350 || intV === 375 || intV === 400) {
-          parsedV = candidate;
-        }
-      }
-      if (parsedV !== null && parsedV >= 1.0 && parsedV <= 4.0) {
-        validGrades.push(parsedV);
-      }
-    }
-  }
-
-  if (validGrades.length >= 3) {
-    const avg = validGrades.reduce((a, b) => a + b, 0) / validGrades.length;
-
-    // Align with expected GPA if within 0.15 tolerance (both rounded to nearest tenth)
-    if (expectedGpa) {
-      const expVal = parseFloat(String(expectedGpa).replace(/[^0-9.]/g, ''));
-      if (!isNaN(expVal)) {
-        if (Math.abs(avg - expVal) <= 0.15) {
-          return toOneTenth(expVal);
-        }
-      }
-    }
-
-    return toOneTenth(avg);
-  }
-
+  // NOTE: Grade table averaging (old method 4) is intentionally REMOVED.
+  // Averaging individual subject grades produces circular matches: any user GPA within ±0.15
+  // of the noisy average self-confirms. Return null so gpaMatchesText passes gracefully.
   return null;
 }
+
 
 function gpaMatchesText(text, expectedGpa) {
   if (!text) return true;
@@ -991,21 +951,26 @@ function gpaMatchesText(text, expectedGpa) {
   // Round input GPA to nearest tenth for comparison
   const roundedInputGpa = Math.round(parsedInputGpa * 10) / 10;
 
-  const detectedGpaStr = extractGpaFromText(text, expectedGpa);
-  if (detectedGpaStr) {
-    const detVal = parseFloat(detectedGpaStr); // already rounded to 1dp by extractGpaFromText
+  // extractGpaFromText only returns a value if it finds an EXPLICITLY LABELED GPA
+  // (keyword match or before "Total Units") — not from grade averaging.
+  // If null, OCR could not reliably find a printed GPA -> pass gracefully.
+  const detectedGpaStr = extractGpaFromText(text, null);  // pass null so no alignment bias
+  if (detectedGpaStr !== null) {
+    const detVal = parseFloat(detectedGpaStr); // already rounded to 1dp
     if (!isNaN(detVal)) {
-      // 0.05 tolerance — both values are rounded to nearest tenth, so 0.05 catches rounding edge cases
+      // 0.05 tolerance — both values are rounded to nearest tenth
       return Math.abs(detVal - roundedInputGpa) <= 0.05;
     }
   }
 
-  const cleanText = String(text).replace(/[\–\—·•]/g, '.');
+  // Labeled GPA not found in document (common with noisy OCR scans).
+  // Fall back to raw text search for the user's GPA string as a last resort.
+  const cleanText = String(text).replace(/[\u2013\u2014\u00b7\u2022]/g, '.');
   const tenthStr = roundedInputGpa.toFixed(1);
   if (cleanText.includes(tenthStr)) return true;
-  if (cleanText.includes(rawGpaStr) || cleanText.includes(rawGpaStr.replace('.', ','))) return true;
 
-  return false;
+  // OCR could not confirm OR deny the GPA — pass to avoid false rejections on noisy scans.
+  return true;
 }
 
 function addressMatchesText(text, expectedAddr) {
@@ -3108,15 +3073,8 @@ const StudentInfo = () => {
         academicYear: targetAcademicYear
       }, videoUrl);
       if (success) {
-        const ocrText = ocrDebugLogs?.Grades?.detectedText || '';
-        const detectedDocGpa = extractGpaFromText(ocrText);
-        if (detectedDocGpa) {
-          // Round auto-filled GPA to nearest tenth
-          const roundedDetected = (Math.round(parseFloat(detectedDocGpa) * 10) / 10).toFixed(1);
-          setFormData(prev => ({ ...prev, gpa: roundedDetected }));
-        }
-
-        const applicantGpa = parseFloat(detectedDocGpa || formData.gpa);
+        // Do NOT auto-fill or overwrite formData.gpa from OCR
+        const applicantGpa = parseFloat(formData.gpa);
         const minRequired = scholarshipDetails?.minGpa ? parseFloat(scholarshipDetails.minGpa) : 0;
 
         if (minRequired > 0 && applicantGpa < minRequired) {
@@ -3126,7 +3084,7 @@ const StudentInfo = () => {
         }
 
         setGradesVerified('success');
-        showPromptMessage(`Grades verified successfully! (Detected GPA: ${applicantGpa})`);
+        showPromptMessage(`Grades verified successfully!`);
       } else {
         setGradesVerified('failed');
         showPromptMessage('Grades verification failed.');
