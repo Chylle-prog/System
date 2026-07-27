@@ -2580,18 +2580,22 @@ const StudentInfo = () => {
           const imgData = ctx.getImageData(0, 0, w, h);
           const data = imgData.data;
 
-          // Grid patch variance analysis (20x15 pixel grid cells)
-          const gridW = 20;
-          const gridH = 15;
-          const cols = Math.floor(w / gridW);
-          const rows = Math.floor(h / gridH);
+          // Grid patch variance analysis in text content area (ignore outer 10% page margins)
+          const gridW = 24;
+          const gridH = 18;
+          const marginX = Math.floor(w * 0.10);
+          const marginY = Math.floor(h * 0.10);
+          const contentW = w - 2 * marginX;
+          const contentH = h - 2 * marginY;
+          const cols = Math.floor(contentW / gridW);
+          const rows = Math.floor(contentH / gridH);
 
           let suspiciousPatches = 0;
 
           for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
-              const startX = c * gridW;
-              const startY = r * gridH;
+              const startX = marginX + c * gridW;
+              const startY = marginY + r * gridH;
 
               let sumR = 0, sumG = 0, sumB = 0;
               let count = 0;
@@ -2622,10 +2626,10 @@ const StudentInfo = () => {
               }
               const stdDev = Math.sqrt(varianceSum / count);
 
-              // Pure solid digital fill: avg > 242 (bright white block) AND stdDev < 2.5 (zero noise texture)
-              // OR solid black censoring block: avg < 20 AND stdDev < 1.8
-              const isArtificialWhitePatch = (avgR > 242 && avgG > 242 && avgB > 242 && stdDev < 2.5);
-              const isArtificialBlackPatch = (avgGray < 20 && stdDev < 1.8);
+              // Pure solid digital fill in content area: avg > 248 AND stdDev < 1.0 (zero-noise digital paint)
+              // OR solid black censoring block: avgGray < 15 AND stdDev < 1.0
+              const isArtificialWhitePatch = (avgR > 248 && avgG > 248 && avgB > 248 && stdDev < 1.0);
+              const isArtificialBlackPatch = (avgGray < 15 && stdDev < 1.0);
 
               if (isArtificialWhitePatch || isArtificialBlackPatch) {
                 suspiciousPatches++;
@@ -2633,7 +2637,7 @@ const StudentInfo = () => {
             }
           }
 
-          if (suspiciousPatches >= 4) {
+          if (suspiciousPatches >= 25) {
             resolve({
               edited: true,
               reason: `Digital edit / overlay block detected on document (${suspiciousPatches} artificial overlay patches found). Please upload an unedited document.`,
@@ -3137,14 +3141,14 @@ const StudentInfo = () => {
     lastIndigencyScanRef.current = { doc: indigencyDoc, vid: videoUrl };
 
     try {
-      // Only check video presence, not full video OCR (backend already optimized)
-      const success = await performOcrVerification('Indigency', indigencyDoc, { townCity: formData.townCityMunicipality, barangay: formData.barangay }, videoUrl);
+      const res = await performOcrVerification('Indigency', indigencyDoc, { townCity: formData.townCityMunicipality, barangay: formData.barangay }, videoUrl);
+      const success = res && typeof res === 'object' ? res.isSuccess === true : Boolean(res);
       if (success) {
         setOcrVerified('success');
         showPromptMessage('Indigency verified successfully!');
       } else {
         setOcrVerified('failed');
-        showPromptMessage('Verification failed. Please ensure document and video are clear.');
+        showPromptMessage('Indigency verification failed.');
       }
     } catch (err) {
       console.error('Scan Error:', err);
@@ -3186,7 +3190,7 @@ const StudentInfo = () => {
 
     try {
       const targetAcademicYear = scholarshipDetails?.year || scholarshipDetails?.academic_year || formData.schoolYear || '2025-2026';
-      const success = await performOcrVerification('Enrollment', coeDoc, {
+      const res = await performOcrVerification('Enrollment', coeDoc, {
         schoolName,
         idNumber,
         yearLevel,
@@ -3194,6 +3198,7 @@ const StudentInfo = () => {
         semester,
         academicYear: targetAcademicYear
       }, videoUrl);
+      const success = res && typeof res === 'object' ? res.isSuccess === true : Boolean(res);
       if (success) {
         if (scholarshipDetails) {
           /* Semester check removed */
@@ -3244,7 +3249,7 @@ const StudentInfo = () => {
 
     try {
       const targetAcademicYear = scholarshipDetails?.grades_year || scholarshipDetails?.year || scholarshipDetails?.academic_year || formData.schoolYear || '2025-2026';
-      const success = await performOcrVerification('Grades', gradesDoc, {
+      const res = await performOcrVerification('Grades', gradesDoc, {
         schoolName: formData.schoolName,
         idNumber: formData.schoolIdNumber,
         yearLevel: formData.yearLevel,
@@ -3252,6 +3257,7 @@ const StudentInfo = () => {
         semester: expectedGradesSemester,
         academicYear: targetAcademicYear
       }, videoUrl);
+      const success = res && typeof res === 'object' ? res.isSuccess === true : Boolean(res);
       if (success) {
         // Do NOT auto-fill or overwrite formData.gpa from OCR
         const applicantGpa = parseFloat(formData.gpa);
@@ -3336,7 +3342,7 @@ const StudentInfo = () => {
     try {
       const targetAcademicYear = scholarshipDetails?.year || scholarshipDetails?.academic_year || formData.schoolYear || '2025-2026';
       // Only check video presence, not full video OCR (backend already optimized)
-      const success = await performOcrVerification(
+      const res = await performOcrVerification(
         'SchoolID',
         { front: idFront, back: idBack },
         {
@@ -3347,6 +3353,7 @@ const StudentInfo = () => {
         },
         { front: frontVideoUrl, back: backVideoUrl }
       );
+      const success = res && typeof res === 'object' ? res.isSuccess === true : Boolean(res);
       if (success) {
         setIdVerified('success');
         showPromptMessage('Front & Back ID verified successfully!');
