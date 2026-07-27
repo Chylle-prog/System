@@ -1,4 +1,5 @@
-import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 
 function ChatbotDesign({
   apiUrl = import.meta.env.VITE_CHATBOT_API_URL || import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:8000',
@@ -222,7 +223,6 @@ function ChatbotDesign({
 
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
-      let isSSE = false
 
       while (true) {
         const { value, done } = await reader.read()
@@ -230,7 +230,6 @@ function ChatbotDesign({
         const chunk = decoder.decode(value, { stream: true })
 
         if (chunk.includes('data:')) {
-          isSSE = true;
           const lines = chunk.split('\n')
           for (const line of lines) {
             if (line.startsWith('data:')) {
@@ -366,7 +365,7 @@ function ChatbotDesign({
     [messages, streamingText, primaryColor],
   )
 
-  return (
+  const content = (
     <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: '14px', lineHeight: '1.5', color: '#374151' }}>
       <style>{`
         .iskobots-design-root *, .iskobots-design-root *::before, .iskobots-design-root *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -548,7 +547,7 @@ function ChatbotDesign({
           <button
             onClick={handleOpen}
             type="button"
-            className="fixed z-[99999] w-12 h-12 rounded-full text-white border-none cursor-pointer flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95 iskobots-mobile-trigger"
+            className="fixed z-[999999] w-12 h-12 rounded-full text-white border-none cursor-pointer flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95 iskobots-mobile-trigger"
             style={{
               ...posStyle,
               backgroundColor: primaryColor,
@@ -566,7 +565,7 @@ function ChatbotDesign({
         {/* ── Chat Widget ── */}
         {isOpen && (
           <div
-            className="fixed z-[99999] flex flex-col w-[320px] max-w-[calc(100vw-32px)] h-[440px] max-h-[calc(100vh-80px)] bg-white rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.2)] overflow-hidden iskobots-mobile-widget"
+            className="fixed z-[999999] flex flex-col w-[320px] max-w-[calc(100vw-32px)] h-[440px] max-h-[calc(100vh-80px)] bg-white rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.2)] overflow-hidden iskobots-mobile-widget"
             style={{
               ...posStyle,
               zIndex: zIndex,
@@ -788,7 +787,9 @@ function ChatbotDesign({
         )}
       </div>
     </div>
-  )
+  );
+
+  return typeof document !== 'undefined' ? createPortal(content, document.body) : content;
 }
 
 export default ChatbotDesign
