@@ -941,6 +941,33 @@ function extractGpaFromText(text, expectedGpa = null) {
     const val = rawDigits.includes('.') ? parseFloat(rawDigits) : parseFloat(rawDigits[0] + '.' + rawDigits.slice(1));
     if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
   }
+  // 3. Compute weighted average from subject grades table if footer label was garbled (e.g. "3.75 3.0", "3.50 3.0", "2.50 3.0")
+  const gradeMatches = String(text).match(/\b([1-5]\.[0-5]0?)\s+([1-9]\.0?)\b/g);
+  if (gradeMatches && gradeMatches.length >= 3) {
+    let totalPts = 0;
+    let totalUnits = 0;
+    for (const matchStr of gradeMatches) {
+      const parts = matchStr.split(/\s+/);
+      const g = parseFloat(parts[0]);
+      const u = parseFloat(parts[1]);
+      if (!isNaN(g) && !isNaN(u) && g >= 1.0 && g <= 5.0 && u >= 1.0 && u <= 10.0) {
+        totalPts += g * u;
+        totalUnits += u;
+      }
+    }
+    if (totalUnits > 0) {
+      const calcGpa = totalPts / totalUnits;
+      if (calcGpa >= 1.0 && calcGpa <= 5.0) {
+        if (expectedGpa) {
+          const expVal = parseFloat(String(expectedGpa).replace(/[^0-9.]/g, ''));
+          if (!isNaN(expVal) && Math.abs(calcGpa - expVal) <= 0.05) {
+            return toTwoDecimals(expVal);
+          }
+        }
+        return toTwoDecimals(calcGpa);
+      }
+    }
+  }
 
   // 4. Scan all decimal numbers in valid GPA range (1.0 to 5.0)
   const gpaMatches = String(text).match(/\b([1-5]\.[0-9]{1,4})\b/g) || [];
