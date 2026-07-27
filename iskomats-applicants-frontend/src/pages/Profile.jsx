@@ -921,8 +921,8 @@ const Profile = () => {
           <div className="card-header-bar">
             <div className="profile-identity">
               <div className="avatar-box">
-                {(showEditForm ? formData.profile_picture : userProfile?.profile_picture) ? (
-                  <img src={showEditForm ? formData.profile_picture : userProfile?.profile_picture} alt="Profile Avatar" />
+                {(showEditForm ? formData.profile_picture : (userProfile?.profile_picture || userProfile?.id_pic || userProfile?.face_photo)) ? (
+                  <img src={showEditForm ? formData.profile_picture : (userProfile?.profile_picture || userProfile?.id_pic || userProfile?.face_photo)} alt="Profile Avatar" />
                 ) : (
                   <i className="fas fa-user"></i>
                 )}

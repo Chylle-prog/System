@@ -3771,9 +3771,43 @@ const StudentInfo = () => {
         if (profile.face_verified && profile.id_vid_url && profile.has_profile_picture) setFaceVerified('success');
         if (profile.signature_verified && profile.has_signature) setSignatureVerified('success');
 
-        if (profile.profile_picture) {
-          setIdPicturePreview(profile.profile_picture);
+        if (profile.profile_picture || profile.id_pic) {
+          setIdPicturePreview(profile.profile_picture || profile.id_pic);
         }
+
+        // Populate document photos from database profile
+        if (profile.id_img_front || profile.id_img_back) {
+          setSchoolIdPhotos(prev => ({
+            front: prev.front || profile.id_img_front || null,
+            back: prev.back || profile.id_img_back || null,
+          }));
+          setFormData(prev => ({
+            ...prev,
+            schoolIdFront: prev.schoolIdFront || profile.id_img_front || null,
+            schoolIdBack: prev.schoolIdBack || profile.id_img_back || null,
+          }));
+        }
+
+        if (profile.indigency_doc || profile.enrollment_certificate_doc || profile.grades_doc || profile.id_pic) {
+          setPhotos(prev => ({
+            ...prev,
+            indigency: prev.indigency || profile.indigency_doc || null,
+            enrollment: prev.enrollment || profile.enrollment_certificate_doc || null,
+            grades: prev.grades || profile.grades_doc || null,
+            face_photo: prev.face_photo || profile.id_pic || profile.profile_picture || null,
+          }));
+        }
+
+        // Populate document videos from database profile
+        setDocumentVideos(prev => ({
+          ...prev,
+          schoolIdFront_video: prev.schoolIdFront_video || profile.schoolid_front_vid_url || null,
+          schoolIdBack_video: prev.schoolIdBack_video || profile.schoolid_back_vid_url || null,
+          mayorIndigency_video: prev.mayorIndigency_video || profile.indigency_vid_url || null,
+          mayorCOE_video: prev.mayorCOE_video || profile.enrollment_certificate_vid_url || null,
+          mayorGrades_video: prev.mayorGrades_video || profile.grades_vid_url || null,
+          face_video: prev.face_video || profile.id_vid_url || null,
+        }));
 
         if (profile.has_other_assistance) {
           setHasOtherAssistance('Yes');

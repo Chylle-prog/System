@@ -97,17 +97,24 @@ export const decryptUrl = async (url, type = 'image/jpeg') => {
     const fetchUrl = `${url}${separator}_cb=${Date.now()}`;
     const headers = {};
     const token = localStorage.getItem('authToken');
-    if (token) {
+    if (token && !url.includes('supabase.co')) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-    const response = await fetch(fetchUrl, { headers });
+    let response = await fetch(fetchUrl, { headers });
+    if (!response.ok && Object.keys(headers).length > 0) {
+      // Retry without Authorization headers if rejected by public CORS storage
+      response = await fetch(fetchUrl);
+    }
     if (!response.ok) return url;
     const blob = await response.blob();
     if (blob.size === 0) return url;
 
-    const textData = await blob.text();
-    if (textData.startsWith('data:') && textData.includes(';base64,')) {
-      const res = await fetch(textData);
+    // Check if the payload is a base64 Data URI string
+    const sampleBuffer = await blob.slice(0, 100).arrayBuffer();
+    const sampleText = new TextDecoder().decode(sampleBuffer);
+    if (sampleText.startsWith('data:') && sampleText.includes(';base64,')) {
+      const fullText = await blob.text();
+      const res = await fetch(fullText);
       const decBlob = await res.blob();
       return URL.createObjectURL(decBlob);
     }

@@ -2343,24 +2343,31 @@ def get_profile():
             # This ensures the browser can still access the data without bloating the initial profile load
             for key in blob_fields:
                 flag_name = flag_map.get(key, f"has_{key}")
-                if key != 'profile_picture':
-                    applicant[flag_name] = document_values.get(key) is not None
-                else:
-                    # Specialized check for profile picture
-                    applicant['has_profile_picture'] = (
+                if key == 'profile_picture':
+                    has_pic = (
                         document_values.get('profile_picture') is not None or 
-                        applicant.get('has_profile_picture') # fallback for pre-loaded apps column
+                        document_values.get('id_pic') is not None or
+                        applicant.get('has_profile_picture') or
+                        applicant.get('has_mayorValidID_photo')
                     )
-
-                if applicant.get(flag_name):
-                    # Under encryption, we always route via the backend proxy get_applicant_document_raw 
-                    # to ensure the backend decrypts it before serving to the client.
-                    if token_str:
-                        applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, token=token_str, _external=True)
+                    applicant['has_profile_picture'] = bool(has_pic)
+                    if has_pic:
+                        raw_field = 'profile_picture' if (document_values.get('profile_picture') is not None or applicant.get('profile_picture')) else 'id_pic'
+                        if token_str:
+                            applicant['profile_picture'] = url_for('student_api.get_applicant_document_raw', field_name=raw_field, token=token_str, _external=True)
+                        else:
+                            applicant['profile_picture'] = url_for('student_api.get_applicant_document_raw', field_name=raw_field, _external=True)
                     else:
-                        applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
+                        applicant['profile_picture'] = None
                 else:
-                    applicant[key] = None
+                    applicant[flag_name] = document_values.get(key) is not None
+                    if applicant.get(flag_name):
+                        if token_str:
+                            applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, token=token_str, _external=True)
+                        else:
+                            applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
+                    else:
+                        applicant[key] = None
 
             for key in (
                 'id_vid_url',
@@ -2523,7 +2530,11 @@ def get_applicant_document_raw(field_name):
         with get_db() as conn:
             cur = conn.cursor()
             row = fetch_applicant_document_values(cur, request.user_no, [db_field])
-            if not row or not row[db_field]:
+            if not row or not row.get(db_field):
+                if db_field == 'profile_picture':
+                    row = fetch_applicant_document_values(cur, request.user_no, ['id_pic'])
+                    db_field = 'id_pic'
+            if not row or not row.get(db_field):
                 return "Not found", 404
             
             value = row[db_field]
@@ -2578,7 +2589,7 @@ def get_applicant_document_raw(field_name):
             mime_type = 'image/jpeg'
             if field_name == 'signature_image_data' or value.startswith(b'\x89PNG'):
                 mime_type = 'image/png'
-            elif 'vid_url' in field_name or value.startswith(b'ftyp') or value.startswith(b'\x00\x00\x00\x18ftyp') or value.startswith(b'\x1a\x45\xdf\xa3'):
+            elif 'vid' in field_name.lower() or 'video' in field_name.lower() or value.startswith(b'ftyp') or value.startswith(b'\x00\x00\x00\x18ftyp') or value.startswith(b'\x1a\x45\xdf\xa3'):
                 if value.startswith(b'\x1a\x45\xdf\xa3'):
                     mime_type = 'video/webm'
                 else:
