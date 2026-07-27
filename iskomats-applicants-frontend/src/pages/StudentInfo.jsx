@@ -900,7 +900,7 @@ function extractGpaFromText(text, expectedGpa = null) {
   if (!text) return null;
 
   // Clean OCR artifacts
-  const cleaned = text
+  const cleaned = String(text)
     .replace(/\|/g, ':')
     .replace(/[—–]/g, '-')
     .replace(/GBA/gi, 'GPA')
@@ -909,39 +909,50 @@ function extractGpaFromText(text, expectedGpa = null) {
   // Helper: round to nearest hundredth (e.g. 3.5481 -> "3.55", 3.44 -> "3.44")
   const toTwoDecimals = (val) => (Math.round(val * 100) / 100).toFixed(2);
 
-  // 1. Explicit keyword pattern (e.g. "GPA: 3.54", "GWA = 1.75", "GBA ... 3.55", "FINAL GRADE 3.36")
+  // 1. Explicit keyword pattern with decimal (e.g. "GPA: 3.54", "GWA = 1.75", "GBA ... 3.55", "FINAL GRADE 3.36")
   const p1 = cleaned.match(/(?:GPA|GWA|WEIGHTED\s*AVERAGE|GRADE\s*POINT|AVERAGE|GENERAL\s*WEIGHTED|FINAL\s*GRADE)\s*[:\-=.,|\sA-Za-z]*?([1-5][.,][0-9]{1,4})/i);
   if (p1 && p1[1]) {
     const val = parseFloat(p1[1].replace(',', '.'));
     if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
   }
 
-  // 2. Value immediately before "Total Units" table footer (e.g. "3.5481 Total Units: 26")
+  // 2. Explicit keyword pattern with 3-digit integer (e.g. "GPA 350", "GWA 175", "GBA 330")
+  const p2 = cleaned.match(/(?:GPA|GWA|WEIGHTED\s*AVERAGE|GRADE\s*POINT|AVERAGE|GENERAL\s*WEIGHTED|FINAL\s*GRADE)\s*[:\-=.,|\sA-Za-z]*?([1-5][0-9]{2})\b/i);
+  if (p2 && p2[1]) {
+    const val = parseFloat(p2[1]) / 100.0;
+    if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
+  }
+
+  // 3. Value immediately before "Total Units" table footer (e.g. "3.5481 Total Units: 26")
   const pUnits = cleaned.match(/([1-5]\.[0-9]{1,4})\s*[:\-=.,|\s]*(?:Total\s*Units?|Units?)/i);
   if (pUnits && pUnits[1]) {
     const val = parseFloat(pUnits[1]);
     if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
   }
 
-  // 3. Scan all decimal numbers in valid GPA range (1.0 to 5.0)
-  const gpaMatches = text.match(/\b([1-5]\.[0-9]{1,4})\b/g);
-  if (gpaMatches && gpaMatches.length > 0) {
-    const candidates = gpaMatches
-      .map(s => parseFloat(s))
-      .filter(v => !isNaN(v) && v >= 1.0 && v <= 5.0);
+  // 4. Scan all decimal numbers in valid GPA range (1.0 to 5.0)
+  const gpaMatches = String(text).match(/\b([1-5]\.[0-9]{1,4})\b/g) || [];
+  const decimals = gpaMatches
+    .map(s => parseFloat(s))
+    .filter(v => !isNaN(v) && v >= 1.0 && v <= 5.0);
 
-    if (candidates.length > 0) {
-      if (expectedGpa) {
-        const expVal = parseFloat(String(expectedGpa).replace(/[^0-9.]/g, ''));
-        if (!isNaN(expVal)) {
-          // If a candidate matches expectedGpa within 0.05, return that matching candidate
-          const matchCand = candidates.find(c => Math.abs(c - expVal) <= 0.05);
-          if (matchCand !== undefined) return toTwoDecimals(matchCand);
-        }
+  // 5. Scan 3-digit grade integers in valid GPA range (e.g. 330 -> 3.30, 350 -> 3.50, 300 -> 3.00)
+  const intMatches = String(text).match(/\b([1-5][0-9]{2})\b/g) || [];
+  const integers = intMatches
+    .map(s => parseFloat(s) / 100.0)
+    .filter(v => !isNaN(v) && v >= 1.0 && v <= 5.0);
+
+  const candidates = [...decimals, ...integers];
+
+  if (candidates.length > 0) {
+    if (expectedGpa) {
+      const expVal = parseFloat(String(expectedGpa).replace(/[^0-9.]/g, ''));
+      if (!isNaN(expVal)) {
+        const matchCand = candidates.find(c => Math.abs(c - expVal) <= 0.05);
+        if (matchCand !== undefined) return toTwoDecimals(matchCand);
       }
-      // Return closest or last candidate if no direct match
-      return toTwoDecimals(candidates[candidates.length - 1]);
     }
+    return toTwoDecimals(candidates[candidates.length - 1]);
   }
 
   return null;

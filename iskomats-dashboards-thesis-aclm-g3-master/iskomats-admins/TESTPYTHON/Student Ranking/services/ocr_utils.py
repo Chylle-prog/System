@@ -1465,19 +1465,25 @@ def parse_grades_document(raw_text):
                         fields[field_name] = val
                         break
 
-    # Extract GPA / GWA from document (e.g. GPA: 3.5481)
+    # Extract GPA / GWA from document (e.g. GPA: 3.5481 or GPA 350)
     gpa_patterns = [
         r'(?:GPA|GWA|GBA|WEIGHTED\s*AVERAGE|GRADE\s*POINT|GENERAL\s*WEIGHTED|FINAL\s*GRADE)\s*[:\-=.,|\sA-Za-z]*?([1-5][.,][0-9]{1,4})',
+        r'(?:GPA|GWA|GBA|WEIGHTED\s*AVERAGE|GRADE\s*POINT|AVERAGE|GENERAL\s*WEIGHTED|FINAL\s*GRADE)\s*[:\-=.,|\sA-Za-z]*?([1-5][0-9]{2})\b',
         r'([1-5]\.[0-9]{1,4})\s*[:\-=.,|\s]*(?:Total\s*Units?|Units?)'
     ]
     for pattern in gpa_patterns:
         match = re.search(pattern, raw_text, re.IGNORECASE)
         if match:
-            fields['gpa'] = match.group(1).replace(',', '.').strip()
-            break
+            raw_val = match.group(1).replace(',', '.').strip()
+            val = float(raw_val) if '.' in raw_val else float(raw_val) / 100.0
+            if 1.0 <= val <= 5.0:
+                fields['gpa'] = f"{val:.2f}"
+                break
 
     if 'gpa' not in fields:
-        cands = [float(x) for x in re.findall(r'\b[1-5]\.[0-9]{1,4}\b', raw_text) if 1.0 <= float(x) <= 5.0]
+        decimals = [float(x) for x in re.findall(r'\b[1-5]\.[0-9]{1,4}\b', raw_text) if 1.0 <= float(x) <= 5.0]
+        integers = [float(x) / 100.0 for x in re.findall(r'\b[1-5][0-9]{2}\b', raw_text) if 1.0 <= float(x) / 100.0 <= 5.0]
+        cands = decimals + integers
         if cands:
             fields['gpa'] = f"{cands[-1]:.2f}"
 
@@ -1530,14 +1536,13 @@ def verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_
     if expected_gpa and str(expected_gpa).strip():
         exp_gpa_val = re.search(r'\d+(?:\.\d+)?', str(expected_gpa))
         found_gpa_val = parsed_fields.get('gpa')
-        if not found_gpa_val:
-            g_match = re.search(r'(?:GPA|GWA|GBA|GRADE|AVERAGE)\s*[:\-=\sA-Za-z]*([1-5]\.[0-9]{1,4})', raw_text, re.IGNORECASE)
-            if g_match:
-                found_gpa_val = g_match.group(1).replace(',', '.').strip()
 
         if exp_gpa_val:
             e_gpa = float(exp_gpa_val.group(0))
-            candidates = [float(x) for x in re.findall(r'\b[1-5]\.[0-9]{1,4}\b', raw_text) if 1.0 <= float(x) <= 5.0]
+            decimals = [float(x) for x in re.findall(r'\b[1-5]\.[0-9]{1,4}\b', raw_text) if 1.0 <= float(x) <= 5.0]
+            integers = [float(x) / 100.0 for x in re.findall(r'\b[1-5][0-9]{2}\b', raw_text) if 1.0 <= float(x) / 100.0 <= 5.0]
+            candidates = decimals + integers
+
             if candidates:
                 match_cand = next((c for c in candidates if abs(c - e_gpa) <= 0.05), None)
                 if match_cand is not None:
