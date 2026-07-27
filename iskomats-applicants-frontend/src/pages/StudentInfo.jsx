@@ -6867,9 +6867,9 @@ const StudentInfo = () => {
                               try {
                                 const faceNorm = await normalizeVerificationImage(photos.face_photo);
                                 const idNorm = await normalizeVerificationImage(idImg);
-                                // Downscale to 320px max before sending — slashes payload size 10-20x
-                                const faceImage = await resizeImageForFaceVerification(faceNorm, 240, 0.78);
-                                const normalizedIdImage = await resizeImageForFaceVerification(idNorm, 240, 0.78);
+                                // Resize to 640px max before sending — preserves facial feature resolution on ID cards
+                                const faceImage = await resizeImageForFaceVerification(faceNorm, 640, 0.85);
+                                const normalizedIdImage = await resizeImageForFaceVerification(idNorm, 640, 0.85);
                                 const result = await applicantAPI.verifyFaceAgainstId(faceImage, normalizedIdImage);
                                 if (result.verified) {
                                   setFaceMatchResult(result);

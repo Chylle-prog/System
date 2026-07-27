@@ -42,7 +42,33 @@ _FACE_RECOGNIZER = None
 _FACE_MODEL_INIT_ERROR = None
 _FACE_MATCH_THRESHOLD = 0.36 
 _FACE_DETECTION_THRESHOLD = 0.25 
-_MAX_FACE_WIDTH = 240  # Match frontend resize; smaller = faster inference
+_MAX_FACE_WIDTH = 640  # 640px optimal for face detection on ID cards
+
+def _decode_face_image(image_bytes):
+    """Decode raw image bytes, base64 data URIs, or URLs into an OpenCV BGR image."""
+    if not image_bytes:
+        raise ValueError("Missing image data.")
+
+    raw = resolve_verification_image_bytes(image_bytes)
+    if not raw:
+        raise ValueError("Failed to decode image data.")
+
+    nparr = np.frombuffer(raw, np.uint8)
+    image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if image is None:
+        raise ValueError("Failed to decode image.")
+
+    height, width = image.shape[:2]
+    max_dim = max(height, width)
+    if max_dim > _MAX_FACE_WIDTH:
+        scale = _MAX_FACE_WIDTH / float(max_dim)
+        image = cv2.resize(
+            image,
+            (max(1, int(width * scale)), max(1, int(height * scale))),
+            interpolation=cv2.INTER_AREA,
+        )
+
+    return image
 
 def decode_base64(data):
     """Safely decode base64 strings/URIs to bytes."""
@@ -174,28 +200,6 @@ def _init_face_models():
             raise RuntimeError(_FACE_MODEL_INIT_ERROR) from exc
 
     return _FACE_DETECTOR, _FACE_RECOGNIZER
-
-def _decode_face_image(image_bytes):
-    """Decode raw image bytes into an OpenCV BGR image."""
-    if not image_bytes:
-        raise ValueError("Missing image data.")
-
-    nparr = np.frombuffer(image_bytes, np.uint8)
-    image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    if image is None:
-        raise ValueError("Failed to decode image.")
-
-    height, width = image.shape[:2]
-    max_dim = max(height, width)
-    if max_dim > _MAX_FACE_WIDTH:
-        scale = _MAX_FACE_WIDTH / float(max_dim)
-        image = cv2.resize(
-            image,
-            (max(1, int(width * scale)), max(1, int(height * scale))),
-            interpolation=cv2.INTER_AREA,
-        )
-
-    return image
 
 def _pick_primary_face(faces, image_label, min_area_pct=0.0, image_shape=None):
     """Select the highest-confidence face above threshold."""
