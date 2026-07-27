@@ -15,7 +15,12 @@ try:
     import pytesseract
 except ImportError:
     pytesseract = None
-from project_config import get_performance_config
+
+try:
+    from project_config import get_performance_config
+except ImportError:
+    def get_performance_config():
+        return {'threads_per_process': 1}
 
 # Get performance profile
 _perf = get_performance_config()
@@ -76,6 +81,18 @@ def resolve_verification_image_bytes(image_data):
                 print(f"[RESOLVE] Failed to fetch image URL {normalized}: {e}", flush=True)
                 return None
     return None
+
+def decode_signature(value, fernet_instance=None):
+    """Safely decode signature image data (handles base64 URIs, raw bytes, URLs, and optional Fernet decryption)."""
+    if not value:
+        return None
+    decoded = resolve_verification_image_bytes(value)
+    if decoded and fernet_instance:
+        try:
+            return fernet_instance.decrypt(decoded)
+        except Exception:
+            return decoded
+    return decoded
 
 def clear_heavy_memory():
     """Aggressive memory release to keep Render happy."""
@@ -193,81 +210,266 @@ def _pick_primary_face(faces, image_label, min_area_pct=0.0, image_shape=None):
 
     return max(valid_faces, key=lambda face: getattr(face, 'confidence', 0.0))
 
+def _insightface_verify(user_image, id_image):
+    """
+    TF-free face verification using InsightFace (ArcFace via ONNX).
+    Returns (verified, message, similarity) or raises if InsightFace is not available.
+    """
+    import insightface  # type: ignore[import-untyped]
+    from insightface.app import FaceAnalysis  # type: ignore[import-untyped]
+
+    app = FaceAnalysis(name='buffalo_sc', providers=['CPUExecutionProvider'])
+    app.prepare(ctx_id=-1, det_size=(320, 320))
+
+    user_faces = app.get(user_image)
+    id_faces   = app.get(id_image)
+
+    if not user_faces:
+        return False, (
+            "No face detected in your photo. Please remove any obstructions, "
+            "face the camera directly, and ensure good lighting."
+        ), 0.0
+
+    if not id_faces:
+        return False, "No face detected in the ID image.", 0.0
+
+    # Pick largest face
+    u_emb = sorted(user_faces, key=lambda f: (f.bbox[2]-f.bbox[0])*(f.bbox[3]-f.bbox[1]))[-1].normed_embedding
+    i_emb = sorted(id_faces,   key=lambda f: (f.bbox[2]-f.bbox[0])*(f.bbox[3]-f.bbox[1]))[-1].normed_embedding
+
+    similarity = float(np.dot(u_emb, i_emb))
+    similarity = max(0.0, min(1.0, similarity))
+
+    print(f"[FACE] InsightFace ArcFace similarity={similarity:.4f}", flush=True)
+
+    threshold = 0.40
+    if similarity >= threshold:
+        return True, f"Facial identity verified! (similarity: {similarity*100:.1f}%)", similarity
+    return False, (
+        f"Facial features do not match your ID photo (similarity: {similarity*100:.1f}%). "
+        "Please ensure clear lighting and face the camera directly."
+    ), similarity
+
+
+def _deepface_verify(user_image, id_image):
+    """
+    High-accuracy face verification. Tries engines in order:
+      1. DeepFace Facenet512 (via TensorFlow) — enforce_detection=True rejects covered faces
+      2. InsightFace ArcFace (ONNX, no TensorFlow) — TF-free fallback
+    Both properly reject covered/obstructed faces (raise / return 0.0) instead of
+    falling through to a blind crop like the old OpenCV engine did.
+    Facenet512 cosine threshold: 0.30 → similarity >= 0.70 = verified.
+    """
+    import tempfile
+    import os as _os
+
+    tmp_user = None
+    tmp_id   = None
+
+    # ── 1. DeepFace (Facenet512) ───────────────────────────────────────────────
+    # Skip TensorFlow DeepFace on Render/low-RAM servers by default to avoid 512MB RAM OOM (502/503) SIGKILL crashes
+    disable_df = os.environ.get("DISABLE_DEEPFACE", "true").lower() == "true" or bool(os.environ.get("RENDER"))
+    if disable_df:
+        print("[FACE] DeepFace disabled for memory safety. Falling back to ONNX/OpenCV...", flush=True)
+    else:
+        try:
+            from deepface import DeepFace
+
+            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as f:
+                tmp_user = f.name
+            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as f:
+                tmp_id = f.name
+
+            cv2.imwrite(tmp_user, user_image)
+            cv2.imwrite(tmp_id, id_image)
+
+            result = DeepFace.verify(
+                img1_path=tmp_user,
+                img2_path=tmp_id,
+                model_name="Facenet512",
+                detector_backend="opencv",
+                enforce_detection=True,   # raises ValueError when no face found
+                align=True,
+                distance_metric="cosine",
+            )
+
+            distance  = float(result.get("distance",  1.0))
+            verified  = bool(result.get("verified",  False))
+            threshold = float(result.get("threshold", 0.30))
+
+            # Map distance → similarity (0-1): distance=0→sim=1, distance=threshold→sim=~0.70
+            similarity = max(0.0, min(1.0, 1.0 - (distance / max(threshold * 1.5, 1e-6))))
+            similarity = round(similarity, 4)
+
+            print(f"[FACE] DeepFace Facenet512 distance={distance:.4f} verified={verified} sim={similarity:.4f}", flush=True)
+
+            if verified:
+                return True, f"Facial identity verified! (similarity: {similarity*100:.1f}%)", similarity
+            return False, (
+                f"Facial features do not match your ID photo (similarity: {similarity*100:.1f}%). "
+                "Please ensure clear lighting and face the camera directly."
+            ), similarity
+
+        except Exception as df_exc:
+            err = str(df_exc).lower()
+            if "face" in err and ("detect" in err or "found" in err or "extract" in err or "could not" in err):
+                # DeepFace found the package but could not detect a face → hard reject
+                return False, (
+                    "No face detected. Please remove any obstructions, face the camera directly, "
+                    "and ensure good lighting."
+                ), 0.0
+            # Package import error (e.g. TF DLL broken) → try InsightFace
+            print(f"[FACE] DeepFace unavailable ({type(df_exc).__name__}: {df_exc}), trying InsightFace...", flush=True)
+
+        finally:
+            for p in [tmp_user, tmp_id]:
+                if p and _os.path.exists(p):
+                    try:
+                        _os.remove(p)
+                    except Exception:
+                        pass
+
+    # ── 2. InsightFace (ArcFace via ONNX — no TensorFlow needed) ─────────────
+    try:
+        return _insightface_verify(user_image, id_image)
+    except ImportError:
+        pass  # InsightFace not installed either → fall through to OpenCV
+
+    # ── 3. Neither available → let caller fall to OpenCV ────────────────────
+    raise RuntimeError("Neither DeepFace nor InsightFace is available.")
+
+
 def _opencv_fallback_face_match(user_image, id_image):
     """
-    Ultra-lightweight OpenCV Haar-cascade face detector + histogram/feature matcher.
-    If CascadeClassifier is missing (e.g. minimal headless builds), it falls back
-    to a direct center-crop correlation match to ensure 100% reliability.
+    Lightweight OpenCV face PRESENCE check only.
+    Used when DeepFace is unavailable.
+    Rejects images where no face is detected instead of using a blind center crop.
     """
     gray_user = cv2.cvtColor(user_image, cv2.COLOR_BGR2GRAY) if len(user_image.shape) == 3 else user_image
-    gray_id = cv2.cvtColor(id_image, cv2.COLOR_BGR2GRAY) if len(id_image.shape) == 3 else id_image
+    gray_id   = cv2.cvtColor(id_image,   cv2.COLOR_BGR2GRAY) if len(id_image.shape)   == 3 else id_image
+
+    hu, wu = gray_user.shape[:2]
+    hi, wi = gray_id.shape[:2]
+
+    try:
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        eq_user = clahe.apply(gray_user)
+        eq_id   = clahe.apply(gray_id)
+    except Exception:
+        eq_user = gray_user
+        eq_id   = gray_id
 
     user_crop = None
-    id_crop = None
+    id_crop   = None
+    user_face_detected = False
 
-    if hasattr(cv2, 'CascadeClassifier'):
+    cascades = ['haarcascade_frontalface_default.xml', 'haarcascade_frontalface_alt.xml', 'haarcascade_frontalface_alt2.xml']
+    for cascade_name in cascades:
         try:
-            cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-            face_cascade = cv2.CascadeClassifier(cascade_path)
-            
-            user_faces = face_cascade.detectMultiScale(gray_user, scaleFactor=1.1, minNeighbors=3, minSize=(30, 30))
-            id_faces = face_cascade.detectMultiScale(gray_id, scaleFactor=1.1, minNeighbors=2, minSize=(20, 20))
+            path = cv2.data.haarcascades + cascade_name
+            if not os.path.exists(path):
+                continue
+            fc = cv2.CascadeClassifier(path)
+            ufaces = fc.detectMultiScale(eq_user, scaleFactor=1.08, minNeighbors=3, minSize=(40, 40))
+            if len(ufaces) == 0:
+                ufaces = fc.detectMultiScale(gray_user, scaleFactor=1.08, minNeighbors=2, minSize=(40, 40))
+            if len(ufaces) > 0:
+                ux, uy, uw, uh = max(ufaces, key=lambda b: b[2] * b[3])
+                user_crop = eq_user[uy:uy+uh, ux:ux+uw]
+                user_face_detected = True
 
-            if len(user_faces) > 0:
-                ux, uy, uw, uh = max(user_faces, key=lambda b: b[2] * b[3])
-                user_crop = gray_user[uy:uy+uh, ux:ux+uw]
-            
-            if len(id_faces) > 0:
-                ix, iy, iw, ih = max(id_faces, key=lambda b: b[2] * b[3])
-                id_crop = gray_id[iy:iy+ih, ix:ix+iw]
+            ifaces = fc.detectMultiScale(eq_id, scaleFactor=1.08, minNeighbors=2, minSize=(20, 20))
+            if len(ifaces) > 0:
+                ix, iy, iw, ih = max(ifaces, key=lambda b: b[2] * b[3])
+                id_crop = eq_id[iy:iy+ih, ix:ix+iw]
+
+            if user_face_detected:
+                break
         except Exception as e:
-            print(f"[FACE] Haar Cascade failed or unavailable: {e}", flush=True)
+            print(f"[FACE] Cascade error ({cascade_name}): {e}", flush=True)
 
-    # Center-crop fallback if face detection is missing or failed to find faces
-    if user_crop is None:
-        hu, wu = gray_user.shape[:2]
-        user_crop = gray_user[int(hu*0.25):int(hu*0.75), int(wu*0.25):int(wu*0.75)]
+    # Hard reject if no face detected in the live photo (no more blind center-crop fallback)
+    if not user_face_detected:
+        return False, (
+            "No face detected in your photo. Please remove any obstructions, face the camera directly, "
+            "and ensure good lighting before retaking."
+        ), 0.0
+
     if id_crop is None:
-        hi, wi = gray_id.shape[:2]
-        id_crop = gray_id[int(hi*0.25):int(hi*0.75), int(wi*0.25):int(wi*0.75)]
+        id_crop = eq_id[int(hi * 0.25):int(hi * 0.95), int(wi * 0.05):int(wi * 0.75)]
 
-    # Resize crops to 100x100
-    user_crop_resized = cv2.resize(user_crop, (100, 100))
-    id_crop_resized = cv2.resize(id_crop, (100, 100))
+    # Resize to 128x128 and compare
+    user_crop_r = cv2.resize(user_crop, (128, 128))
+    id_crop_r   = cv2.resize(id_crop,   (128, 128))
 
-    # Calculate histogram similarity
-    hist_user = cv2.calcHist([user_crop_resized], [0], None, [64], [0, 256])
-    hist_id = cv2.calcHist([id_crop_resized], [0], None, [64], [0, 256])
-    cv2.normalize(hist_user, hist_user, 0, 1, cv2.NORM_MINMAX)
-    cv2.normalize(hist_id, hist_id, 0, 1, cv2.NORM_MINMAX)
+    res = cv2.matchTemplate(user_crop_r, id_crop_r, cv2.TM_CCOEFF_NORMED)
+    _, max_val, _, _ = cv2.minMaxLoc(res)
+    tmpl_score = max(0.0, min(1.0, (float(max_val) + 1.0) / 2.0))
 
-    sim = float(cv2.compareHist(hist_user, hist_id, cv2.HISTCMP_CORREL))
-    sim = max(0.0, min(1.0, (sim + 1.0) / 2.0))
+    orb_score = 0.0
+    try:
+        orb = cv2.ORB_create(nfeatures=500)
+        kp1, des1 = orb.detectAndCompute(user_crop_r, None)
+        kp2, des2 = orb.detectAndCompute(id_crop_r,   None)
+        if des1 is not None and des2 is not None and len(des1) > 0 and len(des2) > 0:
+            bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+            matches = bf.match(des1, des2)
+            good_matches = [m for m in matches if m.distance < 60]
+            orb_score = min(1.0, len(good_matches) / max(10.0, min(len(kp1), len(kp2))) * 1.6)
+    except Exception:
+        pass
 
-    # 0.35 threshold is very safe and reliable for correlation
-    verified = (sim >= 0.35)
-    return verified, f"Face verified via visual correlation (similarity: {sim*100:.1f}%)", sim
+    sobel_u = cv2.Sobel(user_crop_r, cv2.CV_32F, 1, 1)
+    sobel_i = cv2.Sobel(id_crop_r,   cv2.CV_32F, 1, 1)
+    edge_res = cv2.matchTemplate(sobel_u, sobel_i, cv2.TM_CCOEFF_NORMED)
+    _, max_edge, _, _ = cv2.minMaxLoc(edge_res)
+    edge_score = max(0.0, min(1.0, (float(max_edge) + 1.0) / 2.0))
+
+    composite_sim = (0.45 * tmpl_score) + (0.35 * orb_score) + (0.20 * edge_score)
+    verified = composite_sim >= 0.45
+    msg = (
+        f"Facial identity verified! (similarity: {composite_sim*100:.1f}%)"
+        if verified else
+        f"Facial features do not match your ID photo (similarity: {composite_sim*100:.1f}%). "
+        "Please ensure clear lighting and face the camera directly."
+    )
+    return verified, msg, composite_sim
 
 
 def verify_face_with_id(user_photo_bytes, id_photo_bytes):
-    """Verify a live/selfie photo against the face in the uploaded ID image."""
+    """
+    Face Verification Engine (priority order):
+    1. UniFace ArcFace neural embeddings (when USE_NEURAL_FACE_VERIFICATION=true)
+    2. DeepFace Facenet512 (primary fallback, correctly rejects covered/obstructed faces)
+    3. OpenCV Haar cascade (last resort, only if DeepFace not installed)
+    """
     try:
         user_image = _decode_face_image(user_photo_bytes)
-        id_image = _decode_face_image(id_photo_bytes)
+        id_image   = _decode_face_image(id_photo_bytes)
 
-        # 1. Try UniFace ONNX neural model ONLY if explicitly enabled (to avoid Gunicorn worker timeouts/502 on Render)
-        if os.environ.get("USE_NEURAL_FACE_VERIFICATION", "").lower() == "true":
+        # 1. Primary: UniFace neural ArcFace (RetinaFace + ArcFace)
+        use_neural = os.environ.get("USE_NEURAL_FACE_VERIFICATION", "true").lower() != "false"
+        if use_neural:
             try:
                 detector, recognizer = _init_face_models()
-
                 user_faces = detector.detect(user_image)
-                user_face = _pick_primary_face(user_faces, 'the live photo', min_area_pct=0.0, image_shape=user_image.shape)
-                
+                if not user_faces or len(user_faces) == 0:
+                    clear_heavy_memory()
+                    return False, (
+                        "No face detected in your photo. Please remove any obstructions, "
+                        "face the camera directly, and ensure good lighting."
+                    ), 0.0
+
                 id_faces = detector.detect(id_image)
-                id_face = _pick_primary_face(id_faces, 'the ID image', min_area_pct=0.0, image_shape=id_image.shape)
+                if not id_faces or len(id_faces) == 0:
+                    clear_heavy_memory()
+                    return False, "No face detected in your ID image. Please ensure clear lighting and an unobstructed photo.", 0.0
+
+                user_face = _pick_primary_face(user_faces, 'the live photo', min_area_pct=0.0, image_shape=user_image.shape)
+                id_face   = _pick_primary_face(id_faces,  'the ID image',   min_area_pct=0.0, image_shape=id_image.shape)
 
                 user_embedding = recognizer.get_normalized_embedding(user_image, user_face.landmarks)
-                id_embedding = recognizer.get_normalized_embedding(id_image, id_face.landmarks)
+                id_embedding   = recognizer.get_normalized_embedding(id_image,   id_face.landmarks)
 
                 if user_embedding is not None and id_embedding is not None:
                     try:
@@ -275,22 +477,27 @@ def verify_face_with_id(user_photo_bytes, id_photo_bytes):
                         similarity = float(compute_similarity(user_embedding, id_embedding, normalized=True))
                     except Exception:
                         similarity = float(np.dot(user_embedding, id_embedding.T)[0][0])
-
                     similarity = max(0.0, min(1.0, similarity))
-                    print(f"[FACE] UniFace Similarity score: {similarity:.4f}", flush=True)
-
+                    print(f"[FACE] UniFace Neural ArcFace Similarity: {similarity:.4f}", flush=True)
                     clear_heavy_memory()
+                    if similarity >= 0.36:
+                        return True, f"Facial identity verified! (similarity: {similarity*100:.1f}%)", similarity
+                    return False, (
+                        f"Facial features do not match your ID photo (similarity: {similarity*100:.1f}%). "
+                        "Please ensure clear lighting and face the camera directly."
+                    ), similarity
+            except Exception as neural_err:
+                print(f"[FACE] UniFace note ({neural_err}), trying fallbacks...", flush=True)
 
-                    if similarity >= _FACE_MATCH_THRESHOLD:
-                        return True, f"Face verified successfully! (similarity: {similarity*100:.1f}%)", similarity
+        # 2. DeepFace Facenet512 (properly rejects covered/obstructed faces)
+        try:
+            verified, msg, sim = _deepface_verify(user_image, id_image)
+            clear_heavy_memory()
+            return verified, msg, sim
+        except Exception as df_err:
+            print(f"[FACE] DeepFace unavailable ({df_err}), using OpenCV fallback...", flush=True)
 
-                    return False, f"Face match uncertain (similarity: {similarity*100:.1f}%). Please ensure clear lighting.", similarity
-            except ValueError:
-                raise
-            except Exception as onnx_err:
-                print(f"[FACE] ONNX model failed ({onnx_err}), falling back to OpenCV...", flush=True)
-
-        # 2. Fallback / Default: OpenCV face match (100% crash-proof & near-instant)
+        # 3. OpenCV last-resort (no longer uses blind center crop)
         verified, msg, sim = _opencv_fallback_face_match(user_image, id_image)
         clear_heavy_memory()
         return verified, msg, sim
@@ -304,13 +511,17 @@ def verify_face_with_id(user_photo_bytes, id_photo_bytes):
         return False, f"Face verification error: {str(exc)}", 0.0
 
 
+
 # ─── Signature Matching Wrappers ──────────────────────────────────────────────
 
 def _prepare_signature_preview(sig_img):
-    if sig_img is None:
+    if sig_img is None or not isinstance(sig_img, np.ndarray) or sig_img.size == 0:
         return None
-    _, buffer = cv2.imencode('.png', sig_img)
-    return f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+    try:
+        _, buffer = cv2.imencode('.png', sig_img)
+        return f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+    except Exception:
+        return None
 
 def _decode_cv_image(image_bytes, white_background=False):
     data = decode_base64(image_bytes)
@@ -617,13 +828,14 @@ def _init_tesseract():
     if _tesseract_initialized or pytesseract is None:
         return
     if platform.system() == 'Windows':
+        which_tess = shutil.which('tesseract')
         candidates = [
             os.environ.get('TESSERACT_CMD', r'C:\Program Files\Tesseract-OCR\tesseract.exe'),
             r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
-            r'tesseract'
+            which_tess
         ]
         for cmd in candidates:
-            if os.path.exists(cmd):
+            if cmd and os.path.exists(cmd):
                 pytesseract.pytesseract.tesseract_cmd = cmd
                 print(f"[OCR] Tesseract executable configured: {cmd}", flush=True)
                 break
@@ -1126,12 +1338,30 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
 
     return success, msg, meta
 
-def verify_document_with_ocr(image_bytes, doc_type, first_name, middle_name, last_name, **kwargs):
+def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name=None, last_name=None, **kwargs):
     """
     Main entry point for document verification (COR, Grades, Indigency, ID).
     """
     if not image_bytes:
         return False, "No document image provided.", "", {}
+
+    expected_name = kwargs.get('expected_name') or kwargs.get('full_name')
+    if expected_name and (not first_name or not last_name):
+        parts = str(expected_name).strip().split()
+        if len(parts) == 1:
+            first_name = first_name or parts[0]
+            last_name = last_name or parts[0]
+        elif len(parts) == 2:
+            first_name = first_name or parts[0]
+            last_name = last_name or parts[1]
+        elif len(parts) >= 3:
+            first_name = first_name or parts[0]
+            middle_name = middle_name or parts[1]
+            last_name = last_name or " ".join(parts[2:])
+
+    first_name = first_name or ""
+    middle_name = middle_name or ""
+    last_name = last_name or ""
 
     raw_text = extract_document_text(image_bytes, psm=3)
     if not raw_text.strip():
@@ -1458,9 +1688,15 @@ def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
 
     return success, msg, meta
 
-def verify_id_with_ocr(image_bytes, first_name, middle_name, last_name, **kwargs):
+def verify_id_with_ocr(image_bytes, first_name=None, middle_name=None, last_name=None, expected_name=None, expected_address=None, **kwargs):
     """
     ID OCR verification wrapper.
+    Accepts both positional (first_name, middle_name, last_name) and keyword formats (expected_name, expected_address).
     """
+    if expected_name:
+        kwargs['expected_name'] = expected_name
+    if expected_address:
+        kwargs['expected_address'] = expected_address
+
     success, msg, raw_text, meta = verify_document_with_ocr(image_bytes, 'ID', first_name, middle_name, last_name, **kwargs)
     return success, msg, raw_text, 1.0 if success else 0.0

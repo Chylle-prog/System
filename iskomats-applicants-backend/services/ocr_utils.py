@@ -82,6 +82,18 @@ def resolve_verification_image_bytes(image_data):
                 return None
     return None
 
+def decode_signature(value, fernet_instance=None):
+    """Safely decode signature image data (handles base64 URIs, raw bytes, URLs, and optional Fernet decryption)."""
+    if not value:
+        return None
+    decoded = resolve_verification_image_bytes(value)
+    if decoded and fernet_instance:
+        try:
+            return fernet_instance.decrypt(decoded)
+        except Exception:
+            return decoded
+    return decoded
+
 def clear_heavy_memory():
     """Aggressive memory release to keep Render happy."""
     gc.collect()
@@ -255,62 +267,67 @@ def _deepface_verify(user_image, id_image):
     tmp_id   = None
 
     # ── 1. DeepFace (Facenet512) ───────────────────────────────────────────────
-    try:
-        from deepface import DeepFace
+    # Skip TensorFlow DeepFace on Render/low-RAM servers by default to avoid 512MB RAM OOM (502/503) SIGKILL crashes
+    disable_df = os.environ.get("DISABLE_DEEPFACE", "true").lower() == "true" or bool(os.environ.get("RENDER"))
+    if disable_df:
+        print("[FACE] DeepFace disabled for memory safety. Falling back to ONNX/OpenCV...", flush=True)
+    else:
+        try:
+            from deepface import DeepFace
 
-        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as f:
-            tmp_user = f.name
-        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as f:
-            tmp_id = f.name
+            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as f:
+                tmp_user = f.name
+            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as f:
+                tmp_id = f.name
 
-        cv2.imwrite(tmp_user, user_image)
-        cv2.imwrite(tmp_id, id_image)
+            cv2.imwrite(tmp_user, user_image)
+            cv2.imwrite(tmp_id, id_image)
 
-        result = DeepFace.verify(
-            img1_path=tmp_user,
-            img2_path=tmp_id,
-            model_name="Facenet512",
-            detector_backend="opencv",
-            enforce_detection=True,   # raises ValueError when no face found
-            align=True,
-            distance_metric="cosine",
-        )
+            result = DeepFace.verify(
+                img1_path=tmp_user,
+                img2_path=tmp_id,
+                model_name="Facenet512",
+                detector_backend="opencv",
+                enforce_detection=True,   # raises ValueError when no face found
+                align=True,
+                distance_metric="cosine",
+            )
 
-        distance  = float(result.get("distance",  1.0))
-        verified  = bool(result.get("verified",  False))
-        threshold = float(result.get("threshold", 0.30))
+            distance  = float(result.get("distance",  1.0))
+            verified  = bool(result.get("verified",  False))
+            threshold = float(result.get("threshold", 0.30))
 
-        # Map distance → similarity (0-1): distance=0→sim=1, distance=threshold→sim=~0.70
-        similarity = max(0.0, min(1.0, 1.0 - (distance / max(threshold * 1.5, 1e-6))))
-        similarity = round(similarity, 4)
+            # Map distance → similarity (0-1): distance=0→sim=1, distance=threshold→sim=~0.70
+            similarity = max(0.0, min(1.0, 1.0 - (distance / max(threshold * 1.5, 1e-6))))
+            similarity = round(similarity, 4)
 
-        print(f"[FACE] DeepFace Facenet512 distance={distance:.4f} verified={verified} sim={similarity:.4f}", flush=True)
+            print(f"[FACE] DeepFace Facenet512 distance={distance:.4f} verified={verified} sim={similarity:.4f}", flush=True)
 
-        if verified:
-            return True, f"Facial identity verified! (similarity: {similarity*100:.1f}%)", similarity
-        return False, (
-            f"Facial features do not match your ID photo (similarity: {similarity*100:.1f}%). "
-            "Please ensure clear lighting and face the camera directly."
-        ), similarity
-
-    except Exception as df_exc:
-        err = str(df_exc).lower()
-        if "face" in err and ("detect" in err or "found" in err or "extract" in err or "could not" in err):
-            # DeepFace found the package but could not detect a face → hard reject
+            if verified:
+                return True, f"Facial identity verified! (similarity: {similarity*100:.1f}%)", similarity
             return False, (
-                "No face detected. Please remove any obstructions, face the camera directly, "
-                "and ensure good lighting."
-            ), 0.0
-        # Package import error (e.g. TF DLL broken) → try InsightFace
-        print(f"[FACE] DeepFace unavailable ({type(df_exc).__name__}: {df_exc}), trying InsightFace...", flush=True)
+                f"Facial features do not match your ID photo (similarity: {similarity*100:.1f}%). "
+                "Please ensure clear lighting and face the camera directly."
+            ), similarity
 
-    finally:
-        for p in [tmp_user, tmp_id]:
-            if p and _os.path.exists(p):
-                try:
-                    _os.remove(p)
-                except Exception:
-                    pass
+        except Exception as df_exc:
+            err = str(df_exc).lower()
+            if "face" in err and ("detect" in err or "found" in err or "extract" in err or "could not" in err):
+                # DeepFace found the package but could not detect a face → hard reject
+                return False, (
+                    "No face detected. Please remove any obstructions, face the camera directly, "
+                    "and ensure good lighting."
+                ), 0.0
+            # Package import error (e.g. TF DLL broken) → try InsightFace
+            print(f"[FACE] DeepFace unavailable ({type(df_exc).__name__}: {df_exc}), trying InsightFace...", flush=True)
+
+        finally:
+            for p in [tmp_user, tmp_id]:
+                if p and _os.path.exists(p):
+                    try:
+                        _os.remove(p)
+                    except Exception:
+                        pass
 
     # ── 2. InsightFace (ArcFace via ONNX — no TensorFlow needed) ─────────────
     try:
@@ -811,13 +828,14 @@ def _init_tesseract():
     if _tesseract_initialized or pytesseract is None:
         return
     if platform.system() == 'Windows':
+        which_tess = shutil.which('tesseract')
         candidates = [
             os.environ.get('TESSERACT_CMD', r'C:\Program Files\Tesseract-OCR\tesseract.exe'),
             r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
-            r'tesseract'
+            which_tess
         ]
         for cmd in candidates:
-            if os.path.exists(cmd):
+            if cmd and os.path.exists(cmd):
                 pytesseract.pytesseract.tesseract_cmd = cmd
                 print(f"[OCR] Tesseract executable configured: {cmd}", flush=True)
                 break
@@ -1320,12 +1338,30 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
 
     return success, msg, meta
 
-def verify_document_with_ocr(image_bytes, doc_type, first_name, middle_name, last_name, **kwargs):
+def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name=None, last_name=None, **kwargs):
     """
     Main entry point for document verification (COR, Grades, Indigency, ID).
     """
     if not image_bytes:
         return False, "No document image provided.", "", {}
+
+    expected_name = kwargs.get('expected_name') or kwargs.get('full_name')
+    if expected_name and (not first_name or not last_name):
+        parts = str(expected_name).strip().split()
+        if len(parts) == 1:
+            first_name = first_name or parts[0]
+            last_name = last_name or parts[0]
+        elif len(parts) == 2:
+            first_name = first_name or parts[0]
+            last_name = last_name or parts[1]
+        elif len(parts) >= 3:
+            first_name = first_name or parts[0]
+            middle_name = middle_name or parts[1]
+            last_name = last_name or " ".join(parts[2:])
+
+    first_name = first_name or ""
+    middle_name = middle_name or ""
+    last_name = last_name or ""
 
     raw_text = extract_document_text(image_bytes, psm=3)
     if not raw_text.strip():
@@ -1652,9 +1688,15 @@ def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
 
     return success, msg, meta
 
-def verify_id_with_ocr(image_bytes, first_name, middle_name, last_name, **kwargs):
+def verify_id_with_ocr(image_bytes, first_name=None, middle_name=None, last_name=None, expected_name=None, expected_address=None, **kwargs):
     """
     ID OCR verification wrapper.
+    Accepts both positional (first_name, middle_name, last_name) and keyword formats (expected_name, expected_address).
     """
+    if expected_name:
+        kwargs['expected_name'] = expected_name
+    if expected_address:
+        kwargs['expected_address'] = expected_address
+
     success, msg, raw_text, meta = verify_document_with_ocr(image_bytes, 'ID', first_name, middle_name, last_name, **kwargs)
     return success, msg, raw_text, 1.0 if success else 0.0
