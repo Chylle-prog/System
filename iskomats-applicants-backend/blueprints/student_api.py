@@ -2536,18 +2536,15 @@ def get_applicant_document_raw(field_name):
                 if '/applicant/document/raw/' in normalized_url or 'iskomats-backend.onrender.com' in normalized_url:
                     content, error = fetch_video_bytes_from_url(normalized_url)
                     if content is not None:
-                        from services.crypto_utils import decrypt_if_encrypted
+                        from services.crypto_service import decrypt_if_encrypted
                         value = decrypt_if_encrypted(content)
                     else:
                         return "Document unavailable", 404
                 else:
-                    if field_name == 'profile_picture':
-                        from flask import redirect
-                        return redirect(normalized_url)
                     # Download and proxy files directly using the authenticated service role key
                     content, error = fetch_video_bytes_from_url(normalized_url)
                     if content is not None:
-                        from services.crypto_utils import decrypt_if_encrypted
+                        from services.crypto_service import decrypt_if_encrypted
                         value = decrypt_if_encrypted(content)
                     else:
                         from flask import redirect
@@ -2561,7 +2558,7 @@ def get_applicant_document_raw(field_name):
                     value = bytes(value)
 
                 # Ensure we decrypt binary data
-                from services.crypto_utils import decrypt_if_encrypted
+                from services.crypto_service import decrypt_if_encrypted
                 value = decrypt_if_encrypted(value)
 
             mime_type = 'image/jpeg'

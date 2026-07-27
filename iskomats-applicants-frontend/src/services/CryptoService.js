@@ -95,7 +95,12 @@ export const decryptUrl = async (url, type = 'image/jpeg') => {
   try {
     const separator = url.includes('?') ? '&' : '?';
     const fetchUrl = `${url}${separator}_cb=${Date.now()}`;
-    const response = await fetch(fetchUrl);
+    const headers = {};
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const response = await fetch(fetchUrl, { headers });
     if (!response.ok) return url;
     const blob = await response.blob();
     if (blob.size === 0) return url;
