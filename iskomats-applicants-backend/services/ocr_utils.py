@@ -42,7 +42,7 @@ _FACE_RECOGNIZER = None
 _FACE_MODEL_INIT_ERROR = None
 _FACE_MATCH_THRESHOLD = 0.36 
 _FACE_DETECTION_THRESHOLD = 0.25 
-_MAX_FACE_WIDTH = 380  # 380px optimal for face detection inference speed and precision
+_MAX_FACE_WIDTH = 640  # 640px optimal for RetinaFace neural feature detection
 
 def _decode_face_image(image_bytes):
     """Decode raw image bytes, base64 data URIs, or URLs into an OpenCV BGR image."""
@@ -467,39 +467,32 @@ def verify_face_with_id(user_photo_bytes, id_photo_bytes):
             try:
                 detector, recognizer = _init_face_models()
                 user_faces = detector.detect(user_image)
-                if not user_faces or len(user_faces) == 0:
-                    clear_heavy_memory()
-                    return False, (
-                        "No face detected in your photo. Please remove any obstructions, "
-                        "face the camera directly, and ensure good lighting."
-                    ), 0.0
-
                 id_faces = detector.detect(id_image)
-                if not id_faces or len(id_faces) == 0:
-                    clear_heavy_memory()
-                    return False, "No face detected in your ID image. Please ensure clear lighting and an unobstructed photo.", 0.0
 
-                user_face = _pick_primary_face(user_faces, 'the live photo', min_area_pct=0.0, image_shape=user_image.shape)
-                id_face   = _pick_primary_face(id_faces,  'the ID image',   min_area_pct=0.0, image_shape=id_image.shape)
+                if user_faces and len(user_faces) > 0 and id_faces and len(id_faces) > 0:
+                    user_face = _pick_primary_face(user_faces, 'the live photo', min_area_pct=0.0, image_shape=user_image.shape)
+                    id_face   = _pick_primary_face(id_faces,  'the ID image',   min_area_pct=0.0, image_shape=id_image.shape)
 
-                user_embedding = recognizer.get_normalized_embedding(user_image, user_face.landmarks)
-                id_embedding   = recognizer.get_normalized_embedding(id_image,   id_face.landmarks)
+                    user_embedding = recognizer.get_normalized_embedding(user_image, user_face.landmarks)
+                    id_embedding   = recognizer.get_normalized_embedding(id_image,   id_face.landmarks)
 
-                if user_embedding is not None and id_embedding is not None:
-                    try:
-                        from uniface import compute_similarity
-                        similarity = float(compute_similarity(user_embedding, id_embedding, normalized=True))
-                    except Exception:
-                        similarity = float(np.dot(user_embedding, id_embedding.T)[0][0])
-                    similarity = max(0.0, min(1.0, similarity))
-                    print(f"[FACE] UniFace Neural ArcFace Similarity: {similarity:.4f}", flush=True)
-                    clear_heavy_memory()
-                    if similarity >= 0.36:
-                        return True, f"Facial identity verified! (similarity: {similarity*100:.1f}%)", similarity
-                    return False, (
-                        f"Facial features do not match your ID photo (similarity: {similarity*100:.1f}%). "
-                        "Please ensure clear lighting and face the camera directly."
-                    ), similarity
+                    if user_embedding is not None and id_embedding is not None:
+                        try:
+                            from uniface import compute_similarity
+                            similarity = float(compute_similarity(user_embedding, id_embedding, normalized=True))
+                        except Exception:
+                            similarity = float(np.dot(user_embedding, id_embedding.T)[0][0])
+                        similarity = max(0.0, min(1.0, similarity))
+                        print(f"[FACE] UniFace Neural ArcFace Similarity: {similarity:.4f}", flush=True)
+                        clear_heavy_memory()
+                        if similarity >= 0.36:
+                            return True, f"Facial identity verified! (similarity: {similarity*100:.1f}%)", similarity
+                        return False, (
+                            f"Facial features do not match your ID photo (similarity: {similarity*100:.1f}%). "
+                            "Please ensure clear lighting and face the camera directly."
+                        ), similarity
+                else:
+                    print("[FACE] Neural face detector returned 0 faces, falling through to multi-scale OpenCV matcher...", flush=True)
             except Exception as neural_err:
                 print(f"[FACE] UniFace note ({neural_err}), trying fallbacks...", flush=True)
 
