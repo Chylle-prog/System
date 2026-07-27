@@ -53,19 +53,41 @@ const normalizeGuideVideoUrl = (value) => {
 const isDataUrl = (value) => typeof value === 'string' && value.startsWith('data:');
 const isHttpUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(value);
 
-const fetchImageAsDataUrl = async (url) => {
-  const response = await fetch(url, { cache: 'no-store' });
-  if (!response.ok) {
-    throw new Error(`Failed to load image: ${response.status}`);
+const fetchImageAsDataUrl = async (url, { retries = 3, retryDelayMs = 5000 } = {}) => {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(url, { cache: 'no-store' });
+      if (response.status === 503 || response.status === 502) {
+        // Server sleeping (Render free tier cold start) — wait and retry
+        lastErr = new Error(`Server waking up (${response.status}). Retrying...`);
+        if (attempt < retries) {
+          await new Promise(r => setTimeout(r, retryDelayMs));
+          continue;
+        }
+        throw new Error('Server is still starting up. Please click Verify again in a few seconds.');
+      }
+      if (!response.ok) {
+        throw new Error(`Failed to load image: ${response.status}`);
+      }
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Failed to convert image to data URL'));
+        reader.readAsDataURL(blob);
+      });
+    } catch (err) {
+      // Network error (CORS preflight fail due to 503, or backend unreachable) — retry
+      lastErr = err;
+      if (attempt < retries && (err.name === 'TypeError' || err.message.includes('fetch'))) {
+        await new Promise(r => setTimeout(r, retryDelayMs));
+        continue;
+      }
+      throw err;
+    }
   }
-
-  const blob = await response.blob();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error('Failed to convert image to data URL'));
-    reader.readAsDataURL(blob);
-  });
+  throw lastErr || new Error('Failed to load image after retries.');
 };
 
 const normalizeVerificationImage = async (value) => {
@@ -83,6 +105,7 @@ const normalizeVerificationImage = async (value) => {
 
   return value;
 };
+
 
 /**
  * Resize an image to max 320px (longest edge) at 0.82 JPEG quality
@@ -6877,7 +6900,7 @@ const StudentInfo = () => {
                               }
 
                               setIsFaceMatching(true);
-                              setLoadingMessage({ title: 'Matching Face', message: 'Comparing captured photo with your School ID...' });
+                              setLoadingMessage({ title: 'Matching Face', message: 'Comparing captured photo with your School ID... (Server may take up to 15s to wake up)' });
 
                               try {
                                 const faceNorm = await normalizeVerificationImage(photos.face_photo);
@@ -6890,18 +6913,22 @@ const StudentInfo = () => {
                                   setFaceMatchResult(result);
                                   setFaceVerified('success');
                                   showPromptMessage('Face successfully matched with ID!');
-                                } else if (result.message && (result.message.includes('Service Error') || result.message.includes('timed out') || result.message.includes('ConnectionPool') || result.message.includes('localhost'))) {
+                                } else if (result.message && (result.message.includes('Service Error') || result.message.includes('timed out') || result.message.includes('ConnectionPool') || result.message.includes('localhost') || result.message.includes('starting up'))) {
                                   // Backend service unavailable — do NOT auto-pass, inform user
-                                  setFaceMatchResult({ verified: false, message: 'Verification service warming up. Please try again in 5 seconds.' });
-                                  showPromptMessage('Server is warming up. Please try clicking Verify again.');
+                                  setFaceMatchResult({ verified: false, message: 'Verification service is warming up. Please try again in a few seconds.' });
+                                  showPromptMessage('Server is warming up. Please click Verify again in a few seconds.');
                                 } else {
                                   setFaceMatchResult(result);
                                   showPromptMessage(`Face Match Issue: ${result.message || 'Face does not match the ID.'}`);
                                 }
                               } catch (err) {
                                 console.error('Match error:', err);
-                                setFaceMatchResult({ verified: false, message: 'Server connection timeout. Please click Verify again.' });
-                                showPromptMessage('Server connection timeout. Please click Verify again.');
+                                const isWarmup = err.message && (err.message.includes('503') || err.message.includes('502') || err.message.includes('starting up') || err.message.includes('waking') || err.name === 'TypeError');
+                                const msg = isWarmup
+                                  ? 'Server is waking up (Render cold start). Please click Verify again in 10–15 seconds.'
+                                  : 'Server connection error. Please click Verify again.';
+                                setFaceMatchResult({ verified: false, message: msg });
+                                showPromptMessage(msg);
                               } finally {
                                 setIsFaceMatching(false);
                               }
