@@ -33,11 +33,22 @@ def decrypt_aes_gcm(data):
         iv = data[len(prefix):len(prefix)+12]
         ciphertext = data[len(prefix)+12:]
         
-        # Prepare key (matches CryptoService.js: getCryptoKey)
-        key_bytes = _FRONTEND_KEY_STR.ljust(32, '0')[:32].encode()
-        aesgcm = AESGCM(key_bytes)
-        
-        return aesgcm.decrypt(iv, ciphertext, None)
+        # Prepare key candidates (handles both production environment key and default key)
+        keys_to_try = []
+        env_key = os.environ.get('ENCRYPTION_KEY')
+        if env_key:
+            keys_to_try.append(env_key.ljust(32, '0')[:32].encode())
+            keys_to_try.append(env_key[:32].encode())
+        keys_to_try.append(_FRONTEND_KEY_STR.ljust(32, '0')[:32].encode())
+
+        for key_bytes in keys_to_try:
+            try:
+                aesgcm = AESGCM(key_bytes)
+                return aesgcm.decrypt(iv, ciphertext, None)
+            except Exception:
+                continue
+
+        return data
     except Exception as e:
         print(f"[CRYPTO_SERVICE] AES-GCM Decryption failed: {e}")
         return data
