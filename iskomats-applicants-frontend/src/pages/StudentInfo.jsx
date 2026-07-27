@@ -2367,9 +2367,12 @@ const StudentInfo = () => {
 
       // Fallback: if pad is somehow still mounted, calculate it now
       if (scoreToCheck === undefined && sigPad.current) {
-        const canvas = sigPad.current.getCanvas();
+        const canvas = getCanvasFromSigPad(sigPad);
         if (canvas) {
-          const strokes = sigPad.current.getDrawingPath ? sigPad.current.getDrawingPath() : null;
+          const inst = sigPad.current;
+          const strokes = (typeof inst.getDrawingPath === 'function')
+            ? inst.getDrawingPath()
+            : (typeof inst.toData === 'function' ? inst.toData() : null);
           const comp = analyzeSignatureComplexity(canvas, strokes);
           scoreToCheck = comp.score;
           setSignatureStats({ inkMass: comp.mass, junctions: comp.junctions, score: comp.score });
@@ -4259,23 +4262,60 @@ const StudentInfo = () => {
     }
   };
 
+  const getCanvasFromSigPad = (ref) => {
+    if (!ref || !ref.current) return null;
+    const inst = ref.current;
+    if (typeof inst.getCanvas === 'function') {
+      try { return inst.getCanvas(); } catch (e) {}
+    }
+    if (typeof inst.getTrimmedCanvas === 'function') {
+      try { return inst.getTrimmedCanvas(); } catch (e) {}
+    }
+    if (inst._canvas && inst._canvas instanceof HTMLCanvasElement) {
+      return inst._canvas;
+    }
+    if (inst.canvas && inst.canvas instanceof HTMLCanvasElement) {
+      return inst.canvas;
+    }
+    if (inst instanceof HTMLCanvasElement) {
+      return inst;
+    }
+    return null;
+  };
+
   const clearSignature = () => {
     if (sigPad.current) {
-      sigPad.current.clear();
+      if (typeof sigPad.current.clear === 'function') {
+        try { sigPad.current.clear(); } catch (e) {}
+      }
     }
     setDrawnSignature(null);
     setFormData(prev => ({ ...prev, applicantSignatureName: '' }));
   };
 
   const saveSignature = () => {
-    if (sigPad.current && !sigPad.current.isEmpty()) {
-      const canvas = sigPad.current.getCanvas();
-      const strokes = sigPad.current.getDrawingPath ? sigPad.current.getDrawingPath() : null;
+    const inst = sigPad.current;
+    const isPadEmpty = inst ? (typeof inst.isEmpty === 'function' ? inst.isEmpty() : false) : true;
+
+    if (inst && !isPadEmpty) {
+      const canvas = getCanvasFromSigPad(sigPad);
+      if (!canvas) {
+        showPromptMessage('Could not access signature canvas. Please try signing again.');
+        return;
+      }
+
+      const strokes = (typeof inst.getDrawingPath === 'function')
+        ? inst.getDrawingPath()
+        : (typeof inst.toData === 'function' ? inst.toData() : null);
+
       const complexity = analyzeSignatureComplexity(canvas, strokes);
       console.log('[SIGNATURE] Drawing complexity check:', complexity);
       setSignatureStats({ inkMass: complexity.mass, junctions: complexity.junctions, score: complexity.score });
 
-      const dataUrl = canvas.toDataURL('image/png');
+      const dataUrl = (typeof inst.toDataURL === 'function')
+        ? inst.toDataURL('image/png')
+        : canvas.toDataURL('image/png');
+
       setFormData(prev => ({ ...prev, applicantSignatureName: dataUrl }));
       setShowSignaturePad(false);
       setSignatureVerified(null); // Reset verification when updated

@@ -13,6 +13,7 @@ const SignaturePad = forwardRef(({
   useImperativeHandle(ref, () => ({
     clear: () => {
       const canvas = canvasRef.current;
+      if (!canvas) return;
       const ctx = canvas.getContext('2d');
       ctx.fillStyle = 'white';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -20,11 +21,10 @@ const SignaturePad = forwardRef(({
       if (onSignatureChange) onSignatureChange(null);
     },
     isEmpty: () => isEmpty,
-    getTrimmedCanvas: () => {
-      return canvasRef.current;
-    },
-    toDataURL: (type) => {
-      return canvasRef.current.toDataURL(type);
+    getCanvas: () => canvasRef.current,
+    getTrimmedCanvas: () => canvasRef.current,
+    toDataURL: (type = 'image/png') => {
+      return canvasRef.current ? canvasRef.current.toDataURL(type) : '';
     }
   }));
 
