@@ -265,78 +265,80 @@ const makeRequest = async (endpoint, options = {}) => {
     });
   };
 
-  let response;
-  const maxRetries = 3;
-  let lastError;
+  try {
+    let response;
+    const maxRetries = 3;
+    let lastError;
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      if (attempt === 0) {
-        await warmBackendConnection();
-      } else {
-        await warmBackendConnection({ force: true });
-        await new Promise(r => setTimeout(r, 3500));
-      }
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        if (attempt === 0) {
+          await warmBackendConnection();
+        } else {
+          await warmBackendConnection({ force: true });
+          await new Promise(r => setTimeout(r, 3500));
+        }
 
-      response = await executeRequest();
+        response = await executeRequest();
 
-      // Retry on 502, 503, 504 server cold-start errors from Render free tier
-      if ((response.status === 502 || response.status === 503 || response.status === 504) && attempt < maxRetries) {
-        lastError = new Error(`Server Error (${response.status}): Server is warming up...`);
-        continue;
-      }
+        // Retry on 502, 503, 504 server cold-start errors from Render free tier
+        if ((response.status === 502 || response.status === 503 || response.status === 504) && attempt < maxRetries) {
+          lastError = new Error(`Server Error (${response.status}): Server is warming up...`);
+          continue;
+        }
 
-      break;
-    } catch (error) {
-      lastError = error;
-      const isNetworkError = error instanceof Error && (error.message.startsWith('Network Error:') || error.name === 'TypeError');
-      if (isNetworkError && attempt < maxRetries) {
-        continue;
-      }
-      throw error;
-    }
-  }
-
-  if (!response || !response.ok) {
-    if (!response) {
-      throw lastError || new Error(`Network Error: Could not reach the server at ${url}.`);
-    }
-
-    // Handle 401 Unauthorized specifically
-    if (response.status === 401) {
-      // Clear auth data and redirect to login if unauthorized
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('currentUser');
-      if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
+        break;
+      } catch (error) {
+        lastError = error;
+        const isNetworkError = error instanceof Error && (error.message.startsWith('Network Error:') || error.name === 'TypeError');
+        if (isNetworkError && attempt < maxRetries) {
+          continue;
+        }
+        throw error;
       }
     }
 
-    // Handle 403 — account suspended mid-session
-    if (response.status === 403) {
-      let errBody;
-      try { errBody = await response.json(); } catch (_) { errBody = {}; }
-      if (errBody.suspended) {
-        localStorage.setItem('accountSuspended', 'true');
+    if (!response || !response.ok) {
+      if (!response) {
+        throw lastError || new Error(`Network Error: Could not reach the server at ${url}.`);
+      }
+
+      // Handle 401 Unauthorized specifically
+      if (response.status === 401) {
+        // Clear auth data and redirect to login if unauthorized
         localStorage.removeItem('authToken');
         localStorage.removeItem('currentUser');
-        localStorage.removeItem('applicantNo');
-        if (typeof window !== 'undefined' && window.location.pathname !== '/suspended') {
-          window.location.href = '/suspended';
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
         }
-        throw new Error(errBody.message || 'Account has been suspended.');
       }
-      throw new Error(errBody.message || errBody.error || `Request failed with status ${response.status}`);
+
+      // Handle 403 — account suspended mid-session
+      if (response.status === 403) {
+        let errBody;
+        try { errBody = await response.json(); } catch (_) { errBody = {}; }
+        if (errBody.suspended) {
+          localStorage.setItem('accountSuspended', 'true');
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('currentUser');
+          localStorage.removeItem('applicantNo');
+          if (typeof window !== 'undefined' && window.location.pathname !== '/suspended') {
+            window.location.href = '/suspended';
+          }
+          throw new Error(errBody.message || 'Account has been suspended.');
+        }
+        throw new Error(errBody.message || errBody.error || `Request failed with status ${response.status}`);
+      }
+
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        throw new Error(`Server Error (${response.status}): ${response.statusText || 'Server warming up or unavailable'}`);
+      }
+      throw new Error(errorData.message || errorData.error || `Request failed with status ${response.status}`);
     }
 
-    let errorData;
-    try {
-      errorData = await response.json();
-    } catch (e) {
-      throw new Error(`Server Error (${response.status}): ${response.statusText || 'Server warming up or unavailable'}`);
-    }
-    throw new Error(errorData.message || errorData.error || `Request failed with status ${response.status}`);
-  }
     try {
       return await response.json();
     } catch (e) {
