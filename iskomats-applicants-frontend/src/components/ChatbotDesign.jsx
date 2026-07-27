@@ -99,7 +99,8 @@ function ChatbotDesign({
   }, [isOpen, animateShow])
 
   useEffect(() => {
-    const cleanUrl = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl;
+    const safeUrl = typeof apiUrl === 'string' && apiUrl ? apiUrl : 'http://localhost:8000';
+    const cleanUrl = safeUrl.endsWith('/') ? safeUrl.slice(0, -1) : safeUrl;
     fetch(`${cleanUrl}/api/health`)
       .then(r => r.json())
       .then(data => setBackendStatus(data.status === 'ok' ? 'connected' : 'degraded'))
@@ -208,7 +209,8 @@ function ChatbotDesign({
     streamingTextRef.current = ''
 
     const currentActiveId = activeSession
-    const cleanUrl = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl;
+    const safeUrl = typeof apiUrl === 'string' && apiUrl ? apiUrl : 'http://localhost:8000';
+    const cleanUrl = safeUrl.endsWith('/') ? safeUrl.slice(0, -1) : safeUrl;
 
     try {
       abortRef.current = new AbortController()
@@ -368,8 +370,7 @@ function ChatbotDesign({
   const content = (
     <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: '14px', lineHeight: '1.5', color: '#374151' }}>
       <style>{`
-        .iskobots-design-root *, .iskobots-design-root *::before, .iskobots-design-root *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        .iskobots-design-root button, .iskobots-design-root input { all: unset; box-sizing: border-box; font-family: inherit; }
+        .iskobots-design-root *, .iskobots-design-root *::before, .iskobots-design-root *::after { box-sizing: border-box; }
         @keyframes animate-bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-100%); } }
         @keyframes animate-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
         .flex { display: flex; }
@@ -388,9 +389,9 @@ function ChatbotDesign({
         .gap-2 { gap: 0.5rem; }
         .gap-2\.5 { gap: 0.625rem; }
         .gap-3 { gap: 0.75rem; }
-        .fixed { position: fixed; }
-        .absolute { position: absolute; }
-        .relative { position: relative; }
+        .fixed { position: fixed !important; }
+        .absolute { position: absolute !important; }
+        .relative { position: relative !important; }
         .inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
         .w-1\.5 { width: 0.375rem; }
         .h-1\.5 { height: 0.375rem; }
@@ -404,8 +405,8 @@ function ChatbotDesign({
         .h-8 { height: 2rem; }
         .w-9 { width: 2.25rem; }
         .h-9 { height: 2.25rem; }
-        .w-12 { width: 3rem; }
-        .h-12 { height: 3rem; }
+        .w-12 { width: 3rem !important; }
+        .h-12 { height: 3rem !important; }
         .w-full { width: 100%; }
         .h-full { height: 100%; }
         .w-px { width: 1px; }
@@ -449,7 +450,7 @@ function ChatbotDesign({
         .leading-relaxed { line-height: 1.625; }
         .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .whitespace-pre-wrap { white-space: pre-wrap; word-wrap: break-word; }
-        .rounded-full { border-radius: 9999px; }
+        .rounded-full { border-radius: 9999px !important; }
         .rounded-2xl { border-radius: 1rem; }
         .rounded-xl { border-radius: 0.75rem; }
         .rounded-bl-sm { border-bottom-left-radius: 0.25rem; }
@@ -547,16 +548,29 @@ function ChatbotDesign({
           <button
             onClick={handleOpen}
             type="button"
-            className="fixed z-[999999] w-12 h-12 rounded-full text-white border-none cursor-pointer flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95 iskobots-mobile-trigger"
+            className="iskobots-mobile-trigger"
             style={{
-              ...posStyle,
+              position: 'fixed',
+              bottom: '24px',
+              right: '24px',
+              width: '56px',
+              height: '56px',
+              borderRadius: '50%',
               backgroundColor: primaryColor,
+              color: '#ffffff',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               boxShadow: `0 8px 28px ${primaryColor}66`,
               zIndex: zIndex,
+              transition: 'transform 0.25s ease, box-shadow 0.25s ease',
+              ...posStyle,
             }}
             aria-label={`Open ${botName} chat`}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-6 h-6">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: '26px', height: '26px' }}>
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             </svg>
           </button>
@@ -565,18 +579,32 @@ function ChatbotDesign({
         {/* ── Chat Widget ── */}
         {isOpen && (
           <div
-            className="fixed z-[999999] flex flex-col w-[320px] max-w-[calc(100vw-32px)] h-[440px] max-h-[calc(100vh-80px)] bg-white rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.2)] overflow-hidden iskobots-mobile-widget"
+            className="iskobots-mobile-widget"
             style={{
-              ...posStyle,
+              position: 'fixed',
+              bottom: '24px',
+              right: '24px',
+              width: '360px',
+              maxWidth: 'calc(100vw - 32px)',
+              height: '500px',
+              maxHeight: 'calc(100vh - 80px)',
+              backgroundColor: '#ffffff',
+              borderRadius: '20px',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
               zIndex: zIndex,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              border: '1px solid rgba(0,0,0,0.08)',
               opacity: animateShow ? 1 : 0,
               transform: animateShow ? 'translateY(0) scale(1)' : 'translateY(16px) scale(0.96)',
               transition: 'opacity 250ms ease-out, transform 250ms ease-out',
               ...(viewportHeight ? { height: `${viewportHeight}px`, maxHeight: `${viewportHeight}px`, bottom: 0 } : {}),
+              ...posStyle,
             }}
           >
             {/* ── Header ── */}
-            <div className="px-4 py-3 flex items-center justify-between shrink-0" style={{ backgroundColor: primaryColor }}>
+            <div className="px-4 py-3 flex items-center justify-between shrink-0" style={{ backgroundColor: primaryColor, color: '#fff' }}>
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-full bg-white/20 grid place-items-center shrink-0">
                   <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" className="w-4 h-4">
@@ -716,7 +744,16 @@ function ChatbotDesign({
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder="Ask IskoBots..."
-                className="flex-1 px-4 py-2 text-sm bg-gray-100 rounded-full border-none outline-none text-gray-800 placeholder:text-gray-400"
+                style={{
+                  flex: 1,
+                  padding: '8px 16px',
+                  fontSize: '14px',
+                  backgroundColor: '#f3f4f6',
+                  borderRadius: '9999px',
+                  border: 'none',
+                  outline: 'none',
+                  color: '#1f2937',
+                }}
               />
               {isTyping ? (
                 <button
