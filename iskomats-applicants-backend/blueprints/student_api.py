@@ -3717,7 +3717,7 @@ def face_match():
         return jsonify({'verified': False, 'message': str(e), 'confidence': 0.0}), 200
     except Exception as e:
         print(f"[FACE-MATCH] Unexpected Error: {str(e)}", flush=True)
-        return jsonify({'verified': False, 'message': f'Internal service error: {str(e)}'}), 500
+        return jsonify({'verified': False, 'message': f'Face verification issue: {str(e)}', 'confidence': 0.0}), 200
 
 
 @student_api_bp.route('/verification/signature-match', methods=['POST'])

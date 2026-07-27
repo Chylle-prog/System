@@ -452,8 +452,9 @@ def verify_face_with_id(user_photo_bytes, id_photo_bytes):
         user_image = _decode_face_image(user_photo_bytes)
         id_image   = _decode_face_image(id_photo_bytes)
 
-        # 1. Primary: UniFace neural ArcFace (RetinaFace + ArcFace)
-        use_neural = os.environ.get("USE_NEURAL_FACE_VERIFICATION", "true").lower() != "false"
+        # 1. Primary: UniFace neural ArcFace (skip on Render/memory-constrained servers to prevent 512MB RAM OOM 502/503 crashes)
+        is_render = bool(os.environ.get("RENDER")) or os.environ.get("DISABLE_NEURAL_FACE", "false").lower() == "true"
+        use_neural = not is_render and os.environ.get("USE_NEURAL_FACE_VERIFICATION", "true").lower() != "false"
         if use_neural:
             try:
                 detector, recognizer = _init_face_models()
