@@ -6875,7 +6875,8 @@ const StudentInfo = () => {
                                 }
                               } catch (err) {
                                 console.error('Match error:', err);
-                                const isWarmup = err.message && (err.message.includes('503') || err.message.includes('502') || err.message.includes('starting up') || err.message.includes('waking') || err.name === 'TypeError');
+                                const errStr = String(err?.message || err || '');
+                                const isWarmup = errStr.includes('503') || errStr.includes('502') || errStr.includes('starting up') || errStr.includes('waking') || errStr.includes('Network Error') || errStr.includes('CORS') || errStr.includes('reach the server') || err?.name === 'TypeError';
                                 const msg = isWarmup
                                   ? 'Server is waking up (Render cold start). Please click Verify again in 10–15 seconds.'
                                   : 'Server connection error. Please click Verify again.';
