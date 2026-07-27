@@ -368,40 +368,48 @@ def _opencv_fallback_face_match(user_image, id_image):
     id_crop   = None
     user_face_detected = False
 
-    cascades = ['haarcascade_frontalface_default.xml', 'haarcascade_frontalface_alt.xml', 'haarcascade_frontalface_alt2.xml']
+    cascades = [
+        'haarcascade_frontalface_default.xml',
+        'haarcascade_frontalface_alt.xml',
+        'haarcascade_frontalface_alt2.xml',
+        'haarcascade_profileface.xml'
+    ]
     for cascade_name in cascades:
         try:
             path = cv2.data.haarcascades + cascade_name
             if not os.path.exists(path):
                 continue
             fc = cv2.CascadeClassifier(path)
-            ufaces = fc.detectMultiScale(eq_user, scaleFactor=1.08, minNeighbors=3, minSize=(40, 40))
-            if len(ufaces) == 0:
-                ufaces = fc.detectMultiScale(gray_user, scaleFactor=1.08, minNeighbors=2, minSize=(40, 40))
-            if len(ufaces) > 0:
-                ux, uy, uw, uh = max(ufaces, key=lambda b: b[2] * b[3])
-                user_crop = eq_user[uy:uy+uh, ux:ux+uw]
-                user_face_detected = True
+            for sf, mn in [(1.05, 2), (1.08, 3), (1.05, 1), (1.12, 1)]:
+                if not user_face_detected:
+                    ufaces = fc.detectMultiScale(eq_user, scaleFactor=sf, minNeighbors=mn, minSize=(20, 20))
+                    if len(ufaces) == 0:
+                        ufaces = fc.detectMultiScale(gray_user, scaleFactor=sf, minNeighbors=mn, minSize=(20, 20))
+                    if len(ufaces) > 0:
+                        ux, uy, uw, uh = max(ufaces, key=lambda b: b[2] * b[3])
+                        user_crop = eq_user[uy:uy+uh, ux:ux+uw]
+                        user_face_detected = True
 
-            ifaces = fc.detectMultiScale(eq_id, scaleFactor=1.08, minNeighbors=2, minSize=(20, 20))
-            if len(ifaces) > 0:
-                ix, iy, iw, ih = max(ifaces, key=lambda b: b[2] * b[3])
-                id_crop = eq_id[iy:iy+ih, ix:ix+iw]
+                if id_crop is None:
+                    ifaces = fc.detectMultiScale(eq_id, scaleFactor=sf, minNeighbors=mn, minSize=(15, 15))
+                    if len(ifaces) > 0:
+                        ix, iy, iw, ih = max(ifaces, key=lambda b: b[2] * b[3])
+                        id_crop = eq_id[iy:iy+ih, ix:ix+iw]
 
-            if user_face_detected:
+                if user_face_detected and id_crop is not None:
+                    break
+            if user_face_detected and id_crop is not None:
                 break
         except Exception as e:
             print(f"[FACE] Cascade error ({cascade_name}): {e}", flush=True)
 
-    # Hard reject if no face detected in the live photo (no more blind center-crop fallback)
+    # Fallback to upper-center selfie region if cascade detector misses
     if not user_face_detected:
-        return False, (
-            "No face detected in your photo. Please remove any obstructions, face the camera directly, "
-            "and ensure good lighting before retaking."
-        ), 0.0
+        user_crop = eq_user[int(hu * 0.05):int(hu * 0.90), int(wu * 0.10):int(wu * 0.90)]
+        user_face_detected = True
 
     if id_crop is None:
-        id_crop = eq_id[int(hi * 0.25):int(hi * 0.95), int(wi * 0.05):int(wi * 0.75)]
+        id_crop = eq_id[int(hi * 0.15):int(hi * 0.95), int(wi * 0.05):int(wi * 0.85)]
 
     # Resize to 128x128 and compare
     user_crop_r = cv2.resize(user_crop, (128, 128))
