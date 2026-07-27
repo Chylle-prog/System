@@ -1346,12 +1346,60 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
 
     return success, msg, meta
 
+def detect_document_tampering(image_bytes):
+    """
+    Advanced Document Tampering & Digital Manipulation Detector (Python OpenCV).
+    Analyzes image pixels for artificial digital overlay blocks, solid whiteout patches,
+    drawn cover-ups, and unnatural uniform color rectangles.
+    """
+    if not image_bytes:
+        return False, "No image provided", 0
+
+    try:
+        raw = resolve_verification_image_bytes(image_bytes)
+        if not raw:
+            return False, "Could not resolve image bytes", 0
+
+        nparr = np.frombuffer(raw, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            return False, "Failed to decode image", 0
+
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+        h, w = gray.shape[:2]
+
+        grid_w, grid_h = 20, 15
+        cols, rows = w // grid_w, h // grid_h
+
+        suspicious_patches = 0
+        for r in range(rows):
+            for c in range(cols):
+                roi = gray[r*grid_h:(r+1)*grid_h, c*grid_w:(c+1)*grid_w]
+                mean_val, std_val = cv2.meanStdDev(roi)
+                m = mean_val[0][0]
+                s = std_val[0][0]
+                if (m > 242 and s < 2.5) or (m < 20 and s < 1.8):
+                    suspicious_patches += 1
+
+        if suspicious_patches >= 4:
+            return True, f"Digital edit / overlay block detected on document ({suspicious_patches} artificial overlay patches found). Please upload an unedited document.", suspicious_patches
+
+        return False, "Authentic document (No digital tampering detected)", 0
+    except Exception as exc:
+        print(f"[TAMPER DETECTOR] Error: {exc}", flush=True)
+        return False, f"Tamper detection error: {exc}", 0
+
 def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name=None, last_name=None, **kwargs):
     """
     Main entry point for document verification (COR, Grades, Indigency, ID).
     """
     if not image_bytes:
         return False, "No document image provided.", "", {}
+
+    # Pre-scan Digital Tamper & Manipulation Check
+    is_edited, tamper_msg, _ = detect_document_tampering(image_bytes)
+    if is_edited:
+        return False, f"Tampering Alert: {tamper_msg}", "", {'tamper_alert': True, 'details': [tamper_msg]}
 
     expected_name = kwargs.get('expected_name') or kwargs.get('full_name')
     if expected_name and (not first_name or not last_name):

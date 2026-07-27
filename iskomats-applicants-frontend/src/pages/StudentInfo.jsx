@@ -2547,6 +2547,121 @@ const StudentInfo = () => {
     });
   }
 
+  /**
+   * Advanced Document Tampering & Digital Manipulation Detector
+   * Analyzes image pixels for artificial digital overlay blocks, solid whiteout patches,
+   * drawn cover-ups, and unnatural uniform color rectangles.
+   */
+  function detectDocumentTampering(imageSource) {
+    return new Promise((resolve) => {
+      if (localStorage.getItem('debug_skip_tamper_check') === 'true') {
+        resolve({ edited: false, reason: "Tamper check bypassed via debug toggle" });
+        return;
+      }
+      if (!imageSource) {
+        resolve({ edited: false, reason: "Authentic document" });
+        return;
+      }
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          const w = img.width;
+          const h = img.height;
+          if (!w || !h) {
+            resolve({ edited: false, reason: "Authentic document" });
+            return;
+          }
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, w, h);
+
+          const imgData = ctx.getImageData(0, 0, w, h);
+          const data = imgData.data;
+
+          // Grid patch variance analysis (20x15 pixel grid cells)
+          const gridW = 20;
+          const gridH = 15;
+          const cols = Math.floor(w / gridW);
+          const rows = Math.floor(h / gridH);
+
+          let suspiciousPatches = 0;
+
+          for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+              const startX = c * gridW;
+              const startY = r * gridH;
+
+              let sumR = 0, sumG = 0, sumB = 0;
+              let count = 0;
+              const pixels = [];
+
+              for (let y = startY; y < startY + gridH; y++) {
+                for (let x = startX; x < startX + gridW; x++) {
+                  const idx = (y * w + x) * 4;
+                  const red = data[idx];
+                  const green = data[idx + 1];
+                  const blue = data[idx + 2];
+                  sumR += red;
+                  sumG += green;
+                  sumB += blue;
+                  pixels.push(0.299 * red + 0.587 * green + 0.114 * blue);
+                  count++;
+                }
+              }
+
+              const avgR = sumR / count;
+              const avgG = sumG / count;
+              const avgB = sumB / count;
+              const avgGray = 0.299 * avgR + 0.587 * avgG + 0.114 * avgB;
+
+              let varianceSum = 0;
+              for (let p of pixels) {
+                varianceSum += Math.pow(p - avgGray, 2);
+              }
+              const stdDev = Math.sqrt(varianceSum / count);
+
+              // Pure solid digital fill: avg > 242 (bright white block) AND stdDev < 2.5 (zero noise texture)
+              // OR solid black censoring block: avg < 20 AND stdDev < 1.8
+              const isArtificialWhitePatch = (avgR > 242 && avgG > 242 && avgB > 242 && stdDev < 2.5);
+              const isArtificialBlackPatch = (avgGray < 20 && stdDev < 1.8);
+
+              if (isArtificialWhitePatch || isArtificialBlackPatch) {
+                suspiciousPatches++;
+              }
+            }
+          }
+
+          if (suspiciousPatches >= 4) {
+            resolve({
+              edited: true,
+              reason: `Digital edit / overlay block detected on document (${suspiciousPatches} artificial overlay patches found). Please upload an unedited document.`,
+              patchCount: suspiciousPatches
+            });
+            return;
+          }
+
+          resolve({ edited: false, reason: "Authentic document" });
+        } catch (err) {
+          console.warn("[TAMPER DETECTOR] Analysis error:", err);
+          resolve({ edited: false, reason: "Authentic document" });
+        }
+      };
+      img.onerror = () => resolve({ edited: false, reason: "Authentic document" });
+
+      if (typeof imageSource === 'string' && imageSource.startsWith('http')) {
+        const sep = imageSource.includes('?') ? '&' : '?';
+        img.src = `${imageSource}${sep}_cb=${Date.now()}`;
+      } else if (typeof imageSource === 'string') {
+        img.src = imageSource;
+      } else {
+        resolve({ edited: false, reason: "Authentic document" });
+      }
+    });
+  }
+
   async function performOcrVerification(docType, docParam, extraParams = {}, videoUrl = null, silent = false) {
     const setStatus = (status) => {
       if (silent) return;
@@ -2604,6 +2719,41 @@ const StudentInfo = () => {
         const rawResolved = await applicantAPI.resolveDocument(fieldMap[docType] || 'document', docParam);
         if (!silent) setStatus("Enhancing document contrast for OCR scanner...");
         resolvedParam = rawResolved ? await preprocessImageForOcr(rawResolved) : null;
+      }
+
+      // Pre-scan Document Tamper Check
+      if (!silent) setStatus("Analyzing document authenticity & checking for digital edits...");
+      let tamperCheck = { edited: false, reason: "Authentic document" };
+      if (docType === 'SchoolID') {
+        const [tFront, tBack] = await Promise.all([
+          resolvedParam?.front ? detectDocumentTampering(resolvedParam.front) : Promise.resolve({ edited: false }),
+          resolvedParam?.back ? detectDocumentTampering(resolvedParam.back) : Promise.resolve({ edited: false })
+        ]);
+        if (tFront.edited || tBack.edited) {
+          tamperCheck = {
+            edited: true,
+            reason: `Digital edit / overlay block detected on School ID (${tFront.edited ? 'Front ID' : 'Back ID'}). Please upload an unedited document.`
+          };
+        }
+      } else if (resolvedParam) {
+        tamperCheck = await detectDocumentTampering(resolvedParam);
+      }
+
+      if (tamperCheck.edited) {
+        const scoreDetails = {
+          "Document Authenticity": false,
+          "Digital Tamper Check": false,
+          "First Name": false,
+          "Last Name": false,
+          "Video Proof": true
+        };
+        const finalMessage = `Tampering Alert: ${tamperCheck.reason}`;
+        const resultsList = [{ doc: docType, verified: false, message: finalMessage, score_details: scoreDetails }];
+        if (!silent) {
+          setVerified('failed');
+          setStatus(`Verification failed: ${finalMessage}`);
+        }
+        return { isSuccess: false, scoreDetails, finalMessage, resultsList, detectedText: "[DIGITAL TAMPERING DETECTED]" };
       }
 
       const runOcrOnImage = async (imgSource, stepName = "") => {
@@ -5354,6 +5504,32 @@ const StudentInfo = () => {
             onClick={() => {
               const isBypassed = localStorage.getItem('debug_skip_alternate_check') === 'true';
               localStorage.setItem('debug_skip_alternate_check', isBypassed ? 'false' : 'true');
+              window.location.reload();
+            }}
+            style={{
+              background: '#3b82f6',
+              color: 'white',
+              border: 'none',
+              padding: '4px 8px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '0.7rem',
+              fontWeight: '700'
+            }}
+          >
+            Toggle
+          </button>
+        </div>
+
+        {/* Digital Tamper Check Row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ color: localStorage.getItem('debug_skip_tamper_check') === 'true' ? '#10b981' : '#ef4444' }}>●</span>
+          <span>Tamper Check: {localStorage.getItem('debug_skip_tamper_check') === 'true' ? 'Bypassed' : 'Enabled'}</span>
+          <button
+            type="button"
+            onClick={() => {
+              const isBypassed = localStorage.getItem('debug_skip_tamper_check') === 'true';
+              localStorage.setItem('debug_skip_tamper_check', isBypassed ? 'false' : 'true');
               window.location.reload();
             }}
             style={{
