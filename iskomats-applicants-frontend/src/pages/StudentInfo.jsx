@@ -936,23 +936,15 @@ function extractGpaFromText(text, expectedGpa = null) {
     .map(s => parseFloat(s))
     .filter(v => !isNaN(v) && v >= 1.0 && v <= 5.0);
 
-  // 5. Scan 3-digit grade integers in valid GPA range (e.g. 330 -> 3.30, 350 -> 3.50, 300 -> 3.00)
-  const intMatches = String(text).match(/\b([1-5][0-9]{2})\b/g) || [];
-  const integers = intMatches
-    .map(s => parseFloat(s) / 100.0)
-    .filter(v => !isNaN(v) && v >= 1.0 && v <= 5.0);
-
-  const candidates = [...decimals, ...integers];
-
-  if (candidates.length > 0) {
+  if (decimals.length > 0) {
     if (expectedGpa) {
       const expVal = parseFloat(String(expectedGpa).replace(/[^0-9.]/g, ''));
       if (!isNaN(expVal)) {
-        const matchCand = candidates.find(c => Math.abs(c - expVal) <= 0.05);
+        const matchCand = decimals.find(c => Math.abs(c - expVal) <= 0.05);
         if (matchCand !== undefined) return toTwoDecimals(matchCand);
       }
     }
-    return toTwoDecimals(candidates[candidates.length - 1]);
+    return toTwoDecimals(decimals[decimals.length - 1]);
   }
 
   return null;
@@ -2467,56 +2459,25 @@ const StudentInfo = () => {
           const imgData = ctx.getImageData(0, 0, w, h);
           const data = imgData.data;
 
-          const grayscale = new Uint8ClampedArray(w * h);
+          // High-contrast grayscale normalization with linear contrast stretching
+          let minGray = 255;
+          let maxGray = 0;
           for (let i = 0; i < data.length; i += 4) {
             const gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-            grayscale[i / 4] = gray;
+            if (gray < minGray) minGray = gray;
+            if (gray > maxGray) maxGray = gray;
           }
 
-          const integral = new Int32Array(w * h);
-          for (let y = 0; y < h; y++) {
-            let sum = 0;
-            for (let x = 0; x < w; x++) {
-              const idx = y * w + x;
-              sum += grayscale[idx];
-              if (y === 0) {
-                integral[idx] = sum;
-              } else {
-                integral[idx] = integral[(y - 1) * w + x] + sum;
-              }
-            }
-          }
-
-          const S = Math.round(w / 8);
-          const s2 = Math.round(S / 2);
-          const t = 15;
-
-          for (let y = 0; y < h; y++) {
-            for (let x = 0; x < w; x++) {
-              const idx = y * w + x;
-              const x1 = Math.max(0, x - s2);
-              const x2 = Math.min(w - 1, x + s2);
-              const y1 = Math.max(0, y - s2);
-              const y2 = Math.min(h - 1, y + s2);
-
-              const count = (x2 - x1 + 1) * (y2 - y1 + 1);
-              let sum = integral[y2 * w + x2];
-              if (x1 > 0) sum -= integral[y2 * w + (x1 - 1)];
-              if (y1 > 0) sum -= integral[(y1 - 1) * w + x2];
-              if (x1 > 0 && y1 > 0) sum += integral[(y1 - 1) * w + (x1 - 1)];
-
-              const pixelIdx = idx * 4;
-              if (grayscale[idx] * count < sum * (100 - t) / 100) {
-                data[pixelIdx] = 0;
-                data[pixelIdx + 1] = 0;
-                data[pixelIdx + 2] = 0;
-              } else {
-                data[pixelIdx] = 255;
-                data[pixelIdx + 1] = 255;
-                data[pixelIdx + 2] = 255;
-              }
-              data[pixelIdx + 3] = 255;
-            }
+          const range = Math.max(1, maxGray - minGray);
+          for (let i = 0; i < data.length; i += 4) {
+            const gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+            const norm = Math.round(((gray - minGray) / range) * 255);
+            // Apply contrast stretching factor (1.25) to sharpen dark text while preserving shaded table backgrounds
+            const enhanced = Math.min(255, Math.max(0, Math.round((norm - 128) * 1.25 + 128)));
+            data[i] = enhanced;
+            data[i + 1] = enhanced;
+            data[i + 2] = enhanced;
+            data[i + 3] = 255;
           }
 
           ctx.putImageData(imgData, 0, 0);

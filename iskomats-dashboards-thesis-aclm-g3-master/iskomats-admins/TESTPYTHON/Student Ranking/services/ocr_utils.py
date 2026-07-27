@@ -1486,10 +1486,8 @@ def parse_grades_document(raw_text):
 
     if 'gpa' not in fields:
         decimals = [float(x) for x in re.findall(r'\b[1-5]\.[0-9]{1,4}\b', raw_text) if 1.0 <= float(x) <= 5.0]
-        integers = [float(x) / 100.0 for x in re.findall(r'\b[1-5][0-9]{2}\b', raw_text) if 1.0 <= float(x) / 100.0 <= 5.0]
-        cands = decimals + integers
-        if cands:
-            fields['gpa'] = f"{cands[-1]:.2f}"
+        if decimals:
+            fields['gpa'] = f"{decimals[-1]:.2f}"
 
     # Extract Total Units
     units_match = re.search(r'Total\s*Units\s*[:\-=\s]*([0-9]+)', raw_text, re.IGNORECASE)
@@ -1544,15 +1542,13 @@ def verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_
         if exp_gpa_val:
             e_gpa = float(exp_gpa_val.group(0))
             decimals = [float(x) for x in re.findall(r'\b[1-5]\.[0-9]{1,4}\b', raw_text) if 1.0 <= float(x) <= 5.0]
-            integers = [float(x) / 100.0 for x in re.findall(r'\b[1-5][0-9]{2}\b', raw_text) if 1.0 <= float(x) / 100.0 <= 5.0]
-            candidates = decimals + integers
 
-            if candidates:
-                match_cand = next((c for c in candidates if abs(c - e_gpa) <= 0.05), None)
+            if decimals:
+                match_cand = next((c for c in decimals if abs(c - e_gpa) <= 0.05), None)
                 if match_cand is not None:
                     found_gpa_val = f"{match_cand:.2f}"
                 elif not found_gpa_val:
-                    found_gpa_val = f"{candidates[-1]:.2f}"
+                    found_gpa_val = f"{decimals[-1]:.2f}"
 
         meta['detected_gpa'] = found_gpa_val
 
