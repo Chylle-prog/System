@@ -1456,7 +1456,8 @@ const StudentInfo = () => {
               'enrollment', 'registration', 'certificate', 'student', 'college', 'semester', 'academic',
               'official', 'course', 'school', 'university', 'whom', 'concern', 'certify', 'bonafide',
               'enrolled', 'registrar', 'dean', 'republic', 'philippines', 'department',
-              'dlsl', 'lipa', 'salle', 'bsit', 'units', 'cor', 'coe', 'total', 'pathfi', 'coprog'
+              'dlsl', 'lipa', 'salle', 'bsit', 'units', 'cor', 'coe', 'total', 'pathfi', 'coprog',
+              'coworld', 'dismath', 'intcom', 'itbupro', 'nstp', 'purpcom', 'readphi', '2025', '2026'
             ];
           } else if (fieldName?.includes('Grades') || fieldName?.includes('grades')) {
             targetKeywords = [
@@ -1486,14 +1487,6 @@ const StudentInfo = () => {
             };
           }
 
-          if (fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('mayorCOE')) {
-            return {
-              valid: true,
-              reason: "COE Video Proof Validated",
-              detectedText: textLogs.join("\n\n") || "[COE Video Proof Attached]"
-            };
-          }
-
           return {
             valid: false,
             reason: `Video proof validation failed: No matching document text or keywords detected in video frames.`,
@@ -1509,7 +1502,7 @@ const StudentInfo = () => {
           }
         }, 20000);
 
-        const checkPoints = [0.15, 0.4, 0.65, 0.85];
+        const checkPoints = [0.1, 0.25, 0.4, 0.55, 0.7, 0.85];
         let currentCheckIndex = 0;
         let accumulatedText = [];
         let hasSeeked = false;
@@ -1527,7 +1520,7 @@ const StudentInfo = () => {
           }
 
           try {
-            const maxDim = 640;
+            const maxDim = 1280;
             let targetW = w;
             let targetH = h;
             if (targetW > maxDim || targetH > maxDim) {
