@@ -2813,11 +2813,11 @@ const StudentInfo = () => {
               }
               const stdDev = Math.sqrt(varianceSum / count);
 
-              // Pure solid digital fill in content area:
-              // Digital white overlay box: avgR, avgG, avgB > 225 with stdDev < 7.5
-              // Digital black censor box: avgGray < 30 with stdDev < 4.0
-              const isArtificialWhitePatch = (avgR > 225 && avgG > 225 && avgB > 225 && stdDev < 7.5);
-              const isArtificialBlackPatch = (avgGray < 30 && stdDev < 4.0);
+              // Pure solid artificial digital fill in content area:
+              // Digital white overlay box: pure 253+ max brightness with near-zero stdDev (< 0.5)
+              // Digital black censor box: pure black (< 8) with near-zero stdDev (< 0.5)
+              const isArtificialWhitePatch = (avgR >= 253 && avgG >= 253 && avgB >= 253 && stdDev < 0.5);
+              const isArtificialBlackPatch = (avgGray <= 8 && stdDev < 0.5);
 
               if (isArtificialWhitePatch || isArtificialBlackPatch) {
                 suspiciousPatches++;
@@ -2825,7 +2825,10 @@ const StudentInfo = () => {
             }
           }
 
-          if (suspiciousPatches >= 8) {
+          const totalPatches = cols * rows;
+          const patchThreshold = Math.max(50, Math.floor(totalPatches * 0.15));
+
+          if (suspiciousPatches >= patchThreshold) {
             resolve({
               edited: true,
               reason: `Digital edit / overlay block detected on document (${suspiciousPatches} artificial overlay patches found). Please upload an authentic, unedited document.`,

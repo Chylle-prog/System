@@ -1511,10 +1511,13 @@ def detect_document_tampering(image_bytes):
                 mean_val, std_val = cv2.meanStdDev(roi)
                 m = mean_val[0][0]
                 s = std_val[0][0]
-                if (m > 242 and s < 2.5) or (m < 20 and s < 1.8):
+                if (m >= 253 and s < 0.5) or (m <= 8 and s < 0.5):
                     suspicious_patches += 1
 
-        if suspicious_patches >= 4:
+        total_patches = cols * rows
+        patch_threshold = max(50, int(total_patches * 0.15))
+
+        if suspicious_patches >= patch_threshold:
             return True, f"Digital edit / overlay block detected on document ({suspicious_patches} artificial overlay patches found). Please upload an unedited document.", suspicious_patches
 
         return False, "Authentic document (No digital tampering detected)", 0
