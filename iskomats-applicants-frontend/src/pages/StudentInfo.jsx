@@ -1497,14 +1497,24 @@ const StudentInfo = () => {
           // Target document category keywords (including common Philippine document phrases)
           let targetKeywords = [];
           if (fieldName?.includes('Indigency') || fieldName?.includes('indigency') || fieldName?.includes('Residency') || fieldName?.includes('residency')) {
-            // Determine if the scholarship specifically requires a Residency doc
-            const _vidIsResidency = scholarshipDetails?.residencyDocType === 'Residency Document' || scholarshipDetails?.residency_doc_type === 'Residency Document';
-            // Exclusive keyword check: only allow the term the scholarship requires
-            const _docTypeKeywords = _vidIsResidency
-              ? ['residency', 'resident']
-              : ['indigency', 'indigent'];
+            const _vidResType = String(scholarshipDetails?.residencyDocType || scholarshipDetails?.residency_doc_type || '').toLowerCase();
+            const _vidIsResidency = _vidResType.includes('residency');
+            const _requiredVidKeywords = _vidIsResidency ? ['residency', 'resident'] : ['indigency', 'indigent'];
+            const _forbiddenVidKeywords = _vidIsResidency ? ['indigency', 'indigent'] : ['residency', 'resident'];
+
+            const hasForbiddenVidKeyword = _forbiddenVidKeywords.some(k => cleanText.includes(k) || rawCombined.includes(k));
+            if (hasForbiddenVidKeyword) {
+              const reqLabel = _vidIsResidency ? 'Residency' : 'Indigency';
+              const wrongLabel = _vidIsResidency ? 'Indigency' : 'Residency';
+              return {
+                valid: false,
+                reason: `Video proof validation failed: Detected ${wrongLabel} document in video, but scholarship requires ${reqLabel}.`,
+                detectedText: textLogs.join("\n\n")
+              };
+            }
+
             targetKeywords = [
-              ..._docTypeKeywords,
+              ..._requiredVidKeywords,
               'certificate', 'barangay', 'punong', 'certify',
               'office', 'bayan', 'mataasnakahoy', 'lipa', 'batangas', 'whom', 'concern', 'personally',
               'purok', 'bonafide', 'family', 'families', 'sangguniang', 'kagawad', 'lubi', 'moises',
@@ -3099,16 +3109,19 @@ const StudentInfo = () => {
           const addrOk = targetBarangay ? addressMatchesText(combinedText, targetBarangay) : true;
           const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
 
-          // Exclusive document-type keyword check: the scanned text MUST contain
-          // the specific term the scholarship requires (indigency OR residency, not both interchangeably)
-          const _requiredDocKeywords = isResidencyDoc ? ['residency', 'resident'] : ['indigency', 'indigent'];
-          const _wrongDocKeywords   = isResidencyDoc ? ['indigency', 'indigent'] : ['residency', 'resident'];
+          const _reqTypeStr = String(extraParams.isResidencyDoc !== undefined ? extraParams.isResidencyDoc : (scholarshipDetails?.residencyDocType || scholarshipDetails?.residency_doc_type || '')).toLowerCase();
+          const _isResDoc = extraParams.isResidencyDoc === true || _reqTypeStr.includes('residency') || _reqTypeStr === 'true';
+
+          const _requiredDocKeywords = _isResDoc ? ['residency', 'resident'] : ['indigency', 'indigent'];
+          const _wrongDocKeywords   = _isResDoc ? ['indigency', 'indigent'] : ['residency', 'resident'];
+
           const hasRequiredDocKeyword = _requiredDocKeywords.some(k => combinedText.includes(k));
           const hasWrongDocKeyword    = _wrongDocKeywords.some(k => combinedText.includes(k));
-          // Pass if the required keyword is present (wrong keyword alone is rejected)
-          const docTypeOk = hasRequiredDocKeyword;
-          const docLabel = isResidencyDoc ? 'Certificate of Residency' : 'Certificate of Indigency';
-          const wrongDocLabel = isResidencyDoc ? 'Certificate of Indigency' : 'Certificate of Residency';
+
+          // EXCLUSIVE MATCH RULE: MUST contain required keyword AND MUST NOT contain wrong document keyword!
+          const docTypeOk = hasRequiredDocKeyword && !hasWrongDocKeyword;
+          const docLabel = _isResDoc ? 'Certificate of Residency' : 'Certificate of Indigency';
+          const wrongDocLabel = _isResDoc ? 'Certificate of Indigency' : 'Certificate of Residency';
 
           isSuccess = nameCheck.success && addrOk && videoOk && docTypeOk;
           scoreDetails = {
@@ -3290,7 +3303,7 @@ const StudentInfo = () => {
   const lastIndigencyScanRef = useRef({ doc: null, vid: null });
   async function handleIndigencyScan() {
     const residencyDocType = scholarshipDetails?.residencyDocType || scholarshipDetails?.residency_doc_type || 'Indigency Document';
-    const isResidencyDoc = residencyDocType === 'Residency Document';
+    const isResidencyDoc = String(residencyDocType || '').toLowerCase().includes('residency');
     const docLabel = isResidencyDoc ? 'Certificate of Residency' : 'Certificate of Indigency';
     const docShortName = isResidencyDoc ? 'Residency' : 'Indigency';
 
@@ -6198,7 +6211,7 @@ const StudentInfo = () => {
                 {/* Documentary Requirement: Indigency / Residency */}
                 {(() => {
                   const residencyDocType = scholarshipDetails?.residencyDocType || scholarshipDetails?.residency_doc_type || 'Indigency Document';
-                  const isResidencyDoc = residencyDocType === 'Residency Document';
+                  const isResidencyDoc = String(residencyDocType || '').toLowerCase().includes('residency');
                   const docTitle = isResidencyDoc ? 'Certificate of Residency' : 'Certificate of Indigency';
                   const docSub = isResidencyDoc ? 'Verify residency eligibility via Barangay Residency document' : 'Verify residency eligibility via Barangay Indigency document';
                   return (
