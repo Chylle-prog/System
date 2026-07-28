@@ -1886,8 +1886,8 @@ const StudentInfo = () => {
   const [faceDetecting, setFaceDetecting] = useState(false);
   const [cameraPermissionStatus, setCameraPermissionStatus] = useState('');
   const [ocrError, setOcrError] = useState('');
-  const [ocrVerified, setOcrVerified] = useState('success');
-  const [ocrStatus, setOcrStatus] = useState('Passed Automatically');
+  const [ocrVerified, setOcrVerified] = useState(null);
+  const [ocrStatus, setOcrStatus] = useState('');
   const [lightboxSrc, setLightboxSrc] = useState(null);
   const [photos, setPhotos] = useState({
     id_front: null,
@@ -2932,30 +2932,6 @@ const StudentInfo = () => {
       else if (docType === 'Grades') { setGradesVerified(v); }
       else if (docType === 'SchoolID') { setIdVerified(v); }
     };
-
-    // TEMPORARY OVERRIDE: Automatically pass all document & video verifications for Step 1 & Step 3
-    if (docType === 'Indigency' || docType === 'Enrollment' || docType === 'Grades' || docType === 'SchoolID') {
-      const finalMessage = "Document and video verification passed automatically.";
-      const scoreDetails = { "Document": true, "Video": true, "Verification Status": "Passed Automatically" };
-      const resultsList = [{ doc: docType, verified: true, message: finalMessage, score_details: scoreDetails }];
-
-      if (!silent) {
-        setVerified('success');
-        setStatus(finalMessage);
-        if (docType === 'Indigency') setIndigencyResults(resultsList);
-        else if (docType === 'Enrollment') setCoeResults(resultsList);
-        else if (docType === 'Grades') setGradesResults(resultsList);
-        else if (docType === 'SchoolID') setIdResults(resultsList);
-      }
-
-      return {
-        isSuccess: true,
-        scoreDetails,
-        finalMessage,
-        resultsList,
-        detectedText: "[AUTO-PASS ENABLED]"
-      };
-    }
 
     try {
       if (!silent) {
