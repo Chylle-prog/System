@@ -1831,6 +1831,25 @@ const StudentInfo = () => {
     Indigency: { status: 'Not Scanned', detectedText: '', requirements: {}, scoreDetails: {}, timestamp: null }
   });
 
+  const stopAllScannings = () => {
+    setScanProgress(0);
+    setStatus("Scanning stopped by user.");
+    setVerified(null);
+    setCoeVerified(null);
+    setGradesVerified(null);
+    setIdVerified(null);
+    setFaceVerified(null);
+    setSignatureVerified(null);
+
+    if (tesseractWorkerSingleton) {
+      try {
+        tesseractWorkerSingleton.terminate();
+      } catch (e) {}
+      tesseractWorkerSingleton = null;
+    }
+    console.log('[DEBUG] Stopped all active scannings successfully.');
+  };
+
   const fillDocsFromSupabase = async () => {
     try {
       const profile = await applicantAPI.getProfile();
@@ -5658,6 +5677,30 @@ const StudentInfo = () => {
                 Toggle
               </button>
             </div>
+
+            {/* Stop/Cancel All Scannings Button */}
+            <button
+              type="button"
+              onClick={stopAllScannings}
+              style={{
+                width: '100%',
+                background: '#dc2626',
+                color: 'white',
+                border: 'none',
+                padding: '7px 12px',
+                borderRadius: '10px',
+                cursor: 'pointer',
+                fontSize: '0.75rem',
+                fontWeight: '800',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                boxShadow: '0 2px 8px rgba(220, 38, 38, 0.3)'
+              }}
+            >
+              <i className="fas fa-hand"></i> Stop / Cancel All Scannings
+            </button>
 
             {/* Fill Docs from Supabase Button */}
             <button
