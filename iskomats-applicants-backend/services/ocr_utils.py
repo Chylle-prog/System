@@ -1441,8 +1441,11 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
     if not (first_ok and last_ok and sequence_ok):
         failures.append(f"Name mismatch (Expected: '{first_name} {last_name}', Found in COR: '{parsed_fields.get('name', 'Not found')}')")
 
-    # 2. STUDENT ID MATCHING
-    if expected_id_no and str(expected_id_no).strip():
+    # 2. STUDENT ID MATCHING (Only if required ID is School ID, NOT National ID)
+    id_type = kwargs.get('id_type') or kwargs.get('idType') or 'School ID'
+    is_national_id = (str(id_type).lower() == 'national id')
+
+    if not is_national_id and expected_id_no and str(expected_id_no).strip():
         exp_id_clean = normalize_id_number(expected_id_no)
         found_id_clean = normalize_id_number(parsed_fields.get('student_id', ''))
         doc_raw_clean = normalize_id_number(raw_text)
@@ -1788,8 +1791,11 @@ def verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_
     if not (first_ok and last_ok and sequence_ok):
         failures.append(f"Name mismatch (Expected: '{first_name} {last_name}', Found in Grades: '{parsed_fields.get('name', 'Not found')}')")
 
-    # 2. STUDENT ID MATCHING
-    if expected_id_no and str(expected_id_no).strip():
+    # 2. STUDENT ID MATCHING (Only if required ID is School ID, NOT National ID)
+    id_type = kwargs.get('id_type') or kwargs.get('idType') or 'School ID'
+    is_national_id = (str(id_type).lower() == 'national id')
+
+    if not is_national_id and expected_id_no and str(expected_id_no).strip():
         exp_id_clean = re.sub(r'[^a-zA-Z0-9]', '', str(expected_id_no)).lower()
         found_id_clean = re.sub(r'[^a-zA-Z0-9]', '', parsed_fields.get('student_id', '')).lower()
         doc_raw_clean = re.sub(r'[^a-zA-Z0-9]', '', str(raw_text)).lower()
