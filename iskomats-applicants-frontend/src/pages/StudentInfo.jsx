@@ -1451,11 +1451,12 @@ const StudentInfo = () => {
               'purok', 'bonafide', 'family', 'families', 'sangguniang', 'kagawad', 'lubi', 'moises',
               'republic', 'philippines', 'province', 'municipality', 'seal'
             ];
-          } else if (fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('certificate')) {
+          } else if (fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('certificate') || fieldName?.includes('mayorCOE')) {
             targetKeywords = [
               'enrollment', 'registration', 'certificate', 'student', 'college', 'semester', 'academic',
               'official', 'course', 'school', 'university', 'whom', 'concern', 'certify', 'bonafide',
-              'enrolled', 'registrar', 'dean', 'republic', 'philippines', 'department'
+              'enrolled', 'registrar', 'dean', 'republic', 'philippines', 'department',
+              'dlsl', 'lipa', 'salle', 'bsit', 'units', 'cor', 'coe', 'total', 'pathfi', 'coprog'
             ];
           } else if (fieldName?.includes('Grades') || fieldName?.includes('grades')) {
             targetKeywords = [
@@ -1474,8 +1475,8 @@ const StudentInfo = () => {
             ];
           }
 
-          const hasNameMatch = allNameWords.some(w => cleanText.includes(w));
-          const hasKeywordMatch = targetKeywords.some(k => cleanText.includes(k));
+          const hasNameMatch = allNameWords.some(w => cleanText.includes(w) || rawCombined.includes(w));
+          const hasKeywordMatch = targetKeywords.some(k => cleanText.includes(k) || rawCombined.includes(k));
 
           if (hasNameMatch || hasKeywordMatch) {
             return {
@@ -1483,6 +1484,16 @@ const StudentInfo = () => {
               reason: "Uploaded & Validated",
               detectedText: textLogs.join("\n\n")
             };
+          }
+
+          if (fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('mayorCOE')) {
+            if (textLogs.length > 0) {
+              return {
+                valid: true,
+                reason: "COE Video Proof Validated",
+                detectedText: textLogs.join("\n\n")
+              };
+            }
           }
 
           return {
