@@ -2050,12 +2050,12 @@ const StudentInfo = () => {
   const [uploadingFields, setUploadingFields] = useState({}); // { fieldName: Promise }
   const [uploadProgress, setUploadProgress] = useState({});
 
-  const [coeVerified, setCoeVerified] = useState('success');
-  const [coeStatus, setCoeStatus] = useState('Passed Automatically');
-  const [gradesVerified, setGradesVerified] = useState('success');
-  const [gradesStatus, setGradesStatus] = useState('Passed Automatically');
-  const [idVerified, setIdVerified] = useState('success');
-  const [idStatus, setIdStatus] = useState('Passed Automatically');
+  const [coeVerified, setCoeVerified] = useState(null);
+  const [coeStatus, setCoeStatus] = useState('');
+  const [gradesVerified, setGradesVerified] = useState(null);
+  const [gradesStatus, setGradesStatus] = useState('');
+  const [idVerified, setIdVerified] = useState(null);
+  const [idStatus, setIdStatus] = useState('');
   const [scanProgress, setScanProgress] = useState(0); // 0-100 progress for scanning animations
   const [scholarshipDetails, setScholarshipDetails] = useState(null);
 
@@ -3444,15 +3444,6 @@ const StudentInfo = () => {
       showPromptMessage(`Please upload or capture your ${docLabel} first.`);
       return;
     }
-    const hasVideo = !!videoUrl && (
-      (typeof videoUrl === 'string' && videoUrl.trim().length > 0) ||
-      (typeof videoUrl === 'object')
-    );
-
-    if (!hasVideo) {
-      showPromptMessage(`Please record and upload the ${docShortName} video first.`);
-      return;
-    }
     if (!townCity) {
       showPromptMessage('Please fill in your Town/City first.');
       return;
@@ -3497,18 +3488,8 @@ const StudentInfo = () => {
       showPromptMessage('Please upload your Certificate of Enrollment first.');
       return;
     }
-    const hasCoeVideo = !!videoUrl && (
-      (typeof videoUrl === 'string' && videoUrl.trim().length > 0) ||
-      (typeof videoUrl === 'object')
-    );
-
     const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
     const isNationalId = idType === 'National ID';
-
-    if (!hasCoeVideo) {
-      showPromptMessage('Please record and upload the COE video first.');
-      return;
-    }
     if (!schoolName || (!isNationalId && !idNumber) || !yearLevel || !course) {
       showPromptMessage(isNationalId ? 'Please complete School Name, Year Level, and Course first.' : 'Please complete School Name, ID, Year Level, and Course first.');
       return;
@@ -3559,15 +3540,6 @@ const StudentInfo = () => {
 
     if (!gradesDoc) {
       showPromptMessage('Please upload your Grades document first.');
-      return;
-    }
-    const hasGradesVideo = !!videoUrl && (
-      (typeof videoUrl === 'string' && videoUrl.trim().length > 0) ||
-      (typeof videoUrl === 'object')
-    );
-
-    if (!hasGradesVideo) {
-      showPromptMessage('Please record and upload the Grades video first.');
       return;
     }
     if (!schoolName || (!isNationalId && !idNumber) || !yearLevel || !gpa) {
@@ -3641,23 +3613,6 @@ const StudentInfo = () => {
 
     if (!idFront || (!isNationalId && !idBack)) {
       showPromptMessage(isNationalId ? 'Please upload front of your National ID first.' : 'Please upload both front and back of your School ID first.');
-      return;
-    }
-    const hasFrontVideo = !!frontVideoUrl && (
-      (typeof frontVideoUrl === 'string' && frontVideoUrl.trim().length > 0) ||
-      (typeof frontVideoUrl === 'object')
-    );
-    const hasBackVideo = isNationalId ? true : (!!backVideoUrl && (
-      (typeof backVideoUrl === 'string' && backVideoUrl.trim().length > 0) ||
-      (typeof backVideoUrl === 'object')
-    ));
-
-    if (!hasFrontVideo) {
-      showPromptMessage(isNationalId ? 'Please record and upload the National ID video first.' : 'Please record and upload the front School ID video first.');
-      return;
-    }
-    if (!isNationalId && !hasBackVideo) {
-      showPromptMessage('Please record and upload the back School ID video first.');
       return;
     }
     if (!formData.schoolName || (!isNationalId && (!formData.schoolIdNumber || !formData.yearLevel))) {
@@ -4634,10 +4589,10 @@ const StudentInfo = () => {
 
   const isAnyVideoUploading = Object.keys(uploadingFields).some(key => key.toLowerCase().includes('video'));
   const isAnyScanning = [idVerified, coeVerified, gradesVerified, ocrVerified, faceVerified, signatureVerified].some(v => v === 'verifying') || isFaceMatching || isAnyVideoUploading;
-  const isStep1DocumentsVerified = true;
+  const isStep1DocumentsVerified = ocrVerified === 'success';
   const isStep1Complete = STEP_FIELDS[1].every(field => formData[field]);
   const isStep2Complete = STEP_FIELDS[2].every(field => formData[field]);
-  const isStep3DocumentsVerified = true;
+  const isStep3DocumentsVerified = idVerified === 'success' && coeVerified === 'success' && gradesVerified === 'success';
   const isStep4Complete = formData.dataCertifyConsent && (drawnSignature || formData.applicantSignatureName) && signatureVerified === 'success';
 
   const [hasInteracted, setHasInteracted] = useState(false);
@@ -4652,8 +4607,7 @@ const StudentInfo = () => {
       // Step 1: Indigency
       if (currentStep === 1 && baseScanType === 'Indigency' && ocrVerified === null) {
         const doc = getVerificationDocumentSource(photos.mayorIndigency_photo, formData.mayorIndigency_photo);
-        const vid = documentVideos.mayorIndigency_video || formData.mayorIndigency_video;
-        if (doc && vid) {
+        if (doc) {
           handleIndigencyScan();
           setAutoScanTrigger(null);
         }
@@ -4665,9 +4619,7 @@ const StudentInfo = () => {
         if (baseScanType === 'SchoolID' && idVerified === null) {
           const front = getVerificationDocumentSource(schoolIdPhotos.front, formData.schoolIdFront);
           const back = getVerificationDocumentSource(schoolIdPhotos.back, formData.schoolIdBack);
-          const fVid = documentVideos.schoolIdFront_video || formData.schoolIdFront_video;
-          const bVid = documentVideos.schoolIdBack_video || formData.schoolIdBack_video;
-          if (front && back && fVid && bVid) {
+          if (front && back) {
             handleIdScan();
             setAutoScanTrigger(null);
           }
@@ -4676,8 +4628,7 @@ const StudentInfo = () => {
         // COE
         if (baseScanType === 'Enrollment' && coeVerified === null) {
           const doc = getVerificationDocumentSource(photos.mayorCOE_photo, formData.mayorCOE_photo);
-          const vid = documentVideos.mayorCOE_video || formData.mayorCOE_video;
-          if (doc && vid) {
+          if (doc) {
             handleCOEScan();
             setAutoScanTrigger(null);
           }
@@ -4686,8 +4637,7 @@ const StudentInfo = () => {
         // Grades
         if (baseScanType === 'Grades' && gradesVerified === null) {
           const doc = getVerificationDocumentSource(photos.mayorGrades_photo, formData.mayorGrades_photo);
-          const vid = documentVideos.mayorGrades_video || formData.mayorGrades_video;
-          if (doc && vid) {
+          if (doc) {
             handleGradesScan();
             setAutoScanTrigger(null);
           }
