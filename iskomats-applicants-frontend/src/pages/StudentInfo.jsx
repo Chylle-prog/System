@@ -643,8 +643,7 @@ function studentNameMatchesText(text, first, middle, last) {
     const words = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= (isMiddle ? 1 : 2));
     if (words.length === 0) return true;
     const ocrWords = searchText.split(/\s+/).filter(w => w.length >= 1);
-    const isFirst = (nameStr === first);
-    const matchFunc = (isFirst && words.length > 1) ? 'some' : 'every';
+    const matchFunc = 'every';
     return words[matchFunc](word => {
       const normW = normalizeForOcr(word);
       const confW = normalizeNameConfusions(word);
@@ -668,19 +667,14 @@ function studentNameMatchesText(text, first, middle, last) {
     });
   };
 
-  let firstOk = checkNameWordGroup(first, targetText) || (kv.name ? checkNameWordGroup(first, normText) : false);
+  const firstOk = checkNameWordGroup(first, targetText) || (kv.name ? checkNameWordGroup(first, normText) : false);
   const lastOk = checkNameWordGroup(last, targetText) || (kv.name ? checkNameWordGroup(last, normText) : false);
   const middleOk = middle ? (checkNameWordGroup(middle, targetText) || (kv.name ? checkNameWordGroup(middle, normText) : false)) : true;
 
-  // Fallback: If last name matched and student ID / school name is in text, accept first name
-  if (!firstOk && lastOk && (/1500017172|student\s*no|de\s*la\s*salle/i.test(targetText) || /1500017172|student\s*no|de\s*la\s*salle/i.test(normText))) {
-    firstOk = true;
-  }
+  const finalFirstOk = firstOk;
+  const finalLastOk = lastOk;
 
-  const finalFirstOk = firstOk || sequenceOk;
-  const finalLastOk = lastOk || sequenceOk;
-
-  const success = (firstOk && lastOk) || sequenceOk;
+  const success = firstOk && lastOk;
 
   return {
     success,
