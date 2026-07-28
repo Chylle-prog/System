@@ -2783,21 +2783,10 @@ const StudentInfo = () => {
         resolvedParam = rawResolved ? await preprocessImageForOcr(rawResolved) : null;
       }
 
-      // Pre-scan Document Tamper Check
-      if (!silent) setStatus("Analyzing document authenticity & checking for digital edits...");
+      // Pre-scan Document Tamper Check (Skipped for SchoolID)
       let tamperCheck = { edited: false, reason: "Authentic document" };
-      if (docType === 'SchoolID') {
-        const [tFront, tBack] = await Promise.all([
-          resolvedParam?.front ? detectDocumentTampering(resolvedParam.front) : Promise.resolve({ edited: false }),
-          resolvedParam?.back ? detectDocumentTampering(resolvedParam.back) : Promise.resolve({ edited: false })
-        ]);
-        if (tFront.edited || tBack.edited) {
-          tamperCheck = {
-            edited: true,
-            reason: `Digital edit / overlay block detected on School ID (${tFront.edited ? 'Front ID' : 'Back ID'}). Please upload an unedited document.`
-          };
-        }
-      } else if (resolvedParam) {
+      if (docType !== 'SchoolID' && resolvedParam) {
+        if (!silent) setStatus("Analyzing document authenticity & checking for digital edits...");
         tamperCheck = await detectDocumentTampering(resolvedParam);
       }
 
@@ -6396,124 +6385,112 @@ const StudentInfo = () => {
                     )}
                   </div>
 
-                  <div className="media-grid">
-                    {/* FRONT SIDE SECTION */}
-                    <div className="preview-box" style={{ background: '#fff', borderStyle: 'solid' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', paddingBottom: '0.8rem', borderBottom: '1px solid #f1f5f9' }}>
-                        <h5 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '800', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <i className="fas fa-id-card"></i> Front ID
-                        </h5>
-                        <div style={{ fontSize: '0.65rem', color: '#3b82f6', fontWeight: '800', background: '#eff6ff', padding: '3px 8px', borderRadius: '6px', border: '1px solid #bfdbfe' }}>REQUIRED</div>
+                  {/* UNIFIED SCHOOL ID CARD (FRONT & BACK COMBINED) */}
+                  <div className="preview-box" style={{ background: '#fff', borderStyle: 'solid' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', paddingBottom: '0.8rem', borderBottom: '1px solid #f1f5f9' }}>
+                      <h5 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '800', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <i className="fas fa-id-card"></i> School ID (Front & Back)
+                      </h5>
+                      <div style={{ fontSize: '0.65rem', color: '#3b82f6', fontWeight: '800', background: '#eff6ff', padding: '3px 8px', borderRadius: '6px', border: '1px solid #bfdbfe' }}>FRONT & BACK REQUIRED</div>
+                    </div>
+
+                    {/* Media Pickers side-by-side */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '1.2rem' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '800', color: '#3b82f6', marginBottom: '6px' }}>Front ID Media</label>
+                        {renderDocumentMediaPicker({
+                          photoId: 'school_id_front_photo',
+                          photoValue: schoolIdPhotos.front || formData.schoolIdFront,
+                          onPhotoChange: (e) => handleSchoolIdPhotoUpload('front', e),
+                          videoId: 'video_schoolIdFront_video',
+                          videoName: 'schoolIdFront_video',
+                          videoValue: documentVideos.schoolIdFront_video || formData.schoolIdFront_video,
+                          onVideoChange: handleVideoUpload,
+                          isUploadingVideo: Boolean(uploadingFields['schoolIdFront_video']),
+                          isVerifying: idVerified === 'verifying'
+                        })}
                       </div>
 
-                      {renderDocumentMediaPicker({
-                        photoLabel: 'Front ID',
-                        photoId: 'school_id_front_photo',
-                        photoValue: schoolIdPhotos.front || formData.schoolIdFront,
-                        onPhotoChange: (e) => handleSchoolIdPhotoUpload('front', e),
-                        videoId: 'video_schoolIdFront_video',
-                        videoName: 'schoolIdFront_video',
-                        videoValue: documentVideos.schoolIdFront_video || formData.schoolIdFront_video,
-                        onVideoChange: handleVideoUpload,
-                        isUploadingVideo: Boolean(uploadingFields['schoolIdFront_video']),
-                        isVerifying: idVerified === 'verifying'
-                      })}
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
-                        {/* Front Photo Preview */}
-                        <div className="scanning-container">
-                          <div className="image-container" style={{ height: '240px' }} onClick={() => setLightboxSrc(schoolIdPhotos.front || formData.schoolIdFront)}>
-                            {(schoolIdPhotos.front || formData.schoolIdFront) ? (
-                              <img src={schoolIdPhotos.front || formData.schoolIdFront} alt="Front ID" />
-                            ) : (
-                              <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
-                                <i className="fas fa-image" style={{ fontSize: '2rem', marginBottom: '8px' }}></i>
-                                <span style={{ fontSize: '0.7rem' }}>No Photo</span>
-                              </div>
-                            )}
-                            {idVerified === 'verifying' && <div className="scanning-laser"></div>}
-                          </div>
-                        </div>
-
-                        {/* Front Video Preview */}
-                        <VideoRecorder
-                          label="Front Check Video"
-                          onRecordComplete={(blob) => handleVideoUpload('schoolIdFront_video', blob)}
-                          initialVideoUrl={documentVideos.schoolIdFront_video || formData.schoolIdFront_video}
-                          isUploading={Boolean(uploadingFields['schoolIdFront_video'])}
-                          uploadProgress={uploadProgress['schoolIdFront_video']}
-                          disabled={isAnyScanning || isSavingStep}
-                          hideButton={true}
-                          containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
-                          fieldName="schoolIdFront_video"
-                        />
-                      </div>
-
-                      <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px' }}>
-                        <i className="fas fa-user-check" style={{ color: '#2563eb', fontSize: '1rem', marginTop: '2px' }}></i>
-                        <p style={{ fontSize: '0.72rem', color: '#1e3a8a', margin: 0, lineHeight: '1.4' }}>
-                          <b>Front side:</b> Keep your name area visible. This helps us confirm the student identity matches your profile.
-                        </p>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '800', color: '#d97706', marginBottom: '6px' }}>Back ID Media</label>
+                        {renderDocumentMediaPicker({
+                          photoId: 'school_id_back_photo',
+                          photoValue: schoolIdPhotos.back || formData.schoolIdBack,
+                          onPhotoChange: (e) => handleSchoolIdPhotoUpload('back', e),
+                          videoId: 'video_schoolIdBack_video',
+                          videoName: 'schoolIdBack_video',
+                          videoValue: documentVideos.schoolIdBack_video || formData.schoolIdBack_video,
+                          onVideoChange: handleVideoUpload,
+                          isUploadingVideo: Boolean(uploadingFields['schoolIdBack_video']),
+                          isVerifying: idVerified === 'verifying'
+                        })}
                       </div>
                     </div>
 
-                    {/* BACK SIDE SECTION */}
-                    <div className="preview-box" style={{ background: '#fff', borderStyle: 'solid' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', paddingBottom: '0.8rem', borderBottom: '1px solid #f1f5f9' }}>
-                        <h5 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '800', color: '#9a3412', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <i className="fas fa-id-card"></i> Back ID
-                        </h5>
-                        <div style={{ fontSize: '0.65rem', color: '#d97706', fontWeight: '800', background: '#fffbeb', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fef3c7' }}>REQUIRED</div>
-                      </div>
-
-                      {renderDocumentMediaPicker({
-                        photoId: 'school_id_back_photo',
-                        photoValue: schoolIdPhotos.back || formData.schoolIdBack,
-                        onPhotoChange: (e) => handleSchoolIdPhotoUpload('back', e),
-                        videoId: 'video_schoolIdBack_video',
-                        videoName: 'schoolIdBack_video',
-                        videoValue: documentVideos.schoolIdBack_video || formData.schoolIdBack_video,
-                        onVideoChange: handleVideoUpload,
-                        isUploadingVideo: Boolean(uploadingFields['schoolIdBack_video']),
-                        isVerifying: idVerified === 'verifying'
-                      })}
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
-                        {/* Back Photo Preview */}
-                        <div className="scanning-container">
-                          <div className="image-container" style={{ height: '240px' }} onClick={() => setLightboxSrc(schoolIdPhotos.back || formData.schoolIdBack)}>
-                            {(schoolIdPhotos.back || formData.schoolIdBack) ? (
-                              <img src={schoolIdPhotos.back || formData.schoolIdBack} alt="Back ID" />
-                            ) : (
-                              <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
-                                <i className="fas fa-image" style={{ fontSize: '2rem', marginBottom: '8px' }}></i>
-                                <span style={{ fontSize: '0.7rem' }}>No Photo</span>
-                              </div>
-                            )}
-                            {idVerified === 'verifying' && <div className="scanning-laser"></div>}
-                          </div>
+                    {/* Unified 4-cell Preview Grid (Front Photo, Front Video, Back Photo, Back Video) */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '1.2rem' }}>
+                      {/* Front Photo */}
+                      <div className="scanning-container">
+                        <div className="image-container" style={{ height: '200px' }} onClick={() => setLightboxSrc(schoolIdPhotos.front || formData.schoolIdFront)}>
+                          {(schoolIdPhotos.front || formData.schoolIdFront) ? (
+                            <img src={schoolIdPhotos.front || formData.schoolIdFront} alt="Front ID" />
+                          ) : (
+                            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
+                              <i className="fas fa-image" style={{ fontSize: '1.5rem', marginBottom: '4px' }}></i>
+                              <span style={{ fontSize: '0.65rem' }}>Front Photo</span>
+                            </div>
+                          )}
+                          {idVerified === 'verifying' && <div className="scanning-laser"></div>}
                         </div>
-
-                        {/* Back Video Preview */}
-                        <VideoRecorder
-                          label="Back Check Video"
-                          onRecordComplete={(blob) => handleVideoUpload('schoolIdBack_video', blob)}
-                          initialVideoUrl={documentVideos.schoolIdBack_video || formData.schoolIdBack_video}
-                          isUploading={Boolean(uploadingFields['schoolIdBack_video'])}
-                          uploadProgress={uploadProgress['schoolIdBack_video']}
-                          disabled={isAnyScanning || isSavingStep}
-                          hideButton={true}
-                          containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
-                          fieldName="schoolIdBack_video"
-                        />
                       </div>
 
-                      <div style={{ padding: '12px', background: '#fffbeb', borderRadius: '14px', border: '1px solid #fef3c7', display: 'flex', gap: '10px' }}>
-                        <i className="fas fa-school" style={{ color: '#d97706', fontSize: '1rem', marginTop: '2px' }}></i>
-                        <p style={{ fontSize: '0.72rem', color: '#92400e', margin: 0, lineHeight: '1.4' }}>
-                          <b>Back side:</b> Keep the year level or current validity details readable so we can confirm the ID is for your present school year.
-                        </p>
+                      {/* Front Video */}
+                      <VideoRecorder
+                        label="Front Check Video"
+                        onRecordComplete={(blob) => handleVideoUpload('schoolIdFront_video', blob)}
+                        initialVideoUrl={documentVideos.schoolIdFront_video || formData.schoolIdFront_video}
+                        isUploading={Boolean(uploadingFields['schoolIdFront_video'])}
+                        uploadProgress={uploadProgress['schoolIdFront_video']}
+                        disabled={isAnyScanning || isSavingStep}
+                        hideButton={true}
+                        containerStyle={{ height: '200px', padding: '0.4rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                        fieldName="schoolIdFront_video"
+                      />
+
+                      {/* Back Photo */}
+                      <div className="scanning-container">
+                        <div className="image-container" style={{ height: '200px' }} onClick={() => setLightboxSrc(schoolIdPhotos.back || formData.schoolIdBack)}>
+                          {(schoolIdPhotos.back || formData.schoolIdBack) ? (
+                            <img src={schoolIdPhotos.back || formData.schoolIdBack} alt="Back ID" />
+                          ) : (
+                            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
+                              <i className="fas fa-image" style={{ fontSize: '1.5rem', marginBottom: '4px' }}></i>
+                              <span style={{ fontSize: '0.65rem' }}>Back Photo</span>
+                            </div>
+                          )}
+                          {idVerified === 'verifying' && <div className="scanning-laser"></div>}
+                        </div>
                       </div>
+
+                      {/* Back Video */}
+                      <VideoRecorder
+                        label="Back Check Video"
+                        onRecordComplete={(blob) => handleVideoUpload('schoolIdBack_video', blob)}
+                        initialVideoUrl={documentVideos.schoolIdBack_video || formData.schoolIdBack_video}
+                        isUploading={Boolean(uploadingFields['schoolIdBack_video'])}
+                        uploadProgress={uploadProgress['schoolIdBack_video']}
+                        disabled={isAnyScanning || isSavingStep}
+                        hideButton={true}
+                        containerStyle={{ height: '200px', padding: '0.4rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                        fieldName="schoolIdBack_video"
+                      />
+                    </div>
+
+                    <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px' }}>
+                      <i className="fas fa-info-circle" style={{ color: '#2563eb', fontSize: '1rem', marginTop: '2px' }}></i>
+                      <p style={{ fontSize: '0.72rem', color: '#1e3a8a', margin: 0, lineHeight: '1.4' }}>
+                        <b>Front & Back ID:</b> Keep your name, ID number, and current academic year details visible across all photos and videos.
+                      </p>
                     </div>
                   </div>
 
