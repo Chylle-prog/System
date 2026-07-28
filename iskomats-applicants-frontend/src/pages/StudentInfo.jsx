@@ -1497,8 +1497,15 @@ const StudentInfo = () => {
           // Target document category keywords (including common Philippine document phrases)
           let targetKeywords = [];
           if (fieldName?.includes('Indigency') || fieldName?.includes('indigency') || fieldName?.includes('Residency') || fieldName?.includes('residency')) {
+            // Determine if the scholarship specifically requires a Residency doc
+            const _vidIsResidency = scholarshipDetails?.residencyDocType === 'Residency Document' || scholarshipDetails?.residency_doc_type === 'Residency Document';
+            // Exclusive keyword check: only allow the term the scholarship requires
+            const _docTypeKeywords = _vidIsResidency
+              ? ['residency', 'resident']
+              : ['indigency', 'indigent'];
             targetKeywords = [
-              'indigency', 'indigent', 'residency', 'resident', 'certificate', 'barangay', 'punong', 'certify',
+              ..._docTypeKeywords,
+              'certificate', 'barangay', 'punong', 'certify',
               'office', 'bayan', 'mataasnakahoy', 'lipa', 'batangas', 'whom', 'concern', 'personally',
               'purok', 'bonafide', 'family', 'families', 'sangguniang', 'kagawad', 'lubi', 'moises',
               'republic', 'philippines', 'province', 'municipality', 'seal'
@@ -2840,7 +2847,7 @@ const StudentInfo = () => {
         }));
       }
 
-      let { townCity, barangay, schoolName, idNumber, yearLevel, gpa, course, semester, academicYear } = extraParams;
+      let { townCity, barangay, schoolName, idNumber, yearLevel, gpa, course, semester, academicYear, isResidencyDoc } = extraParams;
       const targetBarangay = barangay || formData.barangay || formData.streetBarangay || '';
       const { firstName, lastName, middleName } = formData;
       const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
@@ -3087,20 +3094,41 @@ const StudentInfo = () => {
           resultsList = [{ doc: 'Grades', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
         }
         else if (docType === 'Indigency') {
-          const combinedText = detectedText + " " + (videoCheck?.detectedText || "");
+          const combinedText = (detectedText + " " + (videoCheck?.detectedText || "")).toLowerCase();
           const nameCheck = studentNameMatchesText(combinedText, firstName, middleName, lastName);
           const addrOk = targetBarangay ? addressMatchesText(combinedText, targetBarangay) : true;
           const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
 
-          isSuccess = nameCheck.success && addrOk && videoOk;
+          // Exclusive document-type keyword check: the scanned text MUST contain
+          // the specific term the scholarship requires (indigency OR residency, not both interchangeably)
+          const _requiredDocKeywords = isResidencyDoc ? ['residency', 'resident'] : ['indigency', 'indigent'];
+          const _wrongDocKeywords   = isResidencyDoc ? ['indigency', 'indigent'] : ['residency', 'resident'];
+          const hasRequiredDocKeyword = _requiredDocKeywords.some(k => combinedText.includes(k));
+          const hasWrongDocKeyword    = _wrongDocKeywords.some(k => combinedText.includes(k));
+          // Pass if the required keyword is present (wrong keyword alone is rejected)
+          const docTypeOk = hasRequiredDocKeyword;
+          const docLabel = isResidencyDoc ? 'Certificate of Residency' : 'Certificate of Indigency';
+          const wrongDocLabel = isResidencyDoc ? 'Certificate of Indigency' : 'Certificate of Residency';
+
+          isSuccess = nameCheck.success && addrOk && videoOk && docTypeOk;
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
             "Last Name": nameCheck.details.last_ok,
+            "Document Type": docTypeOk,
             "Barangay Address": targetBarangay ? addrOk : null,
             "Town / City": townCity ? true : null,
             "Video Proof": videoOk
           };
-          finalMessage = isSuccess ? "Indigency verified successfully client-side!" : (!videoOk ? (videoCheck?.reason || "Indigency video proof failed validation.") : "Indigency verification mismatch.");
+          const _docTypeFail = !docTypeOk
+            ? (hasWrongDocKeyword
+                ? `Wrong document type: uploaded ${wrongDocLabel} but scholarship requires ${docLabel}.`
+                : `Document type mismatch: could not confirm this is a ${docLabel}.`)
+            : null;
+          finalMessage = isSuccess
+            ? `${docLabel.replace('Certificate of ', '')} verified successfully client-side!`
+            : (!videoOk
+                ? (videoCheck?.reason || `${docLabel.replace('Certificate of ', '')} video proof failed validation.`)
+                : (_docTypeFail || `${docLabel.replace('Certificate of ', '')} verification mismatch.`));
           resultsList = [{ doc: 'Indigency', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
         }
       }
@@ -3310,7 +3338,7 @@ const StudentInfo = () => {
     lastIndigencyScanRef.current = { doc: indigencyDoc, vid: videoUrl };
 
     try {
-      const res = await performOcrVerification('Indigency', indigencyDoc, { townCity: formData.townCityMunicipality, barangay: formData.barangay }, videoUrl);
+      const res = await performOcrVerification('Indigency', indigencyDoc, { townCity: formData.townCityMunicipality, barangay: formData.barangay, isResidencyDoc }, videoUrl);
       const success = res && typeof res === 'object' ? res.isSuccess === true : Boolean(res);
       if (success) {
         setOcrVerified('success');
