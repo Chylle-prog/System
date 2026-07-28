@@ -1423,9 +1423,12 @@ const StudentInfo = () => {
           const rawCombined = (textLogs || []).join(" ").toLowerCase();
           const cleanText = normalizeForOcr(rawCombined);
 
-          // Extract expected name words
-          const lastWord = normalizeForOcr(lastName || '').split(' ').filter(w => w.length >= 2);
-          const firstWord = normalizeForOcr(firstName || '').split(' ').filter(w => w.length >= 2);
+          // Extract expected name words safely from formData or userProfile
+          const userLast = formData?.lastName || userProfile?.last_name || userProfile?.lastName || '';
+          const userFirst = formData?.firstName || userProfile?.first_name || userProfile?.firstName || '';
+
+          const lastWord = normalizeForOcr(userLast).split(' ').filter(w => w.length >= 2);
+          const firstWord = normalizeForOcr(userFirst).split(' ').filter(w => w.length >= 2);
           const allNameWords = [...lastWord, ...firstWord];
 
           // Target document category keywords
