@@ -459,7 +459,14 @@ function extractOcrKeyValues(rawText) {
       /pangalan\s*[:\-1l\|\]\}\)]\s*(.+)/i,
       /name\s+(.+)/i
     ],
-    studentId: [/student\s*(?:no|number|id)\s*[:\-1l\|\]\}\)]?\s*(.+)/i, /id\s*(?:no|number)\s*[:\-1l\|\]\}\)]?\s*(.+)/i, /sr\s*code\s*[:\-1l\|\]\}\)]?\s*(.+)/i, /reg\s*no\s*[:\-1l\|\]\}\)]?\s*(.+)/i],
+    studentId: [
+      /student\s*(?:no|number|id)\s*[:\-1l\|\]\}\)]?\s*(.+)/i,
+      /st(?:u|o|a|e)d(?:e|a|o)nt\s*(?:no|number|id)\s*[:\-1l\|\]\}\)]?\s*(.+)/i,
+      /s[u|o|a]et\s*(?:0|o|no)?\s*[:\-1l\|\]\}\)]?\s*(.+)/i,
+      /id\s*(?:no|number)\s*[:\-1l\|\]\}\)]?\s*(.+)/i,
+      /sr\s*code\s*[:\-1l\|\]\}\)]?\s*(.+)/i,
+      /reg\s*no\s*[:\-1l\|\]\}\)]?\s*(.+)/i
+    ],
     yearLevel: [/year\s*level\s*[:\-1l\|\]\}\)]\s*(.+)/i, /yr\s*level\s*[:\-1l\|\]\}\)]\s*(.+)/i, /year\s*[:\-1l\|\]\}\)]\s*(.+)/i, /grade\s*level\s*[:\-1l\|\]\}\)]\s*(.+)/i],
     course: [/course\s*[:\-1l\|\]\}\)]\s*(.+)/i, /program\s*[:\-1l\|\]\}\)]\s*(.+)/i, /degree\s*[:\-1l\|\]\}\)]\s*(.+)/i, /strand\s*[:\-1l\|\]\}\)]\s*(.+)/i],
     schoolYearSem: [/school\s*year\s*(?:sem)?\s*[:\-1l\|\]\}\)]\s*(.+)/i, /academic\s*year\s*[:\-1l\|\]\}\)]\s*(.+)/i, /a\.?y\.?\s*[:\-1l\|\]\}\)]\s*(.+)/i, /s\.?y\.?\s*[:\-1l\|\]\}\)]\s*(.+)/i],
@@ -804,6 +811,12 @@ function studentIdNoMatchesText(targetId, text) {
     if (seqClean === tClean || seqDigits === tDigits || seqMapped === tDigits) {
       return true;
     }
+  }
+
+  // 3. Fallback: Full-text mapped digit sequence match (for OCR line/column breaks)
+  const fullTextMapped = mapOcrToDigits(text);
+  if (tDigits.length >= 6 && fullTextMapped.includes(tDigits)) {
+    return true;
   }
 
   return false;

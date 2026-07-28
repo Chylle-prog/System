@@ -1521,6 +1521,10 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
                 if _clean_cand(tok) == exp_id_clean:
                     id_ok = True
                     break
+        if not id_ok and len(exp_id_clean) >= 6:
+            raw_digits = re.sub(r'[^0-9]', '', str(raw_text or ''))
+            if exp_id_clean in raw_digits:
+                id_ok = True
 
         if not id_ok:
             failures.append(f"Student ID mismatch (Expected: '{expected_id_no}', Found in COR: '{parsed_fields.get('student_id', 'Not found')}')")
@@ -2053,6 +2057,10 @@ def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
                 if _clean_cand(tok) == clean_expected_id:
                     id_ok = True
                     break
+        if not id_ok and len(clean_expected_id) >= 6:
+            raw_digits = re.sub(r'[^0-9]', '', str(raw_text or ''))
+            if clean_expected_id in raw_digits:
+                id_ok = True
 
         if not id_ok:
             failures.append(f"ID Number mismatch (Expected: '{expected_id_no}' on ID)")
