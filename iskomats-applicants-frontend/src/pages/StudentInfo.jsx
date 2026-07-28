@@ -2859,39 +2859,55 @@ const StudentInfo = () => {
       let backVidCheck = null;
 
       if (docType === 'SchoolID') {
+        const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
+        const isNationalId = idType === 'National ID';
+
         const fVid = videoUrl?.front;
         const bVid = videoUrl?.back;
 
-        if (!silent) setStatus("Scanning School ID and validating video proof concurrently...");
+        if (!silent) setStatus(isNationalId ? "Scanning National ID and validating video proof..." : "Scanning School ID and validating video proof concurrently...");
         const [frontText, backText, fVidRes, bVidRes] = await Promise.all([
-          runOcrOnImage(resolvedParam.front, "School ID Front"),
-          runOcrOnImage(resolvedParam.back, "School ID Back"),
+          runOcrOnImage(resolvedParam.front, isNationalId ? "National ID" : "School ID Front"),
+          isNationalId ? Promise.resolve("") : runOcrOnImage(resolvedParam.back, "School ID Back"),
           fVid ? validateVideoLiveness(fVid, 'schoolIdFront_video') : Promise.resolve(null),
-          bVid ? validateVideoLiveness(bVid, 'schoolIdBack_video') : Promise.resolve(null)
+          (!isNationalId && bVid) ? validateVideoLiveness(bVid, 'schoolIdBack_video') : Promise.resolve(null)
         ]);
 
         frontVidCheck = fVidRes;
         backVidCheck = bVidRes;
-        detectedText = `[FRONT ID TEXT]\n${frontText}\n\n[BACK ID TEXT]\n${backText}`;
+        detectedText = isNationalId ? `[NATIONAL ID TEXT]\n${frontText}` : `[FRONT ID TEXT]\n${frontText}\n\n[BACK ID TEXT]\n${backText}`;
 
         const combinedFrontText = frontText + " " + (frontVidCheck?.detectedText || "");
         const combinedBackText = backText + " " + (backVidCheck?.detectedText || "");
+        const allIdText = combinedFrontText + " " + combinedBackText;
 
         const nameMatchFront = studentNameMatchesText(combinedFrontText, firstName, middleName, lastName);
-        const nameMatchBack = studentNameMatchesText(combinedBackText, firstName, middleName, lastName);
+        const nameMatchBack = isNationalId ? { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } } : studentNameMatchesText(combinedBackText, firstName, middleName, lastName);
         const nameOk = nameMatchFront.success || nameMatchBack.success;
         const firstOk = nameMatchFront.details.first_ok || nameMatchBack.details.first_ok;
         const middleOk = middleName ? (nameMatchFront.details.middle_ok || nameMatchBack.details.middle_ok) : true;
         const lastOk = nameMatchFront.details.last_ok || nameMatchBack.details.last_ok;
 
-        const idOk = idNumber ? (studentIdNoMatchesText(idNumber, combinedFrontText) || studentIdNoMatchesText(idNumber, combinedBackText)) : true;
-        const schoolOk = schoolName ? (schoolNameMatchesText(combinedFrontText, schoolName) || schoolNameMatchesText(combinedBackText, schoolName)) : true;
-        const ayOk = academicYear ? (academic_year_matches_expected(combinedFrontText, academicYear) || academic_year_matches_expected(combinedBackText, academicYear)) : true;
+        const idOk = isNationalId ? true : (idNumber ? (studentIdNoMatchesText(idNumber, combinedFrontText) || studentIdNoMatchesText(idNumber, combinedBackText)) : true);
+        const schoolOk = schoolName ? (schoolNameMatchesText(allIdText, schoolName)) : true;
+        const ayOk = isNationalId ? true : (academicYear ? (academic_year_matches_expected(combinedFrontText, academicYear) || academic_year_matches_expected(combinedBackText, academicYear)) : true);
 
-        const videoOk = (!fVid || (frontVidCheck && frontVidCheck.valid)) && (!bVid || (backVidCheck && backVidCheck.valid));
+        // National ID: Street / Barangay address verification (replaces student ID & year level checks)
+        const addrOk = isNationalId ? (targetBarangay ? addressMatchesText(allIdText, targetBarangay) : true) : true;
 
-        isSuccess = nameOk && idOk && schoolOk && ayOk && videoOk;
-        scoreDetails = {
+        const videoOk = (!fVid || (frontVidCheck && frontVidCheck.valid)) && (isNationalId || !bVid || (backVidCheck && backVidCheck.valid));
+
+        isSuccess = isNationalId
+          ? (nameOk && addrOk && videoOk)
+          : (nameOk && idOk && schoolOk && ayOk && videoOk);
+
+        scoreDetails = isNationalId ? {
+          "First Name": firstOk,
+          "Middle Name": middleName ? middleOk : null,
+          "Last Name": lastOk,
+          "Barangay Address": targetBarangay ? addrOk : null,
+          "Video Proof": videoOk
+        } : {
           "First Name": firstOk,
           "Middle Name": middleName ? middleOk : null,
           "Last Name": lastOk,
@@ -2900,11 +2916,12 @@ const StudentInfo = () => {
           "Academic Year": academicYear ? ayOk : null,
           "Video Proof": videoOk
         };
+
         finalMessage = isSuccess
-          ? "School ID verified successfully client-side!"
+          ? (isNationalId ? "National ID verified successfully!" : "School ID verified successfully client-side!")
           : (!videoOk
             ? `Video Proof mismatch: ${(!frontVidCheck?.valid ? frontVidCheck?.reason : '')} ${(!backVidCheck?.valid ? backVidCheck?.reason : '')}`.trim()
-            : "School ID verification mismatch.");
+            : (isNationalId ? "National ID verification mismatch." : "School ID verification mismatch."));
         resultsList = [{ doc: 'SchoolID', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
       }
       else {
@@ -3405,8 +3422,12 @@ const StudentInfo = () => {
       showPromptMessage('Please record and upload the back School ID video first.');
       return;
     }
-    if (!formData.schoolName || (!isNationalId && !formData.schoolIdNumber) || !formData.yearLevel) {
-      showPromptMessage(isNationalId ? 'Please complete School Name and Year Level first.' : 'Please complete School Name, School ID Number, and Year Level first.');
+    if (!formData.schoolName || (!isNationalId && (!formData.schoolIdNumber || !formData.yearLevel))) {
+      showPromptMessage(isNationalId ? 'Please complete School Name first.' : 'Please complete School Name, School ID Number, and Year Level first.');
+      return;
+    }
+    if (isNationalId && !formData.barangay) {
+      showPromptMessage('Please select your Barangay first in Step 1.');
       return;
     }
     if (!isNationalId && String(formData.schoolIdNumber).replace(/[^0-9a-zA-Z]/g, '').length < 6) {
