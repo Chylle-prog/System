@@ -2906,7 +2906,7 @@ const StudentInfo = () => {
 
         const combinedFrontText = frontText + " " + (frontVidCheck?.detectedText || "");
         const combinedBackText = backText + " " + (backVidCheck?.detectedText || "");
-        const allIdText = combinedFrontText + " " + (isNationalId ? "" : combinedBackText);
+        const allIdText = combinedFrontText + " " + combinedBackText;
 
         const nameMatchFront = studentNameMatchesText(combinedFrontText, firstName, middleName, lastName);
         const nameMatchBack = isNationalId ? { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } } : studentNameMatchesText(combinedBackText, firstName, middleName, lastName);
@@ -3077,12 +3077,21 @@ const StudentInfo = () => {
 
       let debugRequirements = {};
       if (docType === 'SchoolID') {
-        const videoOk = (!videoUrl?.front || (frontVidCheck && frontVidCheck.valid)) && (!videoUrl?.back || (backVidCheck && backVidCheck.valid));
+        const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
+        const isNationalId = idType === 'National ID';
+
+        const videoOk = (!videoUrl?.front || (frontVidCheck && frontVidCheck.valid)) && (isNationalId || !videoUrl?.back || (backVidCheck && backVidCheck.valid));
         let videoReason = 'Uploaded & Validated';
         if (!videoOk) {
-          videoReason = `Front: ${frontVidCheck?.reason || 'No failure info'} | Back: ${backVidCheck?.reason || 'No failure info'}`;
+          videoReason = `Front: ${frontVidCheck?.reason || 'No failure info'} ${!isNationalId ? '| Back: ' + (backVidCheck?.reason || 'No failure info') : ''}`;
         }
-        debugRequirements = {
+        debugRequirements = isNationalId ? {
+          "First Name": firstName || 'N/A',
+          "Middle Name": middleName || 'N/A',
+          "Last Name": lastName || 'N/A',
+          "Barangay Address": targetBarangay || 'N/A',
+          "Video Proof": videoReason
+        } : {
           "First Name": firstName || 'N/A',
           "Middle Name": middleName || 'N/A',
           "Last Name": lastName || 'N/A',
