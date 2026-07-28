@@ -762,27 +762,38 @@ function studentIdNoMatchesText(targetId, text) {
       .replace(/[^0-9]/g, '');
   };
 
+  const isMatchingIdSeq = (cand) => {
+    if (!cand) return false;
+    const cClean = normalizeId(cand);
+    const cDigits = digitsOnly(cand);
+    const cMapped = mapOcrToDigits(cand);
+
+    // Exact equality
+    if (cClean === tClean || cDigits === tDigits || cMapped === tDigits) return true;
+
+    // Glare / trailing character artifact tolerance for matching IDs of length >= 6 digits
+    if (tDigits.length >= 6) {
+      if (cDigits.length >= 6 && Math.abs(cDigits.length - tDigits.length) <= 1) {
+        if (cDigits.startsWith(tDigits) || tDigits.startsWith(cDigits)) return true;
+        if (cMapped.startsWith(tDigits) || tDigits.startsWith(cMapped)) return true;
+        if (getLevenshteinDistance(cDigits, tDigits) <= 1) return true;
+        if (getLevenshteinDistance(cMapped, tDigits) <= 1) return true;
+      }
+    }
+    return false;
+  };
+
   // 1. Direct check against Key-Value extracted student ID field
   const kv = extractOcrKeyValues(text);
-  if (kv.studentId) {
-    const kvClean = normalizeId(kv.studentId);
-    const kvDigits = digitsOnly(kv.studentId);
-    const kvMapped = mapOcrToDigits(kv.studentId);
-
-    if (kvClean === tClean || kvDigits === tDigits || kvMapped === tDigits) {
-      return true;
-    }
+  if (kv.studentId && isMatchingIdSeq(kv.studentId)) {
+    return true;
   }
 
-  // 2. Exact sequence match in raw OCR text tokens
+  // 2. OCR token check
   const ocrTokens = String(text).match(/\b[0-9a-zA-Z\-]{4,25}\b/g) || [];
 
   for (const seq of ocrTokens) {
-    const seqClean = normalizeId(seq);
-    const seqDigits = digitsOnly(seq);
-    const seqMapped = mapOcrToDigits(seq);
-
-    if (seqClean === tClean || seqDigits === tDigits || seqMapped === tDigits) {
+    if (isMatchingIdSeq(seq)) {
       return true;
     }
   }

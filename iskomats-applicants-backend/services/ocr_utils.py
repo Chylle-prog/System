@@ -1511,6 +1511,12 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
         tokens = [normalize_id_number(tok) for tok in re.findall(r'\b[0-9a-zA-Z\-]{4,25}\b', str(raw_text or ''))]
 
         id_ok = (exp_id_clean == found_id_clean) or (exp_id_clean in tokens)
+        if not id_ok and len(exp_id_clean) >= 6:
+            for tok in tokens:
+                if len(tok) >= 6 and abs(len(tok) - len(exp_id_clean)) <= 1:
+                    if tok.startswith(exp_id_clean) or exp_id_clean.startswith(tok) or levenshtein_distance(tok, exp_id_clean) <= 1:
+                        id_ok = True
+                        break
 
         if not id_ok:
             failures.append(f"Student ID mismatch (Expected: '{expected_id_no}', Found in COR: '{parsed_fields.get('student_id', 'Not found')}')")
@@ -2031,6 +2037,12 @@ def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
         found_id = normalize_id_number(kwargs.get('student_id') or '')
         tokens = [normalize_id_number(tok) for tok in re.findall(r'\b[0-9a-zA-Z\-]{4,25}\b', str(raw_text or ''))]
         id_ok = (clean_expected_id == found_id) or (clean_expected_id in tokens)
+        if not id_ok and len(clean_expected_id) >= 6:
+            for tok in tokens:
+                if len(tok) >= 6 and abs(len(tok) - len(clean_expected_id)) <= 1:
+                    if tok.startswith(clean_expected_id) or clean_expected_id.startswith(tok) or levenshtein_distance(tok, clean_expected_id) <= 1:
+                        id_ok = True
+                        break
         if not id_ok:
             failures.append(f"ID Number mismatch (Expected: '{expected_id_no}' on ID)")
 
