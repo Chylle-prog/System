@@ -1592,6 +1592,25 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
         if not course_ok:
             failures.append(f"Course mismatch (Expected: '{expected_course}', Found in COR: '{found_course}')")
 
+    # 5. YEAR LEVEL MATCHING
+    if expected_year_level and str(expected_year_level).strip():
+        found_yl = parsed_fields.get('year_level', raw_text)
+        def parse_yl_num(s):
+            if not s: return None
+            st = str(s).lower()
+            if '1st' in st or 'first' in st or '1' in st: return 1
+            if '2nd' in st or 'second' in st or '2' in st: return 2
+            if '3rd' in st or 'third' in st or '3' in st: return 3
+            if '4th' in st or 'fourth' in st or '4' in st: return 4
+            if '5th' in st or 'fifth' in st or '5' in st: return 5
+            return None
+
+        exp_yl_num = parse_yl_num(expected_year_level)
+        found_yl_num = parse_yl_num(found_yl)
+
+        if exp_yl_num and found_yl_num and exp_yl_num != found_yl_num:
+            failures.append(f"Year Level mismatch (Expected: '{expected_year_level}', Found in COR: '{found_yl}')")
+
     success = (len(failures) == 0)
     if success:
         msg = f"COR Verified: Name ({first_name} {last_name}), ID ({expected_id_no or 'N/A'}), AY ({expected_academic_year or 'N/A'}) matched."

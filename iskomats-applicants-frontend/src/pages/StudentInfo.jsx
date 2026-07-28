@@ -858,6 +858,21 @@ function schoolNameMatchesText(text, targetSchool) {
   return false;
 }
 
+function getScholarshipConfiguredAcademicYear(scholarshipDetails, fallbackYear = '') {
+  if (!scholarshipDetails) return fallbackYear || '2025-2026';
+  const configuredAY = scholarshipDetails.year ||
+                       scholarshipDetails.academic_year ||
+                       scholarshipDetails.academicYear ||
+                       scholarshipDetails.school_year ||
+                       scholarshipDetails.schoolYear ||
+                       scholarshipDetails.sy ||
+                       scholarshipDetails.ay;
+  if (configuredAY && String(configuredAY).trim()) {
+    return String(configuredAY).trim();
+  }
+  return fallbackYear || '2025-2026';
+}
+
 function academic_year_matches_expected(text, expectedYear) {
   if (!expectedYear || !text) return true;
 
@@ -881,46 +896,40 @@ function academic_year_matches_expected(text, expectedYear) {
   const expStart = parseInt(expectedYears[0], 10);
   const expEnd = expectedYears.length >= 2 ? parseInt(expectedYears[1], 10) : expStart + 1;
 
-  // If text contains "valid until", "valid", "until", or "sy" on ID cards with single year (e.g. 2026 or 2025)
+  // On ID cards with single year or "valid until" (e.g. 2026 or 2025)
   if (normText.includes('valid') || normText.includes('until') || normText.includes('sy')) {
     if (normText.includes(String(expStart)) || normText.includes(String(expEnd))) {
       return true;
     }
   }
 
-  const expPairStr = `${expStart}-${expEnd}`;
-
   // Strip date timestamps YYYY-MM-DD / YYYY.MM.DD (e.g. 2025.08.12, 2025-08-12, 2026-03-24)
   const textWithoutDates = normText.replace(/20\d{2}\s*[\-\/\.]\s*(?:0[1-9]|1[0-2])\s*[\-\/\.]\s*(?:[0-2][0-9]|3[01])/g, '');
 
-  // Extract explicit year pairs in text excluding dates (e.g., "2025-2026", "2026-2027")
+  // Extract explicit year pairs in text excluding dates (e.g., "2026-2027", "2025-2026")
   const pairMatches = [...textWithoutDates.matchAll(/(20\d{2})\s*[\-\/]\s*(20[0-9a-zA-Z]{2})/g)];
 
   if (pairMatches.length > 0) {
-    // Check if any detected pair matches expected start year
     const matchedPair = pairMatches.some(m => {
       const pStart = parseInt(m[1], 10);
       const rawEndStr = m[2].toLowerCase().replace(/b/g, '6').replace(/8/g, '6').replace(/g/g, '6').replace(/s/g, '5');
       const pEnd = parseInt(rawEndStr, 10);
-      return pStart === expStart || pEnd === expEnd;
+      return pStart === expStart || (pStart === expStart - 1 && pEnd === expEnd);
     });
 
     if (matchedPair) return true;
 
-    // Reject if an explicit conflicting academic year pair is present (e.g. 2026-2027 or 2024-2025 when 2025-2026 is required)
-    const hasConflictingPair = pairMatches.some(m => {
-      const pStart = parseInt(m[1], 10);
-      return pStart !== expStart && Math.abs(pStart - expStart) >= 1;
-    });
-
-    if (hasConflictingPair) {
-      console.warn(`[AY FAIL] Conflicting academic year pair in document. Required start: ${expStart}`);
-      return false;
-    }
+    // If explicit academic year pairs exist on the document, reject if none match expected start year
+    return false;
   }
 
-  // Fallback: Accept if expected start year (e.g. 2025) or end year (e.g. 2026) appears anywhere in normText
-  const foundYearsSet = new Set(normText.match(yearRegex) || []);
+  // Fallback: Accept if expected start year appears near AY/SY header keywords
+  const hasAyHeader = /(?:ay|a\.?y\.?|sy|s\.?y\.?|school\s*year|academic\s*year)/i.test(normText);
+  if (hasAyHeader) {
+    return normText.includes(String(expStart)) || normText.includes(String(expEnd));
+  }
+
+  const foundYearsSet = new Set(textWithoutDates.match(yearRegex) || []);
   if (foundYearsSet.has(String(expStart)) || foundYearsSet.has(String(expEnd))) {
     return true;
   }
@@ -1247,85 +1256,88 @@ function extractTotalUnitsFromText(text) {
 
 function yearLevelMatchesText(text, expectedYearLevel) {
   if (!expectedYearLevel || !text) return true;
+
   const normText = normalizeForOcr(text);
   const normLevel = normalizeForOcr(String(expectedYearLevel));
 
-  const kv = extractOcrKeyValues(text);
-
   const numericMap = { '1st': 1, '2nd': 2, '3rd': 3, '4th': 4, '5th': 5, 'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5 };
-  let levelNum = null;
+  let expNum = null;
 
   for (const [key, num] of Object.entries(numericMap)) {
     if (normLevel.includes(key)) {
-      levelNum = num;
+      expNum = num;
       break;
     }
   }
-  if (!levelNum) {
+  if (!expNum) {
     const digitMatch = normLevel.match(/\b([1-5])\b/);
-    if (digitMatch) levelNum = parseInt(digitMatch[1], 10);
+    if (digitMatch) expNum = parseInt(digitMatch[1], 10);
   }
 
-  if (!levelNum) {
+  if (!expNum) {
+    const kv = extractOcrKeyValues(text);
     const targetText = kv.yearLevel ? normalizeForOcr(kv.yearLevel) : normText;
     return targetText.includes(normLevel);
   }
 
-  const ordinalWords = { 1: ['1st', 'first'], 2: ['2nd', 'second'], 3: ['3rd', 'third'], 4: ['4th', 'fourth'], 5: ['5th', 'fifth'] };
-  const romanNums = { 1: 'i', 2: 'ii', 3: 'iii', 4: 'iv', 5: 'v' };
+  const kv = extractOcrKeyValues(text);
 
-  const ordinals = ordinalWords[levelNum] || [];
-  const roman = romanNums[levelNum];
+  const parseYearDigit = (str) => {
+    if (!str) return null;
+    const s = String(str).toLowerCase();
+    if (s.includes('1st') || s.includes('first') || s.includes('1')) return 1;
+    if (s.includes('2nd') || s.includes('second') || s.includes('2')) return 2;
+    if (s.includes('3rd') || s.includes('third') || s.includes('3')) return 3;
+    if (s.includes('4th') || s.includes('fourth') || s.includes('4')) return 4;
+    if (s.includes('5th') || s.includes('fifth') || s.includes('5')) return 5;
+    return null;
+  };
 
+  // 1. Direct check against extracted kv.yearLevel
   if (kv.yearLevel) {
-    const kvNorm = normalizeForOcr(kv.yearLevel);
-    if (ordinals.some(ord => kvNorm.includes(ord)) || kvNorm.includes(String(levelNum))) {
-      return true;
+    const foundNum = parseYearDigit(kv.yearLevel);
+    if (foundNum !== null) {
+      return foundNum === expNum;
     }
   }
 
-  for (const ord of ordinals) {
+  // 2. Direct regex search for Year Level label on raw text
+  const yearHeaderMatch = String(text).match(/(?:year\s*level|yr\s*level|grade\s*level|year|yr)\s*[\.\:\-\[\=\s]+\s*([1-5])(?:st|nd|rd|th|\b)/i);
+  if (yearHeaderMatch && yearHeaderMatch[1]) {
+    const foundNum = parseInt(yearHeaderMatch[1], 10);
+    return foundNum === expNum;
+  }
+
+  // 3. Match explicit Nth Year patterns e.g. "4th Year", "3rd Year"
+  const ordinalWords = {
+    1: ['1st year', 'first year', '1st yr', '1st yr.'],
+    2: ['2nd year', 'second year', '2nd yr', '2nd yr.'],
+    3: ['3rd year', 'third year', '3rd yr', '3rd yr.'],
+    4: ['4th year', 'fourth year', '4th yr', '4th yr.'],
+    5: ['5th year', 'fifth year', '5th yr', '5th yr.']
+  };
+
+  const expOrdinals = ordinalWords[expNum] || [];
+  for (const ord of expOrdinals) {
     if (normText.includes(ord)) return true;
   }
 
-  const contextRegexes = [
-    new RegExp(`\\b(year|yr|level|grade)\\s*(level)?\\s*[:\\-]?\\s*${levelNum}\\b`, 'i'),
-    new RegExp(`\\b${levelNum}\\s*(st|nd|rd|th)?\\s*(year|yr|level)\\b`, 'i'),
-    new RegExp(`\\b(year|yr)\\s+${roman}\\b`, 'i')
-  ];
-
-  if (contextRegexes.some(rx => rx.test(normText))) return true;
-
-  const noisyYearLabelRx = /(?:y[ouea]?r?\s*l[aeo]?v[aelr]?|yr?\s*l[aeo]?v[aelr]?|grade\s*level|year\s*level)\s*[:\-\[]?\s*([0-9OiloI\|\[\]!]{1,3})/i;
-  const noisyMatch = noisyYearLabelRx.exec(text);
-  if (noisyMatch) {
-    const rawDigit = noisyMatch[1].replace(/[Oo]/g, '0');
-    const parsedDigit = parseInt(rawDigit, 10);
-    if (!isNaN(parsedDigit) && Math.abs(parsedDigit - levelNum) <= 1) return true;
-    if (rawDigit === '0' && levelNum <= 2) return true;
-    if (levelNum === 1 && (noisyMatch[1].includes('[') || noisyMatch[1].includes('|') || noisyMatch[1].includes('l') || noisyMatch[1].includes('I') || noisyMatch[1].includes('!'))) return true;
-    const nearbyDigits = noisyMatch[1].replace(/\D/g, '');
-    if (nearbyDigits && nearbyDigits.includes(String(levelNum))) return true;
-  }
-
-  // Section code check (e.g. "IT3B", "BSIT3B", "3B", "3A", "1T1A", "IT1A")
-  if (levelNum) {
-    const sectionRx = new RegExp(`\\b(?:IT|CS|BS|IS|SE|ECE|EE|IE|ACT)?-?${levelNum}[A-Z0-9]{1,4}\\b`, 'i');
-    if (sectionRx.test(text) || new RegExp(`\\bIT${levelNum}[A-Z0-9]\\b`, 'i').test(text) || new RegExp(`\\b${levelNum}[A-Z]\\b`, 'i').test(text)) {
-      return true;
+  // Check if ANY other year ordinal explicitly exists in text near year label
+  for (const [num, ords] of Object.entries(ordinalWords)) {
+    if (parseInt(num, 10) !== expNum) {
+      for (const ord of ords) {
+        if (normText.includes(ord) && (normText.includes('year level') || normText.includes('yr level') || normText.includes('year'))) {
+          return false;
+        }
+      }
     }
   }
 
-  const rawLower = text.toLowerCase();
-  const labelVariants = ['year level', 'yr level', 'year lvl', 'year lever', 'yr lever', 'yor laval', 'year laval', 'yr laval', 'yor level', 'your lave', 'yor lave', 'your level', 'your lvl', 'yr lave'];
-  for (const lv of labelVariants) {
-    const idx = rawLower.indexOf(lv);
-    if (idx !== -1) {
-      const nearby = rawLower.substring(idx + lv.length, idx + lv.length + 20);
-      const nearbyDigit = nearby.match(/[0-9]|\[|\||I|l/);
-      if (nearbyDigit && (String(levelNum) === nearbyDigit[0] || (levelNum === 1 && ['[', '|', 'I', 'l'].includes(nearbyDigit[0])))) return true;
-      if (nearbyDigit && nearbyDigit[0] === '0' && levelNum <= 2) return true;
-    }
+  // 4. Section code check (e.g. "IT3B", "BSIT3B", "IT4B")
+  const sectionMatch = String(text).match(/\b(?:IT|CS|BS|IS|SE|ECE|EE|IE|ACT)\-?([1-5])[A-Z0-9]{1,3}\b/i);
+  if (sectionMatch && sectionMatch[1]) {
+    const secNum = parseInt(sectionMatch[1], 10);
+    return secNum === expNum;
   }
 
   return false;
@@ -3697,7 +3709,7 @@ const StudentInfo = () => {
     setLoadingMessage({ title: 'Scanning COE', message: 'Verifying your Certificate of Enrollment and Video Content...' });
 
     try {
-      const targetAcademicYear = scholarshipDetails?.year || scholarshipDetails?.academic_year || formData.schoolYear || '2025-2026';
+      const targetAcademicYear = getScholarshipConfiguredAcademicYear(scholarshipDetails, formData.schoolYear);
       const res = await performOcrVerification('Enrollment', coeDoc, {
         schoolName,
         idNumber,
@@ -3758,7 +3770,7 @@ const StudentInfo = () => {
     setLoadingMessage({ title: 'Scanning Grades', message: 'Verifying your Grades document and Video Content...' });
 
     try {
-      const targetAcademicYear = scholarshipDetails?.grades_year || scholarshipDetails?.year || scholarshipDetails?.academic_year || formData.schoolYear || '2025-2026';
+      const targetAcademicYear = scholarshipDetails?.grades_year || getScholarshipConfiguredAcademicYear(scholarshipDetails, formData.schoolYear);
       const res = await performOcrVerification('Grades', gradesDoc, {
         schoolName: formData.schoolName,
         idNumber: formData.schoolIdNumber,
@@ -3857,7 +3869,7 @@ const StudentInfo = () => {
     lastIdScanRef.current = { front: idFront, back: idBack, frontVid: frontVideoUrl, backVid: backVideoUrl };
 
     try {
-      const targetAcademicYear = scholarshipDetails?.year || scholarshipDetails?.academic_year || formData.schoolYear || '2025-2026';
+      const targetAcademicYear = getScholarshipConfiguredAcademicYear(scholarshipDetails, formData.schoolYear);
       // Only check video presence, not full video OCR (backend already optimized)
       const res = await performOcrVerification(
         'SchoolID',
