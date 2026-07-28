@@ -3777,8 +3777,13 @@ const StudentInfo = () => {
           updates.schoolIdBack = backUrl;
         }
 
-        if (profile.has_id_pic || profile.has_profile_picture || profile.id_pic || profile.profile_picture) {
-          const profilePicUrl = `${apiOrigin}/api/student/applicant/document/raw/id_pic?token=${token}`;
+        if (profile.profile_picture) {
+          setIdPicturePreview(profile.profile_picture);
+        } else if (profile.id_pic) {
+          setIdPicturePreview(profile.id_pic);
+        } else if (profile.has_profile_picture || profile.has_id_pic) {
+          const rawField = profile.has_profile_picture ? 'profile_picture' : 'id_pic';
+          const profilePicUrl = `${apiOrigin}/api/student/applicant/document/raw/${rawField}?token=${token}`;
           setIdPicturePreview(profilePicUrl);
         } else if (savedDraft?.idPicturePreview) {
           setIdPicturePreview(savedDraft.idPicturePreview);
@@ -5908,8 +5913,8 @@ const StudentInfo = () => {
                       style={{ position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2' }}
                     />
                     <div style={{ textAlign: 'center', color: '#999', fontSize: '0.85rem', pointerEvents: 'none' }}>
-                      {(idPicturePreview || formData.profile_picture || photos.profile_picture || (userProfile?.has_id_pic || userProfile?.id_pic ? `${API_ORIGIN}/api/student/applicant/document/raw/id_pic?token=${localStorage.getItem('authToken')}` : null)) ? (
-                        <img src={idPicturePreview || formData.profile_picture || photos.profile_picture || `${API_ORIGIN}/api/student/applicant/document/raw/id_pic?token=${localStorage.getItem('authToken')}`} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }} alt="ID Preview" />
+                      {(idPicturePreview || formData.profile_picture || photos.profile_picture || userProfile?.profile_picture || userProfile?.id_pic || (userProfile?.has_profile_picture || userProfile?.has_id_pic ? `${API_ORIGIN}/api/student/applicant/document/raw/profile_picture?token=${localStorage.getItem('authToken')}` : null)) ? (
+                        <img src={idPicturePreview || formData.profile_picture || photos.profile_picture || userProfile?.profile_picture || userProfile?.id_pic || `${API_ORIGIN}/api/student/applicant/document/raw/profile_picture?token=${localStorage.getItem('authToken')}`} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }} alt="ID Preview" />
                       ) : (
                         <>
                           <i className="fas fa-camera" style={{ fontSize: '2rem', marginBottom: '0.5rem', display: 'block' }}></i>
