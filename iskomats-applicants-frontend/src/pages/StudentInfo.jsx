@@ -1431,18 +1431,36 @@ const StudentInfo = () => {
           const firstWord = normalizeForOcr(userFirst).split(' ').filter(w => w.length >= 2);
           const allNameWords = [...lastWord, ...firstWord];
 
-          // Target document category keywords
+          // Target document category keywords (including common Philippine document phrases)
           let targetKeywords = [];
           if (fieldName?.includes('Indigency') || fieldName?.includes('indigency')) {
-            targetKeywords = ['indigency', 'indigent', 'certificate', 'barangay', 'punong', 'resident', 'certify', 'office', 'bayan', 'mataasnakahoy', 'lipa', 'batangas'];
+            targetKeywords = [
+              'indigency', 'indigent', 'certificate', 'barangay', 'punong', 'resident', 'certify',
+              'office', 'bayan', 'mataasnakahoy', 'lipa', 'batangas', 'whom', 'concern', 'personally',
+              'purok', 'bonafide', 'family', 'families', 'sangguniang', 'kagawad', 'lubi', 'moises',
+              'republic', 'philippines', 'province', 'municipality', 'seal'
+            ];
           } else if (fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('certificate')) {
-            targetKeywords = ['enrollment', 'registration', 'certificate', 'student', 'college', 'semester', 'academic', 'official', 'course', 'school', 'university'];
+            targetKeywords = [
+              'enrollment', 'registration', 'certificate', 'student', 'college', 'semester', 'academic',
+              'official', 'course', 'school', 'university', 'whom', 'concern', 'certify', 'bonafide',
+              'enrolled', 'registrar', 'dean', 'republic', 'philippines', 'department'
+            ];
           } else if (fieldName?.includes('Grades') || fieldName?.includes('grades')) {
-            targetKeywords = ['grade', 'transcript', 'gpa', 'academic', 'rating', 'remarks', 'passed', 'subject', 'units', 'evaluation', 'record'];
+            targetKeywords = [
+              'grade', 'transcript', 'gpa', 'academic', 'rating', 'remarks', 'passed', 'subject',
+              'units', 'evaluation', 'record', 'scholastic', 'gwa', 'registrar', 'certified', 'true', 'copy'
+            ];
           } else if (fieldName?.includes('schoolId') || fieldName?.includes('Id') || fieldName?.includes('id')) {
-            targetKeywords = ['school', 'student', 'id', 'college', 'university', 'republic', 'card', 'de la salle', 'lipa', 'identity'];
+            targetKeywords = [
+              'school', 'student', 'id', 'college', 'university', 'republic', 'card', 'de la salle',
+              'lipa', 'identity', 'signature', 'valid', 'holder', 'philippines'
+            ];
           } else {
-            targetKeywords = ['certificate', 'official', 'document', 'school', 'student', 'republic', 'barangay'];
+            targetKeywords = [
+              'certificate', 'official', 'document', 'school', 'student', 'republic', 'barangay',
+              'whom', 'concern', 'certify', 'philippines', 'province', 'office'
+            ];
           }
 
           const hasNameMatch = allNameWords.some(w => cleanText.includes(w));
