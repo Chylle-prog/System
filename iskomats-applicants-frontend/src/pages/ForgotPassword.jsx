@@ -391,7 +391,6 @@ const ForgotPassword = () => {
         @keyframes spin {
           to { transform: rotate(360deg); }
         }
-      <style>{`
         @keyframes pulseGlow {
           0%, 100% { box-shadow: 0 0 25px rgba(220, 60, 20, 0.3), inset 0 0 15px rgba(255, 255, 255, 0.1); }
           50% { box-shadow: 0 0 45px rgba(255, 100, 50, 0.5), inset 0 0 25px rgba(255, 255, 255, 0.2); }
@@ -399,9 +398,6 @@ const ForgotPassword = () => {
         @keyframes subtleFloat {
           0%, 100% { transform: translateY(0px); }
           50% { transform: translateY(-6px); }
-        }
-        @keyframes spin {
-          to { transform: rotate(360deg); }
         }
         .auth-wrapper {
           flex: 1;
