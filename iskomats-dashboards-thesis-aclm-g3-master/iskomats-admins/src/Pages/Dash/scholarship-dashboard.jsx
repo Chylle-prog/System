@@ -1524,6 +1524,7 @@ export default function ScholarshipDashboard({
       scholarshipName: '',
       deadline: '',
       minGpa: '',
+      units: '',
       slots: '',
       location: '',
       parentFinance: '',
@@ -1646,6 +1647,7 @@ export default function ScholarshipDashboard({
         ...formData,
         slots: parseInt(formData.slots),
         minGpa: parseFloat(formData.minGpa),
+        units: formData.units ? parseInt(formData.units) : null,
         parentFinance: parseFloat(formData.parentFinance),
         description: formData.description,
         year: normalizedYear,
@@ -1706,6 +1708,7 @@ export default function ScholarshipDashboard({
         scholarshipName: post.scholarshipName || '',
         deadline: formattedDeadline,
         minGpa: post.minGpa ? post.minGpa.toString() : '',
+        units: post.units !== undefined && post.units !== null ? post.units.toString() : '',
         slots: post.slots ? post.slots.toString() : '',
         location: post.location || '',
         parentFinance: post.parentFinance ? post.parentFinance.toString() : '',
@@ -3229,6 +3232,18 @@ export default function ScholarshipDashboard({
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-xs sm:text-sm"
                   placeholder="e.g. 85"
                   required
+                />
+              </div>
+              <div>
+                <label className="block text-xs sm:text-sm font-semibold text-[#800020] mb-1">Required Units (Int)</label>
+                <input
+                  type="number"
+                  name="units"
+                  value={formData.units}
+                  onChange={handleFormChange}
+                  min="1"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-xs sm:text-sm"
+                  placeholder="e.g. 18"
                 />
               </div>
               <div>

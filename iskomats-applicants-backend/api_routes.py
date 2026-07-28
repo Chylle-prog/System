@@ -442,7 +442,8 @@ def ensure_schema_integrity(cursor):
         'grades_sem': 'VARCHAR(50)',
         'grades_year': 'VARCHAR(50)',
         'course': 'VARCHAR(255)',
-        'program_type': 'VARCHAR(100)'
+        'program_type': 'VARCHAR(100)',
+        'units': 'INTEGER'
     }
     for col, col_type in scholarship_cols.items():
         cursor.execute(
@@ -469,7 +470,8 @@ def ensure_schema_integrity(cursor):
     # 3. Add jwt_token and verification_timestamp columns to applicants table if missing
     applicant_extra_cols = {
         'jwt_token': 'TEXT',
-        'verification_timestamp': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'
+        'verification_timestamp': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+        'units': 'INTEGER'
     }
     for col, col_type in applicant_extra_cols.items():
         cursor.execute(
@@ -3259,6 +3261,7 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
             year_expr = 's.year' if 'year' in scholarship_columns else 'NULL'
             grades_sem_expr = 's.grades_sem' if 'grades_sem' in scholarship_columns else 'NULL'
             grades_year_expr = 's.grades_year' if 'grades_year' in scholarship_columns else 'NULL'
+            units_expr = 's.units' if 'units' in scholarship_columns else 'NULL'
 
             params = []
             where_clauses = []
@@ -3284,6 +3287,7 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
                        {description_expr} as description, {date_created_expr} as "dateCreated",
                        {semester_expr} as semester, {year_expr} as year,
                        {grades_sem_expr} as grades_sem, {grades_year_expr} as grades_year,
+                       {units_expr} as units,
                        COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted = 'Accepted') as "acceptedCount",
                        COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted = 'Pending' OR ast.is_accepted IS NULL) as "pendingCount",
                        COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted = 'Rejected') as "declinedCount"
@@ -3298,6 +3302,7 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
                 year_expr=year_expr,
                 grades_sem_expr=grades_sem_expr,
                 grades_year_expr=grades_year_expr,
+                units_expr=units_expr,
             )
 
             if where_clauses:
@@ -3338,6 +3343,8 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
                 group_by_columns.append('s.grades_sem')
             if 'grades_year' in scholarship_columns:
                 group_by_columns.append('s.grades_year')
+            if 'units' in scholarship_columns:
+                group_by_columns.append('s.units')
 
             # Add Pagination
             limit = int(request.args.get('limit', 100))
@@ -3915,16 +3922,17 @@ def create_scholarship(current_user_id, pro_no, role):
             if role != 'Admin' and target_pro_no is None:
                  return jsonify({'message': 'User not associated with a scholarship provider'}), 403
         
+            units_val = int(data.get('units')) if data.get('units') not in (None, '', 'null') else None
             cursor.execute('''
-                INSERT INTO scholarships (scholarship_name, gpa, parent_finance, location, pro_no, slots, deadline, "desc", semester, year, grades_sem, grades_year, course, program_type, date_created)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_DATE)
+                INSERT INTO scholarships (scholarship_name, gpa, parent_finance, location, pro_no, slots, deadline, "desc", semester, year, grades_sem, grades_year, course, program_type, units, date_created)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_DATE)
                 RETURNING req_no
             ''', (
                 data.get('scholarshipName'), data.get('minGpa'), data.get('parentFinance'),
                 data.get('location'), target_pro_no, data.get('slots'), data.get('deadline'),
                 data.get('description'), data.get('semester'), data.get('year'),
                 data.get('grades_sem'), data.get('grades_year'), data.get('course', 'All'),
-                data.get('program_type', 'All')
+                data.get('program_type', 'All'), units_val
             ))
         
             new_scholarship = cursor.fetchone()
@@ -4003,18 +4011,19 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
             if not is_admin and sch_row['pro_no'] is None and resolved_provider_no is not None:
                 cursor.execute("UPDATE scholarships SET pro_no = %s WHERE req_no = %s", (resolved_provider_no, req_no))
              
+            units_val = int(data.get('units')) if data.get('units') not in (None, '', 'null') else None
             cursor.execute('''
                 UPDATE scholarships 
                 SET scholarship_name = %s, gpa = %s, parent_finance = %s, location = %s, slots = %s, 
                     deadline = %s, "desc" = %s, semester = %s, year = %s, grades_sem = %s, grades_year = %s,
-                    course = %s, program_type = %s
+                    course = %s, program_type = %s, units = %s
                 WHERE req_no = %s
             ''', (
                 data.get('scholarshipName'), data.get('minGpa'), data.get('parentFinance'),
                 data.get('location'), data.get('slots'), data.get('deadline'),
                 data.get('description'), data.get('semester'), data.get('year'),
                 data.get('grades_sem'), data.get('grades_year'), data.get('course', 'All'),
-                data.get('program_type', 'All'), req_no
+                data.get('program_type', 'All'), units_val, req_no
             ))
         
             conn.commit()

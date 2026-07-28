@@ -1031,6 +1031,24 @@ function coe_type_matches_text(text) {
   return keywords.some(kw => normText.includes(kw));
 }
 
+function extractTotalUnitsFromText(text) {
+  if (!text) return null;
+  let match = text.match(/total\s*units\s*[:=\+\-1l\|\]\}\)]*\s*(\d+(?:\.\d+)?)/i);
+  if (!match) {
+    match = text.match(/total\s*units[^\n\d]*[\r\n]+\s*(\d+(?:\.\d+)?)/i);
+  }
+  if (!match) {
+    match = text.match(/\bunits\s*[:=\+\-1l\|\]\}\)]*\s*(\d+(?:\.\d+)?)/i);
+  }
+  if (match && match[1]) {
+    const val = parseFloat(match[1]);
+    if (!isNaN(val)) {
+      return Math.round(val);
+    }
+  }
+  return null;
+}
+
 function yearLevelMatchesText(text, expectedYearLevel) {
   if (!expectedYearLevel || !text) return true;
   const normText = normalizeForOcr(text);
@@ -2908,7 +2926,15 @@ const StudentInfo = () => {
           const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
           const coeTypeOk = coe_type_matches_text(combinedText);
 
-          isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk && yrOk && videoOk && coeTypeOk;
+          const detectedUnits = extractTotalUnitsFromText(combinedText);
+          if (detectedUnits !== null && detectedUnits > 0) {
+            setFormData(prev => ({ ...prev, units: detectedUnits }));
+          }
+
+          const requiredUnits = scholarshipDetails?.units ? parseInt(scholarshipDetails.units) : null;
+          const unitsOk = requiredUnits ? (detectedUnits !== null && detectedUnits >= requiredUnits) : true;
+
+          isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk && yrOk && videoOk && coeTypeOk && unitsOk;
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
             "Last Name": nameCheck.details.last_ok,
@@ -2919,11 +2945,12 @@ const StudentInfo = () => {
             "Semester": (semester || reqSemester) ? semOk : null,
             "ID Number": idNumber ? idOk : null,
             "Document Type": coeTypeOk,
+            "Units Requirement": requiredUnits ? (unitsOk ? `Met (${detectedUnits}/${requiredUnits})` : `Failed (${detectedUnits || 0}/${requiredUnits})`) : (detectedUnits ? `${detectedUnits} units` : null),
             "Video Proof": videoOk
           };
           finalMessage = isSuccess
             ? "Enrollment verified successfully client-side!"
-            : (!videoOk ? (videoCheck?.reason || "Enrollment video proof failed validation.") : "Enrollment verification mismatch.");
+            : (!videoOk ? (videoCheck?.reason || "Enrollment video proof failed validation.") : (!unitsOk ? `Units requirement mismatch: document shows ${detectedUnits || 0} units, scholarship requires ${requiredUnits}.` : "Enrollment verification mismatch."));
           resultsList = [{ doc: 'Enrollment', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
         }
         else if (docType === 'Grades') {

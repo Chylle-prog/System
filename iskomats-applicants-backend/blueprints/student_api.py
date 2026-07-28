@@ -1120,7 +1120,7 @@ def ensure_applicant_document_storage():
         
         # --- CLOUD STORAGE MIGRATION: Convert BYTEA to TEXT and Ensure Columns Exist ---
         # Define columns by their intended primary location
-        applicant_only_cols = ['profile_picture', 'merits_awards_received']
+        applicant_only_cols = ['profile_picture', 'merits_awards_received', 'units']
         
         document_table_cols = [
             'signature_image_data', 'schoolID_photo', 'id_img_front', 'id_img_back',
@@ -2051,7 +2051,7 @@ def get_all_scholarships():
     try:
         with get_db() as conn:
             cur = conn.cursor()
-            cur.execute('SELECT req_no, scholarship_name, deadline, gpa, parent_finance, location, "desc" as description, semester, year FROM scholarships WHERE COALESCE(is_removed, FALSE) = FALSE ORDER BY scholarship_name LIMIT %s OFFSET %s', (limit, offset))
+            cur.execute('SELECT req_no, scholarship_name, deadline, gpa, parent_finance, location, "desc" as description, semester, year, units FROM scholarships WHERE COALESCE(is_removed, FALSE) = FALSE ORDER BY scholarship_name LIMIT %s OFFSET %s', (limit, offset))
             rows = cur.fetchall()
             print(f"[PERF] /scholarships took {time.time() - start:.3f}s (limit={limit}, offset={offset})")
             return jsonify(rows)
@@ -2711,7 +2711,7 @@ def update_profile():
                 'motherOccupation': 'mother_occupation', 'parentsGrossIncome': 'financial_income_of_parents',
                 'gpa': 'overall_gpa', 'numberOfSiblings': 'sibling_no', 'course': 'course',
                 'meritsAwardsReceived': 'merits_awards_received',
-                'grades_year': 'grades_year'
+                'grades_year': 'grades_year', 'units': 'units'
             }
 
             document_field_mapping = {

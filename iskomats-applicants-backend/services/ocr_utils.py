@@ -1252,6 +1252,20 @@ def parse_cor_document(raw_text):
     elif any(k in raw_upper for k in ['UNIVERSITY OF THE PHILIPPINES', 'UP']):
         fields['school_name'] = 'University of the Philippines'
 
+    # Total Units extraction from COR/COE
+    units_match = re.search(r'total\s*units\s*[:=\+\-1l\|\]\}\)]*\s*(\d+(?:\.\d+)?)', str(raw_text), re.IGNORECASE)
+    if not units_match:
+        units_match = re.search(r'total\s*units[^\n\d]*[\r\n]+\s*(\d+(?:\.\d+)?)', str(raw_text), re.IGNORECASE)
+    if not units_match:
+        units_match = re.search(r'\bunits\s*[:=\+\-1l\|\]\}\)]*\s*(\d+(?:\.\d+)?)', str(raw_text), re.IGNORECASE)
+
+    if units_match:
+        try:
+            val_float = float(units_match.group(1))
+            fields['units'] = int(round(val_float))
+        except (ValueError, TypeError):
+            pass
+
     return fields
 
 def verify_academic_year_strict(expected_academic_year, found_ay_text, raw_text):
@@ -1433,6 +1447,7 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
     meta['name_ok'] = first_ok and last_ok
     meta['details'] = failures
     meta['detected_text'] = raw_text
+    meta['units'] = parsed_fields.get('units')
 
     return success, msg, meta
 
