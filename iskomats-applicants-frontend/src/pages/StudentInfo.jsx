@@ -1827,6 +1827,7 @@ const StudentInfo = () => {
 
   // OCR Debug Inspector States
   const [showOcrDebugModal, setShowOcrDebugModal] = useState(false);
+  const [showDebugMenu, setShowDebugMenu] = useState(false);
   const [selectedDebugTab, setSelectedDebugTab] = useState('SchoolID');
   const [ocrDebugLogs, setOcrDebugLogs] = useState({
     SchoolID: { status: 'Not Scanned', detectedText: '', requirements: {}, scoreDetails: {}, timestamp: null },
@@ -5547,117 +5548,171 @@ const StudentInfo = () => {
         bottom: '20px',
         left: '20px',
         zIndex: 9999,
-        background: '#1e293b',
-        color: '#fff',
-        padding: '12px 16px',
-        borderRadius: '18px',
-        boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
-        fontSize: '0.75rem',
-        fontWeight: 'bold',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '10px',
-        border: '1px solid #334155'
       }}>
-        {/* Alt Account Check Row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ color: localStorage.getItem('debug_skip_alternate_check') === 'true' ? '#10b981' : '#ef4444' }}>●</span>
-          <span>Alt Account Check: {localStorage.getItem('debug_skip_alternate_check') === 'true' ? 'Bypassed' : 'Enabled'}</span>
+        {!showDebugMenu ? (
           <button
             type="button"
-            onClick={() => {
-              const isBypassed = localStorage.getItem('debug_skip_alternate_check') === 'true';
-              localStorage.setItem('debug_skip_alternate_check', isBypassed ? 'false' : 'true');
-              window.location.reload();
-            }}
+            onClick={() => setShowDebugMenu(true)}
             style={{
-              background: '#3b82f6',
-              color: 'white',
-              border: 'none',
-              padding: '4px 8px',
-              borderRadius: '4px',
+              background: '#1e293b',
+              color: '#38bdf8',
+              border: '1px solid #334155',
+              padding: '8px 14px',
+              borderRadius: '20px',
+              boxShadow: '0 8px 20px rgba(0,0,0,0.3)',
+              fontSize: '0.75rem',
+              fontWeight: '800',
               cursor: 'pointer',
-              fontSize: '0.7rem',
-              fontWeight: '700'
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'all 0.2s ease'
             }}
           >
-            Toggle
+            <i className="fas fa-bug"></i>
+            Debug Options
           </button>
-        </div>
-
-        {/* Digital Tamper Check Row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ color: localStorage.getItem('debug_skip_tamper_check') === 'true' ? '#10b981' : '#ef4444' }}>●</span>
-          <span>Tamper Check: {localStorage.getItem('debug_skip_tamper_check') === 'true' ? 'Bypassed' : 'Enabled'}</span>
-          <button
-            type="button"
-            onClick={() => {
-              const isBypassed = localStorage.getItem('debug_skip_tamper_check') === 'true';
-              localStorage.setItem('debug_skip_tamper_check', isBypassed ? 'false' : 'true');
-              window.location.reload();
-            }}
-            style={{
-              background: '#3b82f6',
-              color: 'white',
-              border: 'none',
-              padding: '4px 8px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '0.7rem',
-              fontWeight: '700'
-            }}
-          >
-            Toggle
-          </button>
-        </div>
-
-        {/* Fill Docs from Supabase Button */}
-        <button
-          type="button"
-          onClick={fillDocsFromSupabase}
-          style={{
-            width: '100%',
-            background: '#059669',
-            color: 'white',
-            border: 'none',
-            padding: '7px 12px',
-            borderRadius: '10px',
-            cursor: 'pointer',
+        ) : (
+          <div style={{
+            background: '#1e293b',
+            color: '#fff',
+            padding: '14px 16px',
+            borderRadius: '18px',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.35)',
             fontSize: '0.75rem',
-            fontWeight: '800',
+            fontWeight: 'bold',
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '6px'
-          }}
-        >
-          <span style={{ fontSize: '0.9rem' }}>📂</span> Prefill Docs from Supabase
-        </button>
+            flexDirection: 'column',
+            gap: '10px',
+            border: '1px solid #334155',
+            minWidth: '240px',
+            animation: 'fadeIn 0.2s ease'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>
+              <span style={{ color: '#38bdf8', fontSize: '0.8rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <i className="fas fa-bug"></i> Debug Options
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowDebugMenu(false)}
+                style={{
+                  background: 'transparent',
+                  color: '#94a3b8',
+                  border: 'none',
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  padding: '2px 6px'
+                }}
+              >
+                ✕
+              </button>
+            </div>
 
-        {/* Global Requirements Checklist Toggle Button (Below Alt Account Check) */}
-        <button
-          type="button"
-          onClick={() => setShowAllRequirementsChecklist(prev => !prev)}
-          style={{
-            width: '100%',
-            background: showAllRequirementsChecklist ? '#6366f1' : '#475569',
-            color: 'white',
-            border: 'none',
-            padding: '7px 12px',
-            borderRadius: '10px',
-            cursor: 'pointer',
-            fontSize: '0.75rem',
-            fontWeight: '800',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
-          }}
-        >
-          <i className={`fas ${showAllRequirementsChecklist ? 'fa-eye-slash' : 'fa-eye'}`}></i>
-          {showAllRequirementsChecklist ? 'Hide Requirements Info (All)' : 'Show Requirements Info (All)'}
-        </button>
+            {/* Alt Account Check Row */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ color: localStorage.getItem('debug_skip_alternate_check') === 'true' ? '#10b981' : '#ef4444' }}>●</span>
+                <span>Alt Check: {localStorage.getItem('debug_skip_alternate_check') === 'true' ? 'Bypassed' : 'Enabled'}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const isBypassed = localStorage.getItem('debug_skip_alternate_check') === 'true';
+                  localStorage.setItem('debug_skip_alternate_check', isBypassed ? 'false' : 'true');
+                  window.location.reload();
+                }}
+                style={{
+                  background: '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.7rem',
+                  fontWeight: '700'
+                }}
+              >
+                Toggle
+              </button>
+            </div>
+
+            {/* Digital Tamper Check Row */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ color: localStorage.getItem('debug_skip_tamper_check') === 'true' ? '#10b981' : '#ef4444' }}>●</span>
+                <span>Tamper Check: {localStorage.getItem('debug_skip_tamper_check') === 'true' ? 'Bypassed' : 'Enabled'}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const isBypassed = localStorage.getItem('debug_skip_tamper_check') === 'true';
+                  localStorage.setItem('debug_skip_tamper_check', isBypassed ? 'false' : 'true');
+                  window.location.reload();
+                }}
+                style={{
+                  background: '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.7rem',
+                  fontWeight: '700'
+                }}
+              >
+                Toggle
+              </button>
+            </div>
+
+            {/* Fill Docs from Supabase Button */}
+            <button
+              type="button"
+              onClick={fillDocsFromSupabase}
+              style={{
+                width: '100%',
+                background: '#059669',
+                color: 'white',
+                border: 'none',
+                padding: '7px 12px',
+                borderRadius: '10px',
+                cursor: 'pointer',
+                fontSize: '0.75rem',
+                fontWeight: '800',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px'
+              }}
+            >
+              <span style={{ fontSize: '0.9rem' }}>📂</span> Prefill Docs from Supabase
+            </button>
+
+            {/* Global Requirements Checklist Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setShowAllRequirementsChecklist(prev => !prev)}
+              style={{
+                width: '100%',
+                background: showAllRequirementsChecklist ? '#6366f1' : '#475569',
+                color: 'white',
+                border: 'none',
+                padding: '7px 12px',
+                borderRadius: '10px',
+                cursor: 'pointer',
+                fontSize: '0.75rem',
+                fontWeight: '800',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+              }}
+            >
+              <i className={`fas ${showAllRequirementsChecklist ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+              {showAllRequirementsChecklist ? 'Hide Requirements Info' : 'Show Requirements Info'}
+            </button>
+          </div>
+        )}
       </div>
 
       <nav className="navbar">
