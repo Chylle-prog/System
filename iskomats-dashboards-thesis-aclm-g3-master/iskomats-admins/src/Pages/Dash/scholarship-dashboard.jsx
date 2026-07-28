@@ -116,6 +116,19 @@ const DecryptedMedia = ({ src, type, className, controls = false, onClick = null
 
 const ACADEMIC_YEAR_PATTERN = /^\d{4}[-]\d{4}$/;
 
+const getApplicantAddressDisplay = (a) => {
+  if (!a) return 'N/A';
+  const streetBrgy = a.streetBrgy || a.street_brgy || a.street || a.barangay || '';
+  const municipality = a.municipality || a.town_city_municipality || a.townCity || a.city || '';
+  const province = a.province || '';
+
+  const parts = [streetBrgy, municipality, province].map(s => String(s || '').trim()).filter(Boolean);
+  if (parts.length > 0) {
+    return parts.join(', ');
+  }
+  return a.location || a.address || 'N/A';
+};
+
 const autoAdjustColumnWidths = (data) => {
   if (!data || !data.length || !data[0]) return [];
   const keys = Object.keys(data[0]);
@@ -292,9 +305,9 @@ const applicantMatchesAdvancedScholarshipFilters = (applicant, advanced, scholar
     return false;
   }
 
-  if (advanced.location && (applicant.municipality || applicant.address)) {
-    const locationMatch = normalizeSearchText(applicant.municipality || '').includes(normalizeSearchText(advanced.location)) ||
-      normalizeSearchText(applicant.address || '').includes(normalizeSearchText(advanced.location));
+  if (advanced.location && (applicant.municipality || applicant.address || applicant.streetBrgy || applicant.street_brgy || applicant.province)) {
+    const fullAddr = getApplicantAddressDisplay(applicant);
+    const locationMatch = normalizeSearchText(fullAddr).includes(normalizeSearchText(advanced.location));
     if (!locationMatch) return false;
   }
 
@@ -2803,7 +2816,7 @@ export default function ScholarshipDashboard({
                       <span className="text-xs sm:text-sm font-black text-gray-900 truncate">{app.lastName ? `${app.firstName} ${app.lastName}` : app.name}</span>
                       <span className="text-[9px] sm:text-[10px] font-bold text-[#800020] bg-rose-50 px-2 py-0.5 rounded-full flex-shrink-0">{app.course}</span>
                     </div>
-                    <p className="text-[11px] sm:text-xs text-gray-500 line-clamp-1">{app.street ? `${app.barangay}, ${app.municipality}` : app.location}</p>
+                    <p className="text-[11px] sm:text-xs text-gray-500 line-clamp-1">{getApplicantAddressDisplay(app)}</p>
                   </div>
                 </div>
               ))}
@@ -3501,10 +3514,8 @@ export default function ScholarshipDashboard({
         const matchesSearch =
           a.name.toLowerCase().includes(search) ||
           (a.school && a.school.toLowerCase().includes(search)) ||
-          (a.municipality && a.municipality.toLowerCase().includes(search)) ||
+          (getApplicantAddressDisplay(a).toLowerCase().includes(search)) ||
           (a.course && a.course.toLowerCase().includes(search)) ||
-          (a.barangay && a.barangay.toLowerCase().includes(search)) ||
-          (a.address && a.address.toLowerCase().includes(search)) ||
           (a.mobileNumber && a.mobileNumber.toLowerCase().includes(search));
         const matchesScholarship = matchesScholarshipSelection(a, trackScholarshipFilter);
         const matchesCourse = courseTrackFilter === 'all' || a.course === courseTrackFilter;
@@ -3538,8 +3549,8 @@ export default function ScholarshipDashboard({
             valA = String(`${a.school || ''} ${a.course || ''}`).toLowerCase();
             valB = String(`${b.school || ''} ${b.course || ''}`).toLowerCase();
           } else if (sortConfig.column === 'contactAddress') {
-            valA = String(`${a.municipality || ''} ${a.address || ''} ${a.mobileNumber || ''}`).toLowerCase();
-            valB = String(`${b.municipality || ''} ${b.address || ''} ${b.mobileNumber || ''}`).toLowerCase();
+            valA = String(`${getApplicantAddressDisplay(a)} ${a.mobileNumber || ''}`).toLowerCase();
+            valB = String(`${getApplicantAddressDisplay(b)} ${b.mobileNumber || ''}`).toLowerCase();
           } else {
             valA = String(a[sortConfig.column] || '').toLowerCase();
             valB = String(b[sortConfig.column] || '').toLowerCase();
@@ -3911,7 +3922,7 @@ export default function ScholarshipDashboard({
                         <div className="font-bold text-[#800020] leading-tight">{a.school}</div>
                         <div className="text-[10px] text-gray-500">{a.course || 'No Course'}</div>
                       </td>
-                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
+                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{getApplicantAddressDisplay(a)}</td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-2">
                           <button type="button" onClick={() => viewApplicantFn(idx, 'all')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
@@ -3951,7 +3962,7 @@ export default function ScholarshipDashboard({
                         <div className="font-bold text-[#800020] leading-tight">{a.school}</div>
                         <div className="text-[10px] text-gray-500">{a.course || 'No Course'}</div>
                       </td>
-                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
+                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{getApplicantAddressDisplay(a)}</td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-2">
                           <button type="button" onClick={() => viewApplicantFn(a._listIdx, a._listType)} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors" disabled={!!processingState}>
@@ -3983,7 +3994,7 @@ export default function ScholarshipDashboard({
                         <div className="font-bold text-[#800020] leading-tight">{a.school}</div>
                         <div className="text-[10px] text-gray-500">{a.course || 'No Course'}</div>
                       </td>
-                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
+                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{getApplicantAddressDisplay(a)}</td>
                       <td className="px-3 py-2">
                         <div className="flex gap-1">
                           <button type="button" onClick={() => viewApplicantFn(idx, 'accepted')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
@@ -4015,7 +4026,7 @@ export default function ScholarshipDashboard({
                         <div className="font-bold text-[#800020] leading-tight">{a.school}</div>
                         <div className="text-[10px] text-gray-500">{a.course || 'No Course'}</div>
                       </td>
-                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
+                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{getApplicantAddressDisplay(a)}</td>
                       <td className="px-3 py-2">
                         <div className="flex gap-1">
                           <button type="button" onClick={() => viewApplicantFn(idx, 'rejected')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
@@ -4047,7 +4058,7 @@ export default function ScholarshipDashboard({
                         <div className="font-bold text-[#800020] leading-tight">{a.school}</div>
                         <div className="text-[10px] text-gray-500">{a.course || 'No Course'}</div>
                       </td>
-                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{a.municipality || 'N/A'}</td>
+                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{getApplicantAddressDisplay(a)}</td>
                       <td className="px-3 py-2">
                         <div className="flex gap-1">
                           <button type="button" onClick={() => viewApplicantFn(idx, 'cancelled')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
@@ -4075,10 +4086,8 @@ export default function ScholarshipDashboard({
         const matchesSearch =
           a.name.toLowerCase().includes(search) ||
           (a.school && a.school.toLowerCase().includes(search)) ||
-          (a.municipality && a.municipality.toLowerCase().includes(search)) ||
+          (getApplicantAddressDisplay(a).toLowerCase().includes(search)) ||
           (a.course && a.course.toLowerCase().includes(search)) ||
-          (a.barangay && a.barangay.toLowerCase().includes(search)) ||
-          (a.address && a.address.toLowerCase().includes(search)) ||
           (a.mobileNumber && a.mobileNumber.toLowerCase().includes(search));
         const matchesScholarship = matchesScholarshipSelection(a, trackScholarshipFilter);
 
@@ -4094,7 +4103,7 @@ export default function ScholarshipDashboard({
         'Financial Status': getFinancialStatusLabel(app.income || app.family?.grossIncome),
         'School': app.school,
         'Contact No.': app.mobileNumber || app.phone || (app.studentContact && app.studentContact.phone) || 'N/A',
-        'Address': app.municipality || 'N/A',
+        'Address': getApplicantAddressDisplay(app),
         'Course': app.course
       }));
 
@@ -4698,7 +4707,7 @@ export default function ScholarshipDashboard({
                           <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact & Address</th></tr></thead>
                           <tbody className="divide-y divide-gray-100">
                             {filteredPending.map((a) => (
-                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50"><td className="p-3 font-bold text-gray-800">{a.name}</td><td className="p-3">{a.grade}</td><td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td><td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {a.municipality || 'N/A'}</td></tr>
+                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50"><td className="p-3 font-bold text-gray-800">{a.name}</td><td className="p-3">{a.grade}</td><td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td><td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td></tr>
                             ))}
                             {filteredPending.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-gray-400 italic">No pending applicants found for this scholarship</td></tr>}
                           </tbody>
@@ -4718,7 +4727,7 @@ export default function ScholarshipDashboard({
                           <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact & Address</th></tr></thead>
                           <tbody className="divide-y divide-gray-100">
                             {filteredAccepted.map((a) => (
-                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50"><td className="p-3 font-bold text-gray-800">{a.name}</td><td className="p-3">{a.grade}</td><td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td><td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {a.municipality || 'N/A'}</td></tr>
+                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50"><td className="p-3 font-bold text-gray-800">{a.name}</td><td className="p-3">{a.grade}</td><td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td><td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td></tr>
                             ))}
                             {filteredAccepted.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-gray-400 italic">No accepted scholars found for this scholarship</td></tr>}
                           </tbody>
@@ -4738,7 +4747,7 @@ export default function ScholarshipDashboard({
                           <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact & Address</th></tr></thead>
                           <tbody className="divide-y divide-gray-100">
                             {filteredRejected.map((a) => (
-                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50"><td className="p-3 font-bold text-gray-800">{a.name}</td><td className="p-3">{a.grade}</td><td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td><td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {a.municipality || 'N/A'}</td></tr>
+                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50"><td className="p-3 font-bold text-gray-800">{a.name}</td><td className="p-3">{a.grade}</td><td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td><td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td></tr>
                             ))}
                             {filteredRejected.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-gray-400 italic">No rejected applicants found for this scholarship</td></tr>}
                           </tbody>
@@ -4925,7 +4934,7 @@ export default function ScholarshipDashboard({
                       <td className="border p-2 font-bold">{a.name}</td>
                       <td className="border p-2">{a.grade}</td>
                       <td className="border p-2">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
-                      <td className="border p-2">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {a.municipality || 'N/A'}</td>
+                      <td className="border p-2">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -4949,7 +4958,7 @@ export default function ScholarshipDashboard({
                       <td className="border p-2 font-bold">{a.name}</td>
                       <td className="border p-2">{a.grade}</td>
                       <td className="border p-2">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
-                      <td className="border p-2">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {a.municipality || 'N/A'}</td>
+                      <td className="border p-2">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -4973,7 +4982,7 @@ export default function ScholarshipDashboard({
                       <td className="border p-2 font-bold">{a.name}</td>
                       <td className="border p-2">{a.grade}</td>
                       <td className="border p-2">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
-                      <td className="border p-2">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {a.municipality || 'N/A'}</td>
+                      <td className="border p-2">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
                     </tr>
                   ))}
                 </tbody>
