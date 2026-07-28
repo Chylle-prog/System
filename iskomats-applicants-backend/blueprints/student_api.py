@@ -2545,7 +2545,40 @@ def get_applicant_document_raw(field_name):
                 normalized_url = normalize_supabase_url(value)
                 # If stored URL points back to proxy route itself, avoid recursive redirects
                 if '/applicant/document/raw/' in normalized_url or 'iskomats-backend.onrender.com' in normalized_url:
-                    content, error = fetch_video_bytes_from_url(normalized_url)
+                    content = None
+                    try:
+                        from project_config import get_supabase_client, SUPABASE_URL
+                        supa = get_supabase_client()
+                        folder_map = {
+                            'mayorIndigency_video': ('document_videos', 'videos/indigency'),
+                            'indigency_vid_url': ('document_videos', 'videos/indigency'),
+                            'mayorGrades_video': ('document_videos', 'videos/grades'),
+                            'grades_vid_url': ('document_videos', 'videos/grades'),
+                            'mayorCOE_video': ('document_videos', 'videos/coe'),
+                            'enrollment_certificate_vid_url': ('document_videos', 'videos/coe'),
+                            'schoolIdFront_video': ('document_videos', 'videos/school_id'),
+                            'schoolid_front_vid_url': ('document_videos', 'videos/school_id'),
+                            'schoolIdBack_video': ('document_videos', 'videos/school_id'),
+                            'schoolid_back_vid_url': ('document_videos', 'videos/school_id'),
+                            'face_video': ('document_videos', 'videos/id_verification'),
+                            'id_vid_url': ('document_videos', 'videos/id_verification'),
+                        }
+                        f_info = folder_map.get(field_name) or folder_map.get(db_field)
+                        if f_info:
+                            bucket_n, folder_path = f_info
+                            folders = supa.storage.from_(bucket_n).list(folder_path)
+                            user_folder = next((f['name'] for f in folders if f['name'].startswith(f"{request.user_no}-")), None)
+                            if user_folder:
+                                files = supa.storage.from_(bucket_n).list(f"{folder_path}/{user_folder}")
+                                target_file = next((f['name'] for f in files if field_name in f['name'] or db_field in f['name']), None)
+                                if not target_file and files:
+                                    target_file = files[0]['name']
+                                if target_file:
+                                    real_url = f"{SUPABASE_URL}/storage/v1/object/public/{bucket_n}/{folder_path}/{user_folder}/{target_file}"
+                                    content, _ = fetch_video_bytes_from_url(real_url)
+                    except Exception as ex:
+                        print(f"[RECOVERY] Storage lookup failed for {field_name}: {ex}", flush=True)
+
                     if content is not None:
                         from services.crypto_service import decrypt_if_encrypted
                         value = decrypt_if_encrypted(content)
@@ -3212,7 +3245,11 @@ def submit_application():
             document_updates = {}
             for form_key, db_col in document_field_mapping.items():
                 if form_key in request_payload:
-                    document_updates[db_col] = request_payload[form_key]
+                    val = request_payload[form_key]
+                    if isinstance(val, str) and ('/applicant/document/raw/' in val or 'onrender.com' in val or 'localhost' in val):
+                        print(f"[SUBMIT APPLICATION] Field {form_key} is a backend proxy URL. Skipping update.", flush=True)
+                        continue
+                    document_updates[db_col] = val
 
             binary_map = {
                 'id_img_front': id_front_bytes,
