@@ -1061,9 +1061,9 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
         for i, t_word in enumerate(t_words):
             e_word = exp_words[expected_idx]
             
-            is_match = is_similar_name_word(e_word, t_word)
+            is_match = is_similar_name_word(e_word, t_word) or (len(e_word) == 1 and (t_word == e_word or t_word == e_word + '.'))
             if is_match:
-                if last_found_idx != -1 and (i - last_found_idx) > 5:
+                if last_found_idx != -1 and (i - last_found_idx) > 2:
                     expected_idx = 0
                     last_found_idx = -1
                     if is_similar_name_word(exp_words[0], t_word):

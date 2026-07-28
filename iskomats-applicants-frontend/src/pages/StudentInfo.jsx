@@ -589,11 +589,17 @@ function studentNameMatchesText(text, first, middle, last) {
       const tWord = targetWords[i];
       const eWord = expectedWords[expectedIdx];
 
-      if (isSimilarWord(eWord, tWord) || (normalizeNameConfusions(eWord).length >= 3 && normalizeNameConfusions(eWord) === normalizeNameConfusions(tWord)) || (eWord.length === 1 && tWord === eWord)) {
-        if (lastFoundIdx !== -1 && (i - lastFoundIdx) > 5) {
+      const isExactOrConf = isSimilarWord(eWord, tWord) || (normalizeNameConfusions(eWord).length >= 3 && normalizeNameConfusions(eWord) === normalizeNameConfusions(tWord));
+      // 1-letter initial must match explicit initial format "X." or exact single letter token directly adjacent to name
+      const isInitialMatch = (eWord.length === 1 && (tWord === eWord || tWord === eWord + '.'));
+
+      if (isExactOrConf || isInitialMatch) {
+        // Tight word gap restriction: Max 2 words gap between consecutive name components
+        if (lastFoundIdx !== -1 && (i - lastFoundIdx) > 2) {
           expectedIdx = 0;
           lastFoundIdx = -1;
-          if (isSimilarWord(expectedWords[0], tWord) || (expectedWords[0].length === 1 && tWord === expectedWords[0])) {
+          const isFirstMatch = isSimilarWord(expectedWords[0], tWord) || (expectedWords[0].length === 1 && tWord === expectedWords[0]);
+          if (isFirstMatch) {
             expectedIdx = 1;
             lastFoundIdx = i;
           }
@@ -645,17 +651,17 @@ function studentNameMatchesText(text, first, middle, last) {
       });
       if (foundFullWord) return true;
 
-      // 3. Middle Initial fallback: Only if candidate word initial appears in target name tokens or explicit initial format "X."
+      // 3. Middle Initial fallback: Only if explicit initial format "X." or standalone token "X" appears in key-value extracted name field
       if (isMiddle && normW.length >= 1) {
-        const initial = normW[0].toLowerCase();
+        const initial = normW[0].toUpperCase();
         const targetTextNorm = normalizeForOcr(targetText);
         const nameTokens = targetTextNorm.split(/\s+/);
         
-        // Standalone initial token in key-value extracted name field (e.g. "LANTAFE MIKAELA YSABEL L")
-        if (nameTokens.includes(initial)) return true;
-
         // Standalone initial with period in text (e.g. "L.")
-        if (new RegExp('\\b' + initial.toUpperCase() + '\\.').test(searchText)) return true;
+        if (new RegExp('\\b' + initial + '\\.', 'i').test(searchText)) return true;
+
+        // Standalone initial token strictly in key-value extracted name field (e.g. "LANTAFE MIKAELA YSABEL L")
+        if (kv.name && nameTokens.includes(initial.toLowerCase())) return true;
       }
 
       return false;
