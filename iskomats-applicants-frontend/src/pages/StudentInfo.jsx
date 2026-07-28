@@ -1593,18 +1593,6 @@ const StudentInfo = () => {
             const _vidResType = String(scholarshipDetails?.residencyDocType || scholarshipDetails?.residency_doc_type || '').toLowerCase();
             const _vidIsResidency = _vidResType.includes('residency');
             const _requiredVidKeywords = _vidIsResidency ? ['residency', 'resident'] : ['indigency', 'indigent'];
-            const _forbiddenVidKeywords = _vidIsResidency ? ['indigency', 'indigent'] : ['residency', 'resident'];
-
-            const hasForbiddenVidKeyword = _forbiddenVidKeywords.some(k => cleanText.includes(k) || rawCombined.includes(k));
-            if (hasForbiddenVidKeyword) {
-              const reqLabel = _vidIsResidency ? 'Residency' : 'Indigency';
-              const wrongLabel = _vidIsResidency ? 'Indigency' : 'Residency';
-              return {
-                valid: false,
-                reason: `Video proof validation failed: Detected ${wrongLabel} document in video, but scholarship requires ${reqLabel}.`,
-                detectedText: textLogs.join("\n\n")
-              };
-            }
 
             targetKeywords = [
               ..._requiredVidKeywords,
@@ -3259,15 +3247,11 @@ const StudentInfo = () => {
           const _isResDoc = extraParams.isResidencyDoc === true || _reqTypeStr.includes('residency') || _reqTypeStr === 'true';
 
           const _requiredDocKeywords = _isResDoc ? ['residency', 'resident'] : ['indigency', 'indigent'];
-          const _wrongDocKeywords   = _isResDoc ? ['indigency', 'indigent'] : ['residency', 'resident'];
-
           const hasRequiredDocKeyword = _requiredDocKeywords.some(k => combinedText.includes(k));
-          const hasWrongDocKeyword    = _wrongDocKeywords.some(k => combinedText.includes(k));
 
-          // EXCLUSIVE MATCH RULE: MUST contain required keyword AND MUST NOT contain wrong document keyword!
-          const docTypeOk = hasRequiredDocKeyword && !hasWrongDocKeyword;
+          // Succeed if required keyword is present ONLY (do not fail if other words are also present)
+          const docTypeOk = hasRequiredDocKeyword;
           const docLabel = _isResDoc ? 'Certificate of Residency' : 'Certificate of Indigency';
-          const wrongDocLabel = _isResDoc ? 'Certificate of Indigency' : 'Certificate of Residency';
 
           isSuccess = nameCheck.success && addrOk && videoOk && docTypeOk;
           scoreDetails = {
