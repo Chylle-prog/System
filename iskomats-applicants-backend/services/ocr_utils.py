@@ -1842,6 +1842,11 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
         addr_clean = normalize_text(expected_address)
         ignore_words = {'city', 'municipality', 'town', 'province', 'brgy', 'barangay'}
         addr_words = [w for w in addr_clean.split() if len(w) >= 3 and w not in ignore_words]
+
+        # Inosloban / Inosluban alias handling
+        if 'inosloban' in addr_clean or 'inosluban' in addr_clean or 'inosl' in addr_clean:
+            addr_words.extend(['inosloban', 'inosluban'])
+
         if addr_words:
             addr_ok = any(w in doc_norm for w in addr_words)
             if not addr_ok:

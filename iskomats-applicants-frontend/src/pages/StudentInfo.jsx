@@ -714,10 +714,26 @@ function addressMatchesText(text, expectedAddr) {
   const normText = normalizeForOcr(text);
   const kv = extractOcrKeyValues(text);
   const targetText = kv.barangay ? normalizeForOcr(kv.barangay) : "";
-  const searchArea = (targetText ? targetText + " " : "") + normText;
+  const searchArea = ((targetText ? targetText + " " : "") + normText).trim();
+  if (!searchArea) return false;
+
+  const lowerExpected = String(expectedAddr).toLowerCase();
+
+  // Special fast-path for Inosloban / Inosluban variants:
+  if (lowerExpected.includes('inosl')) {
+    const ocrTokens = searchArea.split(/\s+/).filter(w => w.length >= 4);
+    const hasInoslVariant = ocrTokens.some(tok => {
+      const normTok = normalizeForOcr(tok);
+      return normTok.includes('inosl') || isSimilarWord('inosloban', normTok) || isSimilarWord('inosluban', normTok);
+    });
+    if (hasInoslVariant || searchArea.includes('inosloban') || searchArea.includes('inosluban')) {
+      return true;
+    }
+  }
 
   // Split slash-separated address options, e.g. "Inosloban / Inosluban" -> ["Inosloban", "Inosluban"]
   const addrOptions = String(expectedAddr).split(/[\/]/).map(s => s.trim()).filter(Boolean);
+  const ocrTokens = searchArea.split(/\s+/).filter(w => w.length >= 3);
 
   for (const option of addrOptions) {
     const normOption = normalizeForOcr(option);
@@ -726,23 +742,32 @@ function addressMatchesText(text, expectedAddr) {
     if (searchArea.includes(normOption)) return true;
 
     // Check barangay alias variants (e.g. Inosluban <-> Inosloban)
-    const aliases = BARANGAY_ALIASES[normOption] || (normOption.includes('inosl') ? ['inosloban', 'inosluban'] : []);
+    const aliases = BARANGAY_ALIASES[normOption] || [];
     for (const alias of aliases) {
       if (searchArea.includes(alias)) return true;
     }
 
-    const words = normOption.split(' ').filter(w => w.length > 2);
+    const words = normOption.split(' ').filter(w => w.length >= 3);
     const sigWords = words.filter(w => !['barangay', 'brgy', 'bgy', 'city', 'municipality', 'town'].includes(w));
-    if (sigWords.length > 0 && sigWords.some(w => new RegExp('\\b' + w + '\\b').test(searchArea) || searchArea.includes(w))) {
-      return true;
-    }
-  }
+    const targetWords = sigWords.length > 0 ? sigWords : words;
 
-  // Fallback: if expectedAddr contains any variant of inosl, pass if searchArea has inosloban or inosluban
-  const lowerExpected = String(expectedAddr).toLowerCase();
-  if (lowerExpected.includes('inosl')) {
-    if (searchArea.includes('inosloban') || searchArea.includes('inosluban')) {
-      return true;
+    if (targetWords.length > 0) {
+      const allMatched = targetWords.every(w => {
+        const confW = normalizeNameConfusions(w);
+        return ocrTokens.some(tok => {
+          const normTok = normalizeForOcr(tok);
+          if (searchArea.includes(w) || searchArea.includes(normTok)) return true;
+          if (isSimilarWord(w, normTok)) return true;
+          if (confW.length >= 3 && normalizeNameConfusions(normTok) === confW) return true;
+          if (normTok.length > w.length) {
+            for (let i = 0; i <= normTok.length - w.length; i++) {
+              if (isSimilarWord(w, normTok.substring(i, i + w.length))) return true;
+            }
+          }
+          return false;
+        });
+      });
+      if (allMatched) return true;
     }
   }
 
