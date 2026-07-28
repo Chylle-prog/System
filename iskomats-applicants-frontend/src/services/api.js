@@ -597,27 +597,9 @@ export const applicantAPI = {
    * @returns {Promise}
    */
   getProfile: async () => {
-    const profile = await makeRequest('/student/applicant/profile', {
+    return await makeRequest('/student/applicant/profile', {
       method: 'GET',
     });
-
-    if (profile) {
-      const docKeys = [
-        'profile_picture', 'id_pic', 'id_img_front', 'id_img_back',
-        'indigency_doc', 'enrollment_certificate_doc', 'grades_doc',
-        'id_vid_url', 'indigency_vid_url', 'grades_vid_url',
-        'enrollment_certificate_vid_url', 'schoolid_front_vid_url', 'schoolid_back_vid_url'
-      ];
-      await Promise.all(
-        docKeys.map(async (key) => {
-          if (profile[key]) {
-            profile[key] = await resolveApplicantDocumentForDisplay(key, profile[key]);
-          }
-        })
-      );
-    }
-
-    return profile;
   },
 
   /**

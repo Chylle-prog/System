@@ -3738,8 +3738,8 @@ const StudentInfo = () => {
       const savedDraft = await loadDraftFromStorage(draftKey);
 
       try {
-        // Fast instant render: Do not block LCP paint behind full-screen loading modal
-        setIsInitialLoading(false);
+        setLoadingMessage({ title: 'Loading Profile', message: 'Retrieving your information to pre-fill the application...' });
+        setIsInitialLoading(true);
         const profile = await applicantAPI.getProfile();
         setUserProfile(profile);
 
