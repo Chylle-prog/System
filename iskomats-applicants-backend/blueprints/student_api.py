@@ -2195,6 +2195,15 @@ def get_rankings():
             else:
                 score += 10
 
+            # Units Requirement Check (must be >= required units)
+            user_units = float(data.get('units', 0))
+            req_units = sch.get('units')
+            if req_units is not None and int(req_units) > 0:
+                if user_units > 0 and user_units < int(req_units):
+                    reasons.append(f"Total units ({int(user_units)}) is below required minimum ({int(req_units)})")
+                elif user_units >= int(req_units):
+                    score += 15
+
             restriction = {
                 'already_applied': False,
                 'blocked': False,
@@ -2212,6 +2221,7 @@ def get_rankings():
                 'provider_name': sch.get('provider_name'),
                 'description': sch.get('desc'),
                 'minGpa': min_gpa,
+                'units': req_units,
                 'maxIncome': max_inc,
                 'location': loc,
                 'slots': slots,
