@@ -690,40 +690,24 @@ function studentIdNoMatchesText(targetId, text) {
   if (!targetId || !text) return true;
 
   // Strip everything except digits for student ID comparison
-  // Student IDs are numeric - we must NOT conflate letters with digits
   const digitsOnly = (s) => String(s).replace(/[^0-9]/g, '');
 
   const tDigits = digitsOnly(targetId);
   if (!tDigits || tDigits.length < 4) return true;  // too short to validate
 
   // --- 1. Exact digit match in raw text ---
-  // Extract all digit sequences from OCR text that are the same length (±1) as the target ID
   const ocrDigitSeqs = String(text).match(/\d{4,}/g) || [];
 
   for (const seq of ocrDigitSeqs) {
     const seqClean = digitsOnly(seq);
-    if (seqClean === tDigits) return true;  // exact match
-
-    // For long IDs (8+ digits): allow at most 1 digit error (OCR misread of a single character)
-    if (tDigits.length >= 8 && seqClean.length === tDigits.length) {
-      const dist = getLevenshteinDistance(tDigits, seqClean);
-      if (dist <= 1) return true;
-    }
-
-    // For shorter IDs (4-7 digits): require exact match only
-    if (tDigits.length < 8 && seqClean === tDigits) return true;
+    if (seqClean === tDigits) return true;  // 100% exact digit match required
   }
 
   // --- 2. Key-value extracted student ID (e.g. "Student No: 1500017172") ---
   const kv = extractOcrKeyValues(text);
   if (kv.studentId) {
     const kvDigits = digitsOnly(kv.studentId);
-    if (kvDigits === tDigits) return true;
-    // Allow 1-digit error for long IDs when extracted from a labeled field
-    if (tDigits.length >= 8 && kvDigits.length === tDigits.length) {
-      const dist = getLevenshteinDistance(tDigits, kvDigits);
-      if (dist <= 1) return true;
-    }
+    if (kvDigits === tDigits) return true;  // 100% exact match required
   }
 
   // --- 3. Fallback: if OCR extracted NO digit sequences at all (e.g. blurry scan), pass to avoid hard failure ---
