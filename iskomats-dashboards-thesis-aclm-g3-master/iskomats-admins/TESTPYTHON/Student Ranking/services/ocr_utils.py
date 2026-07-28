@@ -1037,21 +1037,49 @@ def _run_tesseract_on_image(img, psm=3):
         print(f"[OCR] Tesseract error: {e}", flush=True)
         return ""
 
-def extract_document_text(image_bytes, psm=3):
+def extract_document_text(image_bytes, psm=3, max_width=None, prefer_fast_layout=False, crop_percent=None, is_id_back=False, return_tuple=False, **kwargs):
+    should_return_tuple = return_tuple or (
+        max_width is not None or crop_percent is not None or is_id_back or prefer_fast_layout
+    )
     if not image_bytes:
-        return ""
+        res_text, res_err = "", "No document image provided"
+        return (res_text, res_err) if should_return_tuple else res_text
     try:
         data = decode_base64(image_bytes)
         if not data:
-            return ""
+            res_text, res_err = "", "Failed to decode document image"
+            return (res_text, res_err) if should_return_tuple else res_text
         nparr = np.frombuffer(data, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is None:
-            return ""
-        return _run_tesseract_on_image(img, psm=psm)
+            res_text, res_err = "", "Failed to process document image"
+            return (res_text, res_err) if should_return_tuple else res_text
+
+        if crop_percent is not None and isinstance(crop_percent, (int, float)) and 0 < crop_percent < 1:
+            h, w = img.shape[:2]
+            crop_h = int(h * crop_percent)
+            crop_w = int(w * crop_percent)
+            start_y = (h - crop_h) // 2
+            start_x = (w - crop_w) // 2
+            img = img[start_y:start_y + crop_h, start_x:start_x + crop_w]
+
+        if max_width is not None and isinstance(max_width, (int, float)):
+            h, w = img.shape[:2]
+            if w > max_width:
+                scale = float(max_width) / float(w)
+                img = cv2.resize(img, (int(max_width), int(h * scale)), interpolation=cv2.INTER_AREA)
+
+        effective_psm = psm
+        if is_id_back:
+            effective_psm = 6
+
+        text = _run_tesseract_on_image(img, psm=effective_psm)
+        err = None if text and text.strip() else "Unable to extract readable text from document"
+        return (text, err) if should_return_tuple else text
     except Exception as e:
         print(f"[OCR] Extract error: {e}", flush=True)
-        return ""
+        res_text, res_err = "", str(e)
+        return (res_text, res_err) if should_return_tuple else res_text
 
 def preprocess_cor_lines(raw_text):
     """
