@@ -1082,25 +1082,34 @@ function yearLevelMatchesText(text, expectedYearLevel) {
 
   if (contextRegexes.some(rx => rx.test(normText))) return true;
 
-  const noisyYearLabelRx = /(?:y[ouea]?r?\s*l[aeo]?v[ael]?|yr?\s*l[aeo]?v[ael]?|grade\s*level|year\s*level)\s*[:\-]?\s*([0-9OiloI\|]{1,2})/i;
+  const noisyYearLabelRx = /(?:y[ouea]?r?\s*l[aeo]?v[aelr]?|yr?\s*l[aeo]?v[aelr]?|grade\s*level|year\s*level)\s*[:\-\[]?\s*([0-9OiloI\|\[\]!]{1,3})/i;
   const noisyMatch = noisyYearLabelRx.exec(text);
   if (noisyMatch) {
     const rawDigit = noisyMatch[1].replace(/[Oo]/g, '0');
     const parsedDigit = parseInt(rawDigit, 10);
     if (!isNaN(parsedDigit) && Math.abs(parsedDigit - levelNum) <= 1) return true;
     if (rawDigit === '0' && levelNum <= 2) return true;
+    if (levelNum === 1 && (noisyMatch[1].includes('[') || noisyMatch[1].includes('|') || noisyMatch[1].includes('l') || noisyMatch[1].includes('I') || noisyMatch[1].includes('!'))) return true;
     const nearbyDigits = noisyMatch[1].replace(/\D/g, '');
     if (nearbyDigits && nearbyDigits.includes(String(levelNum))) return true;
   }
 
+  // Section code check (e.g. "1T1A", "IT1A", "1A", "BSIT-1")
+  if (levelNum) {
+    const sectionRx = new RegExp(`\\b${levelNum}[T|A|B|C|D|t|a|b|c|d]\\d?[A-Z0-9]?\\b`, 'i');
+    if (sectionRx.test(text) || new RegExp(`\\bIT${levelNum}A\\b`, 'i').test(text)) {
+      return true;
+    }
+  }
+
   const rawLower = text.toLowerCase();
-  const labelVariants = ['year level', 'yr level', 'year lvl', 'yor laval', 'year laval', 'yr laval', 'yor level', 'your lave', 'yor lave', 'your level', 'your lvl', 'yr lave'];
+  const labelVariants = ['year level', 'yr level', 'year lvl', 'year lever', 'yr lever', 'yor laval', 'year laval', 'yr laval', 'yor level', 'your lave', 'yor lave', 'your level', 'your lvl', 'yr lave'];
   for (const lv of labelVariants) {
     const idx = rawLower.indexOf(lv);
     if (idx !== -1) {
       const nearby = rawLower.substring(idx + lv.length, idx + lv.length + 20);
-      const nearbyDigit = nearby.match(/[0-9]/);
-      if (nearbyDigit && String(levelNum) === nearbyDigit[0]) return true;
+      const nearbyDigit = nearby.match(/[0-9]|\[|\||I|l/);
+      if (nearbyDigit && (String(levelNum) === nearbyDigit[0] || (levelNum === 1 && ['[', '|', 'I', 'l'].includes(nearbyDigit[0])))) return true;
       if (nearbyDigit && nearbyDigit[0] === '0' && levelNum <= 2) return true;
     }
   }
@@ -1473,7 +1482,7 @@ const StudentInfo = () => {
           }
         }, 20000);
 
-        const checkPoints = [0.3, 0.7];
+        const checkPoints = [0.15, 0.4, 0.65, 0.85];
         let currentCheckIndex = 0;
         let accumulatedText = [];
         let hasSeeked = false;
