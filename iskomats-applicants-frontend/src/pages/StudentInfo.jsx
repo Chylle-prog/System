@@ -3831,14 +3831,22 @@ const StudentInfo = () => {
 
         if (profile.profile_picture) {
           setIdPicturePreview(profile.profile_picture);
+          setPhotos(prev => ({ ...prev, profile_picture: profile.profile_picture }));
+          updates.profile_picture = profile.profile_picture;
         } else if (profile.id_pic) {
           setIdPicturePreview(profile.id_pic);
+          setPhotos(prev => ({ ...prev, profile_picture: profile.id_pic }));
+          updates.profile_picture = profile.id_pic;
         } else if (profile.has_profile_picture || profile.has_id_pic) {
           const rawField = profile.has_profile_picture ? 'profile_picture' : 'id_pic';
           const profilePicUrl = `${apiOrigin}/api/student/applicant/document/raw/${rawField}?token=${token}`;
           setIdPicturePreview(profilePicUrl);
+          setPhotos(prev => ({ ...prev, profile_picture: profilePicUrl }));
+          updates.profile_picture = profilePicUrl;
         } else if (savedDraft?.idPicturePreview) {
           setIdPicturePreview(savedDraft.idPicturePreview);
+          setPhotos(prev => ({ ...prev, profile_picture: savedDraft.idPicturePreview }));
+          updates.profile_picture = savedDraft.idPicturePreview;
         }
 
         if (Object.keys(newPhotos).length > 0) {
@@ -4532,20 +4540,26 @@ const StudentInfo = () => {
   };
 
   const handleIdPictureUpload = (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (!file) return;
-    // Keep the raw File object so we can upload it to storage on submit
+    // Create instant local URL for 0ms preview speed
+    const localUrl = URL.createObjectURL(file);
+    setIdPicturePreview(localUrl);
+    setPhotos(prev => ({ ...prev, profile_picture: localUrl }));
+    setFormData(prev => ({ ...prev, profile_picture: localUrl }));
     setRawProfilePictureFile(file);
+
     if (window.compressImage) {
       window.compressImage(file, 400).then(compressedBase64 => {
         setIdPicturePreview(compressedBase64);
+        setPhotos(prev => ({ ...prev, profile_picture: compressedBase64 }));
         setFormData(prev => ({ ...prev, profile_picture: compressedBase64 }));
       });
     } else {
-      // Fallback: use the file directly as preview
       const reader = new FileReader();
       reader.onloadend = () => {
         setIdPicturePreview(reader.result);
+        setPhotos(prev => ({ ...prev, profile_picture: reader.result }));
         setFormData(prev => ({ ...prev, profile_picture: reader.result }));
       };
       reader.readAsDataURL(file);
@@ -5962,16 +5976,20 @@ const StudentInfo = () => {
                       name="profile_picture"
                       accept="image/*"
                       onChange={handleIdPictureUpload}
-                      style={{ position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '2' }}
+                      style={{ position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '5' }}
                     />
-                    <div style={{ textAlign: 'center', color: '#999', fontSize: '0.85rem', pointerEvents: 'none' }}>
-                      {(idPicturePreview || formData.profile_picture || photos.profile_picture || userProfile?.profile_picture || userProfile?.id_pic || (userProfile?.has_profile_picture || userProfile?.has_id_pic ? `${API_ORIGIN}/api/student/applicant/document/raw/profile_picture?token=${localStorage.getItem('authToken')}` : null)) ? (
-                        <img src={idPicturePreview || formData.profile_picture || photos.profile_picture || userProfile?.profile_picture || userProfile?.id_pic || `${API_ORIGIN}/api/student/applicant/document/raw/profile_picture?token=${localStorage.getItem('authToken')}`} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }} alt="ID Preview" />
+                    <div style={{ textAlign: 'center', color: '#999', fontSize: '0.85rem', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                      {(idPicturePreview || formData.profile_picture || photos.profile_picture || userProfile?.profile_picture || userProfile?.id_pic || ((userProfile?.has_profile_picture || userProfile?.has_id_pic) ? `${API_ORIGIN}/api/student/applicant/document/raw/${userProfile?.has_profile_picture ? 'profile_picture' : 'id_pic'}?token=${localStorage.getItem('authToken')}` : null)) ? (
+                        <img
+                          src={idPicturePreview || formData.profile_picture || photos.profile_picture || userProfile?.profile_picture || userProfile?.id_pic || `${API_ORIGIN}/api/student/applicant/document/raw/${userProfile?.has_profile_picture ? 'profile_picture' : 'id_pic'}?token=${localStorage.getItem('authToken')}`}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px', display: 'block' }}
+                          alt="ID Preview"
+                        />
                       ) : (
-                        <>
+                        <div>
                           <i className="fas fa-camera" style={{ fontSize: '2rem', marginBottom: '0.5rem', display: 'block' }}></i>
                           <span>Upload 2x2 ID Picture</span>
-                        </>
+                        </div>
                       )}
                     </div>
                   </div>
