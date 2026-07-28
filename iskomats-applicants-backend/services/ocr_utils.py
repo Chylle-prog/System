@@ -657,8 +657,8 @@ def _extract_signature_from_id_back(id_img):
     if height == 0 or width == 0:
         return None
 
-    lane_y0, lane_y1 = int(height * 0.18), int(height * 0.48)
-    lane_x0, lane_x1 = int(width * 0.05), int(width * 0.95)
+    lane_y0, lane_y1 = int(height * 0.08), int(height * 0.42)
+    lane_x0, lane_x1 = int(width * 0.08), int(width * 0.92)
     roi_gray = gray[lane_y0:lane_y1, lane_x0:lane_x1].copy()
 
     norm = cv2.normalize(roi_gray, None, 0, 255, cv2.NORM_MINMAX)
@@ -671,8 +671,8 @@ def _extract_signature_from_id_back(id_img):
     
     h_idx, w_idx = binary.shape[:2]
 
-    # Detect horizontal signature line to isolate signature ink from the star logo above it
-    horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (int(w_idx * 0.22), 1))
+    # Detect horizontal signature line to isolate signature ink from printed text below
+    horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (int(w_idx * 0.18), 1))
     detected_lines = cv2.morphologyEx(binary, cv2.MORPH_OPEN, horizontal_kernel)
     line_contours, _ = cv2.findContours(detected_lines, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
@@ -681,23 +681,21 @@ def _extract_signature_from_id_back(id_img):
         candidate_lines = []
         for l_cnt in line_contours:
             lx, ly, lw, lh = cv2.boundingRect(l_cnt)
-            # The line should be reasonably wide and in the middle-to-lower section of ROI
-            if lw > w_idx * 0.20 and ly > h_idx * 0.35:
+            if lw > w_idx * 0.18 and h_idx * 0.20 < ly < h_idx * 0.85:
                 candidate_lines.append((ly, lw))
         if candidate_lines:
             candidate_lines.sort(key=lambda x: x[1], reverse=True)
             sig_line_y = candidate_lines[0][0]
 
-    # Define vertical window limits relative to the signature line to exclude logo and label
+    # Define vertical window limits: Handwritten signature lives STRICTLY ABOVE the signature line
     if sig_line_y is not None:
-        window_height = max(45, int(h_idx * 0.20))
+        window_height = max(50, int(h_idx * 0.70))
         y_min_limit = max(0, sig_line_y - window_height)
         y_max_limit = sig_line_y - 2
         logger.info(f"[SIGNATURE] Detected signature underline at y={sig_line_y}. Window: {y_min_limit} to {y_max_limit}")
     else:
-        # Fallback if line detection fails
-        y_min_limit = int(h_idx * 0.15)
-        y_max_limit = int(h_idx * 0.52)
+        y_min_limit = int(h_idx * 0.05)
+        y_max_limit = int(h_idx * 0.65)
         logger.info(f"[SIGNATURE] Underline not found. Using fallback window: {y_min_limit} to {y_max_limit}")
 
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -717,7 +715,7 @@ def _extract_signature_from_id_back(id_img):
         extent = area / float(w_idx * h_idx)
         y_mid = y + h/2
         
-        # Enforce our vertical signature limits to ignore the star logo above and labels below
+        # Enforce our vertical signature limits to isolate handwritten ink above the line
         if not (y_min_limit <= y_mid <= y_max_limit):
             continue
 
