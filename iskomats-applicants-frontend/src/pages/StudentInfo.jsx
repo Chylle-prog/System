@@ -516,7 +516,6 @@ function normalizeNameConfusions(s) {
     .replace(/u/g, 'a')
     .replace(/v/g, 'u');
 }
-
 function isSimilarWord(expected, actual) {
   if (!expected || !actual) return false;
   const expNorm = expected.toLowerCase();
@@ -526,14 +525,15 @@ function isSimilarWord(expected, actual) {
   const dist = getLevenshteinDistance(expNorm, actNorm);
   const maxLen = Math.max(expNorm.length, actNorm.length);
   if (maxLen === 0) return true;
-  const similarity = (maxLen - dist) / maxLen;
 
-  if (maxLen <= 4) {
+  if (maxLen <= 2) {
     return dist === 0;
-  } else if (maxLen <= 6) {
-    return dist <= 1 && similarity >= 0.80;
+  } else if (maxLen <= 5) {
+    return dist <= 1; // Allow 1 typo for 3-5 letter words
+  } else if (maxLen <= 8) {
+    return dist <= 2; // Allow up to 2 typos for 6-8 letter words
   } else {
-    return dist <= 2 && similarity >= 0.75;
+    return dist <= 3 || (maxLen - dist) / maxLen >= 0.65;
   }
 }
 
@@ -552,15 +552,11 @@ function studentNameMatchesText(text, first, middle, last) {
   const buildNameRegex = (nameStr) => {
     const words = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= 2);
     if (words.length === 0) return null;
-    // Each word is re.escape'd, words separated by "any non-alpha chars + optional extra words" to handle OCR gaps
     const escaped = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    // Allow up to 20 chars of noise between each name word (OCR can insert spaces/punctuation)
     const pattern = escaped.join('[^a-z0-9]{0,3}(?:[a-z]{1,8}[^a-z0-9]{0,3}){0,2}');
     return new RegExp('\\b' + pattern + '\\b');
   };
 
-  // --- Full-name combined sequence check ---
-  // Require first + last (in either order for Philippine naming convention: "LASTNAME, FIRSTNAME") as a sequence
   const sequencesToCheck = [
     `${normFirst} ${normLast}`,
     `${normLast} ${normFirst}`
@@ -571,7 +567,6 @@ function studentNameMatchesText(text, first, middle, last) {
     sequencesToCheck.push(`${normLast} ${normFirst} ${normMiddle}`);
     sequencesToCheck.push(`${normLast} ${normMiddle} ${normFirst}`);
 
-    // Also allow sequences with middle initial (e.g. "L" instead of "Linatoc")
     const middleInitial = normMiddle[0];
     if (middleInitial) {
       sequencesToCheck.push(`${normFirst} ${middleInitial} ${normLast}`);
@@ -580,9 +575,8 @@ function studentNameMatchesText(text, first, middle, last) {
     }
   }
 
-  // --- Helper: Fuzzy Sequence Matcher (allows OCR typos like 'maghubal' for 'magbuhat' in sequence) ---
   const checkWordSequenceFuzzy = (nameStr, searchText) => {
-    const expectedWords = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= 1); // Allow length >= 1 for initials
+    const expectedWords = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= 1);
     if (expectedWords.length === 0) return false;
     const targetWords = searchText.split(/\s+/).filter(w => w.length >= 1);
 
@@ -618,7 +612,7 @@ function studentNameMatchesText(text, first, middle, last) {
   // Check fuzzy sequences in targetText or normText
   for (const seq of sequencesToCheck) {
     const rx = buildNameRegex(seq);
-    if (rx && (rx.test(targetText) || (!kv.name && rx.test(normText)))) {
+    if (rx && (rx.test(targetText) || rx.test(normText))) {
       sequenceOk = true;
       break;
     }
@@ -630,40 +624,37 @@ function studentNameMatchesText(text, first, middle, last) {
 
   // --- Fuzzy full-name similarity (handles OCR scrambling of combined name string) ---
   let fuzzyFullOk = false;
-  if (!sequenceOk && kv.name) {
-    const docName = normalizeForOcr(kv.name);
+  if (!sequenceOk) {
+    const searchSource = targetText || normText;
     let maxSim = 0;
     for (const seq of sequencesToCheck) {
       const normSeq = normalizeForOcr(seq);
-      const longer = normSeq.length > docName.length ? normSeq : docName;
-      const shorter = normSeq.length > docName.length ? docName : normSeq;
+      const longer = normSeq.length > searchSource.length ? normSeq : searchSource;
+      const shorter = normSeq.length > searchSource.length ? searchSource : normSeq;
       const dist = getLevenshteinDistance(longer, shorter);
       const sim = longer.length > 0 ? (longer.length - dist) / longer.length : 0;
       if (sim > maxSim) maxSim = sim;
     }
-    fuzzyFullOk = maxSim >= 0.55;
+    fuzzyFullOk = maxSim >= 0.45;
   }
 
   if (fuzzyFullOk) {
     sequenceOk = true;
   }
 
-  // --- Individual word checks (fallback only, used to compute first_ok / last_ok for UI display) ---
   const checkNameWordGroup = (nameStr, searchText) => {
     if (!nameStr) return true;
     const isMiddle = nameStr === middle;
-    // Allow length >= 1 for initials if checking middle name
     const words = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= (isMiddle ? 1 : 2));
     if (words.length === 0) return true;
     const ocrWords = searchText.split(/\s+/).filter(w => w.length >= 1);
-    const matchFunc = 'every';
-    return words[matchFunc](word => {
+
+    const matchedCount = words.filter(word => {
       const normW = normalizeForOcr(word);
       const confW = normalizeNameConfusions(word);
       if (new RegExp('\\b' + normW.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b').test(searchText)) return true;
       if (searchText.includes(normW)) return true;
 
-      // Middle name initial matching fallback
       if (isMiddle && normW.length > 0) {
         const initial = normW[0];
         const rxInitial = new RegExp('\\b' + initial + '\\b|\\b' + initial + '\\.');
@@ -677,26 +668,74 @@ function studentNameMatchesText(text, first, middle, last) {
         if (isMiddle && normW.length > 0 && normOcr === normW[0]) return true;
         return false;
       });
-    });
+    }).length;
+
+    const minRequired = words.length <= 1 ? 1 : Math.ceil(words.length * 0.5);
+    return matchedCount >= minRequired;
   };
 
-  const firstOk = checkNameWordGroup(first, targetText) || (kv.name ? checkNameWordGroup(first, normText) : false);
-  const lastOk = checkNameWordGroup(last, targetText) || (kv.name ? checkNameWordGroup(last, normText) : false);
-  const middleOk = middle ? (checkNameWordGroup(middle, targetText) || (kv.name ? checkNameWordGroup(middle, normText) : false)) : true;
+  const firstOk = sequenceOk || checkNameWordGroup(first, targetText) || checkNameWordGroup(first, normText);
+  const lastOk = sequenceOk || checkNameWordGroup(last, targetText) || checkNameWordGroup(last, normText);
+  const middleOk = middle ? (sequenceOk || checkNameWordGroup(middle, targetText) || checkNameWordGroup(middle, normText)) : true;
 
-  const finalFirstOk = firstOk;
-  const finalLastOk = lastOk;
-
-  const success = firstOk && lastOk;
+  const success = sequenceOk || (firstOk && lastOk);
 
   return {
     success,
     details: {
-      first_ok: finalFirstOk,
+      first_ok: firstOk,
       middle_ok: middleOk,
-      last_ok: finalLastOk
+      last_ok: lastOk
     }
   };
+}
+
+// Known alternate spellings for barangay names that may appear on national IDs
+const BARANGAY_ALIASES = {
+  'inosluban': ['inosloban'],
+  'inosloban': ['inosluban'],
+  'inosloban/inosluban': ['inosloban', 'inosluban'],
+  'inosloban inosluban': ['inosloban', 'inosluban'],
+};
+
+function addressMatchesText(text, expectedAddr) {
+  if (!expectedAddr) return true;
+  const normText = normalizeForOcr(text);
+  const kv = extractOcrKeyValues(text);
+  const targetText = kv.barangay ? normalizeForOcr(kv.barangay) : normText;
+  const searchArea = targetText || normText;
+
+  // Split slash-separated address options, e.g. "Inosloban / Inosluban" -> ["Inosloban", "Inosluban"]
+  const addrOptions = String(expectedAddr).split(/[\/]/).map(s => s.trim()).filter(Boolean);
+
+  for (const option of addrOptions) {
+    const normOption = normalizeForOcr(option);
+    if (!normOption) continue;
+
+    if (searchArea.includes(normOption)) return true;
+
+    // Check barangay alias variants (e.g. Inosluban <-> Inosloban)
+    const aliases = BARANGAY_ALIASES[normOption] || (normOption.includes('inosl') ? ['inosloban', 'inosluban'] : []);
+    for (const alias of aliases) {
+      if (searchArea.includes(alias)) return true;
+    }
+
+    const words = normOption.split(' ').filter(w => w.length > 2);
+    const sigWords = words.filter(w => !['barangay', 'brgy', 'bgy', 'city', 'municipality', 'town'].includes(w));
+    if (sigWords.length > 0 && sigWords.some(w => new RegExp('\\b' + w + '\\b').test(searchArea) || searchArea.includes(w))) {
+      return true;
+    }
+  }
+
+  // Fallback: if expectedAddr contains any variant of inosl, pass if searchArea has inosloban or inosluban
+  const lowerExpected = String(expectedAddr).toLowerCase();
+  if (lowerExpected.includes('inosl')) {
+    if (searchArea.includes('inosloban') || searchArea.includes('inosluban')) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function studentIdNoMatchesText(targetId, text) {
@@ -1009,46 +1048,6 @@ function gpaMatchesText(text, expectedGpa) {
   }
 
   return false;
-}
-
-// Known alternate spellings for barangay names that may appear on national IDs
-const BARANGAY_ALIASES = {
-  'inosluban': ['inosloban'],
-  'inosloban': ['inosluban'],
-};
-
-function addressMatchesText(text, expectedAddr) {
-  if (!expectedAddr) return true;
-  const normText = normalizeForOcr(text);
-  const normAddr = normalizeForOcr(expectedAddr);
-
-  const kv = extractOcrKeyValues(text);
-  const targetText = kv.barangay ? normalizeForOcr(kv.barangay) : normText;
-
-  if (targetText.includes(normAddr) || normText.includes(normAddr)) return true;
-
-  // Check barangay alias variants (e.g. Inosluban <-> Inosloban)
-  const aliases = BARANGAY_ALIASES[normAddr] || [];
-  for (const alias of aliases) {
-    if (targetText.includes(alias) || normText.includes(alias)) return true;
-  }
-
-  const words = normAddr.split(' ').filter(w => w.length > 2);
-  const sigWords = words.filter(w => !['barangay', 'brgy', 'bgy', 'city', 'municipality', 'town'].includes(w));
-  if (sigWords.length === 0) return true;
-
-  const searchArea = targetText || normText;
-
-  // Also check aliases word-by-word
-  for (const alias of aliases) {
-    const aliasWords = alias.split(' ').filter(w => w.length > 2)
-      .filter(w => !['barangay', 'brgy', 'bgy', 'city', 'municipality', 'town'].includes(w));
-    if (aliasWords.length > 0 && aliasWords.every(w => new RegExp('\\b' + w + '\\b').test(searchArea) || searchArea.includes(w))) {
-      return true;
-    }
-  }
-
-  return sigWords.every(w => new RegExp('\\b' + w + '\\b').test(searchArea) || searchArea.includes(w));
 }
 
 function coe_type_matches_text(text) {
