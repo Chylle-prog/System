@@ -42,12 +42,17 @@ from services.ocr_utils import (
     verify_signature_against_id, save_signature_profile, verify_video_content,
     extract_semester_from_text,
     normalize_semester_label,
-    _perform_text_matching,
     extract_document_text,
+    verify_indigency_fields,
+    verify_cor_fields,
+    verify_grades_fields,
+    verify_id_fields,
     student_name_matches_text,
     course_matches_text,
     student_id_no_matches_text,
-    year_level_matches_text
+    year_level_matches_text,
+    gpa_matches_text,
+    academic_year_matches_expected
 )
 from services.school_utils import build_school_name_variants, school_name_matches_text
 from services.notification_service import create_notification, fetch_google_access_token, send_verification_email
@@ -3262,24 +3267,8 @@ def ocr_check():
                         v_t = bool(raw_t and raw_t.strip())
                         return v_t, extraction_error or ('Verified' if v_t else 'Unable to read school ID back text'), raw_t, {}
                     elif doc_type == 'Indigency':
-                        # Restored capture range: many certificates place name/address in the middle-bottom.
                         raw_t, extraction_error = extract_document_text(doc_bytes, max_width=850, prefer_fast_layout=True, crop_percent=0.85, return_tuple=True)
-                        name_ok, name_ratio, name_details = student_name_matches_text(raw_t, first_name, middle_name, last_name, is_indigency=True)
-                        # Perform matching to detect Barangays even if target_address is empty for feedback
-                        _, addr_ok, found_keywords, _, detect_meta = _perform_text_matching(raw_t, None, None, None, target_address, is_indigency=True)
-                        found_kw = found_keywords
-                        detected_brgys = detect_meta.get('detected_brgy', [])
-                        # In Indigency, address is mandatory for a 'verified' result
-                        if not target_address:
-                            addr_ok = False
-                        meta = {'name_ok': name_ok, 'addr_ok': addr_ok, 'name_ratio': name_ratio, 'keywords': found_kw, 'detected_brgy': detected_brgys}
-                        v_t = name_ok and addr_ok
-                        msg = 'Verified' if v_t else 'Verification failed'
-                        brgy_str = ", ".join(detected_brgys) if detected_brgys else "None detected"
-                        status_addr = 'OK' if addr_ok else 'X'
-                        f_name_ok = name_details.get('first_ok', False)
-                        l_name_ok = name_details.get('last_ok', False)
-                        msg = f"Checklist: [First: {'OK' if f_name_ok else 'X'} | Last: {'OK' if l_name_ok else 'X'} | Addr: {status_addr} (Target: {target_address or 'Missing'}, Found: {brgy_str})]"
+                        v_t, msg, meta = verify_indigency_fields(raw_t, first_name, middle_name, last_name, expected_address=target_address)
                         return v_t, extraction_error or msg, raw_t, meta
                     else:
                         # Always return a 4-tuple for unknown doc types

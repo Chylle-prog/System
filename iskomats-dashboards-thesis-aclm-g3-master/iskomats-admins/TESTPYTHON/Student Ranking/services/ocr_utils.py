@@ -848,7 +848,10 @@ def _init_tesseract():
 def normalize_text(text):
     if not text:
         return ""
-    return re.sub(r'[^a-z0-9\s]', ' ', str(text).lower()).strip()
+    norm = re.sub(r'[^a-z0-9\s]', ' ', str(text).lower()).strip()
+    norm = re.sub(r'\b[l1|]nosl[uo]ban\b', 'inosluban', norm)
+    norm = re.sub(r'\binos[1|]uban\b', 'inosluban', norm)
+    return norm
 
 
 def normalize_id_number(s):
@@ -1823,4 +1826,65 @@ def verify_id_with_ocr(image_bytes, first_name=None, middle_name=None, last_name
         kwargs['expected_address'] = expected_address
 
     success, msg, raw_text, meta = verify_document_with_ocr(image_bytes, 'ID', first_name, middle_name, last_name, **kwargs)
-    return success, msg, raw_text, 1.0 if success else 0.0
+    return success, msg, raw_text, 1.0 if success else 0.0
+
+
+# ─── Individual Field Matching Helpers ──────────────────────────────────────────
+
+def student_name_matches_text(target_text, first_name, middle_name, last_name, is_indigency=False):
+    first_ok, last_ok, sequence_ok = verify_name_sequence(first_name, last_name, target_text, target_text, middle_name)
+    ratio = 1.0 if sequence_ok else (0.8 if (first_ok and last_ok) else 0.0)
+    details = {'first_ok': first_ok, 'middle_ok': True, 'last_ok': last_ok}
+    return (sequence_ok or (first_ok and last_ok)), ratio, details
+
+def course_matches_text(expected_course, raw_text):
+    if not expected_course or not str(expected_course).strip():
+        return True, None
+    c_exp = normalize_text(expected_course)
+    c_raw = normalize_text(raw_text)
+    course_ok = c_exp in c_raw
+    if not course_ok:
+        exp_words = [w for w in c_exp.split() if w not in {'bachelor', 'of', 'science', 'in', 'and', 'the', 'bs', 'degree', 'major'}]
+        if exp_words:
+            matched = sum(1 for w in exp_words if w in c_raw)
+            course_ok = (matched / len(exp_words)) >= (1.0 if len(exp_words) <= 2 else 0.6)
+    return course_ok, expected_course
+
+def student_id_no_matches_text(expected_id_no, raw_text):
+    if not expected_id_no or not str(expected_id_no).strip():
+        return True, None
+    exp_clean = normalize_id_number(expected_id_no)
+    raw_clean = normalize_id_number(raw_text)
+    matched = exp_clean in raw_clean if exp_clean else True
+    return matched, (expected_id_no if matched else None)
+
+def year_level_matches_text(expected_year_level, raw_text):
+    if not expected_year_level or not str(expected_year_level).strip():
+        return True, ""
+    exp_clean = normalize_text(expected_year_level)
+    raw_clean = normalize_text(raw_text)
+    digit_match = re.search(r'\b([1-5])\b', exp_clean)
+    if digit_match:
+        num = digit_match.group(1)
+        matched = bool(re.search(rf'\b{num}\b', raw_clean) or num in raw_clean)
+        return matched, num
+    return exp_clean in raw_clean, exp_clean
+
+def gpa_matches_text(raw_text, expected_gpa):
+    if not expected_gpa or not str(expected_gpa).strip():
+        return True, None, None
+    try:
+        exp_val = float(re.sub(r'[^0-9.]', '', str(expected_gpa)))
+        decimals = [float(x) for x in re.findall(r'\b[1-5]\.[0-9]{1,4}\b', str(raw_text)) if 1.0 <= float(x) <= 5.0]
+        if decimals:
+            cand = next((c for c in decimals if abs(c - exp_val) <= 0.05), None)
+            if cand is not None:
+                return True, cand, exp_val
+        return False, None, exp_val
+    except Exception:
+        return True, None, None
+
+def academic_year_matches_expected(found_ay_text, expected_academic_year):
+    ok, _ = verify_academic_year_strict(expected_academic_year, found_ay_text, found_ay_text)
+    return ok
+
