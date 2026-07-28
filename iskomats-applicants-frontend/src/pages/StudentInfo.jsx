@@ -6639,8 +6639,8 @@ const StudentInfo = () => {
                         </div>
 
                         {/* Preview Grid */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '1.2rem' }}>
-                          {/* Front Photo */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
+                          {/* Row 1: Front Photo | Back Photo */}
                           <div className="scanning-container">
                             <div className="image-container" style={{ height: '200px' }} onClick={() => setLightboxSrc(schoolIdPhotos.front || formData.schoolIdFront)}>
                               {(schoolIdPhotos.front || formData.schoolIdFront) ? (
@@ -6655,20 +6655,6 @@ const StudentInfo = () => {
                             </div>
                           </div>
 
-                          {/* Front Video */}
-                          <VideoRecorder
-                            label={isNationalId ? 'National ID Front Video' : 'Front Check Video'}
-                            onRecordComplete={(blob) => handleVideoUpload('schoolIdFront_video', blob)}
-                            initialVideoUrl={documentVideos.schoolIdFront_video || formData.schoolIdFront_video}
-                            isUploading={Boolean(uploadingFields['schoolIdFront_video'])}
-                            uploadProgress={uploadProgress['schoolIdFront_video']}
-                            disabled={isAnyScanning || isSavingStep}
-                            hideButton={true}
-                            containerStyle={{ height: '200px', padding: '0.4rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
-                            fieldName="schoolIdFront_video"
-                          />
-
-                          {/* Back Photo */}
                           <div className="scanning-container">
                             <div className="image-container" style={{ height: '200px' }} onClick={() => setLightboxSrc(schoolIdPhotos.back || formData.schoolIdBack)}>
                               {(schoolIdPhotos.back || formData.schoolIdBack) ? (
@@ -6683,7 +6669,19 @@ const StudentInfo = () => {
                             </div>
                           </div>
 
-                          {/* Back Video */}
+                          {/* Row 2: Front Video | Back Video */}
+                          <VideoRecorder
+                            label={isNationalId ? 'National ID Front Video' : 'Front Check Video'}
+                            onRecordComplete={(blob) => handleVideoUpload('schoolIdFront_video', blob)}
+                            initialVideoUrl={documentVideos.schoolIdFront_video || formData.schoolIdFront_video}
+                            isUploading={Boolean(uploadingFields['schoolIdFront_video'])}
+                            uploadProgress={uploadProgress['schoolIdFront_video']}
+                            disabled={isAnyScanning || isSavingStep}
+                            hideButton={true}
+                            containerStyle={{ height: '200px', padding: '0.4rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                            fieldName="schoolIdFront_video"
+                          />
+
                           <VideoRecorder
                             label={isNationalId ? 'Back Check Video (No Verification)' : 'Back Check Video'}
                             onRecordComplete={(blob) => handleVideoUpload('schoolIdBack_video', blob)}
