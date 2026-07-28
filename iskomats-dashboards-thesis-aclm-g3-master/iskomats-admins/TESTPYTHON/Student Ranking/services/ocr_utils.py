@@ -946,14 +946,14 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
             
             # Distance check
             dist = difflib.SequenceMatcher(None, e_word, t_word).ratio()
-            is_match = (dist >= 0.60) or (len(e_word) == 1 and t_word == e_word) or (
-                abs(len(e_word) - len(t_word)) <= 2 and sum(1 for c1, c2 in zip(e_word, t_word) if c1 != c2) <= 3
+            is_match = (dist >= 0.80) or (len(e_word) == 1 and t_word == e_word) or (
+                abs(len(e_word) - len(t_word)) <= 1 and sum(1 for c1, c2 in zip(e_word, t_word) if c1 != c2) <= 1
             )
             if is_match:
                 if last_found_idx != -1 and (i - last_found_idx) > 5:
                     expected_idx = 0
                     last_found_idx = -1
-                    if difflib.SequenceMatcher(None, exp_words[0], t_word).ratio() >= 0.60 or (len(exp_words[0]) == 1 and t_word == exp_words[0]):
+                    if difflib.SequenceMatcher(None, exp_words[0], t_word).ratio() >= 0.80 or (len(exp_words[0]) == 1 and t_word == exp_words[0]):
                         expected_idx = 1
                         last_found_idx = i
                     continue
@@ -980,7 +980,7 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
             ratio = difflib.SequenceMatcher(None, seq, norm_target).ratio()
             max_ratio = max(max_ratio, ratio)
             
-        if max_ratio >= 0.55:
+        if max_ratio >= 0.80:
             sequence_ok = True
 
     if sequence_ok:
