@@ -564,24 +564,25 @@ function studentNameMatchesText(text, first, middle, last) {
     const escaped = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     const pattern = escaped.join('[^a-z0-9]{0,3}(?:[a-z]{1,8}[^a-z0-9]{0,3}){0,2}');
     return new RegExp('\\b' + pattern + '\\b');
-  };
-
-  const sequencesToCheck = [
-    `${normFirst} ${normLast}`,
-    `${normLast} ${normFirst}`
-  ];
+  };  let sequencesToCheck = [];
   if (middle) {
     const normMiddle = normalizeForOcr(middle);
-    sequencesToCheck.push(`${normFirst} ${normMiddle} ${normLast}`);
-    sequencesToCheck.push(`${normLast} ${normFirst} ${normMiddle}`);
-    sequencesToCheck.push(`${normLast} ${normMiddle} ${normFirst}`);
-
+    sequencesToCheck = [
+      `${normFirst} ${normMiddle} ${normLast}`,
+      `${normLast} ${normFirst} ${normMiddle}`,
+      `${normLast} ${normMiddle} ${normFirst}`
+    ];
     const middleInitial = normMiddle[0];
     if (middleInitial) {
       sequencesToCheck.push(`${normFirst} ${middleInitial} ${normLast}`);
       sequencesToCheck.push(`${normLast} ${normFirst} ${middleInitial}`);
       sequencesToCheck.push(`${normLast} ${middleInitial} ${normFirst}`);
     }
+  } else {
+    sequencesToCheck = [
+      `${normFirst} ${normLast}`,
+      `${normLast} ${normFirst}`
+    ];
   }
 
   const checkWordSequenceFuzzy = (nameStr, searchText) => {
@@ -614,7 +615,9 @@ function studentNameMatchesText(text, first, middle, last) {
       }
     }
     return false;
-  };  let sequenceOk = false;
+  };
+
+  let sequenceOk = false;
 
   // Check fuzzy word sequences in targetText or normText (strict word-by-word matching only)
   for (const seq of sequencesToCheck) {
@@ -636,9 +639,9 @@ function studentNameMatchesText(text, first, middle, last) {
       const confW = normalizeNameConfusions(word);
       if (!normW) return true;
 
-      // 1. Direct word match or exact substring match in search text
+      // 1. Direct whole-word match in search text (prevent matching random single letters inside unrelated words)
       if (new RegExp('\\b' + normW.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(searchText)) return true;
-      if (searchText.toLowerCase().includes(normW)) return true;
+      if (normW.length >= 4 && searchText.toLowerCase().includes(normW)) return true;
 
       // 2. Fuzzy / OCR confusion word match (for full words length >= 2)
       const foundFullWord = ocrWords.some(ocrW => {

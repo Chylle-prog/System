@@ -1022,16 +1022,12 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
         pattern = r'[^a-z0-9]{0,4}'.join(words)
         return re.compile(r'\b' + pattern + r'\b')
 
-    sequences_to_check = [
-        f'{first_clean} {last_clean}',
-        f'{last_clean} {first_clean}'
-    ]
     if mid_clean:
-        sequences_to_check.extend([
+        sequences_to_check = [
             f'{first_clean} {mid_clean} {last_clean}',
             f'{last_clean} {first_clean} {mid_clean}',
             f'{last_clean} {mid_clean} {first_clean}'
-        ])
+        ]
         mid_initial = mid_clean[0]
         if mid_initial:
             sequences_to_check.extend([
@@ -1039,6 +1035,11 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
                 f'{last_clean} {first_clean} {mid_initial}',
                 f'{last_clean} {mid_initial} {first_clean}'
             ])
+    else:
+        sequences_to_check = [
+            f'{first_clean} {last_clean}',
+            f'{last_clean} {first_clean}'
+        ]
 
     def check_word_sequence_fuzzy(name_str, search_text):
         exp_words = [w for w in normalize_text(name_str).split() if len(w) >= 1]
