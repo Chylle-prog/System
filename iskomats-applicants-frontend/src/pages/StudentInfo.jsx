@@ -406,7 +406,8 @@ const getTesseractWorker = async () => {
     await tesseractWorkerSingleton.setParameters({
       tessjs_create_hocr: '0',
       tessjs_create_tsv: '0',
-      tessedit_pageseg_mode: '6'
+      tessedit_pageseg_mode: '6',
+      tessedit_do_invert: '0'
     });
   } catch (e) {
     console.log("Tesseract parameter set note:", e);
@@ -1556,6 +1557,32 @@ const StudentInfo = () => {
             try {
               const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
               const data = imgData.data;
+
+              // Fast variance check to skip blank black/white video padding frames
+              let sumG = 0, sumSqG = 0, sampleCount = 0;
+              for (let i = 0; i < data.length; i += 16) {
+                const g = data[i];
+                sumG += g;
+                sumSqG += g * g;
+                sampleCount++;
+              }
+              const meanG = sumG / sampleCount;
+              const stdDevG = Math.sqrt(Math.max(0, (sumSqG / sampleCount) - (meanG * meanG)));
+
+              if (stdDevG < 7.0) {
+                // Skip OCR on blank/solid-color video padding frames
+                currentCheckIndex++;
+                if (currentCheckIndex < checkPoints.length && isFinite(video.duration) && video.duration > 0) {
+                  video.currentTime = video.duration * checkPoints[currentCheckIndex];
+                } else {
+                  ocrTriggered = true;
+                  clearTimeout(timeout);
+                  cleanup();
+                  resolve(evaluateVideoText(accumulatedText));
+                }
+                return;
+              }
+
               const factor = 1.3;
               for (let i = 0; i < data.length; i += 4) {
                 const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
@@ -2809,13 +2836,13 @@ const StudentInfo = () => {
         const rawResolved = await applicantAPI.resolveDocument(fieldMap[docType] || 'document', docParam);
         const rawSourceForTamper = rawResolved || docParam;
 
-        if (docType !== 'SchoolID' && rawSourceForTamper) {
-          if (!silent) setStatus("Analyzing document authenticity & checking for digital edits...");
-          tamperCheck = await detectDocumentTampering(rawSourceForTamper);
-        }
-
-        if (!silent) setStatus("Enhancing document contrast for OCR scanner...");
-        resolvedParam = rawResolved ? await preprocessImageForOcr(rawResolved) : null;
+        if (!silent) setStatus("Analyzing document authenticity & preparing image concurrently...");
+        const [tCheck, pParam] = await Promise.all([
+          (docType !== 'SchoolID' && rawSourceForTamper) ? detectDocumentTampering(rawSourceForTamper) : Promise.resolve({ edited: false, reason: "Authentic document" }),
+          rawResolved ? preprocessImageForOcr(rawResolved) : Promise.resolve(null)
+        ]);
+        tamperCheck = tCheck || { edited: false, reason: "Authentic document" };
+        resolvedParam = pParam;
       }
 
       if (tamperCheck.edited) {
