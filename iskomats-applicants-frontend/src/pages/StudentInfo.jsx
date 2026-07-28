@@ -663,9 +663,20 @@ function studentNameMatchesText(text, first, middle, last) {
 
       return ocrWords.some(ocrW => {
         const normOcr = normalizeForOcr(ocrW);
+        if (!normOcr) return false;
         if (isSimilarWord(normW, normOcr)) return true;
         if (confW.length >= 3 && normalizeNameConfusions(ocrW) === confW) return true;
         if (isMiddle && normW.length > 0 && normOcr === normW[0]) return true;
+
+        // Sliding window check for glued labels (e.g. "apelyidomagbuhat" or "lastnamemagbuhat")
+        if (normOcr.length > normW.length) {
+          const len = normW.length;
+          for (let i = 0; i <= normOcr.length - len; i++) {
+            const sub = normOcr.substring(i, i + len);
+            if (isSimilarWord(normW, sub)) return true;
+          }
+        }
+
         return false;
       });
     }).length;
@@ -702,8 +713,8 @@ function addressMatchesText(text, expectedAddr) {
   if (!expectedAddr) return true;
   const normText = normalizeForOcr(text);
   const kv = extractOcrKeyValues(text);
-  const targetText = kv.barangay ? normalizeForOcr(kv.barangay) : normText;
-  const searchArea = targetText || normText;
+  const targetText = kv.barangay ? normalizeForOcr(kv.barangay) : "";
+  const searchArea = (targetText ? targetText + " " : "") + normText;
 
   // Split slash-separated address options, e.g. "Inosloban / Inosluban" -> ["Inosloban", "Inosluban"]
   const addrOptions = String(expectedAddr).split(/[\/]/).map(s => s.trim()).filter(Boolean);
