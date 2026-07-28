@@ -1190,8 +1190,16 @@ def parse_cor_document(raw_text):
         fields['school_name'] = 'De La Salle Lipa'
     elif any(k in raw_upper for k in ['BATANGAS STATE UNIVERSITY', 'BATSTATEU', 'BSU']):
         fields['school_name'] = 'Batangas State University'
-    elif any(k in raw_upper for k in ['UNIVERSITY OF THE PHILIPPINES', 'UP']):
-        fields['school_name'] = 'University of the Philippines'
+    # Total Units extraction from COR/COE
+    units_match = re.search(r'(?:total\s*(?:no\.?\s*of\s*)?units?|units?\s*total)\b[\s\S]{0,120}?([1-9][0-9]?(?:\.[0-9]+)?)\b', str(raw_text), re.IGNORECASE)
+    if units_match and units_match.group(1):
+        try:
+            val_float = float(units_match.group(1))
+            if 1 <= val_float <= 50:
+                fields['units'] = int(round(val_float))
+                fields['total_units'] = str(int(round(val_float)))
+        except (ValueError, TypeError):
+            pass
 
     return fields
 

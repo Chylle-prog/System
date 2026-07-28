@@ -1104,19 +1104,69 @@ function coe_type_matches_text(text) {
 
 function extractTotalUnitsFromText(text) {
   if (!text) return null;
-  let match = text.match(/total\s*units\s*[:=\+\-1l\|\]\}\)]*\s*(\d+(?:\.\d+)?)/i);
-  if (!match) {
-    match = text.match(/total\s*units[^\n\d]*[\r\n]+\s*(\d+(?:\.\d+)?)/i);
-  }
-  if (!match) {
-    match = text.match(/\bunits\s*[:=\+\-1l\|\]\}\)]*\s*(\d+(?:\.\d+)?)/i);
-  }
-  if (match && match[1]) {
-    const val = parseFloat(match[1]);
-    if (!isNaN(val)) {
-      return Math.round(val);
+
+  // 1. Multi-line primary regex: Match "TOTAL UNITS", "ENROLLED UNITS", "BILANG NG UNITS"
+  // followed by optional non-digit noise (dashes, headers, symbols, newlines) up to 120 chars until a 1-2 digit number
+  const primaryRegexes = [
+    /(?:total\s*(?:no\.?\s*of\s*)?units?|units?\s*total|total\s*enrolled\s*units?|enrolled\s*units?|bilang\s*ng\s*units?)\b[\s\S]{0,120}?([1-9][0-9]?(?:\.[0-9]+)?)\b/i,
+    /\bunits?\s*[:=\-\_\|\.\s\r\n]+\s*([1-9][0-9]?(?:\.[0-9]+)?)\b/i
+  ];
+
+  for (const rx of primaryRegexes) {
+    const match = text.match(rx);
+    if (match && match[1]) {
+      const val = parseFloat(match[1]);
+      if (!isNaN(val) && val >= 1 && val <= 50) {
+        return Math.round(val);
+      }
     }
   }
+
+  // 2. Line-by-line scanning after "TOTAL UNITS" line
+  const lines = text.split(/[\r\n]+/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (/total\s*(?:no\.?\s*of\s*)?units?/i.test(line)) {
+      // Check current line for numbers
+      const currentDigits = line.match(/\b([1-9][0-9]?(?:\.[0-9]+)?)\b/g);
+      if (currentDigits) {
+        for (const d of currentDigits) {
+          const v = parseFloat(d);
+          if (!isNaN(v) && v >= 1 && v <= 50) return Math.round(v);
+        }
+      }
+      // Check next 4 lines
+      for (let j = i + 1; j < Math.min(lines.length, i + 5); j++) {
+        const nextLine = lines[j].trim();
+        if (/^[\-\=\_\s\|]+$/.test(nextLine)) continue;
+        const nextDigits = nextLine.match(/\b([1-9][0-9]?(?:\.[0-9]+)?)\b/g);
+        if (nextDigits) {
+          for (const d of nextDigits) {
+            const v = parseFloat(d);
+            if (!isNaN(v) && v >= 1 && v <= 50) return Math.round(v);
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Fallback: Sum units column from subject rows (e.g. 3, 3, 3.00, 2.00)
+  let unitSum = 0;
+  let unitCount = 0;
+  for (const line of lines) {
+    const m = line.match(/\b([1-6](?:\.00)?)\b/);
+    if (m && (line.includes('IT') || line.includes('BS') || line.includes('Subject') || line.includes('Class') || line.includes('Course') || line.includes('1A') || line.includes('3B'))) {
+      const u = parseFloat(m[1]);
+      if (!isNaN(u) && u >= 1 && u <= 6) {
+        unitSum += u;
+        unitCount++;
+      }
+    }
+  }
+  if (unitCount >= 2 && unitSum >= 3 && unitSum <= 50) {
+    return Math.round(unitSum);
+  }
+
   return null;
 }
 
@@ -1344,9 +1394,16 @@ const StudentInfo = () => {
         }}>
           {Object.entries(log.requirements).map(([key, val]) => {
             if (val === 'N/A' || val === null || val === undefined || val === '') return null;
-            const matchVal = log.scoreDetails ? log.scoreDetails[key] : null;
-            let isMatch = matchVal === 'MATCH✓' || matchVal === true || (matchVal !== false && val === 'Uploaded & Attached');
-            if (matchVal === 'MISMATCH✗' || matchVal === false) isMatch = false;
+            let isMatch = false;
+            if (matchVal === true || matchVal === 'MATCH✓' || (typeof matchVal === 'string' && matchVal.toLowerCase().startsWith('met'))) {
+              isMatch = true;
+            } else if (matchVal === false || matchVal === 'MISMATCH✗' || (typeof matchVal === 'string' && matchVal.toLowerCase().startsWith('failed'))) {
+              isMatch = false;
+            } else if (val === 'Uploaded & Attached' || val === 'Uploaded & Validated') {
+              isMatch = matchVal !== false;
+            } else {
+              isMatch = Boolean(matchVal);
+            }
 
             return (
               <div key={key} style={{
@@ -3073,12 +3130,15 @@ const StudentInfo = () => {
 
         if (docType === 'Enrollment') {
           const combinedText = detectedText + " " + (videoCheck?.detectedText || "");
+          const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
+          const isNationalId = idType === 'National ID';
+
           const nameCheck = studentNameMatchesText(combinedText, firstName, middleName, lastName);
           const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
           const courseOk = course ? courseMatchesText(course, combinedText) : true;
           const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
           const semOk = semesterMatchesText(combinedText, semester || formData.semester, reqSemester);
-          const idOk = idNumber ? studentIdNoMatchesText(idNumber, combinedText) : true;
+          const idOk = isNationalId ? true : (idNumber ? studentIdNoMatchesText(idNumber, combinedText) : true);
           const yrOk = yearLevel ? yearLevelMatchesText(combinedText, yearLevel) : true;
           const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
           const coeTypeOk = coe_type_matches_text(combinedText);
@@ -3100,7 +3160,7 @@ const StudentInfo = () => {
             "Academic Year": academicYear ? ayOk : null,
             "Year Level": yearLevel ? yrOk : null,
             "Semester": (semester || reqSemester) ? semOk : null,
-            "ID Number": idNumber ? idOk : null,
+            "ID Number": isNationalId ? null : (idNumber ? idOk : null),
             "Document Type": coeTypeOk,
             "Units Requirement": requiredUnits ? (unitsOk ? `Met (${detectedUnits}/${requiredUnits})` : `Failed (${detectedUnits || 0}/${requiredUnits})`) : (detectedUnits ? `${detectedUnits} units` : null),
             "Video Proof": videoOk
@@ -3112,13 +3172,16 @@ const StudentInfo = () => {
         }
         else if (docType === 'Grades') {
           const combinedText = detectedText + " " + (videoCheck?.detectedText || "");
+          const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
+          const isNationalId = idType === 'National ID';
+
           const nameCheck = studentNameMatchesText(combinedText, firstName, middleName, lastName);
           const gpaOk = gpa ? gpaMatchesText(detectedText, gpa) : true;
           const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
           const semOk = semesterMatchesText(combinedText, semester || formData.semester, semester || reqSemester);
           const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
           const courseOk = course ? courseMatchesText(course, combinedText) : true;
-          const idOk = idNumber ? studentIdNoMatchesText(idNumber, combinedText) : true;
+          const idOk = isNationalId ? true : (idNumber ? studentIdNoMatchesText(idNumber, combinedText) : true);
           const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
           const detectedDocGpa = extractGpaFromText(detectedText, gpa);
 
@@ -3133,7 +3196,7 @@ const StudentInfo = () => {
             "Semester": semester ? semOk : null,
             "School Name": schoolName ? schoolOk : null,
             "Course / Track": course ? courseOk : null,
-            "ID Number": idNumber ? idOk : null,
+            "ID Number": isNationalId ? null : (idNumber ? idOk : null),
             "Video Proof": videoOk
           };
           finalMessage = isSuccess
@@ -3219,6 +3282,11 @@ const StudentInfo = () => {
         };
       } else if (docType === 'Enrollment') {
         const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
+        const detectedUnits = extractTotalUnitsFromText(combinedText);
+        const requiredUnits = scholarshipDetails?.units ? parseInt(scholarshipDetails.units) : null;
+        const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
+        const isNationalId = idType === 'National ID';
+
         debugRequirements = {
           "First Name": firstName || 'N/A',
           "Last Name": lastName || 'N/A',
@@ -3227,13 +3295,17 @@ const StudentInfo = () => {
           "Academic Year": academicYear || 'N/A',
           "Year Level": yearLevel || 'N/A',
           "Semester": semester || 'N/A',
-          "ID Number": idNumber || 'N/A',
+          "ID Number": isNationalId ? null : (idNumber || 'N/A'),
+          "Units Requirement": requiredUnits ? `${detectedUnits !== null ? detectedUnits : 0} / ${requiredUnits} units` : (detectedUnits !== null ? `${detectedUnits} units` : 'N/A'),
           "Document Type": 'Certificate of Registration/Enrollment',
           "Video Proof": videoOk ? 'Uploaded & Validated' : (videoCheck?.reason || 'No Text Detected in Video')
         };
       } else if (docType === 'Grades') {
         const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
         const detectedDocGpa = extractGpaFromText(detectedText, gpa);
+        const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
+        const isNationalId = idType === 'National ID';
+
         debugRequirements = {
           "First Name": firstName || 'N/A',
           "Last Name": lastName || 'N/A',
@@ -3243,7 +3315,7 @@ const StudentInfo = () => {
           "Semester": semester || 'N/A',
           "School Name": schoolName || 'N/A',
           "Course / Track": course || 'N/A',
-          "ID Number": idNumber || 'N/A',
+          "ID Number": isNationalId ? null : (idNumber || 'N/A'),
           "Video Proof": videoOk ? 'Uploaded & Validated' : (videoCheck?.reason || 'No Text Detected in Video')
         };
       } else if (docType === 'Indigency') {
@@ -3425,12 +3497,15 @@ const StudentInfo = () => {
       (typeof videoUrl === 'object')
     );
 
+    const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
+    const isNationalId = idType === 'National ID';
+
     if (!hasCoeVideo) {
       showPromptMessage('Please record and upload the COE video first.');
       return;
     }
-    if (!schoolName || !idNumber || !yearLevel || !course) {
-      showPromptMessage('Please complete School Name, ID, Year Level, and Course first.');
+    if (!schoolName || (!isNationalId && !idNumber) || !yearLevel || !course) {
+      showPromptMessage(isNationalId ? 'Please complete School Name, Year Level, and Course first.' : 'Please complete School Name, ID, Year Level, and Course first.');
       return;
     }
 
@@ -3474,6 +3549,8 @@ const StudentInfo = () => {
     const videoUrl = documentVideos.mayorGrades_video || formData.mayorGrades_video;
     const currentSem = scholarshipDetails?.semester || scholarshipDetails?.sem || formData.semester || '1st Semester';
     const expectedGradesSemester = scholarshipDetails?.grades_sem || scholarshipDetails?.gradesSem || (currentSem === '2nd' || currentSem === '2nd Semester' || currentSem === '2' ? '1st Semester' : '2nd Semester');
+    const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
+    const isNationalId = idType === 'National ID';
 
     if (!gradesDoc) {
       showPromptMessage('Please upload your Grades document first.');
@@ -3488,8 +3565,8 @@ const StudentInfo = () => {
       showPromptMessage('Please record and upload the Grades video first.');
       return;
     }
-    if (!schoolName || !idNumber || !yearLevel || !gpa) {
-      showPromptMessage('Please complete School Name, School ID Number, Year Level, and GPA first.');
+    if (!schoolName || (!isNationalId && !idNumber) || !yearLevel || !gpa) {
+      showPromptMessage(isNationalId ? 'Please complete School Name, Year Level, and GPA first.' : 'Please complete School Name, School ID Number, Year Level, and GPA first.');
       return;
     }
 

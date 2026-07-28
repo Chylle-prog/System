@@ -1195,6 +1195,74 @@ def preprocess_cor_lines(raw_text):
                 split_lines.append(s.strip())
     return split_lines
 
+def extract_total_units_from_text(raw_text):
+    if not raw_text:
+        return None
+    text_str = str(raw_text)
+
+    # 1. Multi-line primary regexes: Match "TOTAL UNITS", "ENROLLED UNITS", "BILANG NG UNITS"
+    # followed by optional non-digit noise across newlines/dashes (up to ~120 chars) until a 1-2 digit number
+    primary_regexes = [
+        r'(?:total\s*(?:no\.?\s*of\s*)?units?|units?\s*total|total\s*enrolled\s*units?|enrolled\s*units?|bilang\s*ng\s*units?)\b[\s\S]{0,120}?([1-9][0-9]?(?:\.[0-9]+)?)\b',
+        r'\bunits?\s*[:=\-\_\|\.\s\r\n]+\s*([1-9][0-9]?(?:\.[0-9]+)?)\b'
+    ]
+
+    for rx in primary_regexes:
+        match = re.search(rx, text_str, re.IGNORECASE)
+        if match and match.group(1):
+            try:
+                val = float(match.group(1))
+                if 1 <= val <= 50:
+                    return int(round(val))
+            except (ValueError, TypeError):
+                pass
+
+    # 2. Line-by-line scanning after "TOTAL UNITS" line
+    lines = text_str.splitlines()
+    for i, line in enumerate(lines):
+        line_clean = line.strip()
+        if re.search(r'total\s*(?:no\.?\s*of\s*)?units?', line_clean, re.IGNORECASE):
+            # Check current line
+            digits = re.findall(r'\b([1-9][0-9]?(?:\.[0-9]+)?)\b', line_clean)
+            for d in digits:
+                try:
+                    v = float(d)
+                    if 1 <= v <= 50:
+                        return int(round(v))
+                except ValueError:
+                    pass
+            # Check next 4 lines
+            for j in range(i + 1, min(len(lines), i + 5)):
+                next_line = lines[j].strip()
+                if re.match(r'^[\-\=\_\s\|]+$', next_line):
+                    continue
+                next_digits = re.findall(r'\b([1-9][0-9]?(?:\.[0-9]+)?)\b', next_line)
+                for d in next_digits:
+                    try:
+                        v = float(d)
+                        if 1 <= v <= 50:
+                            return int(round(v))
+                    except ValueError:
+                        pass
+
+    # 3. Fallback: Sum units column from subject rows (e.g. 3, 3, 3.00, 2.00)
+    unit_sum = 0
+    unit_count = 0
+    for line in lines:
+        m = re.search(r'\b([1-6](?:\.00)?)\b', line)
+        if m and any(k in line for k in ['IT', 'BS', 'Subject', 'Class', 'Course', '1A', '3B']):
+            try:
+                u = float(m.group(1))
+                if 1 <= u <= 6:
+                    unit_sum += u
+                    unit_count += 1
+            except ValueError:
+                pass
+    if unit_count >= 2 and 3 <= unit_sum <= 50:
+        return int(round(unit_sum))
+
+    return None
+
 def parse_cor_document(raw_text):
     """
     Structured parser for Official Certificate of Registration (COR).
@@ -1281,18 +1349,10 @@ def parse_cor_document(raw_text):
         fields['school_name'] = 'University of the Philippines'
 
     # Total Units extraction from COR/COE
-    units_match = re.search(r'total\s*units\s*[:=\+\-1l\|\]\}\)]*\s*(\d+(?:\.\d+)?)', str(raw_text), re.IGNORECASE)
-    if not units_match:
-        units_match = re.search(r'total\s*units[^\n\d]*[\r\n]+\s*(\d+(?:\.\d+)?)', str(raw_text), re.IGNORECASE)
-    if not units_match:
-        units_match = re.search(r'\bunits\s*[:=\+\-1l\|\]\}\)]*\s*(\d+(?:\.\d+)?)', str(raw_text), re.IGNORECASE)
-
-    if units_match:
-        try:
-            val_float = float(units_match.group(1))
-            fields['units'] = int(round(val_float))
-        except (ValueError, TypeError):
-            pass
+    units_val = extract_total_units_from_text(raw_text)
+    if units_val is not None:
+        fields['units'] = units_val
+        fields['total_units'] = str(units_val)
 
     return fields
 
