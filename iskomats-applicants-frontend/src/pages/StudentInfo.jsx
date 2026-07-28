@@ -2785,8 +2785,9 @@ const StudentInfo = () => {
       }
 
       // Resolve/decrypt proxy URLs to local blob URLs for robust local OCR scanning
-      // Resolve/decrypt proxy URLs to local blob URLs for robust local OCR scanning
       let resolvedParam = docParam;
+      let tamperCheck = { edited: false, reason: "Authentic document" };
+
       if (docType === 'SchoolID') {
         const [resolvedFront, resolvedBack] = await Promise.all([
           docParam.front ? applicantAPI.resolveDocument('id_img_front', docParam.front) : Promise.resolve(null),
