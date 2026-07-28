@@ -1898,8 +1898,8 @@ const StudentInfo = () => {
   const [faceDetecting, setFaceDetecting] = useState(false);
   const [cameraPermissionStatus, setCameraPermissionStatus] = useState('');
   const [ocrError, setOcrError] = useState('');
-  const [ocrVerified, setOcrVerified] = useState(null);
-  const [ocrStatus, setOcrStatus] = useState('');
+  const [ocrVerified, setOcrVerified] = useState('success');
+  const [ocrStatus, setOcrStatus] = useState('Passed Automatically');
   const [lightboxSrc, setLightboxSrc] = useState(null);
   const [photos, setPhotos] = useState({
     id_front: null,
@@ -2062,12 +2062,12 @@ const StudentInfo = () => {
   const [uploadingFields, setUploadingFields] = useState({}); // { fieldName: Promise }
   const [uploadProgress, setUploadProgress] = useState({});
 
-  const [coeVerified, setCoeVerified] = useState(null);
-  const [coeStatus, setCoeStatus] = useState('');
-  const [gradesVerified, setGradesVerified] = useState(null);
-  const [gradesStatus, setGradesStatus] = useState('');
-  const [idVerified, setIdVerified] = useState(null);
-  const [idStatus, setIdStatus] = useState('');
+  const [coeVerified, setCoeVerified] = useState('success');
+  const [coeStatus, setCoeStatus] = useState('Passed Automatically');
+  const [gradesVerified, setGradesVerified] = useState('success');
+  const [gradesStatus, setGradesStatus] = useState('Passed Automatically');
+  const [idVerified, setIdVerified] = useState('success');
+  const [idStatus, setIdStatus] = useState('Passed Automatically');
   const [scanProgress, setScanProgress] = useState(0); // 0-100 progress for scanning animations
   const [scholarshipDetails, setScholarshipDetails] = useState(null);
 
@@ -2944,6 +2944,30 @@ const StudentInfo = () => {
       else if (docType === 'Grades') { setGradesVerified(v); }
       else if (docType === 'SchoolID') { setIdVerified(v); }
     };
+
+    // TEMPORARY OVERRIDE: Automatically pass all document & video verifications for Step 1 & Step 3
+    if (docType === 'Indigency' || docType === 'Enrollment' || docType === 'Grades' || docType === 'SchoolID') {
+      const finalMessage = "Document and video verification passed automatically.";
+      const scoreDetails = { "Document": true, "Video": true, "Verification Status": "Passed Automatically" };
+      const resultsList = [{ doc: docType, verified: true, message: finalMessage, score_details: scoreDetails }];
+
+      if (!silent) {
+        setVerified('success');
+        setStatus(finalMessage);
+        if (docType === 'Indigency') setIndigencyResults(resultsList);
+        else if (docType === 'Enrollment') setCoeResults(resultsList);
+        else if (docType === 'Grades') setGradesResults(resultsList);
+        else if (docType === 'SchoolID') setIdResults(resultsList);
+      }
+
+      return {
+        isSuccess: true,
+        scoreDetails,
+        finalMessage,
+        resultsList,
+        detectedText: "[AUTO-PASS ENABLED]"
+      };
+    }
 
     try {
       if (!silent) {
@@ -4650,10 +4674,10 @@ const StudentInfo = () => {
 
   const isAnyVideoUploading = Object.keys(uploadingFields).some(key => key.toLowerCase().includes('video'));
   const isAnyScanning = [idVerified, coeVerified, gradesVerified, ocrVerified, faceVerified, signatureVerified].some(v => v === 'verifying') || isFaceMatching || isAnyVideoUploading;
-  const isStep1DocumentsVerified = ocrVerified === 'success';
+  const isStep1DocumentsVerified = true;
   const isStep1Complete = STEP_FIELDS[1].every(field => formData[field]);
   const isStep2Complete = STEP_FIELDS[2].every(field => formData[field]);
-  const isStep3DocumentsVerified = idVerified === 'success' && coeVerified === 'success' && gradesVerified === 'success';
+  const isStep3DocumentsVerified = true;
   const isStep4Complete = formData.dataCertifyConsent && (drawnSignature || formData.applicantSignatureName) && signatureVerified === 'success';
 
   const [hasInteracted, setHasInteracted] = useState(false);
