@@ -4145,9 +4145,14 @@ const Portal = () => {
                     <div className="value">{userProfile?.mobile_no}</div>
                   </div>
                   <div className="view-item" style={{ gridColumn: 'span 2' }}>
-                    <label>Home Address</label>
+                    <label>Home Address / Contact Location</label>
                     <div className="value">
-                      {userProfile?.street_brgy}, {userProfile?.town_city_municipality}, {userProfile?.province} {userProfile?.zip_code}
+                      {[
+                        userProfile?.street_brgy || userProfile?.streetBarangay || userProfile?.streetBrgy,
+                        userProfile?.town_city_municipality || userProfile?.townCity || userProfile?.municipality,
+                        userProfile?.province,
+                        userProfile?.zip_code || userProfile?.zipCode
+                      ].filter(Boolean).join(', ') || '—'}
                     </div>
                   </div>
                 </div>

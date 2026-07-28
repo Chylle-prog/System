@@ -5133,11 +5133,11 @@ export default function ScholarshipDashboard({
 
             <div className="p-2.5 sm:p-3 border-b border-r border-gray-100">
               <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Street &amp; Barangay</p>
-              <p className="font-bold text-gray-800 text-xs sm:text-sm break-words">{a.streetBrgy || (a.location && a.location.split(',')[0]) || 'N/A'}</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm break-words">{a.streetBrgy || a.street_brgy || (a.location && a.location.split(',')[0]) || 'N/A'}</p>
             </div>
             <div className="p-2.5 sm:p-3 border-b border-r border-gray-100">
               <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Town/City/Municipality</p>
-              <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.municipality || 'N/A'}</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.municipality || a.town_city_municipality || 'N/A'}</p>
             </div>
             <div className="p-2.5 sm:p-3 border-b border-r border-gray-100">
               <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Province</p>
@@ -5145,7 +5145,7 @@ export default function ScholarshipDashboard({
             </div>
             <div className="p-2.5 sm:p-3 border-b border-gray-100">
               <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Zip Code</p>
-              <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.zipCode || 'N/A'}</p>
+              <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.zipCode || a.zip_code || 'N/A'}</p>
             </div>
 
             <div className="p-2.5 sm:p-3 border-b border-r border-gray-100">
