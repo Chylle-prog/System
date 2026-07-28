@@ -24,7 +24,7 @@ class GeminiService:
             groq_key = _DEFAULT_GROQ_KEY
             
         self.groq_api_key = groq_key
-        self.model = os.getenv("GROQ_MODEL") or "llama-3.3-70b-versatile"
+        self.model = os.getenv("GROQ_MODEL") or "llama-3.1-8b-instant"
 
         # Initialize Google GenAI client as fallback if needed
         self.client = None
@@ -44,17 +44,17 @@ class GeminiService:
         groq_key = os.getenv("GROQ_API_KEY", "").strip() or self.groq_api_key
         
         system_instruction = (
-            "You are IskoBots, a guidance chatbot assistant for iskoMats in Lipa City. "
+            "You are IskoBots, a fast guidance chatbot assistant for iskoMats in Lipa City. "
             "You are NOT made by any person or company - you are a system guidance tool. "
-            "Only answer using the reference material below. "
+            "Be concise, clear, and direct. Only answer using the reference material below. "
             "Reply in the same language the user writes in. Never mix languages. "
-            "If the material does not cover the question, say you don't have that information. "
+            "If the material does not cover the question, state politely that you don't have that information. "
             f"\n\nREFERENCE MATERIAL:\n{context}"
         )
 
         # 1. USE GROQ API (If GROQ_API_KEY is configured)
         if groq_key:
-            groq_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+            groq_model = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
             endpoint = "https://api.groq.com/openai/v1/chat/completions"
             
             messages = [{"role": "system", "content": system_instruction}]
@@ -71,6 +71,7 @@ class GeminiService:
                 "model": groq_model,
                 "messages": messages,
                 "temperature": 0.2,
+                "max_tokens": 450,
                 "stream": True
             }
 
