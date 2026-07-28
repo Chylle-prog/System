@@ -1041,6 +1041,14 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
             f'{last_clean} {first_clean}'
         ]
 
+    def is_similar_name_word(e_word, t_word):
+        if not e_word or not t_word: return False
+        e_clean, t_clean = e_word.lower().strip(), t_word.lower().strip()
+        if e_clean == t_clean: return True
+        def _conf(s):
+            return re.sub(r'[^a-z0-9]', '', s).replace('1', 'i').replace('|', 'i').replace('0', 'o').replace('5', 's').replace('3', 'e').replace('8', 'b').replace('rn', 'm').replace('cl', 'd').replace('vv', 'w')
+        return _conf(e_clean) == _conf(t_clean)
+
     def check_word_sequence_fuzzy(name_str, search_text):
         exp_words = [w for w in normalize_text(name_str).split() if len(w) >= 1]
         if not exp_words:
@@ -1053,15 +1061,12 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
         for i, t_word in enumerate(t_words):
             e_word = exp_words[expected_idx]
             
-            dist = difflib.SequenceMatcher(None, e_word, t_word).ratio()
-            is_match = (dist >= 0.80) or (len(e_word) == 1 and t_word == e_word) or (
-                abs(len(e_word) - len(t_word)) <= 1 and sum(1 for c1, c2 in zip(e_word, t_word) if c1 != c2) <= 1
-            )
+            is_match = is_similar_name_word(e_word, t_word)
             if is_match:
                 if last_found_idx != -1 and (i - last_found_idx) > 5:
                     expected_idx = 0
                     last_found_idx = -1
-                    if difflib.SequenceMatcher(None, exp_words[0], t_word).ratio() >= 0.80 or (len(exp_words[0]) == 1 and t_word == exp_words[0]):
+                    if is_similar_name_word(exp_words[0], t_word):
                         expected_idx = 1
                         last_found_idx = i
                     continue

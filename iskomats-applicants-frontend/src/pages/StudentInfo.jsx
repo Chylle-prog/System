@@ -513,37 +513,29 @@ function getLevenshteinDistance(a, b) {
 
 function normalizeNameConfusions(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
-    .replace(/l/g, 't')
-    .replace(/h/g, 'b')
     .replace(/1/g, 'i')
+    .replace(/\|/g, 'i')
     .replace(/0/g, 'o')
     .replace(/5/g, 's')
+    .replace(/3/g, 'e')
     .replace(/8/g, 'b')
-    .replace(/u/g, 'a')
-    .replace(/v/g, 'u');
+    .replace(/rn/g, 'm')
+    .replace(/cl/g, 'd')
+    .replace(/vv/g, 'w');
 }
+
 function isSimilarWord(expected, actual) {
   if (!expected || !actual) return false;
-  const expNorm = expected.toLowerCase();
-  const actNorm = actual.toLowerCase();
+  const expNorm = expected.toLowerCase().trim();
+  const actNorm = actual.toLowerCase().trim();
   if (expNorm === actNorm) return true;
 
-  // Must be at least 3 chars to qualify for fuzzy matching
-  if (expNorm.length < 3 || actNorm.length < 3) return expNorm === actNorm;
+  // Strict OCR glyph confusion match (visual OCR substitutions only, no edit distance insertion/deletion)
+  const expConf = normalizeNameConfusions(expNorm);
+  const actConf = normalizeNameConfusions(actNorm);
+  if (expConf && expConf === actConf) return true;
 
-  const dist = getLevenshteinDistance(expNorm, actNorm);
-  const maxLen = Math.max(expNorm.length, actNorm.length);
-  if (maxLen === 0) return true;
-
-  const similarity = (maxLen - dist) / maxLen;
-
-  if (maxLen <= 5) {
-    return dist <= 1 && similarity >= 0.70;
-  } else if (maxLen <= 8) {
-    return dist <= 2 && similarity >= 0.68;
-  } else {
-    return dist <= 3 && similarity >= 0.70;
-  }
+  return false;
 }
 
 function studentNameMatchesText(text, first, middle, last) {
@@ -3378,8 +3370,8 @@ const StudentInfo = () => {
         const combinedBackText = backText + " " + (backVidCheck?.detectedText || "");
         const allIdText = combinedFrontText + " " + combinedBackText;
 
-        const nameMatchFront = studentNameMatchesText(combinedFrontText, firstName, middleName, lastName);
-        const nameMatchBack = isNationalId ? { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } } : studentNameMatchesText(combinedBackText, firstName, middleName, lastName);
+        const nameMatchFront = studentNameMatchesText(frontText, firstName, middleName, lastName);
+        const nameMatchBack = isNationalId ? { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } } : studentNameMatchesText(backText, firstName, middleName, lastName);
         const nameOk = nameMatchFront.success || nameMatchBack.success;
         const firstOk = nameMatchFront.details.first_ok || nameMatchBack.details.first_ok;
         const middleOk = middleName ? (nameMatchFront.details.middle_ok || nameMatchBack.details.middle_ok) : true;
@@ -3453,7 +3445,7 @@ const StudentInfo = () => {
           const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
           const isNationalId = idType === 'National ID';
 
-          const nameCheck = studentNameMatchesText(combinedText, firstName, middleName, lastName);
+          const nameCheck = studentNameMatchesText(detectedText, firstName, middleName, lastName);
           const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
           const courseOk = course ? courseMatchesText(course, combinedText) : true;
           const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
@@ -3501,7 +3493,7 @@ const StudentInfo = () => {
           const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
           const isNationalId = idType === 'National ID';
 
-          const nameCheck = studentNameMatchesText(combinedText, firstName, middleName, lastName);
+          const nameCheck = studentNameMatchesText(detectedText, firstName, middleName, lastName);
           const gpaOk = gpa ? gpaMatchesText(detectedText, gpa) : true;
           const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
           const semOk = semesterMatchesText(combinedText, semester || formData.semester, semester || reqSemester);
