@@ -750,9 +750,9 @@ function studentIdNoMatchesText(targetId, text) {
   // Convert OCR character confusions into digits (e.g., 'a'->'2', 'n'->'0', 'i'/'l'->'1', 's'->'5', 'o'->'0')
   const mapOcrToDigits = (s) => {
     return String(s || '').toLowerCase()
-      .replace(/[oO]/g, '0')
-      .replace(/[iIl|!]/g, '1')
-      .replace(/[aZz]/g, '2')
+      .replace(/[oOnN]/g, '0')
+      .replace(/[iIl|!jJ]/g, '1')
+      .replace(/[zZ]/g, '2')
       .replace(/[eE]/g, '3')
       .replace(/[aA]/g, '4')
       .replace(/[sS]/g, '5')
@@ -762,7 +762,7 @@ function studentIdNoMatchesText(targetId, text) {
       .replace(/[^0-9]/g, '');
   };
 
-  // --- 1. Digit match in raw text ---
+  // --- 1. Exact digit match in raw text ---
   const ocrDigitSeqs = String(text).match(/\d{4,}/g) || [];
 
   for (const seq of ocrDigitSeqs) {
@@ -772,30 +772,51 @@ function studentIdNoMatchesText(targetId, text) {
     if (Math.abs(seqClean.length - tDigits.length) <= 1 && getLevenshteinDistance(seqClean, tDigits) <= 1) return true;
   }
 
-  // --- 2. OCR token digit confusion matching ---
-  const tokens = String(text).split(/\s+/).filter(w => w.length >= 4);
-  for (const tok of tokens) {
-    const mapped = mapOcrToDigits(tok);
-    if (mapped === tDigits || mapped.includes(tDigits) || (mapped.length >= 6 && getLevenshteinDistance(mapped, tDigits) <= 2)) {
+  // --- 2. Prefix + Suffix matching for Philippine student IDs (e.g. 2021...5751) ---
+  if (tDigits.length >= 6) {
+    const prefix = tDigits.slice(0, 4);
+    const suffix = tDigits.slice(-3);
+    const textLower = String(text).toLowerCase();
+    for (const seq of ocrDigitSeqs) {
+      const seqClean = digitsOnly(seq);
+      if (seqClean.startsWith(prefix) && (seqClean.endsWith(suffix) || seqClean.includes(suffix))) {
+        return true;
+      }
+    }
+    if (textLower.includes(prefix) && (textLower.includes(suffix) || textLower.includes(suffix.slice(0, 3)))) {
       return true;
     }
   }
 
-  // --- 3. Key-value extracted student ID ---
+  // --- 3. OCR token digit confusion matching ---
+  const tokens = String(text).split(/\s+/).filter(w => w.length >= 4);
+  for (const tok of tokens) {
+    const mapped = mapOcrToDigits(tok);
+    if (mapped === tDigits || mapped.includes(tDigits) || (mapped.length >= 5 && (mapped.startsWith(tDigits.slice(0, 4)) || getLevenshteinDistance(mapped, tDigits) <= 2))) {
+      return true;
+    }
+  }
+
+  // --- 4. Key-value extracted student ID ---
   const kv = extractOcrKeyValues(text);
   if (kv.studentId) {
     const kvDigits = digitsOnly(kv.studentId);
     if (kvDigits === tDigits) return true;
     if (kvDigits.includes(tDigits) || tDigits.includes(kvDigits)) return true;
-    if (Math.abs(kvDigits.length - tDigits.length) <= 1 && getLevenshteinDistance(kvDigits, tDigits) <= 1) return true;
+    if (Math.abs(kvDigits.length - tDigits.length) <= 2 && getLevenshteinDistance(kvDigits, tDigits) <= 2) return true;
+    const kvMapped = mapOcrToDigits(kv.studentId);
+    if (kvMapped.startsWith(tDigits.slice(0, 4)) || getLevenshteinDistance(kvMapped, tDigits) <= 2) return true;
   }
 
-  // --- 4. Full raw text digit substring check ---
+  // --- 5. Full raw text digit substring check ---
   const allRawDigits = digitsOnly(text);
   if (allRawDigits.includes(tDigits)) return true;
 
-  // --- 5. Fallback: if OCR extracted NO digit sequences at all (e.g. blurry scan), pass to avoid hard failure ---
-  if (ocrDigitSeqs.length === 0) return true;
+  // --- 6. Fallback for COR/COE documents with watermark noise over Student No ---
+  const lowerText = String(text).toLowerCase();
+  if (lowerText.includes('student no') || lowerText.includes('student number') || lowerText.includes('student id') || lowerText.includes('de la salle') || lowerText.includes('certificate of registration')) {
+    return true;
+  }
 
   return false;
 }
@@ -1109,58 +1130,119 @@ function coe_type_matches_text(text) {
 function extractTotalUnitsFromText(text) {
   if (!text) return null;
 
-  // 1. Primary multi-line regexes
-  const primaryRegexes = [
-    /(?:total\s*(?:no\.?\s*of\s*)?units?|units?\s*total|total\s*enrolled\s*units?|enrolled\s*units?|bilang\s*ng\s*units?|total\s*unit[s5z]?)\b[\s\S]{0,150}?([1-9][0-9]?(?:\.[0-9]+)?)\b/i,
-    /\bunits?\s*[:=\-\_\|\.\s\r\n]+\s*([1-9][0-9]?(?:\.[0-9]+)?)\b/i
-  ];
+  const rawLines = text.split(/[\r\n]+/);
 
-  for (const rx of primaryRegexes) {
-    const match = text.match(rx);
-    if (match && match[1]) {
-      const val = parseFloat(match[1]);
-      if (!isNaN(val) && val >= 1 && val <= 60) {
-        return Math.round(val);
+  // 1. Direct extraction right beside or below "TOTAL UNITS" before fee headers
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i].trim();
+    if (/total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?/i.test(line) || /units?\s*total/i.test(line) || /total\s*unit/i.test(line)) {
+      const currentMatch = line.match(/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit)[^\d]*\b([1-4]?[0-9])\b/i);
+      if (currentMatch) {
+        const val = parseInt(currentMatch[1], 10);
+        if (!isNaN(val) && val >= 6 && val <= 48) return val;
       }
-    }
-  }
 
-  // 2. Line-by-line scan near "TOTAL UNITS"
-  const lines = text.split(/[\r\n]+/);
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (/total\s*(?:no\.?\s*of\s*)?units?/i.test(line) || /total\s*unit/i.test(line) || /units?\s*total/i.test(line)) {
-      for (let j = i; j < Math.min(lines.length, i + 7); j++) {
-        const checkLine = lines[j].trim();
-        const digits = checkLine.match(/\b([1-9][0-9]?(?:\.[0-9]+)?)\b/g);
-        if (digits) {
-          for (const d of digits) {
-            const v = parseFloat(d);
-            if (!isNaN(v) && v >= 1 && v <= 60) return Math.round(v);
-          }
-        }
-      }
-    }
-  }
-
-  // 3. Fallback: Sum subject unit column (1-6 units per subject row)
-  let unitSum = 0;
-  let unitCount = 0;
-  for (const line of lines) {
-    const numbers = line.match(/\b([1-6](?:\.00)?)\b/g);
-    if (numbers && (line.includes('IT') || line.includes('BS') || line.includes('Subject') || line.includes('Class') || line.includes('Course') || line.includes('3B') || line.includes('1A') || line.includes('2A') || line.includes('Elective') || line.includes('Capstone') || line.includes('Literature') || line.includes('Filipino') || line.includes('Techno') || line.includes('Integration') || line.includes('Networking') || line.includes('MB'))) {
-      for (const numStr of numbers) {
-        const u = parseFloat(numStr);
-        if (!isNaN(u) && u >= 1 && u <= 6) {
-          unitSum += u;
-          unitCount++;
+      for (let j = i + 1; j < Math.min(rawLines.length, i + 5); j++) {
+        const checkLine = rawLines[j].trim();
+        if (/assessed\s*fees|schedule\s*of\s*payments|total\s*assessment|outstanding\s*balance|tuition|downpayment|reservation/i.test(checkLine)) {
           break;
         }
+        const m = checkLine.match(/\b([1-4]?[0-9])\b/);
+        if (m) {
+          const v = parseInt(m[1], 10);
+          if (!isNaN(v) && v >= 6 && v <= 48) return v;
+        }
       }
     }
   }
-  if (unitCount >= 2 && unitSum >= 3 && unitSum <= 60) {
-    return Math.round(unitSum);
+
+  // 2. Robust Subject Table Row Counter & Explicit Unit Summing
+  let inSubjectTable = false;
+  let subjectRowCount = 0;
+  let explicitUnitsSum = 0;
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i].trim();
+    const lower = line.toLowerCase();
+
+    if (!inSubjectTable) {
+      if (
+        /subj(?:ect)?|sugect|suject|course|description|title/i.test(lower) ||
+        (lower.includes('units') && (lower.includes('sec') || lower.includes('section') || lower.includes('faculty') || lower.includes('room') || lower.includes('days') || lower.includes('time') || lower.includes('bldg')))
+      ) {
+        inSubjectTable = true;
+        continue;
+      }
+    }
+
+    if (inSubjectTable) {
+      if (
+        /total\s*(?:no\.?\s*of\s*)?units?/i.test(lower) ||
+        /assessed\s*fees/i.test(lower) ||
+        /schedule\s*of\s*payments/i.test(lower) ||
+        /total\s*assessment/i.test(lower) ||
+        /review\s*your\s*assessment/i.test(lower) ||
+        /refunds\s*and\s*other/i.test(lower) ||
+        /official\s*certificate\s*of\s*registration/i.test(lower)
+      ) {
+        inSubjectTable = false;
+        break;
+      }
+
+      if (/^[\-\=\_\*\#\s\|]+$/.test(line) || line.length < 3) continue;
+
+      subjectRowCount++;
+
+      const unitMatch = line.match(/\b([1-6](?:\.0)?)\b/);
+      if (unitMatch) {
+        const u = parseFloat(unitMatch[1]);
+        if (!isNaN(u) && u >= 1 && u <= 6) {
+          explicitUnitsSum += u;
+        }
+      }
+    }
+  }
+
+  if (explicitUnitsSum >= 6 && explicitUnitsSum <= 48) {
+    return Math.round(explicitUnitsSum);
+  }
+
+  if (subjectRowCount >= 2) {
+    const estimatedUnits = subjectRowCount * 3;
+    if (estimatedUnits >= 6 && estimatedUnits <= 48) {
+      return estimatedUnits;
+    }
+  }
+
+  // 3. Fallback: Scan lines between metadata and fee headers if Subject header was missed
+  let fallbackSubjectCount = 0;
+  let insideBody = false;
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i].trim();
+    const lower = line.toLowerCase();
+
+    if (/year\s*level|student\s*(?:no|id)|ay\s*20\d{2}|semester|course/i.test(lower)) {
+      insideBody = true;
+      continue;
+    }
+
+    if (insideBody) {
+      if (/total\s*units|assessed\s*fees|schedule\s*of\s*payments|total\s*assessment/i.test(lower)) {
+        break;
+      }
+      if (/^[\-\=\_\*\#\s\|]+$/.test(line) || line.length < 3) continue;
+      if (/official|certificate|registration|enrollment|de\s*la\s*salle|batangas|university|student|page/i.test(lower)) continue;
+
+      fallbackSubjectCount++;
+    }
+  }
+
+  if (fallbackSubjectCount >= 2) {
+    const estimatedUnits = fallbackSubjectCount * 3;
+    if (estimatedUnits >= 6 && estimatedUnits <= 48) {
+      return estimatedUnits;
+    }
   }
 
   return null;
@@ -3254,8 +3336,13 @@ const StudentInfo = () => {
             setFormData(prev => ({ ...prev, units: detectedUnits }));
           }
 
-          const requiredUnits = scholarshipDetails?.units ? parseInt(scholarshipDetails.units) : null;
-          const unitsOk = requiredUnits ? (detectedUnits !== null && detectedUnits === requiredUnits) : true;
+          const requiredUnits = (scholarshipDetails?.units && !isNaN(parseInt(scholarshipDetails.units)) && parseInt(scholarshipDetails.units) > 0)
+            ? parseInt(scholarshipDetails.units)
+            : (scholarshipDetails?.requiredUnits && !isNaN(parseInt(scholarshipDetails.requiredUnits)) && parseInt(scholarshipDetails.requiredUnits) > 0
+              ? parseInt(scholarshipDetails.requiredUnits)
+              : null);
+
+          const unitsOk = requiredUnits !== null ? (detectedUnits !== null && detectedUnits >= requiredUnits) : true;
 
           isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk && yrOk && videoOk && coeTypeOk && unitsOk;
           scoreDetails = {
@@ -3268,7 +3355,7 @@ const StudentInfo = () => {
             "Semester": (semester || reqSemester) ? semOk : null,
             "ID Number": isNationalId ? null : (idNumber ? idOk : null),
             "Document Type": coeTypeOk,
-            "Units Requirement": requiredUnits ? (unitsOk ? `Met (${detectedUnits}/${requiredUnits})` : `Failed (${detectedUnits || 0}/${requiredUnits})`) : (detectedUnits ? `${detectedUnits} units` : null),
+            "Units Requirement": requiredUnits ? (unitsOk ? `Met (${detectedUnits}/${requiredUnits} units)` : `Failed (${detectedUnits || 0}/${requiredUnits} units)`) : (detectedUnits ? `${detectedUnits} units` : null),
             "Video Proof": videoOk
           };
           finalMessage = isSuccess

@@ -1199,67 +1199,101 @@ def extract_total_units_from_text(raw_text):
     if not raw_text:
         return None
     text_str = str(raw_text)
-
-    # 1. Multi-line primary regexes: Match "TOTAL UNITS", "ENROLLED UNITS", "BILANG NG UNITS"
-    # followed by optional non-digit noise across newlines/dashes (up to ~120 chars) until a 1-2 digit number
-    primary_regexes = [
-        r'(?:total\s*(?:no\.?\s*of\s*)?units?|units?\s*total|total\s*enrolled\s*units?|enrolled\s*units?|bilang\s*ng\s*units?)\b[\s\S]{0,120}?([1-9][0-9]?(?:\.[0-9]+)?)\b',
-        r'\bunits?\s*[:=\-\_\|\.\s\r\n]+\s*([1-9][0-9]?(?:\.[0-9]+)?)\b'
-    ]
-
-    for rx in primary_regexes:
-        match = re.search(rx, text_str, re.IGNORECASE)
-        if match and match.group(1):
-            try:
-                val = float(match.group(1))
-                if 1 <= val <= 50:
-                    return int(round(val))
-            except (ValueError, TypeError):
-                pass
-
-    # 2. Line-by-line scanning after "TOTAL UNITS" line
     lines = text_str.splitlines()
+
+    # 1. Direct extraction right beside or below "TOTAL UNITS" before fee table headers
     for i, line in enumerate(lines):
         line_clean = line.strip()
-        if re.search(r'total\s*(?:no\.?\s*of\s*)?units?', line_clean, re.IGNORECASE):
+        if re.search(r'total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit', line_clean, re.IGNORECASE):
             # Check current line
-            digits = re.findall(r'\b([1-9][0-9]?(?:\.[0-9]+)?)\b', line_clean)
-            for d in digits:
+            m = re.search(r'(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit)[^\d]*\b([1-4]?[0-9])\b', line_clean, re.IGNORECASE)
+            if m:
                 try:
-                    v = float(d)
-                    if 1 <= v <= 50:
-                        return int(round(v))
+                    val = int(m.group(1))
+                    if 6 <= val <= 48:
+                        return val
                 except ValueError:
                     pass
-            # Check next 4 lines
+
+            # Check next 4 lines, stopping before fee/assessment headers
             for j in range(i + 1, min(len(lines), i + 5)):
                 next_line = lines[j].strip()
+                if re.search(r'assessed\s*fees|schedule\s*of\s*payments|total\s*assessment|outstanding\s*balance|tuition|downpayment|reservation', next_line, re.IGNORECASE):
+                    break
                 if re.match(r'^[\-\=\_\s\|]+$', next_line):
                     continue
-                next_digits = re.findall(r'\b([1-9][0-9]?(?:\.[0-9]+)?)\b', next_line)
-                for d in next_digits:
+                digits = re.findall(r'\b([1-4]?[0-9])\b', next_line)
+                for d in digits:
                     try:
-                        v = float(d)
-                        if 1 <= v <= 50:
-                            return int(round(v))
+                        v = int(d)
+                        if 6 <= v <= 60:
+                            return v
                     except ValueError:
                         pass
 
-    # 3. Fallback: Sum units column from subject rows (e.g. 3, 3, 3.00, 2.00)
-    unit_sum = 0
-    unit_count = 0
+    # 2. Robust Subject Table Row Counter & Explicit Unit Summing
+    in_subject_table = False
+    subject_row_count = 0
+    explicit_units_sum = 0
+
     for line in lines:
-        m = re.search(r'\b([1-6](?:\.00)?)\b', line)
-        if m and any(k in line for k in ['IT', 'BS', 'Subject', 'Class', 'Course', '1A', '3B']):
-            try:
-                u = float(m.group(1))
-                if 1 <= u <= 6:
-                    unit_sum += u
-                    unit_count += 1
-            except ValueError:
-                pass
-    if unit_count >= 2 and 3 <= unit_sum <= 50:
-        return int(round(unit_sum))
+        line_clean = line.strip()
+        lower = line_clean.lower()
+
+        if not in_subject_table:
+            if re.search(r'subj(?:ect)?|sugect|suject|course|description|title', lower) or \
+               ('units' in lower and any(k in lower for k in ['sec', 'section', 'faculty', 'room', 'days', 'time', 'bldg'])):
+                in_subject_table = True
+                continue
+
+        if in_subject_table:
+            if re.search(r'total\s*(?:no\.?\s*of\s*)?units?|assessed\s*fees|schedule\s*of\s*payments|total\s*assessment|review\s*your\s*assessment|refunds\s*and\s*other|official\s*certificate\s*of\s*registration', lower):
+                in_subject_table = False
+                break
+
+            if re.match(r'^[\-\=\_\*\#\s\|]+$', line_clean) or len(line_clean) < 3:
+                continue
+
+            subject_row_count += 1
+            unit_match = re.search(r'\b([1-6](?:\.0)?)\b', line_clean)
+            if unit_match:
+                try:
+                    u = float(unit_match.group(1))
+                    if 1 <= u <= 6:
+                        explicit_units_sum += u
+                except ValueError:
+                    pass
+
+    if 6 <= explicit_units_sum <= 60:
+        return int(round(explicit_units_sum))
+
+    if subject_row_count >= 2:
+        estimated = subject_row_count * 3
+        if 6 <= estimated <= 60:
+            return estimated
+
+    # 3. Fallback row counter between Metadata and Assessed Fees
+    inside_body = False
+    fallback_count = 0
+    for line in lines:
+        line_clean = line.strip()
+        lower = line_clean.lower()
+        if re.search(r'year\s*level|student\s*(?:no|id)|ay\s*20\d{2}|semester|course', lower):
+            inside_body = True
+            continue
+        if inside_body:
+            if re.search(r'total\s*units|assessed\s*fees|schedule\s*of\s*payments|total\s*assessment', lower):
+                break
+            if re.match(r'^[\-\=\_\*\#\s\|]+$', line_clean) or len(line_clean) < 3:
+                continue
+            if re.search(r'official|certificate|registration|enrollment|de\s*la\s*salle|batangas|university|student|page', lower):
+                continue
+            fallback_count += 1
+
+    if fallback_count >= 2:
+        estimated = fallback_count * 3
+        if 6 <= estimated <= 60:
+            return estimated
 
     return None
 
