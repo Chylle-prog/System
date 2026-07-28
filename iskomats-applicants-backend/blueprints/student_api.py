@@ -2051,7 +2051,7 @@ def get_all_scholarships():
     try:
         with get_db() as conn:
             cur = conn.cursor()
-            cur.execute('SELECT req_no, scholarship_name, deadline, gpa, parent_finance, location, "desc" as description, semester, year, units FROM scholarships WHERE COALESCE(is_removed, FALSE) = FALSE ORDER BY scholarship_name LIMIT %s OFFSET %s', (limit, offset))
+            cur.execute('SELECT req_no, scholarship_name, deadline, gpa, parent_finance, location, "desc" as description, semester, year, units, COALESCE(residency_doc_type, \'Indigency Document\') as "residencyDocType", COALESCE(id_type, \'School ID\') as "idType" FROM scholarships WHERE COALESCE(is_removed, FALSE) = FALSE ORDER BY scholarship_name LIMIT %s OFFSET %s', (limit, offset))
             rows = cur.fetchall()
             print(f"[PERF] /scholarships took {time.time() - start:.3f}s (limit={limit}, offset={offset})")
             return jsonify(rows)
@@ -2222,6 +2222,8 @@ def get_rankings():
                 'description': sch.get('desc'),
                 'minGpa': min_gpa,
                 'units': req_units,
+                'residencyDocType': sch.get('residency_doc_type') or 'Indigency Document',
+                'idType': sch.get('id_type') or 'School ID',
                 'maxIncome': max_inc,
                 'location': loc,
                 'slots': slots,

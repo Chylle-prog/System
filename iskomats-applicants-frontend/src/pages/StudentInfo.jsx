@@ -1444,9 +1444,9 @@ const StudentInfo = () => {
 
           // Target document category keywords (including common Philippine document phrases)
           let targetKeywords = [];
-          if (fieldName?.includes('Indigency') || fieldName?.includes('indigency')) {
+          if (fieldName?.includes('Indigency') || fieldName?.includes('indigency') || fieldName?.includes('Residency') || fieldName?.includes('residency')) {
             targetKeywords = [
-              'indigency', 'indigent', 'certificate', 'barangay', 'punong', 'resident', 'certify',
+              'indigency', 'indigent', 'residency', 'resident', 'certificate', 'barangay', 'punong', 'certify',
               'office', 'bayan', 'mataasnakahoy', 'lipa', 'batangas', 'whom', 'concern', 'personally',
               'purok', 'bonafide', 'family', 'families', 'sangguniang', 'kagawad', 'lubi', 'moises',
               'republic', 'philippines', 'province', 'municipality', 'seal'
@@ -3156,9 +3156,14 @@ const StudentInfo = () => {
     }
   }
 
-  // --- Indigency Verification Optimization ---
+  // --- Indigency / Residency Verification Optimization ---
   const lastIndigencyScanRef = useRef({ doc: null, vid: null });
   async function handleIndigencyScan() {
+    const residencyDocType = scholarshipDetails?.residencyDocType || scholarshipDetails?.residency_doc_type || 'Indigency Document';
+    const isResidencyDoc = residencyDocType === 'Residency Document';
+    const docLabel = isResidencyDoc ? 'Certificate of Residency' : 'Certificate of Indigency';
+    const docShortName = isResidencyDoc ? 'Residency' : 'Indigency';
+
     const indigencyDoc = getVerificationDocumentSource(
       photos.mayorIndigency_photo,
       formData.mayorIndigency_photo
@@ -3178,7 +3183,7 @@ const StudentInfo = () => {
     }
 
     if (!indigencyDoc) {
-      showPromptMessage('Please upload or capture your Certificate of Indigency first.');
+      showPromptMessage(`Please upload or capture your ${docLabel} first.`);
       return;
     }
     const hasVideo = !!videoUrl && (
@@ -3187,7 +3192,7 @@ const StudentInfo = () => {
     );
 
     if (!hasVideo) {
-      showPromptMessage('Please record and upload the Indigency video first.');
+      showPromptMessage(`Please record and upload the ${docShortName} video first.`);
       return;
     }
     if (!townCity) {
@@ -3199,7 +3204,7 @@ const StudentInfo = () => {
       return;
     }
 
-    setLoadingMessage({ title: 'Scanning Document', message: 'Verifying your Certificate of Indigency and Video Content...' });
+    setLoadingMessage({ title: `Scanning ${docShortName} Document`, message: `Verifying your ${docLabel} and Video Content...` });
     lastIndigencyScanRef.current = { doc: indigencyDoc, vid: videoUrl };
 
     try {
@@ -3207,10 +3212,10 @@ const StudentInfo = () => {
       const success = res && typeof res === 'object' ? res.isSuccess === true : Boolean(res);
       if (success) {
         setOcrVerified('success');
-        showPromptMessage('Indigency verified successfully!');
+        showPromptMessage(`${docShortName} verified successfully!`);
       } else {
         setOcrVerified('failed');
-        showPromptMessage('Indigency verification failed.');
+        showPromptMessage(`${docShortName} verification failed.`);
       }
     } catch (err) {
       console.error('Scan Error:', err);
@@ -3342,19 +3347,22 @@ const StudentInfo = () => {
     }
   }
 
-  // School ID Verification Optimization
+  // ID Verification Optimization (School ID / National ID)
   const lastIdScanRef = useRef({ front: null, back: null, frontVid: null, backVid: null });
   async function handleIdScan() {
+    const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
+    const isNationalId = idType === 'National ID';
+
     const idFront = getVerificationDocumentSource(
       schoolIdPhotos.front,
       formData.schoolIdFront
     );
-    const idBack = getVerificationDocumentSource(
+    const idBack = isNationalId ? idFront : getVerificationDocumentSource(
       schoolIdPhotos.back,
       formData.schoolIdBack
     );
     const frontVideoUrl = documentVideos.schoolIdFront_video || formData.schoolIdFront_video;
-    const backVideoUrl = documentVideos.schoolIdBack_video || formData.schoolIdBack_video;
+    const backVideoUrl = isNationalId ? frontVideoUrl : (documentVideos.schoolIdBack_video || formData.schoolIdBack_video);
 
     // Skip if nothing changed (images/videos)
     const last = lastIdScanRef.current;
@@ -3368,37 +3376,37 @@ const StudentInfo = () => {
       return;
     }
 
-    if (!idFront || !idBack) {
-      showPromptMessage('Please upload both front and back of your School ID first.');
+    if (!idFront || (!isNationalId && !idBack)) {
+      showPromptMessage(isNationalId ? 'Please upload front of your National ID first.' : 'Please upload both front and back of your School ID first.');
       return;
     }
     const hasFrontVideo = !!frontVideoUrl && (
       (typeof frontVideoUrl === 'string' && frontVideoUrl.trim().length > 0) ||
       (typeof frontVideoUrl === 'object')
     );
-    const hasBackVideo = !!backVideoUrl && (
+    const hasBackVideo = isNationalId ? true : (!!backVideoUrl && (
       (typeof backVideoUrl === 'string' && backVideoUrl.trim().length > 0) ||
       (typeof backVideoUrl === 'object')
-    );
+    ));
 
     if (!hasFrontVideo) {
-      showPromptMessage('Please record and upload the front School ID video first.');
+      showPromptMessage(isNationalId ? 'Please record and upload the National ID video first.' : 'Please record and upload the front School ID video first.');
       return;
     }
-    if (!hasBackVideo) {
+    if (!isNationalId && !hasBackVideo) {
       showPromptMessage('Please record and upload the back School ID video first.');
       return;
     }
-    if (!formData.schoolName || !formData.schoolIdNumber || !formData.yearLevel) {
-      showPromptMessage('Please complete School Name, School ID Number, and Year Level first.');
+    if (!formData.schoolName || (!isNationalId && !formData.schoolIdNumber) || !formData.yearLevel) {
+      showPromptMessage(isNationalId ? 'Please complete School Name and Year Level first.' : 'Please complete School Name, School ID Number, and Year Level first.');
       return;
     }
-    if (String(formData.schoolIdNumber).replace(/[^0-9a-zA-Z]/g, '').length < 6) {
+    if (!isNationalId && String(formData.schoolIdNumber).replace(/[^0-9a-zA-Z]/g, '').length < 6) {
       showPromptMessage('Please enter a valid School ID Number (must be at least 6-8 digits).');
       return;
     }
 
-    setLoadingMessage({ title: 'Scanning School ID', message: 'Verifying your School ID images and Video Content...' });
+    setLoadingMessage({ title: isNationalId ? 'Scanning National ID' : 'Scanning School ID', message: isNationalId ? 'Verifying your National ID image and Video Content...' : 'Verifying your School ID images and Video Content...' });
     lastIdScanRef.current = { front: idFront, back: idBack, frontVid: frontVideoUrl, backVid: backVideoUrl };
 
     try {
@@ -3409,7 +3417,7 @@ const StudentInfo = () => {
         { front: idFront, back: idBack },
         {
           schoolName: formData.schoolName,
-          idNumber: formData.schoolIdNumber,
+          idNumber: isNationalId ? '' : formData.schoolIdNumber,
           yearLevel: formData.yearLevel,
           academicYear: targetAcademicYear
         },
@@ -3418,10 +3426,10 @@ const StudentInfo = () => {
       const success = res && typeof res === 'object' ? res.isSuccess === true : Boolean(res);
       if (success) {
         setIdVerified('success');
-        showPromptMessage('Front & Back ID verified successfully!');
+        showPromptMessage(isNationalId ? 'National ID verified successfully!' : 'School ID verified successfully!');
       } else {
         setIdVerified('failed');
-        showPromptMessage('Front & Back ID verification failed.');
+        showPromptMessage(isNationalId ? 'National ID verification failed.' : 'School ID verification failed.');
       }
     } catch (err) {
       console.error('Scan Error:', err);
@@ -6013,152 +6021,160 @@ const StudentInfo = () => {
                   </div>
                 </div>
 
-                {/* Documentary Requirement: Indigency */}
-                <div className="requirement-card">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
-                    <div>
-                      <h4 style={{ fontSize: '1.15rem', color: '#1a202c', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ width: '36px', height: '36px', background: 'var(--accent-soft)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <i className="fas fa-home" style={{ color: 'var(--primary)', fontSize: '1.1rem' }}></i>
-                        </div>
-                        Certificate of Indigency <span style={{ color: '#e74c3c' }}>*</span>
-                      </h4>
-                      <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '6px', marginLeft: '46px' }}>Verify residency eligibility via Barangay Indigency document</p>
-                    </div>
-                    {(photos.mayorIndigency_photo || formData.mayorIndigency_photo || userProfile?.indigency_doc) && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0' }}>
-                        <i className="fas fa-check-circle"></i> Upload Ready
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="preview-box" style={{ background: '#fff', borderStyle: 'solid' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155' }}>Document Media Check</label>
-                      <div style={{ fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca' }}>PHOTO + VIDEO</div>
-                    </div>
-
-                    {renderDocumentMediaPicker({
-                      photoId: 'photo_mayorIndigency_photo',
-                      photoName: 'mayorIndigency_photo',
-                      photoValue: photos.mayorIndigency_photo || formData.mayorIndigency_photo,
-                      onPhotoChange: handleInputChange,
-                      videoId: 'video_mayorIndigency_video',
-                      videoName: 'mayorIndigency_video',
-                      videoValue: documentVideos.mayorIndigency_video || formData.mayorIndigency_video,
-                      onVideoChange: handleVideoUpload,
-                      isUploadingVideo: Boolean(uploadingFields['mayorIndigency_video']),
-                      isVerifying: ocrVerified === 'verifying'
-                    })}
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
-                      <div className="scanning-container">
-                        <div className="image-container" style={{ height: '240px' }} onClick={() => (photos.mayorIndigency_photo || formData.mayorIndigency_photo) && setLightboxSrc(photos.mayorIndigency_photo || formData.mayorIndigency_photo)}>
-                          {(photos.mayorIndigency_photo || formData.mayorIndigency_photo) ? (
-                            <>
-                              <img src={photos.mayorIndigency_photo || formData.mayorIndigency_photo} style={{ objectFit: 'contain', background: '#000' }} alt="Indigency Preview" />
-                              <div style={{ position: 'absolute', bottom: '12px', right: '12px', background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '6px 10px', borderRadius: '10px', fontSize: '0.7rem', backdropFilter: 'blur(4px)' }}>
-                                <i className="fas fa-expand-alt" style={{ marginRight: '6px' }}></i> Tap to view
-                              </div>
-                            </>
-                          ) : (
-                            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
-                              <i className="fas fa-image" style={{ fontSize: '2rem', marginBottom: '8px' }}></i>
-                              <span style={{ fontSize: '0.7rem' }}>No Photo</span>
+                {/* Documentary Requirement: Indigency / Residency */}
+                {(() => {
+                  const residencyDocType = scholarshipDetails?.residencyDocType || scholarshipDetails?.residency_doc_type || 'Indigency Document';
+                  const isResidencyDoc = residencyDocType === 'Residency Document';
+                  const docTitle = isResidencyDoc ? 'Certificate of Residency' : 'Certificate of Indigency';
+                  const docSub = isResidencyDoc ? 'Verify residency eligibility via Barangay Residency document' : 'Verify residency eligibility via Barangay Indigency document';
+                  return (
+                    <div className="requirement-card">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
+                        <div>
+                          <h4 style={{ fontSize: '1.15rem', color: '#1a202c', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{ width: '36px', height: '36px', background: 'var(--accent-soft)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <i className="fas fa-home" style={{ color: 'var(--primary)', fontSize: '1.1rem' }}></i>
                             </div>
-                          )}
-                          {ocrVerified === 'verifying' && <div className="scanning-laser"></div>}
+                            {docTitle} <span style={{ color: '#e74c3c' }}>*</span>
+                          </h4>
+                          <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '6px', marginLeft: '46px' }}>{docSub}</p>
                         </div>
-                      </div>
-
-                      <VideoRecorder
-                        label="Verification Video"
-                        onRecordComplete={(blob) => handleVideoUpload('mayorIndigency_video', blob)}
-                        initialVideoUrl={documentVideos.mayorIndigency_video || formData.mayorIndigency_video}
-                        isUploading={Boolean(uploadingFields['mayorIndigency_video'])}
-                        uploadProgress={uploadProgress['mayorIndigency_video']}
-                        disabled={isAnyScanning || isSavingStep}
-                        hideButton={true}
-                        containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
-                        fieldName="mayorIndigency_video"
-                      />
-                    </div>
-
-                    {(photos.mayorIndigency_photo || formData.mayorIndigency_photo) && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={handleIndigencyScan}
-                          disabled={isSavingStep || ocrVerified === 'verifying' || isAnyVideoUploading || !(documentVideos.mayorIndigency_video || formData.mayorIndigency_video)}
-                          style={{
-                            width: '100%',
-                            padding: '0.9rem',
-                            borderRadius: '16px',
-                            background: ocrVerified === 'success' ? '#10b981' : (ocrVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
-                            color: 'white',
-                            border: 'none',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '10px',
-                            fontSize: '0.95rem',
-                            fontWeight: '800',
-                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                            boxShadow: ocrVerified === 'success' ? '0 10px 20px -5px rgba(16, 185, 129, 0.3)' : '0 10px 20px -5px rgba(79, 13, 0, 0.3)',
-                            textTransform: 'uppercase',
-                            letterSpacing: '1px',
-                            marginTop: '1rem'
-                          }}
-                        >
-                          <i className={`fas ${ocrVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-bolt'}`}></i>
-                          {ocrVerified === 'verifying' ? 'Analyzing...' : (ocrVerified === 'success' ? 'Identity Verified' : 'Instant Scan & Validate')}
-                        </button>
-
-                        {ocrVerified === 'verifying' && (
-                          <div style={{ marginTop: '1rem' }}>
-                            <div style={{ width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-                              <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
-                            </div>
-                            {ocrStatus && (
-                              <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: '10px', color: '#1d4ed8', fontSize: '0.82rem', fontWeight: '700' }}>
-                                <i className="fas fa-spinner fa-spin"></i>
-                                <span>{ocrStatus}</span>
-                              </div>
-                            )}
+                        {(photos.mayorIndigency_photo || formData.mayorIndigency_photo || userProfile?.indigency_doc) && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0' }}>
+                            <i className="fas fa-check-circle"></i> Upload Ready
                           </div>
                         )}
+                      </div>
 
-                        {ocrStatus && ocrVerified !== 'verifying' && (
-                          <div className={`validation-status-card ${ocrVerified === 'success' ? 'success' : (ocrVerified === 'failed' ? 'failed' : 'processing')}`} style={{ marginTop: '1rem' }}>
-                            <div className={`status-icon ${ocrVerified === 'success' ? 'success' : (ocrVerified === 'failed' ? 'failed' : 'processing')}`}>
-                              <i className={`fas ${ocrVerified === 'success' ? 'fa-check' : (ocrVerified === 'failed' ? 'fa-circle-xmark' : 'fa-magnifying-glass')}`}></i>
+                      <div className="preview-box" style={{ background: '#fff', borderStyle: 'solid' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#334155' }}>Document Media Check</label>
+                          <div style={{ fontSize: '0.65rem', color: '#ef4444', fontWeight: '800', background: '#fef2f2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fecaca' }}>PHOTO + VIDEO</div>
+                        </div>
+
+                        {renderDocumentMediaPicker({
+                          photoId: 'photo_mayorIndigency_photo',
+                          photoName: 'mayorIndigency_photo',
+                          photoValue: photos.mayorIndigency_photo || formData.mayorIndigency_photo,
+                          onPhotoChange: handleInputChange,
+                          videoId: 'video_mayorIndigency_video',
+                          videoName: 'mayorIndigency_video',
+                          videoValue: documentVideos.mayorIndigency_video || formData.mayorIndigency_video,
+                          onVideoChange: handleVideoUpload,
+                          isUploadingVideo: Boolean(uploadingFields['mayorIndigency_video']),
+                          isVerifying: ocrVerified === 'verifying'
+                        })}
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
+                          <div className="scanning-container">
+                            <div className="image-container" style={{ height: '240px' }} onClick={() => (photos.mayorIndigency_photo || formData.mayorIndigency_photo) && setLightboxSrc(photos.mayorIndigency_photo || formData.mayorIndigency_photo)}>
+                              {(photos.mayorIndigency_photo || formData.mayorIndigency_photo) ? (
+                                <>
+                                  <img src={photos.mayorIndigency_photo || formData.mayorIndigency_photo} style={{ objectFit: 'contain', background: '#000' }} alt="Document Preview" />
+                                  <div style={{ position: 'absolute', bottom: '12px', right: '12px', background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '6px 10px', borderRadius: '10px', fontSize: '0.7rem', backdropFilter: 'blur(4px)' }}>
+                                    <i className="fas fa-expand-alt" style={{ marginRight: '6px' }}></i> Tap to view
+                                  </div>
+                                </>
+                              ) : (
+                                <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
+                                  <i className="fas fa-image" style={{ fontSize: '2rem', marginBottom: '8px' }}></i>
+                                  <span style={{ fontSize: '0.7rem' }}>No Photo</span>
+                                </div>
+                              )}
+                              {ocrVerified === 'verifying' && <div className="scanning-laser"></div>}
                             </div>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <p style={{ fontSize: '0.85rem', fontWeight: '700', margin: 0 }}>Verification Feedback</p>
-                                {indigencyResults.length > 0 && (
-                                  <div style={{
-                                    fontSize: '0.75rem',
-                                    fontWeight: '800',
-                                    padding: '4px 10px',
-                                    borderRadius: '10px',
-                                    background: calculateVerificationPercentage(indigencyResults) === 100 ? '#dcfce7' : '#fee2e2',
-                                    color: calculateVerificationPercentage(indigencyResults) === 100 ? '#15803d' : '#b91c1c'
-                                  }}>
-                                    {calculateVerificationPercentage(indigencyResults)}% Match
+                          </div>
+
+                          <VideoRecorder
+                            label="Verification Video"
+                            onRecordComplete={(blob) => handleVideoUpload('mayorIndigency_video', blob)}
+                            initialVideoUrl={documentVideos.mayorIndigency_video || formData.mayorIndigency_video}
+                            isUploading={Boolean(uploadingFields['mayorIndigency_video'])}
+                            uploadProgress={uploadProgress['mayorIndigency_video']}
+                            disabled={isAnyScanning || isSavingStep}
+                            hideButton={true}
+                            containerStyle={{ height: '240px', padding: '0.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                            fieldName="mayorIndigency_video"
+                          />
+                        </div>
+
+                        {(photos.mayorIndigency_photo || formData.mayorIndigency_photo) && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={handleIndigencyScan}
+                              disabled={isSavingStep || ocrVerified === 'verifying' || isAnyVideoUploading || !(documentVideos.mayorIndigency_video || formData.mayorIndigency_video)}
+                              style={{
+                                width: '100%',
+                                padding: '0.9rem',
+                                borderRadius: '16px',
+                                background: ocrVerified === 'success' ? '#10b981' : (ocrVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
+                                color: 'white',
+                                border: 'none',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '10px',
+                                fontSize: '0.95rem',
+                                fontWeight: '800',
+                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                boxShadow: ocrVerified === 'success' ? '0 10px 20px -5px rgba(16, 185, 129, 0.3)' : '0 10px 20px -5px rgba(79, 13, 0, 0.3)',
+                                textTransform: 'uppercase',
+                                letterSpacing: '1px',
+                                marginTop: '1rem'
+                              }}
+                            >
+                              <i className={`fas ${ocrVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-bolt'}`}></i>
+                              {ocrVerified === 'verifying' ? 'Analyzing...' : (ocrVerified === 'success' ? 'Identity Verified' : (isResidencyDoc ? 'Start Residency Scan' : 'Start Indigency Scan'))}
+                            </button>
+
+                            {ocrVerified === 'verifying' && (
+                              <div style={{ marginTop: '1rem' }}>
+                                <div style={{ width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                                  <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
+                                </div>
+                                {ocrStatus && (
+                                  <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: '10px', color: '#1d4ed8', fontSize: '0.82rem', fontWeight: '700' }}>
+                                    <i className="fas fa-spinner fa-spin"></i>
+                                    <span>{ocrStatus}</span>
                                   </div>
                                 )}
                               </div>
-                              <p style={{ fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.5' }}>{ocrStatus}</p>
-                              {renderInlineRequirementsChecklist('Indigency')}
-                            </div>
-                          </div>
+                            )}
+
+                            {ocrStatus && ocrVerified !== 'verifying' && (
+                              <div className={`validation-status-card ${ocrVerified === 'success' ? 'success' : (ocrVerified === 'failed' ? 'failed' : 'processing')}`} style={{ marginTop: '1rem' }}>
+                                <div className={`status-icon ${ocrVerified === 'success' ? 'success' : (ocrVerified === 'failed' ? 'failed' : 'processing')}`}>
+                                  <i className={`fas ${ocrVerified === 'success' ? 'fa-check' : (ocrVerified === 'failed' ? 'fa-circle-xmark' : 'fa-magnifying-glass')}`}></i>
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                    <p style={{ fontSize: '0.85rem', fontWeight: '700', margin: 0 }}>Verification Feedback</p>
+                                    {indigencyResults.length > 0 && (
+                                      <div style={{
+                                        fontSize: '0.75rem',
+                                        fontWeight: '800',
+                                        padding: '4px 10px',
+                                        borderRadius: '10px',
+                                        background: calculateVerificationPercentage(indigencyResults) === 100 ? '#dcfce7' : '#fee2e2',
+                                        color: calculateVerificationPercentage(indigencyResults) === 100 ? '#15803d' : '#b91c1c'
+                                      }}>
+                                        {calculateVerificationPercentage(indigencyResults)}% Match
+                                      </div>
+                                    )}
+                                  </div>
+                                  <p style={{ fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.5' }}>{ocrStatus}</p>
+                                  {renderInlineRequirementsChecklist('Indigency')}
+                                </div>
+                              </div>
+                            )}
+                          </>
                         )}
-                      </>
-                    )}
-                  </div>
-                </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end' }}>
                   <button
@@ -6282,24 +6298,32 @@ const StudentInfo = () => {
                 </div>
 
 
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>School ID Number <span style={{ color: '#e74c3c' }}>*</span></label>
-                    <input type="text" name="schoolIdNumber" value={formData.schoolIdNumber} onChange={handleInputChange} placeholder="ID Number" required={currentStep === 3} />
-                  </div>
-                  <div className="form-group">
-                    <label>Name of School <span style={{ color: '#e74c3c' }}>*</span></label>
-                    <input
-                      type="text"
-                      name="schoolName"
-                      value={formData.schoolName}
-                      readOnly
-                      style={{ backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }}
-                      placeholder="School Name"
-                      required={currentStep === 3}
-                    />
-                  </div>
-                </div>
+                {(() => {
+                  const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
+                  const isNationalId = idType === 'National ID';
+                  return (
+                    <div className="form-row">
+                      {!isNationalId && (
+                        <div className="form-group">
+                          <label>School ID Number <span style={{ color: '#e74c3c' }}>*</span></label>
+                          <input type="text" name="schoolIdNumber" value={formData.schoolIdNumber} onChange={handleInputChange} placeholder="ID Number" required={currentStep === 3 && !isNationalId} />
+                        </div>
+                      )}
+                      <div className="form-group">
+                        <label>Name of School <span style={{ color: '#e74c3c' }}>*</span></label>
+                        <input
+                          type="text"
+                          name="schoolName"
+                          value={formData.schoolName}
+                          readOnly
+                          style={{ backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }}
+                          placeholder="School Name"
+                          required={currentStep === 3}
+                        />
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div className="form-group">
                   <label>School Address <span style={{ color: '#e74c3c' }}>*</span></label>
@@ -6406,208 +6430,223 @@ const StudentInfo = () => {
                   ))}
                 </div>
 
-                <div className="requirement-card">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
-                    <div>
-                      <div className="step-subtitle">
-                        Identity Verification (ID) <span style={{ color: '#e74c3c' }}>*</span>
-                      </div>
-                      <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '6px' }}>Current academic year ID for identity verification</p>
-                    </div>
-                    {(schoolIdPhotos.front || schoolIdPhotos.back) && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0' }}>
-                        <i className="fas fa-check-circle"></i> Upload Ready
-                      </div>
-                    )}
-                  </div>
-
-                  {/* UNIFIED SCHOOL ID CARD (FRONT & BACK COMBINED) */}
-                  <div className="preview-box" style={{ background: '#fff', borderStyle: 'solid' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', paddingBottom: '0.8rem', borderBottom: '1px solid #f1f5f9' }}>
-                      <h5 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '800', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <i className="fas fa-id-card"></i> School ID (Front & Back)
-                      </h5>
-                      <div style={{ fontSize: '0.65rem', color: '#3b82f6', fontWeight: '800', background: '#eff6ff', padding: '3px 8px', borderRadius: '6px', border: '1px solid #bfdbfe' }}>FRONT & BACK REQUIRED</div>
-                    </div>
-
-                    {/* Media Pickers side-by-side */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '1.2rem' }}>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '800', color: '#3b82f6', marginBottom: '6px' }}>Front ID Media</label>
-                        {renderDocumentMediaPicker({
-                          photoId: 'school_id_front_photo',
-                          photoValue: schoolIdPhotos.front || formData.schoolIdFront,
-                          onPhotoChange: (e) => handleSchoolIdPhotoUpload('front', e),
-                          videoId: 'video_schoolIdFront_video',
-                          videoName: 'schoolIdFront_video',
-                          videoValue: documentVideos.schoolIdFront_video || formData.schoolIdFront_video,
-                          onVideoChange: handleVideoUpload,
-                          isUploadingVideo: Boolean(uploadingFields['schoolIdFront_video']),
-                          isVerifying: idVerified === 'verifying'
-                        })}
-                      </div>
-
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '800', color: '#d97706', marginBottom: '6px' }}>Back ID Media</label>
-                        {renderDocumentMediaPicker({
-                          photoId: 'school_id_back_photo',
-                          photoValue: schoolIdPhotos.back || formData.schoolIdBack,
-                          onPhotoChange: (e) => handleSchoolIdPhotoUpload('back', e),
-                          videoId: 'video_schoolIdBack_video',
-                          videoName: 'schoolIdBack_video',
-                          videoValue: documentVideos.schoolIdBack_video || formData.schoolIdBack_video,
-                          onVideoChange: handleVideoUpload,
-                          isUploadingVideo: Boolean(uploadingFields['schoolIdBack_video']),
-                          isVerifying: idVerified === 'verifying'
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Unified 4-cell Preview Grid (Front Photo, Front Video, Back Photo, Back Video) */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '1.2rem' }}>
-                      {/* Front Photo */}
-                      <div className="scanning-container">
-                        <div className="image-container" style={{ height: '200px' }} onClick={() => setLightboxSrc(schoolIdPhotos.front || formData.schoolIdFront)}>
-                          {(schoolIdPhotos.front || formData.schoolIdFront) ? (
-                            <img src={schoolIdPhotos.front || formData.schoolIdFront} alt="Front ID" />
-                          ) : (
-                            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
-                              <i className="fas fa-image" style={{ fontSize: '1.5rem', marginBottom: '4px' }}></i>
-                              <span style={{ fontSize: '0.65rem' }}>Front Photo</span>
-                            </div>
-                          )}
-                          {idVerified === 'verifying' && <div className="scanning-laser"></div>}
+                {/* Step 3 ID Verification Card */}
+                {(() => {
+                  const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
+                  const isNationalId = idType === 'National ID';
+                  return (
+                    <div className="requirement-card">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
+                        <div>
+                          <div className="step-subtitle">
+                            Identity Verification ({isNationalId ? 'National ID' : 'School ID'}) <span style={{ color: '#e74c3c' }}>*</span>
+                          </div>
+                          <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '6px' }}>{isNationalId ? 'National ID for identity verification' : 'Current academic year ID for identity verification'}</p>
                         </div>
-                      </div>
-
-                      {/* Front Video */}
-                      <VideoRecorder
-                        label="Front Check Video"
-                        onRecordComplete={(blob) => handleVideoUpload('schoolIdFront_video', blob)}
-                        initialVideoUrl={documentVideos.schoolIdFront_video || formData.schoolIdFront_video}
-                        isUploading={Boolean(uploadingFields['schoolIdFront_video'])}
-                        uploadProgress={uploadProgress['schoolIdFront_video']}
-                        disabled={isAnyScanning || isSavingStep}
-                        hideButton={true}
-                        containerStyle={{ height: '200px', padding: '0.4rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
-                        fieldName="schoolIdFront_video"
-                      />
-
-                      {/* Back Photo */}
-                      <div className="scanning-container">
-                        <div className="image-container" style={{ height: '200px' }} onClick={() => setLightboxSrc(schoolIdPhotos.back || formData.schoolIdBack)}>
-                          {(schoolIdPhotos.back || formData.schoolIdBack) ? (
-                            <img src={schoolIdPhotos.back || formData.schoolIdBack} alt="Back ID" />
-                          ) : (
-                            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
-                              <i className="fas fa-image" style={{ fontSize: '1.5rem', marginBottom: '4px' }}></i>
-                              <span style={{ fontSize: '0.65rem' }}>Back Photo</span>
-                            </div>
-                          )}
-                          {idVerified === 'verifying' && <div className="scanning-laser"></div>}
-                        </div>
-                      </div>
-
-                      {/* Back Video */}
-                      <VideoRecorder
-                        label="Back Check Video"
-                        onRecordComplete={(blob) => handleVideoUpload('schoolIdBack_video', blob)}
-                        initialVideoUrl={documentVideos.schoolIdBack_video || formData.schoolIdBack_video}
-                        isUploading={Boolean(uploadingFields['schoolIdBack_video'])}
-                        uploadProgress={uploadProgress['schoolIdBack_video']}
-                        disabled={isAnyScanning || isSavingStep}
-                        hideButton={true}
-                        containerStyle={{ height: '200px', padding: '0.4rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
-                        fieldName="schoolIdBack_video"
-                      />
-                    </div>
-
-                    <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px' }}>
-                      <i className="fas fa-info-circle" style={{ color: '#2563eb', fontSize: '1rem', marginTop: '2px' }}></i>
-                      <p style={{ fontSize: '0.72rem', color: '#1e3a8a', margin: 0, lineHeight: '1.4' }}>
-                        <b>Front & Back ID:</b> Keep your name, ID number, and current academic year details visible across all photos and videos.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* ID Action Footer (Button & Status) */}
-                  <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px dashed #e2e8f0' }}>
-                    <button
-                      type="button"
-                      onClick={handleIdScan}
-                      disabled={
-                        isSavingStep || idVerified === 'verifying' || isAnyVideoUploading ||
-                        !(schoolIdPhotos.front || formData.schoolIdFront) ||
-                        !(schoolIdPhotos.back || formData.schoolIdBack) ||
-                        !(documentVideos.schoolIdFront_video || formData.schoolIdFront_video) ||
-                        !(documentVideos.schoolIdBack_video || formData.schoolIdBack_video)
-                      }
-                      style={{
-                        width: '100%',
-                        padding: '1rem',
-                        borderRadius: '18px',
-                        background: idVerified === 'success' ? '#10b981' : (idVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
-                        color: 'white',
-                        border: 'none',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '12px',
-                        fontSize: '1rem',
-                        fontWeight: '800',
-                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                        boxShadow: idVerified === 'success' ? '0 10px 25px -5px rgba(16, 185, 129, 0.3)' : '0 10px 25px -5px rgba(79, 13, 0, 0.3)',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}
-                    >
-                      <i className={`fas ${idVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-bolt-lightning'}`}></i>
-                      {idVerified === 'verifying' ? 'Analyzing Front & Back ID...' : (idVerified === 'success' ? 'Identity Verified Successfully' : 'Start Front & Back ID Scan')}
-                    </button>
-
-                    {idVerified === 'verifying' && (
-                      <div style={{ marginTop: '1rem' }}>
-                        <div style={{ width: '100%', height: '8px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-                          <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
-                        </div>
-                        {idStatus && (
-                          <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: '10px', color: '#1d4ed8', fontSize: '0.82rem', fontWeight: '700' }}>
-                            <i className="fas fa-spinner fa-spin"></i>
-                            <span>{idStatus}</span>
+                        {(schoolIdPhotos.front || schoolIdPhotos.back) && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: '700', padding: '6px 14px', background: '#ecfdf5', borderRadius: '20px', border: '1px solid #a7f3d0' }}>
+                            <i className="fas fa-check-circle"></i> Upload Ready
                           </div>
                         )}
                       </div>
-                    )}
 
-                    {idStatus && idVerified !== 'verifying' && (
-                      <div className={`validation-status-card ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`} style={{ marginTop: '1.2rem' }}>
-                        <div className={`status-icon ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`}>
-                          <i className={`fas ${idVerified === 'success' ? 'fa-check' : (idVerified === 'failed' ? 'fa-circle-xmark' : 'fa-magnifying-glass')}`}></i>
+                      {/* UNIFIED ID CARD */}
+                      <div className="preview-box" style={{ background: '#fff', borderStyle: 'solid' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', paddingBottom: '0.8rem', borderBottom: '1px solid #f1f5f9' }}>
+                          <h5 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '800', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <i className="fas fa-id-card"></i> {isNationalId ? 'National ID (Front Photo & Video)' : 'School ID (Front & Back)'}
+                          </h5>
+                          <div style={{ fontSize: '0.65rem', color: '#3b82f6', fontWeight: '800', background: '#eff6ff', padding: '3px 8px', borderRadius: '6px', border: '1px solid #bfdbfe' }}>{isNationalId ? 'FRONT PHOTO & VIDEO REQUIRED' : 'FRONT & BACK REQUIRED'}</div>
                         </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                            <p style={{ fontSize: '0.85rem', fontWeight: '800', margin: 0 }}>Verification Engine Result</p>
-                            {idResults.length > 0 && (
-                              <div style={{
-                                fontSize: '0.75rem',
-                                fontWeight: '800',
-                                padding: '4px 10px',
-                                borderRadius: '10px',
-                                background: calculateVerificationPercentage(idResults) === 100 ? '#dcfce7' : '#fee2e2',
-                                color: calculateVerificationPercentage(idResults) === 100 ? '#15803d' : '#b91c1c'
-                              }}>
-                                {calculateVerificationPercentage(idResults)}% Match
+
+                        {/* Media Pickers */}
+                        <div style={{ display: 'grid', gridTemplateColumns: isNationalId ? '1fr' : '1fr 1fr', gap: '16px', marginBottom: '1.2rem' }}>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '800', color: '#3b82f6', marginBottom: '6px' }}>{isNationalId ? 'National ID Media' : 'Front ID Media'}</label>
+                            {renderDocumentMediaPicker({
+                              photoId: 'school_id_front_photo',
+                              photoValue: schoolIdPhotos.front || formData.schoolIdFront,
+                              onPhotoChange: (e) => handleSchoolIdPhotoUpload('front', e),
+                              videoId: 'video_schoolIdFront_video',
+                              videoName: 'schoolIdFront_video',
+                              videoValue: documentVideos.schoolIdFront_video || formData.schoolIdFront_video,
+                              onVideoChange: handleVideoUpload,
+                              isUploadingVideo: Boolean(uploadingFields['schoolIdFront_video']),
+                              isVerifying: idVerified === 'verifying'
+                            })}
+                          </div>
+
+                          {!isNationalId && (
+                            <div>
+                              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '800', color: '#d97706', marginBottom: '6px' }}>Back ID Media</label>
+                              {renderDocumentMediaPicker({
+                                photoId: 'school_id_back_photo',
+                                photoValue: schoolIdPhotos.back || formData.schoolIdBack,
+                                onPhotoChange: (e) => handleSchoolIdPhotoUpload('back', e),
+                                videoId: 'video_schoolIdBack_video',
+                                videoName: 'schoolIdBack_video',
+                                videoValue: documentVideos.schoolIdBack_video || formData.schoolIdBack_video,
+                                onVideoChange: handleVideoUpload,
+                                isUploadingVideo: Boolean(uploadingFields['schoolIdBack_video']),
+                                isVerifying: idVerified === 'verifying'
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Preview Grid */}
+                        <div style={{ display: 'grid', gridTemplateColumns: isNationalId ? 'repeat(auto-fit, minmax(200px, 1fr))' : 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '1.2rem' }}>
+                          {/* Front Photo */}
+                          <div className="scanning-container">
+                            <div className="image-container" style={{ height: '200px' }} onClick={() => setLightboxSrc(schoolIdPhotos.front || formData.schoolIdFront)}>
+                              {(schoolIdPhotos.front || formData.schoolIdFront) ? (
+                                <img src={schoolIdPhotos.front || formData.schoolIdFront} alt="Front ID" />
+                              ) : (
+                                <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
+                                  <i className="fas fa-image" style={{ fontSize: '1.5rem', marginBottom: '4px' }}></i>
+                                  <span style={{ fontSize: '0.65rem' }}>{isNationalId ? 'National ID Photo' : 'Front Photo'}</span>
+                                </div>
+                              )}
+                              {idVerified === 'verifying' && <div className="scanning-laser"></div>}
+                            </div>
+                          </div>
+
+                          {/* Front Video */}
+                          <VideoRecorder
+                            label={isNationalId ? 'National ID Check Video' : 'Front Check Video'}
+                            onRecordComplete={(blob) => handleVideoUpload('schoolIdFront_video', blob)}
+                            initialVideoUrl={documentVideos.schoolIdFront_video || formData.schoolIdFront_video}
+                            isUploading={Boolean(uploadingFields['schoolIdFront_video'])}
+                            uploadProgress={uploadProgress['schoolIdFront_video']}
+                            disabled={isAnyScanning || isSavingStep}
+                            hideButton={true}
+                            containerStyle={{ height: '200px', padding: '0.4rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                            fieldName="schoolIdFront_video"
+                          />
+
+                          {!isNationalId && (
+                            <>
+                              {/* Back Photo */}
+                              <div className="scanning-container">
+                                <div className="image-container" style={{ height: '200px' }} onClick={() => setLightboxSrc(schoolIdPhotos.back || formData.schoolIdBack)}>
+                                  {(schoolIdPhotos.back || formData.schoolIdBack) ? (
+                                    <img src={schoolIdPhotos.back || formData.schoolIdBack} alt="Back ID" />
+                                  ) : (
+                                    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
+                                      <i className="fas fa-image" style={{ fontSize: '1.5rem', marginBottom: '4px' }}></i>
+                                      <span style={{ fontSize: '0.65rem' }}>Back Photo</span>
+                                    </div>
+                                  )}
+                                  {idVerified === 'verifying' && <div className="scanning-laser"></div>}
+                                </div>
+                              </div>
+
+                              {/* Back Video */}
+                              <VideoRecorder
+                                label="Back Check Video"
+                                onRecordComplete={(blob) => handleVideoUpload('schoolIdBack_video', blob)}
+                                initialVideoUrl={documentVideos.schoolIdBack_video || formData.schoolIdBack_video}
+                                isUploading={Boolean(uploadingFields['schoolIdBack_video'])}
+                                uploadProgress={uploadProgress['schoolIdBack_video']}
+                                disabled={isAnyScanning || isSavingStep}
+                                hideButton={true}
+                                containerStyle={{ height: '200px', padding: '0.4rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                                fieldName="schoolIdBack_video"
+                              />
+                            </>
+                          )}
+                        </div>
+
+                        <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px' }}>
+                          <i className="fas fa-info-circle" style={{ color: '#2563eb', fontSize: '1rem', marginTop: '2px' }}></i>
+                          <p style={{ fontSize: '0.72rem', color: '#1e3a8a', margin: 0, lineHeight: '1.4' }}>
+                            <b>{isNationalId ? 'National ID:' : 'Front & Back ID:'}</b> {isNationalId ? 'Keep your full name and valid identity details clearly visible in the photo and video.' : 'Keep your name, ID number, and current academic year details visible across all photos and videos.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* ID Action Footer (Button & Status) */}
+                      <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px dashed #e2e8f0' }}>
+                        <button
+                          type="button"
+                          onClick={handleIdScan}
+                          disabled={
+                            isSavingStep || idVerified === 'verifying' || isAnyVideoUploading ||
+                            !(schoolIdPhotos.front || formData.schoolIdFront) ||
+                            !(documentVideos.schoolIdFront_video || formData.schoolIdFront_video) ||
+                            (!isNationalId && (
+                              !(schoolIdPhotos.back || formData.schoolIdBack) ||
+                              !(documentVideos.schoolIdBack_video || formData.schoolIdBack_video)
+                            ))
+                          }
+                          style={{
+                            width: '100%',
+                            padding: '1rem',
+                            borderRadius: '18px',
+                            background: idVerified === 'success' ? '#10b981' : (idVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
+                            color: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '12px',
+                            fontSize: '1rem',
+                            fontWeight: '800',
+                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                            boxShadow: idVerified === 'success' ? '0 10px 25px -5px rgba(16, 185, 129, 0.3)' : '0 10px 25px -5px rgba(79, 13, 0, 0.3)',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px'
+                          }}
+                        >
+                          <i className={`fas ${idVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-bolt-lightning'}`}></i>
+                          {idVerified === 'verifying' ? (isNationalId ? 'Analyzing National ID...' : 'Analyzing Front & Back ID...') : (idVerified === 'success' ? (isNationalId ? 'National ID Verified Successfully' : 'Identity Verified Successfully') : (isNationalId ? 'Start National ID Scan' : 'Start Front & Back ID Scan'))}
+                        </button>
+
+                        {idVerified === 'verifying' && (
+                          <div style={{ marginTop: '1rem' }}>
+                            <div style={{ width: '100%', height: '8px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                              <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
+                            </div>
+                            {idStatus && (
+                              <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: '10px', color: '#1d4ed8', fontSize: '0.82rem', fontWeight: '700' }}>
+                                <i className="fas fa-spinner fa-spin"></i>
+                                <span>{idStatus}</span>
                               </div>
                             )}
                           </div>
-                          <p style={{ fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.5' }}>{idStatus}</p>
-                          {renderInlineRequirementsChecklist('SchoolID')}
-                        </div>
+                        )}
+
+                        {idStatus && idVerified !== 'verifying' && (
+                          <div className={`validation-status-card ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`} style={{ marginTop: '1.2rem' }}>
+                            <div className={`status-icon ${idVerified === 'success' ? 'success' : (idVerified === 'failed' ? 'failed' : 'processing')}`}>
+                              <i className={`fas ${idVerified === 'success' ? 'fa-check' : (idVerified === 'failed' ? 'fa-circle-xmark' : 'fa-magnifying-glass')}`}></i>
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <p style={{ fontSize: '0.85rem', fontWeight: '800', margin: 0 }}>Verification Engine Result</p>
+                                {idResults.length > 0 && (
+                                  <div style={{
+                                    fontSize: '0.75rem',
+                                    fontWeight: '800',
+                                    padding: '4px 10px',
+                                    borderRadius: '10px',
+                                    background: calculateVerificationPercentage(idResults) === 100 ? '#dcfce7' : '#fee2e2',
+                                    color: calculateVerificationPercentage(idResults) === 100 ? '#15803d' : '#b91c1c'
+                                  }}>
+                                    {calculateVerificationPercentage(idResults)}% Match
+                                  </div>
+                                )}
+                              </div>
+                              <p style={{ fontSize: '0.8rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.5' }}>{idStatus}</p>
+                              {renderInlineRequirementsChecklist('SchoolID')}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Documentary Requirements: COE and Grades */}
                 {idVerified === 'success' ? (
