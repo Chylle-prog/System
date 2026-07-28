@@ -1514,7 +1514,7 @@ const StudentInfo = () => {
           }
         }, 20000);
 
-        const checkPoints = [0.1, 0.25, 0.4, 0.55, 0.7, 0.85];
+        const checkPoints = [0.2, 0.5, 0.8];
         let currentCheckIndex = 0;
         let accumulatedText = [];
         let hasSeeked = false;
@@ -1532,7 +1532,7 @@ const StudentInfo = () => {
           }
 
           try {
-            const maxDim = 1280;
+            const maxDim = 800;
             let targetW = w;
             let targetH = h;
             if (targetW > maxDim || targetH > maxDim) {
@@ -1573,6 +1573,16 @@ const StudentInfo = () => {
                 const cleanExtracted = extractedText.trim().replace(/\s+/g, ' ');
                 if (cleanExtracted && cleanExtracted.length >= 3) {
                   accumulatedText.push(`[Frame at ${(video.currentTime).toFixed(1)}s]: "${cleanExtracted}"`);
+                }
+
+                // Fast early exit: if early frame text satisfies document keywords/name, finish immediately
+                const partialResult = evaluateVideoText(accumulatedText);
+                if (partialResult.valid) {
+                  ocrTriggered = true;
+                  clearTimeout(timeout);
+                  cleanup();
+                  resolve(partialResult);
+                  return;
                 }
 
                 currentCheckIndex++;
@@ -2545,7 +2555,7 @@ const StudentInfo = () => {
       img.crossOrigin = "anonymous";
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const maxDim = 1400; // 1400px width ensures crystal-clear OCR text while cutting Tesseract processing time by 50%+
+        const maxDim = 1000; // 1000px max dimension ensures high OCR accuracy while processing 50% faster
         let w = img.width;
         let h = img.height;
         if (w > maxDim || h > maxDim) {
@@ -2567,21 +2577,11 @@ const StudentInfo = () => {
           const imgData = ctx.getImageData(0, 0, w, h);
           const data = imgData.data;
 
-          // High-contrast grayscale normalization with linear contrast stretching
-          let minGray = 255;
-          let maxGray = 0;
+          // Optimized single-pass contrast enhancement
+          const factor = 1.25;
           for (let i = 0; i < data.length; i += 4) {
-            const gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-            if (gray < minGray) minGray = gray;
-            if (gray > maxGray) maxGray = gray;
-          }
-
-          const range = Math.max(1, maxGray - minGray);
-          for (let i = 0; i < data.length; i += 4) {
-            const gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-            const norm = Math.round(((gray - minGray) / range) * 255);
-            // Apply contrast stretching factor (1.25) to sharpen dark text while preserving shaded table backgrounds
-            const enhanced = Math.min(255, Math.max(0, Math.round((norm - 128) * 1.25 + 128)));
+            const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+            const enhanced = Math.min(255, Math.max(0, (gray - 128) * factor + 128));
             data[i] = enhanced;
             data[i + 1] = enhanced;
             data[i + 2] = enhanced;
@@ -2596,7 +2596,7 @@ const StudentInfo = () => {
             } else {
               resolve(imageSource);
             }
-          }, 'image/jpeg', 0.9);
+          }, 'image/jpeg', 0.85);
         } catch (err) {
           console.warn("[PREPROCESSOR] Failed to process pixels:", err);
           resolve(imageSource);
@@ -3668,12 +3668,17 @@ const StudentInfo = () => {
       setScholarshipName(scholarship);
     }
 
+    // Warm up Tesseract WebAssembly worker in background immediately on page mount
+    setTimeout(() => {
+      getTesseractWorker().catch(() => {});
+    }, 100);
+
     const loadProfile = async () => {
       const savedDraft = await loadDraftFromStorage(draftKey);
 
       try {
-        setLoadingMessage({ title: 'Loading Profile', message: 'Retrieving your information to pre-fill the application...' });
-        setIsInitialLoading(true);
+        // Fast instant render: Do not block LCP paint behind full-screen loading modal
+        setIsInitialLoading(false);
         const profile = await applicantAPI.getProfile();
         setUserProfile(profile);
 
