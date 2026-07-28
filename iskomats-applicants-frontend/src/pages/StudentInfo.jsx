@@ -634,23 +634,36 @@ function studentNameMatchesText(text, first, middle, last) {
     const matchedCount = words.filter(word => {
       const normW = normalizeForOcr(word);
       const confW = normalizeNameConfusions(word);
-      if (new RegExp('\\b' + normW.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b').test(searchText)) return true;
-      if (searchText.includes(normW)) return true;
+      if (!normW) return true;
 
-      if (isMiddle && normW.length > 0) {
-        const initial = normW[0];
-        const rxInitial = new RegExp('\\b' + initial + '\\b|\\b' + initial + '\\.');
-        if (rxInitial.test(searchText)) return true;
-      }
+      // 1. Direct word match or exact substring match in search text
+      if (new RegExp('\\b' + normW.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(searchText)) return true;
+      if (searchText.toLowerCase().includes(normW)) return true;
 
-      return ocrWords.some(ocrW => {
+      // 2. Fuzzy / OCR confusion word match (for full words length >= 2)
+      const foundFullWord = ocrWords.some(ocrW => {
         const normOcr = normalizeForOcr(ocrW);
-        if (!normOcr) return false;
+        if (!normOcr || normOcr.length < 2) return false;
         if (isSimilarWord(normW, normOcr)) return true;
         if (confW.length >= 3 && normalizeNameConfusions(ocrW) === confW) return true;
-        if (isMiddle && normW.length > 0 && normOcr === normW[0]) return true;
         return false;
       });
+      if (foundFullWord) return true;
+
+      // 3. Middle Initial fallback: Only if candidate word initial appears in target name tokens or explicit initial format "X."
+      if (isMiddle && normW.length >= 1) {
+        const initial = normW[0].toLowerCase();
+        const targetTextNorm = normalizeForOcr(targetText);
+        const nameTokens = targetTextNorm.split(/\s+/);
+        
+        // Standalone initial token in key-value extracted name field (e.g. "LANTAFE MIKAELA YSABEL L")
+        if (nameTokens.includes(initial)) return true;
+
+        // Standalone initial with period in text (e.g. "L.")
+        if (new RegExp('\\b' + initial.toUpperCase() + '\\.').test(searchText)) return true;
+      }
+
+      return false;
     }).length;
 
     // Strict full-name requirement: ALL words in each specified name component must match (100%)
@@ -2142,6 +2155,95 @@ const StudentInfo = () => {
   const [isFaceMatching, setIsFaceMatching] = useState(false);
   const [faceMatchResult, setFaceMatchResult] = useState(null);
   const [faceVerified, setFaceVerified] = useState(null);
+
+  const passCurrentStepVerifications = () => {
+    const middleName = formData?.middleName || userProfile?.middle_name || '';
+
+    if (currentStep === 1) {
+      setOcrVerified('success');
+      setOcrStatus('Indigency Certificate verified successfully! (Debug Bypass)');
+      setIndigencyResults([{
+        doc: 'Indigency',
+        verified: true,
+        message: 'Indigency Certificate verified successfully! (Debug Bypass)',
+        score_details: {
+          "First Name": true,
+          "Middle Name": middleName ? true : null,
+          "Last Name": true,
+          "Barangay Address": true
+        }
+      }]);
+    } else if (currentStep === 3) {
+      setCoeVerified('success');
+      setCoeStatus('Certificate of Enrollment verified successfully! (Debug Bypass)');
+      setCoeResults([{
+        doc: 'Enrollment',
+        verified: true,
+        message: 'Certificate of Enrollment verified successfully! (Debug Bypass)',
+        score_details: {
+          "First Name": true,
+          "Middle Name": middleName ? true : null,
+          "Last Name": true,
+          "ID Number": true,
+          "School Name": true,
+          "Academic Year": true
+        }
+      }]);
+
+      setGradesVerified('success');
+      setGradesStatus('Grades document verified successfully! (Debug Bypass)');
+      setGradesResults([{
+        doc: 'Grades',
+        verified: true,
+        message: 'Grades document verified successfully! (Debug Bypass)',
+        score_details: {
+          "First Name": true,
+          "Middle Name": middleName ? true : null,
+          "Last Name": true
+        }
+      }]);
+
+      setIdVerified('success');
+      setIdStatus('School ID verified successfully! (Debug Bypass)');
+      setIdResults([{
+        doc: 'SchoolID',
+        verified: true,
+        message: 'School ID verified successfully! (Debug Bypass)',
+        score_details: {
+          "First Name": true,
+          "Middle Name": middleName ? true : null,
+          "Last Name": true,
+          "ID Number": true,
+          "School Name": true,
+          "Academic Year": true,
+          "Video Proof": true
+        }
+      }]);
+    } else if (currentStep === 4) {
+      const sigUrl = formData.applicantSignatureName || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80"><text x="10" y="50" font-family="Arial" font-size="20" fill="black">Debug Signature</text></svg>';
+      if (!formData.applicantSignatureName) {
+        setFormData(prev => ({ ...prev, applicantSignatureName: sigUrl }));
+      }
+      setSignatureVerified('success');
+      setSignatureStatus('Handwriting signature verified successfully! (Debug Bypass)');
+      setSignatureResults({
+        verified: true,
+        confidence: 99.5,
+        message: 'Handwriting signature verified successfully! (Debug Bypass)',
+        extracted_signature: sigUrl,
+        processed_submitted: sigUrl,
+        matcher_submitted: sigUrl,
+        matcher_reference: sigUrl
+      });
+
+      setFaceMatchResult({
+        verified: true,
+        similarity: 0.98,
+        message: 'Facial identity verified! (Debug Bypass)'
+      });
+      setFaceVerified('success');
+    }
+  };
 
   const [documentVideos, setDocumentVideos] = useState({
     mayorIndigency_video: null,
@@ -6251,6 +6353,30 @@ const StudentInfo = () => {
               </button>
             </div>
 
+            {/* Pass Step Verifications Debug Button */}
+            <button
+              type="button"
+              onClick={passCurrentStepVerifications}
+              style={{
+                width: '100%',
+                background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                color: 'white',
+                border: 'none',
+                padding: '8px 12px',
+                borderRadius: '10px',
+                cursor: 'pointer',
+                fontSize: '0.75rem',
+                fontWeight: '800',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                boxShadow: '0 4px 12px rgba(139, 92, 246, 0.35)'
+              }}
+            >
+              <i className="fas fa-bolt"></i> Pass Step {currentStep} Verifications
+            </button>
+
             {/* Stop/Cancel All Scannings Button */}
             <button
               type="button"
@@ -6352,12 +6478,35 @@ const StudentInfo = () => {
           <div className="section-header">
             <img src="/iskologo.png" alt="Logo" style={{ height: '50px', marginBottom: '1rem', filter: 'grayscale(1) contrast(1.2)' }} />
             <h2>{scholarshipName}</h2>
-            <p>Step {currentStep} of 4: {
-              currentStep === 1 ? 'Personal Information' :
-                currentStep === 2 ? 'Family Background' :
-                  currentStep === 3 ? 'Educational Information' :
-                    'Certification & Verification'
-            }</p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <p style={{ margin: 0 }}>Step {currentStep} of 4: {
+                currentStep === 1 ? 'Personal Information' :
+                  currentStep === 2 ? 'Family Background' :
+                    currentStep === 3 ? 'Educational Information' :
+                      'Certification & Verification'
+              }</p>
+              <button
+                type="button"
+                onClick={passCurrentStepVerifications}
+                style={{
+                  background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                  color: 'white',
+                  border: 'none',
+                  padding: '6px 14px',
+                  borderRadius: '20px',
+                  fontSize: '0.75rem',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 4px 12px rgba(139, 92, 246, 0.35)',
+                  transition: 'transform 0.15s ease'
+                }}
+              >
+                <i className="fas fa-bolt"></i> ⚡ DEBUG: Pass Step {currentStep} Verifications
+              </button>
+            </div>
           </div>
 
           <div style={{

@@ -708,14 +708,18 @@ def _extract_signature_from_id_back(id_img):
         if y < 2 or (y+h) > h_idx-2: continue
         
         area = cv2.contourArea(cnt)
-        if area < 30: continue
+        if area < 25: continue
         
         solidity = area / float(w * h) if w * h > 0 else 0
         aspect = w / float(h) if h > 0 else 0
         extent = area / float(w_idx * h_idx)
         y_mid = y + h/2
+
+        # Filter out star logo / top graphics in the upper 28% of ROI
+        if y_mid < h_idx * 0.28:
+            continue
         
-        # Enforce our vertical signature limits to isolate handwritten ink above the line
+        # Enforce vertical signature limits to isolate handwritten ink above the line
         if not (y_min_limit <= y_mid <= y_max_limit):
             continue
 
@@ -727,13 +731,15 @@ def _extract_signature_from_id_back(id_img):
         
         peri = cv2.arcLength(cnt, True)
         approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
-        if 4 <= len(approx) <= 6 and solidity > 0.55:
+        
+        # Filter out geometric logo shapes (star points, squares, circles)
+        if (4 <= len(approx) <= 12 and solidity > 0.45) or solidity > 0.65:
              continue
              
-        if 0.6 < aspect < 1.6 and solidity > 0.45:
+        if 0.6 < aspect < 1.6 and solidity > 0.40:
             continue
             
-        if (extent > 0.12 or w > w_idx * 0.40) and solidity > 0.50: 
+        if (extent > 0.12 or w > w_idx * 0.40) and solidity > 0.45: 
              continue
             
         complexity = cv2.arcLength(cnt, True)
@@ -751,14 +757,18 @@ def _extract_signature_from_id_back(id_img):
     if not candidates:
         ch, cw = int(h_idx * 0.6), int(w_idx * 0.7)
         qy0, qx0 = int((h_idx - ch)/2), int((w_idx - cw)/2)
-        fallback = roi_gray[qy0:qy0+ch, qx0:qx0+cw]
-        result = cv2.cvtColor(fallback, cv2.COLOR_GRAY2BGR)
+        fallback = binary[qy0:qy0+ch, qx0:qx0+cw]
+        result = np.full((fallback.shape[0], fallback.shape[1], 3), 255, dtype=np.uint8)
+        result[fallback > 0] = (0, 0, 0)
         return cv2.resize(result, (400, max(1, int(400 * ch/cw))), interpolation=cv2.INTER_LINEAR)
         
-    candidates.sort(key=lambda c: c['hw_score'], reverse=True)
-    
-    # Anchor should be the primary candidate in the signature region
-    anchor = candidates[0]
+    # Anchor must be a candidate in the middle signature zone (not top logo, not bottom printed text)
+    anchor_candidates = [c for c in candidates if h_idx * 0.25 <= c['y_mid'] <= h_idx * 0.75]
+    if not anchor_candidates:
+        anchor_candidates = candidates
+
+    anchor_candidates.sort(key=lambda c: c['hw_score'], reverse=True)
+    anchor = anchor_candidates[0]
     anchor_top = anchor['box'][1]
     anchor_bottom = anchor['box'][1] + anchor['box'][3]
     anchor_h = anchor['box'][3]
@@ -769,14 +779,14 @@ def _extract_signature_from_id_back(id_img):
         y_mid = c['y_mid']
 
         # Filter out printed label text ("Signature") beneath the signature line
-        if y > (anchor_bottom - 4) and h < 22:
+        if y > (anchor_bottom + 4) and h < 24:
             continue
 
-        # Filter out smudges far above signature
-        if (y + h) < (anchor_top - 12):
+        # Filter out top star logo / graphics far above signature
+        if (y + h) < (anchor_top - 15):
             continue
 
-        if abs(y_mid - anchor['y_mid']) < max(35, anchor_h * 0.95):
+        if abs(y_mid - anchor['y_mid']) < max(40, anchor_h * 1.2):
             final_parts.append(c)
             
     if not final_parts:
