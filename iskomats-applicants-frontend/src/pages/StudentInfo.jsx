@@ -2894,19 +2894,19 @@ const StudentInfo = () => {
 
         if (!silent) setStatus(isNationalId ? "Scanning National ID and validating video proof..." : "Scanning School ID and validating video proof concurrently...");
         const [frontText, backText, fVidRes, bVidRes] = await Promise.all([
-          runOcrOnImage(resolvedParam.front, isNationalId ? "National ID" : "School ID Front"),
-          isNationalId ? Promise.resolve("") : runOcrOnImage(resolvedParam.back, "School ID Back"),
+          runOcrOnImage(resolvedParam.front, isNationalId ? "National ID Front" : "School ID Front"),
+          resolvedParam.back ? runOcrOnImage(resolvedParam.back, isNationalId ? "National ID Back" : "School ID Back") : Promise.resolve(""),
           fVid ? validateVideoLiveness(fVid, 'schoolIdFront_video') : Promise.resolve(null),
-          (!isNationalId && bVid) ? validateVideoLiveness(bVid, 'schoolIdBack_video') : Promise.resolve(null)
+          bVid ? validateVideoLiveness(bVid, 'schoolIdBack_video') : Promise.resolve(null)
         ]);
 
         frontVidCheck = fVidRes;
         backVidCheck = bVidRes;
-        detectedText = isNationalId ? `[NATIONAL ID TEXT]\n${frontText}` : `[FRONT ID TEXT]\n${frontText}\n\n[BACK ID TEXT]\n${backText}`;
+        detectedText = isNationalId ? `[NATIONAL ID FRONT TEXT]\n${frontText}\n\n[NATIONAL ID BACK TEXT (NO VERIFICATION REQUIRED)]\n${backText}` : `[FRONT ID TEXT]\n${frontText}\n\n[BACK ID TEXT]\n${backText}`;
 
         const combinedFrontText = frontText + " " + (frontVidCheck?.detectedText || "");
         const combinedBackText = backText + " " + (backVidCheck?.detectedText || "");
-        const allIdText = combinedFrontText + " " + combinedBackText;
+        const allIdText = combinedFrontText + " " + (isNationalId ? "" : combinedBackText);
 
         const nameMatchFront = studentNameMatchesText(combinedFrontText, firstName, middleName, lastName);
         const nameMatchBack = isNationalId ? { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } } : studentNameMatchesText(combinedBackText, firstName, middleName, lastName);
@@ -2922,7 +2922,10 @@ const StudentInfo = () => {
         // National ID: Street / Barangay address verification (replaces student ID & year level checks)
         const addrOk = isNationalId ? (targetBarangay ? addressMatchesText(allIdText, targetBarangay) : true) : true;
 
-        const videoOk = (!fVid || (frontVidCheck && frontVidCheck.valid)) && (isNationalId || !bVid || (backVidCheck && backVidCheck.valid));
+        // National ID: Only front video liveness is enforced. Back video (if uploaded) is stored without blocking verification.
+        const videoOk = isNationalId
+          ? (!fVid || (frontVidCheck && frontVidCheck.valid))
+          : ((!fVid || (frontVidCheck && frontVidCheck.valid)) && (!bVid || (backVidCheck && backVidCheck.valid)));
 
         isSuccess = isNationalId
           ? (nameOk && addrOk && videoOk)
@@ -6526,9 +6529,9 @@ const StudentInfo = () => {
                         </div>
 
                         {/* Media Pickers */}
-                        <div style={{ display: 'grid', gridTemplateColumns: isNationalId ? '1fr' : '1fr 1fr', gap: '16px', marginBottom: '1.2rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '1.2rem' }}>
                           <div>
-                            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '800', color: '#3b82f6', marginBottom: '6px' }}>{isNationalId ? 'National ID Media' : 'Front ID Media'}</label>
+                            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '800', color: '#3b82f6', marginBottom: '6px' }}>{isNationalId ? 'National ID Front Media' : 'Front ID Media'}</label>
                             {renderDocumentMediaPicker({
                               photoId: 'school_id_front_photo',
                               photoValue: schoolIdPhotos.front || formData.schoolIdFront,
@@ -6542,26 +6545,24 @@ const StudentInfo = () => {
                             })}
                           </div>
 
-                          {!isNationalId && (
-                            <div>
-                              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '800', color: '#d97706', marginBottom: '6px' }}>Back ID Media</label>
-                              {renderDocumentMediaPicker({
-                                photoId: 'school_id_back_photo',
-                                photoValue: schoolIdPhotos.back || formData.schoolIdBack,
-                                onPhotoChange: (e) => handleSchoolIdPhotoUpload('back', e),
-                                videoId: 'video_schoolIdBack_video',
-                                videoName: 'schoolIdBack_video',
-                                videoValue: documentVideos.schoolIdBack_video || formData.schoolIdBack_video,
-                                onVideoChange: handleVideoUpload,
-                                isUploadingVideo: Boolean(uploadingFields['schoolIdBack_video']),
-                                isVerifying: idVerified === 'verifying'
-                              })}
-                            </div>
-                          )}
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '800', color: '#d97706', marginBottom: '6px' }}>{isNationalId ? 'National ID Back Media (No Verification)' : 'Back ID Media'}</label>
+                            {renderDocumentMediaPicker({
+                              photoId: 'school_id_back_photo',
+                              photoValue: schoolIdPhotos.back || formData.schoolIdBack,
+                              onPhotoChange: (e) => handleSchoolIdPhotoUpload('back', e),
+                              videoId: 'video_schoolIdBack_video',
+                              videoName: 'schoolIdBack_video',
+                              videoValue: documentVideos.schoolIdBack_video || formData.schoolIdBack_video,
+                              onVideoChange: handleVideoUpload,
+                              isUploadingVideo: Boolean(uploadingFields['schoolIdBack_video']),
+                              isVerifying: idVerified === 'verifying'
+                            })}
+                          </div>
                         </div>
 
                         {/* Preview Grid */}
-                        <div style={{ display: 'grid', gridTemplateColumns: isNationalId ? 'repeat(auto-fit, minmax(200px, 1fr))' : 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '1.2rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '1.2rem' }}>
                           {/* Front Photo */}
                           <div className="scanning-container">
                             <div className="image-container" style={{ height: '200px' }} onClick={() => setLightboxSrc(schoolIdPhotos.front || formData.schoolIdFront)}>
@@ -6570,7 +6571,7 @@ const StudentInfo = () => {
                               ) : (
                                 <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
                                   <i className="fas fa-image" style={{ fontSize: '1.5rem', marginBottom: '4px' }}></i>
-                                  <span style={{ fontSize: '0.65rem' }}>{isNationalId ? 'National ID Photo' : 'Front Photo'}</span>
+                                  <span style={{ fontSize: '0.65rem' }}>{isNationalId ? 'National ID Front Photo' : 'Front Photo'}</span>
                                 </div>
                               )}
                               {idVerified === 'verifying' && <div className="scanning-laser"></div>}
@@ -6579,7 +6580,7 @@ const StudentInfo = () => {
 
                           {/* Front Video */}
                           <VideoRecorder
-                            label={isNationalId ? 'National ID Check Video' : 'Front Check Video'}
+                            label={isNationalId ? 'National ID Front Video' : 'Front Check Video'}
                             onRecordComplete={(blob) => handleVideoUpload('schoolIdFront_video', blob)}
                             initialVideoUrl={documentVideos.schoolIdFront_video || formData.schoolIdFront_video}
                             isUploading={Boolean(uploadingFields['schoolIdFront_video'])}
@@ -6590,37 +6591,33 @@ const StudentInfo = () => {
                             fieldName="schoolIdFront_video"
                           />
 
-                          {!isNationalId && (
-                            <>
-                              {/* Back Photo */}
-                              <div className="scanning-container">
-                                <div className="image-container" style={{ height: '200px' }} onClick={() => setLightboxSrc(schoolIdPhotos.back || formData.schoolIdBack)}>
-                                  {(schoolIdPhotos.back || formData.schoolIdBack) ? (
-                                    <img src={schoolIdPhotos.back || formData.schoolIdBack} alt="Back ID" />
-                                  ) : (
-                                    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
-                                      <i className="fas fa-image" style={{ fontSize: '1.5rem', marginBottom: '4px' }}></i>
-                                      <span style={{ fontSize: '0.65rem' }}>Back Photo</span>
-                                    </div>
-                                  )}
-                                  {idVerified === 'verifying' && <div className="scanning-laser"></div>}
+                          {/* Back Photo */}
+                          <div className="scanning-container">
+                            <div className="image-container" style={{ height: '200px' }} onClick={() => setLightboxSrc(schoolIdPhotos.back || formData.schoolIdBack)}>
+                              {(schoolIdPhotos.back || formData.schoolIdBack) ? (
+                                <img src={schoolIdPhotos.back || formData.schoolIdBack} alt="Back ID" />
+                              ) : (
+                                <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', background: '#f8fafc' }}>
+                                  <i className="fas fa-image" style={{ fontSize: '1.5rem', marginBottom: '4px' }}></i>
+                                  <span style={{ fontSize: '0.65rem' }}>{isNationalId ? 'Back Photo (No Verification)' : 'Back Photo'}</span>
                                 </div>
-                              </div>
+                              )}
+                              {idVerified === 'verifying' && <div className="scanning-laser"></div>}
+                            </div>
+                          </div>
 
-                              {/* Back Video */}
-                              <VideoRecorder
-                                label="Back Check Video"
-                                onRecordComplete={(blob) => handleVideoUpload('schoolIdBack_video', blob)}
-                                initialVideoUrl={documentVideos.schoolIdBack_video || formData.schoolIdBack_video}
-                                isUploading={Boolean(uploadingFields['schoolIdBack_video'])}
-                                uploadProgress={uploadProgress['schoolIdBack_video']}
-                                disabled={isAnyScanning || isSavingStep}
-                                hideButton={true}
-                                containerStyle={{ height: '200px', padding: '0.4rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
-                                fieldName="schoolIdBack_video"
-                              />
-                            </>
-                          )}
+                          {/* Back Video */}
+                          <VideoRecorder
+                            label={isNationalId ? 'Back Check Video (No Verification)' : 'Back Check Video'}
+                            onRecordComplete={(blob) => handleVideoUpload('schoolIdBack_video', blob)}
+                            initialVideoUrl={documentVideos.schoolIdBack_video || formData.schoolIdBack_video}
+                            isUploading={Boolean(uploadingFields['schoolIdBack_video'])}
+                            uploadProgress={uploadProgress['schoolIdBack_video']}
+                            disabled={isAnyScanning || isSavingStep}
+                            hideButton={true}
+                            containerStyle={{ height: '200px', padding: '0.4rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+                            fieldName="schoolIdBack_video"
+                          />
                         </div>
 
                         <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', gap: '10px' }}>
