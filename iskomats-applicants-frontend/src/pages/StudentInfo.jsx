@@ -1593,6 +1593,18 @@ const StudentInfo = () => {
             const _vidResType = String(scholarshipDetails?.residencyDocType || scholarshipDetails?.residency_doc_type || '').toLowerCase();
             const _vidIsResidency = _vidResType.includes('residency');
             const _requiredVidKeywords = _vidIsResidency ? ['residency', 'resident'] : ['indigency', 'indigent'];
+            const _forbiddenVidKeywords = _vidIsResidency ? ['indigency', 'indigent'] : ['residency', 'resident'];
+
+            const hasForbiddenVidKeyword = _forbiddenVidKeywords.some(k => cleanText.includes(k) || rawCombined.includes(k));
+            if (hasForbiddenVidKeyword) {
+              const reqLabel = _vidIsResidency ? 'Residency' : 'Indigency';
+              const wrongLabel = _vidIsResidency ? 'Indigency' : 'Residency';
+              return {
+                valid: false,
+                reason: `Video proof validation failed: Detected ${wrongLabel} document in video, but scholarship requires ${reqLabel}.`,
+                detectedText: textLogs.join("\n\n")
+              };
+            }
 
             targetKeywords = [
               ..._requiredVidKeywords,
@@ -3223,11 +3235,15 @@ const StudentInfo = () => {
           const _isResDoc = extraParams.isResidencyDoc === true || _reqTypeStr.includes('residency') || _reqTypeStr === 'true';
 
           const _requiredDocKeywords = _isResDoc ? ['residency', 'resident'] : ['indigency', 'indigent'];
-          const hasRequiredDocKeyword = _requiredDocKeywords.some(k => combinedText.includes(k));
+          const _wrongDocKeywords   = _isResDoc ? ['indigency', 'indigent'] : ['residency', 'resident'];
 
-          // Succeed if required keyword is present ONLY (do not fail if other words are also present)
-          const docTypeOk = hasRequiredDocKeyword;
+          const hasRequiredDocKeyword = _requiredDocKeywords.some(k => combinedText.includes(k));
+          const hasWrongDocKeyword    = _wrongDocKeywords.some(k => combinedText.includes(k));
+
+          // EXCLUSIVE MATCH RULE: MUST contain required keyword AND MUST NOT contain wrong document keyword!
+          const docTypeOk = hasRequiredDocKeyword && !hasWrongDocKeyword;
           const docLabel = _isResDoc ? 'Certificate of Residency' : 'Certificate of Indigency';
+          const wrongDocLabel = _isResDoc ? 'Certificate of Indigency' : 'Certificate of Residency';
 
           isSuccess = nameCheck.success && addrOk && videoOk && docTypeOk;
           scoreDetails = {
@@ -3444,6 +3460,15 @@ const StudentInfo = () => {
       showPromptMessage(`Please upload or capture your ${docLabel} first.`);
       return;
     }
+    const hasVideo = !!videoUrl && (
+      (typeof videoUrl === 'string' && videoUrl.trim().length > 0) ||
+      (typeof videoUrl === 'object')
+    );
+
+    if (!hasVideo) {
+      showPromptMessage(`Please record and upload the ${docShortName} video first.`);
+      return;
+    }
     if (!townCity) {
       showPromptMessage('Please fill in your Town/City first.');
       return;
@@ -3488,8 +3513,18 @@ const StudentInfo = () => {
       showPromptMessage('Please upload your Certificate of Enrollment first.');
       return;
     }
+    const hasCoeVideo = !!videoUrl && (
+      (typeof videoUrl === 'string' && videoUrl.trim().length > 0) ||
+      (typeof videoUrl === 'object')
+    );
+
     const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
     const isNationalId = idType === 'National ID';
+
+    if (!hasCoeVideo) {
+      showPromptMessage('Please record and upload the COE video first.');
+      return;
+    }
     if (!schoolName || (!isNationalId && !idNumber) || !yearLevel || !course) {
       showPromptMessage(isNationalId ? 'Please complete School Name, Year Level, and Course first.' : 'Please complete School Name, ID, Year Level, and Course first.');
       return;
@@ -3540,6 +3575,15 @@ const StudentInfo = () => {
 
     if (!gradesDoc) {
       showPromptMessage('Please upload your Grades document first.');
+      return;
+    }
+    const hasGradesVideo = !!videoUrl && (
+      (typeof videoUrl === 'string' && videoUrl.trim().length > 0) ||
+      (typeof videoUrl === 'object')
+    );
+
+    if (!hasGradesVideo) {
+      showPromptMessage('Please record and upload the Grades video first.');
       return;
     }
     if (!schoolName || (!isNationalId && !idNumber) || !yearLevel || !gpa) {
@@ -3613,6 +3657,23 @@ const StudentInfo = () => {
 
     if (!idFront || (!isNationalId && !idBack)) {
       showPromptMessage(isNationalId ? 'Please upload front of your National ID first.' : 'Please upload both front and back of your School ID first.');
+      return;
+    }
+    const hasFrontVideo = !!frontVideoUrl && (
+      (typeof frontVideoUrl === 'string' && frontVideoUrl.trim().length > 0) ||
+      (typeof frontVideoUrl === 'object')
+    );
+    const hasBackVideo = isNationalId ? true : (!!backVideoUrl && (
+      (typeof backVideoUrl === 'string' && backVideoUrl.trim().length > 0) ||
+      (typeof backVideoUrl === 'object')
+    ));
+
+    if (!hasFrontVideo) {
+      showPromptMessage(isNationalId ? 'Please record and upload the National ID video first.' : 'Please record and upload the front School ID video first.');
+      return;
+    }
+    if (!isNationalId && !hasBackVideo) {
+      showPromptMessage('Please record and upload the back School ID video first.');
       return;
     }
     if (!formData.schoolName || (!isNationalId && (!formData.schoolIdNumber || !formData.yearLevel))) {
@@ -4607,7 +4668,8 @@ const StudentInfo = () => {
       // Step 1: Indigency
       if (currentStep === 1 && baseScanType === 'Indigency' && ocrVerified === null) {
         const doc = getVerificationDocumentSource(photos.mayorIndigency_photo, formData.mayorIndigency_photo);
-        if (doc) {
+        const vid = documentVideos.mayorIndigency_video || formData.mayorIndigency_video;
+        if (doc && vid) {
           handleIndigencyScan();
           setAutoScanTrigger(null);
         }
@@ -4619,7 +4681,9 @@ const StudentInfo = () => {
         if (baseScanType === 'SchoolID' && idVerified === null) {
           const front = getVerificationDocumentSource(schoolIdPhotos.front, formData.schoolIdFront);
           const back = getVerificationDocumentSource(schoolIdPhotos.back, formData.schoolIdBack);
-          if (front && back) {
+          const fVid = documentVideos.schoolIdFront_video || formData.schoolIdFront_video;
+          const bVid = documentVideos.schoolIdBack_video || formData.schoolIdBack_video;
+          if (front && back && fVid && bVid) {
             handleIdScan();
             setAutoScanTrigger(null);
           }
@@ -4628,7 +4692,8 @@ const StudentInfo = () => {
         // COE
         if (baseScanType === 'Enrollment' && coeVerified === null) {
           const doc = getVerificationDocumentSource(photos.mayorCOE_photo, formData.mayorCOE_photo);
-          if (doc) {
+          const vid = documentVideos.mayorCOE_video || formData.mayorCOE_video;
+          if (doc && vid) {
             handleCOEScan();
             setAutoScanTrigger(null);
           }
@@ -4637,7 +4702,8 @@ const StudentInfo = () => {
         // Grades
         if (baseScanType === 'Grades' && gradesVerified === null) {
           const doc = getVerificationDocumentSource(photos.mayorGrades_photo, formData.mayorGrades_photo);
-          if (doc) {
+          const vid = documentVideos.mayorGrades_video || formData.mayorGrades_video;
+          if (doc && vid) {
             handleGradesScan();
             setAutoScanTrigger(null);
           }
