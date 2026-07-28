@@ -3476,6 +3476,7 @@ const StudentInfo = () => {
           isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk && yrOk && videoOk && coeTypeOk && unitsOk;
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
+            "Middle Name": middleName ? nameCheck.details.middle_ok : null,
             "Last Name": nameCheck.details.last_ok,
             "School Name": schoolName ? schoolOk : null,
             "Course / Track": course ? courseOk : null,
@@ -3510,6 +3511,7 @@ const StudentInfo = () => {
           isSuccess = nameCheck.success && gpaOk && ayOk && semOk && schoolOk && courseOk && idOk && videoOk;
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
+            "Middle Name": middleName ? nameCheck.details.middle_ok : null,
             "Last Name": nameCheck.details.last_ok,
             "GPA (Document)": detectedDocGpa ? (gpaOk ? true : false) : (gpa ? false : null),
             "GPA (Input)": gpa ? (gpaOk ? true : false) : null,
@@ -3548,6 +3550,7 @@ const StudentInfo = () => {
           isSuccess = nameCheck.success && addrOk && videoOk && docTypeOk;
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
+            "Middle Name": middleName ? nameCheck.details.middle_ok : null,
             "Last Name": nameCheck.details.last_ok,
             "Document Type": docTypeOk,
             "Barangay Address": targetBarangay ? addrOk : null,
@@ -6478,35 +6481,12 @@ const StudentInfo = () => {
           <div className="section-header">
             <img src="/iskologo.png" alt="Logo" style={{ height: '50px', marginBottom: '1rem', filter: 'grayscale(1) contrast(1.2)' }} />
             <h2>{scholarshipName}</h2>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-              <p style={{ margin: 0 }}>Step {currentStep} of 4: {
-                currentStep === 1 ? 'Personal Information' :
-                  currentStep === 2 ? 'Family Background' :
-                    currentStep === 3 ? 'Educational Information' :
-                      'Certification & Verification'
-              }</p>
-              <button
-                type="button"
-                onClick={passCurrentStepVerifications}
-                style={{
-                  background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
-                  color: 'white',
-                  border: 'none',
-                  padding: '6px 14px',
-                  borderRadius: '20px',
-                  fontSize: '0.75rem',
-                  fontWeight: '800',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  boxShadow: '0 4px 12px rgba(139, 92, 246, 0.35)',
-                  transition: 'transform 0.15s ease'
-                }}
-              >
-                <i className="fas fa-bolt"></i> ⚡ DEBUG: Pass Step {currentStep} Verifications
-              </button>
-            </div>
+            <p>Step {currentStep} of 4: {
+              currentStep === 1 ? 'Personal Information' :
+                currentStep === 2 ? 'Family Background' :
+                  currentStep === 3 ? 'Educational Information' :
+                    'Certification & Verification'
+            }</p>
           </div>
 
           <div style={{

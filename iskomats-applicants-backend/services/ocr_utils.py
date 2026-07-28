@@ -983,45 +983,42 @@ def normalize_id_number(s):
 
 def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None, middle_name=None):
     """
-    Verifies that the student's FULL name (first + last together) appears as a
+    Verifies that the student's FULL name (first + last + middle together) appears as a
     contiguous or near-contiguous sequence in the document text — not just each
     word independently.
 
-    This prevents false positives like 'Jose Laurel' matching a document that
-    contains 'Jose Rizal' simply because the first name 'Jose' is present.
-
     Returns:
-        (first_ok, last_ok, sequence_ok)
-        - first_ok / last_ok: individual word-level presence (for UI display)
-        - sequence_ok: True only when the combined full-name appears as a sequence
+        (first_ok, middle_ok, last_ok, sequence_ok)
     """
     first_clean = normalize_text(first_name or '')
     last_clean  = normalize_text(last_name  or '')
+    mid_clean   = normalize_text(middle_name or '')
     norm_target = normalize_text(target_text or '')
     norm_raw    = normalize_text(full_raw_text or target_text or '')
 
     first_words = [w for w in first_clean.split() if len(w) >= 2]
     last_words  = [w for w in last_clean.split()  if len(w) >= 2]
+    mid_words   = [w for w in mid_clean.split()   if len(w) >= 1]
 
     # Individual word presence (for UI / failure messages)
-    first_ok = all(re.search(rf'\b{re.escape(w)}\b', norm_target) for w in first_words) if first_words else True
-    last_ok  = all(re.search(rf'\b{re.escape(w)}\b', norm_target) for w in last_words)  if last_words  else True
+    first_ok = all(re.search(rf'\b{re.escape(w)}\b', norm_target) or re.search(rf'\b{re.escape(w)}\b', norm_raw) for w in first_words) if first_words else True
+    last_ok  = all(re.search(rf'\b{re.escape(w)}\b', norm_target) or re.search(rf'\b{re.escape(w)}\b', norm_raw) for w in last_words)  if last_words  else True
 
-    # Broaden to raw text if target (parsed name field) didn't match
-    if not first_ok:
-        first_ok = all(re.search(rf'\b{re.escape(w)}\b', norm_raw) for w in first_words) if first_words else True
-    if not last_ok:
-        last_ok  = all(re.search(rf'\b{re.escape(w)}\b', norm_raw) for w in last_words)  if last_words  else True
-
-    mid_clean   = normalize_text(middle_name or '')
+    middle_ok = True
+    if mid_words:
+        mid_full_ok = all(re.search(rf'\b{re.escape(w)}\b', norm_target) or re.search(rf'\b{re.escape(w)}\b', norm_raw) for w in mid_words if len(w) >= 2)
+        if not mid_full_ok and mid_clean:
+            initial = mid_clean[0]
+            name_tokens = norm_target.split() + norm_raw.split()
+            mid_full_ok = (initial in name_tokens) or bool(re.search(rf'\b{re.escape(initial)}\b', norm_target)) or bool(re.search(rf'\b{re.escape(initial)}\b', norm_raw))
+        middle_ok = mid_full_ok
 
     # ---- Full-name sequence check (the key anti-spoofing step) ----
     def build_sequence_regex(name_str):
         """Build a regex that requires all name words in order, with OCR noise allowed between."""
-        words = [re.escape(w) for w in normalize_text(name_str).split() if len(w) >= 2]
+        words = [re.escape(w) for w in normalize_text(name_str).split() if len(w) >= 1]
         if not words:
             return None
-        # Allow up to a few noise characters between words (e.g. OCR punctuation, spaces)
         pattern = r'[^a-z0-9]{0,4}'.join(words)
         return re.compile(r'\b' + pattern + r'\b')
 
@@ -1055,7 +1052,6 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
         for i, t_word in enumerate(t_words):
             e_word = exp_words[expected_idx]
             
-            # Distance check
             dist = difflib.SequenceMatcher(None, e_word, t_word).ratio()
             is_match = (dist >= 0.80) or (len(e_word) == 1 and t_word == e_word) or (
                 abs(len(e_word) - len(t_word)) <= 1 and sum(1 for c1, c2 in zip(e_word, t_word) if c1 != c2) <= 1
@@ -1084,21 +1080,7 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
             sequence_ok = True
             break
 
-    # ---- Fuzzy full-name fallback (handles heavy OCR noise on the name field) ----
-    if not sequence_ok:
-        max_ratio = 0
-        for seq in sequences_to_check:
-            ratio = difflib.SequenceMatcher(None, seq, norm_target).ratio()
-            max_ratio = max(max_ratio, ratio)
-            
-        if max_ratio >= 0.80:
-            sequence_ok = True
-
-    if sequence_ok:
-        first_ok = True
-        last_ok = True
-
-    return first_ok, last_ok, sequence_ok
+    return first_ok, middle_ok, last_ok, sequence_ok
 
 
 def extract_semester_from_ocr_text(text):
@@ -1502,12 +1484,12 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
 
     # 1. NAME MATCHING — full sequence required (not just word-by-word independently)
     target_name_str = parsed_fields.get('name', raw_text)
-    first_ok, last_ok, sequence_ok = verify_name_sequence(
+    first_ok, middle_ok, last_ok, sequence_ok = verify_name_sequence(
         first_name, last_name, target_name_str, raw_text, middle_name
     )
 
-    if not (first_ok and last_ok and sequence_ok):
-        failures.append(f"Name mismatch (Expected: '{first_name} {last_name}', Found in COR: '{parsed_fields.get('name', 'Not found')}')")
+    if not (first_ok and middle_ok and last_ok and sequence_ok):
+        failures.append(f"Name mismatch (Expected: '{first_name} {middle_name or ''} {last_name}'. Found in COR: '{parsed_fields.get('name', 'Not found')}')")
 
     # 2. STUDENT ID MATCHING (Only if required ID is School ID, NOT National ID)
     id_type = kwargs.get('id_type') or kwargs.get('idType') or 'School ID'
@@ -1882,12 +1864,12 @@ def verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_
 
     # 1. NAME MATCHING
     target_name_str = parsed_fields.get('name', raw_text)
-    first_ok, last_ok, sequence_ok = verify_name_sequence(
+    first_ok, middle_ok, last_ok, sequence_ok = verify_name_sequence(
         first_name, last_name, target_name_str, raw_text, middle_name
     )
 
-    if not (first_ok and last_ok and sequence_ok):
-        failures.append(f"Name mismatch (Expected: '{first_name} {last_name}', Found in Grades: '{parsed_fields.get('name', 'Not found')}')")
+    if not (first_ok and middle_ok and last_ok and sequence_ok):
+        failures.append(f"Name mismatch (Expected: '{first_name} {middle_name or ''} {last_name}'. Found in Grades: '{parsed_fields.get('name', 'Not found')}')")
 
     # 2. STUDENT ID MATCHING (Only if required ID is School ID, NOT National ID)
     id_type = kwargs.get('id_type') or kwargs.get('idType') or 'School ID'
@@ -1996,12 +1978,12 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
     failures = []
 
     # NAME MATCHING — full sequence required (not just word-by-word independently)
-    first_ok, last_ok, sequence_ok = verify_name_sequence(
+    first_ok, middle_ok, last_ok, sequence_ok = verify_name_sequence(
         first_name, last_name, raw_text, raw_text, middle_name
     )
 
-    if not (first_ok and last_ok and sequence_ok):
-        failures.append(f"Name mismatch (Expected: '{first_name} {last_name}' in Indigency Certificate)")
+    if not (first_ok and middle_ok and last_ok and sequence_ok):
+        failures.append(f"Name mismatch (Expected: '{first_name} {middle_name or ''} {last_name}' in Indigency Certificate)")
 
     addr_ok = True
     if expected_address and str(expected_address).strip():
@@ -2019,13 +2001,13 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
             if not addr_ok:
                 failures.append(f"Address/Barangay mismatch (Expected: '{expected_address}' in Indigency Certificate)")
 
-    success = first_ok and last_ok and sequence_ok and addr_ok
+    success = first_ok and middle_ok and last_ok and sequence_ok and addr_ok
     if success:
-        msg = f"Indigency Certificate Verified: Name ({first_name} {last_name}) matched."
+        msg = f"Indigency Certificate Verified: Name ({first_name} {middle_name or ''} {last_name}) matched."
     else:
         msg = "Indigency Verification Failed: " + "; ".join(failures)
 
-    meta['name_ok'] = first_ok and last_ok
+    meta['name_ok'] = first_ok and middle_ok and last_ok and sequence_ok
     meta['details'] = failures
     meta['detected_text'] = raw_text
 
@@ -2033,7 +2015,7 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
 
 def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
     """
-    Dedicated verification logic for School ID cards.
+    Dedicated verification logic for School ID / National ID cards.
     Validates applicant name, student ID number, and school name from ID OCR text.
     """
     meta = {}
@@ -2042,10 +2024,10 @@ def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
     doc_norm = normalize_text(raw_text)
     
     # 1. Name Verification
-    first_ok, last_ok, seq_ok = verify_name_sequence(first_name, last_name, raw_text, full_raw_text=raw_text, middle_name=middle_name)
-    name_matched = seq_ok or (first_ok and last_ok)
+    first_ok, middle_ok, last_ok, seq_ok = verify_name_sequence(first_name, last_name, raw_text, full_raw_text=raw_text, middle_name=middle_name)
+    name_matched = first_ok and middle_ok and last_ok and seq_ok
     if not name_matched:
-        failures.append(f"Name mismatch (Expected: '{first_name} {last_name}' on ID)")
+        failures.append(f"Name mismatch (Expected: '{first_name} {middle_name or ''} {last_name}' on ID)")
 
     # 2. Student ID Number (if expected_id_no provided)
     expected_id_no = kwargs.get('expected_id_no')
