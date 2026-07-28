@@ -406,8 +406,7 @@ const getTesseractWorker = async () => {
     await tesseractWorkerSingleton.setParameters({
       tessjs_create_hocr: '0',
       tessjs_create_tsv: '0',
-      tessedit_pageseg_mode: '6',
-      tessedit_do_invert: '0'
+      tessedit_pageseg_mode: '3'
     });
   } catch (e) {
     console.log("Tesseract parameter set note:", e);
@@ -522,18 +521,21 @@ function isSimilarWord(expected, actual) {
   const actNorm = actual.toLowerCase();
   if (expNorm === actNorm) return true;
 
+  // Must be at least 3 chars to qualify for fuzzy matching
+  if (expNorm.length < 3 || actNorm.length < 3) return expNorm === actNorm;
+
   const dist = getLevenshteinDistance(expNorm, actNorm);
   const maxLen = Math.max(expNorm.length, actNorm.length);
   if (maxLen === 0) return true;
 
-  if (maxLen <= 2) {
-    return dist === 0;
-  } else if (maxLen <= 5) {
-    return dist <= 1; // Allow 1 typo for 3-5 letter words
+  const similarity = (maxLen - dist) / maxLen;
+
+  if (maxLen <= 5) {
+    return dist <= 1 && similarity >= 0.70;
   } else if (maxLen <= 8) {
-    return dist <= 2; // Allow up to 2 typos for 6-8 letter words
+    return dist <= 2 && similarity >= 0.68;
   } else {
-    return dist <= 3 || (maxLen - dist) / maxLen >= 0.65;
+    return dist <= 3 && similarity >= 0.70;
   }
 }
 
@@ -607,13 +609,8 @@ function studentNameMatchesText(text, first, middle, last) {
     return false;
   };  let sequenceOk = false;
 
-  // Check fuzzy sequences in targetText or normText
+  // Check fuzzy word sequences in targetText or normText (strict word-by-word matching only)
   for (const seq of sequencesToCheck) {
-    const rx = buildNameRegex(seq);
-    if (rx && (rx.test(targetText) || rx.test(normText))) {
-      sequenceOk = true;
-      break;
-    }
     if (checkWordSequenceFuzzy(seq, targetText) || checkWordSequenceFuzzy(seq, normText)) {
       sequenceOk = true;
       break;
@@ -645,16 +642,6 @@ function studentNameMatchesText(text, first, middle, last) {
         if (isSimilarWord(normW, normOcr)) return true;
         if (confW.length >= 3 && normalizeNameConfusions(ocrW) === confW) return true;
         if (isMiddle && normW.length > 0 && normOcr === normW[0]) return true;
-
-        // Sliding window check for glued labels (e.g. "apelyidomagbuhat" or "lastnamemagbuhat")
-        if (normOcr.length > normW.length) {
-          const len = normW.length;
-          for (let i = 0; i <= normOcr.length - len; i++) {
-            const sub = normOcr.substring(i, i + len);
-            if (isSimilarWord(normW, sub)) return true;
-          }
-        }
-
         return false;
       });
     }).length;
@@ -668,6 +655,8 @@ function studentNameMatchesText(text, first, middle, last) {
   const middleOk = middle ? (checkNameWordGroup(middle, targetText) || checkNameWordGroup(middle, normText)) : true;
 
   const success = sequenceOk || (firstOk && lastOk);
+
+  console.debug('[NAME CHECK]', { first, last, normText: normText.slice(0,200), targetText: targetText.slice(0,200), sequenceOk, firstOk, lastOk, success });
 
   return {
     success,
@@ -739,11 +728,6 @@ function addressMatchesText(text, expectedAddr) {
           if (normTok === w) return true;
           if (isSimilarWord(w, normTok)) return true;
           if (confW.length >= 3 && normalizeNameConfusions(normTok) === confW) return true;
-          if (normTok.length > w.length) {
-            for (let i = 0; i <= normTok.length - w.length; i++) {
-              if (isSimilarWord(w, normTok.substring(i, i + w.length))) return true;
-            }
-          }
           return false;
         });
       });
@@ -752,7 +736,7 @@ function addressMatchesText(text, expectedAddr) {
   }
 
   return false;
-};
+}
 
 function studentIdNoMatchesText(targetId, text) {
   if (!targetId || !text) return true;
@@ -763,22 +747,30 @@ function studentIdNoMatchesText(targetId, text) {
   const tDigits = digitsOnly(targetId);
   if (!tDigits || tDigits.length < 4) return true;  // too short to validate
 
-  // --- 1. Exact digit match in raw text ---
+  // --- 1. Digit match in raw text ---
   const ocrDigitSeqs = String(text).match(/\d{4,}/g) || [];
 
   for (const seq of ocrDigitSeqs) {
     const seqClean = digitsOnly(seq);
-    if (seqClean === tDigits) return true;  // 100% exact digit match required
+    if (seqClean === tDigits) return true;
+    if (seqClean.includes(tDigits) || tDigits.includes(seqClean)) return true;
+    if (Math.abs(seqClean.length - tDigits.length) <= 1 && getLevenshteinDistance(seqClean, tDigits) <= 1) return true;
   }
 
-  // --- 2. Key-value extracted student ID (e.g. "Student No: 1500017172") ---
+  // --- 2. Key-value extracted student ID ---
   const kv = extractOcrKeyValues(text);
   if (kv.studentId) {
     const kvDigits = digitsOnly(kv.studentId);
-    if (kvDigits === tDigits) return true;  // 100% exact match required
+    if (kvDigits === tDigits) return true;
+    if (kvDigits.includes(tDigits) || tDigits.includes(kvDigits)) return true;
+    if (Math.abs(kvDigits.length - tDigits.length) <= 1 && getLevenshteinDistance(kvDigits, tDigits) <= 1) return true;
   }
 
-  // --- 3. Fallback: if OCR extracted NO digit sequences at all (e.g. blurry scan), pass to avoid hard failure ---
+  // --- 3. Full raw text digit substring check ---
+  const allRawDigits = digitsOnly(text);
+  if (allRawDigits.includes(tDigits)) return true;
+
+  // --- 4. Fallback: if OCR extracted NO digit sequences at all (e.g. blurry scan), pass to avoid hard failure ---
   if (ocrDigitSeqs.length === 0) return true;
 
   return false;
@@ -860,6 +852,14 @@ function academic_year_matches_expected(text, expectedYear) {
 
   const expStart = parseInt(expectedYears[0], 10);
   const expEnd = expectedYears.length >= 2 ? parseInt(expectedYears[1], 10) : expStart + 1;
+
+  // If text contains "valid until", "valid", "until", or "sy" on ID cards with single year (e.g. 2026 or 2025)
+  if (normText.includes('valid') || normText.includes('until') || normText.includes('sy')) {
+    if (normText.includes(String(expStart)) || normText.includes(String(expEnd))) {
+      return true;
+    }
+  }
+
   const expPairStr = `${expStart}-${expEnd}`;
 
   // Strip date timestamps YYYY-MM-DD / YYYY.MM.DD (e.g. 2025.08.12, 2025-08-12, 2026-03-24)
@@ -1085,10 +1085,9 @@ function coe_type_matches_text(text) {
 function extractTotalUnitsFromText(text) {
   if (!text) return null;
 
-  // 1. Multi-line primary regex: Match "TOTAL UNITS", "ENROLLED UNITS", "BILANG NG UNITS"
-  // followed by optional non-digit noise (dashes, headers, symbols, newlines) up to 120 chars until a 1-2 digit number
+  // 1. Primary multi-line regexes
   const primaryRegexes = [
-    /(?:total\s*(?:no\.?\s*of\s*)?units?|units?\s*total|total\s*enrolled\s*units?|enrolled\s*units?|bilang\s*ng\s*units?)\b[\s\S]{0,120}?([1-9][0-9]?(?:\.[0-9]+)?)\b/i,
+    /(?:total\s*(?:no\.?\s*of\s*)?units?|units?\s*total|total\s*enrolled\s*units?|enrolled\s*units?|bilang\s*ng\s*units?|total\s*unit[s5z]?)\b[\s\S]{0,150}?([1-9][0-9]?(?:\.[0-9]+)?)\b/i,
     /\bunits?\s*[:=\-\_\|\.\s\r\n]+\s*([1-9][0-9]?(?:\.[0-9]+)?)\b/i
   ];
 
@@ -1096,54 +1095,47 @@ function extractTotalUnitsFromText(text) {
     const match = text.match(rx);
     if (match && match[1]) {
       const val = parseFloat(match[1]);
-      if (!isNaN(val) && val >= 1 && val <= 50) {
+      if (!isNaN(val) && val >= 1 && val <= 60) {
         return Math.round(val);
       }
     }
   }
 
-  // 2. Line-by-line scanning after "TOTAL UNITS" line
+  // 2. Line-by-line scan near "TOTAL UNITS"
   const lines = text.split(/[\r\n]+/);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
-    if (/total\s*(?:no\.?\s*of\s*)?units?/i.test(line)) {
-      // Check current line for numbers
-      const currentDigits = line.match(/\b([1-9][0-9]?(?:\.[0-9]+)?)\b/g);
-      if (currentDigits) {
-        for (const d of currentDigits) {
-          const v = parseFloat(d);
-          if (!isNaN(v) && v >= 1 && v <= 50) return Math.round(v);
-        }
-      }
-      // Check next 4 lines
-      for (let j = i + 1; j < Math.min(lines.length, i + 5); j++) {
-        const nextLine = lines[j].trim();
-        if (/^[\-\=\_\s\|]+$/.test(nextLine)) continue;
-        const nextDigits = nextLine.match(/\b([1-9][0-9]?(?:\.[0-9]+)?)\b/g);
-        if (nextDigits) {
-          for (const d of nextDigits) {
+    if (/total\s*(?:no\.?\s*of\s*)?units?/i.test(line) || /total\s*unit/i.test(line) || /units?\s*total/i.test(line)) {
+      for (let j = i; j < Math.min(lines.length, i + 7); j++) {
+        const checkLine = lines[j].trim();
+        const digits = checkLine.match(/\b([1-9][0-9]?(?:\.[0-9]+)?)\b/g);
+        if (digits) {
+          for (const d of digits) {
             const v = parseFloat(d);
-            if (!isNaN(v) && v >= 1 && v <= 50) return Math.round(v);
+            if (!isNaN(v) && v >= 1 && v <= 60) return Math.round(v);
           }
         }
       }
     }
   }
 
-  // 3. Fallback: Sum units column from subject rows (e.g. 3, 3, 3.00, 2.00)
+  // 3. Fallback: Sum subject unit column (1-6 units per subject row)
   let unitSum = 0;
   let unitCount = 0;
   for (const line of lines) {
-    const m = line.match(/\b([1-6](?:\.00)?)\b/);
-    if (m && (line.includes('IT') || line.includes('BS') || line.includes('Subject') || line.includes('Class') || line.includes('Course') || line.includes('1A') || line.includes('3B'))) {
-      const u = parseFloat(m[1]);
-      if (!isNaN(u) && u >= 1 && u <= 6) {
-        unitSum += u;
-        unitCount++;
+    const numbers = line.match(/\b([1-6](?:\.00)?)\b/g);
+    if (numbers && (line.includes('IT') || line.includes('BS') || line.includes('Subject') || line.includes('Class') || line.includes('Course') || line.includes('3B') || line.includes('1A') || line.includes('2A') || line.includes('Elective') || line.includes('Capstone') || line.includes('Literature') || line.includes('Filipino') || line.includes('Techno') || line.includes('Integration') || line.includes('Networking') || line.includes('MB'))) {
+      for (const numStr of numbers) {
+        const u = parseFloat(numStr);
+        if (!isNaN(u) && u >= 1 && u <= 6) {
+          unitSum += u;
+          unitCount++;
+          break;
+        }
       }
     }
   }
-  if (unitCount >= 2 && unitSum >= 3 && unitSum <= 50) {
+  if (unitCount >= 2 && unitSum >= 3 && unitSum <= 60) {
     return Math.round(unitSum);
   }
 
@@ -2999,6 +2991,66 @@ const StudentInfo = () => {
         return { isSuccess: false, scoreDetails, finalMessage, resultsList, detectedText: "[DIGITAL TAMPERING DETECTED]" };
       }
 
+      const createInvertedImageBlob = (src) => {
+        return new Promise((resolve) => {
+          if (!src) { resolve(null); return; }
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => {
+            try {
+              const canvas = document.createElement("canvas");
+              canvas.width = img.width;
+              canvas.height = img.height;
+              const ctx = canvas.getContext("2d");
+              ctx.drawImage(img, 0, 0);
+              const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              const d = imgData.data;
+              for (let i = 0; i < d.length; i += 4) {
+                d[i] = 255 - d[i];
+                d[i+1] = 255 - d[i+1];
+                d[i+2] = 255 - d[i+2];
+              }
+              ctx.putImageData(imgData, 0, 0);
+              canvas.toBlob(b => resolve(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.9);
+            } catch (e) {
+              resolve(null);
+            }
+          };
+          img.onerror = () => resolve(null);
+          img.src = src;
+        });
+      };
+
+      const createStickerRegionCropBlob = (src) => {
+        return new Promise((resolve) => {
+          if (!src) { resolve(null); return; }
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => {
+            try {
+              const canvas = document.createElement("canvas");
+              const w = img.width;
+              const h = img.height;
+              // Crop middle-lower region (y: 35% to 85% of image height) where validation stickers live
+              const cropY = Math.floor(h * 0.35);
+              const cropH = Math.floor(h * 0.50);
+              canvas.width = w * 2; // 2x magnification for crystal clear small sticker digits
+              canvas.height = cropH * 2;
+              const ctx = canvas.getContext("2d");
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = "high";
+              ctx.drawImage(img, 0, cropY, w, cropH, 0, 0, w * 2, cropH * 2);
+
+              canvas.toBlob(b => resolve(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.95);
+            } catch (e) {
+              resolve(null);
+            }
+          };
+          img.onerror = () => resolve(null);
+          img.src = src;
+        });
+      };
+
       const runOcrOnImage = async (imgSource, stepName = "") => {
         if (!silent) setStatus(`Scanning ${stepName} image with WebAssembly Worker...`);
 
@@ -3011,8 +3063,45 @@ const StudentInfo = () => {
         try {
           const worker = await getTesseractWorker();
           if (!worker) return "";
-          const ocrResult = await worker.recognize(imgSource);
-          return ocrResult?.data?.text || "";
+
+          let primaryText = "";
+          try {
+            const ocrResult = await worker.recognize(imgSource);
+            primaryText = ocrResult?.data?.text || "";
+          } catch (e) {
+            console.warn(`[OCR Engine] Primary pass note:`, e);
+          }
+
+          let invertedText = "";
+          const userLastName = (formData?.lastName || userProfile?.last_name || '').toLowerCase();
+          const shouldInvert = stepName.includes('ID') || !primaryText || primaryText.length < 25 || (userLastName && !primaryText.toLowerCase().includes(userLastName));
+
+          if (shouldInvert) {
+            const invertedUrl = await createInvertedImageBlob(imgSource);
+            if (invertedUrl) {
+              try {
+                const invResult = await worker.recognize(invertedUrl);
+                invertedText = invResult?.data?.text || "";
+              } catch (invErr) {
+                console.warn(`[OCR Engine] Inverted pass note:`, invErr);
+              }
+            }
+          }
+
+          let stickerText = "";
+          if (stepName.includes('Back') || stepName.includes('ID') || !primaryText.includes('202')) {
+            const stickerCropUrl = await createStickerRegionCropBlob(imgSource);
+            if (stickerCropUrl) {
+              try {
+                const stickerRes = await worker.recognize(stickerCropUrl);
+                stickerText = stickerRes?.data?.text || "";
+              } catch (e) {
+                console.warn(`[OCR Engine] Sticker crop pass note:`, e);
+              }
+            }
+          }
+
+          return (primaryText + "\n" + invertedText + "\n" + stickerText).trim();
         } catch (err) {
           console.warn(`[OCR Engine] Image recognition skipped on ${stepName}:`, err?.message || err);
           return "";
@@ -3198,9 +3287,12 @@ const StudentInfo = () => {
           resultsList = [{ doc: 'Grades', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
         }
         else if (docType === 'Indigency') {
+          // Use ONLY the document OCR text for name/address matching (video text must NOT be included
+          // because it can contain unrelated content that causes false positives)
+          const docOnlyText = (detectedText || "").toLowerCase();
           const combinedText = (detectedText + " " + (videoCheck?.detectedText || "")).toLowerCase();
-          const nameCheck = studentNameMatchesText(combinedText, firstName, middleName, lastName);
-          const addrOk = targetBarangay ? addressMatchesText(combinedText, targetBarangay) : true;
+          const nameCheck = studentNameMatchesText(docOnlyText, firstName, middleName, lastName);
+          const addrOk = targetBarangay ? addressMatchesText(docOnlyText, targetBarangay) : true;
           const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
 
           const _reqTypeStr = String(extraParams.isResidencyDoc !== undefined ? extraParams.isResidencyDoc : (scholarshipDetails?.residencyDocType || scholarshipDetails?.residency_doc_type || '')).toLowerCase();
