@@ -941,6 +941,22 @@ def normalize_text(text):
     return re.sub(r'[^a-z0-9\s]', ' ', str(text).lower()).strip()
 
 
+def levenshtein_distance(s1, s2):
+    s1, s2 = str(s1), str(s2)
+    if s1 == s2: return 0
+    if not s1: return len(s2)
+    if not s2: return len(s1)
+    v0 = list(range(len(s2) + 1))
+    v1 = [0] * (len(s2) + 1)
+    for i in range(len(s1)):
+        v1[0] = i + 1
+        for j in range(len(s2)):
+            cost = 0 if s1[i] == s2[j] else 1
+            v1[j + 1] = min(v1[j] + 1, v0[j + 1] + 1, v0[j] + cost)
+        v0 = list(v1)
+    return v1[len(s2)]
+
+
 def normalize_id_number(s):
     if not s:
         return ""
@@ -1484,7 +1500,10 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
         found_id_clean = normalize_id_number(parsed_fields.get('student_id', ''))
         doc_raw_clean = normalize_id_number(raw_text)
 
-        id_ok = (exp_id_clean in found_id_clean) or (exp_id_clean in doc_raw_clean) or (found_id_clean in exp_id_clean)
+        id_ok = (exp_id_clean in found_id_clean) or (exp_id_clean in doc_raw_clean)
+        if not id_ok and len(exp_id_clean) >= 6 and found_id_clean and abs(len(found_id_clean) - len(exp_id_clean)) <= 1:
+            if levenshtein_distance(found_id_clean, exp_id_clean) <= 1:
+                id_ok = True
 
         if not id_ok:
             failures.append(f"Student ID mismatch (Expected: '{expected_id_no}', Found in COR: '{parsed_fields.get('student_id', 'Not found')}')")
@@ -2001,7 +2020,7 @@ def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
         if not school_ok:
             failures.append(f"School name mismatch (Expected: '{expected_school}' on ID)")
 
-    success = (first_ok and last_ok) and (id_ok or school_ok)
+    success = (first_ok and last_ok) and id_ok and school_ok
     if success:
         msg = f"School ID Verified: Name ({first_name} {last_name}) and ID details matched."
     else:

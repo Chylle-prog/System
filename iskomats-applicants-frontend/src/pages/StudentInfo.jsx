@@ -741,13 +741,11 @@ function addressMatchesText(text, expectedAddr) {
 function studentIdNoMatchesText(targetId, text) {
   if (!targetId || !text) return true;
 
-  // Strip everything except digits for student ID comparison
   const digitsOnly = (s) => String(s).replace(/[^0-9]/g, '');
 
   const tDigits = digitsOnly(targetId);
-  if (!tDigits || tDigits.length < 4) return true;  // too short to validate
+  if (!tDigits || tDigits.length < 4) return true;
 
-  // Convert OCR character confusions into digits (e.g., 'a'->'2', 'n'->'0', 'i'/'l'->'1', 's'->'5', 'o'->'0')
   const mapOcrToDigits = (s) => {
     return String(s || '').toLowerCase()
       .replace(/[oOnN]/g, '0')
@@ -762,61 +760,46 @@ function studentIdNoMatchesText(targetId, text) {
       .replace(/[^0-9]/g, '');
   };
 
-  // --- 1. Exact digit match in raw text ---
+  // 1. Direct digit sequence matching in raw text
   const ocrDigitSeqs = String(text).match(/\d{4,}/g) || [];
 
   for (const seq of ocrDigitSeqs) {
     const seqClean = digitsOnly(seq);
     if (seqClean === tDigits) return true;
-    if (seqClean.includes(tDigits) || tDigits.includes(seqClean)) return true;
-    if (Math.abs(seqClean.length - tDigits.length) <= 1 && getLevenshteinDistance(seqClean, tDigits) <= 1) return true;
-  }
-
-  // --- 2. Prefix + Suffix matching for Philippine student IDs (e.g. 2021...5751) ---
-  if (tDigits.length >= 6) {
-    const prefix = tDigits.slice(0, 4);
-    const suffix = tDigits.slice(-3);
-    const textLower = String(text).toLowerCase();
-    for (const seq of ocrDigitSeqs) {
-      const seqClean = digitsOnly(seq);
-      if (seqClean.startsWith(prefix) && (seqClean.endsWith(suffix) || seqClean.includes(suffix))) {
-        return true;
-      }
-    }
-    if (textLower.includes(prefix) && (textLower.includes(suffix) || textLower.includes(suffix.slice(0, 3)))) {
-      return true;
+    if (seqClean.includes(tDigits)) return true; // OCR sequence contains full target ID
+    if (Math.abs(seqClean.length - tDigits.length) <= 1 && seqClean.length >= 6) {
+      if (getLevenshteinDistance(seqClean, tDigits) <= 1) return true;
     }
   }
 
-  // --- 3. OCR token digit confusion matching ---
+  // 2. OCR token digit confusion matching
   const tokens = String(text).split(/\s+/).filter(w => w.length >= 4);
   for (const tok of tokens) {
     const mapped = mapOcrToDigits(tok);
-    if (mapped === tDigits || mapped.includes(tDigits) || (mapped.length >= 5 && (mapped.startsWith(tDigits.slice(0, 4)) || getLevenshteinDistance(mapped, tDigits) <= 2))) {
-      return true;
+    if (mapped === tDigits || mapped.includes(tDigits)) return true;
+    if (Math.abs(mapped.length - tDigits.length) <= 1 && mapped.length >= 6) {
+      if (getLevenshteinDistance(mapped, tDigits) <= 1) return true;
     }
   }
 
-  // --- 4. Key-value extracted student ID ---
+  // 3. Key-value extracted student ID matching
   const kv = extractOcrKeyValues(text);
   if (kv.studentId) {
     const kvDigits = digitsOnly(kv.studentId);
-    if (kvDigits === tDigits) return true;
-    if (kvDigits.includes(tDigits) || tDigits.includes(kvDigits)) return true;
-    if (Math.abs(kvDigits.length - tDigits.length) <= 2 && getLevenshteinDistance(kvDigits, tDigits) <= 2) return true;
+    if (kvDigits === tDigits || kvDigits.includes(tDigits)) return true;
+    if (Math.abs(kvDigits.length - tDigits.length) <= 1 && kvDigits.length >= 6) {
+      if (getLevenshteinDistance(kvDigits, tDigits) <= 1) return true;
+    }
     const kvMapped = mapOcrToDigits(kv.studentId);
-    if (kvMapped.startsWith(tDigits.slice(0, 4)) || getLevenshteinDistance(kvMapped, tDigits) <= 2) return true;
+    if (kvMapped === tDigits || kvMapped.includes(tDigits)) return true;
+    if (Math.abs(kvMapped.length - tDigits.length) <= 1 && kvMapped.length >= 6) {
+      if (getLevenshteinDistance(kvMapped, tDigits) <= 1) return true;
+    }
   }
 
-  // --- 5. Full raw text digit substring check ---
+  // 4. Concatenated raw digits check
   const allRawDigits = digitsOnly(text);
   if (allRawDigits.includes(tDigits)) return true;
-
-  // --- 6. Fallback for COR/COE documents with watermark noise over Student No ---
-  const lowerText = String(text).toLowerCase();
-  if (lowerText.includes('student no') || lowerText.includes('student number') || lowerText.includes('student id') || lowerText.includes('de la salle') || lowerText.includes('certificate of registration')) {
-    return true;
-  }
 
   return false;
 }
