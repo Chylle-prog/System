@@ -3920,22 +3920,45 @@ def create_scholarship(current_user_id, pro_no, role):
         if role != 'Admin' and target_pro_no is None:
              return jsonify({'message': 'User not associated with a scholarship provider'}), 403
         
+        # Auto-ensure required columns exist in scholarships table if missing
+        try:
+            cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS units INTEGER")
+            cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS residency_doc_type VARCHAR(100) DEFAULT 'Indigency Document'")
+            cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS id_type VARCHAR(100) DEFAULT 'School ID'")
+            cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS course VARCHAR(255)")
+            cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS program_type VARCHAR(100)")
+            cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS grades_sem VARCHAR(50)")
+            cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS grades_year VARCHAR(50)")
+        except Exception as schema_err:
+            print(f"[SCHEMA AUTO-MIGRATION WARNING]: {schema_err}")
+
+        units_val = int(data.get('units')) if data.get('units') not in (None, '', 'null') else None
+        res_doc_type = data.get('residencyDocType', 'Indigency Document')
+        id_type_val = data.get('idType', 'School ID')
+
         # 2. Insert into scholarships table (without images)
         cursor.execute('''
-            INSERT INTO scholarships (scholarship_name, gpa, parent_finance, location, pro_no, slots, deadline, "desc", semester, year, date_created)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            INSERT INTO scholarships (scholarship_name, gpa, parent_finance, location, pro_no, slots, deadline, "desc", semester, year, grades_sem, grades_year, course, program_type, units, residency_doc_type, id_type, date_created)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             RETURNING req_no
         ''', (
-            data['scholarshipName'],
-            data['minGpa'],
-            data['parentFinance'],
-            data['location'],
+            data.get('scholarshipName'),
+            data.get('minGpa'),
+            data.get('parentFinance'),
+            data.get('location'),
             target_pro_no,
-            data['slots'],
-            data['deadline'],
+            data.get('slots'),
+            data.get('deadline'),
             data.get('description', ''),
             data.get('semester', ''),
-            data.get('year', '')
+            data.get('year', ''),
+            data.get('grades_sem', ''),
+            data.get('grades_year', ''),
+            data.get('course', 'All'),
+            data.get('program_type', 'All'),
+            units_val,
+            res_doc_type,
+            id_type_val
         ))
         
         new_scholarship = cursor.fetchone()
@@ -4011,6 +4034,18 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
         if not is_admin and sch_row['pro_no'] is None and resolved_provider_no is not None:
             cursor.execute("UPDATE scholarships SET pro_no = %s WHERE req_no = %s", (resolved_provider_no, req_no))
              
+        # Auto-ensure required columns exist in scholarships table if missing
+        try:
+            cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS units INTEGER")
+            cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS residency_doc_type VARCHAR(100) DEFAULT 'Indigency Document'")
+            cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS id_type VARCHAR(100) DEFAULT 'School ID'")
+            cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS course VARCHAR(255)")
+            cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS program_type VARCHAR(100)")
+            cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS grades_sem VARCHAR(50)")
+            cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS grades_year VARCHAR(50)")
+        except Exception as schema_err:
+            print(f"[SCHEMA AUTO-MIGRATION WARNING]: {schema_err}")
+
         # 4. Process field updates (excluding images)
         update_fields = []
         params = []
@@ -4024,7 +4059,14 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
             'deadline': 'deadline',
             'description': '"desc"',
             'year': 'year',
-            'semester': 'semester'
+            'semester': 'semester',
+            'grades_sem': 'grades_sem',
+            'grades_year': 'grades_year',
+            'course': 'course',
+            'program_type': 'program_type',
+            'units': 'units',
+            'residencyDocType': 'residency_doc_type',
+            'idType': 'id_type'
         }
         
         for json_key, db_col in field_map.items():

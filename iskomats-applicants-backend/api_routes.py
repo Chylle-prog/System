@@ -3937,6 +3937,18 @@ def create_scholarship(current_user_id, pro_no, role):
             if role != 'Admin' and target_pro_no is None:
                  return jsonify({'message': 'User not associated with a scholarship provider'}), 403
         
+            # Auto-ensure required columns exist in scholarships table if missing
+            try:
+                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS units INTEGER")
+                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS residency_doc_type VARCHAR(100) DEFAULT 'Indigency Document'")
+                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS id_type VARCHAR(100) DEFAULT 'School ID'")
+                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS course VARCHAR(255)")
+                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS program_type VARCHAR(100)")
+                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS grades_sem VARCHAR(50)")
+                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS grades_year VARCHAR(50)")
+            except Exception as schema_err:
+                print(f"[SCHEMA AUTO-MIGRATION WARNING]: {schema_err}")
+
             units_val = int(data.get('units')) if data.get('units') not in (None, '', 'null') else None
             res_doc_type = data.get('residencyDocType', 'Indigency Document')
             id_type_val = data.get('idType', 'School ID')
@@ -4028,6 +4040,18 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
             if not is_admin and sch_row['pro_no'] is None and resolved_provider_no is not None:
                 cursor.execute("UPDATE scholarships SET pro_no = %s WHERE req_no = %s", (resolved_provider_no, req_no))
              
+            # Auto-ensure required columns exist in scholarships table if missing
+            try:
+                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS units INTEGER")
+                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS residency_doc_type VARCHAR(100) DEFAULT 'Indigency Document'")
+                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS id_type VARCHAR(100) DEFAULT 'School ID'")
+                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS course VARCHAR(255)")
+                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS program_type VARCHAR(100)")
+                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS grades_sem VARCHAR(50)")
+                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS grades_year VARCHAR(50)")
+            except Exception as schema_err:
+                print(f"[SCHEMA AUTO-MIGRATION WARNING]: {schema_err}")
+
             units_val = int(data.get('units')) if data.get('units') not in (None, '', 'null') else None
             res_doc_type = data.get('residencyDocType', 'Indigency Document')
             id_type_val = data.get('idType', 'School ID')
