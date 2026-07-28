@@ -2026,4 +2026,144 @@ def verify_id_with_ocr(image_bytes, first_name=None, middle_name=None, last_name
         kwargs['expected_address'] = expected_address
 
     success, msg, raw_text, meta = verify_document_with_ocr(image_bytes, 'ID', first_name, middle_name, last_name, **kwargs)
-    return success, msg, raw_text, 1.0 if success else 0.0
+    return success, msg, raw_text, 1.0 if success else 0.0
+
+
+def extract_frames_from_video_bytes(video_bytes, sample_positions=[0.15, 0.35, 0.55, 0.75, 0.90], max_width=640):
+    """
+    Extracts OpenCV frames at key sample positions from raw video bytes.
+    Returns a list of BGR images (numpy arrays).
+    """
+    if not video_bytes:
+        return []
+
+    import tempfile
+    frames = []
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
+            tmp.write(video_bytes)
+            tmp_path = tmp.name
+
+        cap = cv2.VideoCapture(tmp_path)
+        if not cap.isOpened():
+            print("[VIDEO OCR] Failed to open video stream", flush=True)
+            return []
+
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if total_frames <= 0:
+            total_frames = 30  # Fallback estimate
+
+        for pos in sample_positions:
+            target_frame = int(total_frames * pos)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
+            ret, frame = cap.read()
+            if ret and frame is not None:
+                h, w = frame.shape[:2]
+                if max_width and w > max_width:
+                    scale = max_width / float(w)
+                    frame = cv2.resize(frame, (max_width, int(h * scale)), interpolation=cv2.INTER_AREA)
+                frames.append(frame)
+
+        cap.release()
+    except Exception as e:
+        print(f"[VIDEO OCR] Error extracting frames: {e}", flush=True)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+
+    return frames
+
+
+def verify_video_content(
+    video_bytes,
+    keywords=None,
+    expected_address=None,
+    expected_name=None,
+    expected_id=None,
+    doc_ocr_text=None,
+    sample_positions=[0.15, 0.35, 0.55, 0.75, 0.90],
+    max_width=640,
+    allow_alt_pass=True,
+    fallback_text_length=10
+):
+    """
+    Validates uploaded video content by running OCR on sampled frames and performing:
+    1. Generic Document Type Keyword Check
+    2. Applicant Full Name Cross-Verification
+    3. Document Identifier & Text Consistency Check against uploaded static document image.
+    """
+    if not video_bytes:
+        return False, "Mandatory video data is missing or inaccessible."
+
+    frames = extract_frames_from_video_bytes(video_bytes, sample_positions=sample_positions, max_width=max_width)
+    if not frames:
+        return False, "Failed to extract readable frames from video."
+
+    _init_tesseract()
+    if not pytesseract:
+        print("[VIDEO OCR] Tesseract unavailable, bypassing frame OCR.", flush=True)
+        return True, "Video stream active (OCR engine bypass)."
+
+    extracted_texts = []
+    for idx, frame in enumerate(frames):
+        try:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            txt6 = pytesseract.image_to_string(gray, config='--psm 6')
+            txt11 = pytesseract.image_to_string(gray, config='--psm 11')
+            if txt6: extracted_texts.append(txt6)
+            if txt11: extracted_texts.append(txt11)
+        except Exception as err:
+            print(f"[VIDEO OCR] Frame {idx} OCR error: {err}", flush=True)
+
+    combined_video_text = " ".join(extracted_texts).strip()
+    norm_video_text = normalize_text(combined_video_text)
+    print(f"[VIDEO OCR] Combined extracted text ({len(norm_video_text)} chars): {norm_video_text[:150]}...", flush=True)
+
+    if not norm_video_text:
+        return False, "No readable text detected in supporting video frames. Please ensure clear lighting and steady camera."
+
+    # ── 1. DOCUMENT TYPE KEYWORD CHECK ─────────────────────────────────────────
+    if keywords:
+        kw_found = any(normalize_text(kw) in norm_video_text for kw in keywords)
+        if not kw_found and not allow_alt_pass:
+            return False, f"Video does not display required document keywords (Expected: {', '.join(keywords[:3])})."
+
+    # ── 2. APPLICANT NAME CROSS-VERIFICATION ─────────────────────────────────
+    if expected_name:
+        name_words = [w for w in normalize_text(expected_name).split() if len(w) >= 3]
+        if name_words:
+            matched_name_words = [w for w in name_words if w in norm_video_text]
+            if len(matched_name_words) < max(1, len(name_words) // 2):
+                return False, f"Mismatched document: Applicant name ('{expected_name}') was not detected in the video."
+
+    # ── 3. ADDRESS CROSS-VERIFICATION ──────────────────────────────────────────
+    if expected_address:
+        norm_addr = normalize_text(expected_address)
+        addr_words = [w for w in norm_addr.split() if len(w) >= 3 and w not in {'city', 'street', 'brgy', 'barangay', 'province'}]
+        if addr_words:
+            addr_matched = any(w in norm_video_text for w in addr_words)
+            if not addr_matched:
+                return False, f"Mismatched document: Address ('{expected_address}') was not found in the video."
+
+    # ── 4. DOCUMENT IMAGE OCR CONSISTENCY CHECK ──────────────────────────────
+    if expected_id:
+        clean_expected_id = normalize_id_number(expected_id)
+        clean_video_id_text = normalize_id_number(combined_video_text)
+        if clean_expected_id and clean_expected_id not in clean_video_id_text:
+            return False, f"Mismatched document: ID/Certificate number ('{expected_id}') does not match video content."
+
+    if doc_ocr_text:
+        doc_norm = normalize_text(doc_ocr_text)
+        doc_tokens = list(set([w for w in doc_norm.split() if len(w) >= 4 and not w.isdigit()]))
+        if doc_tokens:
+            common_tokens = [w for w in doc_tokens if w in norm_video_text]
+            overlap_ratio = len(common_tokens) / float(len(doc_tokens))
+            print(f"[VIDEO CROSS-OCR] Token overlap ratio: {overlap_ratio:.2f} ({len(common_tokens)}/{len(doc_tokens)})", flush=True)
+            if len(doc_tokens) >= 5 and overlap_ratio < 0.10:
+                return False, "Mismatched upload: Video text does not match content from the uploaded document image."
+
+    return True, "Video content and document image consistency verified successfully."

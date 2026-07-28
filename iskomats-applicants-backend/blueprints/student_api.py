@@ -41,7 +41,8 @@ from services.applicant_document_service import (
 from services.ocr_utils import (
     verify_face_with_id, 
     verify_signature_against_id, 
-    save_signature_profile
+    save_signature_profile,
+    verify_video_content
 )
 from services.notification_service import create_notification, fetch_google_access_token, send_verification_email, send_email_message
 from services.google_auth_service import verify_google_token
@@ -3160,12 +3161,21 @@ def submit_application():
                             'mayorGrades_video': ['Grades', 'Grade', 'Transcript', 'Records', 'Units', 'Unit', 'Subject', 'GPA', 'Evaluation', 'Academic', 'Semester'],
                             'mayorCOE_video': ['Enrollment', 'Enrolment', 'Certificate', 'Registration', 'Registered', 'College', 'Enrolled', 'COE', 'Semester']
                         }
+                        full_applicant_name = f"{applicant.get('first_name', '')} {applicant.get('last_name', '')}".strip()
+                        applicant_id_no = form_data.get('schoolIdNumber') or applicant.get('school_id_no', '')
+
                         def _threaded_verify(v_url, kws, addr, upl_bytes):
                             data_bytes = upl_bytes
                             if not data_bytes and v_url:
                                 data_bytes, _ = fetch_video_bytes_from_url(v_url)
                             if not data_bytes: return False, "Video inaccessible."
-                            return verify_video_content(data_bytes, kws, addr)
+                            return verify_video_content(
+                                video_bytes=data_bytes,
+                                keywords=kws,
+                                expected_address=addr,
+                                expected_name=full_applicant_name,
+                                expected_id=applicant_id_no
+                            )
 
                         for field, keywords in video_requirements.items():
                             v_bytes = None

@@ -3342,7 +3342,7 @@ const StudentInfo = () => {
               ? parseInt(scholarshipDetails.requiredUnits)
               : null);
 
-          const unitsOk = requiredUnits !== null ? (detectedUnits !== null && detectedUnits >= requiredUnits) : true;
+          const unitsOk = requiredUnits !== null ? (detectedUnits !== null && detectedUnits === requiredUnits) : true;
 
           isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk && yrOk && videoOk && coeTypeOk && unitsOk;
           scoreDetails = {
