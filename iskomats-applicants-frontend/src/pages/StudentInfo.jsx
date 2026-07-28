@@ -1394,6 +1394,7 @@ const StudentInfo = () => {
         }}>
           {Object.entries(log.requirements).map(([key, val]) => {
             if (val === 'N/A' || val === null || val === undefined || val === '') return null;
+            const matchVal = log.scoreDetails ? log.scoreDetails[key] : null;
             let isMatch = false;
             if (matchVal === true || matchVal === 'MATCH✓' || (typeof matchVal === 'string' && matchVal.toLowerCase().startsWith('met'))) {
               isMatch = true;
@@ -1742,8 +1743,30 @@ const StudentInfo = () => {
             } catch (e) { }
 
             getTesseractWorker()
-              .then(worker => worker.recognize(canvas))
+              .then(async (worker) => {
+                if (!worker || ocrTriggered) return null;
+                try {
+                  return await worker.recognize(canvas);
+                } catch (e) {
+                  console.warn("[VIDEO OCR] Frame recognition skipped:", e?.message || e);
+                  return null;
+                }
+              })
               .then(ocrResult => {
+                if (ocrTriggered || !ocrResult) {
+                  if (ocrTriggered) return;
+                  currentCheckIndex++;
+                  if (currentCheckIndex < checkPoints.length && isFinite(video.duration) && video.duration > 0) {
+                    video.currentTime = video.duration * checkPoints[currentCheckIndex];
+                  } else {
+                    ocrTriggered = true;
+                    clearTimeout(timeout);
+                    cleanup();
+                    resolve(evaluateVideoText(accumulatedText));
+                  }
+                  return;
+                }
+
                 const extractedText = ocrResult?.data?.text || "";
                 const cleanExtracted = extractedText.trim().replace(/\s+/g, ' ');
                 if (cleanExtracted && cleanExtracted.length >= 3) {
@@ -2450,12 +2473,12 @@ const StudentInfo = () => {
       signaturePreview: extraState.signaturePreview !== undefined ? extraState.signaturePreview : signaturePreview,
       idPicturePreview: extraState.idPicturePreview !== undefined ? extraState.idPicturePreview : idPicturePreview,
       verificationStates: {
-        ocrVerified: extraState.ocrVerified !== undefined ? extraState.ocrVerified : ocrVerified,
-        coeVerified: extraState.coeVerified !== undefined ? extraState.coeVerified : coeVerified,
-        gradesVerified: extraState.gradesVerified !== undefined ? extraState.gradesVerified : gradesVerified,
-        idVerified: extraState.idVerified !== undefined ? extraState.idVerified : idVerified,
-        faceVerified: extraState.faceVerified !== undefined ? extraState.faceVerified : faceVerified,
-        signatureVerified: extraState.signatureVerified !== undefined ? extraState.signatureVerified : signatureVerified,
+        ocrVerified: (extraState.ocrVerified !== undefined ? extraState.ocrVerified : ocrVerified) === 'verifying' ? null : (extraState.ocrVerified !== undefined ? extraState.ocrVerified : ocrVerified),
+        coeVerified: (extraState.coeVerified !== undefined ? extraState.coeVerified : coeVerified) === 'verifying' ? null : (extraState.coeVerified !== undefined ? extraState.coeVerified : coeVerified),
+        gradesVerified: (extraState.gradesVerified !== undefined ? extraState.gradesVerified : gradesVerified) === 'verifying' ? null : (extraState.gradesVerified !== undefined ? extraState.gradesVerified : gradesVerified),
+        idVerified: (extraState.idVerified !== undefined ? extraState.idVerified : idVerified) === 'verifying' ? null : (extraState.idVerified !== undefined ? extraState.idVerified : idVerified),
+        faceVerified: (extraState.faceVerified !== undefined ? extraState.faceVerified : faceVerified) === 'verifying' ? null : (extraState.faceVerified !== undefined ? extraState.faceVerified : faceVerified),
+        signatureVerified: (extraState.signatureVerified !== undefined ? extraState.signatureVerified : signatureVerified) === 'verifying' ? null : (extraState.signatureVerified !== undefined ? extraState.signatureVerified : signatureVerified),
         ocrStatus: extraState.ocrStatus !== undefined ? extraState.ocrStatus : ocrStatus,
         coeStatus: extraState.coeStatus !== undefined ? extraState.coeStatus : coeStatus,
         gradesStatus: extraState.gradesStatus !== undefined ? extraState.gradesStatus : gradesStatus,
@@ -2797,7 +2820,111 @@ const StudentInfo = () => {
    */
   function detectDocumentTampering(imageSource) {
     return new Promise((resolve) => {
-      resolve({ edited: false, reason: "Authentic document" });
+      if (!imageSource) {
+        resolve({ edited: false, reason: "Authentic document" });
+        return;
+      }
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          const w = img.width;
+          const h = img.height;
+          if (!w || !h) {
+            resolve({ edited: false, reason: "Authentic document" });
+            return;
+          }
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, w, h);
+
+          const imgData = ctx.getImageData(0, 0, w, h);
+          const data = imgData.data;
+
+          // Grid patch variance analysis in text content area (ignore outer 10% page margins)
+          const gridW = 20;
+          const gridH = 15;
+          const marginX = Math.floor(w * 0.10);
+          const marginY = Math.floor(h * 0.10);
+          const contentW = w - 2 * marginX;
+          const contentH = h - 2 * marginY;
+          const cols = Math.floor(contentW / gridW);
+          const rows = Math.floor(contentH / gridH);
+
+          let suspiciousPatches = 0;
+
+          for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+              const startX = marginX + c * gridW;
+              const startY = marginY + r * gridH;
+
+              let sumR = 0, sumG = 0, sumB = 0;
+              let count = 0;
+              const pixels = [];
+
+              for (let y = startY; y < startY + gridH; y++) {
+                for (let x = startX; x < startX + gridW; x++) {
+                  const idx = (y * w + x) * 4;
+                  const red = data[idx];
+                  const green = data[idx + 1];
+                  const blue = data[idx + 2];
+                  sumR += red;
+                  sumG += green;
+                  sumB += blue;
+                  pixels.push(0.299 * red + 0.587 * green + 0.114 * blue);
+                  count++;
+                }
+              }
+
+              const avgR = sumR / count;
+              const avgG = sumG / count;
+              const avgB = sumB / count;
+              const avgGray = 0.299 * avgR + 0.587 * avgG + 0.114 * avgB;
+
+              let varianceSum = 0;
+              for (let p of pixels) {
+                varianceSum += Math.pow(p - avgGray, 2);
+              }
+              const stdDev = Math.sqrt(varianceSum / count);
+
+              // Digital overlay box (pasted in Paint/Photoshop): 
+              // 100% pure artificial digital fill (#FFFFFF or #000000) with ZERO noise (stdDev < 0.25)
+              const isDigitalWhiteBox = (avgR >= 253 && avgG >= 253 && avgB >= 253 && stdDev < 0.25);
+              const isDigitalBlackBox = (avgGray <= 5 && stdDev < 0.25);
+
+              if (isDigitalWhiteBox || isDigitalBlackBox) {
+                suspiciousPatches++;
+              }
+            }
+          }
+
+          if (suspiciousPatches >= 3) {
+            resolve({
+              edited: true,
+              reason: `Digital edit / overlay block detected on document (${suspiciousPatches} artificial overlay patches found). Please upload an authentic, unedited document.`,
+              patchCount: suspiciousPatches
+            });
+            return;
+          }
+
+          resolve({ edited: false, reason: "Authentic document" });
+        } catch (err) {
+          console.warn("[TAMPER DETECTOR] Analysis error:", err);
+          resolve({ edited: false, reason: "Authentic document" });
+        }
+      };
+      img.onerror = () => resolve({ edited: false, reason: "Authentic document" });
+
+      if (typeof imageSource === 'string' && imageSource.startsWith('http')) {
+        const sep = imageSource.includes('?') ? '&' : '?';
+        img.src = `${imageSource}${sep}_cb=${Date.now()}`;
+      } else if (typeof imageSource === 'string') {
+        img.src = imageSource;
+      } else {
+        resolve({ edited: false, reason: "Authentic document" });
+      }
     });
   }
 
@@ -2909,9 +3036,15 @@ const StudentInfo = () => {
           }
         };
 
-        const worker = await getTesseractWorker();
-        const ocrResult = await worker.recognize(imgSource);
-        return ocrResult.data.text || "";
+        try {
+          const worker = await getTesseractWorker();
+          if (!worker) return "";
+          const ocrResult = await worker.recognize(imgSource);
+          return ocrResult?.data?.text || "";
+        } catch (err) {
+          console.warn(`[OCR Engine] Image recognition skipped on ${stepName}:`, err?.message || err);
+          return "";
+        }
       };
 
       let detectedText = "";
@@ -3711,6 +3844,11 @@ const StudentInfo = () => {
 
 
   useEffect(() => {
+    const handleBeforeUnload = () => {
+      stopAllScannings();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
     const fontAwesomeLink = document.createElement('link');
     fontAwesomeLink.rel = 'stylesheet';
     fontAwesomeLink.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css';
@@ -4163,18 +4301,27 @@ const StudentInfo = () => {
           }
 
           const vs = savedDraft.verificationStates || {};
-          if (vs.ocrVerified !== undefined && vs.ocrVerified !== null) setOcrVerified(vs.ocrVerified);
-          if (vs.coeVerified !== undefined && vs.coeVerified !== null) setCoeVerified(vs.coeVerified);
-          if (vs.gradesVerified !== undefined && vs.gradesVerified !== null) setGradesVerified(vs.gradesVerified);
-          if (vs.idVerified !== undefined && vs.idVerified !== null) setIdVerified(vs.idVerified);
-          if (vs.faceVerified !== undefined && vs.faceVerified !== null) setFaceVerified(vs.faceVerified);
-          if (vs.signatureVerified !== undefined && vs.signatureVerified !== null) setSignatureVerified(vs.signatureVerified);
+          const safeOcrVerified = vs.ocrVerified === 'verifying' ? null : vs.ocrVerified;
+          const safeCoeVerified = vs.coeVerified === 'verifying' ? null : vs.coeVerified;
+          const safeGradesVerified = vs.gradesVerified === 'verifying' ? null : vs.gradesVerified;
+          const safeIdVerified = vs.idVerified === 'verifying' ? null : vs.idVerified;
+          const safeFaceVerified = vs.faceVerified === 'verifying' ? null : vs.faceVerified;
+          const safeSigVerified = vs.signatureVerified === 'verifying' ? null : vs.signatureVerified;
 
-          if (vs.ocrStatus) setOcrStatus(vs.ocrStatus);
-          if (vs.coeStatus) setCoeStatus(vs.coeStatus);
-          if (vs.gradesStatus) setGradesStatus(vs.gradesStatus);
-          if (vs.idStatus) setIdStatus(vs.idStatus);
-          if (vs.signatureStatus) setSignatureStatus(vs.signatureStatus);
+          if (safeOcrVerified !== undefined && safeOcrVerified !== null) setOcrVerified(safeOcrVerified);
+          if (safeCoeVerified !== undefined && safeCoeVerified !== null) setCoeVerified(safeCoeVerified);
+          if (safeGradesVerified !== undefined && safeGradesVerified !== null) setGradesVerified(safeGradesVerified);
+          if (safeIdVerified !== undefined && safeIdVerified !== null) setIdVerified(safeIdVerified);
+          if (safeFaceVerified !== undefined && safeFaceVerified !== null) setFaceVerified(safeFaceVerified);
+          if (safeSigVerified !== undefined && safeSigVerified !== null) setSignatureVerified(safeSigVerified);
+
+          const sanitizeStatusStr = (s) => (s && (s.includes('Initializing') || s.includes('Scanning')) ? '' : s);
+
+          if (vs.ocrStatus) setOcrStatus(sanitizeStatusStr(vs.ocrStatus));
+          if (vs.coeStatus) setCoeStatus(sanitizeStatusStr(vs.coeStatus));
+          if (vs.gradesStatus) setGradesStatus(sanitizeStatusStr(vs.gradesStatus));
+          if (vs.idStatus) setIdStatus(sanitizeStatusStr(vs.idStatus));
+          if (vs.signatureStatus) setSignatureStatus(sanitizeStatusStr(vs.signatureStatus));
 
           if (vs.faceMatchResult) setFaceMatchResult(vs.faceMatchResult);
           if (vs.signatureResults) setSignatureResults(vs.signatureResults);
@@ -4182,7 +4329,15 @@ const StudentInfo = () => {
           if (vs.coeResults && vs.coeResults.length > 0) setCoeResults(vs.coeResults);
           if (vs.gradesResults && vs.gradesResults.length > 0) setGradesResults(vs.gradesResults);
           if (vs.idResults && vs.idResults.length > 0) setIdResults(vs.idResults);
-          if (vs.ocrDebugLogs && Object.keys(vs.ocrDebugLogs).length > 0) setOcrDebugLogs(vs.ocrDebugLogs);
+          if (vs.ocrDebugLogs && Object.keys(vs.ocrDebugLogs).length > 0) {
+            const cleanedLogs = { ...vs.ocrDebugLogs };
+            Object.keys(cleanedLogs).forEach(k => {
+              if (cleanedLogs[k]?.status === 'Scanning') {
+                cleanedLogs[k] = { ...cleanedLogs[k], status: 'Scan Interrupted' };
+              }
+            });
+            setOcrDebugLogs(cleanedLogs);
+          }
 
           if (savedDraft.hasOtherAssistance) {
             setHasOtherAssistance(savedDraft.hasOtherAssistance);
