@@ -1508,17 +1508,19 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
         found_id_clean = normalize_id_number(parsed_fields.get('student_id', ''))
         tokens = [normalize_id_number(tok) for tok in re.findall(r'\b[0-9a-zA-Z\-]{4,25}\b', str(raw_text or ''))]
 
-        id_ok = (exp_id_clean == found_id_clean) or (exp_id_clean in tokens)
-        if not id_ok and len(exp_id_clean) >= 6:
+        # Strict exact match (with trailing glare digit sanitization)
+        def _clean_cand(t):
+            d = re.sub(r'[^0-9]', '', str(t or ''))
+            if len(exp_id_clean) >= 6 and len(d) == len(exp_id_clean) + 1 and (d.startswith(exp_id_clean) or d.endswith(exp_id_clean)):
+                return exp_id_clean
+            return d
+
+        id_ok = (_clean_cand(found_id_clean) == exp_id_clean) or (exp_id_clean in tokens)
+        if not id_ok:
             for tok in tokens:
-                if len(tok) >= 6 and abs(len(tok) - len(exp_id_clean)) <= 2:
-                    if tok.startswith(exp_id_clean) or exp_id_clean.startswith(tok) or exp_id_clean in tok or tok in exp_id_clean or levenshtein_distance(tok, exp_id_clean) <= 2:
-                        id_ok = True
-                        break
-        if not id_ok and len(exp_id_clean) >= 6:
-            raw_digits = re.sub(r'[^0-9]', '', str(raw_text or ''))
-            if exp_id_clean in raw_digits or exp_id_clean[:-1] in raw_digits:
-                id_ok = True
+                if _clean_cand(tok) == exp_id_clean:
+                    id_ok = True
+                    break
 
         if not id_ok:
             failures.append(f"Student ID mismatch (Expected: '{expected_id_no}', Found in COR: '{parsed_fields.get('student_id', 'Not found')}')")
@@ -2038,17 +2040,20 @@ def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
         clean_expected_id = normalize_id_number(expected_id_no)
         found_id = normalize_id_number(kwargs.get('student_id') or '')
         tokens = [normalize_id_number(tok) for tok in re.findall(r'\b[0-9a-zA-Z\-]{4,25}\b', str(raw_text or ''))]
-        id_ok = (clean_expected_id == found_id) or (clean_expected_id in tokens)
-        if not id_ok and len(clean_expected_id) >= 6:
+
+        def _clean_cand(t):
+            d = re.sub(r'[^0-9]', '', str(t or ''))
+            if len(clean_expected_id) >= 6 and len(d) == len(clean_expected_id) + 1 and (d.startswith(clean_expected_id) or d.endswith(clean_expected_id)):
+                return clean_expected_id
+            return d
+
+        id_ok = (_clean_cand(found_id) == clean_expected_id) or (clean_expected_id in tokens)
+        if not id_ok:
             for tok in tokens:
-                if len(tok) >= 6 and abs(len(tok) - len(clean_expected_id)) <= 2:
-                    if tok.startswith(clean_expected_id) or clean_expected_id.startswith(tok) or clean_expected_id in tok or tok in clean_expected_id or levenshtein_distance(tok, clean_expected_id) <= 2:
-                        id_ok = True
-                        break
-        if not id_ok and len(clean_expected_id) >= 6:
-            raw_digits = re.sub(r'[^0-9]', '', str(raw_text or ''))
-            if clean_expected_id in raw_digits or clean_expected_id[:-1] in raw_digits:
-                id_ok = True
+                if _clean_cand(tok) == clean_expected_id:
+                    id_ok = True
+                    break
+
         if not id_ok:
             failures.append(f"ID Number mismatch (Expected: '{expected_id_no}' on ID)")
 

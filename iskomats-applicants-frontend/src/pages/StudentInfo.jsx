@@ -738,6 +738,25 @@ function addressMatchesText(text, expectedAddr) {
   return false;
 }
 
+function sanitizeStudentIdCandidate(rawToken, targetId) {
+  if (!rawToken) return "";
+  let digits = String(rawToken).replace(/[^0-9]/g, '');
+  if (!digits) return "";
+
+  if (targetId) {
+    const targetDigits = String(targetId).replace(/[^0-9]/g, '');
+    if (targetDigits.length >= 6) {
+      if (digits.length === targetDigits.length + 1 && digits.startsWith(targetDigits)) {
+        return targetDigits;
+      }
+      if (digits.length === targetDigits.length + 1 && digits.endsWith(targetDigits)) {
+        return targetDigits;
+      }
+    }
+  }
+  return digits;
+}
+
 function studentIdNoMatchesText(targetId, text) {
   if (!targetId || !text) return true;
 
@@ -757,56 +776,32 @@ function studentIdNoMatchesText(targetId, text) {
       .replace(/[aA]/g, '4')
       .replace(/[sS]/g, '5')
       .replace(/[gGqQ]/g, '6')
-      .replace(/[tT7]/g, '7')
+      .replace(/[tT]/g, '7')
       .replace(/[bB8]/g, '8')
       .replace(/[^0-9]/g, '');
   };
 
-  const isMatchingIdSeq = (cand) => {
-    if (!cand) return false;
-    const cClean = normalizeId(cand);
-    const cDigits = digitsOnly(cand);
-    const cMapped = mapOcrToDigits(cand);
-
-    // Exact equality
-    if (cClean === tClean || cDigits === tDigits || cMapped === tDigits) return true;
-
-    // Glare / trailing character artifact tolerance for matching IDs of length >= 6 digits
-    if (tDigits.length >= 6) {
-      if (cDigits.length >= 6 && Math.abs(cDigits.length - tDigits.length) <= 2) {
-        if (cDigits.startsWith(tDigits) || tDigits.startsWith(cDigits)) return true;
-        if (cMapped.startsWith(tDigits) || tDigits.startsWith(cMapped)) return true;
-        if (cDigits.includes(tDigits) || tDigits.includes(cDigits)) return true;
-        if (getLevenshteinDistance(cDigits, tDigits) <= 2) return true;
-        if (getLevenshteinDistance(cMapped, tDigits) <= 2) return true;
-      }
-    }
-    return false;
-  };
-
   // 1. Direct check against Key-Value extracted student ID field
   const kv = extractOcrKeyValues(text);
-  if (kv.studentId && isMatchingIdSeq(kv.studentId)) {
-    return true;
-  }
+  if (kv.studentId) {
+    const kvClean = normalizeId(kv.studentId);
+    const kvDigits = sanitizeStudentIdCandidate(kv.studentId, targetId);
+    const kvMapped = mapOcrToDigits(kv.studentId);
 
-  // 2. OCR token check
-  const ocrTokens = String(text).match(/\b[0-9a-zA-Z\-]{4,25}\b/g) || [];
-
-  for (const seq of ocrTokens) {
-    if (isMatchingIdSeq(seq)) {
+    if (kvClean === tClean || kvDigits === tDigits || kvMapped === tDigits) {
       return true;
     }
   }
 
-  // 3. Raw digit stream check (for when OCR breaks token boundaries due to spaces/lines)
-  const allDigits = digitsOnly(text);
-  if (tDigits.length >= 6 && allDigits.includes(tDigits)) {
-    return true;
-  }
-  if (tDigits.length >= 7) {
-    const prefixId = tDigits.slice(0, tDigits.length - 1);
-    if (allDigits.includes(prefixId)) {
+  // 2. OCR token check - STRICT EXACT MATCH ONLY
+  const ocrTokens = String(text).match(/\b[0-9a-zA-Z\-]{4,25}\b/g) || [];
+
+  for (const seq of ocrTokens) {
+    const seqClean = normalizeId(seq);
+    const seqDigits = sanitizeStudentIdCandidate(seq, targetId);
+    const seqMapped = mapOcrToDigits(seq);
+
+    if (seqClean === tClean || seqDigits === tDigits || seqMapped === tDigits) {
       return true;
     }
   }
