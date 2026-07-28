@@ -1833,13 +1833,15 @@ const StudentInfo = () => {
 
   const stopAllScannings = () => {
     setScanProgress(0);
-    setStatus("Scanning stopped by user.");
-    setVerified(null);
+    setOcrVerified(null);
+    setOcrStatus('Scanning cancelled by user.');
     setCoeVerified(null);
+    setCoeStatus('Scanning cancelled by user.');
     setGradesVerified(null);
+    setGradesStatus('Scanning cancelled by user.');
     setIdVerified(null);
+    setIdStatus('Scanning cancelled by user.');
     setFaceVerified(null);
-    setSignatureVerified(null);
 
     if (tesseractWorkerSingleton) {
       try {
