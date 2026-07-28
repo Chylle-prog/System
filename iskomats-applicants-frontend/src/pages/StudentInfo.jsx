@@ -646,15 +646,15 @@ function studentNameMatchesText(text, first, middle, last) {
       });
     }).length;
 
-    const minRequired = words.length <= 1 ? 1 : Math.ceil(words.length * 0.5);
-    return matchedCount >= minRequired;
+    // Strict full-name requirement: ALL words in each specified name component must match (100%)
+    return matchedCount === words.length;
   };
 
   const firstOk = checkNameWordGroup(first, targetText) || checkNameWordGroup(first, normText);
   const lastOk = checkNameWordGroup(last, targetText) || checkNameWordGroup(last, normText);
   const middleOk = middle ? (checkNameWordGroup(middle, targetText) || checkNameWordGroup(middle, normText)) : true;
 
-  const success = sequenceOk || (firstOk && lastOk);
+  const success = firstOk && lastOk && middleOk && sequenceOk;
 
   console.debug('[NAME CHECK]', { first, last, normText: normText.slice(0,200), targetText: targetText.slice(0,200), sequenceOk, firstOk, lastOk, success });
 
@@ -741,8 +741,10 @@ function addressMatchesText(text, expectedAddr) {
 function studentIdNoMatchesText(targetId, text) {
   if (!targetId || !text) return true;
 
-  const digitsOnly = (s) => String(s).replace(/[^0-9]/g, '');
+  const normalizeId = (s) => String(s || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
+  const digitsOnly = (s) => String(s || '').replace(/[^0-9]/g, '');
 
+  const tClean = normalizeId(targetId);
   const tDigits = digitsOnly(targetId);
   if (!tDigits || tDigits.length < 4) return true;
 
@@ -760,46 +762,30 @@ function studentIdNoMatchesText(targetId, text) {
       .replace(/[^0-9]/g, '');
   };
 
-  // 1. Direct digit sequence matching in raw text
-  const ocrDigitSeqs = String(text).match(/\d{4,}/g) || [];
-
-  for (const seq of ocrDigitSeqs) {
-    const seqClean = digitsOnly(seq);
-    if (seqClean === tDigits) return true;
-    if (seqClean.includes(tDigits)) return true; // OCR sequence contains full target ID
-    if (Math.abs(seqClean.length - tDigits.length) <= 1 && seqClean.length >= 6) {
-      if (getLevenshteinDistance(seqClean, tDigits) <= 1) return true;
-    }
-  }
-
-  // 2. OCR token digit confusion matching
-  const tokens = String(text).split(/\s+/).filter(w => w.length >= 4);
-  for (const tok of tokens) {
-    const mapped = mapOcrToDigits(tok);
-    if (mapped === tDigits || mapped.includes(tDigits)) return true;
-    if (Math.abs(mapped.length - tDigits.length) <= 1 && mapped.length >= 6) {
-      if (getLevenshteinDistance(mapped, tDigits) <= 1) return true;
-    }
-  }
-
-  // 3. Key-value extracted student ID matching
+  // 1. Direct check against Key-Value extracted student ID field
   const kv = extractOcrKeyValues(text);
   if (kv.studentId) {
+    const kvClean = normalizeId(kv.studentId);
     const kvDigits = digitsOnly(kv.studentId);
-    if (kvDigits === tDigits || kvDigits.includes(tDigits)) return true;
-    if (Math.abs(kvDigits.length - tDigits.length) <= 1 && kvDigits.length >= 6) {
-      if (getLevenshteinDistance(kvDigits, tDigits) <= 1) return true;
-    }
     const kvMapped = mapOcrToDigits(kv.studentId);
-    if (kvMapped === tDigits || kvMapped.includes(tDigits)) return true;
-    if (Math.abs(kvMapped.length - tDigits.length) <= 1 && kvMapped.length >= 6) {
-      if (getLevenshteinDistance(kvMapped, tDigits) <= 1) return true;
+
+    if (kvClean === tClean || kvDigits === tDigits || kvMapped === tDigits) {
+      return true;
     }
   }
 
-  // 4. Concatenated raw digits check
-  const allRawDigits = digitsOnly(text);
-  if (allRawDigits.includes(tDigits)) return true;
+  // 2. Exact sequence match in raw OCR text tokens
+  const ocrTokens = String(text).match(/\b[0-9a-zA-Z\-]{4,25}\b/g) || [];
+
+  for (const seq of ocrTokens) {
+    const seqClean = normalizeId(seq);
+    const seqDigits = digitsOnly(seq);
+    const seqMapped = mapOcrToDigits(seq);
+
+    if (seqClean === tClean || seqDigits === tDigits || seqMapped === tDigits) {
+      return true;
+    }
+  }
 
   return false;
 }

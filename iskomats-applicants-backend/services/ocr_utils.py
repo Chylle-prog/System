@@ -1508,12 +1508,9 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
     if not is_national_id and expected_id_no and str(expected_id_no).strip():
         exp_id_clean = normalize_id_number(expected_id_no)
         found_id_clean = normalize_id_number(parsed_fields.get('student_id', ''))
-        doc_raw_clean = normalize_id_number(raw_text)
+        tokens = [normalize_id_number(tok) for tok in re.findall(r'\b[0-9a-zA-Z\-]{4,25}\b', str(raw_text or ''))]
 
-        id_ok = (exp_id_clean in found_id_clean) or (exp_id_clean in doc_raw_clean)
-        if not id_ok and len(exp_id_clean) >= 6 and found_id_clean and abs(len(found_id_clean) - len(exp_id_clean)) <= 1:
-            if levenshtein_distance(found_id_clean, exp_id_clean) <= 1:
-                id_ok = True
+        id_ok = (exp_id_clean == found_id_clean) or (exp_id_clean in tokens)
 
         if not id_ok:
             failures.append(f"Student ID mismatch (Expected: '{expected_id_no}', Found in COR: '{parsed_fields.get('student_id', 'Not found')}')")
@@ -2031,8 +2028,9 @@ def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
     id_ok = True
     if expected_id_no:
         clean_expected_id = normalize_id_number(expected_id_no)
-        clean_raw_id_text = normalize_id_number(raw_text)
-        id_ok = clean_expected_id in clean_raw_id_text if clean_expected_id else True
+        found_id = normalize_id_number(kwargs.get('student_id') or '')
+        tokens = [normalize_id_number(tok) for tok in re.findall(r'\b[0-9a-zA-Z\-]{4,25}\b', str(raw_text or ''))]
+        id_ok = (clean_expected_id == found_id) or (clean_expected_id in tokens)
         if not id_ok:
             failures.append(f"ID Number mismatch (Expected: '{expected_id_no}' on ID)")
 
