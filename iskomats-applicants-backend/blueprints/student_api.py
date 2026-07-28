@@ -2546,6 +2546,12 @@ def get_applicant_document_raw(field_name):
                 if db_field == 'profile_picture':
                     row = fetch_applicant_document_values(cur, request.user_no, ['id_pic'])
                     db_field = 'id_pic'
+                    if not row or not row.get(db_field):
+                        row = fetch_applicant_document_values(cur, request.user_no, ['face_photo'])
+                        db_field = 'face_photo'
+                    if not row or not row.get(db_field):
+                        row = fetch_applicant_document_values(cur, request.user_no, ['id_img_front'])
+                        db_field = 'id_img_front'
             if not row or not row.get(db_field):
                 return "Not found", 404
             

@@ -1206,6 +1206,22 @@ const StudentInfo = () => {
   const [showPrompt, setShowPrompt] = useState(false);
   const [promptMessage, setPromptMessage] = useState('');
   const [idPicturePreview, setIdPicturePreview] = useState(null);
+
+  useEffect(() => {
+    if (idPicturePreview && typeof idPicturePreview === 'string' && (idPicturePreview.startsWith('http://') || idPicturePreview.startsWith('https://'))) {
+      let active = true;
+      applicantAPI.resolveDocument('profile_picture', idPicturePreview).then(resolved => {
+        if (active && resolved && resolved !== idPicturePreview) {
+          setIdPicturePreview(resolved);
+          setPhotos(prev => ({ ...prev, profile_picture: resolved }));
+          setFormData(prev => ({ ...prev, profile_picture: resolved }));
+        }
+      }).catch(err => {
+        console.warn('[PROFILE PIC] Failed to resolve URL:', err);
+      });
+      return () => { active = false; };
+    }
+  }, [idPicturePreview]);
   const [rawProfilePictureFile, setRawProfilePictureFile] = useState(null);
   const [faceVerificationPreview, setFaceVerificationPreview] = useState(null);
   const [signaturePreview, setSignaturePreview] = useState(null);
@@ -3825,6 +3841,27 @@ const StudentInfo = () => {
           updates.mayorGrades_photo = gradesUrl;
         }
 
+        const rawProfilePic = profile.profile_picture || profile.id_pic || ((profile.has_profile_picture || profile.has_id_pic) ? `${apiOrigin}/api/student/applicant/document/raw/${profile.has_profile_picture ? 'profile_picture' : 'id_pic'}?token=${token}` : null) || savedDraft?.idPicturePreview;
+
+        if (rawProfilePic) {
+          if (typeof rawProfilePic === 'string' && (rawProfilePic.startsWith('http://') || rawProfilePic.startsWith('https://'))) {
+            applicantAPI.resolveDocument('profile_picture', rawProfilePic).then(resolved => {
+              if (resolved) {
+                setIdPicturePreview(resolved);
+                setPhotos(prev => ({ ...prev, profile_picture: resolved }));
+                setFormData(prev => ({ ...prev, profile_picture: resolved }));
+              }
+            }).catch(() => {
+              setIdPicturePreview(rawProfilePic);
+              setPhotos(prev => ({ ...prev, profile_picture: rawProfilePic }));
+            });
+          } else {
+            setIdPicturePreview(rawProfilePic);
+            setPhotos(prev => ({ ...prev, profile_picture: rawProfilePic }));
+            updates.profile_picture = rawProfilePic;
+          }
+        }
+
         const newIdPhotos = {};
         if (profile.has_id) {
           const frontUrl = `${apiOrigin}/api/student/applicant/document/raw/id_img_front?token=${token}`;
@@ -3836,26 +3873,6 @@ const StudentInfo = () => {
           const backUrl = `${apiOrigin}/api/student/applicant/document/raw/id_img_back?token=${token}`;
           newIdPhotos.back = backUrl;
           updates.schoolIdBack = backUrl;
-        }
-
-        if (profile.profile_picture) {
-          setIdPicturePreview(profile.profile_picture);
-          setPhotos(prev => ({ ...prev, profile_picture: profile.profile_picture }));
-          updates.profile_picture = profile.profile_picture;
-        } else if (profile.id_pic) {
-          setIdPicturePreview(profile.id_pic);
-          setPhotos(prev => ({ ...prev, profile_picture: profile.id_pic }));
-          updates.profile_picture = profile.id_pic;
-        } else if (profile.has_profile_picture || profile.has_id_pic) {
-          const rawField = profile.has_profile_picture ? 'profile_picture' : 'id_pic';
-          const profilePicUrl = `${apiOrigin}/api/student/applicant/document/raw/${rawField}?token=${token}`;
-          setIdPicturePreview(profilePicUrl);
-          setPhotos(prev => ({ ...prev, profile_picture: profilePicUrl }));
-          updates.profile_picture = profilePicUrl;
-        } else if (savedDraft?.idPicturePreview) {
-          setIdPicturePreview(savedDraft.idPicturePreview);
-          setPhotos(prev => ({ ...prev, profile_picture: savedDraft.idPicturePreview }));
-          updates.profile_picture = savedDraft.idPicturePreview;
         }
 
         if (Object.keys(newPhotos).length > 0) {
@@ -3924,10 +3941,6 @@ const StudentInfo = () => {
 
         if (profile.face_verified && profile.id_vid_url && profile.has_profile_picture) setFaceVerified('success');
         if (profile.signature_verified && profile.has_signature) setSignatureVerified('success');
-
-        if (profile.profile_picture || profile.id_pic) {
-          setIdPicturePreview(profile.profile_picture || profile.id_pic);
-        }
 
         // Populate document photos from database profile
         if (profile.id_img_front || profile.id_img_back) {
@@ -5993,6 +6006,21 @@ const StudentInfo = () => {
                           src={idPicturePreview || formData.profile_picture || photos.profile_picture || userProfile?.profile_picture || userProfile?.id_pic || `${API_ORIGIN}/api/student/applicant/document/raw/${userProfile?.has_profile_picture ? 'profile_picture' : 'id_pic'}?token=${localStorage.getItem('authToken')}`}
                           style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px', display: 'block' }}
                           alt="ID Preview"
+                          onError={(e) => {
+                            const currentSrc = e.target.src;
+                            console.warn('[PROFILE PIC] Image failed to render:', currentSrc);
+                            if (currentSrc && (currentSrc.startsWith('http://') || currentSrc.startsWith('https://'))) {
+                              applicantAPI.resolveDocument('profile_picture', currentSrc).then(resolved => {
+                                if (resolved && resolved !== currentSrc) {
+                                  setIdPicturePreview(resolved);
+                                } else {
+                                  setIdPicturePreview(null);
+                                }
+                              }).catch(() => setIdPicturePreview(null));
+                            } else {
+                              setIdPicturePreview(null);
+                            }
+                          }}
                         />
                       ) : (
                         <div>
