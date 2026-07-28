@@ -1115,11 +1115,11 @@ function extractTotalUnitsFromText(text) {
 
   const rawLines = text.split(/[\r\n]+/);
 
-  // 1. Direct extraction right beside or below "TOTAL UNITS" before fee headers
+  // 1. Direct extraction right beside or below "TOTAL UNITS" / "Tomas:" / "OTL UNS" before fee headers
   for (let i = 0; i < rawLines.length; i++) {
     const line = rawLines[i].trim();
-    if (/total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?/i.test(line) || /units?\s*total/i.test(line) || /total\s*unit/i.test(line)) {
-      const currentMatch = line.match(/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit)[^\d]*\b([1-4]?[0-9])\b/i);
+    if (/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)/i.test(line)) {
+      const currentMatch = line.match(/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)[^\d]*\b([1-4]?[0-9])\b/i);
       if (currentMatch) {
         const val = parseInt(currentMatch[1], 10);
         if (!isNaN(val) && val >= 6 && val <= 48) return val;
@@ -1127,7 +1127,7 @@ function extractTotalUnitsFromText(text) {
 
       for (let j = i + 1; j < Math.min(rawLines.length, i + 5); j++) {
         const checkLine = rawLines[j].trim();
-        if (/assessed\s*fees|schedule\s*of\s*payments|total\s*assessment|outstanding\s*balance|tuition|downpayment|reservation/i.test(checkLine)) {
+        if (/assessed\s*fees|schedule\s*of\s*pay|schedule\s*of\s*path|total\s*assessment|outstanding\s*balance|tuition|downpayment|reservation/i.test(checkLine)) {
           break;
         }
         const m = checkLine.match(/\b([1-4]?[0-9])\b/);
@@ -1139,6 +1139,12 @@ function extractTotalUnitsFromText(text) {
     }
   }
 
+  // Helper to check if a line is student metadata rather than table header
+  const isMetadataLine = (l) => {
+    return /^\s*(?:course|name|student\s*(?:no|id)?|year\s*level|scholarship|pay\s*type|reg\s*no|tran\s*date|college)\s*[:=\-]/i.test(l) ||
+           /bachelor\s*of|bachelor\s*in|master\s*of|doctor\s*of/i.test(l);
+  };
+
   // 2. Robust Subject Table Row Counter & Explicit Unit Summing
   let inSubjectTable = false;
   let subjectRowCount = 0;
@@ -1149,20 +1155,26 @@ function extractTotalUnitsFromText(text) {
     const lower = line.toLowerCase();
 
     if (!inSubjectTable) {
-      if (
-        /subj(?:ect)?|sugect|suject|course|description|title/i.test(lower) ||
-        (lower.includes('units') && (lower.includes('sec') || lower.includes('section') || lower.includes('faculty') || lower.includes('room') || lower.includes('days') || lower.includes('time') || lower.includes('bldg')))
-      ) {
-        inSubjectTable = true;
-        continue;
+      if (!isMetadataLine(lower)) {
+        if (
+          /^\s*(?:subj(?:ect)?|sugect|suject|spect|course\s*code)\b/i.test(lower) ||
+          ((lower.includes('subject') || lower.includes('sugect') || lower.includes('suject') || lower.includes('spect')) && (lower.includes('sec') || lower.includes('section') || lower.includes('faculty') || lower.includes('room') || lower.includes('days') || lower.includes('time') || lower.includes('bldg') || lower.includes('units'))) ||
+          (lower.includes('units') && (lower.includes('sec') || lower.includes('section') || lower.includes('faculty') || lower.includes('room') || lower.includes('days') || lower.includes('time') || lower.includes('bldg')))
+        ) {
+          inSubjectTable = true;
+          continue;
+        }
       }
     }
 
     if (inSubjectTable) {
       if (
         /total\s*(?:no\.?\s*of\s*)?units?/i.test(lower) ||
+        /otl\s*uns/i.test(lower) ||
+        /tomas\b/i.test(lower) ||
         /assessed\s*fees/i.test(lower) ||
-        /schedule\s*of\s*payments/i.test(lower) ||
+        /schedule\s*of\s*pay/i.test(lower) ||
+        /schedule\s*of\s*path/i.test(lower) ||
         /total\s*assessment/i.test(lower) ||
         /review\s*your\s*assessment/i.test(lower) ||
         /refunds\s*and\s*other/i.test(lower) ||
@@ -1173,6 +1185,7 @@ function extractTotalUnitsFromText(text) {
       }
 
       if (/^[\-\=\_\*\#\s\|]+$/.test(line) || line.length < 3) continue;
+      if (isMetadataLine(lower)) continue;
 
       subjectRowCount++;
 
@@ -1205,16 +1218,17 @@ function extractTotalUnitsFromText(text) {
     const line = rawLines[i].trim();
     const lower = line.toLowerCase();
 
-    if (/year\s*level|student\s*(?:no|id)|ay\s*20\d{2}|semester|course/i.test(lower)) {
+    if (/year\s*level|student\s*(?:no|id)|ay\s*20\d{2}|semester/i.test(lower)) {
       insideBody = true;
       continue;
     }
 
     if (insideBody) {
-      if (/total\s*units|assessed\s*fees|schedule\s*of\s*payments|total\s*assessment/i.test(lower)) {
+      if (/total\s*units|otl\s*uns|assessed\s*fees|schedule\s*of\s*pay|schedule\s*of\s*path|total\s*assessment/i.test(lower)) {
         break;
       }
       if (/^[\-\=\_\*\#\s\|]+$/.test(line) || line.length < 3) continue;
+      if (isMetadataLine(lower)) continue;
       if (/official|certificate|registration|enrollment|de\s*la\s*salle|batangas|university|student|page/i.test(lower)) continue;
 
       fallbackSubjectCount++;

@@ -1247,6 +1247,10 @@ def extract_total_units_from_text(raw_text):
                     except ValueError:
                         pass
 
+    def _is_metadata(l):
+        return bool(re.search(r'^\s*(?:course|name|student\s*(?:no|id)?|year\s*level|scholarship|pay\s*type|reg\s*no|tran\s*date|college)\s*[:=\-]', l, re.I) or
+                    re.search(r'bachelor\s*of|bachelor\s*in|master\s*of|doctor\s*of', l, re.I))
+
     # 2. Robust Subject Table Row Counter & Explicit Unit Summing
     in_subject_table = False
     subject_row_count = 0
@@ -1257,17 +1261,21 @@ def extract_total_units_from_text(raw_text):
         lower = line_clean.lower()
 
         if not in_subject_table:
-            if re.search(r'subj(?:ect)?|sugect|suject|course|description|title', lower) or \
-               ('units' in lower and any(k in lower for k in ['sec', 'section', 'faculty', 'room', 'days', 'time', 'bldg'])):
-                in_subject_table = True
-                continue
+            if not _is_metadata(lower):
+                if re.search(r'^\s*(?:subj(?:ect)?|sugect|suject|spect|course\s*code)\b', lower) or \
+                   (('subject' in lower or 'sugect' in lower or 'suject' in lower or 'spect' in lower) and any(k in lower for k in ['sec', 'section', 'faculty', 'room', 'days', 'time', 'bldg', 'units'])) or \
+                   ('units' in lower and any(k in lower for k in ['sec', 'section', 'faculty', 'room', 'days', 'time', 'bldg'])):
+                    in_subject_table = True
+                    continue
 
         if in_subject_table:
-            if re.search(r'total\s*(?:no\.?\s*of\s*)?units?|assessed\s*fees|schedule\s*of\s*payments|total\s*assessment|review\s*your\s*assessment|refunds\s*and\s*other|official\s*certificate\s*of\s*registration', lower):
+            if re.search(r'total\s*(?:no\.?\s*of\s*)?units?|otl\s*uns|tomas\b|assessed\s*fees|schedule\s*of\s*pay|schedule\s*of\s*path|total\s*assessment|review\s*your\s*assessment|refunds\s*and\s*other|official\s*certificate\s*of\s*registration', lower):
                 in_subject_table = False
                 break
 
             if re.match(r'^[\-\=\_\*\#\s\|]+$', line_clean) or len(line_clean) < 3:
+                continue
+            if _is_metadata(lower):
                 continue
 
             subject_row_count += 1
@@ -1294,13 +1302,15 @@ def extract_total_units_from_text(raw_text):
     for line in lines:
         line_clean = line.strip()
         lower = line_clean.lower()
-        if re.search(r'year\s*level|student\s*(?:no|id)|ay\s*20\d{2}|semester|course', lower):
+        if re.search(r'year\s*level|student\s*(?:no|id)|ay\s*20\d{2}|semester', lower):
             inside_body = True
             continue
         if inside_body:
-            if re.search(r'total\s*units|assessed\s*fees|schedule\s*of\s*payments|total\s*assessment', lower):
+            if re.search(r'total\s*units|otl\s*uns|assessed\s*fees|schedule\s*of\s*pay|schedule\s*of\s*path|total\s*assessment', lower):
                 break
             if re.match(r'^[\-\=\_\*\#\s\|]+$', line_clean) or len(line_clean) < 3:
+                continue
+            if _is_metadata(lower):
                 continue
             if re.search(r'official|certificate|registration|enrollment|de\s*la\s*salle|batangas|university|student|page', lower):
                 continue
