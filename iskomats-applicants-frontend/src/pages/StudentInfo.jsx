@@ -1419,24 +1419,52 @@ const StudentInfo = () => {
           }
         };
 
+        const evaluateVideoText = (textLogs) => {
+          const rawCombined = (textLogs || []).join(" ").toLowerCase();
+          const cleanText = normalizeForOcr(rawCombined);
+
+          // Extract expected name words
+          const lastWord = normalizeForOcr(lastName || '').split(' ').filter(w => w.length >= 2);
+          const firstWord = normalizeForOcr(firstName || '').split(' ').filter(w => w.length >= 2);
+          const allNameWords = [...lastWord, ...firstWord];
+
+          // Target document category keywords
+          let targetKeywords = [];
+          if (fieldName?.includes('Indigency') || fieldName?.includes('indigency')) {
+            targetKeywords = ['indigency', 'indigent', 'certificate', 'barangay', 'punong', 'resident', 'certify', 'office', 'bayan', 'mataasnakahoy', 'lipa', 'batangas'];
+          } else if (fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('certificate')) {
+            targetKeywords = ['enrollment', 'registration', 'certificate', 'student', 'college', 'semester', 'academic', 'official', 'course', 'school', 'university'];
+          } else if (fieldName?.includes('Grades') || fieldName?.includes('grades')) {
+            targetKeywords = ['grade', 'transcript', 'gpa', 'academic', 'rating', 'remarks', 'passed', 'subject', 'units', 'evaluation', 'record'];
+          } else if (fieldName?.includes('schoolId') || fieldName?.includes('Id') || fieldName?.includes('id')) {
+            targetKeywords = ['school', 'student', 'id', 'college', 'university', 'republic', 'card', 'de la salle', 'lipa', 'identity'];
+          } else {
+            targetKeywords = ['certificate', 'official', 'document', 'school', 'student', 'republic', 'barangay'];
+          }
+
+          const hasNameMatch = allNameWords.some(w => cleanText.includes(w));
+          const hasKeywordMatch = targetKeywords.some(k => cleanText.includes(k));
+
+          if (hasNameMatch || hasKeywordMatch) {
+            return {
+              valid: true,
+              reason: "Uploaded & Validated",
+              detectedText: textLogs.join("\n\n")
+            };
+          }
+
+          return {
+            valid: false,
+            reason: `Video proof validation failed: No matching document text or keywords detected in video frames.`,
+            detectedText: textLogs.join("\n\n") || "No readable text extracted from video frames."
+          };
+        };
+
         const timeout = setTimeout(() => {
           if (!ocrTriggered) {
             ocrTriggered = true;
             cleanup();
-            const finalDetectedText = accumulatedText.join("\n\n");
-            if (finalDetectedText) {
-              resolve({
-                valid: true,
-                reason: "Uploaded & Validated",
-                detectedText: finalDetectedText
-              });
-            } else {
-              resolve({
-                valid: true,
-                reason: "Uploaded & Validated (Manual Review Required)",
-                detectedText: "No readable text extracted from video before timeout. Video proof is attached for manual review."
-              });
-            }
+            resolve(evaluateVideoText(accumulatedText));
           }
         }, 20000);
 
@@ -1453,7 +1481,7 @@ const StudentInfo = () => {
           if (!w || !h) {
             clearTimeout(timeout);
             cleanup();
-            resolve({ valid: true, reason: "Uploaded & Validated" });
+            resolve({ valid: false, reason: "Video file resolution is invalid (0x0)." });
             return;
           }
 
@@ -1509,20 +1537,7 @@ const StudentInfo = () => {
                   ocrTriggered = true;
                   clearTimeout(timeout);
                   cleanup();
-                  const finalDetectedText = accumulatedText.join("\n\n");
-                  if (finalDetectedText) {
-                    resolve({
-                      valid: true,
-                      reason: "Uploaded & Validated",
-                      detectedText: finalDetectedText
-                    });
-                  } else {
-                    resolve({
-                      valid: true,
-                      reason: "Uploaded & Validated (Manual Review Required)",
-                      detectedText: "No readable text detected in video frames. Video proof is attached for manual review."
-                    });
-                  }
+                  resolve(evaluateVideoText(accumulatedText));
                 }
               })
               .catch(err => {
@@ -1533,20 +1548,7 @@ const StudentInfo = () => {
                   ocrTriggered = true;
                   clearTimeout(timeout);
                   cleanup();
-                  const finalDetectedText = accumulatedText.join("\n\n");
-                  if (finalDetectedText) {
-                    resolve({
-                      valid: true,
-                      reason: "Uploaded & Validated",
-                      detectedText: finalDetectedText
-                    });
-                  } else {
-                    resolve({
-                      valid: true,
-                      reason: "Uploaded & Validated (Manual Review Required)",
-                      detectedText: "Unable to extract text from video. Video proof is attached for manual review."
-                    });
-                  }
+                  resolve(evaluateVideoText(accumulatedText));
                 }
               });
           } catch (err) {
@@ -1557,11 +1559,7 @@ const StudentInfo = () => {
               ocrTriggered = true;
               clearTimeout(timeout);
               cleanup();
-              resolve({
-                valid: true,
-                reason: "Uploaded & Validated",
-                detectedText: accumulatedText.join("\n\n") || "Video frame analysis completed."
-              });
+              resolve(evaluateVideoText(accumulatedText));
             }
           }
         };
