@@ -517,11 +517,23 @@ function normalizeNameConfusions(s) {
 }
 
 function isSimilarWord(expected, actual) {
-  const dist = getLevenshteinDistance(expected, actual);
-  const maxLen = Math.max(expected.length, actual.length);
+  if (!expected || !actual) return false;
+  const expNorm = expected.toLowerCase();
+  const actNorm = actual.toLowerCase();
+  if (expNorm === actNorm) return true;
+
+  const dist = getLevenshteinDistance(expNorm, actNorm);
+  const maxLen = Math.max(expNorm.length, actNorm.length);
   if (maxLen === 0) return true;
   const similarity = (maxLen - dist) / maxLen;
-  return similarity >= 0.60 || dist <= 3;
+
+  if (maxLen <= 4) {
+    return dist === 0;
+  } else if (maxLen <= 6) {
+    return dist <= 1 && similarity >= 0.80;
+  } else {
+    return dist <= 2 && similarity >= 0.75;
+  }
 }
 
 function studentNameMatchesText(text, first, middle, last) {
@@ -2683,10 +2695,11 @@ const StudentInfo = () => {
               }
               const stdDev = Math.sqrt(varianceSum / count);
 
-              // Pure solid digital fill in content area: avg > 248 AND stdDev < 1.0 (zero-noise digital paint)
-              // OR solid black censoring block: avgGray < 15 AND stdDev < 1.0
-              const isArtificialWhitePatch = (avgR > 248 && avgG > 248 && avgB > 248 && stdDev < 1.0);
-              const isArtificialBlackPatch = (avgGray < 15 && stdDev < 1.0);
+              // Pure solid digital fill in content area:
+              // Digital white overlay box: avgR, avgG, avgB > 225 with stdDev < 7.5
+              // Digital black censor box: avgGray < 30 with stdDev < 4.0
+              const isArtificialWhitePatch = (avgR > 225 && avgG > 225 && avgB > 225 && stdDev < 7.5);
+              const isArtificialBlackPatch = (avgGray < 30 && stdDev < 4.0);
 
               if (isArtificialWhitePatch || isArtificialBlackPatch) {
                 suspiciousPatches++;
@@ -2694,10 +2707,10 @@ const StudentInfo = () => {
             }
           }
 
-          if (suspiciousPatches >= 25) {
+          if (suspiciousPatches >= 8) {
             resolve({
               edited: true,
-              reason: `Digital edit / overlay block detected on document (${suspiciousPatches} artificial overlay patches found). Please upload an unedited document.`,
+              reason: `Digital edit / overlay block detected on document (${suspiciousPatches} artificial overlay patches found). Please upload an authentic, unedited document.`,
               patchCount: suspiciousPatches
             });
             return;
@@ -2792,15 +2805,15 @@ const StudentInfo = () => {
           'Grades': 'grades_doc'
         };
         const rawResolved = await applicantAPI.resolveDocument(fieldMap[docType] || 'document', docParam);
+        const rawSourceForTamper = rawResolved || docParam;
+
+        if (docType !== 'SchoolID' && rawSourceForTamper) {
+          if (!silent) setStatus("Analyzing document authenticity & checking for digital edits...");
+          tamperCheck = await detectDocumentTampering(rawSourceForTamper);
+        }
+
         if (!silent) setStatus("Enhancing document contrast for OCR scanner...");
         resolvedParam = rawResolved ? await preprocessImageForOcr(rawResolved) : null;
-      }
-
-      // Pre-scan Document Tamper Check (Skipped for SchoolID)
-      let tamperCheck = { edited: false, reason: "Authentic document" };
-      if (docType !== 'SchoolID' && resolvedParam) {
-        if (!silent) setStatus("Analyzing document authenticity & checking for digital edits...");
-        tamperCheck = await detectDocumentTampering(resolvedParam);
       }
 
       if (tamperCheck.edited) {
