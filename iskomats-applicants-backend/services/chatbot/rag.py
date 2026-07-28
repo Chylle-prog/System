@@ -1,4 +1,13 @@
+import os
+import re
+import logging
+from pathlib import Path
 from services.chatbot.document_loader import DocumentLoader
+
+logger = logging.getLogger(__name__)
+
+def tokenize(text: str) -> list[str]:
+    return [w.lower() for w in re.findall(r'\w+', text or "") if len(w) >= 2]
 
 class RAGPipeline:
     def __init__(
@@ -6,50 +15,98 @@ class RAGPipeline:
         document_loader: DocumentLoader,
         persist_dir: str,
     ):
-        import chromadb
-        from chromadb.config import Settings
-
         self.loader = document_loader
-        self.client = chromadb.PersistentClient(
-            path=persist_dir,
-            settings=Settings(anonymized_telemetry=False),
-        )
-        self.collection = self.client.get_or_create_collection(
-            name="documents",
-            metadata={"hnsw:space": "cosine"},
-        )
+        self.persist_dir = persist_dir
+        self.chunks = []
+        self.chroma_collection = None
+        
+        # Load all document chunks into ultra-fast in-memory cache
+        self.reload_memory_cache()
+
+        try:
+            import chromadb
+            from chromadb.config import Settings
+            self.client = chromadb.PersistentClient(
+                path=persist_dir,
+                settings=Settings(anonymized_telemetry=False),
+            )
+            self.chroma_collection = self.client.get_or_create_collection(
+                name="documents",
+                metadata={"hnsw:space": "cosine"},
+            )
+        except Exception as e:
+            logger.warning(f"ChromaDB init note: {e}")
+
+    def reload_memory_cache(self):
+        try:
+            new_chunks = []
+            if self.loader and self.loader.documents_dir.exists():
+                for p in self.loader.documents_dir.glob("*"):
+                    if p.suffix.lower() in self.loader.SUPPORTED_EXTENSIONS:
+                        try:
+                            file_chunks = self.loader.load_file(str(p))
+                            for i, c in enumerate(file_chunks):
+                                new_chunks.append({
+                                    "id": f"{p.name}_{i}",
+                                    "content": c["content"],
+                                    "source": c["metadata"].get("source", p.name),
+                                    "tokens": set(tokenize(c["content"]))
+                                })
+                        except Exception as e:
+                            logger.warning(f"Error loading {p}: {e}")
+            self.chunks = new_chunks
+            logger.info(f"Loaded {len(self.chunks)} document chunks into sub-millisecond memory cache.")
+        except Exception as e:
+            logger.error(f"Failed to reload memory cache: {e}")
 
     def add_document(self, filename: str, file_path: str) -> int:
         chunks = self.loader.load_file(file_path)
         if not chunks:
             return 0
 
-        ids = []
-        documents = []
-        metadatas = []
-
         for i, chunk in enumerate(chunks):
-            doc_id = f"{filename}_{i}"
-            ids.append(doc_id)
-            documents.append(chunk["content"])
-            metadatas.append(chunk["metadata"])
+            self.chunks.append({
+                "id": f"{filename}_{i}",
+                "content": chunk["content"],
+                "source": chunk["metadata"].get("source", filename),
+                "tokens": set(tokenize(chunk["content"]))
+            })
 
-        self.collection.upsert(
-            ids=ids,
-            documents=documents,
-            metadatas=metadatas,
-        )
+        if self.chroma_collection:
+            try:
+                ids = [f"{filename}_{i}" for i in range(len(chunks))]
+                documents = [c["content"] for c in chunks]
+                metadatas = [c["metadata"] for c in chunks]
+                self.chroma_collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
+            except Exception as e:
+                logger.warning(f"ChromaDB upsert note: {e}")
+
         return len(chunks)
 
-    def search(self, query: str, n_results: int = 5) -> list[dict]:
-        results = self.collection.query(query_texts=[query], n_results=n_results)
+    def search(self, query: str, n_results: int = 3) -> list[dict]:
+        query_tokens = tokenize(query)
+        if not query_tokens or not self.chunks:
+            return []
 
-        docs = []
-        if results and results["documents"]:
-            for i, doc in enumerate(results["documents"][0]):
-                source = results["metadatas"][0][i].get("source", "unknown")
-                docs.append({"content": doc, "source": source})
-        return docs
+        scored = []
+        query_lower = query.lower()
+        for chunk in self.chunks:
+            chunk_tokens = chunk["tokens"]
+            matches = sum(1 for qt in query_tokens if qt in chunk_tokens)
+            if matches > 0:
+                content_lower = chunk["content"].lower()
+                phrase_bonus = 3 if query_lower in content_lower else 0
+                score = matches + phrase_bonus
+                scored.append((score, chunk))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        results = [item[1] for item in scored[:n_results]]
+
+        if not results and self.chunks:
+            # If no direct keyword match, fall back to top 2 general guidance chunks
+            results = self.chunks[:2]
+
+        return [{"content": r["content"], "source": r["source"]} for r in results]
 
     def get_context(self, query: str) -> str:
         results = self.search(query, n_results=3)
@@ -62,12 +119,13 @@ class RAGPipeline:
         return "\n\n---\n\n".join(context_parts)
 
     def get_stats(self) -> dict:
-        count = self.collection.count()
-        return {"total_chunks": count}
+        return {"total_chunks": len(self.chunks)}
 
     def clear(self):
-        self.client.delete_collection("documents")
-        self.collection = self.client.get_or_create_collection(
-            name="documents",
-            metadata={"hnsw:space": "cosine"},
-        )
+        self.chunks = []
+        if self.chroma_collection:
+            try:
+                self.client.delete_collection("documents")
+                self.chroma_collection = self.client.get_or_create_collection(name="documents")
+            except Exception:
+                pass
