@@ -1024,6 +1024,7 @@ function addressMatchesText(text, expectedAddr) {
   const sigWords = words.filter(w => !['barangay', 'brgy', 'bgy', 'city', 'municipality', 'town'].includes(w));
   if (sigWords.length === 0) return true;
 
+  const searchArea = targetText || normText;
   return sigWords.every(w => new RegExp('\\b' + w + '\\b').test(searchArea) || searchArea.includes(w));
 }
 
