@@ -757,7 +757,7 @@ function studentIdNoMatchesText(targetId, text) {
       .replace(/[aA]/g, '4')
       .replace(/[sS]/g, '5')
       .replace(/[gGqQ]/g, '6')
-      .replace(/[tT]/g, '7')
+      .replace(/[tT7]/g, '7')
       .replace(/[bB8]/g, '8')
       .replace(/[^0-9]/g, '');
   };
@@ -773,11 +773,12 @@ function studentIdNoMatchesText(targetId, text) {
 
     // Glare / trailing character artifact tolerance for matching IDs of length >= 6 digits
     if (tDigits.length >= 6) {
-      if (cDigits.length >= 6 && Math.abs(cDigits.length - tDigits.length) <= 1) {
+      if (cDigits.length >= 6 && Math.abs(cDigits.length - tDigits.length) <= 2) {
         if (cDigits.startsWith(tDigits) || tDigits.startsWith(cDigits)) return true;
         if (cMapped.startsWith(tDigits) || tDigits.startsWith(cMapped)) return true;
-        if (getLevenshteinDistance(cDigits, tDigits) <= 1) return true;
-        if (getLevenshteinDistance(cMapped, tDigits) <= 1) return true;
+        if (cDigits.includes(tDigits) || tDigits.includes(cDigits)) return true;
+        if (getLevenshteinDistance(cDigits, tDigits) <= 2) return true;
+        if (getLevenshteinDistance(cMapped, tDigits) <= 2) return true;
       }
     }
     return false;
@@ -794,6 +795,18 @@ function studentIdNoMatchesText(targetId, text) {
 
   for (const seq of ocrTokens) {
     if (isMatchingIdSeq(seq)) {
+      return true;
+    }
+  }
+
+  // 3. Raw digit stream check (for when OCR breaks token boundaries due to spaces/lines)
+  const allDigits = digitsOnly(text);
+  if (tDigits.length >= 6 && allDigits.includes(tDigits)) {
+    return true;
+  }
+  if (tDigits.length >= 7) {
+    const prefixId = tDigits.slice(0, tDigits.length - 1);
+    if (allDigits.includes(prefixId)) {
       return true;
     }
   }
@@ -7520,207 +7533,216 @@ const StudentInfo = () => {
                   </label>
                 </div>
 
-                {/* Signature Section */}
-                <div style={{ marginBottom: '2rem' }}>
-                  <label style={{ display: 'block', fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '1rem' }}>
-                    Signature & Additional Identification <span style={{ color: '#e74c3c' }}>*</span>
-                  </label>
+                {/* Signature Section & Face Verification - Dynamically adjusted based on Admin ID requirement */}
+                {(() => {
+                  const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
+                  const isNationalId = idType === 'National ID';
 
-                  {/* Reference Back ID Card */}
-                  <div style={{ background: '#fff', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e1e8f0', marginBottom: '1.5rem', boxShadow: '0 4px 15px rgba(0,0,0,0.03)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                      <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#1a202c' }}>REFERENCE SOURCE</label>
-                      <div style={{ fontSize: '0.65rem', color: '#6366f1', fontWeight: '800', background: '#eef2ff', padding: '3px 8px', borderRadius: '6px' }}>BACK ID</div>
-                    </div>
-                    <div style={{ height: '220px', border: '2px dashed #cbd5e1', borderRadius: '15px', overflow: 'hidden', background: '#f8fafc', position: 'relative' }}>
-                      {(schoolIdPhotos.back || formData.schoolIdBack || photos.id_back) ? (
-                        <img src={getVerificationDocumentSource(schoolIdPhotos.back, formData.schoolIdBack, photos.id_back)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="Reference Back ID" />
-                      ) : (
-                        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', textAlign: 'center', padding: '1rem' }}>
-                          <i className="fas fa-id-card" style={{ fontSize: '2rem', marginBottom: '10px' }}></i>
-                          <p style={{ fontSize: '0.75rem', fontWeight: '600', margin: 0 }}>Back ID Not Available<br /><span style={{ fontSize: '0.65rem', fontWeight: 'normal' }}>Please upload in Step 3</span></p>
+                  return (
+                    <>
+                      {/* Signature Section (Only required for School ID, hidden for National ID) */}
+                      {!isNationalId && (
+                        <div style={{ marginBottom: '2rem' }}>
+                          <label style={{ display: 'block', fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '1rem' }}>
+                            Signature & Additional Identification <span style={{ color: '#e74c3c' }}>*</span>
+                          </label>
+
+                          {/* Reference Back ID Card */}
+                          <div style={{ background: '#fff', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e1e8f0', marginBottom: '1.5rem', boxShadow: '0 4px 15px rgba(0,0,0,0.03)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#1a202c' }}>REFERENCE SOURCE</label>
+                              <div style={{ fontSize: '0.65rem', color: '#6366f1', fontWeight: '800', background: '#eef2ff', padding: '3px 8px', borderRadius: '6px' }}>BACK ID</div>
+                            </div>
+                            <div style={{ height: '220px', border: '2px dashed #cbd5e1', borderRadius: '15px', overflow: 'hidden', background: '#f8fafc', position: 'relative' }}>
+                              {(schoolIdPhotos.back || formData.schoolIdBack || photos.id_back) ? (
+                                <img src={getVerificationDocumentSource(schoolIdPhotos.back, formData.schoolIdBack, photos.id_back)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="Reference Back ID" />
+                              ) : (
+                                <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', textAlign: 'center', padding: '1rem' }}>
+                                  <i className="fas fa-id-card" style={{ fontSize: '2rem', marginBottom: '10px' }}></i>
+                                  <p style={{ fontSize: '0.75rem', fontWeight: '600', margin: 0 }}>Back ID Not Available<br /><span style={{ fontSize: '0.65rem', fontWeight: 'normal' }}>Please upload in Step 3</span></p>
+                                </div>
+                              )}
+                            </div>
+                            <p style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.75rem', fontStyle: 'italic', textAlign: 'center' }}>We will match your drawn signature against the official signature on the back of your ID.</p>
+                          </div>
+
+                          <div style={{ display: 'block' }}>
+                            {/* Signature Column */}
+                            <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: '16px', padding: '1.5rem', textAlign: 'center', width: '100%' }}>
+                              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#666', marginBottom: '1rem' }}>Drawer Signature</label>
+                              {!showSignaturePad && !formData.applicantSignatureName ? (
+                                <button type="button" onClick={() => setShowSignaturePad(true)} className="photo-option-btn" style={{ margin: '0 auto' }}>
+                                  <i className="fas fa-pen-nib"></i> Sign Application
+                                </button>
+                              ) : showSignaturePad ? (
+                                <div style={{ width: '100%', maxWidth: '800px', margin: '0 auto' }}>
+                                  <div ref={signatureContainerRef} style={{ border: '1.5px solid #eee', borderRadius: '12px', background: '#fcfcfc', marginBottom: '1rem', overflow: 'hidden', height: '180px' }}>
+                                    <SignaturePad
+                                      ref={sigPad}
+                                      canvasProps={{
+                                        className: 'sigCanvas',
+                                        style: { width: '100%', height: '100%', display: 'block' }
+                                      }}
+                                    />
+                                  </div>
+                                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                    <button type="button" onClick={clearSignature} className="back-to-form-btn" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem' }}>Clear</button>
+                                    <button type="button" onClick={saveSignature} className="submit-btn" style={{ width: 'auto', padding: '0.4rem 1.2rem', height: 'auto', fontSize: '0.8rem' }}>Save</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div style={{ width: '100%', maxWidth: '800px', margin: '0 auto' }}>
+                                  <div className="signature-preview-box" style={{ maxWidth: '100%' }}>
+                                    <img src={formData.applicantSignatureName} alt="Signature" style={{ maxHeight: '120px' }} />
+                                    {!isAnyScanning && <button type="button" onClick={() => setShowSignaturePad(true)} style={{ position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer' }}><i className="fas fa-undo"></i></button>}
+                                  </div>
+
+                                  <div style={{ marginTop: '1rem' }}>
+                                    <button
+                                      type="button"
+                                      onClick={handleSignatureScan}
+                                      disabled={signatureVerified === 'verifying' || !(schoolIdPhotos.back || formData.schoolIdBack || photos.id_back)}
+                                      style={{
+                                        width: '100%',
+                                        padding: '0.6rem',
+                                        borderRadius: '10px',
+                                        background: signatureVerified === 'success' ? '#10b981' : (signatureVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
+                                        color: 'white',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        fontSize: '0.8rem',
+                                        fontWeight: '700',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '8px',
+                                        transition: 'all 0.2s ease'
+                                      }}
+                                    >
+                                      <i className={`fas ${signatureVerified === 'verifying' ? 'fa-spinner fa-spin' : (signatureVerified === 'success' ? 'fa-check-circle' : 'fa-signature')}`}></i>
+                                      {signatureVerified === 'verifying' ? 'Matching...' : (signatureVerified === 'success' ? 'Verified!' : 'Verify Handwriting')}
+                                    </button>
+
+                                    {signatureResults && (
+                                      <div style={{
+                                        marginTop: '20px',
+                                        background: '#f8fafc',
+                                        border: '1px solid #e2e8f0',
+                                        borderRadius: '16px',
+                                        padding: '1.2rem',
+                                        boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
+                                      }}>
+                                        <h5 style={{ margin: '0 0 10px 0', fontSize: '0.85rem', fontWeight: '800', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          <i className="fas fa-signature" style={{ color: 'var(--primary)' }}></i> AUTHENTICITY ANALYSIS
+                                        </h5>
+
+                                        <div style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '10px',
+                                          marginBottom: '15px'
+                                        }}>
+                                          <div style={{
+                                            background: signatureResults.verified ? '#10b981' : '#ef4444',
+                                            color: 'white',
+                                            fontSize: '0.65rem',
+                                            fontWeight: '900',
+                                            padding: '4px 10px',
+                                            borderRadius: '20px',
+                                            letterSpacing: '0.5px'
+                                          }}>
+                                            {signatureResults.verified ? 'VERIFIED' : 'MISMATCH'}
+                                          </div>
+                                          <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#64748b' }}>
+                                            Confidence Score: {signatureResults.confidence.toFixed(1)}%
+                                          </div>
+                                        </div>
+
+                                        <div style={{
+                                          display: 'grid',
+                                          gridTemplateColumns: '1fr 1fr',
+                                          gap: '12px',
+                                          marginBottom: '15px'
+                                        }}>
+                                          <div style={{ textAlign: 'center' }}>
+                                            <span style={{ fontSize: '0.6rem', color: '#94a3b8', display: 'block', marginBottom: '4px', fontWeight: '700' }}>ORIGINAL (ID)</span>
+                                            <div style={{ background: 'white', border: '1px solid #f1f5f9', borderRadius: '8px', padding: '6px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                              <img src={signatureResults.extracted_signature} alt="ID Signature" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                                            </div>
+                                          </div>
+                                          <div style={{ textAlign: 'center' }}>
+                                            <span style={{ fontSize: '0.6rem', color: '#94a3b8', display: 'block', marginBottom: '4px', fontWeight: '700' }}>LIVE CAPTURE</span>
+                                            <div style={{ background: 'white', border: '1px solid #f1f5f9', borderRadius: '8px', padding: '6px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                              <img src={signatureResults.processed_submitted} alt="Live Signature" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <div style={{ marginBottom: '15px' }}>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                            <span style={{ fontSize: '0.65rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>MATCHER ZOOM (Normalized for comparison)</span>
+                                            <div style={{ fontSize: '0.6rem', color: '#3b82f6', background: '#eff6ff', padding: '2px 6px', borderRadius: '4px', fontWeight: '700' }}>ALGORITHM VIEW</div>
+                                          </div>
+                                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px', textAlign: 'center' }}>
+                                              <p style={{ fontSize: '0.55rem', color: '#94a3b8', marginBottom: '4px', fontWeight: '700' }}>SUBMITTED</p>
+                                              {signatureResults.matcher_submitted ? (
+                                                <img src={signatureResults.matcher_submitted} alt="Matcher Sub" style={{ width: '100%', height: '50px', objectFit: 'contain' }} />
+                                              ) : <div style={{ height: '50px', background: '#eee' }}></div>}
+                                            </div>
+                                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px', textAlign: 'center' }}>
+                                              <p style={{ fontSize: '0.55rem', color: '#94a3b8', marginBottom: '4px', fontWeight: '700' }}>REFERENCE</p>
+                                              {signatureResults.matcher_reference ? (
+                                                <img src={signatureResults.matcher_reference} alt="Matcher Ref" style={{ width: '100%', height: '50px', objectFit: 'contain' }} />
+                                              ) : <div style={{ height: '50px', background: '#eee' }}></div>}
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <div style={{
+                                          background: 'white',
+                                          padding: '10px',
+                                          borderRadius: '10px',
+                                          borderLeft: `3px solid ${signatureResults.verified ? '#10b981' : '#ef4444'}`,
+                                          fontSize: '0.7rem',
+                                          color: '#475569',
+                                          lineHeight: '1.4',
+                                          marginBottom: '15px'
+                                        }}>
+                                          {signatureResults.message}
+                                        </div>
+
+                                        {/* Complexity Metrics */}
+                                        <div style={{ marginBottom: '15px' }}>
+                                          <span style={{ fontSize: '0.65rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', display: 'block', marginBottom: '8px', textAlign: 'left' }}>Complexity Metrics</span>
+                                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                            <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 10px', textAlign: 'center' }}>
+                                              <p style={{ fontSize: '0.55rem', color: '#94a3b8', margin: '0 0 2px 0', fontWeight: '700' }}>INK MASS</p>
+                                              <p style={{ fontSize: '0.75rem', fontWeight: '700', color: '#1e293b', margin: 0 }}>{signatureStats.inkMass} px</p>
+                                            </div>
+                                            <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 10px', textAlign: 'center' }}>
+                                              <p style={{ fontSize: '0.55rem', color: '#94a3b8', margin: '0 0 2px 0', fontWeight: '700' }}>JUNCTIONS</p>
+                                              <p style={{ fontSize: '0.75rem', fontWeight: '700', color: '#1e293b', margin: 0 }}>{signatureStats.junctions}</p>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       )}
-                    </div>
-                    <p style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.75rem', fontStyle: 'italic', textAlign: 'center' }}>We will match your drawn signature against the official signature on the back of your ID.</p>
-                  </div>
 
-                  <div style={{ display: 'block' }}>
-                    {/* Signature Column */}
-                    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: '16px', padding: '1.5rem', textAlign: 'center', width: '100%' }}>
-                      <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#666', marginBottom: '1rem' }}>Drawer Signature</label>
-                      {!showSignaturePad && !formData.applicantSignatureName ? (
-                        <button type="button" onClick={() => setShowSignaturePad(true)} className="photo-option-btn" style={{ margin: '0 auto' }}>
-                          <i className="fas fa-pen-nib"></i> Sign Application
-                        </button>
-                      ) : showSignaturePad ? (
-                        <div style={{ width: '100%', maxWidth: '800px', margin: '0 auto' }}>
-                          <div ref={signatureContainerRef} style={{ border: '1.5px solid #eee', borderRadius: '12px', background: '#fcfcfc', marginBottom: '1rem', overflow: 'hidden', height: '180px' }}>
-                            <SignaturePad
-                              ref={sigPad}
-                              canvasProps={{
-                                className: 'sigCanvas',
-                                style: { width: '100%', height: '100%', display: 'block' }
-                              }}
-                            />
-                          </div>
-                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                            <button type="button" onClick={clearSignature} className="back-to-form-btn" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem' }}>Clear</button>
-                            <button type="button" onClick={saveSignature} className="submit-btn" style={{ width: 'auto', padding: '0.4rem 1.2rem', height: 'auto', fontSize: '0.8rem' }}>Save</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{ width: '100%', maxWidth: '800px', margin: '0 auto' }}>
-                          <div className="signature-preview-box" style={{ maxWidth: '100%' }}>
-                            <img src={formData.applicantSignatureName} alt="Signature" style={{ maxHeight: '120px' }} />
-                            {!isAnyScanning && <button type="button" onClick={() => setShowSignaturePad(true)} style={{ position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer' }}><i className="fas fa-undo"></i></button>}
-                          </div>
-
-                          <div style={{ marginTop: '1rem' }}>
-                            <button
-                              type="button"
-                              onClick={handleSignatureScan}
-                              disabled={signatureVerified === 'verifying' || !(schoolIdPhotos.back || formData.schoolIdBack || photos.id_back)}
-                              style={{
-                                width: '100%',
-                                padding: '0.6rem',
-                                borderRadius: '10px',
-                                background: signatureVerified === 'success' ? '#10b981' : (signatureVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
-                                color: 'white',
-                                border: 'none',
-                                cursor: 'pointer',
-                                fontSize: '0.8rem',
-                                fontWeight: '700',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '8px',
-                                transition: 'all 0.2s ease'
-                              }}
-                            >
-                              <i className={`fas ${signatureVerified === 'verifying' ? 'fa-spinner fa-spin' : (signatureVerified === 'success' ? 'fa-check-circle' : 'fa-signature')}`}></i>
-                              {signatureVerified === 'verifying' ? 'Matching...' : (signatureVerified === 'success' ? 'Verified!' : 'Verify Handwriting')}
-                            </button>
-
-                            {signatureResults && (
-                              <div style={{
-                                marginTop: '20px',
-                                background: '#f8fafc',
-                                border: '1px solid #e2e8f0',
-                                borderRadius: '16px',
-                                padding: '1.2rem',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
-                              }}>
-                                <h5 style={{ margin: '0 0 10px 0', fontSize: '0.85rem', fontWeight: '800', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <i className="fas fa-signature" style={{ color: 'var(--primary)' }}></i> AUTHENTICITY ANALYSIS
-                                </h5>
-
-                                <div style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '10px',
-                                  marginBottom: '15px'
-                                }}>
-                                  <div style={{
-                                    background: signatureResults.verified ? '#10b981' : '#ef4444',
-                                    color: 'white',
-                                    fontSize: '0.65rem',
-                                    fontWeight: '900',
-                                    padding: '4px 10px',
-                                    borderRadius: '20px',
-                                    letterSpacing: '0.5px'
-                                  }}>
-                                    {signatureResults.verified ? 'VERIFIED' : 'MISMATCH'}
-                                  </div>
-                                  <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#64748b' }}>
-                                    Confidence Score: {signatureResults.confidence.toFixed(1)}%
-                                  </div>
-                                </div>
-
-                                <div style={{
-                                  display: 'grid',
-                                  gridTemplateColumns: '1fr 1fr',
-                                  gap: '12px',
-                                  marginBottom: '15px'
-                                }}>
-                                  <div style={{ textAlign: 'center' }}>
-                                    <span style={{ fontSize: '0.6rem', color: '#94a3b8', display: 'block', marginBottom: '4px', fontWeight: '700' }}>ORIGINAL (ID)</span>
-                                    <div style={{ background: 'white', border: '1px solid #f1f5f9', borderRadius: '8px', padding: '6px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                      <img src={signatureResults.extracted_signature} alt="ID Signature" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-                                    </div>
-                                  </div>
-                                  <div style={{ textAlign: 'center' }}>
-                                    <span style={{ fontSize: '0.6rem', color: '#94a3b8', display: 'block', marginBottom: '4px', fontWeight: '700' }}>LIVE CAPTURE</span>
-                                    <div style={{ background: 'white', border: '1px solid #f1f5f9', borderRadius: '8px', padding: '6px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                      <img src={signatureResults.processed_submitted} alt="Live Signature" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div style={{ marginBottom: '15px' }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                    <span style={{ fontSize: '0.65rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>MATCHER ZOOM (Normalized for comparison)</span>
-                                    <div style={{ fontSize: '0.6rem', color: '#3b82f6', background: '#eff6ff', padding: '2px 6px', borderRadius: '4px', fontWeight: '700' }}>ALGORITHM VIEW</div>
-                                  </div>
-                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px', textAlign: 'center' }}>
-                                      <p style={{ fontSize: '0.55rem', color: '#94a3b8', marginBottom: '4px', fontWeight: '700' }}>SUBMITTED</p>
-                                      {signatureResults.matcher_submitted ? (
-                                        <img src={signatureResults.matcher_submitted} alt="Matcher Sub" style={{ width: '100%', height: '50px', objectFit: 'contain' }} />
-                                      ) : <div style={{ height: '50px', background: '#eee' }}></div>}
-                                    </div>
-                                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px', textAlign: 'center' }}>
-                                      <p style={{ fontSize: '0.55rem', color: '#94a3b8', marginBottom: '4px', fontWeight: '700' }}>REFERENCE</p>
-                                      {signatureResults.matcher_reference ? (
-                                        <img src={signatureResults.matcher_reference} alt="Matcher Ref" style={{ width: '100%', height: '50px', objectFit: 'contain' }} />
-                                      ) : <div style={{ height: '50px', background: '#eee' }}></div>}
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div style={{
-                                  background: 'white',
-                                  padding: '10px',
-                                  borderRadius: '10px',
-                                  borderLeft: `3px solid ${signatureResults.verified ? '#10b981' : '#ef4444'}`,
-                                  fontSize: '0.7rem',
-                                  color: '#475569',
-                                  lineHeight: '1.4',
-                                  marginBottom: '15px'
-                                }}>
-                                  {signatureResults.message}
-                                </div>
-
-                                {/* Complexity Metrics */}
-                                <div style={{ marginBottom: '15px' }}>
-                                  <span style={{ fontSize: '0.65rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', display: 'block', marginBottom: '8px', textAlign: 'left' }}>Complexity Metrics</span>
-                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                    <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 10px', textAlign: 'center' }}>
-                                      <p style={{ fontSize: '0.55rem', color: '#94a3b8', margin: '0 0 2px 0', fontWeight: '700' }}>INK MASS</p>
-                                      <p style={{ fontSize: '0.75rem', fontWeight: '700', color: '#1e293b', margin: 0 }}>{signatureStats.inkMass} px</p>
-                                    </div>
-                                    <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 10px', textAlign: 'center' }}>
-                                      <p style={{ fontSize: '0.55rem', color: '#94a3b8', margin: '0 0 2px 0', fontWeight: '700' }}>JUNCTIONS</p>
-                                      <p style={{ fontSize: '0.75rem', fontWeight: '700', color: '#1e293b', margin: 0 }}>{signatureStats.junctions}</p>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Face Verification Section */}
-                {signatureVerified === 'success' ? (
-                  <div style={{ marginBottom: '2rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0', animation: 'fadeIn 0.5s ease' }}>
-                    <h4 style={{ fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px' }}>
-                      Final Identity Verification <span style={{ color: '#e74c3c' }}>*</span>
-                    </h4>
-                    <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '1.2rem', paddingLeft: '16px' }}>Match captured photo with your School ID</p>
+                      {/* Face Verification Section (Unlocked directly for National ID, or when signatureVerified === 'success' for School ID) */}
+                      {(isNationalId || signatureVerified === 'success') ? (
+                        <div style={{ marginBottom: '2rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0', animation: 'fadeIn 0.5s ease' }}>
+                          <h4 style={{ fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px' }}>
+                            Final Identity Verification <span style={{ color: '#e74c3c' }}>*</span>
+                          </h4>
+                          <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '1.2rem', paddingLeft: '16px' }}>{isNationalId ? 'Match captured photo with your National ID' : 'Match captured photo with your School ID'}</p>
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem', alignItems: 'flex-start' }}>
                       {/* Reference ID Column */}
@@ -7937,6 +7959,9 @@ const StudentInfo = () => {
                     </p>
                   </div>
                 )}
+                    </>
+                  );
+                })()}
 
                 <div style={{ marginTop: '3rem', display: 'flex', justifyContent: 'space-between' }}>
                   <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
