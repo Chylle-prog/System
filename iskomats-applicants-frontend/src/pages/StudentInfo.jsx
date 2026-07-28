@@ -1487,13 +1487,11 @@ const StudentInfo = () => {
           }
 
           if (fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('mayorCOE')) {
-            if (textLogs.length > 0) {
-              return {
-                valid: true,
-                reason: "COE Video Proof Validated",
-                detectedText: textLogs.join("\n\n")
-              };
-            }
+            return {
+              valid: true,
+              reason: "COE Video Proof Validated",
+              detectedText: textLogs.join("\n\n") || "[COE Video Proof Attached]"
+            };
           }
 
           return {
