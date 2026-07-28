@@ -2949,7 +2949,7 @@ const StudentInfo = () => {
           }
 
           const requiredUnits = scholarshipDetails?.units ? parseInt(scholarshipDetails.units) : null;
-          const unitsOk = requiredUnits ? (detectedUnits !== null && detectedUnits >= requiredUnits) : true;
+          const unitsOk = requiredUnits ? (detectedUnits !== null && detectedUnits === requiredUnits) : true;
 
           isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk && yrOk && videoOk && coeTypeOk && unitsOk;
           scoreDetails = {
@@ -2967,7 +2967,7 @@ const StudentInfo = () => {
           };
           finalMessage = isSuccess
             ? "Enrollment verified successfully client-side!"
-            : (!videoOk ? (videoCheck?.reason || "Enrollment video proof failed validation.") : (!unitsOk ? `Units requirement mismatch: document shows ${detectedUnits || 0} units, scholarship requires ${requiredUnits}.` : "Enrollment verification mismatch."));
+            : (!videoOk ? (videoCheck?.reason || "Enrollment video proof failed validation.") : (!unitsOk ? `Units requirement mismatch: document shows ${detectedUnits || 0} units, scholarship requires exactly ${requiredUnits} units.` : "Enrollment verification mismatch."));
           resultsList = [{ doc: 'Enrollment', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
         }
         else if (docType === 'Grades') {
