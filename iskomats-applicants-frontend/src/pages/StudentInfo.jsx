@@ -1011,6 +1011,12 @@ function gpaMatchesText(text, expectedGpa) {
   return false;
 }
 
+// Known alternate spellings for barangay names that may appear on national IDs
+const BARANGAY_ALIASES = {
+  'inosluban': ['inosloban'],
+  'inosloban': ['inosluban'],
+};
+
 function addressMatchesText(text, expectedAddr) {
   if (!expectedAddr) return true;
   const normText = normalizeForOcr(text);
@@ -1021,11 +1027,27 @@ function addressMatchesText(text, expectedAddr) {
 
   if (targetText.includes(normAddr) || normText.includes(normAddr)) return true;
 
+  // Check barangay alias variants (e.g. Inosluban <-> Inosloban)
+  const aliases = BARANGAY_ALIASES[normAddr] || [];
+  for (const alias of aliases) {
+    if (targetText.includes(alias) || normText.includes(alias)) return true;
+  }
+
   const words = normAddr.split(' ').filter(w => w.length > 2);
   const sigWords = words.filter(w => !['barangay', 'brgy', 'bgy', 'city', 'municipality', 'town'].includes(w));
   if (sigWords.length === 0) return true;
 
   const searchArea = targetText || normText;
+
+  // Also check aliases word-by-word
+  for (const alias of aliases) {
+    const aliasWords = alias.split(' ').filter(w => w.length > 2)
+      .filter(w => !['barangay', 'brgy', 'bgy', 'city', 'municipality', 'town'].includes(w));
+    if (aliasWords.length > 0 && aliasWords.every(w => new RegExp('\\b' + w + '\\b').test(searchArea) || searchArea.includes(w))) {
+      return true;
+    }
+  }
+
   return sigWords.every(w => new RegExp('\\b' + w + '\\b').test(searchArea) || searchArea.includes(w));
 }
 
