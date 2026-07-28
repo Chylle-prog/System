@@ -2002,16 +2002,27 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
         if 'inosloban' in addr_clean or 'inosluban' in addr_clean or 'inosl' in addr_clean:
             addr_words.extend(['inosloban', 'inosluban'])
 
-        if addr_words:
-            addr_ok = any(w in doc_norm for w in addr_words)
-            if not addr_ok:
-                failures.append(f"Address/Barangay mismatch (Expected: '{expected_address}' in Indigency Certificate)")
+    # DOCUMENT TYPE KEYWORD MATCHING
+    is_residency_doc = kwargs.get('is_residency_doc') or kwargs.get('isResidencyDoc') or False
+    doc_norm = normalize_text(raw_text)
 
-    success = first_ok and middle_ok and last_ok and sequence_ok and addr_ok
-    if success:
-        msg = f"Indigency Certificate Verified: Name ({first_name} {middle_name or ''} {last_name}) matched."
+    if is_residency_doc:
+        residency_keywords = ['residency', 'resident', 'residing', 'pagkapamayanan', 'naninirahan', 'maninirahan', 'pamayanan']
+        doc_type_ok = any(k in doc_norm for k in residency_keywords)
+        if not doc_type_ok:
+            failures.append("Document Type Mismatch: Certificate does not contain required 'Residency' / 'Resident' keywords")
     else:
-        msg = "Indigency Verification Failed: " + "; ".join(failures)
+        indigency_keywords = ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang']
+        doc_type_ok = any(k in doc_norm for k in indigency_keywords)
+        if not doc_type_ok:
+            failures.append("Document Type Mismatch: Certificate does not contain required 'Indigency' / 'Indigent' keywords")
+
+    success = first_ok and middle_ok and last_ok and sequence_ok and addr_ok and doc_type_ok
+    if success:
+        doc_name = "Residency Certificate" if is_residency_doc else "Indigency Certificate"
+        msg = f"{doc_name} Verified: Name ({first_name} {middle_name or ''} {last_name}) and document type matched."
+    else:
+        msg = "Indigency/Residency Verification Failed: " + "; ".join(failures)
 
     meta['name_ok'] = first_ok and middle_ok and last_ok and sequence_ok
     meta['details'] = failures

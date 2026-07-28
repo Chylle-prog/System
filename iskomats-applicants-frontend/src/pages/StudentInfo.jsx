@@ -3535,10 +3535,12 @@ const StudentInfo = () => {
           const _reqTypeStr = String(extraParams.isResidencyDoc !== undefined ? extraParams.isResidencyDoc : (scholarshipDetails?.residencyDocType || scholarshipDetails?.residency_doc_type || '')).toLowerCase();
           const _isResDoc = extraParams.isResidencyDoc === true || _reqTypeStr.includes('residency') || _reqTypeStr === 'true';
 
-          const _requiredDocKeywords = _isResDoc ? ['residency', 'resident'] : ['indigency', 'indigent'];
-          const hasRequiredDocKeyword = _requiredDocKeywords.some(k => combinedText.includes(k));
+          const _requiredDocKeywords = _isResDoc
+            ? ['residency', 'resident', 'residing', 'pagkapamayanan', 'naninirahan', 'maninirahan', 'pamayanan']
+            : ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang'];
+          const hasRequiredDocKeyword = _requiredDocKeywords.some(k => docOnlyText.toLowerCase().includes(k) || combinedText.includes(k));
 
-          // Pass document if required keyword is present (even if both residency & indigency words appear on document)
+          // Pass document if required keyword is present
           const docTypeOk = hasRequiredDocKeyword;
           const docLabel = _isResDoc ? 'Certificate of Residency' : 'Certificate of Indigency';
 
@@ -4035,6 +4037,7 @@ const StudentInfo = () => {
         if (!jsonData['street_brgy']) {
           jsonData['street_brgy'] = fullAddress;
           payload.append('street_brgy', fullAddress);
+          hasPayload = true;
         }
         continue;
       }
@@ -4274,6 +4277,11 @@ const StudentInfo = () => {
         const token = localStorage.getItem('authToken');
         const apiOrigin = API_ORIGIN;
 
+        const targetBarangay = profile.street_brgy || profile.streetBarangay || profile.barangay || scholarshipSearchProfile?.street_brgy;
+        const targetTown = profile.town_city_municipality || profile.townCity || scholarshipSearchProfile?.town_city_municipality;
+        const targetProvince = profile.province || scholarshipSearchProfile?.province;
+        const targetZip = profile.zip_code || profile.zipCode || scholarshipSearchProfile?.zip_code;
+
         const updates = {
           firstName: targetFirstName,
           lastName: targetLastName,
@@ -4284,7 +4292,7 @@ const StudentInfo = () => {
           sex: profile.sex === 'M' ? 'Male' : profile.sex === 'F' ? 'Female' : (profile.sex || ''),
           citizenship: profile.citizenship || '',
           schoolIdNumber: profile.school_id_no || '',
-          schoolName: normalizeSelectValue(scholarshipSearchProfile?.university || profile.school, SCHOOLS),
+          schoolName: normalizeSelectValue(profile.school || scholarshipSearchProfile?.university, SCHOOLS),
           schoolAddress: profile.school_address || '',
           schoolSector: profile.school_sector || '',
           mobileNumber: profile.mobile_no || '',
@@ -4299,25 +4307,17 @@ const StudentInfo = () => {
           motherName: profile.mother_name || '',
           motherOccupation: profile.mother_occupation || '',
           motherPhoneNumber: profile.mother_phone_no || '',
-          parentsGrossIncome: urlIncome || scholarshipSearchProfile?.income || profile.financial_income_of_parents || '',
-          gpa: savedDraft?.formData?.gpa || urlGpa || scholarshipSearchProfile?.gpa || profile.overall_gpa || '',
+          parentsGrossIncome: profile.financial_income_of_parents || urlIncome || scholarshipSearchProfile?.income || '',
+          gpa: profile.overall_gpa || savedDraft?.formData?.gpa || urlGpa || scholarshipSearchProfile?.gpa || '',
           numberOfSiblings: profile.sibling_no || '',
           course: profile.course || '',
           meritsAwardsReceived: profile.merits_awards_received || ''
         };
 
-        if (scholarshipSearchProfile?.street_brgy || profile.street_brgy || profile.streetBarangay) {
-          updates.barangay = normalizeSelectValue(scholarshipSearchProfile?.street_brgy || profile.street_brgy || profile.streetBarangay, BARANGAYS);
-        }
-        if (scholarshipSearchProfile?.town_city_municipality || profile.town_city_municipality || profile.townCity) {
-          updates.townCityMunicipality = scholarshipSearchProfile?.town_city_municipality || profile.town_city_municipality || profile.townCity;
-        }
-        if (scholarshipSearchProfile?.province || profile.province) {
-          updates.province = scholarshipSearchProfile?.province || profile.province;
-        }
-        if (scholarshipSearchProfile?.zip_code || profile.zip_code || profile.zipCode) {
-          updates.zipCode = scholarshipSearchProfile?.zip_code || profile.zip_code || profile.zipCode;
-        }
+        if (targetBarangay) updates.barangay = normalizeSelectValue(targetBarangay, BARANGAYS);
+        if (targetTown) updates.townCityMunicipality = targetTown;
+        if (targetProvince) updates.province = targetProvince;
+        if (targetZip) updates.zipCode = targetZip;
 
         // 1. Map document photos from server profile if available
         const newPhotos = {};
@@ -4514,11 +4514,8 @@ const StudentInfo = () => {
         if (savedDraft) {
           if (savedDraft.formData) {
             setFormData(prev => {
-              const filled = fillEmptyValuesOnly(prev, savedDraft.formData);
-              if (savedDraft.formData.gpa) {
-                filled.gpa = savedDraft.formData.gpa;
-              }
-              return filled;
+              const updated = { ...prev, ...savedDraft.formData };
+              return updated;
             });
           }
 
