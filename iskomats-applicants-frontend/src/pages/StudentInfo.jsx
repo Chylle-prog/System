@@ -3319,15 +3319,18 @@ const StudentInfo = () => {
 
       if (docType === 'SchoolID') {
         const [resolvedFront, resolvedBack] = await Promise.all([
-          docParam.front ? applicantAPI.resolveDocument('id_img_front', docParam.front) : Promise.resolve(null),
-          docParam.back ? applicantAPI.resolveDocument('id_img_back', docParam.back) : Promise.resolve(null)
+          docParam?.front ? applicantAPI.resolveDocument('id_img_front', docParam.front) : Promise.resolve(null),
+          docParam?.back ? applicantAPI.resolveDocument('id_img_back', docParam.back) : Promise.resolve(null)
         ]);
         if (!silent) setStatus("Enhancing School ID images for OCR scanner...");
         const [enhancedFront, enhancedBack] = await Promise.all([
-          resolvedFront ? preprocessImageForOcr(resolvedFront) : Promise.resolve(null),
-          resolvedBack ? preprocessImageForOcr(resolvedBack) : Promise.resolve(null)
+          resolvedFront ? preprocessImageForOcr(resolvedFront).catch(() => null) : Promise.resolve(null),
+          resolvedBack ? preprocessImageForOcr(resolvedBack).catch(() => null) : Promise.resolve(null)
         ]);
-        resolvedParam = { front: enhancedFront, back: enhancedBack };
+        resolvedParam = {
+          front: enhancedFront || resolvedFront || docParam?.front,
+          back: enhancedBack || resolvedBack || docParam?.back
+        };
       } else {
         const fieldMap = {
           'Indigency': 'indigency_doc',
@@ -3339,11 +3342,11 @@ const StudentInfo = () => {
 
         if (!silent) setStatus("Analyzing document authenticity & preparing image concurrently...");
         const [tCheck, pParam] = await Promise.all([
-          (docType !== 'SchoolID' && rawSourceForTamper) ? detectDocumentTampering(rawSourceForTamper) : Promise.resolve({ edited: false, reason: "Authentic document" }),
-          rawResolved ? preprocessImageForOcr(rawResolved) : Promise.resolve(null)
+          (docType !== 'SchoolID' && rawSourceForTamper) ? detectDocumentTampering(rawSourceForTamper).catch(() => ({ edited: false, reason: "Authentic document" })) : Promise.resolve({ edited: false, reason: "Authentic document" }),
+          rawResolved ? preprocessImageForOcr(rawResolved).catch(() => null) : Promise.resolve(null)
         ]);
         tamperCheck = tCheck || { edited: false, reason: "Authentic document" };
-        resolvedParam = pParam;
+        resolvedParam = pParam || rawResolved || docParam;
       }
 
       if (tamperCheck.edited) {
@@ -3568,6 +3571,7 @@ const StudentInfo = () => {
       };
 
       const runOcrOnImage = async (imgSource, stepName = "") => {
+        if (!imgSource) return "";
         if (!silent) setStatus(`Scanning ${stepName} image with WebAssembly Worker...`);
 
         activeOcrLogger = (m) => {
@@ -3580,14 +3584,26 @@ const StudentInfo = () => {
           const worker = await getTesseractWorker();
           if (!worker) return "";
 
+          let realScanBlobUrl = null;
+          let scanInput = imgSource;
+          if (typeof imgSource === 'string' && imgSource.startsWith('http')) {
+            try {
+              const { decryptUrl } = await import('../services/CryptoService');
+              realScanBlobUrl = await decryptUrl(imgSource, 'image/jpeg');
+              if (realScanBlobUrl) scanInput = realScanBlobUrl;
+            } catch (err) {
+              console.warn('[OCR Engine] decryptUrl fallback note:', err);
+            }
+          }
+
           // Tri-stream 1600px parallel cropping (Primary, 1.5x Header, 1.4x Table & Total Units)
           const [fastImgUrl, headerBlobUrl, tableBlobUrl] = await Promise.all([
-            downscaleImageForFastOcr(imgSource, 1600).catch(() => null),
-            createHeaderRegionCropBlob(imgSource).catch(() => null),
-            createTableRegionCropBlob(imgSource).catch(() => null)
+            downscaleImageForFastOcr(scanInput, 1600).catch(() => null),
+            createHeaderRegionCropBlob(scanInput).catch(() => null),
+            createTableRegionCropBlob(scanInput).catch(() => null)
           ]);
 
-          const scanSource = fastImgUrl || imgSource;
+          const scanSource = fastImgUrl || scanInput;
 
           // Run Primary Pass, Header Pass, AND Table Pass CONCURRENTLY (completes in ~0.6s!)
           const [primaryRes, headerRes, tableRes] = await Promise.all([
@@ -3596,9 +3612,10 @@ const StudentInfo = () => {
             tableBlobUrl ? worker.recognize(tableBlobUrl).catch((e) => { console.warn(`[OCR Engine] Table crop pass note:`, e); return null; }) : Promise.resolve(null)
           ]);
 
-          if (fastImgUrl && fastImgUrl !== imgSource) URL.revokeObjectURL(fastImgUrl);
-          if (headerBlobUrl) URL.revokeObjectURL(headerBlobUrl);
-          if (tableBlobUrl) URL.revokeObjectURL(tableBlobUrl);
+          if (fastImgUrl && fastImgUrl !== scanInput && fastImgUrl.startsWith('blob:')) URL.revokeObjectURL(fastImgUrl);
+          if (headerBlobUrl && headerBlobUrl.startsWith('blob:')) URL.revokeObjectURL(headerBlobUrl);
+          if (tableBlobUrl && tableBlobUrl.startsWith('blob:')) URL.revokeObjectURL(tableBlobUrl);
+          if (realScanBlobUrl && realScanBlobUrl !== imgSource && realScanBlobUrl.startsWith('blob:')) URL.revokeObjectURL(realScanBlobUrl);
 
           const primaryText = primaryRes?.data?.text || "";
           const headerText = headerRes?.data?.text || "";
