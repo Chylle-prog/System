@@ -2269,7 +2269,6 @@ const StudentInfo = () => {
         message: 'School ID verified successfully! (Debug Bypass)',
         score_details: {
           "First Name": true,
-          "Middle Name": middleName ? true : null,
           "Last Name": true,
           "ID Number": true,
           "School Name": true,
@@ -3607,13 +3606,11 @@ const StudentInfo = () => {
 
         scoreDetails = isNationalId ? {
           "First Name": firstOk,
-          "Middle Name": null,
           "Last Name": lastOk,
           "Barangay Address": targetBarangay ? addrOk : null,
           "Video Proof": videoOk
         } : {
           "First Name": firstOk,
-          "Middle Name": null,
           "Last Name": lastOk,
           "ID Number": idNumber ? idOk : null,
           "School Name": schoolName ? schoolOk : null,
@@ -3770,7 +3767,6 @@ const StudentInfo = () => {
             "First Name": nameCheck.details.first_ok,
             "Middle Name": middleName ? nameCheck.details.middle_ok : null,
             "Last Name": nameCheck.details.last_ok,
-            "Document Image Type": imageHasKeyword,
             "Barangay Address": targetBarangay ? addrOk : null,
             "Town / City": townCity ? true : null,
             "Video Proof": effectiveVideoOk
