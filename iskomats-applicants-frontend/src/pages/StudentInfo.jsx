@@ -4477,14 +4477,20 @@ const StudentInfo = () => {
     // 2. Special handling for files and previews based on the current step
     if (stepNumber === 1) {
       appendSmartFile('profile_picture', idPicturePreview);
-      appendSmartFile('indigency_doc', photos.mayorIndigency_photo);
+      const indigencyFile = photos.mayorIndigency_photo || photos.indigency || formData.mayorIndigency_photo || formData.indigency;
+      appendSmartFile('indigency_doc', indigencyFile);
     }
 
     if (stepNumber === 3) {
-      appendSmartFile('id_front', schoolIdPhotos.front);
-      appendSmartFile('id_back', schoolIdPhotos.back);
-      appendSmartFile('enrollment_certificate_doc', photos.mayorCOE_photo);
-      appendSmartFile('grades_doc', photos.mayorGrades_photo);
+      const frontFile = schoolIdPhotos.front || formData.schoolIdFront;
+      const backFile = schoolIdPhotos.back || formData.schoolIdBack;
+      const coeFile = photos.mayorCOE_photo || photos.enrollment || formData.mayorCOE_photo || formData.enrollment || photos.enrollment_certificate_doc || formData.enrollment_certificate_doc;
+      const gradesFile = photos.mayorGrades_photo || photos.grades || formData.mayorGrades_photo || formData.grades || photos.grades_doc || formData.grades_doc;
+
+      appendSmartFile('id_front', frontFile);
+      appendSmartFile('id_back', backFile);
+      appendSmartFile('enrollment_certificate_doc', coeFile);
+      appendSmartFile('grades_doc', gradesFile);
     }
 
     if (stepNumber === 4) {
@@ -4706,22 +4712,28 @@ const StudentInfo = () => {
 
         // 1. Map document photos from server profile if available
         const newPhotos = {};
-        if (profile.has_mayorIndigency_photo) {
-          const indigencyUrl = `${apiOrigin}/api/student/applicant/document/raw/indigency_doc?token=${token}`;
+        if (profile.has_mayorIndigency_photo || profile.indigency_doc) {
+          const indigencyUrl = profile.indigency_doc || `${apiOrigin}/api/student/applicant/document/raw/indigency_doc?token=${token}`;
           newPhotos.mayorIndigency_photo = indigencyUrl;
+          newPhotos.indigency = indigencyUrl;
           updates.mayorIndigency_photo = indigencyUrl;
+          updates.indigency = indigencyUrl;
         }
 
-        if (profile.has_mayorCOE_photo) {
-          const coeUrl = `${apiOrigin}/api/student/applicant/document/raw/enrollment_certificate_doc?token=${token}`;
+        if (profile.has_mayorCOE_photo || profile.enrollment_certificate_doc) {
+          const coeUrl = profile.enrollment_certificate_doc || `${apiOrigin}/api/student/applicant/document/raw/enrollment_certificate_doc?token=${token}`;
           newPhotos.mayorCOE_photo = coeUrl;
+          newPhotos.enrollment = coeUrl;
           updates.mayorCOE_photo = coeUrl;
+          updates.enrollment = coeUrl;
         }
 
-        if (profile.has_mayorGrades_photo) {
-          const gradesUrl = `${apiOrigin}/api/student/applicant/document/raw/grades_doc?token=${token}`;
+        if (profile.has_mayorGrades_photo || profile.grades_doc) {
+          const gradesUrl = profile.grades_doc || `${apiOrigin}/api/student/applicant/document/raw/grades_doc?token=${token}`;
           newPhotos.mayorGrades_photo = gradesUrl;
+          newPhotos.grades = gradesUrl;
           updates.mayorGrades_photo = gradesUrl;
+          updates.grades = gradesUrl;
         }
 
         const rawProfilePic = profile.profile_picture || profile.id_pic || ((profile.has_profile_picture || profile.has_id_pic) ? `${apiOrigin}/api/student/applicant/document/raw/${profile.has_profile_picture ? 'profile_picture' : 'id_pic'}?token=${token}` : null) || savedDraft?.idPicturePreview;
