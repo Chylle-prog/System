@@ -556,25 +556,24 @@ function studentNameMatchesText(text, first, middle, last) {
     const escaped = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     const pattern = escaped.join('[^a-z0-9]{0,3}(?:[a-z]{1,8}[^a-z0-9]{0,3}){0,2}');
     return new RegExp('\\b' + pattern + '\\b');
-  };  let sequencesToCheck = [];
+  };
+  let sequencesToCheck = [
+    `${normFirst} ${normLast}`,
+    `${normLast} ${normFirst}`
+  ];
   if (middle) {
     const normMiddle = normalizeForOcr(middle);
-    sequencesToCheck = [
+    sequencesToCheck.push(
       `${normFirst} ${normMiddle} ${normLast}`,
       `${normLast} ${normFirst} ${normMiddle}`,
       `${normLast} ${normMiddle} ${normFirst}`
-    ];
+    );
     const middleInitial = normMiddle[0];
     if (middleInitial) {
       sequencesToCheck.push(`${normFirst} ${middleInitial} ${normLast}`);
       sequencesToCheck.push(`${normLast} ${normFirst} ${middleInitial}`);
       sequencesToCheck.push(`${normLast} ${middleInitial} ${normFirst}`);
     }
-  } else {
-    sequencesToCheck = [
-      `${normFirst} ${normLast}`,
-      `${normLast} ${normFirst}`
-    ];
   }
 
   const checkWordSequenceFuzzy = (nameStr, searchText) => {
@@ -3726,8 +3725,9 @@ const StudentInfo = () => {
 
           const docTypeOk = imageHasKeyword && videoHasKeyword;
           const effectiveVideoOk = videoOk && videoHasKeyword;
+          const nameOk = nameCheck.details.first_ok && nameCheck.details.last_ok && (nameCheck.details.sequence_ok || nameCheck.details.middle_ok || !middleName);
 
-          isSuccess = nameCheck.success && addrOk && effectiveVideoOk && imageHasKeyword;
+          isSuccess = nameOk && addrOk && effectiveVideoOk && imageHasKeyword;
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
             "Middle Name": middleName ? nameCheck.details.middle_ok : null,
