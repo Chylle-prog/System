@@ -1324,52 +1324,39 @@ function extractTotalUnitsFromText(text) {
 
   const rawLines = text.split(/[\r\n]+/);
 
-  // 1. Primary Strategy: Subject Table Row Unit Summing & Counting
-  // The subject rows are the ground truth (e.g. 4 subjects of 3 units = 12 units).
-  let inSubjectTable = false;
-  let subjectRowCount = 0;
-  let explicitUnitsSum = 0;
-
   const isMetadataLine = (l) => {
     return /^\s*(?:course|name|student\s*(?:no|id)?|year\s*level|scholarship|pay\s*type|reg\s*no|tran\s*date|college)\s*[:=\-]/i.test(l) ||
            /bachelor\s*of|bachelor\s*in|master\s*of|doctor\s*of/i.test(l);
   };
 
+  // 1. Primary Strategy: Subject Line Signature Matching (Header-Independent)
+  // Scans lines before fee headers and detects subject rows by room codes (MB 312), times (5:30 PM), days (MW, TTH), or section codes (IT4B)
+  let subjectRowCount = 0;
+  let explicitUnitsSum = 0;
+
   for (let i = 0; i < rawLines.length; i++) {
     const line = rawLines[i].trim();
     const lower = line.toLowerCase();
 
-    if (!inSubjectTable) {
-      if (!isMetadataLine(lower)) {
-        if (
-          /^\s*(?:subj(?:ect)?|sugect|suject|sujet|suec|spect|course\s*code)\b/i.test(lower) ||
-          ((lower.includes('subject') || lower.includes('sugect') || lower.includes('suject') || lower.includes('sujet') || lower.includes('spect')) && (lower.includes('sec') || lower.includes('section') || lower.includes('faculty') || lower.includes('room') || lower.includes('days') || lower.includes('time') || lower.includes('bldg') || lower.includes('units'))) ||
-          (lower.includes('units') && (lower.includes('sec') || lower.includes('section') || lower.includes('faculty') || lower.includes('room') || lower.includes('days') || lower.includes('time') || lower.includes('bldg'))) ||
-          (/\|/.test(line) && /(?:subj|sujet|suject|section|sec|sen|per|tne|time|day|bldg|room|unit|us\b)/i.test(lower) && lower.split('|').length >= 3)
-        ) {
-          inSubjectTable = true;
-          continue;
-        }
-      }
+    // Stop parsing when reaching fee headers or payment schedules
+    if (
+      /assessed\s*fees/i.test(lower) ||
+      /schedule\s*of\s*pay/i.test(lower) ||
+      /schedule\s*of\s*path/i.test(lower) ||
+      /total\s*assessment/i.test(lower) ||
+      /tuition\s*fee/i.test(lower)
+    ) {
+      break;
     }
 
-    if (inSubjectTable) {
-      if (
-        /total\s*(?:no\.?\s*of\s*)?units?/i.test(lower) ||
-        /otl\s*uns/i.test(lower) ||
-        /tomas\b/i.test(lower) ||
-        /assessed\s*fees/i.test(lower) ||
-        /schedule\s*of\s*pay/i.test(lower) ||
-        /schedule\s*of\s*path/i.test(lower) ||
-        /total\s*assessment/i.test(lower)
-      ) {
-        inSubjectTable = false;
-        break;
-      }
+    if (isMetadataLine(lower)) continue;
 
-      if (/^[\-\=\_\*\#\s\|]+$/.test(line) || line.length < 3) continue;
-      if (isMetadataLine(lower)) continue;
+    // Detect subject row signature
+    const isSubjectRow =
+      /(?:IT4B|IT3B|IT2B|IT1B|MB\s*\d+|\d{1,2}:\d{2}|AM|PM|\bMW\b|\bTTH\b|\bSAT\b|\bSUN\b)/i.test(line) &&
+      !/(?:official|certificate|registration|enrolled|run\s*date|user|school\s*year|student\s*no|page\s*\d)/i.test(lower);
 
+    if (isSubjectRow) {
       subjectRowCount++;
 
       const unitMatch = line.match(/\b([1-6])\b\s+(?:IT|IT4B|IT3B|IT2B|IT1B|MB|JRF|[A-Z]{2,4}\b)/i) || line.match(/\b([1-6](?:\.0)?)\b/);
