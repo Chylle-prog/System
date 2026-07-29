@@ -3622,13 +3622,13 @@ const StudentInfo = () => {
           const tableText = tableRes?.data?.text || "";
           let baseText = (primaryText + "\n" + headerText + "\n" + tableText).trim();
 
-          const userLastName = (formData?.lastName || userProfile?.last_name || '').toLowerCase();
-          const userFirstName = (formData?.firstName || userProfile?.first_name || '').toLowerCase();
+          const userLastName = String(formData?.lastName || userProfile?.last_name || '').toLowerCase();
+          const userFirstName = String(formData?.firstName || userProfile?.first_name || '').toLowerCase();
 
           const lowerBase = baseText.toLowerCase();
           const hasLastName = userLastName && lowerBase.includes(userLastName);
           const hasFirstName = userFirstName && lowerBase.includes(userFirstName);
-          const hasIdNum = idNumber && lowerBase.includes(idNumber.toLowerCase());
+          const hasIdNum = idNumber && lowerBase.includes(String(idNumber).toLowerCase());
 
           // ⚡ Fast Tri-Stream Exit: Return immediately in ~0.6s if Name, ID Number, or Full Text extracted!
           if ((hasLastName || hasFirstName) && (hasIdNum || baseText.length > 180)) {
