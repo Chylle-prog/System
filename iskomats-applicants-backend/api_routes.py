@@ -1404,7 +1404,7 @@ def notify_announcement_applicants(
                     message=notification_message,
                     notif_type='announcement',
                     send_email=send_email_alerts,
-                    sync_email=True,
+                    sync_email=False,
                 )
                 
                 # Force a UI refresh for the student portal via socket
@@ -3294,9 +3294,9 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
                        {units_expr} as units,
                        {residency_doc_type_expr} as "residencyDocType",
                        {id_type_expr} as "idType",
-                       COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted = 'Accepted') as "acceptedCount",
-                       COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted = 'Pending' OR ast.is_accepted IS NULL) as "pendingCount",
-                       COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted = 'Rejected') as "declinedCount"
+                       COUNT(ast.applicant_no) FILTER (WHERE LOWER(ast.is_accepted) = 'accepted') as "acceptedCount",
+                       COUNT(ast.applicant_no) FILTER (WHERE LOWER(ast.is_accepted) = 'pending' OR ast.is_accepted IS NULL) as "pendingCount",
+                       COUNT(ast.applicant_no) FILTER (WHERE LOWER(ast.is_accepted) IN ('rejected', 'declined')) as "declinedCount"
                 FROM scholarships s
                 LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
                 LEFT JOIN applicant_status ast ON ast.scholarship_no = s.req_no
@@ -4098,6 +4098,7 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
 @api_bp.route('/scholarships/<int:req_no>', methods=['DELETE'])
+@api_bp.route('/admin/scholarships/<int:req_no>', methods=['DELETE'])
 @token_required
 def delete_scholarship(current_user_id, pro_no, role, req_no):
     """Soft-delete scholarship post."""
@@ -4108,21 +4109,26 @@ def delete_scholarship(current_user_id, pro_no, role, req_no):
             cursor = conn.cursor()
             ensure_schema_integrity(cursor)
         
-            is_superadmin = ((role or '').strip().lower() == 'admin')
+            is_superadmin = ((role or '').strip().lower() in ('admin', 'superadmin', 'super_admin'))
             resolved_provider_no, _ = resolve_provider_context(cursor, current_user_id, role, pro_no)
         
-            # 2. Check scholarship ownership
+            # Check scholarship ownership
             cursor.execute("SELECT pro_no, scholarship_name FROM scholarships WHERE req_no = %s", (req_no,))
             sch_row = cursor.fetchone()
             if not sch_row:
                 return jsonify({'message': 'Scholarship not found'}), 404
             
-            # Allow delete if user is Admin OR pro_no matches OR if existing scholarship has NO pro_no
             scholarship_provider_no = get_row_value(sch_row, 'pro_no')
             scholarship_name = get_row_value(sch_row, 'scholarship_name')
 
-            if not is_superadmin and scholarship_provider_no is not None and resolved_provider_no is not None and scholarship_provider_no != resolved_provider_no:
-                return jsonify({'message': 'Unauthorized'}), 401
+            def safe_int_cmp(val):
+                if val is None: return None
+                try: return int(val)
+                except: return None
+
+            if not is_superadmin and scholarship_provider_no is not None and resolved_provider_no is not None:
+                if safe_int_cmp(scholarship_provider_no) != safe_int_cmp(resolved_provider_no):
+                    return jsonify({'message': 'Unauthorized'}), 401
             
             cursor.execute("UPDATE scholarships SET is_removed = TRUE WHERE req_no = %s", (req_no,))
         
@@ -4728,18 +4734,19 @@ def create_announcement(current_user_id, pro_no, role):
                 provider_no=target_pro_no
             )
         
-            # Notify students based on send_to_all_applicants flag synchronously
+            # Dispatch notifications asynchronously in background thread
             print(f"[ANNOUNCEMENT] Dispatching notifications for ann_no {ann_no} (SendToAll: {send_to_all_applicants})", flush=True)
             try:
-                notify_announcement_applicants(
-                    title=title,
-                    message=message,
-                    provider_no=target_pro_no,
-                    provider_name=provider_name,
-                    send_to_all_applicants=send_to_all_applicants,
-                    send_email_alerts=True,
+                run_background_task(
+                    notify_announcement_applicants,
+                    title,
+                    message,
+                    target_pro_no,
+                    provider_name,
+                    send_to_all_applicants,
+                    True,
                 )
-                print(f"[ANNOUNCEMENT] Notification delivery completed successfully for ann_no {ann_no}.")
+                print(f"[ANNOUNCEMENT] Background notification delivery queued successfully for ann_no {ann_no}.")
             except Exception as notif_err:
                 print(f"[ANNOUNCEMENT WARN] Notification dispatch error: {notif_err}", flush=True)
 
@@ -4942,18 +4949,23 @@ def delete_announcement(current_user_id, pro_no, role, ann_no):
             resolved_provider_no, _ = resolve_provider_context(cur, current_user_id, role, pro_no)
         
             # Check ownership unless super admin
-            if role.lower() != 'admin':
-                cur.execute("SELECT pro_no, ann_title FROM announcements WHERE ann_no = %s", (ann_no,))
-                row = cur.fetchone()
-                if not row:
-                    return jsonify({'message': 'Announcement not found'}), 404
-                if get_row_value(row, 'pro_no') != resolved_provider_no:
+            is_superadmin = ((role or '').strip().lower() in ('admin', 'superadmin', 'super_admin'))
+            cur.execute("SELECT pro_no, ann_title FROM announcements WHERE ann_no = %s", (ann_no,))
+            row = cur.fetchone()
+            if not row:
+                return jsonify({'message': 'Announcement not found'}), 404
+
+            title = get_row_value(row, 'ann_title', 'Unknown')
+            ann_provider_no = get_row_value(row, 'pro_no')
+
+            def safe_int_cmp(val):
+                if val is None: return None
+                try: return int(val)
+                except: return None
+
+            if not is_superadmin and ann_provider_no is not None and resolved_provider_no is not None:
+                if safe_int_cmp(ann_provider_no) != safe_int_cmp(resolved_provider_no):
                     return jsonify({'message': 'Unauthorized to delete this announcement'}), 403
-                title = get_row_value(row, 'ann_title', 'Unknown')
-            else:
-                cur.execute("SELECT ann_title FROM announcements WHERE ann_no = %s", (ann_no,))
-                row = cur.fetchone()
-                title = get_row_value(row, 'ann_title', 'Unknown')
 
             try:
                 _, foreign_key_column = get_entity_image_columns(cur, 'announcement')

@@ -2188,7 +2188,7 @@ def get_rankings():
             
             cur.execute("""
                 SELECT s.*, p.provider_name,
-                       COUNT(ast.applicant_no) FILTER (WHERE ast.is_accepted = 'Accepted') AS accepted_count
+                       COUNT(ast.applicant_no) FILTER (WHERE LOWER(ast.is_accepted) = 'accepted') AS accepted_count
                 FROM scholarships s
                 LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
                 LEFT JOIN applicant_status ast ON ast.scholarship_no = s.req_no

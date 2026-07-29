@@ -810,39 +810,7 @@ export default function Dash() {
                         <button onClick={() => openAccountModal('add')} className="px-4 sm:px-6 py-2 sm:py-2.5 bg-[#800020] text-white rounded-xl font-black text-[10px] sm:text-xs uppercase tracking-widest shadow-lg shadow-[#800020]/20 flex items-center justify-center gap-2 hover:bg-[#650018] transition-all flex-1 sm:flex-none">
                           <FaPlus className="text-sm sm:text-base" /> <span className="truncate">New {accountType === 'Applicant' ? 'Student' : accountType}</span>
                         </button>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const admins = [
-                              { email: 'vilma@iskomats.ph', password: 'password123', firstName: 'Vilma', lastName: 'Admin', scholarship: 'Vilma' },
-                              { email: 'africa@iskomats.ph', password: 'password123', firstName: 'Africa', lastName: 'Admin', scholarship: 'Africa' },
-                              { email: 'ched@iskomats.ph', password: 'password123', firstName: 'CHED', lastName: 'Admin', scholarship: 'Tulong Dunong Program' },
-                            ];
-                            try {
-                              for (const admin of admins) {
-                                const response = await adminAPI.createAccount({
-                                  email: admin.email,
-                                  password: admin.password,
-                                  role: 'admin',
-                                  firstName: admin.firstName,
-                                  lastName: admin.lastName,
-                                  scholarship: admin.scholarship,
-                                });
-                                const created = response.data?.account;
-                                if (created) {
-                                  const normalized = buildCreatedAccount(created, 'Admin');
-                                  setAccounts((prev) => [normalized, ...prev]);
-                                }
-                              }
-                              setPageSuccess('Accounts for Vilma, Africa, and CHED created successfully!');
-                            } catch (err) {
-                              setPageError(err.response?.data?.message || err.message || 'Failed to create scholarship admin accounts.');
-                            }
-                          }}
-                          className="px-4 sm:px-5 py-2 sm:py-2.5 bg-emerald-700 text-white rounded-xl font-black text-[10px] sm:text-xs uppercase tracking-widest shadow-lg shadow-emerald-700/20 flex items-center justify-center gap-2 hover:bg-emerald-800 transition-all flex-1 sm:flex-none"
-                        >
-                          <FaPlus className="text-sm sm:text-base" /> <span className="truncate">Add 3 Provider Admins (Vilma, Africa, CHED)</span>
-                        </button>
+
                       </div>
                     </div>
 

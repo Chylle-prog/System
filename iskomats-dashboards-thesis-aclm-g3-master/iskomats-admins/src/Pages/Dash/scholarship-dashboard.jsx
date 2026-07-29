@@ -435,7 +435,7 @@ const getApplicantIdentityKey = (applicant) => String(
 ).trim().toLowerCase();
 
 const optimizeImageFile = (file) => new Promise((resolve) => {
-  if (!(file instanceof File) || !file.type.startsWith('image/') || file.size <= 500 * 1024) {
+  if (!(file instanceof File) || !file.type.startsWith('image/')) {
     resolve(file);
     return;
   }
@@ -444,7 +444,7 @@ const optimizeImageFile = (file) => new Promise((resolve) => {
   const objectUrl = URL.createObjectURL(file);
 
   image.onload = () => {
-    const maxDimension = 1600;
+    const maxDimension = 1200;
     const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
     const width = Math.max(1, Math.round(image.width * scale));
     const height = Math.max(1, Math.round(image.height * scale));
@@ -948,17 +948,18 @@ export default function ScholarshipDashboard({
       const response = await scholarshipAPI.getApplicants(providerKey);
       let allApplicantsRaw = (response.data && response.data.success) ? (response.data.applicants || []) : [];
 
-      // Deduplicate applicants to avoid multiple rows for the same student
+      // Deduplicate applicants per scholarship application (student ID + scholarship ID)
       const applicantMap = new Map();
       allApplicantsRaw.forEach(app => {
-        const id = String(app.applicant_no || app.id);
+        const schId = app.scholarshipNo || app.scholarship_no || app.reqNo || app.req_no || app.scholarshipName || '';
+        const id = `${app.applicant_no || app.id}_${schId}`;
         const existing = applicantMap.get(id);
 
         if (!existing) {
           applicantMap.set(id, app);
         } else {
           const statusPriority = { 'Accepted': 4, 'Rejected': 3, 'Cancelled': 2, 'Pending': 1 };
-          if (statusPriority[app.status] > statusPriority[existing.status]) {
+          if ((statusPriority[app.status] || 0) > (statusPriority[existing.status] || 0)) {
             applicantMap.set(id, app);
           }
         }
@@ -1751,11 +1752,25 @@ export default function ScholarshipDashboard({
   };
 
   const deletePost = (postId) => {
-    executeDeleteDirectly('scholarship', postId);
+    const post = (data.scholarshipPosts || []).find(p => String(p.reqNo || p.id) === String(postId));
+    const title = post ? (post.scholarshipName || post.title) : 'this scholarship post';
+    setConfirmDeleteModal({
+      type: 'scholarship',
+      id: postId,
+      title: 'Delete Scholarship Post',
+      label: title
+    });
   };
 
   const deleteAnnouncement = (id) => {
-    executeDeleteDirectly('announcement', id);
+    const ann = (data.announcements || []).filter(a => !(a.is_removed || a.isRemoved)).find(a => String(a.ann_no || a.id) === String(id));
+    const title = ann ? ann.title : 'this announcement';
+    setConfirmDeleteModal({
+      type: 'announcement',
+      id,
+      title: 'Delete Announcement',
+      label: title
+    });
   };
 
   const executeDeleteDirectly = async (type, id) => {
@@ -1949,16 +1964,19 @@ export default function ScholarshipDashboard({
     const applicantReqNo = String(applicant.reqNo || applicant.req_no || applicant.request_no || applicant.scholarshipNo || applicant.scholarship_no || '').toLowerCase();
     const selectedReqNo = String(selectedValue || '').toLowerCase();
 
+    if (selectedReqNo && applicantReqNo) {
+      return applicantReqNo === selectedReqNo;
+    }
+
     if (selectedReqNo && applicantReqNo === selectedReqNo) {
       return true;
     }
 
-    // Name matching (more flexible)
+    // Name matching (fallback when applicant has no explicit scholarship ID)
     const applicantScholarshipName = String(applicant.scholarshipName || applicant.scholarship_name || applicant.appliedScholarship || applicant.scholarship || applicant.scholarshipTitle || '').toLowerCase();
     const selectedLabel = String(selectedOption?.label || '').toLowerCase();
 
     if (selectedLabel && applicantScholarshipName) {
-      // Avoid partial matches for numeric-like names but allow for descriptive names
       if (applicantScholarshipName === selectedLabel || applicantScholarshipName.includes(selectedLabel) || selectedLabel.includes(applicantScholarshipName)) {
         return true;
       }
@@ -2071,13 +2089,19 @@ export default function ScholarshipDashboard({
     return (data.scholarshipPosts || [])
       .map((post) => {
         const scholarshipId = String(post.reqNo || post.id || '');
-        const acceptedCount = Number(post.acceptedCount ?? (data.accepted || []).filter((applicant) => matchesScholarshipSelection(applicant, scholarshipId)).length);
-        const pendingCount = Number(post.pendingCount ?? (data.applicants || []).filter((applicant) => matchesScholarshipSelection(applicant, scholarshipId)).length);
-        const declinedCount = Number(post.declinedCount ?? (data.declined || data.rejected || []).filter((applicant) => matchesScholarshipSelection(applicant, scholarshipId)).length);
-        const totalApplicants = Number(post.totalApplicants ?? (acceptedCount + pendingCount + declinedCount));
+        const liveAccepted = (data.accepted || []).filter((applicant) => matchesScholarshipSelection(applicant, scholarshipId)).length;
+        const livePending = (data.applicants || []).filter((applicant) => matchesScholarshipSelection(applicant, scholarshipId)).length;
+        const liveDeclined = (data.declined || data.rejected || []).filter((applicant) => matchesScholarshipSelection(applicant, scholarshipId)).length;
+
+        const hasLoadedApplicants = (data.accepted?.length || 0) + (data.applicants?.length || 0) + (data.declined?.length || 0) + (data.rejected?.length || 0) > 0;
+
+        const acceptedCount = hasLoadedApplicants ? liveAccepted : Number(post.acceptedCount || 0);
+        const pendingCount = hasLoadedApplicants ? livePending : Number(post.pendingCount || 0);
+        const declinedCount = hasLoadedApplicants ? liveDeclined : Number(post.declinedCount || 0);
+        const totalApplicants = acceptedCount + pendingCount + declinedCount;
         const slotLimit = Number(post.slots ?? 0);
-        const availableSlots = post.availableSlots ?? Math.max(slotLimit - acceptedCount, 0);
-        const isFull = typeof post.isFull === 'boolean' ? post.isFull : (slotLimit > 0 && availableSlots <= 0);
+        const availableSlots = slotLimit > 0 ? Math.max(slotLimit - acceptedCount, 0) : 0;
+        const isFull = slotLimit > 0 && availableSlots <= 0;
         const eligibleApplicantIds = new Set(
           allTrackedApplicants
             .filter((applicant) => applicantMatchesScholarshipCriteria(applicant, post))
