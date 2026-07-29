@@ -1287,12 +1287,14 @@ function extractTotalUnitsFromText(text) {
   for (let i = 0; i < rawLines.length; i++) {
     const line = rawLines[i].trim();
     if (/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)/i.test(line)) {
+      // a) Number on the same line (most common)
       const currentMatch = line.match(/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)[^\d]*\b([1-4]?[0-9])\b/i);
       if (currentMatch) {
         const val = parseInt(currentMatch[1], 10);
         if (!isNaN(val) && val >= 6 && val <= 48) return val;
       }
 
+      // b) Number on the immediately following lines (up to 4 ahead)
       for (let j = i + 1; j < Math.min(rawLines.length, i + 5); j++) {
         const checkLine = rawLines[j].trim();
         if (/assessed\s*fees|schedule\s*of\s*pay|schedule\s*of\s*path|total\s*assessment|outstanding\s*balance|tuition|downpayment|reservation/i.test(checkLine)) {
@@ -1301,6 +1303,28 @@ function extractTotalUnitsFromText(text) {
         const m = checkLine.match(/\b([1-4]?[0-9])\b/);
         if (m) {
           const v = parseInt(m[1], 10);
+          if (!isNaN(v) && v >= 6 && v <= 48) return v;
+        }
+      }
+
+      // c) Look-behind: number on 1-3 lines BEFORE "TOTAL UNITS" (OCR sometimes places
+      //    the value in the last column of the preceding subject row, e.g. "-- 3  27")
+      for (let j = i - 1; j >= Math.max(0, i - 3); j--) {
+        const prevLine = rawLines[j].trim();
+        // Skip separator/empty lines
+        if (/^[\-\=\_\*\#\s\|]+$/.test(prevLine) || prevLine.length < 1) continue;
+        // Skip fee/header lines
+        if (/assessed\s*fees|schedule\s*of|tuition|total\s*assessment/i.test(prevLine)) break;
+        // Look for a standalone units-range number at the end of the line
+        const mPrev = prevLine.match(/\b([1-4]?[0-9])\s*$/);
+        if (mPrev) {
+          const v = parseInt(mPrev[1], 10);
+          if (!isNaN(v) && v >= 6 && v <= 48) return v;
+        }
+        // Also try anywhere on the line as a last resort
+        const mPrevAny = prevLine.match(/\b([1-4]?[0-9])\b/);
+        if (mPrevAny) {
+          const v = parseInt(mPrevAny[1], 10);
           if (!isNaN(v) && v >= 6 && v <= 48) return v;
         }
       }
