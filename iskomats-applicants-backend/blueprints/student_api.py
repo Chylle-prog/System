@@ -1075,6 +1075,53 @@ def debug_env():
         'PROJECT_ROOT': str(os.getcwd())
     })
 
+
+@student_api_bp.route('/debug/flags', methods=['GET'])
+def get_debug_flags():
+    """Get current global debug bypass flags (shared across all deployments)."""
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT key, value FROM debug_flags")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        flags = {}
+        for row in rows:
+            key = row['key'] if isinstance(row, dict) else row[0]
+            val = row['value'] if isinstance(row, dict) else row[1]
+            flags[key] = bool(val)
+        return jsonify({'success': True, 'flags': flags})
+    except Exception as e:
+        print(f"[DEBUG FLAGS] GET error: {e}", flush=True)
+        return jsonify({'success': False, 'flags': {}, 'error': str(e)}), 500
+
+
+@student_api_bp.route('/debug/flags', methods=['POST'])
+def set_debug_flag():
+    """Set a global debug bypass flag (persisted in DB, shared across all deployments)."""
+    try:
+        data = request.get_json() or {}
+        key = data.get('key')
+        value = bool(data.get('value', False))
+        if key not in ('skip_alternate_check', 'skip_tamper_check'):
+            return jsonify({'success': False, 'error': 'Unknown flag key'}), 400
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO debug_flags (key, value, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+        """, (key, value))
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"[DEBUG FLAGS] Set {key} = {value}", flush=True)
+        return jsonify({'success': True, 'key': key, 'value': value})
+    except Exception as e:
+        print(f"[DEBUG FLAGS] POST error: {e}", flush=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
 if ENCRYPTION_KEY and isinstance(ENCRYPTION_KEY, str):
     ENCRYPTION_KEY = ENCRYPTION_KEY.encode()
@@ -1185,6 +1232,21 @@ def ensure_applicant_document_storage():
                     cur.execute(f"ALTER TABLE {doc_table} ADD COLUMN {col} TEXT")
         
         print("[MIGRATION] Document column conversion completed.", flush=True)
+
+        # Create debug_flags table for global debug bypass settings (shared across all deployments)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS debug_flags (
+                key TEXT PRIMARY KEY,
+                value BOOLEAN NOT NULL DEFAULT FALSE,
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        # Seed default flags if not present
+        cur.execute("""
+            INSERT INTO debug_flags (key, value)
+            VALUES ('skip_alternate_check', FALSE), ('skip_tamper_check', FALSE)
+            ON CONFLICT (key) DO NOTHING
+        """)
             
         conn.commit()
         conn.close()

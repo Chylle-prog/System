@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import SignaturePad from '../components/SignaturePad';
 import VideoRecorder from '../components/VideoRecorder';
-import { applicantAPI, applicationAPI, scholarshipAPI, verificationAPI, uploadProfilePicture, API_ORIGIN } from '../services/api';
+import { applicantAPI, applicationAPI, scholarshipAPI, verificationAPI, uploadProfilePicture, API_ORIGIN, debugAPI } from '../services/api';
 import { SCHOOLS, BARANGAYS } from '../utils/constants';
 
 const FIND_SCHOLARSHIP_PROFILE_KEY = 'findScholarshipProfile';
@@ -1532,6 +1532,23 @@ const StudentInfo = () => {
   const [coeResults, setCoeResults] = useState([]);
   const [gradesResults, setGradesResults] = useState([]);
   const [idResults, setIdResults] = useState([]);
+
+  // Global debug flags — fetched from DB so they sync across all deployments
+  const [debugFlags, setDebugFlags] = useState({
+    skip_alternate_check: localStorage.getItem('debug_skip_alternate_check') === 'true',
+    skip_tamper_check: localStorage.getItem('debug_skip_tamper_check') === 'true',
+  });
+
+  useEffect(() => {
+    debugAPI.getFlags().then(flags => {
+      if (flags && Object.keys(flags).length > 0) {
+        setDebugFlags(flags);
+        // Sync to localStorage so same-session API calls (X-Skip-Alternate-Check header) stay current
+        localStorage.setItem('debug_skip_alternate_check', flags.skip_alternate_check ? 'true' : 'false');
+        localStorage.setItem('debug_skip_tamper_check', flags.skip_tamper_check ? 'true' : 'false');
+      }
+    }).catch(() => {});
+  }, []);
 
   const calculateVerificationPercentage = (results) => {
     if (!results || !Array.isArray(results) || results.length === 0) return null;
@@ -6512,15 +6529,15 @@ const StudentInfo = () => {
             {/* Alt Account Check Row */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: localStorage.getItem('debug_skip_alternate_check') === 'true' ? '#10b981' : '#ef4444' }}>●</span>
-                <span>Alt Check: {localStorage.getItem('debug_skip_alternate_check') === 'true' ? 'Bypassed' : 'Enabled'}</span>
+                <span style={{ color: debugFlags.skip_alternate_check ? '#10b981' : '#ef4444' }}>●</span>
+                <span>Alt Check: {debugFlags.skip_alternate_check ? 'Bypassed' : 'Enabled'}</span>
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  const isBypassed = localStorage.getItem('debug_skip_alternate_check') === 'true';
-                  localStorage.setItem('debug_skip_alternate_check', isBypassed ? 'false' : 'true');
-                  window.location.reload();
+                onClick={async () => {
+                  const newVal = !debugFlags.skip_alternate_check;
+                  setDebugFlags(prev => ({ ...prev, skip_alternate_check: newVal }));
+                  await debugAPI.setFlag('skip_alternate_check', newVal);
                 }}
                 style={{
                   background: '#3b82f6',
@@ -6540,15 +6557,15 @@ const StudentInfo = () => {
             {/* Digital Tamper Check Row */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: localStorage.getItem('debug_skip_tamper_check') === 'true' ? '#10b981' : '#ef4444' }}>●</span>
-                <span>Tamper Check: {localStorage.getItem('debug_skip_tamper_check') === 'true' ? 'Bypassed' : 'Enabled'}</span>
+                <span style={{ color: debugFlags.skip_tamper_check ? '#10b981' : '#ef4444' }}>●</span>
+                <span>Tamper Check: {debugFlags.skip_tamper_check ? 'Bypassed' : 'Enabled'}</span>
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  const isBypassed = localStorage.getItem('debug_skip_tamper_check') === 'true';
-                  localStorage.setItem('debug_skip_tamper_check', isBypassed ? 'false' : 'true');
-                  window.location.reload();
+                onClick={async () => {
+                  const newVal = !debugFlags.skip_tamper_check;
+                  setDebugFlags(prev => ({ ...prev, skip_tamper_check: newVal }));
+                  await debugAPI.setFlag('skip_tamper_check', newVal);
                 }}
                 style={{
                   background: '#3b82f6',

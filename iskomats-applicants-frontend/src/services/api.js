@@ -1044,6 +1044,52 @@ export const announcementAPI = {
 };
 
 /**
+ * ===== DEBUG API =====
+ * Global debug flags stored in the database — shared across all deployments.
+ */
+export const debugAPI = {
+  /**
+   * Fetch current global debug bypass flags from the database.
+   * @returns {Promise<{skip_alternate_check: boolean, skip_tamper_check: boolean}>}
+   */
+  getFlags: async () => {
+    try {
+      const data = await makeRequest('/student/debug/flags', { method: 'GET' });
+      return data?.flags || {};
+    } catch (e) {
+      console.warn('[debugAPI] getFlags failed, falling back to localStorage:', e);
+      return {
+        skip_alternate_check: localStorage.getItem('debug_skip_alternate_check') === 'true',
+        skip_tamper_check: localStorage.getItem('debug_skip_tamper_check') === 'true',
+      };
+    }
+  },
+
+  /**
+   * Set a global debug bypass flag in the database.
+   * @param {'skip_alternate_check'|'skip_tamper_check'} key
+   * @param {boolean} value
+   */
+  setFlag: async (key, value) => {
+    try {
+      const data = await makeRequest('/student/debug/flags', {
+        method: 'POST',
+        body: JSON.stringify({ key, value }),
+      });
+      // Mirror to localStorage as cache for same-session reads
+      const lsKey = key === 'skip_alternate_check' ? 'debug_skip_alternate_check' : 'debug_skip_tamper_check';
+      localStorage.setItem(lsKey, value ? 'true' : 'false');
+      return data;
+    } catch (e) {
+      console.warn('[debugAPI] setFlag failed:', e);
+      // Fallback: at least update localStorage
+      const lsKey = key === 'skip_alternate_check' ? 'debug_skip_alternate_check' : 'debug_skip_tamper_check';
+      localStorage.setItem(lsKey, value ? 'true' : 'false');
+    }
+  },
+};
+
+/**
  * ===== EXPORT ALL API SERVICES =====
  */
 export default {
@@ -1053,4 +1099,5 @@ export default {
   applications: applicationAPI,
   verification: verificationAPI,
   announcements: announcementAPI,
+  debug: debugAPI,
 };
