@@ -2040,11 +2040,11 @@ def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
     
     doc_norm = normalize_text(raw_text)
     
-    # 1. Name Verification
-    first_ok, middle_ok, last_ok, seq_ok = verify_name_sequence(first_name, last_name, raw_text, full_raw_text=raw_text, middle_name=middle_name)
-    name_matched = first_ok and middle_ok and last_ok and seq_ok
+    # 1. Name Verification (First Name & Last Name only for School ID / National ID)
+    first_ok, middle_ok, last_ok, seq_ok = verify_name_sequence(first_name, last_name, raw_text, full_raw_text=raw_text, middle_name=None)
+    name_matched = first_ok and last_ok and seq_ok
     if not name_matched:
-        failures.append(f"Name mismatch (Expected: '{first_name} {middle_name or ''} {last_name}' on ID)")
+        failures.append(f"Name mismatch (Expected: '{first_name} {last_name}' on ID)")
 
     # 2. Student ID Number (if expected_id_no provided)
     expected_id_no = kwargs.get('expected_id_no')

@@ -639,7 +639,6 @@ function studentNameMatchesText(text, first, middle, last) {
 
       // 1. Direct whole-word match in search text (prevent matching random single letters inside unrelated words)
       if (new RegExp('\\b' + normW.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(searchText)) return true;
-      if (normW.length >= 4 && searchText.toLowerCase().includes(normW)) return true;
 
       // 2. Fuzzy / OCR confusion word match (for full words length >= 2)
       const foundFullWord = ocrWords.some(ocrW => {
@@ -908,6 +907,7 @@ function getScholarshipConfiguredAcademicYear(scholarshipDetails, fallbackYear =
 function academic_year_matches_expected(text, expectedYear) {
   if (!expectedYear || !text) return true;
 
+  // 1. Normalize OCR text and year characters
   const recoverYears = (str) => {
     return str.replace(/20\d[a-z¢]/g, (match) => {
       const lastChar = match[3];
@@ -921,52 +921,139 @@ function academic_year_matches_expected(text, expectedYear) {
   const normText = recoverYears(String(text).replace(/[\–\—·•]/g, '-').toLowerCase());
   const normExpected = String(expectedYear).replace(/[\–\—·•]/g, '-').trim();
 
-  const yearRegex = /20\d{2}/g;
-  const expectedYears = normExpected.match(yearRegex) || [];
-  if (expectedYears.length === 0) return true;
+  // Extract expected start & end years (e.g. expected "2025-2026" -> expStart = 2025, expEnd = 2026)
+  const expYears4Digit = normExpected.match(/\b20\d{2}\b/g) || [];
+  let expStart = null;
+  let expEnd = null;
 
-  const expStart = parseInt(expectedYears[0], 10);
-  const expEnd = expectedYears.length >= 2 ? parseInt(expectedYears[1], 10) : expStart + 1;
+  if (expYears4Digit.length >= 2) {
+    expStart = parseInt(expYears4Digit[0], 10);
+    expEnd = parseInt(expYears4Digit[1], 10);
+  } else if (expYears4Digit.length === 1) {
+    expStart = parseInt(expYears4Digit[0], 10);
+    expEnd = expStart + 1;
+  } else {
+    // Check 2-digit format e.g. "25-26"
+    const expYears2Digit = normExpected.match(/\b([2-9]\d)\s*[\-\/]\s*([2-9]\d)\b/);
+    if (expYears2Digit) {
+      expStart = 2000 + parseInt(expYears2Digit[1], 10);
+      expEnd = 2000 + parseInt(expYears2Digit[2], 10);
+    } else {
+      return true; // Cannot parse expected year format, default pass
+    }
+  }
 
-  // On ID cards with single year or "valid until" (e.g. 2026 or 2025)
-  if (normText.includes('valid') || normText.includes('until') || normText.includes('sy')) {
-    if (normText.includes(String(expStart)) || normText.includes(String(expEnd))) {
+  const expStart2D = String(expStart).slice(2); // "25"
+  const expEnd2D = String(expEnd).slice(2);     // "26"
+
+  // Strip YYYY-MM-DD / YYYY.MM.DD timestamps so birthdates or issue dates don't interfere
+  const textWithoutDates = normText.replace(/20\d{2}\s*[\-\/\.]\s*(?:0[1-9]|1[0-2])\s*[\-\/\.]\s*(?:[0-2][0-9]|3[01])/g, '');
+
+  // 2. Check 4-digit pair matches e.g. "2025-2026", "2025/2026", "2026.2027", "2026-2027"
+  const pairMatches4D = [...textWithoutDates.matchAll(/\b(20\d{2})\s*[\-\/\.\:\+]\s*(20[0-9a-zA-Z]{2})\b/g)];
+  if (pairMatches4D.length > 0) {
+    const hasMatchingPair = pairMatches4D.some(m => {
+      const pStart = parseInt(m[1], 10);
+      const rawEndStr = m[2].toLowerCase().replace(/b/g, '6').replace(/8/g, '6').replace(/g/g, '6').replace(/s/g, '5');
+      const pEnd = parseInt(rawEndStr, 10);
+      // Strictly require start year to match expStart OR end year to match expEnd
+      return pStart === expStart || pEnd === expEnd;
+    });
+    if (hasMatchingPair) return true;
+    // Explicit year pairs found on document but none matched expected academic year
+    return false;
+  }
+
+  // 3. Check 2-digit pair matches e.g. "25-26", "25/26", "sy 25-26"
+  const pairMatches2D = [...textWithoutDates.matchAll(/\b([2-9]\d)\s*[\-\/\.\:\+]\s*([2-9]\d)\b/g)];
+  if (pairMatches2D.length > 0) {
+    const hasMatching2DPair = pairMatches2D.some(m => {
+      const y1 = m[1];
+      const y2 = m[2];
+      return (y1 === expStart2D || y2 === expEnd2D);
+    });
+    if (hasMatching2DPair) return true;
+    return false;
+  }
+
+  // 4. Check "VALID UNTIL" / "SY" / "AY" single year match e.g. "VALID UNTIL SY 2025-2026", "VALID UNTIL 2026", "SY 2025"
+  if (/(?:valid\s*until|sy|s\.?y\.?|ay|a\.?y\.?|school\s*year|academic\s*year)/i.test(textWithoutDates)) {
+    if (
+      textWithoutDates.includes(String(expStart)) ||
+      textWithoutDates.includes(String(expEnd)) ||
+      textWithoutDates.includes(`sy ${expStart2D}`) ||
+      textWithoutDates.includes(`sy ${expEnd2D}`) ||
+      new RegExp(`\\b${expStart2D}-${expEnd2D}\\b`).test(textWithoutDates)
+    ) {
       return true;
     }
   }
 
-  // Strip date timestamps YYYY-MM-DD / YYYY.MM.DD (e.g. 2025.08.12, 2025-08-12, 2026-03-24)
-  const textWithoutDates = normText.replace(/20\d{2}\s*[\-\/\.]\s*(?:0[1-9]|1[0-2])\s*[\-\/\.]\s*(?:[0-2][0-9]|3[01])/g, '');
-
-  // Extract explicit year pairs in text excluding dates (e.g., "2026-2027", "2025-2026")
-  const pairMatches = [...textWithoutDates.matchAll(/(20\d{2})\s*[\-\/]\s*(20[0-9a-zA-Z]{2})/g)];
-
-  if (pairMatches.length > 0) {
-    const matchedPair = pairMatches.some(m => {
-      const pStart = parseInt(m[1], 10);
-      const rawEndStr = m[2].toLowerCase().replace(/b/g, '6').replace(/8/g, '6').replace(/g/g, '6').replace(/s/g, '5');
-      const pEnd = parseInt(rawEndStr, 10);
-      return pStart === expStart || (pStart === expStart - 1 && pEnd === expEnd);
-    });
-
-    if (matchedPair) return true;
-
-    // If explicit academic year pairs exist on the document, reject if none match expected start year
-    return false;
-  }
-
-  // Fallback: Accept if expected start year appears near AY/SY header keywords
-  const hasAyHeader = /(?:ay|a\.?y\.?|sy|s\.?y\.?|school\s*year|academic\s*year)/i.test(normText);
-  if (hasAyHeader) {
-    return normText.includes(String(expStart)) || normText.includes(String(expEnd));
-  }
-
-  const foundYearsSet = new Set(textWithoutDates.match(yearRegex) || []);
-  if (foundYearsSet.has(String(expStart)) || foundYearsSet.has(String(expEnd))) {
+  // 5. Fallback check for single 4-digit years in text
+  const found4DigitYears = textWithoutDates.match(/\b20\d{2}\b/g) || [];
+  if (found4DigitYears.includes(String(expStart)) || found4DigitYears.includes(String(expEnd))) {
     return true;
   }
 
   return false;
+}
+
+function normalizeSemesterInt(val) {
+  if (val === null || val === undefined) return null;
+  const str = String(val).toLowerCase().trim();
+  if (str.includes('1st') || str === '1' || str.includes('first')) return 1;
+  if (str.includes('2nd') || str === '2' || str.includes('second')) return 2;
+  if (str.includes('3rd') || str === '3' || str.includes('third') || str.includes('summer') || str.includes('midyear')) return 3;
+  const digits = str.replace(/\D/g, '');
+  if (digits === '1') return 1;
+  if (digits === '2') return 2;
+  if (digits === '3') return 3;
+  return null;
+}
+
+function extractSemesterFromText(text) {
+  if (!text) return null;
+
+  // 1. Strip YYYY-YYYY or YY-YY academic year ranges so year digits don't interfere with semester numbers
+  const cleaned = String(text)
+    .replace(/\b20\d{2}\s*[\-\/\.\:\+]\s*20\d{2}\b/g, '')
+    .replace(/\b(?:sy|ay)?\s*\d{2}\s*[\-\/\.\:\+]\s*\d{2}\b/gi, '')
+    .replace(/\b15t\b/gi, '1st')
+    .toLowerCase();
+
+  // 2. Direct keyword checks (highest accuracy for COE/COR and Grade transcripts)
+  if (/\b(?:2nd|second|sem\s*2|2nd\s*sem|semester\s*2)\b/i.test(cleaned)) return 2;
+  if (/\b(?:1st|first|15t|sem\s*1|1st\s*sem|semester\s*1)\b/i.test(cleaned)) return 1;
+  if (/\b(?:3rd|third|summer|midyear|sem\s*3|semester\s*3)\b/i.test(cleaned)) return 3;
+
+  // 3. Fallback header line extraction e.g. "School Year Sem : 2nd Semester"
+  const headerMatch = cleaned.match(/(?:school\s*year\s*sem|sy\s*sem|sem|semester|pay\s*type)\s*[:\-=]?\s*[^\n]*?\b([123])(?:st|nd|rd|th)?\b/i);
+  if (headerMatch && headerMatch[1]) {
+    return parseInt(headerMatch[1], 10);
+  }
+
+  return null;
+}
+
+function semesterMatchesText(text, expectedSemester) {
+  if (!expectedSemester || !text) return true;
+
+  const expNum = normalizeSemesterInt(expectedSemester);
+  const foundNum = extractSemesterFromText(text);
+
+  console.log(`[SEMESTER CHECK] Image OCR Found: ${foundNum}, Expected: ${expNum} (from '${expectedSemester}')`);
+
+  if (expNum !== null && foundNum !== null) {
+    return expNum === foundNum;
+  }
+
+  const expStr = String(expectedSemester).toLowerCase();
+  const lowerText = String(text).toLowerCase();
+  if (expNum === 2 && /\b(?:2nd|second|2nd\s*sem|2nd\s*semester)\b/i.test(lowerText)) return true;
+  if (expNum === 1 && /\b(?:1st|first|1st\s*sem|1st\s*semester)\b/i.test(lowerText)) return true;
+  if (expNum === 3 && /\b(?:3rd|third|summer|midyear|3rd\s*sem|3rd\s*semester)\b/i.test(lowerText)) return true;
+
+  return true;
 }
 
 function courseMatchesText(expectedCourse, text) {
@@ -1306,63 +1393,39 @@ function yearLevelMatchesText(text, expectedYearLevel) {
     if (digitMatch) expNum = parseInt(digitMatch[1], 10);
   }
 
-  if (!expNum) {
-    const kv = extractOcrKeyValues(text);
-    const targetText = kv.yearLevel ? normalizeForOcr(kv.yearLevel) : normText;
-    return targetText.includes(normLevel);
-  }
+  if (!expNum) return true;
 
-  const kv = extractOcrKeyValues(text);
+  // 1. Direct search for explicit ordinal year patterns: e.g. "4th year", "3rd year", "2nd year", "1st year"
+  const ordinalMap = [
+    { num: 4, regex: /\b(?:4th|fourth)\s*(?:year|yr)\b/i },
+    { num: 3, regex: /\b(?:3rd|third)\s*(?:year|yr)\b/i },
+    { num: 2, regex: /\b(?:2nd|second)\s*(?:year|yr)\b/i },
+    { num: 1, regex: /\b(?:1st|first)\s*(?:year|yr)\b/i },
+    { num: 5, regex: /\b(?:5th|fifth)\s*(?:year|yr)\b/i }
+  ];
 
-  const parseYearDigit = (str) => {
-    if (!str) return null;
-    const s = String(str).toLowerCase();
-    if (s.includes('1st') || s.includes('first') || s.includes('1')) return 1;
-    if (s.includes('2nd') || s.includes('second') || s.includes('2')) return 2;
-    if (s.includes('3rd') || s.includes('third') || s.includes('3')) return 3;
-    if (s.includes('4th') || s.includes('fourth') || s.includes('4')) return 4;
-    if (s.includes('5th') || s.includes('fifth') || s.includes('5')) return 5;
-    return null;
-  };
-
-  // 1. Direct check against extracted kv.yearLevel
-  if (kv.yearLevel) {
-    const foundNum = parseYearDigit(kv.yearLevel);
-    if (foundNum !== null) {
-      return foundNum === expNum;
+  for (const item of ordinalMap) {
+    if (item.regex.test(normText)) {
+      return item.num === expNum;
     }
   }
 
-  // 2. Direct regex search for Year Level label on raw text
-  const yearHeaderMatch = String(text).match(/(?:year\s*level|yr\s*level|grade\s*level|year|yr)\s*[\.\:\-\[\=\s]+\s*([1-5])(?:st|nd|rd|th|\b)/i);
+  // 2. Direct check against extracted kv.yearLevel key-value
+  const kv = extractOcrKeyValues(text);
+  if (kv.yearLevel) {
+    const s = String(kv.yearLevel).toLowerCase();
+    if (s.includes('1st') || s.includes('first') || s.includes('1')) return expNum === 1;
+    if (s.includes('2nd') || s.includes('second') || s.includes('2')) return expNum === 2;
+    if (s.includes('3rd') || s.includes('third') || s.includes('3')) return expNum === 3;
+    if (s.includes('4th') || s.includes('fourth') || s.includes('4')) return expNum === 4;
+    if (s.includes('5th') || s.includes('fifth') || s.includes('5')) return expNum === 5;
+  }
+
+  // 3. Fallback header match requiring explicit ordinal or year level prefix
+  const yearHeaderMatch = String(text).match(/(?:year\s*level|yr\s*level|grade\s*level)\s*[\.\:\-\[\=\s]+\s*([1-5])(?:st|nd|rd|th)?\b/i);
   if (yearHeaderMatch && yearHeaderMatch[1]) {
     const foundNum = parseInt(yearHeaderMatch[1], 10);
     return foundNum === expNum;
-  }
-
-  // 3. Match explicit Nth Year patterns e.g. "4th Year", "3rd Year"
-  const ordinalWords = {
-    1: ['1st year', 'first year', '1st yr', '1st yr.'],
-    2: ['2nd year', 'second year', '2nd yr', '2nd yr.'],
-    3: ['3rd year', 'third year', '3rd yr', '3rd yr.'],
-    4: ['4th year', 'fourth year', '4th yr', '4th yr.'],
-    5: ['5th year', 'fifth year', '5th yr', '5th yr.']
-  };
-
-  const expOrdinals = ordinalWords[expNum] || [];
-  for (const ord of expOrdinals) {
-    if (normText.includes(ord)) return true;
-  }
-
-  // Check if ANY other year ordinal explicitly exists in text near year label
-  for (const [num, ords] of Object.entries(ordinalWords)) {
-    if (parseInt(num, 10) !== expNum) {
-      for (const ord of ords) {
-        if (normText.includes(ord) && (normText.includes('year level') || normText.includes('yr level') || normText.includes('year'))) {
-          return false;
-        }
-      }
-    }
   }
 
   // 4. Section code check (e.g. "IT3B", "BSIT3B", "IT4B")
@@ -1372,56 +1435,10 @@ function yearLevelMatchesText(text, expectedYearLevel) {
     return secNum === expNum;
   }
 
-  return false;
-}
-
-function normalizeSemesterInt(val) {
-  if (val === null || val === undefined) return null;
-  const str = String(val).toLowerCase().trim();
-  if (str.includes('1') || str.includes('first')) return 1;
-  if (str.includes('2') || str.includes('second')) return 2;
-  if (str.includes('3') || str.includes('third') || str.includes('summer') || str.includes('midyear')) return 3;
-  const digits = str.replace(/\D/g, '');
-  if (digits === '1') return 1;
-  if (digits === '2') return 2;
-  if (digits === '3') return 3;
-  return null;
-}
-
-function extractSemesterFromText(text) {
-  if (!text) return null;
-  const lower = String(text).toLowerCase();
-
-  const yearSemMatch = lower.match(/\b202[0-9a-z¢§\$!]\s*[\-\/:]\s*([123])\b/i);
-  if (yearSemMatch && yearSemMatch[1]) {
-    return parseInt(yearSemMatch[1], 10);
-  }
-
-  const sySemMatch = lower.match(/(?:school\s*year\s*sem|s\.?y\.?\s*sem|sem|\$ch00!|yaa,\s*gum)\s*[:\-]?\s*(?:ay|sy|20[0-9a-z¢§\$!]{2})?\s*[\-\/:]?\s*([123])\b/i);
-  if (sySemMatch && sySemMatch[1]) {
-    return parseInt(sySemMatch[1], 10);
-  }
-
-  if (/\b(?:2nd|second|sem\s*2|2nd\s*sem|semester\s*2)\b/i.test(lower)) return 2;
-  if (/\b(?:1st|first|sem\s*1|1st\s*sem|semester\s*1)\b/i.test(lower)) return 1;
-  if (/\b(?:3rd|third|summer|midyear|sem\s*3|semester\s*3)\b/i.test(lower)) return 3;
-
-  return null;
-}
-
-function semesterMatchesText(text, expectedSemester, scholarshipSemesterReq = null) {
-  const s2 = extractSemesterFromText(text);
-  const s3 = normalizeSemesterInt(scholarshipSemesterReq || scholarshipDetails?.semester);
-
-  console.log(`[SEMESTER CHECK] Image OCR: ${s2}, Scholarship Req: ${s3}`);
-
-  if (s2 !== null && s3 !== null && s2 !== s3) {
-    console.warn(`[SEMESTER FAIL] Image OCR (${s2}) != Scholarship Req (${s3})`);
-    return false;
-  }
-
   return true;
 }
+
+
 
 const StudentInfo = () => {
   const navigate = useNavigate();
@@ -3287,6 +3304,130 @@ const StudentInfo = () => {
         });
       };
 
+      const createEnhancedOcrImageBlob = (src) => {
+        return new Promise((resolve) => {
+          if (!src) { resolve(null); return; }
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => {
+            try {
+              const origW = img.width;
+              const origH = img.height;
+              if (!origW || !origH) { resolve(null); return; }
+
+              // 1. High-DPI Upscaling: Scale image up so text characters are crisp and at least 1800px wide
+              let scale = 1.0;
+              if (origW < 1800) {
+                scale = Math.min(2.5, 1800 / origW);
+              }
+              const w = Math.round(origW * scale);
+              const h = Math.round(origH * scale);
+
+              const canvas = document.createElement("canvas");
+              canvas.width = w;
+              canvas.height = h;
+              const ctx = canvas.getContext("2d");
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = "high";
+              ctx.drawImage(img, 0, 0, w, h);
+
+              const imgData = ctx.getImageData(0, 0, w, h);
+              const d = imgData.data;
+
+              // 2. Luminance & Histogram Analysis
+              let minL = 255, maxL = 0;
+              const grays = new Uint8Array(w * h);
+
+              for (let i = 0; i < d.length; i += 4) {
+                const g = Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
+                grays[i / 4] = g;
+                if (g < minL) minL = g;
+                if (g > maxL) maxL = g;
+              }
+
+              const range = Math.max(1, maxL - minL);
+
+              // 3. Contrast Stretching & Gamma Correction (gamma = 0.85 to darken printed text)
+              for (let i = 0; i < d.length; i += 4) {
+                const rawG = grays[i / 4];
+                let stretched = Math.min(255, Math.max(0, Math.round(((rawG - minL) / range) * 255)));
+                const gammaG = Math.round(255 * Math.pow(stretched / 255, 0.85));
+                d[i] = gammaG;
+                d[i + 1] = gammaG;
+                d[i + 2] = gammaG;
+              }
+              ctx.putImageData(imgData, 0, 0);
+
+              // 4. Unsharp Masking Filter (Sharpening Convolution Kernel)
+              const sharpenCanvas = document.createElement("canvas");
+              sharpenCanvas.width = w;
+              sharpenCanvas.height = h;
+              const sCtx = sharpenCanvas.getContext("2d");
+              sCtx.drawImage(canvas, 0, 0);
+
+              const srcData = ctx.getImageData(0, 0, w, h).data;
+              const sharpImgData = sCtx.getImageData(0, 0, w, h);
+              const sd = sharpImgData.data;
+
+              for (let y = 1; y < h - 1; y++) {
+                for (let x = 1; x < w - 1; x++) {
+                  const idx = (y * w + x) * 4;
+                  const center = srcData[idx];
+
+                  const top = srcData[((y - 1) * w + x) * 4];
+                  const bottom = srcData[((y + 1) * w + x) * 4];
+                  const left = srcData[(y * w + (x - 1)) * 4];
+                  const right = srcData[(y * w + (x + 1)) * 4];
+
+                  const v = Math.round(3.0 * center - 0.5 * (top + bottom + left + right));
+                  const clamped = Math.min(255, Math.max(0, v));
+
+                  sd[idx] = clamped;
+                  sd[idx + 1] = clamped;
+                  sd[idx + 2] = clamped;
+                }
+              }
+              sCtx.putImageData(sharpImgData, 0, 0);
+
+              sharpenCanvas.toBlob(b => resolve(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.95);
+            } catch (e) {
+              resolve(null);
+            }
+          };
+          img.onerror = () => resolve(null);
+          img.src = src;
+        });
+      };
+
+      const createHeaderRegionCropBlob = (src) => {
+        return new Promise((resolve) => {
+          if (!src) { resolve(null); return; }
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => {
+            try {
+              const canvas = document.createElement("canvas");
+              const w = img.width;
+              const h = img.height;
+              // Crop top header region (y: 0 to 45% of document height) where student metadata lives
+              const cropH = Math.floor(h * 0.45);
+              canvas.width = w * 2; // 2x magnification for crystal clear header text
+              canvas.height = cropH * 2;
+              const ctx = canvas.getContext("2d");
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = "high";
+              ctx.drawImage(img, 0, 0, w, cropH, 0, 0, w * 2, cropH * 2);
+
+              canvas.toBlob(b => resolve(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.95);
+            } catch (e) {
+              resolve(null);
+            }
+          };
+          img.onerror = () => resolve(null);
+          img.src = src;
+        });
+      };
+
       const runOcrOnImage = async (imgSource, stepName = "") => {
         if (!silent) setStatus(`Scanning ${stepName} image with WebAssembly Worker...`);
 
@@ -3308,6 +3449,30 @@ const StudentInfo = () => {
             console.warn(`[OCR Engine] Primary pass note:`, e);
           }
 
+          let enhancedText = "";
+          try {
+            const enhancedBlobUrl = await createEnhancedOcrImageBlob(imgSource);
+            if (enhancedBlobUrl) {
+              const enhancedResult = await worker.recognize(enhancedBlobUrl);
+              enhancedText = enhancedResult?.data?.text || "";
+              URL.revokeObjectURL(enhancedBlobUrl);
+            }
+          } catch (e) {
+            console.warn(`[OCR Engine] Enhanced pass note:`, e);
+          }
+
+          let headerCropText = "";
+          try {
+            const headerBlobUrl = await createHeaderRegionCropBlob(imgSource);
+            if (headerBlobUrl) {
+              const headerResult = await worker.recognize(headerBlobUrl);
+              headerCropText = headerResult?.data?.text || "";
+              URL.revokeObjectURL(headerBlobUrl);
+            }
+          } catch (e) {
+            console.warn(`[OCR Engine] Header crop pass note:`, e);
+          }
+
           let invertedText = "";
           const userLastName = (formData?.lastName || userProfile?.last_name || '').toLowerCase();
           const shouldInvert = stepName.includes('ID') || !primaryText || primaryText.length < 25 || (userLastName && !primaryText.toLowerCase().includes(userLastName));
@@ -3318,6 +3483,7 @@ const StudentInfo = () => {
               try {
                 const invResult = await worker.recognize(invertedUrl);
                 invertedText = invResult?.data?.text || "";
+                URL.revokeObjectURL(invertedUrl);
               } catch (invErr) {
                 console.warn(`[OCR Engine] Inverted pass note:`, invErr);
               }
@@ -3331,13 +3497,14 @@ const StudentInfo = () => {
               try {
                 const stickerRes = await worker.recognize(stickerCropUrl);
                 stickerText = stickerRes?.data?.text || "";
+                URL.revokeObjectURL(stickerCropUrl);
               } catch (e) {
                 console.warn(`[OCR Engine] Sticker crop pass note:`, e);
               }
             }
           }
 
-          return (primaryText + "\n" + invertedText + "\n" + stickerText).trim();
+          return (primaryText + "\n" + enhancedText + "\n" + headerCropText + "\n" + invertedText + "\n" + stickerText).trim();
         } catch (err) {
           console.warn(`[OCR Engine] Image recognition skipped on ${stepName}:`, err?.message || err);
           return "";
@@ -3376,11 +3543,10 @@ const StudentInfo = () => {
         const combinedBackText = backText + " " + (backVidCheck?.detectedText || "");
         const allIdText = combinedFrontText + " " + combinedBackText;
 
-        const nameMatchFront = studentNameMatchesText(frontText, firstName, middleName, lastName);
-        const nameMatchBack = isNationalId ? { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } } : studentNameMatchesText(backText, firstName, middleName, lastName);
+        const nameMatchFront = studentNameMatchesText(frontText, firstName, "", lastName);
+        const nameMatchBack = isNationalId ? { success: false, details: { first_ok: false, middle_ok: true, last_ok: false } } : studentNameMatchesText(backText, firstName, "", lastName);
         const nameOk = nameMatchFront.success || nameMatchBack.success;
         const firstOk = nameMatchFront.details.first_ok || nameMatchBack.details.first_ok;
-        const middleOk = middleName ? (nameMatchFront.details.middle_ok || nameMatchBack.details.middle_ok) : true;
         const lastOk = nameMatchFront.details.last_ok || nameMatchBack.details.last_ok;
 
         const idOk = isNationalId ? true : (idNumber ? (studentIdNoMatchesText(idNumber, combinedFrontText) || studentIdNoMatchesText(idNumber, combinedBackText)) : true);
@@ -3401,13 +3567,13 @@ const StudentInfo = () => {
 
         scoreDetails = isNationalId ? {
           "First Name": firstOk,
-          "Middle Name": middleName ? middleOk : null,
+          "Middle Name": null,
           "Last Name": lastOk,
           "Barangay Address": targetBarangay ? addrOk : null,
           "Video Proof": videoOk
         } : {
           "First Name": firstOk,
-          "Middle Name": middleName ? middleOk : null,
+          "Middle Name": null,
           "Last Name": lastOk,
           "ID Number": idNumber ? idOk : null,
           "School Name": schoolName ? schoolOk : null,
@@ -3447,16 +3613,17 @@ const StudentInfo = () => {
         videoCheck = videoCheckRes;
 
         if (docType === 'Enrollment') {
+          const docOnlyText = (detectedText || "").toLowerCase();
           const combinedText = detectedText + " " + (videoCheck?.detectedText || "");
           const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
           const isNationalId = idType === 'National ID';
 
-          const nameCheck = studentNameMatchesText(detectedText, firstName, middleName, lastName);
+          const nameCheck = studentNameMatchesText(docOnlyText, firstName, middleName, lastName);
           const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
           const courseOk = course ? courseMatchesText(course, combinedText) : true;
           const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
           const semOk = semesterMatchesText(combinedText, semester || formData.semester, reqSemester);
-          const idOk = isNationalId ? true : (idNumber ? studentIdNoMatchesText(idNumber, combinedText) : true);
+          const idOk = isNationalId ? true : (idNumber ? (studentIdNoMatchesText(idNumber, detectedText) || studentIdNoMatchesText(idNumber, combinedText)) : true);
           const yrOk = yearLevel ? yearLevelMatchesText(combinedText, yearLevel) : true;
           const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
           const coeTypeOk = coe_type_matches_text(combinedText);
@@ -3495,17 +3662,18 @@ const StudentInfo = () => {
           resultsList = [{ doc: 'Enrollment', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
         }
         else if (docType === 'Grades') {
+          const docOnlyText = (detectedText || "").toLowerCase();
           const combinedText = detectedText + " " + (videoCheck?.detectedText || "");
           const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
           const isNationalId = idType === 'National ID';
 
-          const nameCheck = studentNameMatchesText(detectedText, firstName, middleName, lastName);
+          const nameCheck = studentNameMatchesText(docOnlyText, firstName, middleName, lastName);
           const gpaOk = gpa ? gpaMatchesText(detectedText, gpa) : true;
           const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
           const semOk = semesterMatchesText(combinedText, semester || formData.semester, semester || reqSemester);
           const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
           const courseOk = course ? courseMatchesText(course, combinedText) : true;
-          const idOk = isNationalId ? true : (idNumber ? studentIdNoMatchesText(idNumber, combinedText) : true);
+          const idOk = isNationalId ? true : (idNumber ? (studentIdNoMatchesText(idNumber, detectedText) || studentIdNoMatchesText(idNumber, combinedText)) : true);
           const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
           const detectedDocGpa = extractGpaFromText(detectedText, gpa);
 
@@ -3544,23 +3712,34 @@ const StudentInfo = () => {
           const _requiredDocKeywords = _isResDoc
             ? ['residency', 'resident', 'residing', 'pagkapamayanan', 'naninirahan', 'maninirahan', 'pamayanan']
             : ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang'];
-          const hasRequiredDocKeyword = _requiredDocKeywords.some(k => docOnlyText.toLowerCase().includes(k) || combinedText.includes(k));
 
-          // Pass document if required keyword is present
-          const docTypeOk = hasRequiredDocKeyword;
+          const imgDocText = (detectedText || "").toLowerCase();
+          const vidText = (videoCheck?.detectedText || "").toLowerCase();
+
+          // Document IMAGE must explicitly contain required keywords
+          const imageHasKeyword = _requiredDocKeywords.some(k => imgDocText.includes(k));
+
+          // Video PROOF must ALSO contain required keywords (or fallback message if decoding restricted)
+          const videoHasKeyword = _requiredDocKeywords.some(k => vidText.includes(k)) || vidText.includes('proof') || vidText.includes('attached') || vidText.includes('manual review');
+
           const docLabel = _isResDoc ? 'Certificate of Residency' : 'Certificate of Indigency';
 
-          isSuccess = nameCheck.success && addrOk && videoOk && docTypeOk;
+          const docTypeOk = imageHasKeyword && videoHasKeyword;
+          const effectiveVideoOk = videoOk && videoHasKeyword;
+
+          isSuccess = nameCheck.success && addrOk && effectiveVideoOk && imageHasKeyword;
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
             "Middle Name": middleName ? nameCheck.details.middle_ok : null,
             "Last Name": nameCheck.details.last_ok,
-            "Document Type": docTypeOk,
+            "Document Image Type": imageHasKeyword,
             "Barangay Address": targetBarangay ? addrOk : null,
             "Town / City": townCity ? true : null,
-            "Video Proof": videoOk
+            "Video Proof": effectiveVideoOk
           };
-          const _docTypeFail = !docTypeOk ? `Document type mismatch: could not confirm this is a ${docLabel}.` : null;
+          const _docTypeFail = !imageHasKeyword
+            ? `Document type mismatch: image does not contain ${docLabel} keywords.`
+            : (!videoHasKeyword ? `Video proof mismatch: video does not show ${docLabel} keywords.` : null);
           finalMessage = isSuccess
             ? `${docLabel.replace('Certificate of ', '')} verified successfully client-side!`
             : (!videoOk
