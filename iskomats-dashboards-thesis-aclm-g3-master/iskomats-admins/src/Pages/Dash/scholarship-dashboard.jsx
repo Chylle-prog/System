@@ -1786,7 +1786,9 @@ export default function ScholarshipDashboard({
             resetForm();
             setManageMode('list');
           }
-          await loadScholarships(false);
+          hideActionOverlay();
+          loadScholarships(false);
+          return;
         }
       } catch (error) {
         console.error('Failed to delete scholarship:', error);
@@ -1807,7 +1809,9 @@ export default function ScholarshipDashboard({
             resetForm();
             setManageMode('list');
           }
-          await loadAnnouncements();
+          hideActionOverlay();
+          loadAnnouncements();
+          return;
         }
       } catch (error) {
         console.error('Failed to delete announcement:', error);
@@ -1967,14 +1971,11 @@ export default function ScholarshipDashboard({
       return scholarship?.isRemoved === true || scholarship?.is_removed === true;
     }
 
-    const selectedOption = scholarshipFilterOptions.find((option) => option.value === selectedValue);
     const selectedReqNo = String(selectedValue || '').trim().toLowerCase();
-    const selectedLabel = String(selectedOption?.label || selectedValue || '').trim().toLowerCase();
 
     // Applicant identifiers
     const applicantReqNo = String(applicant.reqNo || applicant.req_no || applicant.request_no || applicant.scholarshipNo || applicant.scholarship_no || '').trim().toLowerCase();
     const applicantScholarshipName = String(applicant.scholarshipName || applicant.scholarship_name || applicant.appliedScholarship || applicant.scholarship || applicant.scholarshipTitle || '').trim().toLowerCase();
-    const applicantProvider = String(applicant.providerName || applicant.provider_name || applicant.program || applicant.provider || '').trim().toLowerCase();
 
     // Check numeric ID equality when both are numeric
     const isSelectedNumeric = /^\d+$/.test(selectedReqNo);
@@ -1984,32 +1985,19 @@ export default function ScholarshipDashboard({
       return applicantReqNo === selectedReqNo;
     }
 
-    if (isSelectedNumeric && !isApplicantNumeric) {
-      const targetPost = (data.scholarshipPosts || []).find(s => String(s.reqNo || s.id || '') === selectedReqNo);
-      if (targetPost) {
-        const postName = String(targetPost.scholarshipName || targetPost.title || '').trim().toLowerCase();
-        const postProvider = String(targetPost.providerName || targetPost.provider_name || targetPost.program || '').trim().toLowerCase();
-        if (postName && applicantScholarshipName && (applicantScholarshipName === postName || applicantScholarshipName.includes(postName) || postName.includes(applicantScholarshipName))) {
-          return true;
-        }
-        if (postProvider && applicantProvider && (applicantProvider === postProvider || applicantProvider.includes(postProvider) || postProvider.includes(applicantProvider))) {
-          return true;
-        }
-      }
-    }
+    // Lookup target post details for title matching
+    const targetPost = (data.scholarshipPosts || []).find(s => String(s.reqNo || s.id || '') === selectedReqNo);
+    const selectedOption = scholarshipFilterOptions.find((option) => option.value === selectedValue);
+    const postName = targetPost
+      ? String(targetPost.scholarshipName || targetPost.title || '').trim().toLowerCase()
+      : String(selectedOption?.label || selectedValue || '').trim().toLowerCase();
 
-    // Name / Title / Provider matching
-    if (selectedLabel) {
-      if (applicantScholarshipName && (applicantScholarshipName === selectedLabel || applicantScholarshipName.includes(selectedLabel) || selectedLabel.includes(applicantScholarshipName))) {
-        return true;
-      }
-      if (applicantProvider && (applicantProvider === selectedLabel || applicantProvider.includes(selectedLabel) || selectedLabel.includes(applicantProvider))) {
-        return true;
-      }
-      const filterWords = selectedLabel.split(/\s+/).filter(w => w.length > 2);
-      if (filterWords.length > 0 && applicantScholarshipName) {
-        if (filterWords.some(word => applicantScholarshipName.includes(word))) return true;
-      }
+    if (postName && applicantScholarshipName) {
+      return (
+        applicantScholarshipName === postName ||
+        applicantScholarshipName.includes(postName) ||
+        postName.includes(applicantScholarshipName)
+      );
     }
 
     return false;
