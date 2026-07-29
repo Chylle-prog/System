@@ -1015,7 +1015,10 @@ function extractSemesterFromText(text) {
 
   const rawLines = String(text).split(/[\r\n]+/);
 
-  // 1. Search header lines specifically (ignoring footer fine print like "1st week of classes", "2nd week of classes")
+  // 1. Vote-based approach: collect semester evidence from all relevant header lines
+  //    (ignoring footer fine print like "1st week of classes", "2nd week of classes")
+  const votes = { 1: 0, 2: 0, 3: 0 };
+
   for (const rawLine of rawLines) {
     const line = rawLine.toLowerCase();
     if (line.includes('week of classes') || line.includes('withdraw') || line.includes('refund') || line.includes('penalty')) continue;
@@ -1025,10 +1028,18 @@ function extractSemesterFromText(text) {
         .replace(/\b20\d{2}\s*[\-\/\.\:\+]\s*20\d{2}\b/g, '')
         .replace(/\b(?:sy|ay)?\s*\d{2}\s*[\-\/\.\:\+]\s*\d{2}\b/gi, '');
 
-      if (/\b(?:2nd|second|sem\s*2|2nd\s*sem|semester\s*2)\b/i.test(cleanLine)) return 2;
-      if (/\b(?:1st|first|15t|sem\s*1|1st\s*sem|semester\s*1)\b/i.test(cleanLine)) return 1;
-      if (/\b(?:3rd|third|summer|midyear|sem\s*3|semester\s*3)\b/i.test(cleanLine)) return 3;
+      if (/\b(?:2nd|second|sem\s*2|2nd\s*sem|semester\s*2)\b/i.test(cleanLine)) votes[2]++;
+      else if (/\b(?:1st|first|15t|sem\s*1|1st\s*sem|semester\s*1)\b/i.test(cleanLine)) votes[1]++;
+      else if (/\b(?:3rd|third|summer|midyear|sem\s*3|semester\s*3)\b/i.test(cleanLine)) votes[3]++;
     }
+  }
+
+  // Return the semester with the most votes (majority wins)
+  const maxVotes = Math.max(votes[1], votes[2], votes[3]);
+  if (maxVotes > 0) {
+    if (votes[2] === maxVotes) return 2;
+    if (votes[1] === maxVotes) return 1;
+    if (votes[3] === maxVotes) return 3;
   }
 
   // 2. Fallback: Search full document text with fine print stripped
@@ -1046,24 +1057,42 @@ function extractSemesterFromText(text) {
   return null;
 }
 
-function semesterMatchesText(text, expectedSemester) {
-  if (!expectedSemester || !text) return true;
+function semesterMatchesText(text, expectedSemester, reqSemester) {
+  // Use reqSemester as a fallback if expectedSemester is falsy
+  const semToCheck = expectedSemester || reqSemester;
+  if (!semToCheck || !text) return true;
 
-  const expNum = normalizeSemesterInt(expectedSemester);
+  const expNum = normalizeSemesterInt(semToCheck);
+
+  // Direct pattern check: does the expected semester pattern appear anywhere in the text?
+  // This is the primary check — if the expected semester pattern is present in doc, pass.
+  const lowerText = String(text).toLowerCase();
+  const sem2Pattern = /\b(?:2nd|second|2nd\s*sem(?:ester)?|sem(?:ester)?\s*2)\b/i;
+  const sem1Pattern = /\b(?:1st|first|15t|1st\s*sem(?:ester)?|sem(?:ester)?\s*1)\b/i;
+  const sem3Pattern = /\b(?:3rd|third|summer|midyear|3rd\s*sem(?:ester)?|sem(?:ester)?\s*3)\b/i;
+
+  if (expNum === 2 && sem2Pattern.test(lowerText)) {
+    console.log(`[SEMESTER CHECK] Expected 2nd — found '2nd/second' in text ✓`);
+    return true;
+  }
+  if (expNum === 1 && sem1Pattern.test(lowerText)) {
+    console.log(`[SEMESTER CHECK] Expected 1st — found '1st/first' in text ✓`);
+    return true;
+  }
+  if (expNum === 3 && sem3Pattern.test(lowerText)) {
+    console.log(`[SEMESTER CHECK] Expected 3rd — found '3rd/summer' in text ✓`);
+    return true;
+  }
+
+  // Secondary: vote-based extraction
   const foundNum = extractSemesterFromText(text);
-
-  console.log(`[SEMESTER CHECK] Image OCR Found: ${foundNum}, Expected: ${expNum} (from '${expectedSemester}')`);
+  console.log(`[SEMESTER CHECK] Vote-based: Found ${foundNum}, Expected ${expNum} (from '${semToCheck}')`);
 
   if (expNum !== null && foundNum !== null) {
     return expNum === foundNum;
   }
 
-  const expStr = String(expectedSemester).toLowerCase();
-  const lowerText = String(text).toLowerCase();
-  if (expNum === 2 && /\b(?:2nd|second|2nd\s*sem|2nd\s*semester)\b/i.test(lowerText)) return true;
-  if (expNum === 1 && /\b(?:1st|first|1st\s*sem|1st\s*semester)\b/i.test(lowerText)) return true;
-  if (expNum === 3 && /\b(?:3rd|third|summer|midyear|3rd\s*sem|3rd\s*semester)\b/i.test(lowerText)) return true;
-
+  // If we couldn't determine, don't penalize
   return true;
 }
 
@@ -3778,13 +3807,11 @@ const StudentInfo = () => {
         }
         debugRequirements = isNationalId ? {
           "First Name": firstName || 'N/A',
-          "Middle Name": middleName || 'N/A',
           "Last Name": lastName || 'N/A',
           "Barangay Address": targetBarangay || 'N/A',
           "Video Proof": videoReason
         } : {
           "First Name": firstName || 'N/A',
-          "Middle Name": middleName || 'N/A',
           "Last Name": lastName || 'N/A',
           "ID Number": idNumber || 'N/A',
           "School Name": schoolName || 'N/A',
