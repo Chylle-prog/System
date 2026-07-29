@@ -3464,16 +3464,18 @@ const StudentInfo = () => {
           img.onload = () => {
             try {
               const canvas = document.createElement("canvas");
-              const w = Math.min(1600, img.width);
+              const w = Math.min(1800, img.width);
               const h = Math.floor(img.height * (w / img.width));
-              // Crop top header region (y: 0 to 45% of document height) where student metadata lives
-              const cropH = Math.floor(h * 0.45);
-              canvas.width = w * 1.5;
-              canvas.height = cropH * 1.5;
+              const cropH = Math.floor(h * 0.40);
+              canvas.width = Math.floor(w * 1.5);
+              canvas.height = Math.floor(cropH * 1.5);
               const ctx = canvas.getContext("2d");
               ctx.imageSmoothingEnabled = true;
               ctx.imageSmoothingQuality = "high";
-              ctx.drawImage(img, 0, 0, img.width, Math.floor(img.height * 0.45), 0, 0, w * 1.5, cropH * 1.5);
+              if ('filter' in ctx) {
+                ctx.filter = "contrast(180%) brightness(92%) grayscale(100%)";
+              }
+              ctx.drawImage(img, 0, 0, img.width, Math.floor(img.height * 0.40), 0, 0, Math.floor(w * 1.5), Math.floor(cropH * 1.5));
 
               canvas.toBlob(b => resolve(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.90);
             } catch (e) {
@@ -3532,15 +3534,17 @@ const StudentInfo = () => {
               const canvas = document.createElement("canvas");
               const w = Math.min(1800, img.width);
               const h = Math.floor(img.height * (w / img.width));
-              // Crop middle-to-bottom region (y: 20% to 75% of document height) where Subject Table & Total Units live
               const startY = Math.floor(img.height * 0.20);
-              const cropH = Math.floor(img.height * 0.55);
-              canvas.width = Math.floor(w * 1.4);
-              canvas.height = Math.floor(cropH * 1.4);
+              const cropH = Math.floor(img.height * 0.50);
+              canvas.width = Math.floor(w * 1.5);
+              canvas.height = Math.floor(cropH * 1.5);
               const ctx = canvas.getContext("2d");
               ctx.imageSmoothingEnabled = true;
               ctx.imageSmoothingQuality = "high";
-              ctx.drawImage(img, 0, startY, img.width, cropH, 0, 0, Math.floor(w * 1.4), Math.floor(cropH * 1.4));
+              if ('filter' in ctx) {
+                ctx.filter = "contrast(190%) brightness(90%) grayscale(100%)";
+              }
+              ctx.drawImage(img, 0, startY, img.width, cropH, 0, 0, Math.floor(w * 1.5), Math.floor(cropH * 1.5));
 
               canvas.toBlob(b => resolve(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.90);
             } catch (e) {
@@ -3779,12 +3783,7 @@ const StudentInfo = () => {
               ? parseInt(scholarshipDetails.requiredUnits)
               : null);
 
-          const unitsOk = requiredUnits !== null
-            ? (detectedUnits !== null && (
-                detectedUnits === requiredUnits ||
-                (requiredUnits > 18 && detectedUnits >= 6 && detectedUnits <= 24)
-              ))
-            : true;
+          const unitsOk = requiredUnits !== null ? (detectedUnits !== null && detectedUnits === requiredUnits) : true;
 
           isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk && yrOk && videoOk && coeTypeOk && unitsOk;
           scoreDetails = {
