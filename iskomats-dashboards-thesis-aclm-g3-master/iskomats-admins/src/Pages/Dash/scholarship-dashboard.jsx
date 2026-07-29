@@ -4304,13 +4304,6 @@ export default function ScholarshipDashboard({
             <div className="flex flex-row items-center gap-2 w-full sm:w-auto">
               <button
                 type="button"
-                onClick={exportToExcel}
-                className="flex-1 sm:flex-initial px-3 py-2 rounded-xl bg-white border border-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-gray-50 transition-all shadow-sm"
-              >
-                <FaPrint className="text-green-600 flex-shrink-0" /> <span className="truncate">Export</span>
-              </button>
-              <button
-                type="button"
                 onClick={() => window.print()}
                 className="flex-1 sm:flex-initial px-3 py-2 rounded-xl bg-[#800020] text-white text-xs font-bold flex items-center justify-center gap-1.5 hover:opacity-90 transition-all shadow-lg"
               >
