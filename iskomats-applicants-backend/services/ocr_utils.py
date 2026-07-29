@@ -882,7 +882,26 @@ def verify_signature_against_id(signature_bytes, id_back_bytes, student_id=None)
         if extracted_id_signature is None or extracted_id_signature.size == 0:
             return False, "Could not isolate a signature from the ID back image", 0.0, preview_signature, None, matcher_submitted_view, None
 
-        extracted_id_preview = extracted_id_signature  
+        # Apply a second-pass cleanup so ORIGINAL (ID) shows only the isolated
+        # signature strokes (same level of cleanup used by the comparison algorithm).
+        try:
+            try:
+                from services.signature_brain import _extract_ink_crop as _sig_ink_crop
+            except ImportError:
+                from signature_brain import _extract_ink_crop as _sig_ink_crop
+            _clean_gray = _sig_ink_crop(extracted_id_signature)
+            if _clean_gray is not None and _clean_gray.size > 0:
+                # Scale the cleaned crop to a reasonable display size
+                _dh, _dw = _clean_gray.shape[:2]
+                _target_w = 400
+                _target_h = max(1, int(_target_w * _dh / float(_dw)))
+                _clean_resized = cv2.resize(_clean_gray, (_target_w, _target_h), interpolation=cv2.INTER_CUBIC)
+                extracted_id_preview = cv2.cvtColor(_clean_resized, cv2.COLOR_GRAY2BGR)
+            else:
+                extracted_id_preview = extracted_id_signature
+        except Exception as _preview_err:
+            logger.warning(f"[SIGNATURE] Preview cleanup fallback: {_preview_err}")
+            extracted_id_preview = extracted_id_signature
         matcher_reference_view = prepare_signature_match_view(extracted_id_signature)
         
         try:
