@@ -105,6 +105,49 @@ function formatScholarshipLabel(value) {
   return isNoScholarshipAssignment(value) ? 'No Scholarship' : value;
 }
 
+function matchesProgramFilter(scholarship, filterValue, providerName = '') {
+  if (!filterValue || filterValue === 'All' || filterValue === 'all') {
+    return true;
+  }
+  if (filterValue === 'No Scholarship') {
+    return isNoScholarshipAssignment(scholarship);
+  }
+
+  if (isNoScholarshipAssignment(scholarship)) {
+    return false;
+  }
+
+  const schClean = String(scholarship || '').trim().toLowerCase();
+  const filterClean = String(filterValue || '').trim().toLowerCase();
+  const provClean = String(providerName || '').trim().toLowerCase();
+
+  // Exact match
+  if (schClean === filterClean || provClean === filterClean) {
+    return true;
+  }
+
+  // Substring match
+  if (schClean.includes(filterClean) || filterClean.includes(schClean)) {
+    return true;
+  }
+
+  if (provClean && (provClean.includes(filterClean) || filterClean.includes(provClean))) {
+    return true;
+  }
+
+  // Token matching (e.g. "Africa" matching "AFRICA TEST SCHOLARSHIP TEST")
+  const filterTokens = filterClean.split(/\s+/).filter(w => w.length > 2);
+  if (filterTokens.length > 0) {
+    const schTokens = schClean.split(/\s+/);
+    const provTokens = provClean.split(/\s+/);
+    if (filterTokens.some(ft => schTokens.includes(ft) || provTokens.includes(ft))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function statusClasses(status) {
   const normalizedStatus = (status || '').toLowerCase();
   if (normalizedStatus === 'success' || normalizedStatus === 'accepted' || normalizedStatus === 'registered') {
@@ -177,9 +220,10 @@ export default function Dash() {
   const [pageSuccess, setPageSuccess] = useState('');
 
   const availablePrograms = useMemo(() => {
-    // Use providers from database instead of deriving from accounts
-    return providers.map(p => p.provider_name).sort();
-  }, [providers]);
+    const providerNames = (providers || []).map(p => p.provider_name).filter(Boolean);
+    const accountScholarships = (accounts || []).map(a => a.scholarship).filter(s => s && !isNoScholarshipAssignment(s));
+    return Array.from(new Set([...providerNames, ...accountScholarships])).sort();
+  }, [providers, accounts]);
 
   const providerStats = useMemo(() => {
     // Calculate users and applicants per provider
@@ -279,9 +323,7 @@ export default function Dash() {
     const search = accountSearch.trim().toLowerCase();
     const filtered = accounts.filter((account) => {
       const matchesType = account.type === accountType;
-      const matchesProgram = managedAcctProgramFilter === 'All'
-        || (managedAcctProgramFilter === 'No Scholarship' && isNoScholarshipAssignment(account.scholarship))
-        || account.scholarship === managedAcctProgramFilter;
+      const matchesProgram = matchesProgramFilter(account.scholarship, managedAcctProgramFilter, account.providerName || account.provider_name);
       const matchesSearch = !search || [account.name, account.email, String(account.id)].some((value) => (value || '').toLowerCase().includes(search));
       return matchesType && matchesProgram && matchesSearch;
     });
@@ -296,9 +338,7 @@ export default function Dash() {
 
   const filteredAccountReport = useMemo(() => {
     return accounts.filter((account) => {
-      const matchesProgram = accReportFilter.program === 'All'
-        || (accReportFilter.program === 'No Scholarship' && isNoScholarshipAssignment(account.scholarship))
-        || account.scholarship === accReportFilter.program;
+      const matchesProgram = matchesProgramFilter(account.scholarship, accReportFilter.program, account.providerName || account.provider_name);
       const matchesRole = accReportFilter.role === 'All' || account.role === accReportFilter.role.toLowerCase();
       const search = accReportFilter.search.trim().toLowerCase();
       const matchesSearch = !search || [account.name, account.email].some((value) => (value || '').toLowerCase().includes(search));
@@ -308,9 +348,7 @@ export default function Dash() {
 
   const filteredActivityReport = useMemo(() => {
     return activities.filter((activity) => {
-      const matchesProgram = actReportFilter.program === 'All'
-        || (actReportFilter.program === 'No Scholarship' && isNoScholarshipAssignment(activity.scholarship))
-        || activity.scholarship === actReportFilter.program;
+      const matchesProgram = matchesProgramFilter(activity.scholarship, actReportFilter.program, activity.providerName || activity.provider_name);
       const matchesAction = actReportFilter.action === 'All'
         || (activity.activity || '').toLowerCase().includes(actReportFilter.action.toLowerCase());
       const search = actReportFilter.search.trim().toLowerCase();

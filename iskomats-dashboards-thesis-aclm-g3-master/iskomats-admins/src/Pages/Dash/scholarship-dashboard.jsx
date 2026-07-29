@@ -1943,7 +1943,8 @@ export default function ScholarshipDashboard({
   }, [data.scholarshipPosts]);
 
   const matchesScholarshipSelection = (applicant, selectedValue) => {
-    if (selectedValue === 'all') {
+    if (!applicant) return false;
+    if (!selectedValue || selectedValue === 'all' || selectedValue === 'All') {
       return true;
     }
 
@@ -1959,26 +1960,47 @@ export default function ScholarshipDashboard({
     }
 
     const selectedOption = scholarshipFilterOptions.find((option) => option.value === selectedValue);
+    const selectedReqNo = String(selectedValue || '').trim().toLowerCase();
+    const selectedLabel = String(selectedOption?.label || selectedValue || '').trim().toLowerCase();
 
-    // Exact ID matching
-    const applicantReqNo = String(applicant.reqNo || applicant.req_no || applicant.request_no || applicant.scholarshipNo || applicant.scholarship_no || '').toLowerCase();
-    const selectedReqNo = String(selectedValue || '').toLowerCase();
+    // Applicant identifiers
+    const applicantReqNo = String(applicant.reqNo || applicant.req_no || applicant.request_no || applicant.scholarshipNo || applicant.scholarship_no || '').trim().toLowerCase();
+    const applicantScholarshipName = String(applicant.scholarshipName || applicant.scholarship_name || applicant.appliedScholarship || applicant.scholarship || applicant.scholarshipTitle || '').trim().toLowerCase();
+    const applicantProvider = String(applicant.providerName || applicant.provider_name || applicant.program || applicant.provider || '').trim().toLowerCase();
 
-    if (selectedReqNo && applicantReqNo) {
+    // Check numeric ID equality when both are numeric
+    const isSelectedNumeric = /^\d+$/.test(selectedReqNo);
+    const isApplicantNumeric = /^\d+$/.test(applicantReqNo);
+
+    if (isSelectedNumeric && isApplicantNumeric) {
       return applicantReqNo === selectedReqNo;
     }
 
-    if (selectedReqNo && applicantReqNo === selectedReqNo) {
-      return true;
+    if (isSelectedNumeric && !isApplicantNumeric) {
+      const targetPost = (data.scholarshipPosts || []).find(s => String(s.reqNo || s.id || '') === selectedReqNo);
+      if (targetPost) {
+        const postName = String(targetPost.scholarshipName || targetPost.title || '').trim().toLowerCase();
+        const postProvider = String(targetPost.providerName || targetPost.provider_name || targetPost.program || '').trim().toLowerCase();
+        if (postName && applicantScholarshipName && (applicantScholarshipName === postName || applicantScholarshipName.includes(postName) || postName.includes(applicantScholarshipName))) {
+          return true;
+        }
+        if (postProvider && applicantProvider && (applicantProvider === postProvider || applicantProvider.includes(postProvider) || postProvider.includes(applicantProvider))) {
+          return true;
+        }
+      }
     }
 
-    // Name matching (fallback when applicant has no explicit scholarship ID)
-    const applicantScholarshipName = String(applicant.scholarshipName || applicant.scholarship_name || applicant.appliedScholarship || applicant.scholarship || applicant.scholarshipTitle || '').toLowerCase();
-    const selectedLabel = String(selectedOption?.label || '').toLowerCase();
-
-    if (selectedLabel && applicantScholarshipName) {
-      if (applicantScholarshipName === selectedLabel || applicantScholarshipName.includes(selectedLabel) || selectedLabel.includes(applicantScholarshipName)) {
+    // Name / Title / Provider matching
+    if (selectedLabel) {
+      if (applicantScholarshipName && (applicantScholarshipName === selectedLabel || applicantScholarshipName.includes(selectedLabel) || selectedLabel.includes(applicantScholarshipName))) {
         return true;
+      }
+      if (applicantProvider && (applicantProvider === selectedLabel || applicantProvider.includes(selectedLabel) || selectedLabel.includes(applicantProvider))) {
+        return true;
+      }
+      const filterWords = selectedLabel.split(/\s+/).filter(w => w.length > 2);
+      if (filterWords.length > 0 && applicantScholarshipName) {
+        if (filterWords.some(word => applicantScholarshipName.includes(word))) return true;
       }
     }
 
