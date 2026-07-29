@@ -4159,7 +4159,11 @@ const StudentInfo = () => {
   async function handleCOEScan() {
     const coeDoc = getVerificationDocumentSource(
       photos.mayorCOE_photo,
-      formData.mayorCOE_photo
+      formData.mayorCOE_photo,
+      photos.enrollment,
+      formData.enrollment,
+      photos.enrollment_certificate_doc,
+      formData.enrollment_certificate_doc
     );
     const schoolName = formData.schoolName || '';
     const idNumber = formData.schoolIdNumber || '';
