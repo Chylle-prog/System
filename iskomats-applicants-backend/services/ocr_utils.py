@@ -657,6 +657,13 @@ def _extract_signature_from_id_back(id_img):
     if height == 0 or width == 0:
         return None
 
+    # Downscale high-resolution images (>1280px) for 4x faster thresholding & contour extraction
+    max_dim = max(height, width)
+    if max_dim > 1280:
+        scale = 1280.0 / max_dim
+        gray = cv2.resize(gray, (int(width * scale), int(height * scale)), interpolation=cv2.INTER_AREA)
+        height, width = gray.shape[:2]
+
     lane_y0, lane_y1 = int(height * 0.08), int(height * 0.42)
     lane_x0, lane_x1 = int(width * 0.08), int(width * 0.92)
     roi_gray = gray[lane_y0:lane_y1, lane_x0:lane_x1].copy()

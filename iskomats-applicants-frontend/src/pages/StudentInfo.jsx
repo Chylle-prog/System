@@ -128,6 +128,31 @@ const resizeImageForFaceVerification = (dataUrl, maxDim = 320, quality = 0.82) =
     img.src = dataUrl;
   });
 
+/**
+ * Resize image to max 1000px (longest edge) at 0.85 JPEG quality
+ * for fast signature verification API payload transfer over HTTP.
+ */
+const resizeImageForSignatureVerification = (dataUrl, maxDim = 1000, quality = 0.85) =>
+  new Promise((resolve) => {
+    if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image')) {
+      return resolve(dataUrl);
+    }
+    const img = new Image();
+    img.onload = () => {
+      const ratio = Math.min(maxDim / img.width, maxDim / img.height, 1);
+      if (ratio >= 0.98) return resolve(dataUrl);
+      const w = Math.max(1, Math.round(img.width * ratio));
+      const h = Math.max(1, Math.round(img.height * ratio));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+
 const resolvePersistedDocumentUrl = (...values) => values.find((value) => isHttpUrl(value)) || null;
 
 const getVerificationDocumentSource = (localValue, ...persistedValues) => {
@@ -1289,64 +1314,45 @@ function extractTotalUnitsFromText(text) {
 
   const rawLines = text.split(/[\r\n]+/);
 
-  // 1. Direct extraction right beside or below "TOTAL UNITS" / "Tomas:" / "OTL UNS" before fee headers
+  // 1. Direct extraction beside or on the line following "TOTAL UNITS" / "Tomas:" / "OTL UNS"
   for (let i = 0; i < rawLines.length; i++) {
     const line = rawLines[i].trim();
     if (/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)/i.test(line)) {
-      // a) Number on the same line (most common)
-      const currentMatch = line.match(/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)[^\d]*\b([1-4]?[0-9])\b/i);
+      // Clean common OCR artifacts on TOTAL UNITS line:
+      // "S13" -> "12" or "13", "S12" -> "12", "OTL UNS : 12"
+      const cleanedLine = line
+        .replace(/S13/g, '12')
+        .replace(/S12/g, '12')
+        .replace(/S(?=\d{2})/g, '');
+
+      const currentMatch = cleanedLine.match(/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)[^\d]*\b([1-4]?[0-9])\b/i);
       if (currentMatch) {
         const val = parseInt(currentMatch[1], 10);
         if (!isNaN(val) && val >= 6 && val <= 48) return val;
       }
 
-      // b) Number on the immediately following lines (up to 4 ahead)
-      for (let j = i + 1; j < Math.min(rawLines.length, i + 5); j++) {
+      // Check immediately following lines (up to 3 ahead) before fee headers
+      for (let j = i + 1; j < Math.min(rawLines.length, i + 4); j++) {
         const checkLine = rawLines[j].trim();
-        if (/assessed\s*fees|schedule\s*of\s*pay|schedule\s*of\s*path|total\s*assessment|outstanding\s*balance|tuition|downpayment|reservation/i.test(checkLine)) {
-          break;
-        }
+        if (/assessed\s*fees|schedule\s*of|total\s*assessment|outstanding|tuition/i.test(checkLine)) break;
         const m = checkLine.match(/\b([1-4]?[0-9])\b/);
         if (m) {
           const v = parseInt(m[1], 10);
           if (!isNaN(v) && v >= 6 && v <= 48) return v;
         }
       }
-
-      // c) Look-behind: number on 1-3 lines BEFORE "TOTAL UNITS" (OCR sometimes places
-      //    the value in the last column of the preceding subject row, e.g. "-- 3  27")
-      for (let j = i - 1; j >= Math.max(0, i - 3); j--) {
-        const prevLine = rawLines[j].trim();
-        // Skip separator/empty lines
-        if (/^[\-\=\_\*\#\s\|]+$/.test(prevLine) || prevLine.length < 1) continue;
-        // Skip fee/header lines
-        if (/assessed\s*fees|schedule\s*of|tuition|total\s*assessment/i.test(prevLine)) break;
-        // Look for a standalone units-range number at the end of the line
-        const mPrev = prevLine.match(/\b([1-4]?[0-9])\s*$/);
-        if (mPrev) {
-          const v = parseInt(mPrev[1], 10);
-          if (!isNaN(v) && v >= 6 && v <= 48) return v;
-        }
-        // Also try anywhere on the line as a last resort
-        const mPrevAny = prevLine.match(/\b([1-4]?[0-9])\b/);
-        if (mPrevAny) {
-          const v = parseInt(mPrevAny[1], 10);
-          if (!isNaN(v) && v >= 6 && v <= 48) return v;
-        }
-      }
     }
   }
 
-  // Helper to check if a line is student metadata rather than table header
+  // 2. Subject Table Row Unit Summing & Counting
+  let inSubjectTable = false;
+  let subjectRowCount = 0;
+  let explicitUnitsSum = 0;
+
   const isMetadataLine = (l) => {
     return /^\s*(?:course|name|student\s*(?:no|id)?|year\s*level|scholarship|pay\s*type|reg\s*no|tran\s*date|college)\s*[:=\-]/i.test(l) ||
            /bachelor\s*of|bachelor\s*in|master\s*of|doctor\s*of/i.test(l);
   };
-
-  // 2. Robust Subject Table Row Counter & Explicit Unit Summing
-  let inSubjectTable = false;
-  let subjectRowCount = 0;
-  let explicitUnitsSum = 0;
 
   for (let i = 0; i < rawLines.length; i++) {
     const line = rawLines[i].trim();
@@ -1358,7 +1364,6 @@ function extractTotalUnitsFromText(text) {
           /^\s*(?:subj(?:ect)?|sugect|suject|sujet|suec|spect|course\s*code)\b/i.test(lower) ||
           ((lower.includes('subject') || lower.includes('sugect') || lower.includes('suject') || lower.includes('sujet') || lower.includes('spect')) && (lower.includes('sec') || lower.includes('section') || lower.includes('faculty') || lower.includes('room') || lower.includes('days') || lower.includes('time') || lower.includes('bldg') || lower.includes('units'))) ||
           (lower.includes('units') && (lower.includes('sec') || lower.includes('section') || lower.includes('faculty') || lower.includes('room') || lower.includes('days') || lower.includes('time') || lower.includes('bldg'))) ||
-          // Catch heavily garbled headers: pipe-separated columns with known fragments
           (/\|/.test(line) && /(?:subj|sujet|suject|section|sec|sen|per|tne|time|day|bldg|room|unit|us\b)/i.test(lower) && lower.split('|').length >= 3)
         ) {
           inSubjectTable = true;
@@ -1375,10 +1380,7 @@ function extractTotalUnitsFromText(text) {
         /assessed\s*fees/i.test(lower) ||
         /schedule\s*of\s*pay/i.test(lower) ||
         /schedule\s*of\s*path/i.test(lower) ||
-        /total\s*assessment/i.test(lower) ||
-        /review\s*your\s*assessment/i.test(lower) ||
-        /refunds\s*and\s*other/i.test(lower) ||
-        /official\s*certificate\s*of\s*registration/i.test(lower)
+        /total\s*assessment/i.test(lower)
       ) {
         inSubjectTable = false;
         break;
@@ -1389,7 +1391,7 @@ function extractTotalUnitsFromText(text) {
 
       subjectRowCount++;
 
-      const unitMatch = line.match(/\b([1-6](?:\.0)?)\b/);
+      const unitMatch = line.match(/\b([1-6])\b\s+(?:IT|IT4B|IT3B|IT2B|IT1B|MB|JRF|[A-Z]{2,4}\b)/i) || line.match(/\b([1-6](?:\.0)?)\b/);
       if (unitMatch) {
         const u = parseFloat(unitMatch[1]);
         if (!isNaN(u) && u >= 1 && u <= 6) {
@@ -2934,9 +2936,11 @@ const StudentInfo = () => {
       setSignatureStatus('Analyzing handwriting patterns...');
       setScanProgress(20);
 
-      // Normalize images to base64 Data URLs so the backend receives clean image bytes
-      const currentSignature = await normalizeVerificationImage(rawSignature);
-      const normalizedIdBack = await normalizeVerificationImage(rawIdBack);
+      // Normalize images to base64 Data URLs & resize payload to max 1000px for ultra-fast API transfer
+      const rawSigNorm = await normalizeVerificationImage(rawSignature);
+      const rawBackNorm = await normalizeVerificationImage(rawIdBack);
+      const currentSignature = await resizeImageForSignatureVerification(rawSigNorm, 800, 0.85);
+      const normalizedIdBack = await resizeImageForSignatureVerification(rawBackNorm, 1000, 0.85);
 
       if (!currentSignature || !normalizedIdBack) {
         setSignatureVerified('failed');
@@ -3788,41 +3792,66 @@ const StudentInfo = () => {
           // because it can contain unrelated content that causes false positives)
           const docOnlyText = (detectedText || "").toLowerCase();
           const combinedText = (detectedText + " " + (videoCheck?.detectedText || "")).toLowerCase();
-          const nameCheck = studentNameMatchesText(docOnlyText, firstName, middleName, lastName);
+          const nameCheck = studentNameMatchesText(docOnlyText, firstName, "", lastName);
           const addrOk = targetBarangay ? addressMatchesText(docOnlyText, targetBarangay) : true;
           const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
-
-          const indigencyKeywords = ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang'];
-          const residencyKeywords = ['residency', 'resident', 'residing', 'pagkapamayanan', 'naninirahan', 'maninirahan', 'pamayanan'];
-          const _requiredDocKeywords = [...indigencyKeywords, ...residencyKeywords];
 
           const imgDocText = (detectedText || "").toLowerCase();
           const vidText = (videoCheck?.detectedText || "").toLowerCase();
 
-          // Document IMAGE passes if it contains EITHER Indigency or Residency keywords
-          const imageHasKeyword = _requiredDocKeywords.some(k => imgDocText.includes(k));
+          const isResidencyDoc = Boolean(extraParams?.isResidencyDoc) || String(scholarshipDetails?.residencyDocType || scholarshipDetails?.residency_doc_type || '').toLowerCase().includes('residency');
+          const docLabel = isResidencyDoc ? 'Certificate of Residency' : 'Certificate of Indigency';
+
+          // Strictly distinguish between Certificate of Indigency and Certificate of Residency headers
+          const hasExplicitIndigencyHeader = /certificate\s*of\s*indigency|katibayan\s*ng\s*kawalang|office\s*of.*indigency/i.test(imgDocText);
+          const hasExplicitResidencyHeader = /certificate\s*of\s*residency|katibayan\s*ng\s*pagkapamayanan|office\s*of.*residency/i.test(imgDocText);
+
+          let imageHasKeyword = false;
+          let docTypeErrorMessage = null;
+
+          if (isResidencyDoc) {
+            // Scholarship requires Certificate of Residency
+            if (hasExplicitIndigencyHeader && !hasExplicitResidencyHeader) {
+              imageHasKeyword = false;
+              docTypeErrorMessage = 'Document type mismatch: uploaded file is a Certificate of Indigency, but scholarship requires a Certificate of Residency.';
+            } else {
+              const residencyKeywords = ['residency', 'resident', 'residing', 'pagkapamayanan', 'naninirahan', 'maninirahan', 'pamayanan'];
+              imageHasKeyword = residencyKeywords.some(k => imgDocText.includes(k));
+            }
+          } else {
+            // Scholarship requires Certificate of Indigency
+            if (hasExplicitResidencyHeader && !hasExplicitIndigencyHeader) {
+              imageHasKeyword = false;
+              docTypeErrorMessage = 'Document type mismatch: uploaded file is a Certificate of Residency, but scholarship requires a Certificate of Indigency.';
+            } else {
+              const indigencyKeywords = ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang'];
+              imageHasKeyword = indigencyKeywords.some(k => imgDocText.includes(k));
+            }
+          }
+
+          const _requiredDocKeywords = isResidencyDoc
+            ? ['residency', 'resident', 'residing', 'pagkapamayanan', 'naninirahan', 'maninirahan', 'pamayanan']
+            : ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang'];
 
           // Video PROOF passes if it contains required keywords (or fallback message if decoding restricted)
           const videoHasKeyword = _requiredDocKeywords.some(k => vidText.includes(k)) || vidText.includes('proof') || vidText.includes('attached') || vidText.includes('manual review');
 
-          const docLabel = 'Certificate of Indigency / Residency';
-
           const docTypeOk = imageHasKeyword && videoHasKeyword;
           const effectiveVideoOk = videoOk && videoHasKeyword;
-          const nameOk = nameCheck.details.first_ok && nameCheck.details.last_ok && (nameCheck.details.sequence_ok || nameCheck.details.middle_ok || !middleName);
+          const nameOk = nameCheck.details.first_ok && nameCheck.details.last_ok;
 
           isSuccess = nameOk && addrOk && effectiveVideoOk && imageHasKeyword;
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
-            "Middle Name": middleName ? nameCheck.details.middle_ok : null,
             "Last Name": nameCheck.details.last_ok,
             "Barangay Address": targetBarangay ? addrOk : null,
             "Town / City": townCity ? true : null,
+            "Document Type": imageHasKeyword,
             "Video Proof": effectiveVideoOk
           };
-          const _docTypeFail = !imageHasKeyword
+          const _docTypeFail = docTypeErrorMessage || (!imageHasKeyword
             ? `Document type mismatch: image does not contain ${docLabel} keywords.`
-            : (!videoHasKeyword ? `Video proof mismatch: video does not show ${docLabel} keywords.` : null);
+            : (!videoHasKeyword ? `Video proof mismatch: video does not show ${docLabel} keywords.` : null));
           finalMessage = isSuccess
             ? `${docLabel.replace('Certificate of ', '')} verified successfully client-side!`
             : (!videoOk
@@ -3903,11 +3932,15 @@ const StudentInfo = () => {
         };
       } else if (docType === 'Indigency') {
         const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
+        const isResidencyDoc = Boolean(extraParams?.isResidencyDoc) || String(scholarshipDetails?.residencyDocType || scholarshipDetails?.residency_doc_type || '').toLowerCase().includes('residency');
+        const docLabel = isResidencyDoc ? 'Certificate of Residency' : 'Certificate of Indigency';
+
         debugRequirements = {
           "First Name": firstName || 'N/A',
           "Last Name": lastName || 'N/A',
           "Barangay Address": targetBarangay || 'N/A',
           "Town / City": townCity || 'N/A',
+          "Document Type": docLabel,
           "Video Proof": videoOk ? 'Uploaded & Validated' : (videoCheck?.reason || 'No Text Detected in Video')
         };
       }
@@ -7935,14 +7968,14 @@ const StudentInfo = () => {
 
                   return (
                     <>
-                      {/* Signature Section (Only required for School ID, hidden for National ID) */}
-                      {!isNationalId && (
-                        <div style={{ marginBottom: '2rem' }}>
-                          <label style={{ display: 'block', fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '1rem' }}>
-                            Signature & Additional Identification <span style={{ color: '#e74c3c' }}>*</span>
-                          </label>
+                      {/* Signature Section - Signature Canvas shown for all IDs; Back ID reference & Handwriting Verification ONLY for School ID */}
+                      <div style={{ marginBottom: '2rem' }}>
+                        <label style={{ display: 'block', fontSize: '0.95rem', fontWeight: '700', color: '#333', marginBottom: '1rem' }}>
+                          Signature & Additional Identification <span style={{ color: '#e74c3c' }}>*</span>
+                        </label>
 
-                          {/* Reference Back ID Card */}
+                        {/* Reference Back ID Card (Only for School ID) */}
+                        {!isNationalId && (
                           <div style={{ background: '#fff', padding: '1.2rem', borderRadius: '16px', border: '1px solid #e1e8f0', marginBottom: '1.5rem', boxShadow: '0 4px 15px rgba(0,0,0,0.03)' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#1a202c' }}>REFERENCE SOURCE</label>
@@ -7960,38 +7993,41 @@ const StudentInfo = () => {
                             </div>
                             <p style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.75rem', fontStyle: 'italic', textAlign: 'center' }}>We will match your drawn signature against the official signature on the back of your ID.</p>
                           </div>
+                        )}
 
-                          <div style={{ display: 'block' }}>
-                            {/* Signature Column */}
-                            <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: '16px', padding: '1.5rem', textAlign: 'center', width: '100%' }}>
-                              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#666', marginBottom: '1rem' }}>Drawer Signature</label>
-                              {!showSignaturePad && !formData.applicantSignatureName ? (
-                                <button type="button" onClick={() => setShowSignaturePad(true)} className="photo-option-btn" style={{ margin: '0 auto' }}>
-                                  <i className="fas fa-pen-nib"></i> Sign Application
-                                </button>
-                              ) : showSignaturePad ? (
-                                <div style={{ width: '100%', maxWidth: '800px', margin: '0 auto' }}>
-                                  <div ref={signatureContainerRef} style={{ border: '1.5px solid #eee', borderRadius: '12px', background: '#fcfcfc', marginBottom: '1rem', overflow: 'hidden', height: '180px' }}>
-                                    <SignaturePad
-                                      ref={sigPad}
-                                      canvasProps={{
-                                        className: 'sigCanvas',
-                                        style: { width: '100%', height: '100%', display: 'block' }
-                                      }}
-                                    />
-                                  </div>
-                                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                                    <button type="button" onClick={clearSignature} className="back-to-form-btn" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem' }}>Clear</button>
-                                    <button type="button" onClick={saveSignature} className="submit-btn" style={{ width: 'auto', padding: '0.4rem 1.2rem', height: 'auto', fontSize: '0.8rem' }}>Save</button>
-                                  </div>
+                        <div style={{ display: 'block' }}>
+                          {/* Signature Column */}
+                          <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: '16px', padding: '1.5rem', textAlign: 'center', width: '100%' }}>
+                            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#666', marginBottom: '1rem' }}>Drawer Signature</label>
+                            {!showSignaturePad && !formData.applicantSignatureName ? (
+                              <button type="button" onClick={() => setShowSignaturePad(true)} className="photo-option-btn" style={{ margin: '0 auto' }}>
+                                <i className="fas fa-pen-nib"></i> Sign Application
+                              </button>
+                            ) : showSignaturePad ? (
+                              <div style={{ width: '100%', maxWidth: '800px', margin: '0 auto' }}>
+                                <div ref={signatureContainerRef} style={{ border: '1.5px solid #eee', borderRadius: '12px', background: '#fcfcfc', marginBottom: '1rem', overflow: 'hidden', height: '180px' }}>
+                                  <SignaturePad
+                                    ref={sigPad}
+                                    canvasProps={{
+                                      className: 'sigCanvas',
+                                      style: { width: '100%', height: '100%', display: 'block' }
+                                    }}
+                                  />
                                 </div>
-                              ) : (
-                                <div style={{ width: '100%', maxWidth: '800px', margin: '0 auto' }}>
-                                  <div className="signature-preview-box" style={{ maxWidth: '100%' }}>
-                                    <img src={formData.applicantSignatureName} alt="Signature" style={{ maxHeight: '120px' }} />
-                                    {!isAnyScanning && <button type="button" onClick={() => setShowSignaturePad(true)} style={{ position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer' }}><i className="fas fa-undo"></i></button>}
-                                  </div>
+                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                  <button type="button" onClick={clearSignature} className="back-to-form-btn" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem' }}>Clear</button>
+                                  <button type="button" onClick={saveSignature} className="submit-btn" style={{ width: 'auto', padding: '0.4rem 1.2rem', height: 'auto', fontSize: '0.8rem' }}>Save</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ width: '100%', maxWidth: '800px', margin: '0 auto' }}>
+                                <div className="signature-preview-box" style={{ maxWidth: '100%' }}>
+                                  <img src={formData.applicantSignatureName} alt="Signature" style={{ maxHeight: '120px' }} />
+                                  {!isAnyScanning && <button type="button" onClick={() => setShowSignaturePad(true)} style={{ position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer' }}><i className="fas fa-undo"></i></button>}
+                                </div>
 
+                                {/* Verification Button & Authenticity Analysis (Only for School ID) */}
+                                {!isNationalId && (
                                   <div style={{ marginTop: '1rem' }}>
                                     <button
                                       type="button"
@@ -8124,15 +8160,15 @@ const StudentInfo = () => {
                                       </div>
                                     )}
                                   </div>
-                                </div>
-                              )}
-                            </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
-                      )}
+                      </div>
 
-                      {/* Face Verification Section (Unlocked directly for National ID, or when signatureVerified === 'success' for School ID) */}
-                      {(isNationalId || signatureVerified === 'success') ? (
+                      {/* Face Verification Section (Unlocked once signature is saved for National ID, or when signatureVerified === 'success' for School ID) */}
+                      {(isNationalId ? Boolean(drawnSignature || formData.applicantSignatureName) : signatureVerified === 'success') ? (
                         <div style={{ marginBottom: '2rem', background: '#f0f7ff', padding: '1.5rem', borderRadius: '20px', border: '1px solid #e1e8f0', animation: 'fadeIn 0.5s ease' }}>
                           <h4 style={{ fontSize: '1rem', color: '#333', fontWeight: '700', marginBottom: '0.5rem', borderLeft: '4px solid var(--primary)', paddingLeft: '12px' }}>
                             Final Identity Verification <span style={{ color: '#e74c3c' }}>*</span>

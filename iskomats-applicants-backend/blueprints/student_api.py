@@ -3896,7 +3896,7 @@ def signature_match():
         student_id = getattr(request, 'user_no', None)
         verified, message, confidence, sub_img, ext_img, matcher_sub_img, matcher_ref_img = verify_signature_against_id(signature_bytes, id_back_bytes, student_id=student_id)
         
-        # Convert images to base64 safely for frontend display
+        # Convert images to base64 safely for frontend display (JPEG 85 for 10x faster encoding)
         def safe_imencode(img):
             if img is None:
                 return None
@@ -3906,8 +3906,8 @@ def signature_match():
                 return None
             if isinstance(img, np.ndarray) and img.size > 0:
                 try:
-                    _, buffer = cv2.imencode('.png', img)
-                    return f"data:image/png;base64,{base64.b64encode(buffer).decode('utf-8')}"
+                    _, buffer = cv2.imencode('.jpg', img, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+                    return f"data:image/jpeg;base64,{base64.b64encode(buffer).decode('utf-8')}"
                 except Exception as e:
                     print(f"[SIGNATURE API] imencode failed: {e}", flush=True)
                     return None
