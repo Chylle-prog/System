@@ -2002,20 +2002,16 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
         if 'inosloban' in addr_clean or 'inosluban' in addr_clean or 'inosl' in addr_clean:
             addr_words.extend(['inosloban', 'inosluban'])
 
-    # DOCUMENT TYPE KEYWORD MATCHING
+    # DOCUMENT TYPE KEYWORD MATCHING (Indigency or Residency accepted non-exclusively)
     is_residency_doc = kwargs.get('is_residency_doc') or kwargs.get('isResidencyDoc') or False
     doc_norm = normalize_text(raw_text)
+    residency_keywords = ['residency', 'resident', 'residing', 'pagkapamayanan', 'naninirahan', 'maninirahan', 'pamayanan']
+    indigency_keywords = ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang']
+    all_doc_keywords = residency_keywords + indigency_keywords
 
-    if is_residency_doc:
-        residency_keywords = ['residency', 'resident', 'residing', 'pagkapamayanan', 'naninirahan', 'maninirahan', 'pamayanan']
-        doc_type_ok = any(k in doc_norm for k in residency_keywords)
-        if not doc_type_ok:
-            failures.append("Document Type Mismatch: Certificate does not contain required 'Residency' / 'Resident' keywords")
-    else:
-        indigency_keywords = ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang']
-        doc_type_ok = any(k in doc_norm for k in indigency_keywords)
-        if not doc_type_ok:
-            failures.append("Document Type Mismatch: Certificate does not contain required 'Indigency' / 'Indigent' keywords")
+    doc_type_ok = any(k in doc_norm for k in all_doc_keywords)
+    if not doc_type_ok:
+        failures.append("Document Type Mismatch: Certificate does not contain required 'Indigency' / 'Residency' keywords")
 
     success = first_ok and middle_ok and last_ok and sequence_ok and addr_ok and doc_type_ok
     if success:

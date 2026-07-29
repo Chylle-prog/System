@@ -3717,23 +3717,20 @@ const StudentInfo = () => {
           const addrOk = targetBarangay ? addressMatchesText(docOnlyText, targetBarangay) : true;
           const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
 
-          const _reqTypeStr = String(extraParams.isResidencyDoc !== undefined ? extraParams.isResidencyDoc : (scholarshipDetails?.residencyDocType || scholarshipDetails?.residency_doc_type || '')).toLowerCase();
-          const _isResDoc = extraParams.isResidencyDoc === true || _reqTypeStr.includes('residency') || _reqTypeStr === 'true';
-
-          const _requiredDocKeywords = _isResDoc
-            ? ['residency', 'resident', 'residing', 'pagkapamayanan', 'naninirahan', 'maninirahan', 'pamayanan']
-            : ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang'];
+          const indigencyKeywords = ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang'];
+          const residencyKeywords = ['residency', 'resident', 'residing', 'pagkapamayanan', 'naninirahan', 'maninirahan', 'pamayanan'];
+          const _requiredDocKeywords = [...indigencyKeywords, ...residencyKeywords];
 
           const imgDocText = (detectedText || "").toLowerCase();
           const vidText = (videoCheck?.detectedText || "").toLowerCase();
 
-          // Document IMAGE must explicitly contain required keywords
+          // Document IMAGE passes if it contains EITHER Indigency or Residency keywords
           const imageHasKeyword = _requiredDocKeywords.some(k => imgDocText.includes(k));
 
-          // Video PROOF must ALSO contain required keywords (or fallback message if decoding restricted)
+          // Video PROOF passes if it contains required keywords (or fallback message if decoding restricted)
           const videoHasKeyword = _requiredDocKeywords.some(k => vidText.includes(k)) || vidText.includes('proof') || vidText.includes('attached') || vidText.includes('manual review');
 
-          const docLabel = _isResDoc ? 'Certificate of Residency' : 'Certificate of Indigency';
+          const docLabel = 'Certificate of Indigency / Residency';
 
           const docTypeOk = imageHasKeyword && videoHasKeyword;
           const effectiveVideoOk = videoOk && videoHasKeyword;
