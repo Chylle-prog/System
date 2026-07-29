@@ -2570,7 +2570,15 @@ def get_applicant_document(field_name):
                 return jsonify({'message': 'Error processing document data'}), 500
     except Exception as e:
         print(f"[DOCUMENT] Error fetching {field_name}: {e}", flush=True)
-        return jsonify({'message': str(e)}), 500
+def fetch_video_bytes_from_url(url):
+    try:
+        import requests
+        resp = requests.get(url, timeout=30)
+        if resp.status_code == 200:
+            return resp.content, None
+        return None, f"HTTP {resp.status_code}"
+    except Exception as e:
+        return None, str(e)
 
 @student_api_bp.route('/applicant/document/raw/<string:field_name>', methods=['GET'])
 @token_required
