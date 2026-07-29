@@ -97,11 +97,22 @@ def _extract_ink_crop(img_np):
     valid_contours = []
     for contour in contours:
         area = cv2.contourArea(contour)
-        if area < max(35, int(gray.shape[0] * gray.shape[1] * 0.0005)):
+        if area < max(25, int(gray.shape[0] * gray.shape[1] * 0.0003)):
             continue
         x, y, w, h = cv2.boundingRect(contour)
-        if w > gray.shape[1] * 0.6 and h < 10:
+
+        # 1. Filter out long horizontal underlines
+        if w > gray.shape[1] * 0.45 and h < 14:
             continue
+
+        # 2. Filter out printed text labels at the bottom margin ("Signature", "Date", dots)
+        if (y > gray.shape[0] * 0.72) and (h < 25 or w > 2.5 * h):
+            continue
+
+        # 3. Filter out top header logos/stars
+        if (y < gray.shape[0] * 0.22) and (y + h < gray.shape[0] * 0.35) and (w < gray.shape[1] * 0.5) and len(contours) > 2:
+            continue
+
         valid_contours.append((x, y, w, h, area))
     
     if not valid_contours:
@@ -124,7 +135,7 @@ def _extract_ink_crop(img_np):
     w = max(p[0] + p[2] for p in filtered_pts) - x
     h = max(p[1] + p[3] for p in filtered_pts) - y
     
-    pad = max(5, int(min(w, h) * 0.1))
+    pad = max(6, int(min(w, h) * 0.12))
     x_p, y_p = max(0, x - pad), max(0, y - pad)
     w_p = min(gray.shape[1] - x_p, w + 2 * pad)
     h_p = min(gray.shape[0] - y_p, h + 2 * pad)

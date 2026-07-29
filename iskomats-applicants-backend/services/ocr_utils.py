@@ -785,15 +785,20 @@ def _extract_signature_from_id_back(id_img):
         x, y, w, h = c['box']
         y_mid = c['y_mid']
 
-        # Filter out printed label text ("Signature") beneath the signature line
-        if y > (anchor_bottom + 4) and h < 24:
+        # Filter out horizontal underlines (w > 45% image width, h < 14px)
+        if w > w_idx * 0.45 and h < 14:
             continue
 
-        # Filter out top star logo / graphics far above signature
-        if (y + h) < (anchor_top - 15):
+        # Filter out printed label text ("Signature", "Authorized Signature", dots) beneath signature
+        if y >= (anchor_bottom - 2) and y_mid > anchor['y_mid'] + (anchor_h * 0.40):
             continue
 
-        if abs(y_mid - anchor['y_mid']) < max(40, anchor_h * 1.2):
+        # Filter out top star logo / graphics above signature
+        if (y + h) <= (anchor_top + 4) and y_mid < anchor['y_mid'] - (anchor_h * 0.40):
+            continue
+
+        # Check proximity to anchor signature stroke
+        if abs(y_mid - anchor['y_mid']) <= max(35, anchor_h * 0.85):
             final_parts.append(c)
             
     if not final_parts:

@@ -1401,8 +1401,8 @@ function extractTotalUnitsFromText(text) {
     if (isMetadataLine(lower)) continue;
 
     const isSubjectRow =
-      /(?:IT4B|IT3B|IT2B|IT1B|MB\s*\d+|\d{1,2}:\d{2}|AM|PM|\bMW\b|\bTTH\b|\bSAT\b|\bSUN\b)/i.test(line) &&
-      !/(?:official|certificate|registration|enrolled|run\s*date|user|school\s*year|student\s*no|page\s*\d)/i.test(lower);
+      /(?:IT4B|IT3B|IT2B|IT1B|MB\s*\d+|MO\s*\d+|M61|MB|MO|JRF|Caproj|Capstone|Elective|Social|Professional|Issues|Life|Works|Rizal|Liferiz|Itsocpro|Itelect|ITCaproj|\d{1,2}:\d{2}|AM|PM|MM|\bMW\b|\bTTH\b|\bSAT\b|\bSUN\b)/i.test(line) &&
+      !/(?:official|certificate|registration|enrolled|run\s*date|user|school\s*year|student\s*no|page\s*\d|assessed|schedule)/i.test(lower);
 
     if (isSubjectRow) {
       subjectRowCount++;

@@ -44,8 +44,8 @@
   Response: { success, message, userId }
   ```
 
-#### 3. **dash-africa.jsx** - Africa Scholarship Dashboard
-- **Purpose**: Manage Africa scholarship applicants/rankings
+#### 3. **dash-africa.jsx** - Mayor Africa's Scholarship Dashboard
+- **Purpose**: Manage Mayor Africa's scholarship applicants/rankings
 - **Python Connection**: Student Ranking/app.py
 - **Status**: CAN BE CONNECTED
 - **Required APIs**:
