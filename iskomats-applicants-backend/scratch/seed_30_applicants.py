@@ -63,7 +63,7 @@ def seed():
             last_name = LAST_NAMES[idx]
             middle_name = LAST_NAMES[(idx + 5) % len(LAST_NAMES)]
             
-            gpa = round(random.uniform(1.15, 2.25), 2)
+            gpa = round(random.uniform(84.00, 97.00), 2)
             income = random.choice([120000, 150000, 180000, 200000, 220000, 250000, 280000])
             birth_year = random.choice([2003, 2004, 2005])
             birthdate = f"{birth_year}-{random.randint(1,12):02d}-{random.randint(1,28):02d}"

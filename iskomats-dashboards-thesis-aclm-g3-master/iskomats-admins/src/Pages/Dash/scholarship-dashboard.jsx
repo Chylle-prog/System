@@ -3986,10 +3986,10 @@ export default function ScholarshipDashboard({
                   const idx = a._listIdx;
                   const processingState = getApplicantProcessingState(a);
                   return (
-                    <tr key={`pending-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
+                    <tr key={`pending-${a.applicant_no}-${a.scholarshipNo || i}`} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{a.applicant_no}</span>
+                          <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{i + 1}</span>
                           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700">Pending</span>
                         </div>
                         <div className="font-semibold text-sm">{a.name}</div>
@@ -4025,10 +4025,10 @@ export default function ScholarshipDashboard({
                   const statusLabels = { pending: 'Pending', accepted: 'Accepted', rejected: 'Rejected', cancelled: 'Cancelled' };
                   const processingState = getApplicantProcessingState(a);
                   return (
-                    <tr key={`all-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
+                    <tr key={`all-${a.applicant_no}-${a.scholarshipNo || i}`} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{a.applicant_no}</span>
+                          <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{i + 1}</span>
                           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${statusColors[a._listType] || 'bg-yellow-100 text-yellow-700'}`}>{statusLabels[a._listType] || 'Pending'}</span>
                           {processingState && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
                         </div>
@@ -4054,13 +4054,13 @@ export default function ScholarshipDashboard({
                 })}
 
               {trackTab === 'accepted' &&
-                acceptedList.map((a) => {
+                acceptedList.map((a, i) => {
                   const idx = a._listIdx;
                   return (
-                    <tr key={`accepted-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
+                    <tr key={`accepted-${a.applicant_no}-${a.scholarshipNo || i}`} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{a.applicant_no}</span>
+                          <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{i + 1}</span>
                           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">Accepted</span>
                           {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
                         </div>
@@ -4086,13 +4086,13 @@ export default function ScholarshipDashboard({
                 })}
 
               {trackTab === 'rejected' &&
-                rejectedList.map((a) => {
+                rejectedList.map((a, i) => {
                   const idx = a._listIdx;
                   return (
-                    <tr key={`rejected-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
+                    <tr key={`rejected-${a.applicant_no}-${a.scholarshipNo || i}`} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{a.applicant_no}</span>
+                          <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{i + 1}</span>
                           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">Rejected</span>
                           {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
                         </div>
@@ -4118,13 +4118,13 @@ export default function ScholarshipDashboard({
                 })}
 
               {trackTab === 'cancelled' &&
-                cancelledList.map((a) => {
+                cancelledList.map((a, i) => {
                   const idx = a._listIdx;
                   return (
-                    <tr key={`cancelled-${a.applicant_no}`} className="border-b border-gray-200 hover:bg-gray-50">
+                    <tr key={`cancelled-${a.applicant_no}-${a.scholarshipNo || i}`} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{a.applicant_no}</span>
+                          <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{i + 1}</span>
                           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">Cancelled</span>
                           {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
                         </div>
