@@ -546,7 +546,10 @@ function normalizeNameConfusions(s) {
     .replace(/8/g, 'b')
     .replace(/rn/g, 'm')
     .replace(/cl/g, 'd')
-    .replace(/vv/g, 'w');
+    .replace(/vv/g, 'w')
+    .replace(/k/g, 'n')
+    .replace(/f/g, 't')
+    .replace(/x/g, 'k');
 }
 
 function isSimilarWord(expected, actual) {
@@ -555,10 +558,15 @@ function isSimilarWord(expected, actual) {
   const actNorm = actual.toLowerCase().trim();
   if (expNorm === actNorm) return true;
 
-  // Strict OCR glyph confusion match (visual OCR substitutions only, no edit distance insertion/deletion)
+  // Strict OCR glyph confusion match (visual OCR substitutions)
   const expConf = normalizeNameConfusions(expNorm);
   const actConf = normalizeNameConfusions(actNorm);
   if (expConf && expConf === actConf) return true;
+
+  // Levenshtein edit distance fuzzy match
+  const dist = getLevenshteinDistance(expNorm, actNorm);
+  if (expNorm.length >= 8 && dist <= 2) return true;
+  if (expNorm.length >= 4 && dist <= 1) return true;
 
   return false;
 }
@@ -1324,13 +1332,39 @@ function extractTotalUnitsFromText(text) {
 
   const rawLines = text.split(/[\r\n]+/);
 
+  // 1. Primary Strategy: Explicit "TOTAL UNITS : XX" Extraction
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i].trim();
+    if (/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)/i.test(line)) {
+      const cleanedLine = line
+        .replace(/S13/g, '12')
+        .replace(/S12/g, '12')
+        .replace(/S(?=\d{2})/g, '');
+
+      const currentMatch = cleanedLine.match(/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)[^\d]*\b([1-4]?[0-9])\b/i);
+      if (currentMatch) {
+        const val = parseInt(currentMatch[1], 10);
+        if (!isNaN(val) && val >= 6 && val <= 48) return val;
+      }
+
+      for (let j = i + 1; j < Math.min(rawLines.length, i + 4); j++) {
+        const checkLine = rawLines[j].trim();
+        if (/assessed\s*fees|schedule\s*of|total\s*assessment|outstanding|tuition/i.test(checkLine)) break;
+        const m = checkLine.match(/\b([1-4]?[0-9])\b/);
+        if (m) {
+          const v = parseInt(m[1], 10);
+          if (!isNaN(v) && v >= 6 && v <= 48) return v;
+        }
+      }
+    }
+  }
+
+  // 2. Secondary Strategy: Subject Line Signature Matching (Header-Independent)
   const isMetadataLine = (l) => {
     return /^\s*(?:course|name|student\s*(?:no|id)?|year\s*level|scholarship|pay\s*type|reg\s*no|tran\s*date|college)\s*[:=\-]/i.test(l) ||
            /bachelor\s*of|bachelor\s*in|master\s*of|doctor\s*of/i.test(l);
   };
 
-  // 1. Primary Strategy: Subject Line Signature Matching (Header-Independent)
-  // Scans lines before fee headers and detects subject rows by room codes (MB 312), times (5:30 PM), days (MW, TTH), or section codes (IT4B)
   let subjectRowCount = 0;
   let explicitUnitsSum = 0;
 
@@ -1338,7 +1372,6 @@ function extractTotalUnitsFromText(text) {
     const line = rawLines[i].trim();
     const lower = line.toLowerCase();
 
-    // Stop parsing when reaching fee headers or payment schedules
     if (
       /assessed\s*fees/i.test(lower) ||
       /schedule\s*of\s*pay/i.test(lower) ||
@@ -1351,7 +1384,6 @@ function extractTotalUnitsFromText(text) {
 
     if (isMetadataLine(lower)) continue;
 
-    // Detect subject row signature
     const isSubjectRow =
       /(?:IT4B|IT3B|IT2B|IT1B|MB\s*\d+|\d{1,2}:\d{2}|AM|PM|\bMW\b|\bTTH\b|\bSAT\b|\bSUN\b)/i.test(line) &&
       !/(?:official|certificate|registration|enrolled|run\s*date|user|school\s*year|student\s*no|page\s*\d)/i.test(lower);
@@ -1377,33 +1409,6 @@ function extractTotalUnitsFromText(text) {
     const estimatedUnits = subjectRowCount * 3;
     if (estimatedUnits >= 6 && estimatedUnits <= 48) {
       return estimatedUnits;
-    }
-  }
-
-  // 2. Secondary Strategy: Direct extraction beside or on the line following "TOTAL UNITS" / "Tomas:" / "OTL UNS"
-  for (let i = 0; i < rawLines.length; i++) {
-    const line = rawLines[i].trim();
-    if (/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)/i.test(line)) {
-      const cleanedLine = line
-        .replace(/S13/g, '12')
-        .replace(/S12/g, '12')
-        .replace(/S(?=\d{2})/g, '');
-
-      const currentMatch = cleanedLine.match(/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)[^\d]*\b([1-4]?[0-9])\b/i);
-      if (currentMatch) {
-        const val = parseInt(currentMatch[1], 10);
-        if (!isNaN(val) && val >= 6 && val <= 48) return val;
-      }
-
-      for (let j = i + 1; j < Math.min(rawLines.length, i + 4); j++) {
-        const checkLine = rawLines[j].trim();
-        if (/assessed\s*fees|schedule\s*of|total\s*assessment|outstanding|tuition/i.test(checkLine)) break;
-        const m = checkLine.match(/\b([1-4]?[0-9])\b/);
-        if (m) {
-          const v = parseInt(m[1], 10);
-          if (!isNaN(v) && v >= 6 && v <= 48) return v;
-        }
-      }
     }
   }
 
@@ -3713,7 +3718,7 @@ const StudentInfo = () => {
           const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
           const coeTypeOk = coe_type_matches_text(combinedText);
 
-          const detectedUnits = extractTotalUnitsFromText(combinedText);
+          const detectedUnits = extractTotalUnitsFromText(docOnlyText) || extractTotalUnitsFromText(detectedText);
           if (detectedUnits !== null && detectedUnits > 0) {
             setFormData(prev => ({ ...prev, units: detectedUnits }));
           }
