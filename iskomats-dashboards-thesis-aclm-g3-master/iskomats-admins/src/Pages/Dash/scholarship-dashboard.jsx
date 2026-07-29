@@ -1032,17 +1032,16 @@ export default function ScholarshipDashboard({
     }
   };
 
-  // Load applicants and scholarships from backend API on component mount
+  // Load applicants and scholarships from backend API on component mount in parallel
   useEffect(() => {
-    const initializeDashboard = async () => {
-      await warmBackendConnection();
-      loadApplicants();
-      loadScholarships(false);
-    };
+    warmBackendConnection();
+    loadApplicants();
+    loadScholarships(false);
+    loadAnnouncements();
+  }, []);
 
-    initializeDashboard();
-
-    // Socket.IO Integration
+  // Socket.IO Integration
+  useEffect(() => {
     const token = localStorage.getItem('authToken');
     if (token) {
       socketService.connect(token);
