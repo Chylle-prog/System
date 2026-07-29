@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chart, registerables } from 'chart.js';
 import {
   FaCheckCircle,
@@ -511,12 +511,11 @@ const initialDashboardData = {
 
 export default function ScholarshipDashboard({
   providerKey,
-  providerName: rawProviderName,
-  providerName = (rawProviderName === 'Africa' ? 'Mayor Africa' : rawProviderName),
-  scholarshipLabel = `${rawProviderName === 'Africa' ? 'Mayor Africa' : rawProviderName} Scholarship`,
-  programName = `${rawProviderName === 'Africa' ? 'Mayor Africa' : rawProviderName} Scholarship Program`,
-  dashboardTitle = `${rawProviderName === 'Africa' ? 'Mayor Africa' : rawProviderName} Scholarship Dashboard`,
-  reportFilePrefix = rawProviderName === 'Africa' ? 'Mayor Africa' : rawProviderName,
+  providerName,
+  scholarshipLabel = `${providerName} Scholarship`,
+  programName = `${providerName} Scholarship Program`,
+  dashboardTitle = `${providerName} Scholarship Dashboard`,
+  reportFilePrefix = providerName,
   proNo,
   logo,
 }) {
@@ -1633,8 +1632,8 @@ export default function ScholarshipDashboard({
           return true;
         }
 
-        return activeProviderNames.some((name) => 
-          announcementProviderName.includes(name) || 
+        return activeProviderNames.some((name) =>
+          announcementProviderName.includes(name) ||
           name.includes(announcementProviderName) ||
           (name.includes('tulong') && announcementProviderName.includes('tulong')) ||
           (name.includes('dunong') && announcementProviderName.includes('dunong'))
@@ -2675,7 +2674,7 @@ export default function ScholarshipDashboard({
 
       if (!resolvedApplicantNo) {
         // Find in allKnownApplicants by email or name
-        const match = allKnownApplicants.find(a => 
+        const match = allKnownApplicants.find(a =>
           (m.studentEmail && (a.email === m.studentEmail || a.emailAddress === m.studentEmail)) ||
           (m.studentName && a.name?.toLowerCase() === m.studentName.toLowerCase())
         );
@@ -4304,6 +4303,13 @@ export default function ScholarshipDashboard({
             <div className="flex flex-row items-center gap-2 w-full sm:w-auto">
               <button
                 type="button"
+                onClick={exportToExcel}
+                className="flex-1 sm:flex-initial px-3 py-2 rounded-xl bg-white border border-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-gray-50 transition-all shadow-sm"
+              >
+                <FaPrint className="text-green-600 flex-shrink-0" /> <span className="truncate">Export</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => window.print()}
                 className="flex-1 sm:flex-initial px-3 py-2 rounded-xl bg-[#800020] text-white text-xs font-bold flex items-center justify-center gap-1.5 hover:opacity-90 transition-all shadow-lg"
               >
@@ -5724,9 +5730,8 @@ export default function ScholarshipDashboard({
       <aside
         onMouseEnter={() => setSidebarCollapsed(false)}
         onMouseLeave={() => setSidebarCollapsed(true)}
-        className={`fixed left-0 top-16 sm:top-20 bottom-0 z-50 bg-gradient-to-b from-[#800020] to-[#650018] text-white shadow-2xl flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${
-          isMobileSidebarOpen ? 'translate-x-0 w-72' : '-translate-x-full md:translate-x-0'
-        } ${sidebarCollapsed ? 'md:w-20' : 'md:w-72'}`}
+        className={`fixed left-0 top-16 sm:top-20 bottom-0 z-50 bg-gradient-to-b from-[#800020] to-[#650018] text-white shadow-2xl flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${isMobileSidebarOpen ? 'translate-x-0 w-72' : '-translate-x-full md:translate-x-0'
+          } ${sidebarCollapsed ? 'md:w-20' : 'md:w-72'}`}
       >
         <div className={`border-b border-white/10 mb-2 flex items-center justify-between transition-all ${sidebarCollapsed ? 'p-3' : 'p-6 sm:p-8'}`}>
           <div className="flex flex-col items-center text-center gap-2 sm:gap-4 w-full">
