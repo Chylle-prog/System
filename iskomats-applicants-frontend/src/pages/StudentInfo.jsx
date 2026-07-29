@@ -1349,9 +1349,11 @@ function extractTotalUnitsFromText(text) {
     if (!inSubjectTable) {
       if (!isMetadataLine(lower)) {
         if (
-          /^\s*(?:subj(?:ect)?|sugect|suject|spect|course\s*code)\b/i.test(lower) ||
-          ((lower.includes('subject') || lower.includes('sugect') || lower.includes('suject') || lower.includes('spect')) && (lower.includes('sec') || lower.includes('section') || lower.includes('faculty') || lower.includes('room') || lower.includes('days') || lower.includes('time') || lower.includes('bldg') || lower.includes('units'))) ||
-          (lower.includes('units') && (lower.includes('sec') || lower.includes('section') || lower.includes('faculty') || lower.includes('room') || lower.includes('days') || lower.includes('time') || lower.includes('bldg')))
+          /^\s*(?:subj(?:ect)?|sugect|suject|sujet|suec|spect|course\s*code)\b/i.test(lower) ||
+          ((lower.includes('subject') || lower.includes('sugect') || lower.includes('suject') || lower.includes('sujet') || lower.includes('spect')) && (lower.includes('sec') || lower.includes('section') || lower.includes('faculty') || lower.includes('room') || lower.includes('days') || lower.includes('time') || lower.includes('bldg') || lower.includes('units'))) ||
+          (lower.includes('units') && (lower.includes('sec') || lower.includes('section') || lower.includes('faculty') || lower.includes('room') || lower.includes('days') || lower.includes('time') || lower.includes('bldg'))) ||
+          // Catch heavily garbled headers: pipe-separated columns with known fragments
+          (/\|/.test(line) && /(?:subj|sujet|suject|section|sec|sen|per|tne|time|day|bldg|room|unit|us\b)/i.test(lower) && lower.split('|').length >= 3)
         ) {
           inSubjectTable = true;
           continue;
