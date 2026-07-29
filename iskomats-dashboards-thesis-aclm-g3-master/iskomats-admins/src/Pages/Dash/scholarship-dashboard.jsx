@@ -2396,10 +2396,44 @@ export default function ScholarshipDashboard({
 
   const getApplicantDispatchKey = (applicant) => applicant?.applicant_no || applicant?.id || applicant?.studentContact?.email || applicant?.email || applicant?.name;
 
+  const getApplicantDocTypes = (applicant) => {
+    if (!applicant) return { residencyDocType: 'Indigency Document', residencyLabel: 'Indigency', residencyFullLabel: 'Indigency Proof', idType: 'School ID', idLabel: 'Student ID (Front & Back)' };
+
+    const matchPost = (data.scholarshipPosts || []).find(p =>
+      String(p.reqNo || p.id || p.req_no) === String(applicant.scholarshipNo || applicant.reqNo || applicant.req_no) ||
+      (p.scholarshipName && applicant.scholarshipName && p.scholarshipName.toLowerCase() === applicant.scholarshipName.toLowerCase())
+    );
+
+    const rawResidency = applicant.residencyDocType || applicant.residency_doc_type || matchPost?.residencyDocType || matchPost?.residency_doc_type || 'Indigency Document';
+    const rawId = applicant.idType || applicant.id_type || matchPost?.idType || matchPost?.id_type || 'School ID';
+
+    const isResidency = /residency/i.test(rawResidency);
+    const residencyLabel = isResidency ? 'Residency' : 'Indigency';
+    const residencyFullLabel = isResidency ? 'Residency Proof' : 'Indigency Proof';
+
+    let idLabel = 'Student ID (Front & Back)';
+    if (/national/i.test(rawId)) {
+      idLabel = 'National ID (Front & Back)';
+    } else if (/school|student/i.test(rawId)) {
+      idLabel = 'Student ID (Front & Back)';
+    } else if (rawId) {
+      idLabel = `${rawId} (Front & Back)`;
+    }
+
+    return {
+      residencyDocType: rawResidency,
+      residencyLabel,
+      residencyFullLabel,
+      idType: rawId,
+      idLabel
+    };
+  };
+
   const handleSendSchoolVerification = async (applicant) => {
     const applicantId = applicant?.applicant_no || applicant?.id;
     const scholarshipNo = applicant?.scholarshipNo;
     const dispatchKey = getApplicantDispatchKey(applicant);
+    const docTypes = getApplicantDocTypes(applicant);
 
     if (!applicantId || !scholarshipNo) {
       alert('Unable to send school verification because the applicant record is incomplete.');
@@ -2417,13 +2451,12 @@ export default function ScholarshipDashboard({
       title: 'Dispatch School Verification',
       recipient: recipient,
       messageSummary: `Official request to verify student records for ${applicant.name || 'this applicant'}.`,
-      documents: ['Enrollment Certificate', 'Official Grades Report', 'Student ID (Front & Back)'],
+      documents: ['Enrollment Certificate', 'Official Grades Report', docTypes.idLabel],
       onConfirm: async () => {
         showActionOverlay('Sending school verification', 'Preparing the applicant documents and emailing the school verification address.');
         try {
           const response = await scholarshipAPI.sendSchoolVerification(applicantId, scholarshipNo);
           setSchoolVerifSent((prev) => ({ ...prev, [dispatchKey]: true }));
-          // No alert here, overlay will show success briefly or we just hide
         } catch (error) {
           console.error('Failed to send school verification email:', error);
           alert('Error sending school verification');
@@ -2438,9 +2471,10 @@ export default function ScholarshipDashboard({
     const applicantId = applicant?.applicant_no || applicant?.id;
     const scholarshipNo = applicant?.scholarshipNo;
     const dispatchKey = getApplicantDispatchKey(applicant);
+    const docTypes = getApplicantDocTypes(applicant);
 
     if (!applicantId || !scholarshipNo) {
-      alert('Unable to send indigency verification because the applicant record is incomplete.');
+      alert(`Unable to send ${docTypes.residencyLabel.toLowerCase()} verification because the applicant record is incomplete.`);
       return;
     }
 
@@ -2448,18 +2482,18 @@ export default function ScholarshipDashboard({
 
     setPendingAction({
       type: 'verification',
-      title: 'Dispatch Indigency Verification',
+      title: `Dispatch ${docTypes.residencyLabel} Verification`,
       recipient: recipient,
-      messageSummary: `Verification request for the indigency document of ${applicant.name || 'this applicant'}.`,
-      documents: ['Indigency Proof Image'],
+      messageSummary: `Verification request for the ${docTypes.residencyLabel.toLowerCase()} document of ${applicant.name || 'this applicant'}.`,
+      documents: [`${docTypes.residencyLabel} Proof Image`],
       onConfirm: async () => {
-        showActionOverlay('Sending indigency verification', 'Preparing the indigency document and emailing the city hall verification address.');
+        showActionOverlay(`Sending ${docTypes.residencyLabel.toLowerCase()} verification`, `Preparing the ${docTypes.residencyLabel.toLowerCase()} document and emailing the city hall verification address.`);
         try {
           const response = await scholarshipAPI.sendIndigencyVerification(applicantId, scholarshipNo);
           setIndigencyVerifSent((prev) => ({ ...prev, [dispatchKey]: true }));
         } catch (error) {
-          console.error('Failed to send indigency verification email:', error);
-          alert('Error sending indigency verification');
+          console.error(`Failed to send ${docTypes.residencyLabel.toLowerCase()} verification email:`, error);
+          alert(`Error sending ${docTypes.residencyLabel.toLowerCase()} verification`);
         } finally {
           hideActionOverlay();
         }
@@ -5052,6 +5086,7 @@ export default function ScholarshipDashboard({
     if (!a) return null;
     const isPending = listType === 'all' || listType === 'pending';
     const dispatchKey = getApplicantDispatchKey(a);
+    const docTypes = getApplicantDocTypes(a);
 
     // Normalize family data for display
     const familyData = {
@@ -5151,7 +5186,7 @@ export default function ScholarshipDashboard({
                 disabled={indigencyVerifSent[dispatchKey]}
                 className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold transition-all shadow-sm ${indigencyVerifSent[dispatchKey] ? 'bg-green-100 text-green-700 cursor-default' : 'bg-[#800020] text-white hover:bg-[#650018]'}`}
               >
-                <FaPaperPlane className="flex-shrink-0" /> <span className="hidden sm:inline">{indigencyVerifSent[dispatchKey] ? 'City Hall Dispatch Sent' : 'Verify Indigency (City Hall)'}</span><span className="sm:hidden">{indigencyVerifSent[dispatchKey] ? 'Sent' : 'Indigency'}</span>
+                <FaPaperPlane className="flex-shrink-0" /> <span className="hidden sm:inline">{indigencyVerifSent[dispatchKey] ? 'City Hall Dispatch Sent' : `Verify ${docTypes.residencyLabel} (City Hall)`}</span><span className="sm:hidden">{indigencyVerifSent[dispatchKey] ? 'Sent' : docTypes.residencyLabel}</span>
               </button>
             </div>
           </div>
@@ -5368,7 +5403,7 @@ export default function ScholarshipDashboard({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6 p-3 sm:p-6 border-2 border-gray-100 rounded-lg">
             <div className="space-y-2">
               <p className="text-[10px] font-black text-gray-500 uppercase flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#800020]"></span> Indigency Proof
+                <span className="w-1.5 h-1.5 rounded-full bg-[#800020]"></span> {docTypes.residencyFullLabel}
               </p>
               <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
                 {renderMediaGrid(a.indigencyFiles)}
@@ -5392,7 +5427,7 @@ export default function ScholarshipDashboard({
             </div>
             <div className="space-y-2">
               <p className="text-[10px] font-black text-gray-500 uppercase flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#800020]"></span> ID (Front & Back)
+                <span className="w-1.5 h-1.5 rounded-full bg-[#800020]"></span> {docTypes.idLabel}
               </p>
               <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
                 {renderMediaGrid(a.idFiles)}
