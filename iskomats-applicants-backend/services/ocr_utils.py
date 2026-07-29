@@ -722,11 +722,13 @@ def _extract_signature_from_id_back(id_img):
         extent = area / float(w_idx * h_idx)
         y_mid = y + h/2
 
-        # Filter out star logo / top graphics in the upper 28% of ROI
-        if y_mid < h_idx * 0.28:
+        # Filter out star logo / top graphics in the upper 35% of ROI
+        # (raised from 28 → 35 so the star centroid is safely excluded)
+        if y_mid < h_idx * 0.35:
             continue
         
-        # Enforce vertical signature limits to isolate handwritten ink above the line
+        # Enforce vertical signature limits to isolate handwritten ink strictly above the line
+        # When an underline is detected, y_max_limit = sig_line_y - 2 (hard cut)
         if not (y_min_limit <= y_mid <= y_max_limit):
             continue
 
@@ -785,20 +787,26 @@ def _extract_signature_from_id_back(id_img):
         x, y, w, h = c['box']
         y_mid = c['y_mid']
 
-        # Filter out horizontal underlines (w > 45% image width, h < 14px)
-        if w > w_idx * 0.45 and h < 14:
+        # Filter out horizontal underlines (w > 35% image width, h < 16px)
+        if w > w_idx * 0.35 and h < 16:
             continue
 
-        # Filter out printed label text ("Signature", "Authorized Signature", dots) beneath signature
-        if y >= (anchor_bottom - 2) and y_mid > anchor['y_mid'] + (anchor_h * 0.40):
+        # Filter out printed label text ("Signature", "Date", dots) strictly below the anchor
+        # These are below anchor_bottom AND far from the anchor centroid
+        if y >= anchor_bottom and y_mid > anchor['y_mid'] + anchor_h * 0.30:
             continue
 
-        # Filter out top star logo / graphics above signature
-        if (y + h) <= (anchor_top + 4) and y_mid < anchor['y_mid'] - (anchor_h * 0.40):
-            continue
+        # Filter out top star logo / graphic elements strictly above anchor
+        # A star is compact (solidity > 0.3) and its entire bbox is above the anchor top
+        if (y + h) <= anchor_top:
+            cnt_area = c['area']
+            cnt_solidity = cnt_area / float(w * h) if w * h > 0 else 0
+            # Exclude compact (star/logo) shapes above the signature
+            if cnt_solidity > 0.25 or (w / float(h) if h > 0 else 0) < 2.0:
+                continue
 
-        # Check proximity to anchor signature stroke
-        if abs(y_mid - anchor['y_mid']) <= max(35, anchor_h * 0.85):
+        # Check proximity to anchor signature stroke (tighter: 70% of anchor height)
+        if abs(y_mid - anchor['y_mid']) <= max(25, anchor_h * 0.70):
             final_parts.append(c)
             
     if not final_parts:
