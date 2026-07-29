@@ -1374,6 +1374,20 @@ function extractTotalUnitsFromText(text) {
       }
     }
   }
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i].trim();
+    if (/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)/i.test(line)) {
+      for (let j = i; j < Math.min(rawLines.length, i + 5); j++) {
+        const check = rawLines[j].trim();
+        if (j > i && /assessed\s*fees|schedule\s*of|total\s*assessment|outstanding|tuition/i.test(check)) break;
+        const fracMatch = check.match(/\d+\s*[\/\\]\s*(\d{1,2})\b/);
+        if (fracMatch) {
+          const v = parseInt(fracMatch[1], 10);
+          if (!isNaN(v) && v >= 6 && v <= 48) return v;
+        }
+      }
+    }
+  }
 
   // 2. Secondary Strategy: Subject Line Signature Matching (Header-Independent)
   const isMetadataLine = (l) => {

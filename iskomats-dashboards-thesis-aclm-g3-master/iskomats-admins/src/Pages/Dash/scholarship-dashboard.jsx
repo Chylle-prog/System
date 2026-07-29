@@ -511,11 +511,12 @@ const initialDashboardData = {
 
 export default function ScholarshipDashboard({
   providerKey,
-  providerName,
-  scholarshipLabel = `${providerName} Scholarship`,
-  programName = `${providerName} Scholarship Program`,
-  dashboardTitle = `${providerName} Scholarship Dashboard`,
-  reportFilePrefix = providerName,
+  providerName: rawProviderName,
+  providerName = (rawProviderName === 'Africa' ? 'Mayor Africa' : rawProviderName),
+  scholarshipLabel = `${rawProviderName === 'Africa' ? 'Mayor Africa' : rawProviderName} Scholarship`,
+  programName = `${rawProviderName === 'Africa' ? 'Mayor Africa' : rawProviderName} Scholarship Program`,
+  dashboardTitle = `${rawProviderName === 'Africa' ? 'Mayor Africa' : rawProviderName} Scholarship Dashboard`,
+  reportFilePrefix = rawProviderName === 'Africa' ? 'Mayor Africa' : rawProviderName,
   proNo,
   logo,
 }) {

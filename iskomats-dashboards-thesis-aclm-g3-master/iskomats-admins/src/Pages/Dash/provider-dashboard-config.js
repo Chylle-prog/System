@@ -7,7 +7,7 @@ export const PROVIDER_DASHBOARD_ROUTE = '/provider-dashboard';
 export const providerDashboardConfigs = {
   africa: {
     providerKey: 'africa',
-    providerName: 'Africa',
+    providerName: 'Mayor Africa',
     proNo: 1,
     logo: africaLogo,
   },
