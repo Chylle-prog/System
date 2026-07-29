@@ -1116,9 +1116,9 @@ function semesterMatchesText(text, expectedSemester, reqSemester) {
   // Direct pattern check: does the expected semester pattern appear anywhere in the text?
   // This is the primary check — if the expected semester pattern is present in doc, pass.
   const lowerText = String(text).toLowerCase();
-  const sem2Pattern = /\b(?:2nd|second|2nd\s*sem(?:ester)?|sem(?:ester)?\s*2)\b/i;
-  const sem1Pattern = /\b(?:1st|first|15t|1st\s*sem(?:ester)?|sem(?:ester)?\s*1)\b/i;
-  const sem3Pattern = /\b(?:3rd|third|summer|midyear|3rd\s*sem(?:ester)?|sem(?:ester)?\s*3)\b/i;
+  const sem2Pattern = /\b(?:2nd|second|2ng|2nd\s*sem(?:ester)?|sem(?:ester)?\s*2|2ndsem|inq\s*sem(?:ester)?|0a\s*sem(?:ester)?)\b/i;
+  const sem1Pattern = /\b(?:1st|first|15t|1st\s*sem(?:ester)?|sem(?:ester)?\s*1|1stsem)\b/i;
+  const sem3Pattern = /\b(?:3rd|third|summer|midyear|3rd\s*sem(?:ester)?|sem(?:ester)?\s*3|3rdsem)\b/i;
 
   if (expNum === 2 && sem2Pattern.test(lowerText)) {
     console.log(`[SEMESTER CHECK] Expected 2nd — found '2nd/second' in text ✓`);
@@ -1348,7 +1348,7 @@ function extractTotalUnitsFromText(text) {
 
   const rawLines = text.split(/[\r\n]+/);
 
-  // 1. Primary Strategy: Explicit "TOTAL UNITS : XX" Extraction
+  // 1. Primary Strategy: Explicit "TOTAL UNITS : XX" Extraction on the TOTAL UNITS line itself
   for (let i = 0; i < rawLines.length; i++) {
     const line = rawLines[i].trim();
     if (/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)/i.test(line)) {
@@ -1361,30 +1361,6 @@ function extractTotalUnitsFromText(text) {
       if (currentMatch) {
         const val = parseInt(currentMatch[1], 10);
         if (!isNaN(val) && val >= 6 && val <= 48) return val;
-      }
-
-      for (let j = i + 1; j < Math.min(rawLines.length, i + 4); j++) {
-        const checkLine = rawLines[j].trim();
-        if (/assessed\s*fees|schedule\s*of|total\s*assessment|outstanding|tuition/i.test(checkLine)) break;
-        const m = checkLine.match(/\b([1-4]?[0-9])\b/);
-        if (m) {
-          const v = parseInt(m[1], 10);
-          if (!isNaN(v) && v >= 6 && v <= 48) return v;
-        }
-      }
-    }
-  }
-  for (let i = 0; i < rawLines.length; i++) {
-    const line = rawLines[i].trim();
-    if (/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)/i.test(line)) {
-      for (let j = i; j < Math.min(rawLines.length, i + 5); j++) {
-        const check = rawLines[j].trim();
-        if (j > i && /assessed\s*fees|schedule\s*of|total\s*assessment|outstanding|tuition/i.test(check)) break;
-        const fracMatch = check.match(/\d+\s*[\/\\]\s*(\d{1,2})\b/);
-        if (fracMatch) {
-          const v = parseInt(fracMatch[1], 10);
-          if (!isNaN(v) && v >= 6 && v <= 48) return v;
-        }
       }
     }
   }
@@ -1415,7 +1391,7 @@ function extractTotalUnitsFromText(text) {
     if (isMetadataLine(lower)) continue;
 
     const isSubjectRow =
-      /(?:IT4B|IT3B|IT2B|IT1B|MB\s*\d+|MO\s*\d+|M61|MB|MO|JRF|Caproj|Capstone|Elective|Social|Professional|Issues|Life|Works|Rizal|Liferiz|Itsocpro|Itelect|ITCaproj|\d{1,2}:\d{2}|AM|PM|MM|\bMW\b|\bTTH\b|\bSAT\b|\bSUN\b)/i.test(line) &&
+      /(?:IT4B|IT3B|IT2B|IT1B|MB\s*\d+|MO\s*\d+|M61|MB|MO|JRF|Caproj|Capstone|Elective|Social|Professional|Issues|Life|Works|Rizal|Liferiz|Itsocpro|Itelect|ITCaproj|Systadm|Wordlit|Disifil|Techpre|Itfisem|Sysiarc|Itnetw|Filipino|Literature|Networking|Technopreneurship|Seminars|Architecture|\d{1,2}:\d{2}|AM|PM|MM|\bMW\b|\bTTH\b|\bSAT\b|\bSUN\b|\bTh\b|\bW\b|\bT\b|\bF\b|\bM\b|\bS\b)/i.test(line) &&
       !/(?:official|certificate|registration|enrolled|run\s*date|user|school\s*year|student\s*no|page\s*\d|assessed|schedule)/i.test(lower);
 
     if (isSubjectRow) {
@@ -1439,6 +1415,27 @@ function extractTotalUnitsFromText(text) {
     const estimatedUnits = subjectRowCount * 3;
     if (estimatedUnits >= 6 && estimatedUnits <= 48) {
       return estimatedUnits;
+    }
+  }
+
+  // 3. Fallback: Fraction pattern or line below TOTAL UNITS
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i].trim();
+    if (/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)/i.test(line)) {
+      for (let j = i + 1; j < Math.min(rawLines.length, i + 3); j++) {
+        const checkLine = rawLines[j].trim();
+        if (/assessed\s*fees|schedule\s*of|total\s*assessment|outstanding|tuition/i.test(checkLine)) break;
+        const fracMatch = checkLine.match(/\d+\s*[\/\\]\s*(\d{1,2})\b/);
+        if (fracMatch) {
+          const v = parseInt(fracMatch[1], 10);
+          if (!isNaN(v) && v >= 6 && v <= 48) return v;
+        }
+        const m = checkLine.match(/\b([1-4]?[0-9])\b/);
+        if (m) {
+          const v = parseInt(m[1], 10);
+          if (!isNaN(v) && v >= 6 && v <= 48) return v;
+        }
+      }
     }
   }
 

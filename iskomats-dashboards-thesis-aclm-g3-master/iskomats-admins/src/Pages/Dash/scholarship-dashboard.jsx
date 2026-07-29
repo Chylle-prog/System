@@ -1292,10 +1292,13 @@ export default function ScholarshipDashboard({
       if (!isNaN(date.getTime())) {
         month = date.toLocaleString('default', { month: 'short', year: 'numeric' });
       }
-      if (!monthlyData[month]) monthlyData[month] = { month, applications: 0, accepted: 0, rejected: 0, cancelled: 0 };
+      if (!monthlyData[month]) monthlyData[month] = { month, applications: 0, accepted: 0, declined: 0, rejected: 0, cancelled: 0 };
       monthlyData[month].applications++;
       if (a.status === 'Accepted') monthlyData[month].accepted++;
-      if (a.status === 'Rejected' || a.status === 'Declined') monthlyData[month].rejected++;
+      if (a.status === 'Rejected' || a.status === 'Declined') {
+        monthlyData[month].declined++;
+        monthlyData[month].rejected++;
+      }
       if (a.status === 'Cancelled') monthlyData[month].cancelled++;
 
       // Course
@@ -4503,7 +4506,7 @@ export default function ScholarshipDashboard({
                             <td className="px-4 py-3 font-semibold text-[#800020]">{m.month}</td>
                             <td className="px-4 py-3 font-bold">{m.applications}</td>
                             <td className="px-4 py-3 text-green-600 font-semibold">{m.accepted}</td>
-                            <td className="px-4 py-3 text-red-600 font-semibold">{m.declined}</td>
+                            <td className="px-4 py-3 text-red-600 font-semibold">{m.declined ?? m.rejected ?? 0}</td>
                           </tr>
                         ))}
                         {monthlyStats.length === 0 && (
