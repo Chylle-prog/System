@@ -3212,7 +3212,7 @@ def submit_application():
                                 call_fastapi_verify_id, 
                                 image_bytes=id_front_bytes,
                                 first_name=applicant.get('first_name', ''),
-                                middle_name=applicant.get('middle_name', ''),
+                                middle_name='',
                                 last_name=applicant.get('last_name', ''),
                                 expected_address=town_city
                             )
