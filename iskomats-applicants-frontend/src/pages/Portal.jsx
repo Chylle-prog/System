@@ -258,14 +258,13 @@ const Portal = () => {
     const announcementInterval = setInterval(fetchAnnouncements, 30000);
 
     // Socket.IO Integration
-    let unsubLogged, unsubMsg, unsubRoom;
+    let unsubLogged, unsubMsg, unsubHistory, unsubRoom;
     const token = localStorage.getItem('authToken');
     const applicantNo = localStorage.getItem('applicantNo');
     if (token) {
       socketService.connect(token);
 
       unsubLogged = socketService.subscribe('logged_in', (data) => {
-        // data.rooms is now an array of {room, provider_name} objects
         if (data.rooms) {
           const rooms = data.rooms.map(roomObj => {
             const roomId = typeof roomObj === 'string' ? roomObj : roomObj.room;
@@ -282,7 +281,6 @@ const Portal = () => {
             };
           });
           setScholarships(rooms);
-          // Load history for all rooms to see previous messages
           data.rooms.forEach(roomObj => {
             const roomId = typeof roomObj === 'string' ? roomObj : roomObj.room;
             socketService.loadHistory(roomId);
@@ -292,25 +290,43 @@ const Portal = () => {
 
       unsubMsg = socketService.subscribe('message', (msg) => {
         const isActiveRoom = currentChatRoomRef.current === msg.room;
+        const currentAppNo = localStorage.getItem('applicantNo');
+        const firstName = (userProfile?.first_name || currentUser?.first_name || '').toLowerCase();
+        const msgUsername = String(msg.username || '').toLowerCase();
+
+        const isStudentSender = (
+          msgUsername === 'you' ||
+          msgUsername === String(currentAppNo || '').toLowerCase() ||
+          (firstName && msgUsername === firstName) ||
+          msg.is_student_sender === true
+        );
 
         setChatMessages(prev => {
           const roomMsgs = prev[msg.room] || [];
           const isDuplicate = roomMsgs.some((m) => {
-            if (msg.m_id && m.m_id) {
-              return m.m_id === msg.m_id;
-            }
-
-            return m.message === msg.message && m.sender === msg.username && m.time === msg.timestamp;
+            if (msg.m_id && m.m_id) return m.m_id === msg.m_id;
+            return m.message === msg.message && (m.type === 'sent' || isStudentSender);
           });
-          if (isDuplicate) return prev;
+
+          if (isDuplicate) {
+            return {
+              ...prev,
+              [msg.room]: sortChatMessages(roomMsgs.map(m => {
+                if (m.message === msg.message && (m.type === 'sent' || isStudentSender)) {
+                  return { ...m, m_id: msg.m_id || m.m_id, time: msg.timestamp || m.time };
+                }
+                return m;
+              }))
+            };
+          }
 
           const nextMessage = {
             id: msg.m_id || `${msg.room}-${msg.timestamp}-${msg.username}`,
             m_id: msg.m_id,
             sender: msg.username,
             message: msg.message,
-            time: msg.timestamp,
-            type: msg.username === applicantNo ? 'sent' : 'received'
+            time: msg.timestamp || new Date().toISOString(),
+            type: isStudentSender ? 'sent' : 'received'
           };
 
           return {
@@ -320,13 +336,49 @@ const Portal = () => {
         });
 
         setScholarships(prev => prev.map((s) => {
-          if (s.id !== msg.room) {
-            return s;
-          }
-
-          const nextUnread = isActiveRoom ? 0 : ((s.unread || 0) + (msg.username === applicantNo ? 0 : 1));
+          if (s.id !== msg.room) return s;
+          const nextUnread = isActiveRoom ? 0 : ((s.unread || 0) + (isStudentSender ? 0 : 1));
           return { ...s, lastMessage: msg.message, time: 'Just now', unread: nextUnread };
         }));
+      });
+
+      unsubHistory = socketService.subscribe('history', (data) => {
+        const roomId = data.room;
+        const historyMsgs = data.messages || [];
+        const currentAppNo = localStorage.getItem('applicantNo');
+        const firstName = (userProfile?.first_name || currentUser?.first_name || '').toLowerCase();
+
+        setChatMessages(prev => {
+          const roomMsgs = prev[roomId] || [];
+          const merged = [...roomMsgs];
+
+          historyMsgs.forEach(msg => {
+            const msgUsername = String(msg.username || '').toLowerCase();
+            const isStudentSender = (
+              msgUsername === 'you' ||
+              msgUsername === String(currentAppNo || '').toLowerCase() ||
+              (firstName && msgUsername === firstName) ||
+              msg.is_student_sender === true
+            );
+
+            const exists = merged.some(m => (msg.m_id && m.m_id === msg.m_id) || (m.message === msg.message && (m.type === 'sent' || isStudentSender)));
+            if (!exists) {
+              merged.push({
+                id: msg.m_id || `${roomId}-${msg.timestamp}-${msg.username}`,
+                m_id: msg.m_id,
+                sender: msg.username,
+                message: msg.message,
+                time: msg.timestamp,
+                type: isStudentSender ? 'sent' : 'received'
+              });
+            }
+          });
+
+          return {
+            ...prev,
+            [roomId]: sortChatMessages(merged)
+          };
+        });
       });
 
       unsubRoom = socketService.subscribe('add_room', (data) => {
@@ -447,13 +499,13 @@ const Portal = () => {
     const message = chatInput.trim();
     if (!message || !currentChatId) return;
     const applicantNo = localStorage.getItem('applicantNo') || 'You';
-    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const nowIso = new Date().toISOString();
 
     const newMsg = {
       id: `msg-${Date.now()}`,
-      sender: applicantNo,
+      sender: userProfile?.first_name || currentUser?.first_name || applicantNo || 'You',
       message: message,
-      time: timestamp,
+      time: nowIso,
       type: 'sent'
     };
 
@@ -3195,7 +3247,7 @@ const Portal = () => {
                     <div className="sender">{msg.sender}</div>
                   )}
                   <div>{msg.message}</div>
-                  <div className="time">{msg.time}</div>
+                  <div className="time">{formatToLocalTime(msg.time) || msg.time}</div>
                 </div>
               ))
             ) : (
