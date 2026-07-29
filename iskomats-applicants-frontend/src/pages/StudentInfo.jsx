@@ -1324,37 +1324,8 @@ function extractTotalUnitsFromText(text) {
 
   const rawLines = text.split(/[\r\n]+/);
 
-  // 1. Direct extraction beside or on the line following "TOTAL UNITS" / "Tomas:" / "OTL UNS"
-  for (let i = 0; i < rawLines.length; i++) {
-    const line = rawLines[i].trim();
-    if (/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)/i.test(line)) {
-      // Clean common OCR artifacts on TOTAL UNITS line:
-      // "S13" -> "12" or "13", "S12" -> "12", "OTL UNS : 12"
-      const cleanedLine = line
-        .replace(/S13/g, '12')
-        .replace(/S12/g, '12')
-        .replace(/S(?=\d{2})/g, '');
-
-      const currentMatch = cleanedLine.match(/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)[^\d]*\b([1-4]?[0-9])\b/i);
-      if (currentMatch) {
-        const val = parseInt(currentMatch[1], 10);
-        if (!isNaN(val) && val >= 6 && val <= 48) return val;
-      }
-
-      // Check immediately following lines (up to 3 ahead) before fee headers
-      for (let j = i + 1; j < Math.min(rawLines.length, i + 4); j++) {
-        const checkLine = rawLines[j].trim();
-        if (/assessed\s*fees|schedule\s*of|total\s*assessment|outstanding|tuition/i.test(checkLine)) break;
-        const m = checkLine.match(/\b([1-4]?[0-9])\b/);
-        if (m) {
-          const v = parseInt(m[1], 10);
-          if (!isNaN(v) && v >= 6 && v <= 48) return v;
-        }
-      }
-    }
-  }
-
-  // 2. Subject Table Row Unit Summing & Counting
+  // 1. Primary Strategy: Subject Table Row Unit Summing & Counting
+  // The subject rows are the ground truth (e.g. 4 subjects of 3 units = 12 units).
   let inSubjectTable = false;
   let subjectRowCount = 0;
   let explicitUnitsSum = 0;
@@ -1419,6 +1390,33 @@ function extractTotalUnitsFromText(text) {
     const estimatedUnits = subjectRowCount * 3;
     if (estimatedUnits >= 6 && estimatedUnits <= 48) {
       return estimatedUnits;
+    }
+  }
+
+  // 2. Secondary Strategy: Direct extraction beside or on the line following "TOTAL UNITS" / "Tomas:" / "OTL UNS"
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i].trim();
+    if (/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)/i.test(line)) {
+      const cleanedLine = line
+        .replace(/S13/g, '12')
+        .replace(/S12/g, '12')
+        .replace(/S(?=\d{2})/g, '');
+
+      const currentMatch = cleanedLine.match(/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)[^\d]*\b([1-4]?[0-9])\b/i);
+      if (currentMatch) {
+        const val = parseInt(currentMatch[1], 10);
+        if (!isNaN(val) && val >= 6 && val <= 48) return val;
+      }
+
+      for (let j = i + 1; j < Math.min(rawLines.length, i + 4); j++) {
+        const checkLine = rawLines[j].trim();
+        if (/assessed\s*fees|schedule\s*of|total\s*assessment|outstanding|tuition/i.test(checkLine)) break;
+        const m = checkLine.match(/\b([1-4]?[0-9])\b/);
+        if (m) {
+          const v = parseInt(m[1], 10);
+          if (!isNaN(v) && v >= 6 && v <= 48) return v;
+        }
+      }
     }
   }
 

@@ -1778,13 +1778,16 @@ export default function ScholarshipDashboard({
       showActionOverlay('Deleting scholarship post', 'Please wait while the scholarship post is being removed.');
       try {
         const response = await scholarshipAPI.deleteScholarship(id);
-        if (response.data.success) {
-          await loadScholarships(false);
-          await loadApplicants();
-          if (editingPost && (editingPost.reqNo || editingPost.id) === id) {
+        if (response.data && (response.data.success || response.status === 200)) {
+          setData(prev => ({
+            ...prev,
+            scholarshipPosts: (prev.scholarshipPosts || []).filter(p => String(p.reqNo || p.id) !== String(id))
+          }));
+          if (editingPost && String(editingPost.reqNo || editingPost.id) === String(id)) {
             resetForm();
             setManageMode('list');
           }
+          await loadScholarships(false);
         }
       } catch (error) {
         console.error('Failed to delete scholarship:', error);
@@ -1795,12 +1798,18 @@ export default function ScholarshipDashboard({
     } else if (type === 'announcement') {
       showActionOverlay('Deleting announcement', 'Please wait while the announcement is being removed.');
       try {
-        await announcementService.delete(id);
-        if (editingPost && (editingPost.id || editingPost.ann_no) === id) {
-          resetForm();
-          setManageMode('list');
+        const response = await announcementService.delete(id);
+        if (response.data && (response.data.success || response.status === 200)) {
+          setData(prev => ({
+            ...prev,
+            announcements: (prev.announcements || []).filter(a => String(a.ann_no || a.id) !== String(id))
+          }));
+          if (editingPost && String(editingPost.id || editingPost.ann_no) === String(id)) {
+            resetForm();
+            setManageMode('list');
+          }
+          await loadAnnouncements();
         }
-        await loadAnnouncements();
       } catch (error) {
         console.error('Failed to delete announcement:', error);
         alert(getRequestErrorMessage(error, 'Error deleting announcement'));

@@ -4040,17 +4040,7 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
             if not is_admin and sch_row['pro_no'] is None and resolved_provider_no is not None:
                 cursor.execute("UPDATE scholarships SET pro_no = %s WHERE req_no = %s", (resolved_provider_no, req_no))
              
-            # Auto-ensure required columns exist in scholarships table if missing
-            try:
-                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS units INTEGER")
-                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS residency_doc_type VARCHAR(100) DEFAULT 'Indigency Document'")
-                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS id_type VARCHAR(100) DEFAULT 'School ID'")
-                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS course VARCHAR(255)")
-                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS program_type VARCHAR(100)")
-                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS grades_sem VARCHAR(50)")
-                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS grades_year VARCHAR(50)")
-            except Exception as schema_err:
-                print(f"[SCHEMA AUTO-MIGRATION WARNING]: {schema_err}")
+
 
             units_val = int(data.get('units')) if data.get('units') not in (None, '', 'null') else None
             res_doc_type = data.get('residencyDocType', 'Indigency Document')
@@ -4102,17 +4092,12 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
 @token_required
 def delete_scholarship(current_user_id, pro_no, role, req_no):
     """Soft-delete scholarship post."""
-    conn = None
-    cursor = None
     try:
         with get_db() as conn:
             cursor = conn.cursor()
-            ensure_schema_integrity(cursor)
-        
             is_superadmin = ((role or '').strip().lower() in ('admin', 'superadmin', 'super_admin'))
             resolved_provider_no, _ = resolve_provider_context(cursor, current_user_id, role, pro_no)
         
-            # Check scholarship ownership
             cursor.execute("SELECT pro_no, scholarship_name FROM scholarships WHERE req_no = %s", (req_no,))
             sch_row = cursor.fetchone()
             if not sch_row:
@@ -4131,8 +4116,8 @@ def delete_scholarship(current_user_id, pro_no, role, req_no):
                     return jsonify({'message': 'Unauthorized'}), 401
             
             cursor.execute("UPDATE scholarships SET is_removed = TRUE WHERE req_no = %s", (req_no,))
-        
             conn.commit()
+            
             record_admin_activity(
                 actor_user_no=current_user_id,
                 action='delete_scholarship',
@@ -4865,36 +4850,35 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
                         if file:
                             new_sequence.append(file.read())
 
-            # 4. Sync image table using a temporary staging table to avoid DB round-trips for blobs
-            cur.execute("CREATE TEMP TABLE temp_ann_imgs (img text)")
+            # 4. Sync image table directly
+            final_image_urls = []
             for i, item in enumerate(new_sequence):
                 if isinstance(item, bytes):
-                    # New image - ALWAYS cloud storage for announcements
                     file_path = f"ann_{ann_no}_upd_{i}_{int(datetime.now().timestamp())}.jpg"
                     try:
                         url = upload_to_supabase(item, 'announcement_images', file_path)
                         if url:
-                            cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (url,))
+                            final_image_urls.append(url)
                         else:
-                            print(f"[ANNOUNCEMENT UPDATE] Cloud storage failed for image {i}. Falling back to Base64 to prevent 500.", flush=True)
                             b64 = base64.b64encode(item).decode('utf-8')
-                            cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (f"data:image/jpeg;base64,{b64}",))
+                            final_image_urls.append(f"data:image/jpeg;base64,{b64}")
                     except Exception as e:
                         print(f"[ANNOUNCEMENT UPDATE] Cloud upload error: {e}", flush=True)
                         b64 = base64.b64encode(item).decode('utf-8')
-                        cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (f"data:image/jpeg;base64,{b64}",))
+                        final_image_urls.append(f"data:image/jpeg;base64,{b64}")
+                elif isinstance(item, str) and item.startswith('http'):
+                    final_image_urls.append(item)
                 else:
-                    # Existing image (either a URL string or an ID int)
-                    if isinstance(item, str) and item.startswith('http'):
-                        cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (item,))
-                    else:
-                        # Copy from DB (might be BYTEA or URL)
-                        cur.execute(f"INSERT INTO temp_ann_imgs (img) SELECT img FROM announcement_images WHERE {primary_key_column} = %s", (item,))
-        
-            # Replace the original image set
+                    cur.execute(f"SELECT img FROM announcement_images WHERE {primary_key_column} = %s", (item,))
+                    row = cur.fetchone()
+                    if row:
+                        val = row['img'] if isinstance(row, dict) else row[0]
+                        if val: final_image_urls.append(val)
+
+            # Replace the original image set in one clean operation
             cur.execute(f"DELETE FROM announcement_images WHERE {foreign_key_column} = %s", (ann_no,))
-            cur.execute(f"INSERT INTO announcement_images ({foreign_key_column}, img) SELECT %s, img FROM temp_ann_imgs", (ann_no,))
-            cur.execute("DROP TABLE temp_ann_imgs")
+            for url in final_image_urls:
+                cur.execute(f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)", (ann_no, url))
 
             conn.commit()
         
@@ -4937,18 +4921,16 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
             conn.close()
 
 @api_bp.route('/announcements/<int:ann_no>', methods=['DELETE'])
+@api_bp.route('/announcements/<int:ann_no>', methods=['DELETE'])
 @api_bp.route('/admin/announcements/<int:ann_no>', methods=['DELETE'])
 @token_required
 def delete_announcement(current_user_id, pro_no, role, ann_no):
-    conn = None
-    cur = None
+    """Soft-delete announcement post."""
     try:
         with get_db() as conn:
             cur = conn.cursor()
-            ensure_schema_integrity(cur)
             resolved_provider_no, _ = resolve_provider_context(cur, current_user_id, role, pro_no)
         
-            # Check ownership unless super admin
             is_superadmin = ((role or '').strip().lower() in ('admin', 'superadmin', 'super_admin'))
             cur.execute("SELECT pro_no, ann_title FROM announcements WHERE ann_no = %s", (ann_no,))
             row = cur.fetchone()
@@ -4967,16 +4949,6 @@ def delete_announcement(current_user_id, pro_no, role, ann_no):
                 if safe_int_cmp(ann_provider_no) != safe_int_cmp(resolved_provider_no):
                     return jsonify({'message': 'Unauthorized to delete this announcement'}), 403
 
-            try:
-                _, foreign_key_column = get_entity_image_columns(cur, 'announcement')
-            except Exception:
-                foreign_key_column = None
-
-            if foreign_key_column:
-                # We don't delete images for soft-deleted announcements to retain history
-                pass
-                
-            # Soft-delete the announcement
             cur.execute("UPDATE announcements SET is_removed = TRUE WHERE ann_no = %s", (ann_no,))
             conn.commit()
         
@@ -4989,7 +4961,7 @@ def delete_announcement(current_user_id, pro_no, role, ann_no):
                 provider_no=resolved_provider_no
             )
         
-            return jsonify({'message': 'Announcement deleted'}), 200
+            return jsonify({'success': True, 'message': 'Announcement deleted'}), 200
     except Exception as e:
         print(f"[ANNOUNCEMENT DELETE] Error deleting announcement {ann_no}: {e}", flush=True)
         traceback.print_exc()
