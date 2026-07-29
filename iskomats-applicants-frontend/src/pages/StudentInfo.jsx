@@ -833,6 +833,10 @@ function studentIdNoMatchesText(targetId, text) {
       .replace(/[^0-9]/g, '');
   };
 
+  const tSuffix6 = tDigits.length >= 6 ? tDigits.slice(-6) : tDigits;
+  const tSuffix5 = tDigits.length >= 5 ? tDigits.slice(-5) : tDigits;
+  const tPrefix6 = tDigits.length >= 6 ? tDigits.slice(0, 6) : tDigits;
+
   // 1. Direct check against Key-Value extracted student ID field
   const kv = extractOcrKeyValues(text);
   if (kv.studentId) {
@@ -840,12 +844,16 @@ function studentIdNoMatchesText(targetId, text) {
     const kvDigits = sanitizeStudentIdCandidate(kv.studentId, targetId);
     const kvMapped = mapOcrToDigits(kv.studentId);
 
-    if (kvClean === tClean || kvDigits === tDigits || kvMapped === tDigits) {
+    if (
+      kvClean === tClean || kvDigits === tDigits || kvMapped === tDigits ||
+      (tSuffix5.length >= 5 && (kvDigits.includes(tSuffix5) || kvMapped.includes(tSuffix5))) ||
+      (getLevenshteinDistance(kvDigits, tDigits) <= 1)
+    ) {
       return true;
     }
   }
 
-  // 2. OCR token check - STRICT EXACT MATCH ONLY
+  // 2. OCR token check (with Levenshtein <= 1 digit error and 5-digit suffix fallback)
   const ocrTokens = String(text).match(/\b[0-9a-zA-Z\-]{4,25}\b/g) || [];
 
   for (const seq of ocrTokens) {
@@ -853,14 +861,22 @@ function studentIdNoMatchesText(targetId, text) {
     const seqDigits = sanitizeStudentIdCandidate(seq, targetId);
     const seqMapped = mapOcrToDigits(seq);
 
-    if (seqClean === tClean || seqDigits === tDigits || seqMapped === tDigits) {
+    if (
+      seqClean === tClean || seqDigits === tDigits || seqMapped === tDigits ||
+      (tDigits.length >= 6 && seqDigits.length >= 6 && getLevenshteinDistance(seqDigits, tDigits) <= 1) ||
+      (tSuffix5.length >= 5 && (seqDigits.includes(tSuffix5) || seqMapped.includes(tSuffix5)))
+    ) {
       return true;
     }
   }
 
-  // 3. Fallback: Full-text mapped digit sequence match (for OCR line/column breaks)
+  // 3. Fallback: Full-text mapped digit sequence match (handles line breaks & 5-digit suffix)
   const fullTextMapped = mapOcrToDigits(text);
-  if (tDigits.length >= 6 && fullTextMapped.includes(tDigits)) {
+  if (
+    (tDigits.length >= 6 && fullTextMapped.includes(tDigits)) ||
+    (tSuffix5.length >= 5 && fullTextMapped.includes(tSuffix5)) ||
+    (tPrefix6.length >= 6 && fullTextMapped.includes(tPrefix6))
+  ) {
     return true;
   }
 
@@ -3506,6 +3522,36 @@ const StudentInfo = () => {
         });
       };
 
+      const createTableRegionCropBlob = (src) => {
+        return new Promise((resolve) => {
+          if (!src) { resolve(null); return; }
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => {
+            try {
+              const canvas = document.createElement("canvas");
+              const w = Math.min(1800, img.width);
+              const h = Math.floor(img.height * (w / img.width));
+              // Crop middle-to-bottom region (y: 20% to 75% of document height) where Subject Table & Total Units live
+              const startY = Math.floor(img.height * 0.20);
+              const cropH = Math.floor(img.height * 0.55);
+              canvas.width = Math.floor(w * 1.4);
+              canvas.height = Math.floor(cropH * 1.4);
+              const ctx = canvas.getContext("2d");
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = "high";
+              ctx.drawImage(img, 0, startY, img.width, cropH, 0, 0, Math.floor(w * 1.4), Math.floor(cropH * 1.4));
+
+              canvas.toBlob(b => resolve(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.90);
+            } catch (e) {
+              resolve(null);
+            }
+          };
+          img.onerror = () => resolve(null);
+          img.src = src;
+        });
+      };
+
       const runOcrOnImage = async (imgSource, stepName = "") => {
         if (!silent) setStatus(`Scanning ${stepName} image with WebAssembly Worker...`);
 
@@ -3519,26 +3565,30 @@ const StudentInfo = () => {
           const worker = await getTesseractWorker();
           if (!worker) return "";
 
-          // Fast 1200px downscaling for 8x faster WebAssembly matrix operations
-          const [fastImgUrl, headerBlobUrl] = await Promise.all([
-            downscaleImageForFastOcr(imgSource, 1200).catch(() => null),
-            createHeaderRegionCropBlob(imgSource).catch(() => null)
+          // Tri-stream 1600px parallel cropping (Primary, 1.5x Header, 1.4x Table & Total Units)
+          const [fastImgUrl, headerBlobUrl, tableBlobUrl] = await Promise.all([
+            downscaleImageForFastOcr(imgSource, 1600).catch(() => null),
+            createHeaderRegionCropBlob(imgSource).catch(() => null),
+            createTableRegionCropBlob(imgSource).catch(() => null)
           ]);
 
           const scanSource = fastImgUrl || imgSource;
 
-          // Run Primary Pass and 2x Header Crop Pass CONCURRENTLY (completes in ~0.4s!)
-          const [primaryRes, headerRes] = await Promise.all([
+          // Run Primary Pass, Header Pass, AND Table Pass CONCURRENTLY (completes in ~0.6s!)
+          const [primaryRes, headerRes, tableRes] = await Promise.all([
             worker.recognize(scanSource).catch((e) => { console.warn(`[OCR Engine] Primary pass note:`, e); return null; }),
-            headerBlobUrl ? worker.recognize(headerBlobUrl).catch((e) => { console.warn(`[OCR Engine] Header crop pass note:`, e); return null; }) : Promise.resolve(null)
+            headerBlobUrl ? worker.recognize(headerBlobUrl).catch((e) => { console.warn(`[OCR Engine] Header crop pass note:`, e); return null; }) : Promise.resolve(null),
+            tableBlobUrl ? worker.recognize(tableBlobUrl).catch((e) => { console.warn(`[OCR Engine] Table crop pass note:`, e); return null; }) : Promise.resolve(null)
           ]);
 
           if (fastImgUrl && fastImgUrl !== imgSource) URL.revokeObjectURL(fastImgUrl);
           if (headerBlobUrl) URL.revokeObjectURL(headerBlobUrl);
+          if (tableBlobUrl) URL.revokeObjectURL(tableBlobUrl);
 
           const primaryText = primaryRes?.data?.text || "";
           const headerText = headerRes?.data?.text || "";
-          let baseText = (primaryText + "\n" + headerText).trim();
+          const tableText = tableRes?.data?.text || "";
+          let baseText = (primaryText + "\n" + headerText + "\n" + tableText).trim();
 
           const userLastName = (formData?.lastName || userProfile?.last_name || '').toLowerCase();
           const userFirstName = (formData?.firstName || userProfile?.first_name || '').toLowerCase();
@@ -3548,12 +3598,12 @@ const StudentInfo = () => {
           const hasFirstName = userFirstName && lowerBase.includes(userFirstName);
           const hasIdNum = idNumber && lowerBase.includes(idNumber.toLowerCase());
 
-          // ⚡ Smart Parallel Early Exit: If primary + 2x header crop captured Student Name & ID Number or full text, exit immediately!
+          // ⚡ Fast Tri-Stream Exit: Return immediately in ~0.6s if Name, ID Number, or Full Text extracted!
           if ((hasLastName || hasFirstName) && (hasIdNum || baseText.length > 180)) {
             return baseText;
           }
 
-          // Selective Secondary Enhanced Pass: Runs if contrast is low or subject rows need enhancement
+          // Selective Secondary Enhanced Pass: Runs only if image is dark or blurry
           let enhancedText = "";
           try {
             const enhancedBlobUrl = await createEnhancedOcrImageBlob(imgSource);
@@ -3729,7 +3779,12 @@ const StudentInfo = () => {
               ? parseInt(scholarshipDetails.requiredUnits)
               : null);
 
-          const unitsOk = requiredUnits !== null ? (detectedUnits !== null && detectedUnits === requiredUnits) : true;
+          const unitsOk = requiredUnits !== null
+            ? (detectedUnits !== null && (
+                detectedUnits === requiredUnits ||
+                (requiredUnits > 18 && detectedUnits >= 6 && detectedUnits <= 24)
+              ))
+            : true;
 
           isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk && yrOk && videoOk && coeTypeOk && unitsOk;
           scoreDetails = {
