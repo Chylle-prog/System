@@ -1013,23 +1013,35 @@ function normalizeSemesterInt(val) {
 function extractSemesterFromText(text) {
   if (!text) return null;
 
-  // 1. Strip YYYY-YYYY or YY-YY academic year ranges so year digits don't interfere with semester numbers
+  const rawLines = String(text).split(/[\r\n]+/);
+
+  // 1. Search header lines specifically (ignoring footer fine print like "1st week of classes", "2nd week of classes")
+  for (const rawLine of rawLines) {
+    const line = rawLine.toLowerCase();
+    if (line.includes('week of classes') || line.includes('withdraw') || line.includes('refund') || line.includes('penalty')) continue;
+
+    if (line.includes('school year') || line.includes('sy') || line.includes('ay') || line.includes('sem') || line.includes('pay type') || line.includes('registration')) {
+      const cleanLine = line
+        .replace(/\b20\d{2}\s*[\-\/\.\:\+]\s*20\d{2}\b/g, '')
+        .replace(/\b(?:sy|ay)?\s*\d{2}\s*[\-\/\.\:\+]\s*\d{2}\b/gi, '');
+
+      if (/\b(?:2nd|second|sem\s*2|2nd\s*sem|semester\s*2)\b/i.test(cleanLine)) return 2;
+      if (/\b(?:1st|first|15t|sem\s*1|1st\s*sem|semester\s*1)\b/i.test(cleanLine)) return 1;
+      if (/\b(?:3rd|third|summer|midyear|sem\s*3|semester\s*3)\b/i.test(cleanLine)) return 3;
+    }
+  }
+
+  // 2. Fallback: Search full document text with fine print stripped
   const cleaned = String(text)
+    .replace(/.*(?:week of classes|refunds and other charges|withdrawal).*/gi, '')
     .replace(/\b20\d{2}\s*[\-\/\.\:\+]\s*20\d{2}\b/g, '')
     .replace(/\b(?:sy|ay)?\s*\d{2}\s*[\-\/\.\:\+]\s*\d{2}\b/gi, '')
     .replace(/\b15t\b/gi, '1st')
     .toLowerCase();
 
-  // 2. Direct keyword checks (highest accuracy for COE/COR and Grade transcripts)
-  if (/\b(?:2nd|second|sem\s*2|2nd\s*sem|semester\s*2)\b/i.test(cleaned)) return 2;
-  if (/\b(?:1st|first|15t|sem\s*1|1st\s*sem|semester\s*1)\b/i.test(cleaned)) return 1;
-  if (/\b(?:3rd|third|summer|midyear|sem\s*3|semester\s*3)\b/i.test(cleaned)) return 3;
-
-  // 3. Fallback header line extraction e.g. "School Year Sem : 2nd Semester"
-  const headerMatch = cleaned.match(/(?:school\s*year\s*sem|sy\s*sem|sem|semester|pay\s*type)\s*[:\-=]?\s*[^\n]*?\b([123])(?:st|nd|rd|th)?\b/i);
-  if (headerMatch && headerMatch[1]) {
-    return parseInt(headerMatch[1], 10);
-  }
+  if (/\b(?:2nd|second|2nd\s*sem|2nd\s*semester)\b/i.test(cleaned)) return 2;
+  if (/\b(?:1st|first|15t|1st\s*sem|1st\s*semester)\b/i.test(cleaned)) return 1;
+  if (/\b(?:3rd|third|summer|midyear|3rd\s*sem|3rd\s*semester)\b/i.test(cleaned)) return 3;
 
   return null;
 }
