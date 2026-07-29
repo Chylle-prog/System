@@ -1161,38 +1161,44 @@ function extractGpaFromText(text, expectedGpa = null) {
     .replace(/GBA/gi, 'GPA')
     .replace(/G\.P\.A/gi, 'GPA');
 
-  // Helper: round to nearest hundredth (e.g. 3.5481 -> "3.55", 3.44 -> "3.44")
+  // Helper: round to nearest hundredth (e.g. 3.5481 -> "3.55", 3.4375 -> "3.44")
   const toTwoDecimals = (val) => (Math.round(val * 100) / 100).toFixed(2);
 
-  // 1. Explicit keyword pattern (e.g. "GPA: 3.54", "GPA: 35461", "GWA = 1.75", "GPA 350")
-  const kwMatch = cleaned.match(/(?:GPA|GWA|WEIGHTED\s*AVERAGE|GRADE\s*POINT|AVERAGE|GENERAL\s*WEIGHTED|FINAL\s*GRADE)\s*[:\-=.,|\sA-Za-z]*?([1-5][.,0-9]{1,5})\b/i);
-  if (kwMatch && kwMatch[1]) {
-    const rawDigits = kwMatch[1].replace(',', '.').trim();
-    let val;
-    if (rawDigits.includes('.')) {
-      val = parseFloat(rawDigits);
-    } else {
-      if (rawDigits.length === 5 || rawDigits.length === 4) {
-        val = parseFloat(rawDigits[0] + '.' + rawDigits.slice(1));
-      } else if (rawDigits.length === 3) {
-        val = parseFloat(rawDigits) / 100.0;
-      } else if (rawDigits.length === 2) {
-        val = parseFloat(rawDigits) / 10.0;
-      } else {
-        val = parseFloat(rawDigits);
+  // Strip legend/scale/footer noise before doing GPA detection to avoid matching "75-76 - 2.00" or "Grades In-Charge"
+  const textWithoutLegend = cleaned.replace(/(?:GRADING\s*SYSTEM|ACCOUNTABILITIES|NOTES|For\s*students\s*with\s*blank|THIS\s*IS\s*A\s*COMPUTER\s*GENERATED)[\s\S]*/i, '');
+
+  // 1. Line-bounded explicit keyword pattern (e.g. "GPA: 3.4375", "GPA: 3.44", "GWA = 1.75", "GPA 3.50")
+  for (const rawLine of textWithoutLegend.split(/[\r\n]+/)) {
+    // Exclude header/metadata lines like "STUDENT'S FINAL GRADES" or "GRADE" column headers
+    if (/^\s*(?:STUDENT'S\s*FINAL\s*GRADES|GRADE\s+UNITS|SECTION\s+SUBJECT)/i.test(rawLine)) continue;
+
+    if (/(?:GPA|GWA|CWA|QPI|WEIGHTED\s*AVERAGE|GENERAL\s*WEIGHTED|FINAL\s*AVERAGE)/i.test(rawLine)) {
+      const kwMatch = rawLine.match(/(?:GPA|GWA|CWA|QPI|WEIGHTED\s*AVERAGE|GENERAL\s*WEIGHTED|FINAL\s*AVERAGE)[^\d]*?([1-5]\.[0-9]{1,4})\b/i);
+      if (kwMatch && kwMatch[1]) {
+        const val = parseFloat(kwMatch[1]);
+        if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
+      }
+
+      // Fallback for un-dotted digits on the same GPA line (e.g. "GPA: 34375" -> 3.44)
+      const rawDigitsMatch = rawLine.match(/(?:GPA|GWA|CWA|QPI|WEIGHTED\s*AVERAGE|GENERAL\s*WEIGHTED|FINAL\s*AVERAGE)[^\d]*?([1-5][0-9]{2,5})\b/i);
+      if (rawDigitsMatch && rawDigitsMatch[1]) {
+        const digits = rawDigitsMatch[1];
+        const val = parseFloat(digits[0] + '.' + digits.slice(1));
+        if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
       }
     }
-    if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
   }
 
-  // 2. Value immediately before "Total Units" table footer (must contain explicit decimal point to avoid matching Student No digits)
-  const pUnits = cleaned.match(/([1-5]\.[0-9]{1,4})\s*[:\-=.,|\s]*(?:Total\s*Units?|Units?)/i);
+  // 2. Value immediately before "Total Units" table footer (must contain explicit decimal point)
+  const pUnits = textWithoutLegend.match(/([1-5]\.[0-9]{1,4})\s*[:\-=.,|\s]*(?:Total\s*Units?|Units?)/i);
   if (pUnits && pUnits[1]) {
     const val = parseFloat(pUnits[1]);
     if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
   }
-  // 3. Compute weighted average from subject grades table if footer label was garbled (e.g. "3.75 3.0", "3.50 30", "2.50 3.0")
-  const gradeMatches = String(text).match(/\b([1-5]\.[0-9]{1,2})\s+([1-9]\.0?|30|3\.0)\b/g);
+
+  // 3. Compute weighted average from subject grades table if GPA label was garbled
+  //    (e.g. "3.75 3.0", "3.50 3.0", "2.50 3.0", "3.00 3.0", "3.50 3.0", "4.00 3.0", "3.50 3.0", "3.75 3.0")
+  const gradeMatches = String(textWithoutLegend).match(/\b([1-5]\.[0-9]{1,2})\s+([1-9]\.0?|30|3\.0)\b/g);
   if (gradeMatches && gradeMatches.length >= 3) {
     let totalPts = 0;
     let totalUnits = 0;
@@ -1211,7 +1217,7 @@ function extractGpaFromText(text, expectedGpa = null) {
       if (calcGpa >= 1.0 && calcGpa <= 5.0) {
         if (expectedGpa) {
           const expVal = parseFloat(String(expectedGpa).replace(/[^0-9.]/g, ''));
-          if (!isNaN(expVal) && Math.abs(calcGpa - expVal) <= 0.05) {
+          if (!isNaN(expVal) && Math.abs(calcGpa - expVal) <= 0.08) {
             return toTwoDecimals(expVal);
           }
         }
@@ -1220,8 +1226,8 @@ function extractGpaFromText(text, expectedGpa = null) {
     }
   }
 
-  // 4. Scan all decimal numbers in valid GPA range (1.0 to 5.0)
-  const gpaMatches = String(text).match(/\b([1-5]\.[0-9]{1,4})\b/g) || [];
+  // 4. Fallback: Scan all decimal numbers in valid GPA range (1.0 to 5.0) in textWithoutLegend
+  const gpaMatches = String(textWithoutLegend).match(/\b([1-5]\.[0-9]{1,4})\b/g) || [];
   const decimals = gpaMatches
     .map(s => parseFloat(s))
     .filter(v => !isNaN(v) && v >= 1.0 && v <= 5.0);
@@ -1230,11 +1236,11 @@ function extractGpaFromText(text, expectedGpa = null) {
     if (expectedGpa) {
       const expVal = parseFloat(String(expectedGpa).replace(/[^0-9.]/g, ''));
       if (!isNaN(expVal)) {
-        const matchCand = decimals.find(c => Math.abs(c - expVal) <= 0.05);
+        const matchCand = decimals.find(c => Math.abs(c - expVal) <= 0.08);
         if (matchCand !== undefined) return toTwoDecimals(matchCand);
       }
     }
-    return toTwoDecimals(decimals[decimals.length - 1]);
+    return toTwoDecimals(decimals[0]); // Prefer first decimal in text body
   }
 
   return null;
