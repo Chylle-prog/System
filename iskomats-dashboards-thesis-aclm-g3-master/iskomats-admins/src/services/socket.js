@@ -63,6 +63,14 @@ class SocketService {
       this._notifyHandlers('announcement_notification', data);
     });
 
+    this.socket.on('admin_message', (data) => {
+      this._notifyHandlers('admin_message', data);
+    });
+
+    this.socket.on('admin_history', (data) => {
+      this._notifyHandlers('admin_history', data);
+    });
+
     this.socket.on('error', (data) => {
       this._notifyHandlers('error', data);
     });
@@ -136,6 +144,18 @@ class SocketService {
 
   startChat(applicantId, proNo) {
     this.emit('start_chat', { applicant_id: applicantId, pro_no: proNo });
+  }
+
+  sendAdminMessage(room, message) {
+    this.emit('admin_message', {
+      room,
+      message,
+      sender_id: this.userId,
+    });
+  }
+
+  loadAdminHistory(room) {
+    this.emit('load_admin_history', { room });
   }
 }
 

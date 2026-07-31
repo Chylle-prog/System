@@ -11,8 +11,10 @@ import {
   FaFileCsv,
   FaFileExcel,
   FaFilePdf,
+  FaInbox,
   FaKey,
   FaLock,
+  FaPaperPlane,
   FaPlus,
   FaPrint,
   FaSearch,
@@ -219,6 +221,21 @@ export default function Dash() {
   const [pageError, setPageError] = useState('');
   const [pageSuccess, setPageSuccess] = useState('');
 
+  // ===== SUPER ADMIN INBOX STATE =====
+  // 5 private rooms: super admin <-> provider admins (pro_no 1,2,3,5,7)
+  const SUPER_ADMIN_ROOMS = [
+    { room: 'superadmin_room_1', label: 'Mayor Africa', pro_no: 1 },
+    { room: 'superadmin_room_2', label: 'Vilma', pro_no: 2 },
+    { room: 'superadmin_room_3', label: 'Ched', pro_no: 3 },
+    { room: 'superadmin_room_5', label: 'Tulong Dunong', pro_no: 5 },
+    { room: 'superadmin_room_7', label: 'Mayor Eric B. Africa', pro_no: 7 },
+  ];
+  const [adminMessages, setAdminMessages] = useState({}); // { [room]: [{...}] }
+  const [selectedAdminRoom, setSelectedAdminRoom] = useState(null);
+  const [adminReplyText, setAdminReplyText] = useState('');
+  const adminInboxEndRef = useRef(null);
+  const selectedAdminRoomRef = useRef(null);
+
   const availablePrograms = useMemo(() => {
     const providerNames = (providers || []).map(p => p.provider_name).filter(Boolean);
     const accountScholarships = (accounts || []).map(a => a.scholarship).filter(s => s && !isNoScholarshipAssignment(s));
@@ -306,8 +323,55 @@ export default function Dash() {
         console.log('[SYNC] Account change detected live:', data);
         loadDashboardData(false);
       });
+
+      // Subscribe to admin-to-admin messages
+      const unsubAdminMsg = socketService.subscribe('admin_message', (msg) => {
+        if (!msg.room || !msg.room.startsWith('superadmin_room_')) return;
+        setAdminMessages(prev => {
+          const existing = prev[msg.room] || [];
+          const isDuplicate = existing.some(m =>
+            m.m_id ? m.m_id === msg.m_id : (m.message === msg.message && m.timestamp === msg.timestamp)
+          );
+          if (isDuplicate) return prev;
+          return { ...prev, [msg.room]: [...existing, msg] };
+        });
+      });
+
+      // Subscribe to admin chat history
+      const unsubAdminHistory = socketService.subscribe('admin_history', (data) => {
+        const { room, messages } = data;
+        if (!room || !room.startsWith('superadmin_room_')) return;
+        setAdminMessages(prev => {
+          const existing = prev[room] || [];
+          const merged = [...existing];
+          messages.forEach(msg => {
+            const isDuplicate = merged.some(m =>
+              m.m_id ? m.m_id === msg.m_id : (m.message === msg.message && m.timestamp === msg.timestamp)
+            );
+            if (!isDuplicate) merged.push(msg);
+          });
+          merged.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+          return { ...prev, [room]: merged };
+        });
+      });
+
+      // Load admin room histories when logged in
+      const unsubLogged = socketService.subscribe('logged_in', (data) => {
+        if (data.rooms) {
+          data.rooms.forEach(roomObj => {
+            const roomId = typeof roomObj === 'string' ? roomObj : roomObj.room;
+            if (roomId && roomId.startsWith('superadmin_room_')) {
+              socketService.loadAdminHistory(roomId);
+            }
+          });
+        }
+      });
+
       return () => {
         unsubAccount();
+        unsubAdminMsg();
+        unsubAdminHistory();
+        unsubLogged();
         socketService.disconnect();
       };
     }
@@ -636,6 +700,207 @@ export default function Dash() {
     },
   ];
 
+  // ===== SUPER ADMIN INBOX =====
+  const adminUnreadCount = Object.values(adminMessages).reduce((total, msgs) => {
+    return total + msgs.filter(m => !m.read).length;
+  }, 0);
+
+  const formatAdminDate = (ts) => {
+    if (!ts) return '';
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return ts;
+    return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
+  const sendAdminReply = () => {
+    if (!adminReplyText.trim() || !selectedAdminRoom) return;
+    socketService.sendAdminMessage(selectedAdminRoom, adminReplyText.trim());
+    setAdminReplyText('');
+  };
+
+  const renderSuperAdminInbox = () => {
+    const selectedRoomMeta = SUPER_ADMIN_ROOMS.find(r => r.room === selectedAdminRoom);
+    const selectedRoomMsgs = (adminMessages[selectedAdminRoom] || []);
+    const userId = socketService.userId;
+
+    return (
+      <div className="flex flex-col h-[calc(100vh-10rem)] bg-gradient-to-br from-gray-50 to-blue-50/30 animate-in fade-in duration-300">
+        {/* Header */}
+        <div className="relative overflow-hidden bg-gradient-to-br from-[#800020] via-[#650018] to-[#a00028] rounded-2xl shadow-xl p-5 text-white mb-4 flex-shrink-0">
+          <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_20%_50%,white_1px,transparent_1px)] bg-[size:20px_20px]" />
+          <div className="relative flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center flex-shrink-0">
+              <FaInbox className="text-xl text-white" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold">Admin Inbox</h2>
+              <p className="text-white/80 text-xs">
+                {adminUnreadCount > 0 ? `${adminUnreadCount} unread messages` : 'Private channels with provider admins'}
+              </p>
+            </div>
+            {adminUnreadCount > 0 && (
+              <span className="ml-auto bg-white text-[#800020] text-xs font-black px-3 py-1 rounded-full">
+                {adminUnreadCount} new
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex-1 flex gap-4 overflow-hidden">
+          {/* Room List */}
+          <div className={`w-full md:w-72 flex-shrink-0 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col ${selectedAdminRoom ? 'hidden md:flex' : 'flex'}`}>
+            <div className="p-4 border-b border-gray-100">
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Private Channels</p>
+            </div>
+            <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
+              {SUPER_ADMIN_ROOMS.map(roomMeta => {
+                const msgs = adminMessages[roomMeta.room] || [];
+                const lastMsg = msgs[msgs.length - 1];
+                const unread = msgs.filter(m => !m.read).length;
+                const isActive = selectedAdminRoom === roomMeta.room;
+                return (
+                  <button
+                    key={roomMeta.room}
+                    type="button"
+                    onClick={() => {
+                      setSelectedAdminRoom(roomMeta.room);
+                      selectedAdminRoomRef.current = roomMeta.room;
+                      // Mark as read
+                      setAdminMessages(prev => ({
+                        ...prev,
+                        [roomMeta.room]: (prev[roomMeta.room] || []).map(m => ({ ...m, read: true }))
+                      }));
+                      socketService.loadAdminHistory(roomMeta.room);
+                    }}
+                    className={`w-full text-left p-4 transition-colors border-l-4 ${
+                      isActive
+                        ? 'bg-blue-50 border-[#800020] shadow-sm'
+                        : `border-transparent hover:bg-gray-50 ${unread > 0 ? 'bg-blue-50/30' : ''}`
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#800020] to-[#650018] flex items-center justify-center text-white font-black text-sm flex-shrink-0">
+                        {roomMeta.label.charAt(0)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="font-semibold text-sm text-gray-900 truncate">{roomMeta.label}</span>
+                          {unread > 0 && (
+                            <span className="ml-2 px-2 py-0.5 bg-blue-600 text-white text-[10px] font-black rounded-full flex-shrink-0">{unread}</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400 truncate">
+                          {lastMsg ? lastMsg.message : 'No messages yet'}
+                        </p>
+                        {lastMsg && (
+                          <span className="text-[10px] text-gray-300">{formatAdminDate(lastMsg.timestamp)}</span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Chat Panel */}
+          <div className={`flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden ${selectedAdminRoom ? 'flex' : 'hidden md:flex'}`}>
+            {selectedRoomMeta ? (
+              <>
+                {/* Chat Header */}
+                <div className="p-4 border-b border-gray-100 bg-gray-50 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAdminRoom(null)}
+                    className="md:hidden p-1.5 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-bold flex-shrink-0"
+                  >
+                    ← Back
+                  </button>
+                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#800020] to-[#650018] flex items-center justify-center text-white font-black text-sm flex-shrink-0">
+                    {selectedRoomMeta.label.charAt(0)}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-sm text-gray-900">{selectedRoomMeta.label}</h3>
+                    <p className="text-[10px] text-gray-400">Private channel — only you and this admin can see these messages</p>
+                  </div>
+                </div>
+
+                {/* Messages */}
+                <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-white">
+                  {selectedRoomMsgs.length > 0 ? (
+                    selectedRoomMsgs.map((msg, idx) => {
+                      const isMe = msg.is_super_admin === true || msg.sender_id === userId;
+                      return (
+                        <div key={msg.m_id || idx} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`max-w-[80%] rounded-2xl p-4 shadow-sm border ${
+                            isMe
+                              ? 'bg-[#800020] text-white border-[#800020]'
+                              : 'bg-gray-50 text-gray-900 border-gray-200'
+                          }`}>
+                            <div className="flex items-center justify-between mb-1.5 gap-4">
+                              <span className={`font-semibold text-xs ${isMe ? 'text-white/90' : 'text-[#800020]'}`}>
+                                {isMe ? 'Me (Super Admin)' : msg.username}
+                              </span>
+                              <span className={`text-[10px] flex items-center gap-1 ${isMe ? 'text-white/70' : 'text-gray-400'}`}>
+                                <FaClock className="text-[9px]" /> {formatAdminDate(msg.timestamp)}
+                              </span>
+                            </div>
+                            <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.message}</p>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-gray-400 py-8">
+                      <FaInbox className="text-4xl mb-3 text-gray-200" />
+                      <p className="text-sm">No messages yet. Start the conversation!</p>
+                    </div>
+                  )}
+                  <div ref={adminInboxEndRef} />
+                </div>
+
+                {/* Reply Box */}
+                <div className="p-4 border-t border-gray-100 bg-gray-50">
+                  <div className="flex gap-2">
+                    <textarea
+                      value={adminReplyText}
+                      onChange={e => setAdminReplyText(e.target.value)}
+                      placeholder={`Message ${selectedRoomMeta.label}...`}
+                      rows={2}
+                      className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#800020] resize-none text-sm bg-white"
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          sendAdminReply();
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={sendAdminReply}
+                      disabled={!adminReplyText.trim()}
+                      className="px-5 py-3 rounded-xl bg-[#800020] text-white font-semibold hover:bg-[#650018] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm flex-shrink-0"
+                    >
+                      <FaPaperPlane />
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center px-6">
+                  <FaInbox className="text-6xl text-gray-200 mx-auto mb-4" />
+                  <h3 className="text-lg font-bold text-gray-700 mb-1">Select a channel</h3>
+                  <p className="text-sm text-gray-400">Choose a provider admin from the list to view messages.</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="h-[100dvh] overflow-hidden flex bg-gradient-to-br from-gray-50 to-blue-50/30 pt-20 fixed-sidebar-layout relative w-full">
       {/* Mobile overlay */}
@@ -680,6 +945,22 @@ export default function Dash() {
                 </div>
               )}
             </div>
+
+            {/* Inbox button with unread badge */}
+            <button
+              onClick={() => setActiveTab('inbox')}
+              className={`w-full flex items-center gap-3 rounded-xl transition-all relative ${activeTab === 'inbox' ? 'bg-white/20' : 'hover:bg-white/10'} ${(sidebarCollapsed && !mobileMenuOpen) ? 'justify-center p-3' : 'px-4 py-3'}`}
+            >
+              <span className="relative flex-shrink-0">
+                <FaInbox />
+                {adminUnreadCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-blue-500 text-white text-[8px] font-black rounded-full flex items-center justify-center">
+                    {adminUnreadCount > 9 ? '9+' : adminUnreadCount}
+                  </span>
+                )}
+              </span>
+              {(!sidebarCollapsed || mobileMenuOpen) && <span>Inbox</span>}
+            </button>
           </div>
         </nav>
         <div className={`border-t border-white/10 space-y-3 transition-all ${(sidebarCollapsed && !mobileMenuOpen) ? 'p-2' : 'p-4'}`}>
@@ -1056,6 +1337,8 @@ export default function Dash() {
                     </div>
                   </div>
                 )}
+
+                {activeTab === 'inbox' && renderSuperAdminInbox()}
               </>
             )}
           </div>
