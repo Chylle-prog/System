@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FaBan,
   FaBars,
@@ -772,11 +772,10 @@ export default function Dash() {
                       }));
                       socketService.loadAdminHistory(roomMeta.room);
                     }}
-                    className={`w-full text-left p-4 transition-colors border-l-4 ${
-                      isActive
+                    className={`w-full text-left p-4 transition-colors border-l-4 ${isActive
                         ? 'bg-blue-50 border-[#800020] shadow-sm'
                         : `border-transparent hover:bg-gray-50 ${unread > 0 ? 'bg-blue-50/30' : ''}`
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#800020] to-[#650018] flex items-center justify-center text-white font-black text-sm flex-shrink-0">
@@ -832,11 +831,10 @@ export default function Dash() {
                       const isMe = msg.is_super_admin === true || msg.sender_id === userId;
                       return (
                         <div key={msg.m_id || idx} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`max-w-[80%] rounded-2xl p-4 shadow-sm border ${
-                            isMe
+                          <div className={`max-w-[80%] rounded-2xl p-4 shadow-sm border ${isMe
                               ? 'bg-[#800020] text-white border-[#800020]'
                               : 'bg-gray-50 text-gray-900 border-gray-200'
-                          }`}>
+                            }`}>
                             <div className="flex items-center justify-between mb-1.5 gap-4">
                               <span className={`font-semibold text-xs ${isMe ? 'text-white/90' : 'text-[#800020]'}`}>
                                 {isMe ? 'Me (Super Admin)' : msg.username}
@@ -969,7 +967,6 @@ export default function Dash() {
             {(!sidebarCollapsed || mobileMenuOpen) && <span className="whitespace-nowrap">Generate Report</span>}
           </button>
           <button onClick={() => loadDashboardData(false)} className={`w-full py-3 bg-white/10 text-white font-black rounded-xl hover:bg-white/15 transition-all text-xs uppercase tracking-widest flex items-center justify-center gap-2 ${(sidebarCollapsed && !mobileMenuOpen) ? 'p-3' : 'px-4'}`}>
-            <span className="flex-shrink-0">•••••••••••</span>
             {(!sidebarCollapsed || mobileMenuOpen) && <span className="whitespace-nowrap">Refresh Data</span>}
           </button>
         </div>
@@ -1079,8 +1076,8 @@ export default function Dash() {
                                     <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-gray-500 gap-2">
                                       <span>{provider.provider_name}</span>
                                       <span className="text-right flex gap-2">
-                                        <span style={{ color: '#800020' }}>••••••••••• {provider.usersCount}</span>
-                                        <span style={{ color: '#16a34a' }}>•••••••••••{provider.applicantsCount}</span>
+                                        <span style={{ color: '#800020' }} className="flex items-center gap-1"><FaUser className="text-[10px]" /> {provider.usersCount} Admin{provider.usersCount !== 1 ? 's' : ''}</span>
+                                        <span style={{ color: '#16a34a' }} className="flex items-center gap-1"><FaUserGraduate className="text-[10px]" /> {provider.applicantsCount} Student{provider.applicantsCount !== 1 ? 's' : ''}</span>
                                       </span>
                                     </div>
                                     <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
