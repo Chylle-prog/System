@@ -23,6 +23,8 @@ const Login = () => {
   const [isLoginLoading, setIsLoginLoading] = useState(false);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
   const { setCurrentUserState, fetchProfile } = useAuth();
   const [currentUser, setCurrentUser] = useState(null);
 
@@ -175,6 +177,12 @@ const Login = () => {
 
     if (password !== confirmPassword) {
       setErrorMessage('Passwords do not match.');
+      setShowError(true);
+      return;
+    }
+
+    if (!agreedToTerms) {
+      setErrorMessage('You must agree to the Terms of Service to create an account.');
       setShowError(true);
       return;
     }
@@ -1267,6 +1275,35 @@ const Login = () => {
                     <input type="password" name="confirmPassword" placeholder="••••••••" required />
                   </div>
                 </div>
+                <div style={{ margin: '1.25rem 0 1.5rem 0', display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                  <input
+                    type="checkbox"
+                    id="termsCheckbox"
+                    checked={agreedToTerms}
+                    onChange={(e) => setAgreedToTerms(e.target.checked)}
+                    required
+                    style={{
+                      width: '18px',
+                      height: '18px',
+                      cursor: 'pointer',
+                      accentColor: '#991b1b',
+                      borderRadius: '4px'
+                    }}
+                  />
+                  <label htmlFor="termsCheckbox" style={{ fontSize: '0.88rem', color: 'rgba(255, 255, 255, 0.85)', cursor: 'pointer', margin: 0, userSelect: 'none' }}>
+                    I agree to the{' '}
+                    <a
+                      href="#terms"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setShowTermsModal(true);
+                      }}
+                      style={{ color: '#60a5fa', textDecoration: 'underline', fontWeight: 600 }}
+                    >
+                      Terms of Service
+                    </a>
+                  </label>
+                </div>
                 <button type="submit" className="submit-btn">Create account</button>
 
                 {/* Social Sign-up Options */}
@@ -1550,6 +1587,106 @@ const Login = () => {
             >
               Close
             </button>
+          </div>
+        </div>
+      )}
+      {/* Terms of Service Overlay Modal */}
+      {showTermsModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          background: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: '#1e293b',
+            color: '#f8fafc',
+            borderRadius: '24px',
+            maxWidth: '520px',
+            width: '92%',
+            padding: '2rem',
+            boxShadow: '0 25px 60px rgba(0, 0, 0, 0.5)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            position: 'relative'
+          }}>
+            <div style={{
+              display: 'flex',
+              justify: 'space-between',
+              alignItems: 'center',
+              marginBottom: '1.25rem',
+              paddingBottom: '1rem',
+              borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
+            }}>
+              <h3 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#ffffff' }}>
+                Terms of Service
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowTermsModal(false)}
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  border: 'none',
+                  color: '#94a3b8',
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1.1rem',
+                  cursor: 'pointer'
+                }}
+              >
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+
+            <div style={{
+              maxHeight: '300px',
+              overflowY: 'auto',
+              paddingRight: '0.5rem',
+              fontSize: '0.98rem',
+              lineHeight: '1.6',
+              color: '#cbd5e1'
+            }}>
+              <p style={{ margin: 0 }}>Add terms of services here.</p>
+            </div>
+
+            <div style={{
+              marginTop: '1.5rem',
+              paddingTop: '1rem',
+              borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+              display: 'flex',
+              justify: 'flex-end'
+            }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setAgreedToTerms(true);
+                  setShowTermsModal(false);
+                }}
+                style={{
+                  background: '#991b1b',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '30px',
+                  padding: '0.65rem 1.6rem',
+                  fontSize: '0.95rem',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                I Agree
+              </button>
+            </div>
           </div>
         </div>
       )}
