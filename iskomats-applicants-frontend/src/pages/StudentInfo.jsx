@@ -3367,6 +3367,12 @@ const StudentInfo = () => {
           }
         }
 
+        const videoVal = formData.indigencyVideo || formData.mayorIndigency_video || formData.video_proof || formData.idVideoDoc || formData.mayorCOE_video || formData.mayorGrades_video;
+        if (videoVal) {
+          formDataPayload.append('video_proof', videoVal);
+          formDataPayload.append('indigency_video', videoVal);
+        }
+
         const backendResult = await applicantAPI.ocrCheck(formDataPayload);
         if (backendResult && typeof backendResult.verified === 'boolean') {
           if (!silent) setScanProgress(100);

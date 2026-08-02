@@ -2413,8 +2413,15 @@ def verify_video_content(
     for idx, frame in enumerate(frames):
         try:
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            txt6 = pytesseract.image_to_string(gray, config='--psm 6')
+            # Enhance frame contrast for handheld video motion blur / lighting variations
+            clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+            enhanced = clahe.apply(gray)
+
+            txt3 = pytesseract.image_to_string(enhanced, config='--psm 3')
+            txt6 = pytesseract.image_to_string(enhanced, config='--psm 6')
             txt11 = pytesseract.image_to_string(gray, config='--psm 11')
+
+            if txt3: extracted_texts.append(txt3)
             if txt6: extracted_texts.append(txt6)
             if txt11: extracted_texts.append(txt11)
         except Exception as err:
@@ -2437,7 +2444,7 @@ def verify_video_content(
     if expected_name:
         name_words = [w for w in normalize_text(expected_name).split() if len(w) >= 3]
         if name_words:
-            matched_name_words = [w for w in name_words if w in norm_video_text]
+            matched_name_words = [w for w in name_words if any(w in token or token in w for token in norm_video_text.split())]
             if len(matched_name_words) < max(1, len(name_words) // 2):
                 return False, f"Mismatched document: Applicant name ('{expected_name}') was not detected in the video."
 
@@ -2446,7 +2453,7 @@ def verify_video_content(
         norm_addr = normalize_text(expected_address)
         addr_words = [w for w in norm_addr.split() if len(w) >= 3 and w not in {'city', 'street', 'brgy', 'barangay', 'province'}]
         if addr_words:
-            addr_matched = any(w in norm_video_text for w in addr_words)
+            addr_matched = any(w in norm_video_text or any(w in token or token in w for token in norm_video_text.split()) for w in addr_words)
             if not addr_matched:
                 return False, f"Mismatched document: Address ('{expected_address}') was not found in the video."
 
@@ -2461,10 +2468,10 @@ def verify_video_content(
         doc_norm = normalize_text(doc_ocr_text)
         doc_tokens = list(set([w for w in doc_norm.split() if len(w) >= 4 and not w.isdigit()]))
         if doc_tokens:
-            common_tokens = [w for w in doc_tokens if w in norm_video_text]
+            common_tokens = [w for w in doc_tokens if any(w in v_tok or v_tok in w for v_tok in norm_video_text.split())]
             overlap_ratio = len(common_tokens) / float(len(doc_tokens))
             print(f"[VIDEO CROSS-OCR] Token overlap ratio: {overlap_ratio:.2f} ({len(common_tokens)}/{len(doc_tokens)})", flush=True)
-            if len(doc_tokens) >= 5 and overlap_ratio < 0.10:
+            if len(doc_tokens) >= 5 and overlap_ratio < 0.08:
                 return False, "Mismatched upload: Video text does not match content from the uploaded document image."
 
     return True, "Video content and document image consistency verified successfully."

@@ -3642,6 +3642,36 @@ def ocr_check():
             "DOCUMENT TYPE": verified,
             "VIDEO PROOF": True
         }
+
+        # Video OCR verification
+        video_file = request.files.get('indigency_video') or request.files.get('video_proof') or request.files.get('video_doc') or request.files.get('video')
+        video_param = video_file.read() if video_file else (data.get('indigency_video') or data.get('video_proof') or data.get('video_doc') or data.get('video_url') or data.get('video'))
+
+        video_bytes = None
+        if video_param:
+            video_bytes = resolve_verification_image_bytes(video_param)
+
+        if video_bytes:
+            from services.ocr_utils import verify_video_content
+            keywords_map = {
+                'Indigency': ['indigency', 'indigent', 'kawalang', 'kapos', 'residency', 'resident', 'naninirahan', 'barangay', 'katibayan'],
+                'Enrollment': ['enrollment', 'enrolment', 'registration', 'registered', 'college', 'enrolled', 'coe'],
+                'Grades': ['grades', 'grade', 'transcript', 'records', 'units', 'subject', 'gpa', 'evaluation'],
+                'SchoolID': ['student', 'identity', 'id', 'republic', 'philippines', 'school', 'university', 'college']
+            }
+            v_ok, v_msg = verify_video_content(
+                video_bytes,
+                keywords=keywords_map.get(doc_type, ['indigency', 'barangay']),
+                expected_address=f"{barangay} {town_city}".strip() or town_city,
+                expected_name=f"{first_name} {last_name}".strip(),
+                expected_id=data.get('idNumber'),
+                doc_ocr_text=raw_text
+            )
+            score_details['VIDEO PROOF'] = v_ok
+            if not v_ok:
+                verified = False
+                message = f"{message}; Video Verification Alert: {v_msg}"
+
         detected_text = (meta or {}).get('detected_text', raw_text)
 
         response_payload = {
