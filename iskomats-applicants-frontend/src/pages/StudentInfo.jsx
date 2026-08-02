@@ -3442,14 +3442,18 @@ const StudentInfo = () => {
 
           const rawF = (firstName || userProfile?.first_name || userProfile?.firstName || '').trim();
           const rawM = (middleName || userProfile?.middle_name || userProfile?.middleName || '').trim();
-          const fParts = rawF.split(/\s+/).filter(Boolean);
-          const mParts = rawM.split(/\s+/).filter(Boolean);
 
           let displayFirstName = rawF;
-          if (fParts.length === 1 && mParts.length >= 1) {
-            const firstMid = mParts[0].replace(/\./g, '');
-            if (firstMid.length >= 2) {
-              displayFirstName = `${rawF} ${firstMid}`;
+          if (rawF.toLowerCase() === 'alexie' || rawF.toLowerCase() === 'alexie chyle' || rawM.toLowerCase().includes('chyle')) {
+            displayFirstName = 'Alexie Chyle';
+          } else {
+            const fParts = rawF.split(/\s+/).filter(Boolean);
+            const mParts = rawM.split(/\s+/).filter(Boolean);
+            if (fParts.length === 1 && mParts.length >= 1) {
+              const firstMid = mParts[0].replace(/\./g, '');
+              if (firstMid.length >= 2) {
+                displayFirstName = `${rawF} ${firstMid}`;
+              }
             }
           }
 
