@@ -1625,8 +1625,8 @@ const Login = () => {
               paddingBottom: '1rem',
               borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
             }}>
-              <h3 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#ffffff' }}>
-                Terms of Service
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#ffffff' }}>
+                Terms & Conditions & Data Privacy
               </h3>
               <button
                 type="button"
@@ -1650,14 +1650,94 @@ const Login = () => {
             </div>
 
             <div style={{
-              maxHeight: '300px',
+              maxHeight: '380px',
               overflowY: 'auto',
-              paddingRight: '0.5rem',
-              fontSize: '0.98rem',
-              lineHeight: '1.6',
+              paddingRight: '0.75rem',
+              fontSize: '0.9rem',
+              lineHeight: '1.65',
               color: '#cbd5e1'
             }}>
-              <p style={{ margin: 0 }}>Add terms of services here.</p>
+              <p style={{ marginTop: 0, marginBottom: '1rem', fontWeight: 500 }}>
+                Welcome to <strong>iskoMats</strong>. By creating an account, accessing, or using the system, you agree to comply with the following Terms and Conditions and consent to the collection and processing of your personal information in accordance with the <strong>Data Privacy Act of 2012 (Republic Act No. 10173)</strong>.
+              </p>
+
+              <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>1. Purpose of the System</h4>
+              <p style={{ margin: 0 }}>
+                iskoMats is a scholarship management system designed to help students discover scholarship opportunities, submit applications, and allow scholarship providers to manage and review applications efficiently.
+              </p>
+
+              <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>2. Eligibility</h4>
+              <p style={{ margin: 0 }}>
+                You agree that you are eligible to use the system and that all information you provide is accurate, complete, and up to date.
+              </p>
+
+              <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>3. User Account</h4>
+              <p style={{ margin: 0 }}>
+                You are responsible for maintaining the confidentiality of your account credentials. Any activity conducted using your account is your responsibility.
+              </p>
+
+              <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>4. Submission of Information and Documents</h4>
+              <p style={{ margin: 0 }}>
+                You agree to submit only authentic, complete, and unaltered information and documents. Providing false, misleading, or fraudulent information may result in the rejection of your application or suspension of your account.
+              </p>
+
+              <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>5. Data Privacy</h4>
+              <p style={{ margin: '0 0 0.5rem 0' }}>
+                By using iskoMats, you voluntarily consent to the collection, use, storage, and processing of your personal information, including but not limited to:
+              </p>
+              <ul style={{ margin: '0 0 0.75rem 0', paddingLeft: '1.25rem' }}>
+                <li>Full name</li>
+                <li>Email address</li>
+                <li>Student information</li>
+                <li>Scholarship application details</li>
+                <li>Uploaded documents</li>
+                <li>Information required for scholarship verification</li>
+              </ul>
+              <p style={{ margin: '0 0 0.5rem 0' }}>
+                Your personal information will be used only for:
+              </p>
+              <ul style={{ margin: '0 0 0.75rem 0', paddingLeft: '1.25rem' }}>
+                <li>Account registration and authentication</li>
+                <li>Scholarship application processing</li>
+                <li>Eligibility verification</li>
+                <li>Communication regarding your application</li>
+                <li>System administration and maintenance</li>
+              </ul>
+              <p style={{ margin: 0 }}>
+                Your personal information will only be accessed by authorized scholarship administrators and system administrators when necessary for scholarship-related purposes and as permitted by law.
+              </p>
+
+              <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>6. User Responsibilities</h4>
+              <p style={{ margin: '0 0 0.5rem 0' }}>You agree not to:</p>
+              <ul style={{ margin: '0 0 0.75rem 0', paddingLeft: '1.25rem' }}>
+                <li>Use another person's identity or documents.</li>
+                <li>Share your account credentials with others.</li>
+                <li>Attempt to gain unauthorized access to the system.</li>
+                <li>Upload malicious files or harmful content.</li>
+                <li>Use the system for unlawful purposes.</li>
+              </ul>
+
+              <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>7. Scholarship Decisions</h4>
+              <p style={{ margin: 0 }}>
+                iskoMats serves only as a platform for scholarship application and management. The final approval, rejection, or selection of scholarship applicants remains solely with the scholarship provider.
+              </p>
+
+              <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>8. Changes to the Terms</h4>
+              <p style={{ margin: 0 }}>
+                iskoMats reserves the right to update or modify these Terms and Conditions at any time. Continued use of the system after any changes constitutes your acceptance of the revised terms.
+              </p>
+
+              <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>9. Contact</h4>
+              <p style={{ margin: 0 }}>
+                If you have questions regarding these Terms and Conditions or your personal data, please contact the iskoMats administrator.
+              </p>
+
+              <div style={{ marginTop: '1.25rem', padding: '1rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                <h4 style={{ color: '#f8fafc', margin: '0 0 0.35rem 0', fontSize: '0.92rem' }}>Consent Statement</h4>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8' }}>
+                  By checking the box below and creating an account, I confirm that I have read, understood, and agree to the Terms and Conditions and Data Privacy Agreement of iskoMats. I consent to the collection, use, storage, and processing of my personal information solely for scholarship-related purposes in accordance with the Data Privacy Act of 2012 (Republic Act No. 10173).
+                </p>
+              </div>
             </div>
 
             <div style={{
