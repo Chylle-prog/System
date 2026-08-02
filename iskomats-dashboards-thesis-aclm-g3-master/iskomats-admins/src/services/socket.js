@@ -9,8 +9,31 @@ class SocketService {
     this.username = null;
   }
 
+  getUserIdFromToken(token = null) {
+    try {
+      const activeToken = token || localStorage.getItem('authToken');
+      if (!activeToken) return null;
+      const base64Url = activeToken.split('.')[1];
+      if (!base64Url) return null;
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+      const decoded = JSON.parse(jsonPayload);
+      return decoded.user_id || decoded.user_no || decoded.id || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   connect(token) {
-    if (this.socket) return;
+    if (!this.userId) {
+      this.userId = this.getUserIdFromToken(token);
+    }
+    if (this.socket) {
+      if (token && this.socket.connected) {
+        this.socket.emit('login', { token });
+      }
+      return;
+    }
 
     const socketUrl = resolveSocketUrl ? resolveSocketUrl() : SOCKET_URL;
 
@@ -34,7 +57,7 @@ class SocketService {
 
     this.socket.on('logged_in', (data) => {
       // Store user ID and username for message sending
-      this.userId = data.id;
+      this.userId = data.id || this.getUserIdFromToken();
       this.username = data.name;
       this._notifyHandlers('logged_in', data);
     });
@@ -129,11 +152,12 @@ class SocketService {
   }
 
   sendMessage(room, username, message, providerName = null) {
+    const resolvedSenderId = this.userId || this.getUserIdFromToken();
     this.emit('message', { 
       room, 
       username: providerName || username || this.username, 
       message,
-      sender_id: this.userId,
+      sender_id: resolvedSenderId,
       ...(providerName && { provider_name: providerName })
     });
   }
@@ -146,11 +170,13 @@ class SocketService {
     this.emit('start_chat', { applicant_id: applicantId, pro_no: proNo });
   }
 
-  sendAdminMessage(room, message) {
+  sendAdminMessage(room, message, senderId = null) {
+    const resolvedSenderId = senderId || this.userId || this.getUserIdFromToken();
+    console.log('[SOCKET] sendAdminMessage:', { room, message, sender_id: resolvedSenderId });
     this.emit('admin_message', {
       room,
       message,
-      sender_id: this.userId,
+      sender_id: resolvedSenderId,
     });
   }
 

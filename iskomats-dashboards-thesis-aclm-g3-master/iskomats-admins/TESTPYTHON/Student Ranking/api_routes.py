@@ -1954,6 +1954,9 @@ def init_socketio(socketio):
         if not room:
             return
 
+        if room.startswith('superadmin_room_'):
+            return on_load_admin_history(data)
+
         try:
             # Parse IDs from room format "app_no+pro_no"
             app_no, pro_no = map(int, room.split('+'))
@@ -2040,6 +2043,9 @@ def init_socketio(socketio):
         if not all([room, message_text, sender_id]):
             print(f"Missing required fields: room={room}, message={message_text}, sender_id={sender_id}")
             return
+
+        if room.startswith('superadmin_room_'):
+            return on_admin_message(data)
 
         try:
             # Parse IDs from room format "app_no+pro_no"
