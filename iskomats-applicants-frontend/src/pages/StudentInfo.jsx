@@ -1832,7 +1832,8 @@ const StudentInfo = () => {
         };
 
         const evaluateVideoText = (textLogs) => {
-          const rawCombined = (textLogs || []).join(" ").toLowerCase();
+          const validLogs = (textLogs || []).filter(log => log && !log.includes("attached for manual review"));
+          const rawCombined = validLogs.join(" ").toLowerCase();
           const cleanText = normalizeForOcr(rawCombined);
 
           // Extract expected name words safely from formData or userProfile
@@ -1855,48 +1856,52 @@ const StudentInfo = () => {
               'certificate', 'barangay', 'punong', 'certify',
               'office', 'bayan', 'mataasnakahoy', 'lipa', 'batangas', 'whom', 'concern', 'personally',
               'purok', 'bonafide', 'family', 'families', 'sangguniang', 'kagawad', 'lubi', 'moises',
-              'republic', 'philippines', 'province', 'municipality', 'seal'
+              'republic', 'philippines', 'province', 'municipality', 'seal', 'nangkaan', 'inosloban'
             ];
           } else if (fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('certificate') || fieldName?.includes('mayorCOE')) {
             targetKeywords = [
               'enrollment', 'registration', 'certificate', 'student', 'college', 'semester', 'academic',
               'official', 'course', 'school', 'university', 'whom', 'concern', 'certify', 'bonafide',
               'enrolled', 'registrar', 'dean', 'republic', 'philippines', 'department',
-              'dlsl', 'lipa', 'salle', 'bsit', 'units', 'cor', 'coe', 'total', 'pathfi', 'coprog',
-              'coworld', 'dismath', 'intcom', 'itbupro', 'nstp', 'purpcom', 'readphi', '2025', '2026'
+              'dlsl', 'lipa', 'salle', 'bsit', 'units', 'cor', 'coe', 'total'
             ];
           } else if (fieldName?.includes('Grades') || fieldName?.includes('grades')) {
             targetKeywords = [
               'grade', 'transcript', 'gpa', 'academic', 'rating', 'remarks', 'passed', 'subject',
               'units', 'evaluation', 'record', 'scholastic', 'gwa', 'registrar', 'certified', 'true', 'copy'
             ];
-          } else if (fieldName?.includes('schoolId') || fieldName?.includes('Id') || fieldName?.includes('id')) {
+          } else {
             targetKeywords = [
               'school', 'student', 'id', 'college', 'university', 'republic', 'card', 'de la salle',
               'lipa', 'identity', 'signature', 'valid', 'holder', 'philippines'
             ];
-          } else {
-            targetKeywords = [
-              'certificate', 'official', 'document', 'school', 'student', 'republic', 'barangay',
-              'whom', 'concern', 'certify', 'philippines', 'province', 'office'
-            ];
           }
 
-          const hasNameMatch = allNameWords.some(w => cleanText.includes(w) || rawCombined.includes(w));
+          const hasNameMatch = allNameWords.length > 0 && allNameWords.some(w => cleanText.includes(w) || rawCombined.includes(w));
           const hasKeywordMatch = targetKeywords.some(k => cleanText.includes(k) || rawCombined.includes(k));
 
-          if (hasNameMatch || hasKeywordMatch || srcUrl) {
+          const hasRealText = validLogs.length > 0 && cleanText.length >= 10;
+
+          if (hasRealText && (hasNameMatch || hasKeywordMatch)) {
             return {
               valid: true,
-              reason: "Uploaded & Validated",
-              detectedText: (textLogs || []).join("\n\n") || "Proof video attached for manual review."
+              reason: "Video Text Verified",
+              detectedText: validLogs.join("\n\n")
+            };
+          }
+
+          if (hasRealText) {
+            return {
+              valid: false,
+              reason: "Video text mismatch: Neither applicant name nor required document keywords were detected in video frames.",
+              detectedText: validLogs.join("\n\n")
             };
           }
 
           return {
-            valid: true,
-            reason: "Uploaded & Validated",
-            detectedText: textLogs.join("\n\n") || "Proof video attached for manual review."
+            valid: false,
+            reason: "No readable document text detected in supporting video frames. Please ensure clear lighting and hold video steady.",
+            detectedText: "No readable document text detected in video frames."
           };
         };
 
