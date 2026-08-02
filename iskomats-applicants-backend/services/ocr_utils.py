@@ -1020,6 +1020,14 @@ def normalize_id_number(s):
     return normalized
 
 
+def _word_in_text(w, text):
+    if not w or not text: return False
+    if re.search(rf'\b{re.escape(w)}\b', text):
+        return True
+    if len(w) >= 3 and w in text:
+        return True
+    return False
+
 def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None, middle_name=None):
     """
     Verifies that the student's FULL name (first + last + middle together) appears as a
@@ -1038,14 +1046,6 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
     first_words = [w for w in first_clean.split() if len(w) >= 2]
     last_words  = [w for w in last_clean.split()  if len(w) >= 2]
     mid_words   = [w for w in mid_clean.split()   if len(w) >= 1]
-
-    def _word_in_text(w, text):
-        if not w or not text: return False
-        if re.search(rf'\b{re.escape(w)}\b', text):
-            return True
-        if len(w) >= 3 and w in text:
-            return True
-        return False
 
     first_ok = all(_word_in_text(w, norm_target) or _word_in_text(w, norm_raw) for w in first_words) if first_words else True
     last_ok = all(_word_in_text(w, norm_target) or _word_in_text(w, norm_raw) for w in last_words) if last_words else True
@@ -2167,6 +2167,34 @@ def verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_
 
     return success, msg, meta
 
+def extract_full_name_from_document(raw_text):
+    """
+    Extracts full printed name from document OCR text (e.g., 'Alexie Chyle O. Magbuhat')
+    Returns (doc_first, doc_mid, doc_last)
+    """
+    if not raw_text:
+        return None, None, None
+    clean = re.sub(r'\s+', ' ', raw_text)
+    pattern = r'(?:certify\s+that|known|personally\s+known)\s+(?:(?:mr|ms|mrs|dr)[./\s]*)*\s*([A-Za-z\.\s]+)'
+    m = re.search(pattern, clean, re.IGNORECASE)
+    if m:
+        raw_name = m.group(1).strip()
+        raw_name = re.split(r'\b(?:1\d|2\d|3\d|years|old|single|married|resident|bonafide|purok|barangay)\b', raw_name, flags=re.IGNORECASE)[0].strip()
+        raw_name = re.sub(r'^[^\w]+|[^\w\.]+$', '', raw_name).strip()
+        tokens = [t.strip() for t in raw_name.split() if t.strip() and len(t.strip()) >= 1]
+        if len(tokens) >= 3:
+            last = tokens[-1]
+            if len(tokens[-2].rstrip('.')) <= 2:
+                first = " ".join(tokens[:-2])
+                mid = tokens[-2]
+            else:
+                first = " ".join(tokens[:-1])
+                mid = ""
+            return first, mid, last
+        elif len(tokens) == 2:
+            return tokens[0], "", tokens[1]
+    return None, None, None
+
 def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expected_address=None, **kwargs):
     """
     Flexible verification for Indigency certificates (which vary widely in format by barangay/municipality).
@@ -2175,25 +2203,44 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
     meta = {}
     failures = []
 
-    # NAME MATCHING — First Name + Last Name matching required; middle name optional on certificates
+    doc_first, doc_mid, doc_last = extract_full_name_from_document(raw_text)
+
+    # NAME MATCHING — Compare input name against identified document full name if extracted
     first_ok, middle_ok, last_ok, sequence_ok = verify_name_sequence(
         first_name, last_name, raw_text, raw_text, middle_name
     )
 
-    # Name is verified if First Name and Last Name both match
-    name_matched = (first_ok and last_ok) or sequence_ok
-    if not name_matched:
+    if doc_first and doc_last:
+        user_first_clean = normalize_text(first_name or '')
+        doc_first_clean = normalize_text(doc_first or '')
+        user_last_clean = normalize_text(last_name or '')
+        doc_last_clean = normalize_text(doc_last or '')
+
+        # Option 2 Strictness: Input first_name must equal document's identified first name (e.g., "Alexie Chyle")
+        if user_first_clean != doc_first_clean:
+            first_ok = False
+            failures.append(f"First Name mismatch: Document printed name is '{doc_first}', but input field is '{first_name}'")
+        else:
+            first_ok = True
+
+        if not (_word_in_text(user_last_clean, doc_last_clean) or _word_in_text(doc_last_clean, user_last_clean)):
+            last_ok = False
+            failures.append(f"Last Name mismatch: Document printed last name is '{doc_last}', but input field is '{last_name}'")
+        else:
+            last_ok = True
+
+    name_matched = first_ok and last_ok
+    if not name_matched and not failures:
         failures.append(f"Name mismatch (Expected: '{first_name} {middle_name or ''} {last_name}' in Indigency Certificate)")
 
     addr_ok = True
     target_brgy = str(kwargs.get('barangay') or kwargs.get('targetBarangay') or '').strip()
     if not target_brgy and expected_address:
-        # Extract barangay component from address string (e.g. "Bolbok Lipa City")
         ignore_words = {'city', 'municipality', 'town', 'province', 'brgy', 'barangay'}
         addr_clean = normalize_text(expected_address)
         words = [w for w in addr_clean.split() if len(w) >= 3 and w not in ignore_words]
         if words:
-            target_brgy = words[0] # e.g. "bolbok"
+            target_brgy = words[0]
 
     if target_brgy:
         doc_norm = normalize_text(raw_text)
@@ -2220,22 +2267,27 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
         failures.append("Document Type Mismatch: Document does not contain required 'Indigency' / 'Residency' keywords")
 
     success = name_matched and addr_ok and doc_type_ok
+    displayName = f"{doc_first or first_name} {doc_mid or middle_name or ''} {doc_last or last_name}".strip()
     if success:
         doc_name = "Residency Certificate" if is_residency_doc else "Indigency Certificate"
-        msg = f"{doc_name} Verified: Name ({first_name} {middle_name or ''} {last_name}) and document type matched."
+        msg = f"{doc_name} Verified: Name ({displayName}) and document type matched."
     else:
         msg = "Indigency/Residency Verification Failed: " + "; ".join(failures)
 
     meta['name_ok'] = name_matched
     meta['details'] = failures
     meta['detected_text'] = raw_text
+    meta['extracted_doc_first'] = doc_first
+    meta['extracted_doc_last'] = doc_last
     meta['score_details'] = {
         'FIRST NAME': first_ok,
         'LAST NAME': last_ok,
         'BARANGAY ADDRESS': addr_ok,
         'TOWN / CITY': addr_ok,
         'DOCUMENT TYPE': doc_type_ok,
-        'VIDEO PROOF': True
+        'VIDEO PROOF': True,
+        'DOC_FIRST_NAME': doc_first or first_name,
+        'DOC_LAST_NAME': doc_last or last_name
     }
 
     return success, msg, meta
