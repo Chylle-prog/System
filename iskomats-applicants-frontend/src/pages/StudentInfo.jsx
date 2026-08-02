@@ -3440,8 +3440,18 @@ const StudentInfo = () => {
           setVerified(isVerified ? 'success' : 'failed');
           setStatus(msg);
 
+          const rawF = (firstName || userProfile?.first_name || userProfile?.firstName || '').trim();
+          const rawM = (middleName || userProfile?.middle_name || userProfile?.middleName || '').trim();
+          const fParts = rawF.split(/\s+/).filter(Boolean);
+          const mParts = rawM.split(/\s+/).filter(Boolean);
+
+          let displayFirstName = rawF;
+          if (fParts.length === 1 && mParts.length >= 2) {
+            displayFirstName = `${rawF} ${mParts[0]}`;
+          }
+
           const reqValues = {
-            "FIRST NAME": firstName || 'Extracted Name',
+            "FIRST NAME": displayFirstName || 'Extracted Name',
             "LAST NAME": lastName || 'Extracted Name',
             "BARANGAY ADDRESS": targetBarangay || 'Extracted Address',
             "TOWN / CITY": townCity || 'Extracted City',

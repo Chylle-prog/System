@@ -3599,9 +3599,19 @@ def ocr_check():
                     doc_key_map = {'Indigency': 'indigency_doc', 'Enrollment': 'enrollment_certificate_doc', 'Grades': 'grades_doc', 'SchoolID': 'id_img_front'}
                     raw_doc = document_values.get(doc_key_map.get(doc_type, 'indigency_doc'))
 
-        first_name = str(data.get('firstName') or data.get('first_name') or applicant.get('first_name', '')).strip()
-        middle_name = str(data.get('middleName') or data.get('middle_name') or applicant.get('middle_name', '')).strip()
-        last_name = str(data.get('lastName') or data.get('last_name') or applicant.get('last_name', '')).strip()
+        raw_first = str(data.get('firstName') or data.get('first_name') or applicant.get('first_name', '')).strip()
+        raw_middle = str(data.get('middleName') or data.get('middle_name') or applicant.get('middle_name', '')).strip()
+        raw_last = str(data.get('lastName') or data.get('last_name') or applicant.get('last_name', '')).strip()
+        
+        mid_parts = raw_middle.split()
+        if len(raw_first.split()) == 1 and len(mid_parts) >= 2:
+            first_name = f"{raw_first} {mid_parts[0]}".strip()
+            middle_name = " ".join(mid_parts[1:]).strip()
+        else:
+            first_name = raw_first
+            middle_name = raw_middle
+
+        last_name = raw_last
         town_city = str(data.get('town_city') or data.get('townCity') or applicant.get('town_city_municipality', '')).strip()
         barangay = str(data.get('barangay') or applicant.get('street_brgy', '')).strip()
 

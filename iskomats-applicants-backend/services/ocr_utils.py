@@ -1035,6 +1035,12 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
     norm_target = normalize_text(target_text or '')
     norm_raw    = normalize_text(full_raw_text or target_text or '')
 
+    # Combine single-word first name with first word of multi-word middle_name (e.g. Alexie + Chyle Ortega -> Alexie Chyle)
+    mid_parts = mid_clean.split()
+    if len(first_clean.split()) == 1 and len(mid_parts) >= 2:
+        first_clean = f"{first_clean} {mid_parts[0]}".strip()
+        mid_clean = " ".join(mid_parts[1:]).strip()
+
     first_words = [w for w in first_clean.split() if len(w) >= 2]
     last_words  = [w for w in last_clean.split()  if len(w) >= 2]
     mid_words   = [w for w in mid_clean.split()   if len(w) >= 1]
