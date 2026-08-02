@@ -3635,9 +3635,9 @@ const StudentInfo = () => {
             }
           }
 
-          // 1. Primary Pass (Fast 1200px downscaled image)
-          const fastImgUrl = await downscaleImageForFastOcr(scanInput, 1200).catch(() => null);
-          const scanSource = fastImgUrl || scanInput;
+          // 1. High-Fidelity Contrast-Enhanced Primary Pass (1600px max dimension)
+          const enhancedImgUrl = await createEnhancedOcrImageBlob(scanInput).catch(() => null);
+          const scanSource = enhancedImgUrl || scanInput;
 
           const primaryRes = await worker.recognize(scanSource).catch((e) => {
             console.warn(`[OCR Engine] Primary pass note:`, e);
@@ -3656,10 +3656,9 @@ const StudentInfo = () => {
 
           const isIndigencyDoc = lowerPrimary.includes('indigency') || lowerPrimary.includes('residency') || lowerPrimary.includes('katibayan') || lowerPrimary.includes('kawalang') || lowerPrimary.includes('barangay');
 
-          // ⚡ SUPER FAST EARLY EXIT: If Primary Pass captures text (>= 20 chars), Indigency header, or Name, return immediately!
-          // Skips 4 redundant WASM crop passes, reducing client scan time from ~8s down to ~0.5s.
-          if (primaryText.trim().length >= 20 || isIndigencyDoc || hasLastName || hasFirstName) {
-            if (fastImgUrl && fastImgUrl !== scanInput && fastImgUrl.startsWith('blob:')) URL.revokeObjectURL(fastImgUrl);
+          // ⚡ HIGH-ACCURACY FAST EARLY EXIT: If Primary Pass captures Name/ID, Indigency header, or comprehensive text (>= 80 chars), return immediately!
+          if ((hasLastName || hasFirstName || isIndigencyDoc) || primaryText.trim().length >= 80) {
+            if (enhancedImgUrl && enhancedImgUrl !== scanInput && enhancedImgUrl.startsWith('blob:')) URL.revokeObjectURL(enhancedImgUrl);
             if (realScanBlobUrl && realScanBlobUrl !== imgSource && realScanBlobUrl.startsWith('blob:')) URL.revokeObjectURL(realScanBlobUrl);
             return primaryText.trim();
           }
@@ -8708,7 +8707,7 @@ const StudentInfo = () => {
       </div>
 
       {/* Loading overlay */}
-      <div className={`loading-overlay ${isSubmitting || isSavingStep || isInitialLoading ? 'active' : ''}`}>
+      <div className={`loading-overlay ${isSubmitting || isInitialLoading ? 'active' : ''}`}>
         <div className="loading-modal">
           <div className="loading-spinner"></div>
           <h3 style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.8rem', marginBottom: '0.8rem' }}>
