@@ -739,6 +739,13 @@ export const applicantAPI = {
    * @returns {Promise}
    */
   ocrCheck: async (targetDoc, verified, message, results, scholarshipNo = null) => {
+    if (targetDoc instanceof FormData) {
+      return makeRequest('/student/verification/ocr-check', {
+        method: 'POST',
+        body: targetDoc,
+      });
+    }
+
     return makeRequest('/student/verification/ocr-check', {
       method: 'POST',
       body: JSON.stringify({
