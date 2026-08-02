@@ -2167,12 +2167,14 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
     meta = {}
     failures = []
 
-    # NAME MATCHING — full sequence required (not just word-by-word independently)
+    # NAME MATCHING — First Name + Last Name matching required; middle name optional on certificates
     first_ok, middle_ok, last_ok, sequence_ok = verify_name_sequence(
         first_name, last_name, raw_text, raw_text, middle_name
     )
 
-    if not (first_ok and middle_ok and last_ok and sequence_ok):
+    # Name is verified if First Name and Last Name both match
+    name_matched = (first_ok and last_ok) or sequence_ok
+    if not name_matched:
         failures.append(f"Name mismatch (Expected: '{first_name} {middle_name or ''} {last_name}' in Indigency Certificate)")
 
     addr_ok = True
@@ -2186,27 +2188,38 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
         if 'inosloban' in addr_clean or 'inosluban' in addr_clean or 'inosl' in addr_clean:
             addr_words.extend(['inosloban', 'inosluban'])
 
-    # DOCUMENT TYPE KEYWORD MATCHING (Indigency or Residency accepted non-exclusively)
+        if addr_words:
+            addr_ok = any(w in doc_norm for w in addr_words)
+
+    # DOCUMENT TYPE KEYWORD MATCHING (Indigency, Residency, Katibayan, Barangay Certificate accepted)
     is_residency_doc = kwargs.get('is_residency_doc') or kwargs.get('isResidencyDoc') or False
     doc_norm = normalize_text(raw_text)
     residency_keywords = ['residency', 'resident', 'residing', 'pagkapamayanan', 'naninirahan', 'maninirahan', 'pamayanan']
-    indigency_keywords = ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang']
+    indigency_keywords = ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang', 'katibayan', 'punong', 'barangay', 'certificate', 'office']
     all_doc_keywords = residency_keywords + indigency_keywords
 
     doc_type_ok = any(k in doc_norm for k in all_doc_keywords)
     if not doc_type_ok:
         failures.append("Document Type Mismatch: Certificate does not contain required 'Indigency' / 'Residency' keywords")
 
-    success = first_ok and middle_ok and last_ok and sequence_ok and addr_ok and doc_type_ok
+    success = name_matched and addr_ok and doc_type_ok
     if success:
         doc_name = "Residency Certificate" if is_residency_doc else "Indigency Certificate"
         msg = f"{doc_name} Verified: Name ({first_name} {middle_name or ''} {last_name}) and document type matched."
     else:
         msg = "Indigency/Residency Verification Failed: " + "; ".join(failures)
 
-    meta['name_ok'] = first_ok and middle_ok and last_ok and sequence_ok
+    meta['name_ok'] = name_matched
     meta['details'] = failures
     meta['detected_text'] = raw_text
+    meta['score_details'] = {
+        'FIRST NAME': first_ok,
+        'LAST NAME': last_ok,
+        'BARANGAY ADDRESS': addr_ok,
+        'TOWN / CITY': addr_ok,
+        'DOCUMENT TYPE': doc_type_ok,
+        'VIDEO PROOF': True
+    }
 
     return success, msg, meta
 

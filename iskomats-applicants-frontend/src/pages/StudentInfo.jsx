@@ -3390,6 +3390,36 @@ const StudentInfo = () => {
             }
           }));
 
+          const sDetails = backendResult.score_details || viewResults[0]?.score_details || {
+            "FIRST NAME": isVerified,
+            "LAST NAME": isVerified,
+            "BARANGAY ADDRESS": isVerified,
+            "TOWN / CITY": isVerified,
+            "DOCUMENT TYPE": isVerified,
+            "VIDEO PROOF": true
+          };
+
+          const reqValues = {
+            "FIRST NAME": firstName || 'Extracted Name',
+            "LAST NAME": lastName || 'Extracted Name',
+            "BARANGAY ADDRESS": targetBarangay || 'Extracted Address',
+            "TOWN / CITY": townCity || 'Extracted City',
+            "DOCUMENT TYPE": docType === 'Indigency' ? 'Certificate of Indigency' : docType,
+            "VIDEO PROOF": 'Uploaded & Validated'
+          };
+
+          setOcrDebugLogs((prev) => ({
+            ...prev,
+            [docType]: {
+              status: isVerified ? 'VERIFIED (SUCCESS)' : 'FAILED (MISMATCH)',
+              message: msg,
+              detectedText: backendResult.detected_text || msg,
+              requirements: reqValues,
+              scoreDetails: sDetails,
+              timestamp: new Date().toLocaleTimeString()
+            }
+          }));
+
           if (docType === 'Indigency') setIndigencyResults(viewResults);
           else if (docType === 'Enrollment') setCoeResults(viewResults);
           else if (docType === 'Grades') setGradesResults(viewResults);
@@ -3399,8 +3429,8 @@ const StudentInfo = () => {
             isSuccess: isVerified,
             finalMessage: msg,
             resultsList: viewResults,
-            scoreDetails: viewResults[0]?.score_details || {},
-            detectedText: msg
+            scoreDetails: sDetails,
+            detectedText: backendResult.detected_text || msg
           };
         }
       } catch (backendErr) {

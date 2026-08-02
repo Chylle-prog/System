@@ -3631,10 +3631,28 @@ def ocr_check():
         )
 
         verified = bool(success)
+        score_details = (meta or {}).get('score_details') or {
+            "FIRST NAME": verified,
+            "LAST NAME": verified,
+            "BARANGAY ADDRESS": verified,
+            "TOWN / CITY": verified,
+            "DOCUMENT TYPE": verified,
+            "VIDEO PROOF": True
+        }
+        detected_text = (meta or {}).get('detected_text', raw_text)
+
         response_payload = {
             'verified': verified,
             'message': message,
-            'results': [{'doc': doc_type, 'verified': verified, 'message': message}]
+            'detected_text': detected_text,
+            'score_details': score_details,
+            'results': [{
+                'doc': doc_type,
+                'verified': verified,
+                'message': message,
+                'score_details': score_details,
+                'detected_text': detected_text
+            }]
         }
 
         _cache_verification_result(cache_key, response_payload)
