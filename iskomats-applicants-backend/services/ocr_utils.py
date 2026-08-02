@@ -1048,12 +1048,7 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
         return False
 
     first_ok = all(_word_in_text(w, norm_target) or _word_in_text(w, norm_raw) for w in first_words) if first_words else True
-    if not first_ok and first_words:
-        first_ok = any(_word_in_text(w, norm_target) or _word_in_text(w, norm_raw) for w in first_words if len(w) >= 3)
-
     last_ok = all(_word_in_text(w, norm_target) or _word_in_text(w, norm_raw) for w in last_words) if last_words else True
-    if not last_ok and last_words:
-        last_ok = any(_word_in_text(w, norm_target) or _word_in_text(w, norm_raw) for w in last_words if len(w) >= 3)
 
     middle_ok = True
     if mid_words:
