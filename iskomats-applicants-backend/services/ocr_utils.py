@@ -1061,12 +1061,16 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
         pattern = r'[^a-z0-9]{0,4}'.join(words)
         return re.compile(r'\b' + pattern + r'\b')
 
+    sequences_to_check = [
+        f'{first_clean} {last_clean}',
+        f'{last_clean} {first_clean}'
+    ]
     if mid_clean:
-        sequences_to_check = [
+        sequences_to_check.extend([
             f'{first_clean} {mid_clean} {last_clean}',
             f'{last_clean} {first_clean} {mid_clean}',
             f'{last_clean} {mid_clean} {first_clean}'
-        ]
+        ])
         mid_initial = mid_clean[0]
         if mid_initial:
             sequences_to_check.extend([
@@ -1074,11 +1078,6 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
                 f'{last_clean} {first_clean} {mid_initial}',
                 f'{last_clean} {mid_initial} {first_clean}'
             ])
-    else:
-        sequences_to_check = [
-            f'{first_clean} {last_clean}',
-            f'{last_clean} {first_clean}'
-        ]
 
     def is_similar_name_word(e_word, t_word):
         if not e_word or not t_word: return False
@@ -2178,29 +2177,38 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
         failures.append(f"Name mismatch (Expected: '{first_name} {middle_name or ''} {last_name}' in Indigency Certificate)")
 
     addr_ok = True
-    if expected_address and str(expected_address).strip():
-        doc_norm = normalize_text(raw_text)
-        addr_clean = normalize_text(expected_address)
+    target_brgy = str(kwargs.get('barangay') or kwargs.get('targetBarangay') or '').strip()
+    if not target_brgy and expected_address:
+        # Extract barangay component from address string (e.g. "Bolbok Lipa City")
         ignore_words = {'city', 'municipality', 'town', 'province', 'brgy', 'barangay'}
-        addr_words = [w for w in addr_clean.split() if len(w) >= 3 and w not in ignore_words]
+        addr_clean = normalize_text(expected_address)
+        words = [w for w in addr_clean.split() if len(w) >= 3 and w not in ignore_words]
+        if words:
+            target_brgy = words[0] # e.g. "bolbok"
 
-        # Inosloban / Inosluban alias handling
-        if 'inosloban' in addr_clean or 'inosluban' in addr_clean or 'inosl' in addr_clean:
-            addr_words.extend(['inosloban', 'inosluban'])
+    if target_brgy:
+        doc_norm = normalize_text(raw_text)
+        brgy_clean = normalize_text(target_brgy)
+        brgy_words = [w for w in brgy_clean.split() if len(w) >= 3 and w not in {'city', 'brgy', 'barangay'}]
 
-        if addr_words:
-            addr_ok = any(w in doc_norm for w in addr_words)
+        if 'inosloban' in brgy_clean or 'inosluban' in brgy_clean:
+            brgy_words.extend(['inosloban', 'inosluban'])
 
-    # DOCUMENT TYPE KEYWORD MATCHING (Indigency, Residency, Katibayan, Barangay Certificate accepted)
+        if brgy_words:
+            addr_ok = any(w in doc_norm for w in brgy_words)
+            if not addr_ok:
+                failures.append(f"Barangay Address Mismatch: Document does not contain Barangay '{target_brgy}'")
+
+    # DOCUMENT TYPE KEYWORD MATCHING (Strict Indigency / Residency keywords required)
     is_residency_doc = kwargs.get('is_residency_doc') or kwargs.get('isResidencyDoc') or False
     doc_norm = normalize_text(raw_text)
     residency_keywords = ['residency', 'resident', 'residing', 'pagkapamayanan', 'naninirahan', 'maninirahan', 'pamayanan']
-    indigency_keywords = ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang', 'katibayan', 'punong', 'barangay', 'certificate', 'office']
+    indigency_keywords = ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang']
     all_doc_keywords = residency_keywords + indigency_keywords
 
     doc_type_ok = any(k in doc_norm for k in all_doc_keywords)
     if not doc_type_ok:
-        failures.append("Document Type Mismatch: Certificate does not contain required 'Indigency' / 'Residency' keywords")
+        failures.append("Document Type Mismatch: Document does not contain required 'Indigency' / 'Residency' keywords")
 
     success = name_matched and addr_ok and doc_type_ok
     if success:
