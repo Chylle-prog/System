@@ -5606,7 +5606,7 @@ export default function ScholarshipDashboard({
     // Super Admin chat helpers
     const mySuperAdminRoom = activeProviderNo ? `0+${activeProviderNo}` : null;
     const altSuperAdminRoom = activeProviderNo ? `superadmin_room_${activeProviderNo}` : null;
-    const isSuperAdminRoomActive = [1, 2, 3, 5, 7].includes(activeProviderNo);
+    const isSuperAdminRoomActive = [1, 2, 3].includes(Number(activeProviderNo));
     const formatSADate = (ts) => {
       if (!ts) return '';
       const d = new Date(ts);

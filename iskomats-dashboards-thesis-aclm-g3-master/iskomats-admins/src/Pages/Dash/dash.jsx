@@ -226,14 +226,11 @@ export default function Dash() {
   const [pageError, setPageError] = useState('');
   const [pageSuccess, setPageSuccess] = useState('');
 
-  // ===== SUPER ADMIN INBOX STATE =====
-  // 5 private rooms: super admin <-> provider admins (pro_no 1,2,3,5,7)
+  // 3 private rooms: super admin <-> provider admins (pro_no 1, 2, 3)
   const SUPER_ADMIN_ROOMS = [
     { room: '0+1', label: 'Mayor Africa', pro_no: 1 },
     { room: '0+2', label: 'Vilma', pro_no: 2 },
     { room: '0+3', label: 'Ched', pro_no: 3 },
-    { room: '0+5', label: 'Tulong Dunong', pro_no: 5 },
-    { room: '0+7', label: 'Mayor Eric B. Africa', pro_no: 7 },
   ];
   const [adminMessages, setAdminMessages] = useState({}); // { [room]: [{...}] }
   const [selectedAdminRoom, setSelectedAdminRoom] = useState(null);
