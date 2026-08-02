@@ -2212,18 +2212,32 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
     )
 
     if doc_first and doc_last:
-        user_first_clean = normalize_text(first_name or '')
-        doc_first_clean = normalize_text(doc_first or '')
-        user_last_clean = normalize_text(last_name or '')
-        doc_last_clean = normalize_text(doc_last or '')
+        doc_full_str = f"{doc_first} {doc_mid or ''} {doc_last}".strip()
+        doc_words = [w.lower().rstrip('.') for w in re.findall(r'\b[A-Za-z]+\b', doc_full_str)]
+        user_first_words = [w.lower() for w in re.findall(r'\b[A-Za-z]+\b', first_name or '')]
+        user_last_words = [w.lower() for w in re.findall(r'\b[A-Za-z]+\b', last_name or '')]
+        user_mid_words = [w.lower().rstrip('.') for w in re.findall(r'\b[A-Za-z]+\b', middle_name or '')]
 
-        # Option 2 Strictness: Input first_name must equal document's identified first name (e.g., "Alexie Chyle")
-        if user_first_clean != doc_first_clean:
+        # Ignore 1 middle name/initial word (either 1-letter initial or matching middle_name input)
+        mid_to_ignore = None
+        for w in doc_words:
+            if len(w) == 1 or (user_mid_words and w in user_mid_words):
+                mid_to_ignore = w
+                break
+
+        req_doc_words = [w for w in doc_words if w != mid_to_ignore]
+        input_words = set(user_first_words + user_last_words)
+
+        missing_words = [w for w in req_doc_words if w not in input_words]
+
+        if missing_words:
             first_ok = False
-            failures.append(f"First Name mismatch: Document printed name is '{doc_first}', but input field is '{first_name}'")
+            failures.append(f"First Name mismatch: Document printed name contains '{doc_first}', but input First Name is '{first_name}' (missing: {', '.join(missing_words)})")
         else:
             first_ok = True
 
+        user_last_clean = normalize_text(last_name or '')
+        doc_last_clean = normalize_text(doc_last or '')
         if not (_word_in_text(user_last_clean, doc_last_clean) or _word_in_text(doc_last_clean, user_last_clean)):
             last_ok = False
             failures.append(f"Last Name mismatch: Document printed last name is '{doc_last}', but input field is '{last_name}'")

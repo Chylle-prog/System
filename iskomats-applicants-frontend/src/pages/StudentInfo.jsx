@@ -1620,8 +1620,8 @@ const StudentInfo = () => {
 
     results.forEach(res => {
       if (res.score_details) {
-        Object.values(res.score_details).forEach(val => {
-          if (val !== null && val !== undefined) {
+        Object.entries(res.score_details).forEach(([key, val]) => {
+          if (typeof val === 'boolean' || val === 1 || val === 0 || val === 'true' || val === 'false') {
             totalFields++;
             if (val === true || val === 1 || val === 'true') passedFields++;
           }
@@ -1630,7 +1630,7 @@ const StudentInfo = () => {
     });
 
     if (totalFields === 0) return 0;
-    return totalFields > 0 ? Math.round((passedFields / totalFields) * 100) : (results.every(r => r.verified) ? 100 : 0);
+    return Math.round((passedFields / totalFields) * 100);
   };
 
   const [showAllRequirementsChecklist, setShowAllRequirementsChecklist] = useState(true);
