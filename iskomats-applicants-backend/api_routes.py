@@ -1753,6 +1753,51 @@ def initialize_auto_chat_rooms():
             try: conn.close()
             except: pass
 
+
+@api_bp.route('/admin/messages/superadmin/<int:target_pro_no>', methods=['GET'])
+@token_required
+def get_superadmin_messages(current_user_id, pro_no, role, target_pro_no):
+    """REST API endpoint for loading Super Admin private message history instantly"""
+    try:
+        if role != 'Admin' and pro_no != target_pro_no:
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+
+        room1 = f"0+{target_pro_no}"
+        room2 = f"superadmin_room_{target_pro_no}"
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT m.m_id, m.room, m.sender_id, m.username, m.message, m.timestamp, m.pro_no,
+                       u.pro_no AS sender_pro_no
+                FROM message m
+                LEFT JOIN users u ON m.sender_id = u.user_no
+                WHERE m.room = %s OR m.room = %s OR (m.pro_no = %s AND (m.applicant_no IS NULL OR m.applicant_no = 0))
+                ORDER BY m.timestamp ASC
+                LIMIT 300
+            """, (room1, room2, target_pro_no))
+            rows = cursor.fetchall()
+
+            messages = []
+            for msg in rows:
+                ts = msg['timestamp']
+                ts_str = ts.strftime('%Y-%m-%d %H:%M:%S') if hasattr(ts, 'strftime') else str(ts)
+                is_sa = (msg['username'] == 'Super Admin' or 'Super' in (msg['username'] or '') or msg['sender_pro_no'] is None)
+                messages.append({
+                    'm_id': msg['m_id'],
+                    'room': msg['room'] or room1,
+                    'sender_id': msg['sender_id'],
+                    'username': "Super Admin" if is_sa else (msg['username'] or f"Provider {target_pro_no}"),
+                    'is_super_admin': is_sa,
+                    'message': msg['message'],
+                    'timestamp': ts_str
+                })
+
+            return jsonify({'success': True, 'messages': messages}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
 def init_socketio(socketio):
     """Initialize SocketIO events for chatting"""
     global _socketio_instance
@@ -1994,12 +2039,13 @@ def init_socketio(socketio):
                 for msg in messages:
                     ts = msg['timestamp']
                     ts_str = ts.strftime('%Y-%m-%d %H:%M:%S') if hasattr(ts, 'strftime') else str(ts)
+                    is_sa = (msg['username'] == 'Super Admin' or 'Super' in (msg['username'] or ''))
                     history_payload.append({
                         'm_id': msg['m_id'],
                         'room': room,
                         'sender_id': msg['sender_id'],
-                        'username': msg['username'],
-                        'is_super_admin': (msg['username'] == 'Super Admin' or 'Super' in (msg['username'] or '')),
+                        'username': "Super Admin" if is_sa else (msg['username'] or f"Provider {pro_no}"),
+                        'is_super_admin': is_sa,
                         'message': msg['message'],
                         'timestamp': ts_str,
                         'student_status': 'Pending'

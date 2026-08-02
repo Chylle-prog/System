@@ -1043,6 +1043,42 @@ export default function ScholarshipDashboard({
     loadAnnouncements();
   }, []);
 
+  const fetchSuperAdminPrivateMessages = useCallback(async (proNo) => {
+    if (!proNo) return;
+    try {
+      const res = await scholarshipAPI.getSuperAdminMessages(proNo);
+      if (res.data && res.data.success && Array.isArray(res.data.messages)) {
+        setSuperadminMessages(prev => {
+          const merged = [...prev];
+          res.data.messages.forEach(msg => {
+            const isDuplicate = merged.some(m =>
+              m.m_id ? m.m_id === msg.m_id : (m.message === msg.message && m.timestamp === msg.timestamp)
+            );
+            if (!isDuplicate) merged.push(msg);
+          });
+          merged.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+          return merged;
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch Super Admin messages via REST:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeProviderNo) {
+      fetchSuperAdminPrivateMessages(activeProviderNo);
+    }
+  }, [activeProviderNo, fetchSuperAdminPrivateMessages]);
+
+  useEffect(() => {
+    if (section === 'inbox' && inboxTab === 'superadmin' && activeProviderNo) {
+      fetchSuperAdminPrivateMessages(activeProviderNo);
+      socketService.loadAdminHistory(`superadmin_room_${activeProviderNo}`);
+      socketService.loadAdminHistory(`0+${activeProviderNo}`);
+    }
+  }, [section, inboxTab, activeProviderNo, fetchSuperAdminPrivateMessages]);
+
   // Socket.IO Integration
   useEffect(() => {
     const token = localStorage.getItem('authToken');
@@ -5685,7 +5721,8 @@ export default function ScholarshipDashboard({
           <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3 bg-white">
             {superadminMessages.length > 0 ? (
               superadminMessages.map((msg, idx) => {
-                const isMe = msg.is_super_admin === false;
+                const isSuperAdminMsg = msg.is_super_admin === true || msg.is_super_admin === 'true' || msg.is_super_admin === 1 || msg.username === 'Super Admin';
+                const isMe = !isSuperAdminMsg;
                 return (
                   <div key={msg.m_id || idx} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[85%] rounded-2xl p-3 sm:p-4 shadow-sm border ${

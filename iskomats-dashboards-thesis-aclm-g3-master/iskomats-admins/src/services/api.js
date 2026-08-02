@@ -216,6 +216,9 @@ export const scholarshipAPI = {
 
   sendIndigencyVerification: (applicantId, scholarshipNo) =>
     api.post(`/admin/applicants/${applicantId}/indigency-verification`, { scholarshipNo }),
+
+  getSuperAdminMessages: (proNo) =>
+    api.get(`/admin/messages/superadmin/${proNo}`),
 };
 
 // ===== ANNOUNCEMENT ENDPOINTS =====
