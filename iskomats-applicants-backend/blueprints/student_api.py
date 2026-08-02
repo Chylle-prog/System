@@ -3609,9 +3609,19 @@ def ocr_check():
         if not doc_bytes:
             return jsonify({'verified': False, 'message': 'No valid document image provided for verification.'}), 400
 
-        # Construct unique verification cache key
+        # Extract video payload if present
+        video_file = request.files.get('indigency_video') or request.files.get('video_proof') or request.files.get('video_doc') or request.files.get('video')
+        video_param = video_file.read() if video_file else (data.get('indigency_video') or data.get('video_proof') or data.get('video_doc') or data.get('video_url') or data.get('video'))
+
+        video_bytes = None
+        if video_param:
+            video_bytes = resolve_verification_image_bytes(video_param)
+
+        video_hash = _hash_verification_source(video_bytes) if video_bytes else 'novideo'
+
+        # Construct unique verification cache key (including video_hash)
         doc_hash = _hash_verification_source(doc_bytes)
-        cache_key = f"verif:{request.user_no}:{doc_type}:{doc_hash}:{first_name}:{last_name}:{town_city}:{barangay}:{skip_tamper_check}"
+        cache_key = f"verif:{request.user_no}:{doc_type}:{doc_hash}:{video_hash}:{first_name}:{last_name}:{town_city}:{barangay}:{skip_tamper_check}"
         cached_result = _get_cached_verification_result(cache_key)
 
         if cached_result:
@@ -3644,14 +3654,7 @@ def ocr_check():
         }
 
         # Video OCR verification
-        video_file = request.files.get('indigency_video') or request.files.get('video_proof') or request.files.get('video_doc') or request.files.get('video')
-        video_param = video_file.read() if video_file else (data.get('indigency_video') or data.get('video_proof') or data.get('video_doc') or data.get('video_url') or data.get('video'))
-
-        video_bytes = None
-        if video_param:
-            video_bytes = resolve_verification_image_bytes(video_param)
-
-        if video_bytes:
+        if video_bytes and len(video_bytes) > 500:
             from services.ocr_utils import verify_video_content
             keywords_map = {
                 'Indigency': ['indigency', 'indigent', 'kawalang', 'kapos', 'residency', 'resident', 'naninirahan', 'barangay', 'katibayan'],

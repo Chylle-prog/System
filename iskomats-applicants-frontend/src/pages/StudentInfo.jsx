@@ -3367,7 +3367,15 @@ const StudentInfo = () => {
           }
         }
 
-        const videoVal = formData.indigencyVideo || formData.mayorIndigency_video || formData.video_proof || formData.idVideoDoc || formData.mayorCOE_video || formData.mayorGrades_video;
+        const videoVal = (documentVideos && documentVideos.mayorIndigency_video) ||
+                         (documentFiles && documentFiles.mayorIndigency_video) ||
+                         formData.mayorIndigency_video ||
+                         formData.indigencyVideo ||
+                         formData.video_proof ||
+                         formData.idVideoDoc ||
+                         formData.mayorCOE_video ||
+                         formData.mayorGrades_video;
+
         if (videoVal) {
           formDataPayload.append('video_proof', videoVal);
           formDataPayload.append('indigency_video', videoVal);
