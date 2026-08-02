@@ -107,7 +107,7 @@ function formatScholarshipLabel(value) {
   return isNoScholarshipAssignment(value) ? 'No Scholarship' : value;
 }
 
-function matchesProgramFilter(scholarship, filterValue, providerName = '') {
+function matchesProgramFilter(scholarship, filterValue, accountProviderNo = null, providers = []) {
   if (!filterValue || filterValue === 'All' || filterValue === 'all') {
     return true;
   }
@@ -115,16 +115,26 @@ function matchesProgramFilter(scholarship, filterValue, providerName = '') {
     return isNoScholarshipAssignment(scholarship);
   }
 
-  if (isNoScholarshipAssignment(scholarship)) {
+  const filterClean = String(filterValue || '').trim().toLowerCase();
+
+  // Find provider by name in providers list
+  const matchingProvider = (providers || []).find(p =>
+    (p.provider_name || '').trim().toLowerCase() === filterClean
+  );
+
+  // Match if account's providerNo matches the selected provider's pro_no
+  if (matchingProvider && accountProviderNo && Number(accountProviderNo) === Number(matchingProvider.pro_no)) {
+    return true;
+  }
+
+  if (isNoScholarshipAssignment(scholarship) && !accountProviderNo) {
     return false;
   }
 
   const schClean = String(scholarship || '').trim().toLowerCase();
-  const filterClean = String(filterValue || '').trim().toLowerCase();
-  const provClean = String(providerName || '').trim().toLowerCase();
 
   // Exact match
-  if (schClean === filterClean || provClean === filterClean) {
+  if (schClean === filterClean) {
     return true;
   }
 
@@ -133,16 +143,11 @@ function matchesProgramFilter(scholarship, filterValue, providerName = '') {
     return true;
   }
 
-  if (provClean && (provClean.includes(filterClean) || filterClean.includes(provClean))) {
-    return true;
-  }
-
   // Token matching (e.g. "Africa" matching "AFRICA TEST SCHOLARSHIP TEST")
-  const filterTokens = filterClean.split(/\s+/).filter(w => w.length > 2);
+  const filterTokens = filterClean.split(/\s+/).filter(w => w.length > 2 && w.toLowerCase() !== 'program' && w.toLowerCase() !== 'scholarship');
   if (filterTokens.length > 0) {
     const schTokens = schClean.split(/\s+/);
-    const provTokens = provClean.split(/\s+/);
-    if (filterTokens.some(ft => schTokens.includes(ft) || provTokens.includes(ft))) {
+    if (filterTokens.some(ft => schTokens.includes(ft))) {
       return true;
     }
   }
@@ -236,11 +241,10 @@ export default function Dash() {
   const adminInboxEndRef = useRef(null);
   const selectedAdminRoomRef = useRef(null);
 
-  const availablePrograms = useMemo(() => {
+  const availableProviders = useMemo(() => {
     const providerNames = (providers || []).map(p => p.provider_name).filter(Boolean);
-    const accountScholarships = (accounts || []).map(a => a.scholarship).filter(s => s && !isNoScholarshipAssignment(s));
-    return Array.from(new Set([...providerNames, ...accountScholarships])).sort();
-  }, [providers, accounts]);
+    return Array.from(new Set(providerNames)).sort();
+  }, [providers]);
 
   const providerStats = useMemo(() => {
     // Calculate users and applicants per provider
@@ -256,8 +260,8 @@ export default function Dash() {
     });
   }, [providers, accounts]);
 
-  const loadDashboardData = async () => {
-    setIsLoading(true);
+  const loadDashboardData = async (showFullLoading = true) => {
+    if (showFullLoading) setIsLoading(true);
     setPageError(null);
     setAccountsLoading(true);
     setStatsLoading(true);
@@ -313,6 +317,38 @@ export default function Dash() {
 
     setIsLoading(false);
   };
+
+  const filteredManagedAccounts = useMemo(() => {
+    const search = accountSearch.trim().toLowerCase();
+    const filtered = accounts.filter((account) => {
+      const matchesType = account.type === accountType;
+      const matchesProgram = matchesProgramFilter(account.scholarship, managedAcctProgramFilter, account.providerNo, providers);
+      const matchesSearch = !search || [account.name, account.email, String(account.id)].some((value) => (value || '').toLowerCase().includes(search));
+      return matchesType && matchesProgram && matchesSearch;
+    });
+    return filtered;
+  }, [accounts, accountSearch, accountType, managedAcctProgramFilter, providers]);
+
+  const filteredAccountReport = useMemo(() => {
+    return accounts.filter((account) => {
+      const matchesProgram = matchesProgramFilter(account.scholarship, accReportFilter.program, account.providerNo, providers);
+      const matchesRole = accReportFilter.role === 'All' || account.role === accReportFilter.role.toLowerCase();
+      const search = accReportFilter.search.trim().toLowerCase();
+      const matchesSearch = !search || [account.name, account.email].some((value) => (value || '').toLowerCase().includes(search));
+      return matchesProgram && matchesRole && matchesSearch;
+    });
+  }, [accounts, accReportFilter, providers]);
+
+  const filteredActivityReport = useMemo(() => {
+    return activities.filter((activity) => {
+      const matchesProgram = matchesProgramFilter(activity.scholarship, actReportFilter.program, activity.providerNo, providers);
+      const matchesAction = actReportFilter.action === 'All'
+        || (activity.activity || '').toLowerCase().includes(actReportFilter.action.toLowerCase());
+      const search = actReportFilter.search.trim().toLowerCase();
+      const matchesSearch = !search || [activity.user, activity.activity, activity.scholarship].some((value) => (value || '').toLowerCase().includes(search));
+      return matchesProgram && matchesAction && matchesSearch;
+    });
+  }, [activities, actReportFilter, providers]);
 
   useEffect(() => {
     loadDashboardData();
@@ -424,44 +460,6 @@ export default function Dash() {
   // {statsLoading ? <div>Loading statistics...</div> : <StatisticsPanel statistics={statistics} />}
   // {logsLoading ? <div>Loading logs...</div> : <LogsTable logs={activities} />}
   // {providersLoading ? <div>Loading providers...</div> : <ProvidersPanel providers={providers} />}
-
-  const filteredManagedAccounts = useMemo(() => {
-    const search = accountSearch.trim().toLowerCase();
-    const filtered = accounts.filter((account) => {
-      const matchesType = account.type === accountType;
-      const matchesProgram = matchesProgramFilter(account.scholarship, managedAcctProgramFilter, account.providerName || account.provider_name);
-      const matchesSearch = !search || [account.name, account.email, String(account.id)].some((value) => (value || '').toLowerCase().includes(search));
-      return matchesType && matchesProgram && matchesSearch;
-    });
-    if (accountType === 'Applicant' && filtered.length === 0 && accounts.length > 0) {
-      console.warn('[DEBUG] No Applicants found. Total accounts:', accounts.length, 'Accounts by type:', {
-        admin: accounts.filter(a => a.type === 'Admin').length,
-        applicant: accounts.filter(a => a.type === 'Applicant').length
-      }, 'Sample accounts:', accounts.slice(0, 3).map(a => ({ name: a.name, type: a.type, role: a.role })));
-    }
-    return filtered;
-  }, [accounts, accountSearch, accountType, managedAcctProgramFilter]);
-
-  const filteredAccountReport = useMemo(() => {
-    return accounts.filter((account) => {
-      const matchesProgram = matchesProgramFilter(account.scholarship, accReportFilter.program, account.providerName || account.provider_name);
-      const matchesRole = accReportFilter.role === 'All' || account.role === accReportFilter.role.toLowerCase();
-      const search = accReportFilter.search.trim().toLowerCase();
-      const matchesSearch = !search || [account.name, account.email].some((value) => (value || '').toLowerCase().includes(search));
-      return matchesProgram && matchesRole && matchesSearch;
-    });
-  }, [accounts, accReportFilter]);
-
-  const filteredActivityReport = useMemo(() => {
-    return activities.filter((activity) => {
-      const matchesProgram = matchesProgramFilter(activity.scholarship, actReportFilter.program, activity.providerName || activity.provider_name);
-      const matchesAction = actReportFilter.action === 'All'
-        || (activity.activity || '').toLowerCase().includes(actReportFilter.action.toLowerCase());
-      const search = actReportFilter.search.trim().toLowerCase();
-      const matchesSearch = !search || [activity.user, activity.activity, activity.scholarship].some((value) => (value || '').toLowerCase().includes(search));
-      return matchesProgram && matchesAction && matchesSearch;
-    });
-  }, [activities, actReportFilter]);
 
   const toggleSubmenu = (menu) => {
     setSubmenus((previousState) => ({ ...previousState, [menu]: !previousState[menu] }));
@@ -1153,10 +1151,10 @@ export default function Dash() {
                         </div>
                         <div className="text-xs text-gray-400 font-bold hidden sm:block">FILTER:</div>
                         <select value={managedAcctProgramFilter} onChange={(event) => setManagedAcctProgramFilter(event.target.value)} className="w-full sm:w-auto px-4 py-2 bg-gray-100 border-none rounded-xl text-xs font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]">
-                          <option value="All">All Programs</option>
+                          <option value="All">All Providers</option>
                           <option value="No Scholarship">No Scholarship</option>
-                          {availablePrograms.map((program) => (
-                            <option key={program} value={program}>{program}</option>
+                          {availableProviders.map((provider) => (
+                            <option key={provider} value={provider}>{provider}</option>
                           ))}
                         </select>
                       </div>
@@ -1253,10 +1251,10 @@ export default function Dash() {
                           <input value={accReportFilter.search} onChange={(event) => setAccReportFilter({ ...accReportFilter, search: event.target.value })} placeholder="Search accounts..." className="w-full pl-8 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]" />
                         </div>
                         <select value={accReportFilter.program} onChange={(event) => setAccReportFilter({ ...accReportFilter, program: event.target.value })} className="w-full sm:w-auto sm:flex-1 md:flex-none px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]">
-                          <option value="All">All Programs</option>
+                          <option value="All">All Providers</option>
                           <option value="No Scholarship">No Scholarship</option>
-                          {availablePrograms.map((program) => (
-                            <option key={program} value={program}>{program}</option>
+                          {availableProviders.map((provider) => (
+                            <option key={provider} value={provider}>{provider}</option>
                           ))}
                         </select>
                         <select value={accReportFilter.role} onChange={(event) => setAccReportFilter({ ...accReportFilter, role: event.target.value })} className="w-full sm:w-auto sm:flex-1 md:flex-none px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]">
@@ -1323,10 +1321,10 @@ export default function Dash() {
                           <input value={actReportFilter.search} onChange={(event) => setActReportFilter({ ...actReportFilter, search: event.target.value })} placeholder="Search logs..." className="w-full pl-8 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]" />
                         </div>
                         <select value={actReportFilter.program} onChange={(event) => setActReportFilter({ ...actReportFilter, program: event.target.value })} className="w-full sm:w-auto sm:flex-1 md:flex-none px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]">
-                          <option value="All">All Programs</option>
+                          <option value="All">All Providers</option>
                           <option value="No Scholarship">No Scholarship</option>
-                          {availablePrograms.map((program) => (
-                            <option key={program} value={program}>{program}</option>
+                          {availableProviders.map((provider) => (
+                            <option key={provider} value={provider}>{provider}</option>
                           ))}
                         </select>
                         <select value={actReportFilter.action} onChange={(event) => setActReportFilter({ ...actReportFilter, action: event.target.value })} className="w-full sm:w-auto sm:flex-1 md:flex-none px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#800020]">
@@ -1456,8 +1454,8 @@ export default function Dash() {
                       className="w-full p-2.5 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all cursor-pointer"
                     >
                       <option value="All">No Scholarship</option>
-                      {availablePrograms.map((program) => (
-                        <option key={program} value={program}>{program}</option>
+                      {availableProviders.map((provider) => (
+                        <option key={provider} value={provider}>{provider}</option>
                       ))}
                     </select>
                   </div>

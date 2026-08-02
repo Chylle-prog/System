@@ -1847,8 +1847,17 @@ def init_socketio(socketio):
                         """, (pro_no, pro_no))
                         relevant_pairs = cursor.fetchall()
                         rooms = [f"{p['applicant_no']}+{p['pro_no']}" for p in relevant_pairs]
+                        rooms.extend([f"0+{pro_no}", f"superadmin_room_{pro_no}"])
                     else:
-                        # Super admin - can see all rooms with messages, excluding those explicitly declined
+                        # Super admin - join all provider rooms + superadmin rooms
+                        cursor.execute("SELECT DISTINCT pro_no FROM scholarship_providers")
+                        prov_rows = cursor.fetchall()
+                        sa_rooms = []
+                        for pr in prov_rows:
+                            pno = pr['pro_no']
+                            if pno:
+                                sa_rooms.extend([f"0+{pno}", f"superadmin_room_{pno}"])
+
                         cursor.execute("""
                             SELECT DISTINCT m.room 
                             FROM message m
@@ -1856,7 +1865,7 @@ def init_socketio(socketio):
                             LEFT JOIN applicant_status ast ON (m.applicant_no = ast.applicant_no AND ast.scholarship_no = s.req_no)
                             WHERE m.room IS NOT NULL AND (ast.is_accepted = 'Pending' OR ast.is_accepted = 'Accepted' OR ast.is_accepted IS NULL)
                         """)
-                        rooms = [row['room'] for row in cursor.fetchall()]
+                        rooms = list(set(sa_rooms + [row['room'] for row in cursor.fetchall()]))
                 else:
                     # Student (Scholar) room format: applicant_id+pro_no
                     # Find all scholarships student applied to OR has messages for
@@ -1934,11 +1943,81 @@ def init_socketio(socketio):
                 'other_name': other_name
             })
 
+    @socketio.on('load_admin_history')
+    def on_load_admin_history(data):
+        """Load message history for a super admin <-> provider private room from database message table."""
+        room = data.get('room')
+        if not room:
+            return
+
+        join_room(room)
+
+        try:
+            pro_no = None
+            if room.startswith('superadmin_room_'):
+                try: pro_no = int(room.replace('superadmin_room_', ''))
+                except ValueError: pass
+                alt_room = f"0+{pro_no}" if pro_no else None
+            elif room.startswith('0+'):
+                try: pro_no = int(room.split('+')[1])
+                except ValueError: pass
+                alt_room = f"superadmin_room_{pro_no}" if pro_no else None
+            else:
+                alt_room = None
+
+            if alt_room:
+                join_room(alt_room)
+
+            with get_db() as conn:
+                cursor = conn.cursor()
+                if pro_no:
+                    cursor.execute("""
+                        SELECT m_id, room, sender_id, username, is_student_sender, message,
+                               timestamp, pro_no
+                        FROM message
+                        WHERE room = %s OR room = %s OR (pro_no = %s AND (applicant_no IS NULL OR applicant_no = 0))
+                        ORDER BY timestamp ASC
+                        LIMIT 200
+                    """, (room, alt_room, pro_no))
+                else:
+                    cursor.execute("""
+                        SELECT m_id, room, sender_id, username, is_student_sender, message,
+                               timestamp, pro_no
+                        FROM message
+                        WHERE room = %s
+                        ORDER BY timestamp ASC
+                        LIMIT 200
+                    """, (room,))
+                messages = cursor.fetchall()
+
+                history_payload = []
+                for msg in messages:
+                    ts = msg['timestamp']
+                    ts_str = ts.strftime('%Y-%m-%d %H:%M:%S') if hasattr(ts, 'strftime') else str(ts)
+                    history_payload.append({
+                        'm_id': msg['m_id'],
+                        'room': room,
+                        'sender_id': msg['sender_id'],
+                        'username': msg['username'],
+                        'is_super_admin': (msg['username'] == 'Super Admin' or 'Super' in (msg['username'] or '')),
+                        'message': msg['message'],
+                        'timestamp': ts_str,
+                        'student_status': 'Pending'
+                    })
+
+                emit('admin_history', {'room': room, 'messages': history_payload})
+                emit('history', {'room': room, 'messages': history_payload})
+        except Exception as e:
+            print(f"[ADMIN HISTORY ERROR] {e}", flush=True)
+
     @socketio.on('load_history')
     def on_load_history(data):
         room = data.get('room')
         if not room:
             return
+
+        if room.startswith('superadmin_room_') or (room.startswith('0+') and (not room.split('+')[0] or room.split('+')[0] == '0')):
+            return on_load_admin_history(data)
 
         try:
             # Parse IDs from room format "app_no+pro_no"
@@ -2013,6 +2092,98 @@ def init_socketio(socketio):
         except Exception as e:
             print(f"[SOCKET HISTORY ERROR] Error loading history for room {room}: {e}")
 
+    @socketio.on('admin_message')
+    def on_admin_message(data):
+        """Handle private message between super admin and a provider admin stored in database message table."""
+        room = data.get('room')
+        message_text = (data.get('message') or '').strip()
+        sender_id = data.get('sender_id')
+
+        if not room or not message_text:
+            print(f"[ADMIN MSG ERROR] Missing required parameters: room={room}, message={message_text}, sender_id={sender_id}")
+            return
+
+        join_room(room)
+
+        try:
+            pro_no = None
+            if room.startswith('superadmin_room_'):
+                try: pro_no = int(room.replace('superadmin_room_', ''))
+                except ValueError: pass
+                alt_room = f"0+{pro_no}" if pro_no else None
+            elif room.startswith('0+'):
+                try: pro_no = int(room.split('+')[1])
+                except ValueError: pass
+                alt_room = f"superadmin_room_{pro_no}" if pro_no else None
+            else:
+                alt_room = None
+
+            if alt_room:
+                join_room(alt_room)
+
+            with get_db() as conn:
+                cursor = conn.cursor()
+
+                actual_username = data.get('username')
+                is_super_admin = False
+
+                if sender_id:
+                    cursor.execute("""
+                        SELECT u.user_name, u.pro_no,
+                               COALESCE(sp.provider_name, u.user_name) AS display_name
+                        FROM users u
+                        LEFT JOIN scholarship_providers sp ON u.pro_no = sp.pro_no
+                        WHERE u.user_no = %s
+                        LIMIT 1
+                    """, (sender_id,))
+                    user_row = cursor.fetchone()
+                    sender_pro_no = user_row['pro_no'] if user_row else None
+                    is_super_admin = (sender_pro_no is None)
+
+                    if is_super_admin:
+                        actual_username = "Super Admin"
+                    else:
+                        actual_username = user_row['display_name'] if user_row else (actual_username or f'Provider {pro_no}')
+                else:
+                    if not actual_username:
+                        actual_username = "Super Admin"
+
+                cursor.execute("""
+                    INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp, sender_id, is_student_sender)
+                    VALUES (NULL, %s, %s, %s, %s, NOW(), %s, FALSE)
+                    RETURNING m_id, timestamp
+                """, (pro_no, room, actual_username, message_text, sender_id))
+                row = cursor.fetchone()
+                m_id = row['m_id']
+                timestamp = row['timestamp']
+                conn.commit()
+
+                ts_str = timestamp.strftime('%Y-%m-%d %H:%M:%S') if hasattr(timestamp, 'strftime') else str(timestamp)
+
+                payload = {
+                    'm_id': m_id,
+                    'room': room,
+                    'sender_id': sender_id,
+                    'username': actual_username,
+                    'is_super_admin': is_super_admin,
+                    'message': message_text,
+                    'timestamp': ts_str,
+                    'student_status': 'Pending'
+                }
+
+                # Emit to main room and alt room
+                emit('admin_message', payload, to=room)
+                emit('message', payload, to=room)
+
+                if alt_room:
+                    alt_payload = {**payload, 'room': alt_room}
+                    emit('admin_message', alt_payload, to=alt_room)
+                    emit('message', alt_payload, to=alt_room)
+
+                print(f"[ADMIN MSG SUCCESS] room={room}, from={actual_username}, super={is_super_admin}, m_id={m_id}", flush=True)
+        except Exception as e:
+            print(f"[ADMIN MSG ERROR] {e}", flush=True)
+
     @socketio.on('message')
     def on_message(data):
         room = data.get('room')
@@ -2023,6 +2194,9 @@ def init_socketio(socketio):
         if not room or not message_text:
             print(f"Missing required fields: room={room}, message={message_text}")
             return
+
+        if room.startswith('superadmin_room_') or (room.startswith('0+') and (not room.split('+')[0] or room.split('+')[0] == '0')):
+            return on_admin_message(data)
 
         try:
             # Parse IDs from room format "app_no+pro_no"
