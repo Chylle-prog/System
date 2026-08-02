@@ -1732,13 +1732,13 @@ def initialize_auto_chat_rooms():
         # ===== ADMIN-TO-ADMIN CHAT ROOMS IN SUPABASE message TABLE =====
         SUPER_ADMIN_ROOM_PRO_NOS = [1, 2, 3, 5, 7]
         for pno in SUPER_ADMIN_ROOM_PRO_NOS:
-            room_code = f"superadmin_room_{pno}"
-            cursor.execute("SELECT 1 FROM message WHERE room = %s LIMIT 1", (room_code,))
+            room_code = f"0+{pno}"
+            cursor.execute("SELECT 1 FROM message WHERE room = %s OR (applicant_no = 0 AND pro_no = %s) LIMIT 1", (room_code, pno))
             if not cursor.fetchone():
                 provider_name = program_names.get(pno, f'Provider {pno}')
                 cursor.execute("""
                     INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp, sender_id, is_student_sender)
-                    VALUES (NULL, %s, %s, 'System', %s, NOW(), NULL, FALSE)
+                    VALUES (0, %s, %s, 'System', %s, NOW(), NULL, FALSE)
                 """, (pno, room_code, f'Private channel between Super Admin and {provider_name}.'))
                 print(f"[INIT] Seeded admin room {room_code} in Supabase message table for {provider_name}", flush=True)
 
@@ -1847,10 +1847,12 @@ def init_socketio(socketio):
                     rooms = [f"{p['applicant_no']}+{p['pro_no']}" for p in relevant_pairs]
                     # Also join this provider's private super admin room if they are a designated provider
                     if pro_no in SUPER_ADMIN_ROOM_PRO_NOS:
-                        admin_room = f"superadmin_room_{pro_no}"
-                        rooms.append(admin_room)
+                        admin_room = f"0+{pro_no}"
+                        alt_room = f"superadmin_room_{pro_no}"
+                        rooms.extend([admin_room, alt_room])
                         join_room(admin_room)
-                        print(f"[SOCKET] Provider pro_no={pro_no} joined admin room {admin_room}", flush=True)
+                        join_room(alt_room)
+                        print(f"[SOCKET] Provider pro_no={pro_no} joined admin rooms {admin_room}, {alt_room}", flush=True)
                 else:
                     # Super admin (pro_no is NULL) - can see all applicant rooms + all 5 super admin rooms
                     cursor.execute("""
@@ -1863,10 +1865,12 @@ def init_socketio(socketio):
                     rooms = [row['room'] for row in cursor.fetchall()]
                     # Join all 5 private super admin rooms
                     for pno in SUPER_ADMIN_ROOM_PRO_NOS:
-                        admin_room = f"superadmin_room_{pno}"
-                        rooms.append(admin_room)
+                        admin_room = f"0+{pno}"
+                        alt_room = f"superadmin_room_{pno}"
+                        rooms.extend([admin_room, alt_room])
                         join_room(admin_room)
-                    print(f"[SOCKET] Super admin joined all {len(SUPER_ADMIN_ROOM_PRO_NOS)} admin rooms", flush=True)
+                        join_room(alt_room)
+                    print(f"[SOCKET] Super admin joined all admin rooms", flush=True)
             else:
                 # Student (Scholar) room format: applicant_id+pro_no
                 # Find all scholarships student applied to OR has messages for
@@ -2127,7 +2131,7 @@ def init_socketio(socketio):
             }, to=room)
             
             # Trigger applicant notification and email only for admin/provider-originated messages.
-            if not is_student_sender:
+            if not is_student_sender and app_no > 0:
                 try:
                     notification_result = create_notification(
                         user_no=app_no,

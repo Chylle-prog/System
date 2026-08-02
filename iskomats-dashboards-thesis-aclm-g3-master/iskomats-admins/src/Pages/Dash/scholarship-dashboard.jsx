@@ -1052,7 +1052,43 @@ export default function ScholarshipDashboard({
       // Track which rooms belong to this admin
       const myRooms = new Set();
 
+      const handleSuperAdminIncoming = (msg) => {
+        if (!msg.room) return;
+        const isTargetRoom = activeProviderNo && (msg.room === `0+${activeProviderNo}` || msg.room === `superadmin_room_${activeProviderNo}`);
+        if (!isTargetRoom) return;
+        setSuperadminMessages(prev => {
+          const isDuplicate = prev.some(m =>
+            m.m_id ? m.m_id === msg.m_id : (m.message === msg.message && m.timestamp === msg.timestamp)
+          );
+          if (isDuplicate) return prev;
+          return [...prev, msg];
+        });
+      };
+
+      const handleSuperAdminHistory = (data) => {
+        const { room, messages } = data;
+        if (!room) return;
+        const isTargetRoom = activeProviderNo && (room === `0+${activeProviderNo}` || room === `superadmin_room_${activeProviderNo}`);
+        if (!isTargetRoom) return;
+        setSuperadminMessages(prev => {
+          const merged = [...prev];
+          (messages || []).forEach(msg => {
+            const isDuplicate = merged.some(m =>
+              m.m_id ? m.m_id === msg.m_id : (m.message === msg.message && m.timestamp === msg.timestamp)
+            );
+            if (!isDuplicate) merged.push(msg);
+          });
+          merged.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+          return merged;
+        });
+      };
+
       const unsubMsg = socketService.subscribe('message', (msg) => {
+        if (msg.room && (msg.room.startsWith('0+') || msg.room.startsWith('superadmin_room_'))) {
+          handleSuperAdminIncoming(msg);
+          return;
+        }
+
         // Only accept messages for rooms this admin is authorized for
         if (!myRooms.has(msg.room)) return;
 
@@ -1096,6 +1132,11 @@ export default function ScholarshipDashboard({
 
       const unsubHistory = socketService.subscribe('history', (data) => {
         const roomId = data.room;
+        if (roomId && (roomId.startsWith('0+') || roomId.startsWith('superadmin_room_'))) {
+          handleSuperAdminHistory(data);
+          return;
+        }
+
         const messages = data.messages || [];
 
         setData(prev => {
@@ -1141,48 +1182,30 @@ export default function ScholarshipDashboard({
 
       const unsubLogged = socketService.subscribe('logged_in', (data) => {
         // Store authorized rooms and load history for each
-        // rooms may be [{room, provider_name}] objects or plain strings
         if (data.rooms && data.rooms.length > 0) {
           data.rooms.forEach(roomObj => {
             const roomId = typeof roomObj === 'string' ? roomObj : roomObj.room;
             myRooms.add(roomId);
-            if (roomId.startsWith('superadmin_room_')) {
-              // Load admin history separately
+            if (roomId.startsWith('superadmin_room_') || roomId.startsWith('0+')) {
+              socketService.loadHistory(roomId);
               socketService.loadAdminHistory(roomId);
             } else {
               socketService.loadHistory(roomId);
             }
           });
         }
+        if (activeProviderNo) {
+          const saRoom = `0+${activeProviderNo}`;
+          const saAltRoom = `superadmin_room_${activeProviderNo}`;
+          myRooms.add(saRoom);
+          myRooms.add(saAltRoom);
+          socketService.loadHistory(saRoom);
+          socketService.loadAdminHistory(saAltRoom);
+        }
       });
 
-      // Subscribe to admin-to-admin messages (provider side)
-      const unsubAdminMsg = socketService.subscribe('admin_message', (msg) => {
-        if (!msg.room || !msg.room.startsWith('superadmin_room_')) return;
-        setSuperadminMessages(prev => {
-          const isDuplicate = prev.some(m =>
-            m.m_id ? m.m_id === msg.m_id : (m.message === msg.message && m.timestamp === msg.timestamp)
-          );
-          if (isDuplicate) return prev;
-          return [...prev, msg];
-        });
-      });
-
-      // Subscribe to admin chat history (provider side)
-      const unsubAdminHistory = socketService.subscribe('admin_history', (data) => {
-        const { messages } = data;
-        setSuperadminMessages(prev => {
-          const merged = [...prev];
-          (messages || []).forEach(msg => {
-            const isDuplicate = merged.some(m =>
-              m.m_id ? m.m_id === msg.m_id : (m.message === msg.message && m.timestamp === msg.timestamp)
-            );
-            if (!isDuplicate) merged.push(msg);
-          });
-          merged.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-          return merged;
-        });
-      });
+      const unsubAdminMsg = socketService.subscribe('admin_message', handleSuperAdminIncoming);
+      const unsubAdminHistory = socketService.subscribe('admin_history', handleSuperAdminHistory);
 
       const unsubRoom = socketService.subscribe('add_room', (roomData) => {
         if (roomData.room) myRooms.add(roomData.room);
@@ -5581,7 +5604,8 @@ export default function ScholarshipDashboard({
 
   const renderInbox = () => {
     // Super Admin chat helpers
-    const mySuperAdminRoom = activeProviderNo ? `superadmin_room_${activeProviderNo}` : null;
+    const mySuperAdminRoom = activeProviderNo ? `0+${activeProviderNo}` : null;
+    const altSuperAdminRoom = activeProviderNo ? `superadmin_room_${activeProviderNo}` : null;
     const isSuperAdminRoomActive = [1, 2, 3, 5, 7].includes(activeProviderNo);
     const formatSADate = (ts) => {
       if (!ts) return '';
@@ -5591,7 +5615,11 @@ export default function ScholarshipDashboard({
     };
     const sendSuperAdminReply = () => {
       if (!superadminReplyText.trim() || !mySuperAdminRoom) return;
-      socketService.sendAdminMessage(mySuperAdminRoom, superadminReplyText.trim());
+      const text = superadminReplyText.trim();
+      socketService.sendMessage(mySuperAdminRoom, providerName || userName, text);
+      if (altSuperAdminRoom) {
+        socketService.sendAdminMessage(altSuperAdminRoom, text);
+      }
       setSuperadminReplyText('');
     };
 

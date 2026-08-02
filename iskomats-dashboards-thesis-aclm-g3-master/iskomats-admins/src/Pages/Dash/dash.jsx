@@ -224,11 +224,11 @@ export default function Dash() {
   // ===== SUPER ADMIN INBOX STATE =====
   // 5 private rooms: super admin <-> provider admins (pro_no 1,2,3,5,7)
   const SUPER_ADMIN_ROOMS = [
-    { room: 'superadmin_room_1', label: 'Mayor Africa', pro_no: 1 },
-    { room: 'superadmin_room_2', label: 'Vilma', pro_no: 2 },
-    { room: 'superadmin_room_3', label: 'Ched', pro_no: 3 },
-    { room: 'superadmin_room_5', label: 'Tulong Dunong', pro_no: 5 },
-    { room: 'superadmin_room_7', label: 'Mayor Eric B. Africa', pro_no: 7 },
+    { room: '0+1', label: 'Mayor Africa', pro_no: 1 },
+    { room: '0+2', label: 'Vilma', pro_no: 2 },
+    { room: '0+3', label: 'Ched', pro_no: 3 },
+    { room: '0+5', label: 'Tulong Dunong', pro_no: 5 },
+    { room: '0+7', label: 'Mayor Eric B. Africa', pro_no: 7 },
   ];
   const [adminMessages, setAdminMessages] = useState({}); // { [room]: [{...}] }
   const [selectedAdminRoom, setSelectedAdminRoom] = useState(null);
@@ -344,47 +344,63 @@ export default function Dash() {
         loadDashboardData(false);
       });
 
-      // Subscribe to admin-to-admin messages
-      const unsubAdminMsg = socketService.subscribe('admin_message', (msg) => {
-        if (!msg.room || !msg.room.startsWith('superadmin_room_')) return;
+      // Subscribe to admin-to-admin messages (both standard message and admin_message)
+      const handleIncomingMsg = (msg) => {
+        if (!msg.room) return;
+        const isSuperRoom = msg.room.startsWith('0+') || msg.room.startsWith('superadmin_room_');
+        if (!isSuperRoom) return;
+        let roomKey = msg.room;
+        if (roomKey.startsWith('superadmin_room_')) {
+          const pno = roomKey.replace('superadmin_room_', '');
+          roomKey = `0+${pno}`;
+        }
         setAdminMessages(prev => {
-          const existing = prev[msg.room] || [];
+          const existing = prev[roomKey] || [];
           const isDuplicate = existing.some(m =>
             m.m_id ? m.m_id === msg.m_id : (m.message === msg.message && m.timestamp === msg.timestamp)
           );
           if (isDuplicate) return prev;
-          return { ...prev, [msg.room]: [...existing, msg] };
+          return { ...prev, [roomKey]: [...existing, msg] };
         });
-      });
+      };
 
-      // Subscribe to admin chat history
-      const unsubAdminHistory = socketService.subscribe('admin_history', (data) => {
+      const unsubMsg = socketService.subscribe('message', handleIncomingMsg);
+      const unsubAdminMsg = socketService.subscribe('admin_message', handleIncomingMsg);
+
+      // Subscribe to admin chat history (both standard history and admin_history)
+      const handleHistory = (data) => {
         const { room, messages } = data;
-        if (!room || !room.startsWith('superadmin_room_')) return;
+        if (!room) return;
+        const isSuperRoom = room.startsWith('0+') || room.startsWith('superadmin_room_');
+        if (!isSuperRoom) return;
+        let roomKey = room;
+        if (roomKey.startsWith('superadmin_room_')) {
+          const pno = roomKey.replace('superadmin_room_', '');
+          roomKey = `0+${pno}`;
+        }
         setAdminMessages(prev => {
-          const existing = prev[room] || [];
+          const existing = prev[roomKey] || [];
           const merged = [...existing];
-          messages.forEach(msg => {
+          (messages || []).forEach(msg => {
             const isDuplicate = merged.some(m =>
               m.m_id ? m.m_id === msg.m_id : (m.message === msg.message && m.timestamp === msg.timestamp)
             );
             if (!isDuplicate) merged.push(msg);
           });
           merged.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-          return { ...prev, [room]: merged };
+          return { ...prev, [roomKey]: merged };
         });
-      });
+      };
+
+      const unsubHistory = socketService.subscribe('history', handleHistory);
+      const unsubAdminHistory = socketService.subscribe('admin_history', handleHistory);
 
       // Load admin room histories when logged in
       const unsubLogged = socketService.subscribe('logged_in', (data) => {
-        if (data.rooms) {
-          data.rooms.forEach(roomObj => {
-            const roomId = typeof roomObj === 'string' ? roomObj : roomObj.room;
-            if (roomId && roomId.startsWith('superadmin_room_')) {
-              socketService.loadAdminHistory(roomId);
-            }
-          });
-        }
+        SUPER_ADMIN_ROOMS.forEach(r => {
+          socketService.loadHistory(r.room);
+          socketService.loadAdminHistory(r.room);
+        });
       });
 
       return () => {
@@ -393,7 +409,9 @@ export default function Dash() {
         unsubApplicant();
         unsubNewApp();
         unsubAnnouncement();
+        unsubMsg();
         unsubAdminMsg();
+        unsubHistory();
         unsubAdminHistory();
         unsubLogged();
         socketService.disconnect();
@@ -738,7 +756,9 @@ export default function Dash() {
 
   const sendAdminReply = () => {
     if (!adminReplyText.trim() || !selectedAdminRoom) return;
-    socketService.sendAdminMessage(selectedAdminRoom, adminReplyText.trim());
+    const text = adminReplyText.trim();
+    socketService.sendMessage(selectedAdminRoom, 'Super Admin', text);
+    socketService.sendAdminMessage(selectedAdminRoom, text);
     setAdminReplyText('');
   };
 
@@ -794,7 +814,9 @@ export default function Dash() {
                         ...prev,
                         [roomMeta.room]: (prev[roomMeta.room] || []).map(m => ({ ...m, read: true }))
                       }));
+                      socketService.loadHistory(roomMeta.room);
                       socketService.loadAdminHistory(roomMeta.room);
+                      socketService.loadAdminHistory(`superadmin_room_${roomMeta.pro_no}`);
                     }}
                     className={`w-full text-left p-4 transition-colors border-l-4 ${isActive
                         ? 'bg-blue-50 border-[#800020] shadow-sm'
