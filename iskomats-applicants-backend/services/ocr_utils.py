@@ -2243,6 +2243,21 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
             failures.append(f"Last Name mismatch: Document printed last name is '{doc_last}', but input field is '{last_name}'")
         else:
             last_ok = True
+    else:
+        # Fallback compound name check against raw_text
+        first_clean = normalize_text(first_name or '')
+        last_clean = normalize_text(last_name or '')
+        raw_norm = normalize_text(raw_text or '')
+        f_words = first_clean.split()
+        if len(f_words) == 1:
+            f_w = f_words[0]
+            m_comp = re.search(r'\b' + re.escape(f_w) + r'\s+([a-z]+)\b', raw_norm)
+            if m_comp:
+                nxt = m_comp.group(1)
+                stop_w = {'years', 'old', 'single', 'married', 'is', 'resident', 'bonafide', 'purok', 'barangay', 'city', 'town', 'of', 'a', 'an', 'the'}
+                if len(nxt) >= 2 and nxt not in stop_w and not _word_in_text(nxt, last_clean):
+                    first_ok = False
+                    failures.append(f"First Name mismatch: Document printed text contains '{f_w.capitalize()} {nxt.capitalize()}', but input First Name is '{first_name}'")
 
     name_matched = first_ok and last_ok
     if not name_matched and not failures:
