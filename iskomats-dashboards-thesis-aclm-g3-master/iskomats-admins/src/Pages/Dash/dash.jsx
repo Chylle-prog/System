@@ -324,6 +324,26 @@ export default function Dash() {
         loadDashboardData(false);
       });
 
+      const unsubScholarship = socketService.subscribe('scholarship_update', (data) => {
+        console.log('[SYNC] Scholarship update detected live:', data);
+        loadDashboardData(false);
+      });
+
+      const unsubApplicant = socketService.subscribe('applicant_status_update', (data) => {
+        console.log('[SYNC] Applicant status update detected live:', data);
+        loadDashboardData(false);
+      });
+
+      const unsubNewApp = socketService.subscribe('new_application', (data) => {
+        console.log('[SYNC] New application detected live:', data);
+        loadDashboardData(false);
+      });
+
+      const unsubAnnouncement = socketService.subscribe('announcement_update', (data) => {
+        console.log('[SYNC] Announcement update detected live:', data);
+        loadDashboardData(false);
+      });
+
       // Subscribe to admin-to-admin messages
       const unsubAdminMsg = socketService.subscribe('admin_message', (msg) => {
         if (!msg.room || !msg.room.startsWith('superadmin_room_')) return;
@@ -369,6 +389,10 @@ export default function Dash() {
 
       return () => {
         unsubAccount();
+        unsubScholarship();
+        unsubApplicant();
+        unsubNewApp();
+        unsubAnnouncement();
         unsubAdminMsg();
         unsubAdminHistory();
         unsubLogged();

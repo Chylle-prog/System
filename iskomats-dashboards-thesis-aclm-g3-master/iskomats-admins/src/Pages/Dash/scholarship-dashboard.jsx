@@ -1188,36 +1188,33 @@ export default function ScholarshipDashboard({
         if (roomData.room) myRooms.add(roomData.room);
       });
 
-      // Subscribe to applicant status updates from other admins
+      // Real-time socket listeners for live updates without refreshing
       const unsubStatusUpdate = socketService.subscribe('applicant_status_update', (update) => {
-        if (update.program !== providerKey) return;
+        console.log('[REALTIME] Received applicant_status_update:', update);
+        loadApplicants();
+        loadScholarships(false);
+      });
 
-        setData(prev => {
-          const newData = { ...prev };
-          const applicantToMove = newData.applicants.find(
-            a => a.id === update.applicantId || a.name === update.applicantName
-          );
+      const unsubNewApplication = socketService.subscribe('new_application', (update) => {
+        console.log('[REALTIME] Received new_application:', update);
+        loadApplicants();
+        loadScholarships(false);
+      });
 
-          if (applicantToMove) {
-            newData.applicants = newData.applicants.filter(
-              a => a.id !== update.applicantId && a.name !== update.applicantName
-            );
+      const unsubScholarshipUpdate = socketService.subscribe('scholarship_update', (update) => {
+        console.log('[REALTIME] Received scholarship_update:', update);
+        loadScholarships(false);
+      });
 
-            if (update.newStatus === 'Accepted') {
-              newData.accepted = [...newData.accepted, applicantToMove];
-            } else if (update.newStatus === 'Rejected' || update.newStatus === 'Declined') {
-              newData.rejected = [...newData.rejected, applicantToMove];
-            } else if (update.newStatus === 'Cancelled') {
-              newData.cancelled = [...newData.cancelled, applicantToMove];
-            }
+      const unsubAnnouncementUpdate = socketService.subscribe('announcement_update', (update) => {
+        console.log('[REALTIME] Received announcement_update:', update);
+        loadAnnouncements();
+      });
 
-            // Recalculate historical data
-            const allApplicants = [...(newData.applicants || []), ...(newData.accepted || []), ...(newData.rejected || []), ...(newData.declined || []), ...(newData.cancelled || [])];
-            newData.historicalData = calculateHistoricalData(allApplicants);
-          }
-
-          return newData;
-        });
+      const unsubAccountChange = socketService.subscribe('account_change', (update) => {
+        console.log('[REALTIME] Received account_change:', update);
+        loadScholarships(false);
+        loadApplicants();
       });
 
       return () => {
@@ -1225,6 +1222,10 @@ export default function ScholarshipDashboard({
         unsubLogged();
         unsubRoom();
         unsubStatusUpdate();
+        unsubNewApplication();
+        unsubScholarshipUpdate();
+        unsubAnnouncementUpdate();
+        unsubAccountChange();
         unsubAdminMsg();
         unsubAdminHistory();
         if (unsubHistory) unsubHistory();

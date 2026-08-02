@@ -3759,6 +3759,13 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
             except Exception as notif_err:
                 print(f"[NOTIF ERROR] Failed to notify accepted applicant {applicant_no}: {notif_err}", flush=True)
 
+            safe_emit('applicant_status_update', {
+                'applicantId': applicant_no,
+                'scholarshipNo': scholarship_no,
+                'newStatus': 'Accepted',
+                'program': status_row['pro_no']
+            }, broadcast=True)
+
             return jsonify({'success': True, 'message': 'Applicant accepted and other applications declined'}), 200
     
     except Exception as e:
@@ -3812,6 +3819,13 @@ def decline_applicant(current_user_id, pro_no, role, applicant_no):
             except Exception as notif_err:
                 print(f"[NOTIF ERROR] Failed to notify declined applicant {applicant_no}: {notif_err}", flush=True)
 
+            safe_emit('applicant_status_update', {
+                'applicantId': applicant_no,
+                'scholarshipNo': scholarship_no,
+                'newStatus': 'Declined',
+                'program': status_row['pro_no']
+            }, broadcast=True)
+
             return jsonify({'success': True, 'message': 'Applicant declined'}), 200
     
     except Exception as e:
@@ -3853,6 +3867,13 @@ def cancel_applicant(current_user_id, pro_no, role, applicant_no):
             )
             conn.commit()
             
+            safe_emit('applicant_status_update', {
+                'applicantId': applicant_no,
+                'scholarshipNo': scholarship_no,
+                'newStatus': 'Pending',
+                'program': status_row['pro_no']
+            }, broadcast=True)
+
             return jsonify({'success': True, 'message': 'Applicant status cancelled'}), 200
     
     except Exception as e:
