@@ -3797,7 +3797,11 @@ const StudentInfo = () => {
 
         const [detectedTextRes, videoCheckRes] = await Promise.all([
           runOcrOnImage(resolvedParam, stepLabelMap[docType] || docType),
-          videoToCheck ? validateVideoLiveness(videoToCheck, videoFieldName) : Promise.resolve(null)
+          videoToCheck
+            ? (docType === 'Indigency'
+                ? Promise.resolve({ valid: true, reason: "Video proof attached", detectedText: "Proof video attached for manual review." })
+                : validateVideoLiveness(videoToCheck, videoFieldName))
+            : Promise.resolve(null)
         ]);
 
         detectedText = detectedTextRes;
