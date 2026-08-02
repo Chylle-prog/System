@@ -594,6 +594,7 @@ export const applicantAPI = {
       }
 
       if (typeof value === 'string' && /^https?:\/\//i.test(value)) {
+        fData.append(fieldName, value);
         return;
       }
 

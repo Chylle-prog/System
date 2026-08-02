@@ -694,6 +694,9 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
 
 from services.crypto_utils import decrypt_if_encrypted
 
+_url_bytes_cache = {}
+_URL_BYTES_CACHE_LIMIT = 128
+
 def resolve_verification_image_bytes(image_data):
     if not image_data:
         return None
@@ -712,6 +715,9 @@ def resolve_verification_image_bytes(image_data):
         if decoded:
             raw_bytes = decoded
         elif normalized.startswith('http'):
+            if normalized in _url_bytes_cache:
+                return decrypt_if_encrypted(_url_bytes_cache[normalized])
+
             # If it's our own backend proxy URL, fetch directly from the DB!
             if '/api/student/applicant/document/raw/' in normalized:
                 try:
@@ -733,7 +739,6 @@ def resolve_verification_image_bytes(image_data):
                                     val = decode_signature(val)
                                 
                                 if isinstance(val, str) and val.startswith('http'):
-                                    # Recursively resolve the storage URL
                                     return resolve_verification_image_bytes(val)
                                 elif isinstance(val, str):
                                     raw_bytes = val.encode('utf-8')
@@ -762,6 +767,11 @@ def resolve_verification_image_bytes(image_data):
                             raw_bytes = resp.read()
                     except Exception as e:
                         print(f"[RESOLVE] Direct HTTP fetch failed for {normalized[:60]}: {e}", flush=True)
+
+            if raw_bytes:
+                if len(_url_bytes_cache) >= _URL_BYTES_CACHE_LIMIT:
+                    _url_bytes_cache.pop(next(iter(_url_bytes_cache)), None)
+                _url_bytes_cache[normalized] = raw_bytes
 
     if raw_bytes:
         # Decrypt if the frontend encrypted it before upload
@@ -3484,6 +3494,7 @@ def submit_application():
 
 
 @student_api_bp.route('/verification-status', methods=['GET'])
+@student_api_bp.route('/verification/status', methods=['GET'])
 @token_required
 def get_verification_status():
     """Returns current verification status for all documents."""

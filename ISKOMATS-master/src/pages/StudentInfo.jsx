@@ -1536,6 +1536,42 @@ const StudentInfo = () => {
         if (Object.keys(loadedVideos).length > 0) {
           setDocumentVideos(prev => ({ ...prev, ...loadedVideos }));
         }
+
+        // --- RESTORE VERIFICATION STATUSES FROM DB ---
+        if (profile.indigency_verified) {
+          setOcrVerified('success');
+          setOcrStatus('✅ Certificate of Indigency verified.');
+        }
+        if (profile.enrollment_verified) {
+          setCoeVerified('success');
+          setCoeStatus('✅ Certificate of Enrollment verified.');
+        }
+        if (profile.grades_verified) {
+          setGradesVerified('success');
+          setGradesStatus('✅ Grades document verified.');
+        }
+        if (profile.id_verified) {
+          setIdVerified('success');
+          setIdStatus('✅ School ID verified.');
+        }
+        if (profile.signature_verified) {
+          setSignatureVerified('success');
+          setSignatureStatus('✅ Signature verified.');
+        }
+
+        try {
+          const vStatus = await applicantAPI.getVerificationStatus();
+          if (vStatus && vStatus.verified) {
+            const v = vStatus.verified;
+            if (v.indigency_verified) { setOcrVerified('success'); setOcrStatus('✅ Certificate of Indigency verified.'); }
+            if (v.enrollment_verified) { setCoeVerified('success'); setCoeStatus('✅ Certificate of Enrollment verified.'); }
+            if (v.grades_verified) { setGradesVerified('success'); setGradesStatus('✅ Grades document verified.'); }
+            if (v.id_verified) { setIdVerified('success'); setIdStatus('✅ School ID verified.'); }
+            if (v.signature_verified) { setSignatureVerified('success'); setSignatureStatus('✅ Signature verified.'); }
+          }
+        } catch (vErr) {
+          console.warn('[VERIFICATION STATUS] Fetch error:', vErr.message);
+        }
         // --- SCHOLARSHIP DETAILS FETCH ---
         const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
         if (reqNo) {
