@@ -3183,9 +3183,18 @@ const StudentInfo = () => {
       img.crossOrigin = "anonymous";
       img.onload = () => {
         try {
-          const canvas = document.createElement("canvas");
-          const w = img.width;
-          const h = img.height;
+          const maxDim = 600;
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              w = maxDim;
+            }
+          }
           if (!w || !h) {
             resolve({ edited: false, reason: "Authentic document" });
             return;
@@ -3356,7 +3365,18 @@ const StudentInfo = () => {
           'Enrollment': 'enrollment_certificate_doc',
           'Grades': 'grades_doc'
         };
-        const rawResolved = await applicantAPI.resolveDocument(fieldMap[docType] || 'document', docParam);
+        let rawResolved = null;
+        if (typeof docParam === 'string' && (docParam.startsWith('data:') || docParam.startsWith('blob:'))) {
+          rawResolved = docParam;
+        } else if (docParam) {
+          try {
+            const resolvePromise = applicantAPI.resolveDocument(fieldMap[docType] || 'document', docParam);
+            const timeoutPromise = new Promise(res => setTimeout(() => res(null), 2500));
+            rawResolved = await Promise.race([resolvePromise, timeoutPromise]);
+          } catch (e) {
+            console.warn('[OCR Engine] resolveDocument fast fallback note:', e);
+          }
+        }
         const rawSourceForTamper = rawResolved || docParam;
 
         if (!silent) setStatus("Analyzing document authenticity & preparing image concurrently...");
