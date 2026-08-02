@@ -875,6 +875,8 @@ const StudentInfo = () => {
     }
   };
 
+  const clientOcrCache = useRef(new Map());
+
   const performOcrVerification = async (docType, docParam, extraParams = {}, videoUrl = null, silent = false) => {
     try {
       const setStatus = (status) => {
@@ -893,22 +895,32 @@ const StudentInfo = () => {
         else if (docType === 'SchoolID') { setIdVerified(v); }
       };
 
+      const { townCity, barangay, schoolName, idNumber, yearLevel, semester, gpa, course, grades_sem, grades_year } = extraParams;
+      const targetBarangay = barangay || formData.barangay || '';
+      const { firstName, lastName, middleName } = formData;
+
+      const cacheKey = `${docType}:${typeof docParam === 'string' ? docParam.slice(0, 150) : ''}:${firstName}:${lastName}:${townCity}:${targetBarangay}`;
+      if (clientOcrCache.current.has(cacheKey)) {
+        const cached = clientOcrCache.current.get(cacheKey);
+        setVerified(cached.verified ? 'success' : 'failed');
+        setStatus(cached.message || 'Verification complete');
+        if (!silent) setScanProgress(100);
+        return cached.verified;
+      }
+
       if (!silent) {
         setVerified('verifying');
         setStatus(`Verifying your ${docType} document and video...`);
-        setScanProgress(15);
+        setScanProgress(30);
       }
 
       let pInterval;
       if (!silent) {
         pInterval = setInterval(() => {
-          setScanProgress(p => p < 95 ? p + (Math.random() * 25) : p);
-        }, 80);
+          setScanProgress(p => p < 90 ? p + 20 : p);
+        }, 50);
       }
 
-      const { townCity, barangay, schoolName, idNumber, yearLevel, semester, gpa, course, grades_sem, grades_year } = extraParams;
-      const targetBarangay = barangay || formData.barangay || '';
-      const { firstName, lastName, middleName } = formData;
       const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
 
       const result = await applicantAPI.ocrCheck(
@@ -933,6 +945,8 @@ const StudentInfo = () => {
 
       if (!silent && pInterval) clearInterval(pInterval);
       if (!silent) setScanProgress(100);
+
+      clientOcrCache.current.set(cacheKey, { verified: Boolean(result.verified), message: result.message });
 
       if (result.verified) {
         setVerified('success');
@@ -990,14 +1004,14 @@ const StudentInfo = () => {
     );
     const townCity = formData.townCityMunicipality || '';
     const barangay = formData.barangay || '';
-    const videoUrl = formData.mayorIndigency_video || documentVideos.mayorIndigency_video;
+    const videoUrl = formData.mayorIndigency_video || documentVideos.mayorIndigency_video || userProfile?.indigency_vid_url;
 
     if (!indigencyDoc) {
       showPromptMessage('⚠️ Please upload or capture your Certificate of Indigency first.');
       return;
     }
-    if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
-      showPromptMessage('⚠️ Please record and upload the Indigency video first.');
+    if (!videoUrl) {
+      showPromptMessage('⚠️ Please record or attach your Indigency video first.');
       return;
     }
     if (!townCity) {
@@ -1009,7 +1023,8 @@ const StudentInfo = () => {
       return;
     }
 
-    setLoadingMessage({ title: 'Scanning Document', message: 'Verifying your Certificate of Indigency and Video Content...' });
+    setIsSavingStep(true);
+    setLoadingMessage({ title: 'Scanning Document', message: 'Verifying your Certificate of Indigency...' });
 
     try {
       const success = await performOcrVerification('Indigency', indigencyDoc, { townCity, barangay }, videoUrl);
@@ -1020,6 +1035,9 @@ const StudentInfo = () => {
       }
     } catch (err) {
       console.error('Scan Error:', err);
+    } finally {
+      setIsSavingStep(false);
+      setLoadingMessage({ title: '', message: '' });
     }
   };
 
@@ -1049,7 +1067,8 @@ const StudentInfo = () => {
       return;
     }
 
-    setLoadingMessage({ title: 'Scanning COE', message: 'Verifying your Certificate of Enrollment and Video Content...' });
+    setIsSavingStep(true);
+    setLoadingMessage({ title: 'Scanning COE', message: 'Verifying your Certificate of Enrollment...' });
 
     try {
       const success = await performOcrVerification('Enrollment', coeDoc, { schoolName, idNumber, yearLevel, semester, course }, videoUrl);
@@ -1060,6 +1079,9 @@ const StudentInfo = () => {
       }
     } catch (err) {
       console.error('Scan Error:', err);
+    } finally {
+      setIsSavingStep(false);
+      setLoadingMessage({ title: '', message: '' });
     }
   };
 
@@ -1074,14 +1096,14 @@ const StudentInfo = () => {
     const grades_sem = formData.grades_sem || '';
     const grades_year = formData.grades_year || '';
     const gpa = formData.gpa || '';
-    const videoUrl = formData.mayorGrades_video || documentVideos.mayorGrades_video;
+    const videoUrl = formData.mayorGrades_video || documentVideos.mayorGrades_video || userProfile?.grades_vid_url;
 
     if (!gradesDoc) {
       showPromptMessage('⚠️ Please upload your Grades document first.');
       return;
     }
-    if (!videoUrl || typeof videoUrl !== 'string' || !videoUrl.startsWith('http')) {
-      showPromptMessage('⚠️ Please record and upload the Grades video first.');
+    if (!videoUrl) {
+      showPromptMessage('⚠️ Please record or attach your Grades video first.');
       return;
     }
     if (!schoolName || !yearLevel || !grades_sem || !grades_year || !gpa) {
@@ -1089,7 +1111,8 @@ const StudentInfo = () => {
       return;
     }
 
-    setLoadingMessage({ title: 'Scanning Grades', message: 'Verifying your Grades document and Video Content...' });
+    setIsSavingStep(true);
+    setLoadingMessage({ title: 'Scanning Grades', message: 'Verifying your Grades document...' });
 
     try {
       const success = await performOcrVerification('Grades', gradesDoc, { schoolName, yearLevel, grades_sem, grades_year, gpa }, videoUrl);
@@ -1100,6 +1123,9 @@ const StudentInfo = () => {
       }
     } catch (err) {
       console.error('Scan Error:', err);
+    } finally {
+      setIsSavingStep(false);
+      setLoadingMessage({ title: '', message: '' });
     }
   };
 
@@ -1112,19 +1138,15 @@ const StudentInfo = () => {
       schoolIdPhotos.back,
       userProfile?.id_img_back
     );
-    const frontVideoUrl = formData.schoolIdFront_video || documentVideos.schoolIdFront_video;
-    const backVideoUrl = formData.schoolIdBack_video || documentVideos.schoolIdBack_video;
+    const frontVideoUrl = formData.schoolIdFront_video || documentVideos.schoolIdFront_video || userProfile?.schoolid_front_vid_url;
+    const backVideoUrl = formData.schoolIdBack_video || documentVideos.schoolIdBack_video || userProfile?.schoolid_back_vid_url;
 
     if (!idFront || !idBack) {
       showPromptMessage('⚠️ Please upload both front and back of your School ID first.');
       return;
     }
-    if (!frontVideoUrl || typeof frontVideoUrl !== 'string' || !frontVideoUrl.startsWith('http')) {
-      showPromptMessage('⚠️ Please record and upload the front School ID video first.');
-      return;
-    }
-    if (!backVideoUrl || typeof backVideoUrl !== 'string' || !backVideoUrl.startsWith('http')) {
-      showPromptMessage('⚠️ Please record and upload the back School ID video first.');
+    if (!frontVideoUrl || !backVideoUrl) {
+      showPromptMessage('⚠️ Please record or attach the front and back School ID videos first.');
       return;
     }
     if (!formData.schoolName || !formData.schoolIdNumber || !formData.yearLevel) {
@@ -1132,7 +1154,8 @@ const StudentInfo = () => {
       return;
     }
 
-    setLoadingMessage({ title: 'Scanning School ID', message: 'Verifying your School ID images and Video Content...' });
+    setIsSavingStep(true);
+    setLoadingMessage({ title: 'Scanning School ID', message: 'Verifying your School ID images...' });
 
     try {
       const success = await performOcrVerification(
@@ -1141,17 +1164,20 @@ const StudentInfo = () => {
         {
           schoolName: formData.schoolName,
           idNumber: formData.schoolIdNumber,
-          yearLevel: formData.yearLevel
+          yearLevel: formData.yearLevel,
         },
         { front: frontVideoUrl, back: backVideoUrl }
       );
       if (success) {
-        showPromptMessage('✅ Front & Back ID verified successfully!');
+        showPromptMessage('✅ School ID verified successfully!');
       } else {
-        showPromptMessage('❌ Front & Back ID verification failed.');
+        showPromptMessage('❌ School ID verification failed.');
       }
     } catch (err) {
       console.error('Scan Error:', err);
+    } finally {
+      setIsSavingStep(false);
+      setLoadingMessage({ title: '', message: '' });
     }
   };
 
