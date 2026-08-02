@@ -1087,51 +1087,8 @@ def debug_env():
     })
 
 
-@student_api_bp.route('/debug/flags', methods=['GET'])
-def get_debug_flags():
-    """Get current global debug bypass flags (shared across all deployments)."""
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("SELECT key, value FROM debug_flags")
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-        flags = {}
-        for row in rows:
-            key = row['key'] if isinstance(row, dict) else row[0]
-            val = row['value'] if isinstance(row, dict) else row[1]
-            flags[key] = bool(val)
-        return jsonify({'success': True, 'flags': flags})
-    except Exception as e:
-        print(f"[DEBUG FLAGS] GET error: {e}", flush=True)
-        return jsonify({'success': False, 'flags': {}, 'error': str(e)}), 500
+# Note: Debug flags endpoints move below token_required definition for per-user auth
 
-
-@student_api_bp.route('/debug/flags', methods=['POST'])
-def set_debug_flag():
-    """Set a global debug bypass flag (persisted in DB, shared across all deployments)."""
-    try:
-        data = request.get_json() or {}
-        key = data.get('key')
-        value = bool(data.get('value', False))
-        if key not in ('skip_alternate_check', 'skip_tamper_check'):
-            return jsonify({'success': False, 'error': 'Unknown flag key'}), 400
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO debug_flags (key, value, updated_at)
-            VALUES (%s, %s, NOW())
-            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-        """, (key, value))
-        conn.commit()
-        cur.close()
-        conn.close()
-        print(f"[DEBUG FLAGS] Set {key} = {value}", flush=True)
-        return jsonify({'success': True, 'key': key, 'value': value})
-    except Exception as e:
-        print(f"[DEBUG FLAGS] POST error: {e}", flush=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
 if ENCRYPTION_KEY and isinstance(ENCRYPTION_KEY, str):
@@ -1244,7 +1201,11 @@ def ensure_applicant_document_storage():
         
         print("[MIGRATION] Document column conversion completed.", flush=True)
 
-        # Create debug_flags table for global debug bypass settings (shared across all deployments)
+        # Ensure per-user debug flags exist on applicants table
+        cur.execute("ALTER TABLE applicants ADD COLUMN IF NOT EXISTS debug_skip_tamper_check BOOLEAN DEFAULT FALSE")
+        cur.execute("ALTER TABLE applicants ADD COLUMN IF NOT EXISTS debug_skip_alternate_check BOOLEAN DEFAULT FALSE")
+
+        # Create debug_flags table for legacy/backup compatibility and RESET global flags to FALSE (re-enabling fake detection globally)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS debug_flags (
                 key TEXT PRIMARY KEY,
@@ -1252,12 +1213,12 @@ def ensure_applicant_document_storage():
                 updated_at TIMESTAMP DEFAULT NOW()
             )
         """)
-        # Seed default flags if not present
         cur.execute("""
             INSERT INTO debug_flags (key, value)
             VALUES ('skip_alternate_check', FALSE), ('skip_tamper_check', FALSE)
-            ON CONFLICT (key) DO NOTHING
+            ON CONFLICT (key) DO UPDATE SET value = FALSE, updated_at = NOW()
         """)
+        cur.execute("UPDATE debug_flags SET value = FALSE WHERE key IN ('skip_alternate_check', 'skip_tamper_check')")
             
         conn.commit()
         conn.close()
@@ -1365,6 +1326,66 @@ def token_required(route_handler):
         return route_handler(*args, **kwargs)
 
     return decorated
+
+
+@student_api_bp.route('/debug/flags', methods=['GET'])
+@token_required
+def get_debug_flags():
+    """Get per-user debug bypass flags for the authenticated applicant."""
+    try:
+        user_no = getattr(request, 'user_no', None)
+        flags = {'skip_alternate_check': False, 'skip_tamper_check': False}
+        if user_no:
+            with get_db() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name = 'applicants' AND column_name IN ('debug_skip_alternate_check', 'debug_skip_tamper_check')
+                """)
+                existing_cols = {row['column_name'] if isinstance(row, dict) else row[0] for row in cur.fetchall()}
+                if 'debug_skip_alternate_check' in existing_cols and 'debug_skip_tamper_check' in existing_cols:
+                    cur.execute("""
+                        SELECT debug_skip_alternate_check, debug_skip_tamper_check
+                        FROM applicants WHERE applicant_no = %s
+                    """, (user_no,))
+                    row = cur.fetchone()
+                    if row:
+                        flags['skip_alternate_check'] = bool(row['debug_skip_alternate_check'] if isinstance(row, dict) else row[0])
+                        flags['skip_tamper_check'] = bool(row['debug_skip_tamper_check'] if isinstance(row, dict) else row[1])
+        return jsonify({'success': True, 'flags': flags})
+    except Exception as e:
+        print(f"[DEBUG FLAGS] GET error: {e}", flush=True)
+        return jsonify({'success': False, 'flags': {'skip_alternate_check': False, 'skip_tamper_check': False}, 'error': str(e)}), 500
+
+
+@student_api_bp.route('/debug/flags', methods=['POST'])
+@token_required
+def set_debug_flag():
+    """Set a per-user debug bypass flag for the authenticated applicant."""
+    try:
+        user_no = getattr(request, 'user_no', None)
+        if not user_no:
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+
+        data = request.get_json() or {}
+        key = data.get('key')
+        value = bool(data.get('value', False))
+        if key not in ('skip_alternate_check', 'skip_tamper_check'):
+            return jsonify({'success': False, 'error': 'Unknown flag key'}), 400
+
+        col_name = 'debug_skip_alternate_check' if key == 'skip_alternate_check' else 'debug_skip_tamper_check'
+
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(f"ALTER TABLE applicants ADD COLUMN IF NOT EXISTS {col_name} BOOLEAN DEFAULT FALSE")
+            cur.execute(f"UPDATE applicants SET {col_name} = %s WHERE applicant_no = %s", (value, user_no))
+            conn.commit()
+
+        print(f"[DEBUG FLAGS] Set per-user {key} = {value} for user_no {user_no}", flush=True)
+        return jsonify({'success': True, 'key': key, 'value': value})
+    except Exception as e:
+        print(f"[DEBUG FLAGS] POST error: {e}", flush=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 def decode_base64(data_uri):
@@ -2375,7 +2396,7 @@ def get_profile():
             if not applicant:
                 return jsonify({'message': 'Not found'}), 404
 
-            skip_alternate_check = request.headers.get('X-Skip-Alternate-Check') == 'true'
+            skip_alternate_check = (request.headers.get('X-Skip-Alternate-Check') == 'true') or bool(applicant.get('debug_skip_alternate_check'))
             if skip_alternate_check:
                 applicant['duplicate_applicant_exists'] = False
                 applicant['portal_lock_message'] = None
@@ -2950,7 +2971,15 @@ def update_profile():
             # Preventive Duplicate Check:
             # We fetch the potentially updated applicant and check if they've become a duplicate.
             # "Oldest Wins": If the current account is NOT the oldest for this identity, we reject the save.
-            skip_alternate_check = request.headers.get('X-Skip-Alternate-Check') == 'true'
+            user_skip_alt = False
+            try:
+                cur.execute("SELECT debug_skip_alternate_check FROM applicants WHERE applicant_no = %s", (request.user_no,))
+                alt_row = cur.fetchone()
+                if alt_row:
+                    user_skip_alt = bool(alt_row['debug_skip_alternate_check'] if isinstance(alt_row, dict) else alt_row[0])
+            except Exception:
+                pass
+            skip_alternate_check = (request.headers.get('X-Skip-Alternate-Check') == 'true') or user_skip_alt
             if not skip_alternate_check:
                 cur.execute("SELECT * FROM applicants WHERE applicant_no = %s", (request.user_no,))
                 potential_duplicate = cur.fetchone()

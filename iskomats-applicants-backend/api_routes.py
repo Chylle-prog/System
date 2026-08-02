@@ -2124,6 +2124,19 @@ def init_socketio(socketio):
             with get_db() as conn:
                 cursor = conn.cursor()
 
+                # Check if exact same message was inserted within the last 3 seconds (prevent double submission)
+                cursor.execute("""
+                    SELECT m_id FROM message
+                    WHERE (room = %s OR (pro_no = %s AND (applicant_no IS NULL OR applicant_no = 0)))
+                      AND sender_id = %s
+                      AND message = %s
+                      AND timestamp >= NOW() - INTERVAL '3 seconds'
+                    LIMIT 1
+                """, (room, pro_no, sender_id, message_text))
+                if cursor.fetchone():
+                    print(f"[ADMIN MSG DUP PREVENTED] Suppressing duplicate insert for room={room}, sender_id={sender_id}", flush=True)
+                    return
+
                 actual_username = data.get('username')
                 is_super_admin = False
 
@@ -2171,14 +2184,12 @@ def init_socketio(socketio):
                     'student_status': 'Pending'
                 }
 
-                # Emit to main room and alt room
+                # Emit to primary room and alt room (only once per room)
                 emit('admin_message', payload, to=room)
-                emit('message', payload, to=room)
 
-                if alt_room:
+                if alt_room and alt_room != room:
                     alt_payload = {**payload, 'room': alt_room}
                     emit('admin_message', alt_payload, to=alt_room)
-                    emit('message', alt_payload, to=alt_room)
 
                 print(f"[ADMIN MSG SUCCESS] room={room}, from={actual_username}, super={is_super_admin}, m_id={m_id}", flush=True)
         except Exception as e:

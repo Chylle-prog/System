@@ -755,7 +755,6 @@ export default function Dash() {
   const sendAdminReply = () => {
     if (!adminReplyText.trim() || !selectedAdminRoom) return;
     const text = adminReplyText.trim();
-    socketService.sendMessage(selectedAdminRoom, 'Super Admin', text);
     socketService.sendAdminMessage(selectedAdminRoom, text);
     setAdminReplyText('');
   };

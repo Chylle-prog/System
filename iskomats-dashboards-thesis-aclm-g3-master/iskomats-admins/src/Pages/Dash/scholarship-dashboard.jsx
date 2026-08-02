@@ -5616,10 +5616,8 @@ export default function ScholarshipDashboard({
     const sendSuperAdminReply = () => {
       if (!superadminReplyText.trim() || !mySuperAdminRoom) return;
       const text = superadminReplyText.trim();
-      socketService.sendMessage(mySuperAdminRoom, providerName || userName, text);
-      if (altSuperAdminRoom) {
-        socketService.sendAdminMessage(altSuperAdminRoom, text);
-      }
+      const targetRoom = altSuperAdminRoom || mySuperAdminRoom;
+      socketService.sendAdminMessage(targetRoom, text);
       setSuperadminReplyText('');
     };
 

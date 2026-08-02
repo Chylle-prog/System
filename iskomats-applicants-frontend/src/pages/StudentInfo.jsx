@@ -1594,7 +1594,7 @@ const StudentInfo = () => {
   const [gradesResults, setGradesResults] = useState([]);
   const [idResults, setIdResults] = useState([]);
 
-  // Global debug flags — fetched from DB so they sync across all deployments
+  // Per-user debug flags — fetched from DB for the authenticated user
   const [debugFlags, setDebugFlags] = useState({
     skip_alternate_check: localStorage.getItem('debug_skip_alternate_check') === 'true',
     skip_tamper_check: localStorage.getItem('debug_skip_tamper_check') === 'true',
@@ -1602,9 +1602,11 @@ const StudentInfo = () => {
 
   useEffect(() => {
     debugAPI.getFlags().then(flags => {
-      if (flags && Object.keys(flags).length > 0) {
-        setDebugFlags(flags);
-        // Sync to localStorage so same-session API calls (X-Skip-Alternate-Check header) stay current
+      if (flags) {
+        setDebugFlags({
+          skip_alternate_check: !!flags.skip_alternate_check,
+          skip_tamper_check: !!flags.skip_tamper_check
+        });
         localStorage.setItem('debug_skip_alternate_check', flags.skip_alternate_check ? 'true' : 'false');
         localStorage.setItem('debug_skip_tamper_check', flags.skip_tamper_check ? 'true' : 'false');
       }

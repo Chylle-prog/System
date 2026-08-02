@@ -1049,15 +1049,18 @@ export const announcementAPI = {
  */
 export const debugAPI = {
   /**
-   * Fetch current global debug bypass flags from the database.
+   * Fetch current per-user debug bypass flags for the authenticated user from the database.
    * @returns {Promise<{skip_alternate_check: boolean, skip_tamper_check: boolean}>}
    */
   getFlags: async () => {
     try {
       const data = await makeRequest('/student/debug/flags', { method: 'GET' });
-      return data?.flags || {};
+      const flags = data?.flags || { skip_alternate_check: false, skip_tamper_check: false };
+      localStorage.setItem('debug_skip_alternate_check', flags.skip_alternate_check ? 'true' : 'false');
+      localStorage.setItem('debug_skip_tamper_check', flags.skip_tamper_check ? 'true' : 'false');
+      return flags;
     } catch (e) {
-      console.warn('[debugAPI] getFlags failed, falling back to localStorage:', e);
+      console.warn('[debugAPI] getFlags failed:', e);
       return {
         skip_alternate_check: localStorage.getItem('debug_skip_alternate_check') === 'true',
         skip_tamper_check: localStorage.getItem('debug_skip_tamper_check') === 'true',
@@ -1066,7 +1069,7 @@ export const debugAPI = {
   },
 
   /**
-   * Set a global debug bypass flag in the database.
+   * Set a per-user debug bypass flag in the database for the authenticated user.
    * @param {'skip_alternate_check'|'skip_tamper_check'} key
    * @param {boolean} value
    */
@@ -1082,7 +1085,6 @@ export const debugAPI = {
       return data;
     } catch (e) {
       console.warn('[debugAPI] setFlag failed:', e);
-      // Fallback: at least update localStorage
       const lsKey = key === 'skip_alternate_check' ? 'debug_skip_alternate_check' : 'debug_skip_tamper_check';
       localStorage.setItem(lsKey, value ? 'true' : 'false');
     }
