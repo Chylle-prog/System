@@ -3506,59 +3506,137 @@ def get_verification_status():
 @student_api_bp.route('/verification/ocr-check', methods=['POST'])
 @token_required
 def ocr_check():
-    """Lightweight client-side OCR persistence endpoint."""
+    """OCR verification and persistence endpoint with instant cache response."""
     try:
         if request.is_json:
-            data = request.json
+            data = request.json or {}
         else:
             data = request.form.to_dict()
 
         target_doc = data.get('target_doc') or data.get('targetDoc')
-        verified = str(data.get('verified', 'false')).lower() == 'true'
-        message = data.get('message', '')
         results = data.get('results', [])
 
-        # Parse results if it was sent as a JSON string in form-data
+        # Parse results if sent as JSON string in form-data
         if isinstance(results, str):
             try:
                 results = json.loads(results)
             except Exception:
                 results = []
 
+        is_persistence = ('verified' in data and not request.files) or bool(results)
+
+        if is_persistence:
+            verified = str(data.get('verified', 'false')).lower() == 'true'
+            message = data.get('message', '')
+            with get_db() as conn:
+                cur = conn.cursor()
+                verification_updates = {}
+                if results:
+                    for res in results:
+                        dtype = res.get('doc')
+                        is_verified = res.get('verified', False)
+                        if dtype == 'Indigency': verification_updates['indigency_verified'] = is_verified
+                        elif dtype == 'Enrollment': verification_updates['enrollment_verified'] = is_verified
+                        elif dtype == 'Grades': verification_updates['grades_verified'] = is_verified
+                        elif dtype == 'SchoolID': verification_updates['id_verified'] = is_verified
+                elif target_doc:
+                    target_doc_norm = str(target_doc).lower()
+                    if any(k in target_doc_norm for k in ['grade', 'mayorgrade']):
+                        verification_updates['grades_verified'] = verified
+                    elif any(k in target_doc_norm for k in ['enrollment', 'coe', 'mayorcoe']):
+                        verification_updates['enrollment_verified'] = verified
+                    elif any(k in target_doc_norm for k in ['indigency', 'mayorindigency']):
+                        verification_updates['indigency_verified'] = verified
+                    elif any(k in target_doc_norm for k in ['idfront', 'schoolidfront', 'schoolid']):
+                        verification_updates['id_verified'] = verified
+                
+                if verification_updates:
+                    persist_applicant_document_values(cur, request.user_no, verification_updates)
+                    conn.commit()
+
+            return jsonify({
+                'verified': verified,
+                'message': message or 'Verification persisted successfully',
+                'results': results or [{'doc': target_doc, 'verified': verified, 'message': message}]
+            })
+
+        # --- Full Verification Path (with caching) ---
+        indigency_file = request.files.get('indigency_doc') or request.files.get('indigencyDoc')
+        enrollment_file = request.files.get('enrollment_doc') or request.files.get('enrollmentDoc')
+        grades_file = request.files.get('grades_doc') or request.files.get('gradesDoc')
+        id_front_file = request.files.get('id_front') or request.files.get('idFront')
+
+        indigency_param = indigency_file.read() if indigency_file else data.get('indigency_doc') or data.get('indigencyDoc')
+        enrollment_param = enrollment_file.read() if enrollment_file else data.get('enrollment_doc') or data.get('enrollmentDoc')
+        grades_param = grades_file.read() if grades_file else data.get('grades_doc') or data.get('gradesDoc')
+        id_front_param = id_front_file.read() if id_front_file else data.get('id_front') or data.get('idFront')
+
+        doc_type = target_doc or ('Indigency' if indigency_param else ('Enrollment' if enrollment_param else ('Grades' if grades_param else ('SchoolID' if id_front_param else 'Indigency'))))
+        raw_doc = indigency_param or enrollment_param or grades_param or id_front_param
+
+        # Fetch applicant info for address/name verification if missing from request
         with get_db() as conn:
             cur = conn.cursor()
-            verification_updates = {}
-            
-            # If bulk results are passed from frontend
-            if results:
-                for res in results:
-                    dtype = res.get('doc')
-                    is_verified = res.get('verified', False)
-                    if dtype == 'Indigency': verification_updates['indigency_verified'] = is_verified
-                    elif dtype == 'Enrollment': verification_updates['enrollment_verified'] = is_verified
-                    elif dtype == 'Grades': verification_updates['grades_verified'] = is_verified
-                    elif dtype == 'SchoolID': verification_updates['id_verified'] = is_verified
-            # Otherwise, fall back to single target_doc value
-            elif target_doc:
-                target_doc_norm = str(target_doc).lower()
-                if any(k in target_doc_norm for k in ['grade', 'mayorgrade']):
-                    verification_updates['grades_verified'] = verified
-                elif any(k in target_doc_norm for k in ['enrollment', 'coe', 'mayorcoe']):
-                    verification_updates['enrollment_verified'] = verified
-                elif any(k in target_doc_norm for k in ['indigency', 'mayorindigency']):
-                    verification_updates['indigency_verified'] = verified
-                elif any(k in target_doc_norm for k in ['idfront', 'schoolidfront', 'schoolid']):
-                    verification_updates['id_verified'] = verified
-            
-            if verification_updates:
-                persist_applicant_document_values(cur, request.user_no, verification_updates)
-                conn.commit()
+            cur.execute("SELECT first_name, middle_name, last_name, town_city_municipality, street_brgy FROM applicants WHERE applicant_no = %s", (request.user_no,))
+            applicant = cur.fetchone() or {}
+            if not raw_doc:
+                cols_to_fetch = ['indigency_doc', 'enrollment_certificate_doc', 'grades_doc', 'id_img_front']
+                document_values = fetch_applicant_document_values(cur, request.user_no, cols_to_fetch)
+                if document_values:
+                    doc_key_map = {'Indigency': 'indigency_doc', 'Enrollment': 'enrollment_certificate_doc', 'Grades': 'grades_doc', 'SchoolID': 'id_img_front'}
+                    raw_doc = document_values.get(doc_key_map.get(doc_type, 'indigency_doc'))
 
-        return jsonify({
+        first_name = str(data.get('firstName') or data.get('first_name') or applicant.get('first_name', '')).strip()
+        middle_name = str(data.get('middleName') or data.get('middle_name') or applicant.get('middle_name', '')).strip()
+        last_name = str(data.get('lastName') or data.get('last_name') or applicant.get('last_name', '')).strip()
+        town_city = str(data.get('town_city') or data.get('townCity') or applicant.get('town_city_municipality', '')).strip()
+        barangay = str(data.get('barangay') or applicant.get('street_brgy', '')).strip()
+
+        doc_bytes = resolve_verification_image_bytes(raw_doc)
+        if not doc_bytes:
+            return jsonify({'verified': False, 'message': 'No valid document image provided for verification.'}), 400
+
+        # Construct unique verification cache key
+        doc_hash = _hash_verification_source(doc_bytes)
+        cache_key = f"verif:{request.user_no}:{doc_type}:{doc_hash}:{first_name}:{last_name}:{town_city}:{barangay}"
+        cached_result = _get_cached_verification_result(cache_key)
+
+        if cached_result:
+            return jsonify(cached_result)
+
+        from services.ocr_utils import verify_document_with_ocr
+        success, message, raw_text, meta = verify_document_with_ocr(
+            doc_bytes,
+            doc_type,
+            first_name,
+            middle_name,
+            last_name,
+            expected_address=f"{barangay} {town_city}".strip() or town_city,
+            expected_id_no=data.get('idNumber'),
+            expected_school_name=data.get('schoolName'),
+            expected_gpa=data.get('gpa'),
+            expected_year_level=data.get('yearLevel'),
+            course=data.get('course')
+        )
+
+        verified = bool(success)
+        response_payload = {
             'verified': verified,
-            'message': message or 'Verification persisted successfully',
-            'results': results or [{'doc': target_doc, 'verified': verified, 'message': message}]
-        })
+            'message': message,
+            'results': [{'doc': doc_type, 'verified': verified, 'message': message}]
+        }
+
+        _cache_verification_result(cache_key, response_payload)
+
+        if verified:
+            with get_db() as conn:
+                cur = conn.cursor()
+                col_map = {'Indigency': 'indigency_verified', 'Enrollment': 'enrollment_verified', 'Grades': 'grades_verified', 'SchoolID': 'id_verified'}
+                if doc_type in col_map:
+                    persist_applicant_document_values(cur, request.user_no, {col_map[doc_type]: True})
+                    conn.commit()
+
+        return jsonify(response_payload)
     except Exception as e:
         traceback.print_exc()
         return jsonify({'verified': False, 'message': f'Server error: {str(e)}'}), 500

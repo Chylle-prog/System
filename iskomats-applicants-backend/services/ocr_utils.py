@@ -1158,6 +1158,9 @@ def extract_semester_from_ocr_text(text):
     return None
 
 
+_ocr_text_cache = {}
+_OCR_TEXT_CACHE_LIMIT = 128
+
 def _run_tesseract_on_image(img, psm=3):
     if img is None or pytesseract is None:
         return ""
@@ -1165,11 +1168,11 @@ def _run_tesseract_on_image(img, psm=3):
         _init_tesseract()
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
         h, w = gray.shape[:2]
-        if w < 1600:
-            scale = 1600.0 / w
+        if w < 1200:
+            scale = 1200.0 / w
             gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LINEAR)
-        elif w > 2400:
-            scale = 2400.0 / w
+        elif w > 1800:
+            scale = 1800.0 / w
             gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
 
         text = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 1')
@@ -1190,6 +1193,15 @@ def extract_document_text(image_bytes, psm=3, max_width=None, prefer_fast_layout
         if not data:
             res_text, res_err = "", "Failed to decode document image"
             return (res_text, res_err) if should_return_tuple else res_text
+
+        # Quick OCR text cache lookup
+        import hashlib
+        cache_key = (hashlib.md5(data).hexdigest(), psm, max_width, crop_percent, is_id_back)
+        if cache_key in _ocr_text_cache:
+            cached_text = _ocr_text_cache[cache_key]
+            err = None if cached_text and cached_text.strip() else "Unable to extract readable text from document"
+            return (cached_text, err) if should_return_tuple else cached_text
+
         nparr = np.frombuffer(data, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is None:
@@ -1215,6 +1227,10 @@ def extract_document_text(image_bytes, psm=3, max_width=None, prefer_fast_layout
             effective_psm = 6
 
         text = _run_tesseract_on_image(img, psm=effective_psm)
+        if len(_ocr_text_cache) >= _OCR_TEXT_CACHE_LIMIT:
+            _ocr_text_cache.pop(next(iter(_ocr_text_cache)), None)
+        _ocr_text_cache[cache_key] = text
+
         err = None if text and text.strip() else "Unable to extract readable text from document"
         return (text, err) if should_return_tuple else text
     except Exception as e:
@@ -1768,17 +1784,9 @@ def perform_error_level_analysis(img, quality=90):
         if cols < 2 or rows < 2:
             return False, "", 0
 
-        patch_means = []
-        for r in range(rows):
-            for c in range(cols):
-                y1 = margin_y + r * grid_h
-                x1 = margin_x + c * grid_w
-                roi = ela_gray[y1:y1+grid_h, x1:x1+grid_w]
-                mean_val = float(np.mean(roi))
-                patch_means.append(mean_val)
-
-        if not patch_means:
-            return False, "", 0
+        ela_content = ela_gray[margin_y:margin_y + rows * grid_h, margin_x:margin_x + cols * grid_w]
+        patches = ela_content.reshape(rows, grid_h, cols, grid_w).swapaxes(1, 2)
+        patch_means = patches.mean(axis=(2, 3))
 
         avg_ela = float(np.mean(patch_means))
         max_ela = float(np.max(patch_means))
@@ -1827,15 +1835,15 @@ def detect_document_tampering(image_bytes):
         grid_w, grid_h = 20, 15
         cols, rows = w // grid_w, h // grid_h
 
-        suspicious_patches = 0
-        for r in range(rows):
-            for c in range(cols):
-                roi = gray[r*grid_h:(r+1)*grid_h, c*grid_w:(c+1)*grid_w]
-                mean_val, std_val = cv2.meanStdDev(roi)
-                m = mean_val[0][0]
-                s = std_val[0][0]
-                if (m >= 253 and s < 0.25) or (m <= 5 and s < 0.25):
-                    suspicious_patches += 1
+        if cols >= 1 and rows >= 1:
+            gray_cropped = gray[:rows * grid_h, :cols * grid_w]
+            patches = gray_cropped.reshape(rows, grid_h, cols, grid_w).swapaxes(1, 2)
+            means = patches.mean(axis=(2, 3))
+            stds = patches.std(axis=(2, 3))
+            suspicious = ((means >= 253) & (stds < 0.25)) | ((means <= 5) & (stds < 0.25))
+            suspicious_patches = int(np.sum(suspicious))
+        else:
+            suspicious_patches = 0
 
         if suspicious_patches >= 3:
             return True, f"Digital edit / overlay block detected on document ({suspicious_patches} artificial overlay patches found). Please upload an unedited document.", suspicious_patches

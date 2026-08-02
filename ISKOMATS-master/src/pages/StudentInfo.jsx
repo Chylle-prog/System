@@ -860,7 +860,13 @@ const StudentInfo = () => {
       await performOcrVerification(
         docType,
         docType === 'SchoolID' ? { front: base64, back: null } : base64,
-        { schoolName: formData.schoolName, idNumber: formData.schoolIdNumber, yearLevel: formData.yearLevel },
+        {
+          schoolName: formData.schoolName,
+          idNumber: formData.schoolIdNumber,
+          yearLevel: formData.yearLevel,
+          townCity: formData.townCityMunicipality,
+          barangay: formData.barangay
+        },
         null,
         true
       );
