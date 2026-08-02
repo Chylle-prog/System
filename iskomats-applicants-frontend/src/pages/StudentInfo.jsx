@@ -3936,6 +3936,7 @@ const StudentInfo = () => {
 
           // Video PROOF passes if it contains required keywords (or fallback message if decoding restricted)
           const videoHasKeyword = _requiredDocKeywords.some(k => vidText.includes(k)) || vidText.includes('proof') || vidText.includes('attached') || vidText.includes('manual review');
+          const effectiveVideoOk = videoOk && videoHasKeyword;
 
           let nameOk = nameCheck.details.first_ok && nameCheck.details.last_ok;
 
