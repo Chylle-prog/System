@@ -3376,31 +3376,36 @@ const StudentInfo = () => {
                          formData.mayorCOE_video ||
                          formData.mayorGrades_video;
 
+        let videoOcrPromise = Promise.resolve(null);
         if (videoVal) {
-          formDataPayload.append('video_proof', videoVal);
-          formDataPayload.append('indigency_video', videoVal);
+          const vFieldName = docType === 'Indigency' ? 'mayorIndigency_video' : (docType === 'Enrollment' ? 'mayorCOE_video' : (docType === 'Grades' ? 'mayorGrades_video' : 'schoolIdFront_video'));
+          videoOcrPromise = validateVideoLiveness(videoVal, vFieldName).catch((err) => {
+            console.warn('[Video OCR] Client video liveness error:', err);
+            return null;
+          });
         }
 
-        const backendResult = await applicantAPI.ocrCheck(formDataPayload);
+        const [backendResult, videoLivenessResult] = await Promise.all([
+          applicantAPI.ocrCheck(formDataPayload),
+          videoOcrPromise
+        ]);
+
         if (backendResult && typeof backendResult.verified === 'boolean') {
           if (!silent) setScanProgress(100);
-          const isVerified = backendResult.verified;
-          const msg = backendResult.message || (isVerified ? 'Document Verified' : 'Verification Failed');
+          let isVerified = backendResult.verified;
+          let msg = backendResult.message || (isVerified ? 'Document Verified' : 'Verification Failed');
           
-          setVerified(isVerified ? 'success' : 'failed');
-          setStatus(msg);
-
           const viewResults = (backendResult.results || [{ doc: docType, verified: isVerified, message: msg }]).map(r => ({
             doc: r.doc || docType,
             verified: r.verified,
             message: r.message,
             score_details: r.score_details || {
-              "First Name": isVerified,
-              "Last Name": isVerified,
-              "Barangay Address": isVerified,
-              "Town / City": isVerified,
-              "Document Type": isVerified,
-              "Video Proof": true
+              "FIRST NAME": isVerified,
+              "LAST NAME": isVerified,
+              "BARANGAY ADDRESS": isVerified,
+              "TOWN / CITY": isVerified,
+              "DOCUMENT TYPE": isVerified,
+              "VIDEO PROOF": true
             }
           }));
 
@@ -3413,13 +3418,30 @@ const StudentInfo = () => {
             "VIDEO PROOF": true
           };
 
+          let combinedDetectedText = backendResult.detected_text || msg;
+
+          if (videoLivenessResult) {
+            const videoOk = Boolean(videoLivenessResult.valid);
+            sDetails["VIDEO PROOF"] = videoOk;
+            if (!videoOk) {
+              isVerified = false;
+              msg += `; Video Proof Alert: ${videoLivenessResult.reason || 'Invalid video proof'}`;
+            }
+            if (videoLivenessResult.detectedText) {
+              combinedDetectedText += `\n\n--- 📹 EXTRACTED VIDEO PROOF OCR TEXT ---\n${videoLivenessResult.detectedText}`;
+            }
+          }
+
+          setVerified(isVerified ? 'success' : 'failed');
+          setStatus(msg);
+
           const reqValues = {
             "FIRST NAME": firstName || 'Extracted Name',
             "LAST NAME": lastName || 'Extracted Name',
             "BARANGAY ADDRESS": targetBarangay || 'Extracted Address',
             "TOWN / CITY": townCity || 'Extracted City',
             "DOCUMENT TYPE": docType === 'Indigency' ? 'Certificate of Indigency' : docType,
-            "VIDEO PROOF": 'Uploaded & Validated'
+            "VIDEO PROOF": sDetails["VIDEO PROOF"] ? 'Uploaded & Validated' : 'Validation Failed'
           };
 
           setOcrDebugLogs((prev) => ({
@@ -3427,7 +3449,7 @@ const StudentInfo = () => {
             [docType]: {
               status: isVerified ? 'VERIFIED (SUCCESS)' : 'FAILED (MISMATCH)',
               message: msg,
-              detectedText: backendResult.detected_text || msg,
+              detectedText: combinedDetectedText,
               requirements: reqValues,
               scoreDetails: sDetails,
               timestamp: new Date().toLocaleTimeString()
@@ -3444,7 +3466,7 @@ const StudentInfo = () => {
             finalMessage: msg,
             resultsList: viewResults,
             scoreDetails: sDetails,
-            detectedText: backendResult.detected_text || msg
+            detectedText: combinedDetectedText
           };
         }
       } catch (backendErr) {
