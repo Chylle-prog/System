@@ -1729,33 +1729,18 @@ def initialize_auto_chat_rooms():
                     VALUES (%s, %s, %s, %s, %s, NOW())
                 """, (app_no, pro_no, room, sender_name, f'Chat initiated for Applicant {app_no}.'))
 
-        # ===== ADMIN-TO-ADMIN CHAT ROOMS =====
-        # Create admin_message table for super admin <-> provider admin private chats
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS admin_message (
-                m_id SERIAL PRIMARY KEY,
-                room VARCHAR(50) NOT NULL,
-                sender_id INTEGER,
-                username VARCHAR(255) NOT NULL,
-                is_super_admin BOOLEAN DEFAULT FALSE,
-                message TEXT NOT NULL,
-                timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_admin_message_room ON admin_message(room)")
-
-        # Seed the 5 private super admin rooms with a welcome message if empty
+        # ===== ADMIN-TO-ADMIN CHAT ROOMS IN SUPABASE message TABLE =====
         SUPER_ADMIN_ROOM_PRO_NOS = [1, 2, 3, 5, 7]
         for pno in SUPER_ADMIN_ROOM_PRO_NOS:
             room_code = f"superadmin_room_{pno}"
-            cursor.execute("SELECT 1 FROM admin_message WHERE room = %s LIMIT 1", (room_code,))
+            cursor.execute("SELECT 1 FROM message WHERE room = %s LIMIT 1", (room_code,))
             if not cursor.fetchone():
                 provider_name = program_names.get(pno, f'Provider {pno}')
                 cursor.execute("""
-                    INSERT INTO admin_message (room, sender_id, username, is_super_admin, message, timestamp)
-                    VALUES (%s, NULL, 'System', FALSE, %s, NOW())
-                """, (room_code, f'Private channel between Super Admin and {provider_name}.'))
-                print(f"[INIT] Created admin room {room_code} for {provider_name}", flush=True)
+                    INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp, sender_id, is_student_sender)
+                    VALUES (NULL, %s, %s, 'System', %s, NOW(), NULL, FALSE)
+                """, (pno, room_code, f'Private channel between Super Admin and {provider_name}.'))
+                print(f"[INIT] Seeded admin room {room_code} in Supabase message table for {provider_name}", flush=True)
 
         conn.commit()
     except Exception as e:
@@ -2159,7 +2144,7 @@ def init_socketio(socketio):
 
     @socketio.on('load_admin_history')
     def on_load_admin_history(data):
-        """Load message history for a super admin <-> provider private room."""
+        """Load message history for a super admin <-> provider private room from Supabase message table."""
         room = data.get('room')
         if not room or not room.startswith('superadmin_room_'):
             return
@@ -2168,9 +2153,9 @@ def init_socketio(socketio):
             conn = get_db()
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT m_id, room, sender_id, username, is_super_admin, message,
-                       timestamp
-                FROM admin_message
+                SELECT m_id, room, sender_id, username, is_student_sender, message,
+                       timestamp, pro_no
+                FROM message
                 WHERE room = %s
                 ORDER BY timestamp ASC
                 LIMIT 200
@@ -2181,38 +2166,42 @@ def init_socketio(socketio):
 
             history_payload = []
             for msg in messages:
+                ts = msg['timestamp']
+                ts_str = ts.strftime('%Y-%m-%d %H:%M:%S') if hasattr(ts, 'strftime') else str(ts)
                 history_payload.append({
                     'm_id': msg['m_id'],
                     'room': msg['room'],
                     'sender_id': msg['sender_id'],
                     'username': msg['username'],
-                    'is_super_admin': msg['is_super_admin'],
+                    'is_super_admin': (msg['username'] == 'Super Admin' or 'Super' in (msg['username'] or '')),
                     'message': msg['message'],
-                    'timestamp': msg['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
+                    'timestamp': ts_str,
                 })
 
             emit('admin_history', {'room': room, 'messages': history_payload})
         except Exception as e:
-            print(f"[ADMIN HISTORY ERROR] {e}")
+            print(f"[ADMIN HISTORY ERROR] {e}", flush=True)
 
     @socketio.on('admin_message')
     def on_admin_message(data):
-        """Handle private message between super admin and a provider admin."""
+        """Handle private message between super admin and a provider admin stored in Supabase message table."""
         room = data.get('room')
         message_text = data.get('message', '').strip()
         sender_id = data.get('sender_id')
 
         if not room or not message_text or not sender_id:
+            print(f"[ADMIN MSG ERROR] Missing required parameters: room={room}, message={message_text}, sender_id={sender_id}")
             return
         if not room.startswith('superadmin_room_'):
             emit('error', {'msg': 'Invalid admin room'})
             return
 
         try:
+            pro_no = int(room.replace('superadmin_room_', ''))
             conn = get_db()
             cursor = conn.cursor()
 
-            # Resolve sender name and role
+            # Resolve sender name and role from users table
             cursor.execute("""
                 SELECT u.user_name, u.pro_no,
                        COALESCE(sp.provider_name, u.user_name) AS display_name
@@ -2222,22 +2211,28 @@ def init_socketio(socketio):
                 LIMIT 1
             """, (sender_id,))
             user_row = cursor.fetchone()
-            actual_username = user_row['display_name'] if user_row else f'User {sender_id}'
             sender_pro_no = user_row['pro_no'] if user_row else None
             is_super_admin = (sender_pro_no is None)
 
-            # Insert into admin_message table
+            if is_super_admin:
+                actual_username = "Super Admin"
+            else:
+                actual_username = user_row['display_name'] if user_row else f'Provider {pro_no}'
+
+            # Insert into Supabase message table
             cursor.execute("""
-                INSERT INTO admin_message (room, sender_id, username, is_super_admin, message, timestamp)
-                VALUES (%s, %s, %s, %s, %s, NOW())
+                INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp, sender_id, is_student_sender)
+                VALUES (NULL, %s, %s, %s, %s, NOW(), %s, FALSE)
                 RETURNING m_id, timestamp
-            """, (room, sender_id, actual_username, is_super_admin, message_text))
+            """, (pro_no, room, actual_username, message_text, sender_id))
             row = cursor.fetchone()
             m_id = row['m_id']
             timestamp = row['timestamp']
             conn.commit()
             cursor.close()
             conn.close()
+
+            ts_str = timestamp.strftime('%Y-%m-%d %H:%M:%S') if hasattr(timestamp, 'strftime') else str(timestamp)
 
             emit('admin_message', {
                 'm_id': m_id,
@@ -2246,11 +2241,11 @@ def init_socketio(socketio):
                 'username': actual_username,
                 'is_super_admin': is_super_admin,
                 'message': message_text,
-                'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+                'timestamp': ts_str,
             }, to=room)
-            print(f"[ADMIN MSG] room={room}, from={actual_username}, super={is_super_admin}", flush=True)
+            print(f"[ADMIN MSG SUCCESS] room={room}, from={actual_username}, super={is_super_admin}, m_id={m_id}", flush=True)
         except Exception as e:
-            print(f"[ADMIN MSG ERROR] {e}")
+            print(f"[ADMIN MSG ERROR] {e}", flush=True)
 
     @socketio.on('applicant_accept')
     def on_applicant_accept(data):
