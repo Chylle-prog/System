@@ -4173,12 +4173,11 @@ const StudentInfo = () => {
     const barangay = formData.barangay || '';
     const videoUrl = documentVideos.mayorIndigency_video || formData.mayorIndigency_video;
 
-    // Skip if nothing changed (doc/video)
+    // Skip if scan is already in progress or already verified
     const last = lastIndigencyScanRef.current;
     if (
-      last.doc === indigencyDoc &&
-      last.vid === videoUrl &&
-      ocrVerified === 'success'
+      (last.doc === indigencyDoc && last.vid === videoUrl && ocrVerified === 'success') ||
+      ocrVerified === 'verifying'
     ) {
       return;
     }
@@ -5488,9 +5487,9 @@ const StudentInfo = () => {
             setPhotos(prev => ({ ...prev, [name]: compressedBase64 })); // Update with compressed version
 
             // Reset verification on photo change
-            if (name === 'mayorIndigency_photo') { setOcrVerified(null); setOcrStatus(''); preScanDocument('Indigency', compressedBase64); triggerAutoScan('Indigency'); }
-            else if (name === 'mayorCOE_photo') { setCoeVerified(null); setCoeStatus(''); preScanDocument('Enrollment', compressedBase64); triggerAutoScan('Enrollment'); }
-            else if (name === 'mayorGrades_photo') { setGradesVerified(null); setGradesStatus(''); preScanDocument('Grades', compressedBase64); triggerAutoScan('Grades'); }
+            if (name === 'mayorIndigency_photo') { setOcrVerified(null); setOcrStatus(''); triggerAutoScan('Indigency'); }
+            else if (name === 'mayorCOE_photo') { setCoeVerified(null); setCoeStatus(''); triggerAutoScan('Enrollment'); }
+            else if (name === 'mayorGrades_photo') { setGradesVerified(null); setGradesStatus(''); triggerAutoScan('Grades'); }
           });
         } else {
           // Non-image or compression skipped
