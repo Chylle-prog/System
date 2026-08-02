@@ -2578,6 +2578,17 @@ export default function ScholarshipDashboard({
     if (idx < 0) return;
 
     const applicantToAccept = data.applicants[idx];
+
+    const targetSch = getScholarshipForApplicant(applicantToAccept);
+    if (targetSch) {
+      const slotLimit = Number(targetSch.slots ?? 0);
+      const acceptedCount = Number(targetSch.acceptedCount ?? 0);
+      if (slotLimit > 0 && acceptedCount >= slotLimit) {
+        alert(`Cannot accept applicant: All ${slotLimit} available slots for "${targetSch.scholarshipName || 'this scholarship'}" have been filled.`);
+        return;
+      }
+    }
+
     const recipient = applicantToAccept.studentContact?.email || applicantToAccept.emailAddress || applicantToAccept.email || 'Student Email';
 
     setPendingAction({
@@ -2636,6 +2647,16 @@ export default function ScholarshipDashboard({
     const { index } = viewApplicant;
     const applicant = data.applicants[index];
     if (!applicant) return;
+
+    const targetSch = getScholarshipForApplicant(applicant);
+    if (targetSch) {
+      const slotLimit = Number(targetSch.slots ?? 0);
+      const acceptedCount = Number(targetSch.acceptedCount ?? 0);
+      if (slotLimit > 0 && acceptedCount >= slotLimit) {
+        alert(`Cannot accept applicant: All ${slotLimit} available slots for "${targetSch.scholarshipName || 'this scholarship'}" have been filled.`);
+        return;
+      }
+    }
 
     const recipient = applicant.studentContact?.email || applicant.emailAddress || applicant.email || 'Student Email';
 
@@ -3046,6 +3067,11 @@ export default function ScholarshipDashboard({
                         <span className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider ${post.isFull ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
                           {post.isFull ? 'Full' : `${post.availableSlots} Open Slot${post.availableSlots === 1 ? '' : 's'}`}
                         </span>
+                        {(post.isRemoved || post.is_removed) && (
+                          <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-gray-700 text-white shadow-sm">
+                            Deleted
+                          </span>
+                        )}
                         <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-100 text-[#800020]">
                           {post.semester || 'Semester TBD'} {post.year || ''}
                         </span>
@@ -5510,26 +5536,35 @@ export default function ScholarshipDashboard({
         </div>
 
         <div className="sticky bottom-0 bg-white/95 backdrop-blur-md pt-4 sm:pt-6 mt-6 sm:mt-8 border-t border-gray-100 flex flex-col sm:flex-row gap-2.5 sm:gap-3 justify-end">
-          {isPending && (
-            <>
-              <button
-                type="button"
-                onClick={acceptApplicant}
-                disabled={Boolean(getApplicantProcessingState(a))}
-                className="w-full sm:w-auto px-6 py-2.5 sm:px-8 sm:py-3 rounded-xl bg-green-600 text-white font-black uppercase tracking-widest text-xs hover:bg-green-700 shadow-lg shadow-green-100 transition-all flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:bg-green-300 disabled:shadow-none"
-              >
-                <FaCheckCircle /> Approve
-              </button>
-              <button
-                type="button"
-                onClick={declineApplicant}
-                disabled={Boolean(getApplicantProcessingState(a))}
-                className="w-full sm:w-auto px-6 py-2.5 sm:px-8 sm:py-3 rounded-xl bg-red-600 text-white font-black uppercase tracking-widest text-xs hover:bg-red-700 shadow-lg shadow-red-100 transition-all flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:bg-red-300 disabled:shadow-none"
-              >
-                <FaTimesCircle /> Decline
-              </button>
-            </>
-          )}
+          {isPending && (() => {
+            const targetSch = getScholarshipForApplicant(a);
+            const isSlotsFull = targetSch && Number(targetSch.slots ?? 0) > 0 && Number(targetSch.acceptedCount ?? 0) >= Number(targetSch.slots);
+            return (
+              <>
+                <button
+                  type="button"
+                  onClick={acceptApplicant}
+                  disabled={Boolean(getApplicantProcessingState(a)) || isSlotsFull}
+                  title={isSlotsFull ? "Cannot approve: All slots for this scholarship are already filled" : ""}
+                  className={`w-full sm:w-auto px-6 py-2.5 sm:px-8 sm:py-3 rounded-xl text-white font-black uppercase tracking-widest text-xs transition-all flex items-center justify-center gap-2 ${
+                    isSlotsFull
+                      ? 'bg-gray-400 cursor-not-allowed shadow-none'
+                      : 'bg-green-600 hover:bg-green-700 shadow-lg shadow-green-100 disabled:cursor-not-allowed disabled:bg-green-300 disabled:shadow-none'
+                  }`}
+                >
+                  <FaCheckCircle /> {isSlotsFull ? 'Slots Full' : 'Approve'}
+                </button>
+                <button
+                  type="button"
+                  onClick={declineApplicant}
+                  disabled={Boolean(getApplicantProcessingState(a))}
+                  className="w-full sm:w-auto px-6 py-2.5 sm:px-8 sm:py-3 rounded-xl bg-red-600 text-white font-black uppercase tracking-widest text-xs hover:bg-red-700 shadow-lg shadow-red-100 transition-all flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:bg-red-300 disabled:shadow-none"
+                >
+                  <FaTimesCircle /> Decline
+                </button>
+              </>
+            );
+          })()}
           <button
             type="button"
             onClick={() => { setViewApplicant(null); setSection('track'); }}

@@ -3700,7 +3700,7 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
             if role != 'Admin' and status_row['pro_no'] != pro_no:
                 return jsonify({'success': False, 'message': 'Unauthorized'}), 403
 
-            if status_row['slots'] is not None and status_row['is_accepted'] != 'Accepted':
+            if status_row['slots'] is not None and status_row['slots'] > 0 and status_row['is_accepted'] != 'Accepted':
                 cursor.execute(
                     '''SELECT COUNT(*) AS accepted_count
                        FROM applicant_status
@@ -3709,7 +3709,7 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
                 )
                 accepted_count = cursor.fetchone()['accepted_count']
                 if accepted_count >= status_row['slots']:
-                    return jsonify({'success': False, 'message': 'Scholarship slots are already full'}), 409
+                    return jsonify({'success': False, 'message': f"Scholarship slots are already full ({accepted_count}/{status_row['slots']})"}), 409
             
             # Update applicant status
             cursor.execute(
