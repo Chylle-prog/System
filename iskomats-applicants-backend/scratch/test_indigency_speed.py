@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath('.'))
+
 import time
 import cv2
 import numpy as np
@@ -5,8 +9,10 @@ from services.ocr_utils import detect_document_tampering, verify_indigency_field
 
 print("[TEST] Benchmarking Indigency Verification components...")
 
-# Create a sample test document image in memory
-img = np.ones((1200, 1600, 3), dtype=np.uint8) * 255
+# Create a sample test document image in memory with realistic sensor noise
+img = np.ones((1200, 1600, 3), dtype=np.uint8) * 240
+noise = np.random.normal(0, 5, img.shape).astype(np.int16)
+img = np.clip(img.astype(np.int16) + noise, 0, 255).astype(np.uint8)
 cv2.putText(img, "CERTIFICATE OF INDIGENCY", (300, 200), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 0), 3)
 cv2.putText(img, "This is to certify that Alexie Chyle Magbuhat is a resident of Inosloban, Lipa City.", (100, 400), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 2)
 cv2.putText(img, "Signed by Punong Barangay.", (100, 600), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 2)

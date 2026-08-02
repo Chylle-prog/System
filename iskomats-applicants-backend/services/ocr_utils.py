@@ -1899,7 +1899,7 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name
         success, msg, meta = verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_name, **kwargs)
         return success, msg, raw_text, meta
     elif 'INDIGENCY' in doc_type_upper:
-        success, msg, meta = verify_indigency_fields(raw_text, first_name, middle_name, last_name, expected_address=kwargs.get('expected_address'), **kwargs)
+        success, msg, meta = verify_indigency_fields(raw_text, first_name, middle_name, last_name, **kwargs)
         return success, msg, raw_text, meta
     elif 'ID' in doc_type_upper or 'IDENTIFICATION' in doc_type_upper or 'SCHOOLID' in doc_type_upper:
         success, msg, meta = verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs)
