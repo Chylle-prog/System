@@ -2333,46 +2333,77 @@ def verify_id_with_ocr(image_bytes, first_name=None, middle_name=None, last_name
 def extract_frames_from_video_bytes(video_bytes, sample_positions=[0.15, 0.35, 0.55, 0.75, 0.90], max_width=640):
     """
     Extracts OpenCV frames at key sample positions from raw video bytes.
+    Supports WebM, MP4, MOV, HEVC, MKV using FFmpeg with OpenCV fallback.
     Returns a list of BGR images (numpy arrays).
     """
     if not video_bytes:
         return []
 
     import tempfile
+    import shutil
+    import subprocess
+
+    # Detect extension from magic bytes or header
+    ext = '.mp4'
+    if isinstance(video_bytes, (bytes, bytearray)):
+        if video_bytes.startswith(b'\x1a\x45\xdf\xa3'):
+            ext = '.webm'
+        elif b'ftypqt' in video_bytes[:32] or b'moov' in video_bytes[:100] or b'qt  ' in video_bytes[:32]:
+            ext = '.mov'
+
     frames = []
-    tmp_path = None
+    tmp_dir = tempfile.mkdtemp()
+    input_path = os.path.join(tmp_dir, f'input_video{ext}')
+
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
-            tmp.write(video_bytes)
-            tmp_path = tmp.name
+        with open(input_path, 'wb') as f:
+            f.write(video_bytes)
 
-        cap = cv2.VideoCapture(tmp_path)
-        if not cap.isOpened():
-            print("[VIDEO OCR] Failed to open video stream", flush=True)
-            return []
+        # ── PATH 1: FFmpeg Frame Extraction (Supports ALL codecs: WebM, HEVC, MOV, MP4) ──
+        try:
+            out_pattern = os.path.join(tmp_dir, 'frame_%03d.png')
+            vf_filter = f"scale='min({max_width},iw)':-1"
+            cmd = [
+                'ffmpeg', '-y', '-i', input_path,
+                '-vf', f"fps=1/2,{vf_filter}",
+                '-vframes', '5',
+                out_pattern
+            ]
+            res = subprocess.run(cmd, capture_output=True, timeout=10)
+            if res.returncode == 0:
+                frame_files = sorted([os.path.join(tmp_dir, f) for f in os.listdir(tmp_dir) if f.startswith('frame_') and f.endswith('.png')])
+                for f_path in frame_files:
+                    img = cv2.imread(f_path)
+                    if img is not None and img.size > 0:
+                        frames.append(img)
+        except Exception as ffmpeg_err:
+            print(f"[VIDEO OCR] FFmpeg frame extraction note: {ffmpeg_err}", flush=True)
 
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        if total_frames <= 0:
-            total_frames = 30  # Fallback estimate
+        # ── PATH 2: OpenCV Direct VideoCapture Fallback ──
+        if not frames:
+            cap = cv2.VideoCapture(input_path)
+            if cap.isOpened():
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                if total_frames <= 0:
+                    total_frames = 30
+                for pos in sample_positions:
+                    target_frame = int(total_frames * pos)
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
+                    ret, frame = cap.read()
+                    if ret and frame is not None:
+                        h, w = frame.shape[:2]
+                        if max_width and w > max_width:
+                            scale = max_width / float(w)
+                            frame = cv2.resize(frame, (max_width, int(h * scale)), interpolation=cv2.INTER_AREA)
+                        frames.append(frame)
+                cap.release()
 
-        for pos in sample_positions:
-            target_frame = int(total_frames * pos)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
-            ret, frame = cap.read()
-            if ret and frame is not None:
-                h, w = frame.shape[:2]
-                if max_width and w > max_width:
-                    scale = max_width / float(w)
-                    frame = cv2.resize(frame, (max_width, int(h * scale)), interpolation=cv2.INTER_AREA)
-                frames.append(frame)
-
-        cap.release()
     except Exception as e:
         print(f"[VIDEO OCR] Error extracting frames: {e}", flush=True)
     finally:
-        if tmp_path and os.path.exists(tmp_path):
+        if os.path.exists(tmp_dir):
             try:
-                os.remove(tmp_path)
+                shutil.rmtree(tmp_dir, ignore_errors=True)
             except Exception:
                 pass
 
