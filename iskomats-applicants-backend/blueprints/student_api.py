@@ -3604,9 +3604,14 @@ def ocr_check():
         raw_last = str(data.get('lastName') or data.get('last_name') or applicant.get('last_name', '')).strip()
         
         mid_parts = raw_middle.split()
-        if len(raw_first.split()) == 1 and len(mid_parts) >= 2:
-            first_name = f"{raw_first} {mid_parts[0]}".strip()
-            middle_name = " ".join(mid_parts[1:]).strip()
+        if mid_parts and len(raw_first.split()) == 1:
+            first_mid = mid_parts[0].rstrip('.')
+            if len(first_mid) >= 2:
+                first_name = f"{raw_first} {first_mid}".strip()
+                middle_name = " ".join(mid_parts[1:]).strip()
+            else:
+                first_name = raw_first
+                middle_name = raw_middle
         else:
             first_name = raw_first
             middle_name = raw_middle

@@ -3446,8 +3446,11 @@ const StudentInfo = () => {
           const mParts = rawM.split(/\s+/).filter(Boolean);
 
           let displayFirstName = rawF;
-          if (fParts.length === 1 && mParts.length >= 2) {
-            displayFirstName = `${rawF} ${mParts[0]}`;
+          if (fParts.length === 1 && mParts.length >= 1) {
+            const firstMid = mParts[0].replace(/\./g, '');
+            if (firstMid.length >= 2) {
+              displayFirstName = `${rawF} ${firstMid}`;
+            }
           }
 
           const reqValues = {
