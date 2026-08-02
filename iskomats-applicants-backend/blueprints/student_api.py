@@ -3585,11 +3585,13 @@ def ocr_check():
         doc_type = target_doc or ('Indigency' if indigency_param else ('Enrollment' if enrollment_param else ('Grades' if grades_param else ('SchoolID' if id_front_param else 'Indigency'))))
         raw_doc = indigency_param or enrollment_param or grades_param or id_front_param
 
-        # Fetch applicant info for address/name verification if missing from request
+        # Fetch applicant info and per-user debug flags for verification
+        skip_tamper_check = False
         with get_db() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT first_name, middle_name, last_name, town_city_municipality, street_brgy FROM applicants WHERE applicant_no = %s", (request.user_no,))
+            cur.execute("SELECT first_name, middle_name, last_name, town_city_municipality, street_brgy, debug_skip_tamper_check FROM applicants WHERE applicant_no = %s", (request.user_no,))
             applicant = cur.fetchone() or {}
+            skip_tamper_check = bool(applicant.get('debug_skip_tamper_check'))
             if not raw_doc:
                 cols_to_fetch = ['indigency_doc', 'enrollment_certificate_doc', 'grades_doc', 'id_img_front']
                 document_values = fetch_applicant_document_values(cur, request.user_no, cols_to_fetch)
@@ -3609,7 +3611,7 @@ def ocr_check():
 
         # Construct unique verification cache key
         doc_hash = _hash_verification_source(doc_bytes)
-        cache_key = f"verif:{request.user_no}:{doc_type}:{doc_hash}:{first_name}:{last_name}:{town_city}:{barangay}"
+        cache_key = f"verif:{request.user_no}:{doc_type}:{doc_hash}:{first_name}:{last_name}:{town_city}:{barangay}:{skip_tamper_check}"
         cached_result = _get_cached_verification_result(cache_key)
 
         if cached_result:
@@ -3627,7 +3629,8 @@ def ocr_check():
             expected_school_name=data.get('schoolName'),
             expected_gpa=data.get('gpa'),
             expected_year_level=data.get('yearLevel'),
-            course=data.get('course')
+            course=data.get('course'),
+            skip_tamper_check=skip_tamper_check
         )
 
         verified = bool(success)

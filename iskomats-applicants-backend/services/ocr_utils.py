@@ -1039,13 +1039,25 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
     last_words  = [w for w in last_clean.split()  if len(w) >= 2]
     mid_words   = [w for w in mid_clean.split()   if len(w) >= 1]
 
-    # Individual word presence (for UI / failure messages)
-    first_ok = all(re.search(rf'\b{re.escape(w)}\b', norm_target) or re.search(rf'\b{re.escape(w)}\b', norm_raw) for w in first_words) if first_words else True
-    last_ok  = all(re.search(rf'\b{re.escape(w)}\b', norm_target) or re.search(rf'\b{re.escape(w)}\b', norm_raw) for w in last_words)  if last_words  else True
+    def _word_in_text(w, text):
+        if not w or not text: return False
+        if re.search(rf'\b{re.escape(w)}\b', text):
+            return True
+        if len(w) >= 3 and w in text:
+            return True
+        return False
+
+    first_ok = all(_word_in_text(w, norm_target) or _word_in_text(w, norm_raw) for w in first_words) if first_words else True
+    if not first_ok and first_words:
+        first_ok = any(_word_in_text(w, norm_target) or _word_in_text(w, norm_raw) for w in first_words if len(w) >= 3)
+
+    last_ok = all(_word_in_text(w, norm_target) or _word_in_text(w, norm_raw) for w in last_words) if last_words else True
+    if not last_ok and last_words:
+        last_ok = any(_word_in_text(w, norm_target) or _word_in_text(w, norm_raw) for w in last_words if len(w) >= 3)
 
     middle_ok = True
     if mid_words:
-        mid_full_ok = all(re.search(rf'\b{re.escape(w)}\b', norm_target) or re.search(rf'\b{re.escape(w)}\b', norm_raw) for w in mid_words if len(w) >= 2)
+        mid_full_ok = all(_word_in_text(w, norm_target) or _word_in_text(w, norm_raw) for w in mid_words if len(w) >= 2)
         if not mid_full_ok and mid_clean:
             initial = mid_clean[0]
             name_tokens = norm_target.split() + norm_raw.split()
@@ -1864,10 +1876,12 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name
     if not image_bytes:
         return False, "No document image provided.", "", {}
 
-    # Pre-scan Digital Tamper & Manipulation Check
-    is_edited, tamper_msg, _ = detect_document_tampering(image_bytes)
-    if is_edited:
-        return False, f"Tampering Alert: {tamper_msg}", "", {'tamper_alert': True, 'details': [tamper_msg]}
+    # Pre-scan Digital Tamper & Manipulation Check (bypassed if per-user skip_tamper_check flag is active)
+    skip_tamper_check = kwargs.get('skip_tamper_check') or kwargs.get('skipTamperCheck') or False
+    if not skip_tamper_check:
+        is_edited, tamper_msg, _ = detect_document_tampering(image_bytes)
+        if is_edited:
+            return False, f"Tampering Alert: {tamper_msg}", "", {'tamper_alert': True, 'details': [tamper_msg]}
 
     expected_name = kwargs.get('expected_name') or kwargs.get('full_name')
     if expected_name and (not first_name or not last_name):
