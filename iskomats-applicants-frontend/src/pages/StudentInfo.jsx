@@ -3162,6 +3162,22 @@ const StudentInfo = () => {
         resolve({ edited: false, reason: "Authentic document" });
         return;
       }
+
+      // Check header string metadata for AI software signatures if imageSource is data URL or text
+      if (typeof imageSource === 'string' && imageSource.startsWith('data:image/')) {
+        const lowerHeader = imageSource.slice(0, 10000).toLowerCase();
+        const aiKeywords = ['dall-e', 'dalle', 'midjourney', 'stable diffusion', 'stablediffusion', 'generative fill', 'photoshop', 'firefly', 'comfyui', 'canva'];
+        for (let kw of aiKeywords) {
+          if (lowerHeader.includes(kw)) {
+            resolve({
+              edited: true,
+              reason: `AI generation / software signature detected in document header (${kw.toUpperCase()}). Please upload an authentic document.`
+            });
+            return;
+          }
+        }
+      }
+
       const img = new Image();
       img.crossOrigin = "anonymous";
       img.onload = () => {

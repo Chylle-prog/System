@@ -1672,9 +1672,135 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
 
     return success, msg, meta
 
+def extract_exif_metadata_signals(raw_bytes):
+    """
+    Scans EXIF metadata tags and raw header bytes for known AI generation / image manipulation signatures.
+    Returns (is_ai_detected, reason, signal_name)
+    """
+    if not raw_bytes:
+        return False, "", None
+
+    ai_keywords = [
+        'dall-e', 'dalle', 'midjourney', 'stable diffusion', 'stablediffusion',
+        'photoshop generative fill', 'generative fill', 'adobe firefly', 'comfyui',
+        'automatic1111', 'canva', 'civitai', 'novelai', 'bing image creator',
+        'craiyon', 'fooocus', 'dreamstudio'
+    ]
+
+    try:
+        # 1. Quick raw header string check (first 64KB and last 16KB of file)
+        header_sample = raw_bytes[:65536] + raw_bytes[-16384:]
+        try:
+            sample_str = header_sample.decode('latin1', errors='ignore').lower()
+            for kw in ai_keywords:
+                if kw in sample_str:
+                    return True, f"AI generation / software signature found in document metadata ({kw.title()})", kw
+        except Exception:
+            pass
+
+        # 2. PIL Image EXIF tag inspection
+        import io
+        from PIL import Image, ExifTags
+        with Image.open(io.BytesIO(raw_bytes)) as pil_img:
+            info = pil_img.info or {}
+
+            # Check PIL info dictionary keys & values
+            for k, v in info.items():
+                val_str = str(v).lower() if v else ""
+                for kw in ai_keywords:
+                    if kw in val_str:
+                        return True, f"AI software metadata tag detected ({kw.title()})", kw
+
+            # Check EXIF numerical tags
+            exif_data = pil_img.getexif() if hasattr(pil_img, 'getexif') else None
+            if exif_data:
+                for tag_id, value in exif_data.items():
+                    tag_name = ExifTags.TAGS.get(tag_id, str(tag_id)).lower()
+                    val_str = str(value).lower()
+                    if tag_name in ('software', 'usercomment', 'imagedescription', 'artist', 'copyright', 'make', 'model'):
+                        for kw in ai_keywords:
+                            if kw in val_str:
+                                return True, f"AI generator tag found in EXIF {tag_name} ({kw.title()})", kw
+    except Exception as e:
+        logger.debug(f"[EXIF DETECTOR] Scan info: {e}")
+
+    return False, "", None
+
+
+def perform_error_level_analysis(img, quality=90):
+    """
+    Performs Error Level Analysis (ELA) by re-compressing the image at a known JPEG quality (90)
+    and calculating the absolute pixel difference error map.
+    Returns (is_tampered, reason, max_anomaly_score)
+    """
+    if img is None or img.size == 0:
+        return False, "", 0
+
+    try:
+        # Encode to JPEG in-memory at reference quality 90
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
+        result, enc_img = cv2.imencode('.jpg', img, encode_param)
+        if not result:
+            return False, "", 0
+
+        # Decode recompressed JPEG
+        recompressed = cv2.imdecode(enc_img, cv2.IMREAD_COLOR)
+        if recompressed is None:
+            return False, "", 0
+
+        # Calculate absolute difference
+        ela_diff = cv2.absdiff(img, recompressed)
+        ela_gray = cv2.cvtColor(ela_diff, cv2.COLOR_BGR2GRAY) if len(ela_diff.shape) == 3 else ela_diff
+
+        h, w = ela_gray.shape[:2]
+        if w < 40 or h < 40:
+            return False, "", 0
+
+        # Analyze grid variance (ignore outer 10% margins)
+        grid_w, grid_h = 24, 18
+        margin_x = int(w * 0.10)
+        margin_y = int(h * 0.10)
+        content_w = w - 2 * margin_x
+        content_h = h - 2 * margin_y
+        cols = content_w // grid_w
+        rows = content_h // grid_h
+
+        if cols < 2 or rows < 2:
+            return False, "", 0
+
+        patch_means = []
+        for r in range(rows):
+            for c in range(cols):
+                y1 = margin_y + r * grid_h
+                x1 = margin_x + c * grid_w
+                roi = ela_gray[y1:y1+grid_h, x1:x1+grid_w]
+                mean_val = float(np.mean(roi))
+                patch_means.append(mean_val)
+
+        if not patch_means:
+            return False, "", 0
+
+        avg_ela = float(np.mean(patch_means))
+        max_ela = float(np.max(patch_means))
+        ratio = (max_ela + 1.0) / (avg_ela + 1.0)
+
+        # High variance anomaly: high peak error in a local region vs background
+        if max_ela > 45.0 and ratio > 3.8:
+            return True, f"Error Level Analysis (ELA) anomaly detected: local compression discrepancy score {max_ela:.1f} (ratio {ratio:.1f}x background). Indicates digital editing or spliced content.", round(max_ela, 1)
+
+    except Exception as e:
+        logger.debug(f"[ELA DETECTOR] Error: {e}")
+
+    return False, "", 0
+
+
 def detect_document_tampering(image_bytes):
     """
-    Advanced Document Tampering & Digital Manipulation Detector (Python OpenCV).
+    Advanced Multi-Layer Document Tampering & Digital Manipulation Detector.
+    Runs:
+    1. EXIF & AI Generator Metadata Inspection
+    2. Pixel Grid Zero-Variance Overlay Check
+    3. Error Level Analysis (ELA) Compression Discrepancy Check
     """
     if not image_bytes:
         return False, "No image provided", 0
@@ -1684,6 +1810,11 @@ def detect_document_tampering(image_bytes):
         if not raw:
             return False, "Could not resolve image bytes", 0
 
+        # Layer 1: EXIF & Metadata AI inspection
+        ai_detected, ai_msg, _ = extract_exif_metadata_signals(raw)
+        if ai_detected:
+            return True, ai_msg, 99.0
+
         nparr = np.frombuffer(raw, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is None:
@@ -1692,6 +1823,7 @@ def detect_document_tampering(image_bytes):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
         h, w = gray.shape[:2]
 
+        # Layer 2: Grid patch zero-noise variance analysis (digital white/black box overlays)
         grid_w, grid_h = 20, 15
         cols, rows = w // grid_w, h // grid_h
 
@@ -1708,9 +1840,14 @@ def detect_document_tampering(image_bytes):
         if suspicious_patches >= 3:
             return True, f"Digital edit / overlay block detected on document ({suspicious_patches} artificial overlay patches found). Please upload an unedited document.", suspicious_patches
 
+        # Layer 3: Error Level Analysis (ELA)
+        ela_tampered, ela_msg, ela_score = perform_error_level_analysis(img)
+        if ela_tampered:
+            return True, ela_msg, ela_score
+
         return False, "Authentic document (No digital tampering detected)", 0
     except Exception as exc:
-        print(f"[TAMPER DETECTOR] Error: {exc}", flush=True)
+        logger.warning(f"[TAMPER DETECTOR] Error: {exc}")
         return False, f"Tamper detection error: {exc}", 0
 
 def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name=None, last_name=None, **kwargs):
