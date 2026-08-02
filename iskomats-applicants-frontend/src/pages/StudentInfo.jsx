@@ -417,7 +417,7 @@ const getTesseractWorker = async () => {
   tesseractWorkerSingleton = await window.Tesseract.createWorker('eng', 1, {
     workerPath: 'https://unpkg.com/tesseract.js@5.1.0/dist/worker.min.js',
     corePath: 'https://unpkg.com/tesseract.js-core@5.1.0/tesseract-core.wasm.js',
-    langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+    langPath: 'https://cdn.jsdelivr.net/gh/naptha/tessdata@gh-pages/4.0.0_fast',
     // Cache the language model in IndexedDB so it's only downloaded once.
     cacheMethod: 'write',
     logger: (m) => {

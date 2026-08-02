@@ -95,17 +95,19 @@ export const decryptUrl = async (url, type = 'image/jpeg') => {
   try {
     const separator = url.includes('?') ? '&' : '?';
     const fetchUrl = `${url}${separator}_cb=${Date.now()}`;
-    const headers = {};
-    const token = localStorage.getItem('authToken');
-    if (token && !url.includes('supabase.co')) {
-      headers['Authorization'] = `Bearer ${token}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    let response = await fetch(fetchUrl, { headers, signal: controller.signal }).catch(() => null);
+    clearTimeout(timeoutId);
+    if (!response || !response.ok) {
+      if (Object.keys(headers).length > 0) {
+        const c2 = new AbortController();
+        const t2 = setTimeout(() => c2.abort(), 2000);
+        response = await fetch(fetchUrl, { signal: c2.signal }).catch(() => null);
+        clearTimeout(t2);
+      }
     }
-    let response = await fetch(fetchUrl, { headers });
-    if (!response.ok && Object.keys(headers).length > 0) {
-      // Retry without Authorization headers if rejected by public CORS storage
-      response = await fetch(fetchUrl);
-    }
-    if (!response.ok) return url;
+    if (!response || !response.ok) return url;
     const blob = await response.blob();
     if (blob.size === 0) return url;
 
