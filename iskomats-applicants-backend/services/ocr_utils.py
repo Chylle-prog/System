@@ -2175,13 +2175,14 @@ def extract_full_name_from_document(raw_text):
     if not raw_text:
         return None, None, None
     clean = re.sub(r'\s+', ' ', raw_text)
-    pattern = r'(?:certify\s+that|known|personally\s+known)\s+(?:(?:mr|ms|mrs|dr)[./\s]*)*\s*([A-Za-z\.\s]+)'
+    pattern = r'(?:certify\s+that|known|personally\s+known)\s*(?:(?:that|i|personally|known|mr|ms|mrs|dr)[./\s]*)*\s*([A-Za-z\.\s]+)'
     m = re.search(pattern, clean, re.IGNORECASE)
     if m:
         raw_name = m.group(1).strip()
-        raw_name = re.split(r'\b(?:1\d|2\d|3\d|years|old|single|married|resident|bonafide|purok|barangay)\b', raw_name, flags=re.IGNORECASE)[0].strip()
+        raw_name = re.sub(r'^(?:mr|ms|mrs|dr|miss|s)[./\s]*', '', raw_name, flags=re.IGNORECASE).strip()
+        raw_name = re.split(r'\b(?:1\d|2\d|3\d|years|old|single|married|resident|bonafide|purok|barangay|is|a|an|the|of)\b', raw_name, flags=re.IGNORECASE)[0].strip()
         raw_name = re.sub(r'^[^\w]+|[^\w\.]+$', '', raw_name).strip()
-        tokens = [t.strip() for t in raw_name.split() if t.strip() and len(t.strip()) >= 1]
+        tokens = [t.strip() for t in raw_name.split() if t.strip() and len(t.strip()) >= 2]
         if len(tokens) >= 3:
             last = tokens[-1]
             if len(tokens[-2].rstrip('.')) <= 2:
