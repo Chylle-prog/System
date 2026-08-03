@@ -1341,12 +1341,19 @@ function coe_type_matches_text(text) {
   const keywords = [
     'certificate of registration',
     'certificate of enrollment',
+    'official certificate of registration',
     'registration',
+    'registered',
     'enrollment',
     'enrolled',
     'enroll',
     'cor',
-    'coe'
+    'coe',
+    'assessment',
+    'tuition',
+    'subject',
+    'units',
+    'bldg'
   ];
   return keywords.some(kw => normText.includes(kw));
 }

@@ -3583,7 +3583,17 @@ def ocr_check():
         id_front_param = id_front_file.read() if id_front_file else data.get('id_front') or data.get('idFront')
 
         doc_type = target_doc or ('Indigency' if indigency_param else ('Enrollment' if enrollment_param else ('Grades' if grades_param else ('SchoolID' if id_front_param else 'Indigency'))))
-        raw_doc = indigency_param or enrollment_param or grades_param or id_front_param
+
+        if doc_type == 'Enrollment':
+            raw_doc = enrollment_param
+        elif doc_type == 'Grades':
+            raw_doc = grades_param
+        elif doc_type == 'SchoolID':
+            raw_doc = id_front_param
+        elif doc_type == 'Indigency':
+            raw_doc = indigency_param
+        else:
+            raw_doc = indigency_param or enrollment_param or grades_param or id_front_param
 
         # Fetch applicant info and per-user debug flags for verification
         skip_tamper_check = False
