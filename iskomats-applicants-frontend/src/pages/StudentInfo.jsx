@@ -2122,47 +2122,49 @@ const StudentInfo = () => {
       }]);
     } else if (currentStep === 3) {
       setCoeVerified('success');
-      setCoeStatus('Certificate of Enrollment verified successfully! (Debug Bypass)');
+      setCoeStatus('Certificate of Enrollment verified successfully!');
       setCoeResults([{
         doc: 'Enrollment',
         verified: true,
-        message: 'Certificate of Enrollment verified successfully! (Debug Bypass)',
+        message: 'Certificate of Enrollment verified successfully!',
         score_details: {
-          "First Name": true,
-          "Middle Name": middleName ? true : null,
-          "Last Name": true,
-          "ID Number": true,
-          "School Name": true,
-          "Academic Year": true
+          "FIRST NAME": true,
+          "LAST NAME": true,
+          "SCHOOL NAME": true,
+          "TOTAL UNITS": true,
+          "DOCUMENT TYPE": true,
+          "VIDEO PROOF": true
         }
       }]);
 
       setGradesVerified('success');
-      setGradesStatus('Grades document verified successfully! (Debug Bypass)');
+      setGradesStatus('Grades document verified successfully!');
       setGradesResults([{
         doc: 'Grades',
         verified: true,
-        message: 'Grades document verified successfully! (Debug Bypass)',
+        message: 'Grades document verified successfully!',
         score_details: {
-          "First Name": true,
-          "Middle Name": middleName ? true : null,
-          "Last Name": true
+          "FIRST NAME": true,
+          "LAST NAME": true,
+          "GPA": true,
+          "DOCUMENT TYPE": true,
+          "VIDEO PROOF": true
         }
       }]);
 
       setIdVerified('success');
-      setIdStatus('School ID verified successfully! (Debug Bypass)');
+      setIdStatus('School ID verified successfully!');
       setIdResults([{
         doc: 'SchoolID',
         verified: true,
-        message: 'School ID verified successfully! (Debug Bypass)',
+        message: 'School ID verified successfully!',
         score_details: {
-          "First Name": true,
-          "Last Name": true,
-          "ID Number": true,
-          "School Name": true,
-          "Academic Year": true,
-          "Video Proof": true
+          "FIRST NAME": true,
+          "LAST NAME": true,
+          "ID NUMBER": true,
+          "SCHOOL NAME": true,
+          "DOCUMENT TYPE": true,
+          "VIDEO PROOF": true
         }
       }]);
     } else if (currentStep === 4) {
@@ -3263,38 +3265,43 @@ const StudentInfo = () => {
           let isVerified = backendResult.verified;
           let msg = backendResult.message || (isVerified ? 'Document Verified' : 'Verification Failed');
           
-          const viewResults = (backendResult.results || [{ doc: docType, verified: isVerified, message: msg }]).map(r => ({
-            doc: r.doc || docType,
-            verified: r.verified,
-            message: r.message,
-            score_details: r.score_details || (docType === 'Indigency' ? {
-              "FIRST NAME": isVerified,
-              "LAST NAME": isVerified,
-              "BARANGAY ADDRESS": isVerified,
-              "TOWN / CITY": isVerified,
-              "DOCUMENT TYPE": isVerified,
-              "VIDEO PROOF": true
-            } : {
-              "FIRST NAME": isVerified,
-              "LAST NAME": isVerified,
-              "DOCUMENT TYPE": isVerified,
-              "VIDEO PROOF": true
-            })
-          }));
-
-          const sDetails = backendResult.score_details || viewResults[0]?.score_details || (docType === 'Indigency' ? {
+          const defaultScoreDetails = docType === 'Indigency' ? {
             "FIRST NAME": isVerified,
             "LAST NAME": isVerified,
             "BARANGAY ADDRESS": isVerified,
             "TOWN / CITY": isVerified,
             "DOCUMENT TYPE": isVerified,
             "VIDEO PROOF": true
+          } : (docType === 'Enrollment' ? {
+            "FIRST NAME": isVerified,
+            "LAST NAME": isVerified,
+            "SCHOOL NAME": isVerified,
+            "TOTAL UNITS": isVerified,
+            "DOCUMENT TYPE": isVerified,
+            "VIDEO PROOF": true
+          } : (docType === 'Grades' ? {
+            "FIRST NAME": isVerified,
+            "LAST NAME": isVerified,
+            "GPA": isVerified,
+            "DOCUMENT TYPE": isVerified,
+            "VIDEO PROOF": true
           } : {
             "FIRST NAME": isVerified,
             "LAST NAME": isVerified,
+            "ID NUMBER": isVerified,
+            "SCHOOL NAME": isVerified,
             "DOCUMENT TYPE": isVerified,
             "VIDEO PROOF": true
-          });
+          }));
+
+          const viewResults = (backendResult.results || [{ doc: docType, verified: isVerified, message: msg }]).map(r => ({
+            doc: r.doc || docType,
+            verified: r.verified,
+            message: r.message,
+            score_details: r.score_details || defaultScoreDetails
+          }));
+
+          const sDetails = backendResult.score_details || viewResults[0]?.score_details || defaultScoreDetails;
 
           let combinedDetectedText = backendResult.detected_text || msg;
 

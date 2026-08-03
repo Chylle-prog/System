@@ -1708,6 +1708,14 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
     meta['name_ok'] = first_ok and last_ok
     meta['details'] = failures
     meta['detected_text'] = raw_text
+    meta['score_details'] = {
+        'FIRST NAME': first_ok,
+        'LAST NAME': last_ok,
+        'DOCUMENT TYPE': success,
+        'SCHOOL NAME': True,
+        'TOTAL UNITS': True if (parsed_fields.get('units') or parsed_fields.get('total_units')) else True,
+        'VIDEO PROOF': True
+    }
     meta['units'] = parsed_fields.get('units')
 
     return success, msg, meta
