@@ -1823,8 +1823,6 @@ const StudentInfo = () => {
         resolve(result);
       };
 
-      const checkPoints = [0.25, 0.50, 0.75];
-      let currentCheckIndex = 0;
       let accumulatedLogs = [];
 
       const evaluateFinal = () => {
@@ -1848,85 +1846,69 @@ const StudentInfo = () => {
         }
       };
 
-      const nextFrameOrEvaluate = () => {
-        const combinedText = accumulatedLogs.join(' ').toLowerCase();
-        const normCombined = normalizeForOcr(combinedText);
-        const kwFound = strictKeywords.some(kw => normCombined.includes(kw));
-
-        if (kwFound) {
-          clearTimeout(timeout);
-          finish({
-            valid: true,
-            reason: "Video Text Verified",
-            detectedText: accumulatedLogs.join('\n\n')
-          });
-          return;
-        }
-
-        currentCheckIndex++;
-        if (currentCheckIndex < checkPoints.length && isFinite(video.duration) && video.duration > 0) {
-          try {
-            video.currentTime = video.duration * checkPoints[currentCheckIndex];
-          } catch (e) {
-            evaluateFinal();
-          }
-        } else {
-          evaluateFinal();
-        }
-      };
-
-      const processFrame = async () => {
-        try {
-          const w = video.videoWidth || 600;
-          const h = video.videoHeight || 400;
-          if (!w || !h) {
-            nextFrameOrEvaluate();
-            return;
-          }
-
-          const scale = 800 / Math.max(w, h);
-          const targetW = Math.round(w * scale);
-          const targetH = Math.round(h * scale);
-
-          const canvas = document.createElement('canvas');
-          canvas.width = targetW;
-          canvas.height = targetH;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(video, 0, 0, targetW, targetH);
-
-          const worker = await getTesseractWorker();
-          if (worker) {
-            const res = await worker.recognize(canvas).catch(() => null);
-            const rawTxt = res?.data?.text || '';
-            const cleanTxt = rawTxt.trim().replace(/\s+/g, ' ');
-            if (cleanTxt && cleanTxt.length >= 3) {
-              accumulatedLogs.push(`[Frame at ${(video.currentTime || 0).toFixed(1)}s]: "${cleanTxt}"`);
-            }
-          }
-        } catch (e) {
-          console.warn('[Video OCR] Frame sampling note:', e);
-        }
-        nextFrameOrEvaluate();
-      };
-
       const timeout = setTimeout(() => {
         evaluateFinal();
       }, 7000);
 
-      video.onloadeddata = () => {
+      const runPlayingVideoSample = async () => {
         try {
-          if (isFinite(video.duration) && video.duration > 0) {
-            video.currentTime = video.duration * checkPoints[0];
-          } else {
-            processFrame();
+          await video.play().catch(() => { });
+          await new Promise(r => setTimeout(r, 400));
+
+          for (let sampleIndex = 0; sampleIndex < 3; sampleIndex++) {
+            if (isResolved) break;
+            const w = video.videoWidth;
+            const h = video.videoHeight;
+            if (w && h) {
+              const scale = 800 / Math.max(w, h);
+              const targetW = Math.round(w * scale);
+              const targetH = Math.round(h * scale);
+
+              const canvas = document.createElement('canvas');
+              canvas.width = targetW;
+              canvas.height = targetH;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(video, 0, 0, targetW, targetH);
+
+              const worker = await getTesseractWorker();
+              if (worker) {
+                const res = await worker.recognize(canvas).catch(() => null);
+                const rawTxt = res?.data?.text || '';
+                const cleanTxt = rawTxt.trim().replace(/\s+/g, ' ');
+                if (cleanTxt && cleanTxt.length >= 3) {
+                  accumulatedLogs.push(`[Frame at ${(video.currentTime || 0).toFixed(1)}s]: "${cleanTxt}"`);
+                }
+              }
+
+              const combinedText = accumulatedLogs.join(' ').toLowerCase();
+              const normCombined = normalizeForOcr(combinedText);
+              const kwFound = strictKeywords.some(kw => normCombined.includes(kw));
+
+              if (kwFound) {
+                clearTimeout(timeout);
+                finish({
+                  valid: true,
+                  reason: "Video Text Verified",
+                  detectedText: accumulatedLogs.join('\n\n')
+                });
+                return;
+              }
+            }
+
+            if (isFinite(video.duration) && video.duration > 0) {
+              const targetTime = Math.min(video.duration - 0.1, (sampleIndex + 1) * (video.duration / 3));
+              video.currentTime = targetTime;
+              await new Promise(r => setTimeout(r, 400));
+            }
           }
         } catch (e) {
-          processFrame();
+          console.warn('[Video OCR] Frame sampling loop note:', e);
         }
+        evaluateFinal();
       };
 
-      video.onseeked = () => {
-        processFrame();
+      video.onloadeddata = () => {
+        runPlayingVideoSample();
       };
 
       video.onerror = () => {
