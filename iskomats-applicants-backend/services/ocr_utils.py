@@ -1759,25 +1759,6 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
         if not course_ok:
             failures.append(f"Course mismatch (Expected: '{expected_course}', Found in COR: '{found_course}')")
 
-    # 5. YEAR LEVEL MATCHING
-    if expected_year_level and str(expected_year_level).strip():
-        found_yl = parsed_fields.get('year_level', raw_text)
-        def parse_yl_num(s):
-            if not s: return None
-            st = str(s).lower()
-            if '1st' in st or 'first' in st or '1' in st: return 1
-            if '2nd' in st or 'second' in st or '2' in st: return 2
-            if '3rd' in st or 'third' in st or '3' in st: return 3
-            if '4th' in st or 'fourth' in st or '4' in st: return 4
-            if '5th' in st or 'fifth' in st or '5' in st: return 5
-            return None
-
-        exp_yl_num = parse_yl_num(expected_year_level)
-        found_yl_num = parse_yl_num(found_yl)
-
-        if exp_yl_num and found_yl_num and exp_yl_num != found_yl_num:
-            failures.append(f"Year Level mismatch (Expected: '{expected_year_level}', Found in COR: '{found_yl}')")
-
     success = (len(failures) == 0)
     if success:
         msg = f"COR Verified: Name ({first_name} {last_name}), ID ({expected_id_no or 'N/A'}), AY ({expected_academic_year or 'N/A'}) matched."
@@ -1801,18 +1782,6 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
         found_sy_sem = parsed_fields.get('school_year_sem', raw_text)
         found_num = extract_semester_from_ocr_text(found_sy_sem) or extract_semester_from_ocr_text(raw_text)
         _sem_ok = (exp_num == found_num) if (exp_num and found_num) else (exp_num is None)
-
-    _yl_ok = True
-    if expected_year_level and str(expected_year_level).strip():
-        found_yl = parsed_fields.get('year_level', raw_text)
-        def _parse_yl(s):
-            st = str(s or '').lower()
-            for n, kws in [(1, ['1st', 'first']), (2, ['2nd', 'second']), (3, ['3rd', 'third']), (4, ['4th', 'fourth']), (5, ['5th', 'fifth'])]:
-                if any(k in st for k in kws) or str(n) in st: return n
-            return None
-        exp_yl_num = _parse_yl(expected_year_level)
-        found_yl_num = _parse_yl(found_yl)
-        _yl_ok = not (exp_yl_num and found_yl_num and exp_yl_num != found_yl_num)
 
     _course_ok = True
     if expected_course and str(expected_course).strip():
@@ -1847,7 +1816,6 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
         'SCHOOL NAME': _school_ok if expected_school_name else None,
         'ACADEMIC YEAR': _ay_ok if expected_academic_year else None,
         'SEMESTER': _sem_ok if expected_semester else None,
-        'YEAR LEVEL': _yl_ok if expected_year_level else None,
         'COURSE': _course_ok if expected_course else None,
         'ID NUMBER': _id_ok if (not is_national_id and expected_id_no) else None,
         'TOTAL UNITS': f"{_units_detected} units detected" if _units_detected else None,
@@ -2697,22 +2665,7 @@ def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
             if not ay_ok:
                 failures.append(ay_msg)
 
-        # 5. Year Level check for School ID
-        expected_year_level = kwargs.get('expected_year_level') or kwargs.get('yearLevel')
-        yl_ok = True
-        if expected_year_level and str(expected_year_level).strip():
-            def _parse_yl_id(s):
-                st = str(s or '').lower()
-                for n, kws in [(1, ['1st', 'first']), (2, ['2nd', 'second']), (3, ['3rd', 'third']), (4, ['4th', 'fourth']), (5, ['5th', 'fifth'])]:
-                    if any(k in st for k in kws) or str(n) in st: return n
-                return None
-            exp_yl_num = _parse_yl_id(expected_year_level)
-            found_yl_num = _parse_yl_id(doc_norm)
-            yl_ok = not (exp_yl_num and found_yl_num and exp_yl_num != found_yl_num)
-            if not yl_ok:
-                failures.append(f"Year Level mismatch (Expected: '{expected_year_level}' on ID)")
-
-        success = name_matched and id_ok and school_ok and ay_ok and yl_ok
+        success = name_matched and id_ok and school_ok and ay_ok
         doc_label = "School ID"
 
     if success:
@@ -2731,21 +2684,19 @@ def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
             'FIRST NAME': first_ok,
             'LAST NAME': last_ok,
             'ADDRESS': addr_ok,
-            'DOCUMENT TYPE': success,
+            'DOCUMENT TYPE': True,
             'VIDEO PROOF': True
         }
     else:
         expected_school_name = kwargs.get('expected_school_name') or kwargs.get('schoolName')
         expected_academic_year = kwargs.get('expected_academic_year') or kwargs.get('academicYear')
-        expected_year_level = kwargs.get('expected_year_level') or kwargs.get('yearLevel')
         meta['score_details'] = {
             'FIRST NAME': first_ok,
             'LAST NAME': last_ok,
             'ID NUMBER': id_ok if (kwargs.get('expected_id_no') or kwargs.get('student_id')) else None,
             'SCHOOL NAME': school_ok if expected_school_name else None,
             'ACADEMIC YEAR': ay_ok if expected_academic_year else None,
-            'YEAR LEVEL': yl_ok if expected_year_level else None,
-            'DOCUMENT TYPE': success,
+            'DOCUMENT TYPE': True,
             'VIDEO PROOF': True
         }
 

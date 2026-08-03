@@ -3334,7 +3334,6 @@ const StudentInfo = () => {
               "SCHOOL NAME": schoolName || null,
               "ACADEMIC YEAR": academicYear || null,
               "SEMESTER": semester || null,
-              "YEAR LEVEL": yearLevel || null,
               "COURSE": course || null,
               "ID NUMBER": ((scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID') !== 'National ID' && idNumber) ? idNumber : null,
               "TOTAL UNITS": sDetails["TOTAL UNITS"] || null,
@@ -3350,7 +3349,6 @@ const StudentInfo = () => {
               "SCHOOL NAME": schoolName || null,
               "ACADEMIC YEAR": academicYear || null,
               "ID NUMBER": idNumber || null,
-              "YEAR LEVEL": yearLevel || null,
             } : {}),
             "DOCUMENT TYPE": docType === 'Indigency' ? 'Certificate of Indigency' : docType,
             "VIDEO PROOF": sDetails["VIDEO PROOF"] ? 'Uploaded & Validated' : 'Validation Failed'
@@ -3896,7 +3894,7 @@ const StudentInfo = () => {
 
           const unitsOk = requiredUnits !== null ? (detectedUnits !== null && detectedUnits === requiredUnits) : true;
 
-          isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk && yrOk && videoOk && coeTypeOk && unitsOk;
+          isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk && videoOk && coeTypeOk && unitsOk;
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
             "Middle Name": middleName ? nameCheck.details.middle_ok : null,
@@ -3904,7 +3902,6 @@ const StudentInfo = () => {
             "School Name": schoolName ? schoolOk : null,
             "Course / Track": course ? courseOk : null,
             "Academic Year": academicYear ? ayOk : null,
-            "Year Level": yearLevel ? yrOk : null,
             "Semester": (semester || reqSemester) ? semOk : null,
             "ID Number": isNationalId ? null : (idNumber ? idOk : null),
             "Document Type": coeTypeOk,
