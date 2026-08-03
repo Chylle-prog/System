@@ -2277,8 +2277,19 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
     f_words = [w for w in user_first_clean.split() if len(w) >= 3]
     l_words = [w for w in user_last_clean.split() if len(w) >= 3]
 
-    # FIRST NAME VERIFICATION: Check if applicant's first_name words appear in document text
-    f_in_doc = any(_word_in_text(w, doc_norm) for w in f_words) if f_words else False
+    # FIRST NAME VERIFICATION: Check if applicant's first_name words appear with strict word boundaries
+    f_in_doc = False
+    for w in f_words:
+        if len(w) <= 3:
+            # Short words like 'Ana' must be matched as exact whole words, e.g. \bana\b
+            if re.search(r'\b' + re.escape(w) + r'\b', doc_norm):
+                f_in_doc = True
+                break
+        else:
+            if w in doc_norm:
+                f_in_doc = True
+                break
+
     if doc_first:
         doc_first_clean = normalize_text(doc_first or '')
         if any(w in doc_first_clean for w in f_words):
