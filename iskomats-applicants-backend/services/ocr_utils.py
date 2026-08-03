@@ -2319,12 +2319,29 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
     # DOCUMENT TYPE KEYWORD MATCHING
     is_residency_doc = kwargs.get('is_residency_doc') or kwargs.get('isResidencyDoc') or False
     residency_keywords = ['residency', 'resident', 'residing', 'pagkapamayanan', 'naninirahan', 'maninirahan', 'pamayanan']
-    indigency_keywords = ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang', 'punong barangay', 'sangguniang', 'office of the punong']
-    all_doc_keywords = residency_keywords + indigency_keywords
+    indigency_keywords = ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang']
 
-    doc_type_ok = any(k in doc_norm for k in all_doc_keywords) or 'barangay' in doc_norm
-    if not doc_type_ok:
-        failures.append("Document Type Mismatch: Document does not contain required 'Indigency' / 'Residency' keywords")
+    has_residency = any(k in doc_norm for k in residency_keywords)
+    has_indigency = any(k in doc_norm for k in indigency_keywords)
+
+    if is_residency_doc:
+        # Required: Certificate of Residency
+        if has_indigency and not has_residency:
+            doc_type_ok = False
+            failures.append("Document Type Mismatch: Document is a Certificate of Indigency, but scholarship requires a Certificate of Residency")
+        else:
+            doc_type_ok = has_residency
+            if not doc_type_ok:
+                failures.append("Document Type Mismatch: Document does not contain required 'Certificate of Residency' keywords")
+    else:
+        # Required: Certificate of Indigency
+        if has_residency and not has_indigency:
+            doc_type_ok = False
+            failures.append("Document Type Mismatch: Document is a Certificate of Residency, but scholarship requires a Certificate of Indigency")
+        else:
+            doc_type_ok = has_indigency
+            if not doc_type_ok:
+                failures.append("Document Type Mismatch: Document does not contain required 'Certificate of Indigency' keywords")
 
     # ADDRESS MATCHING — Valid Barangay Indigency document satisfies address check
     addr_ok = doc_type_ok or 'barangay' in doc_norm or 'batangas' in doc_norm
