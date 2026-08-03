@@ -2442,7 +2442,15 @@ def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
         if not school_ok:
             failures.append(f"School name mismatch (Expected: '{expected_school}' on ID)")
 
-    success = (first_ok and last_ok) and id_ok and school_ok
+    # 4. Academic / Validity Year Matching (Only for School ID, NOT National ID)
+    id_type = kwargs.get('id_type') or kwargs.get('idType') or 'School ID'
+    is_national_id = (str(id_type).lower() == 'national id')
+    expected_ay = kwargs.get('expected_academic_year') or kwargs.get('academicYear')
+    ay_ok = True
+    if not is_national_id and expected_ay and str(expected_ay).strip():
+        ay_ok, _ = verify_academic_year_strict(expected_ay, raw_text, raw_text)
+
+    success = (first_ok and last_ok) and id_ok and school_ok and ay_ok
     if success:
         msg = f"School ID Verified: Name ({first_name} {last_name}) and ID details matched."
     else:
@@ -2451,8 +2459,18 @@ def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
     meta['name_ok'] = first_ok and last_ok
     meta['id_ok'] = id_ok
     meta['school_ok'] = school_ok
+    meta['ay_ok'] = ay_ok
     meta['details'] = failures
     meta['detected_text'] = raw_text
+    meta['score_details'] = {
+        'FIRST NAME': first_ok,
+        'LAST NAME': last_ok,
+        'ID NUMBER': id_ok,
+        'SCHOOL NAME': school_ok,
+        'ACADEMIC YEAR': ay_ok,
+        'DOCUMENT TYPE': success,
+        'VIDEO PROOF': True
+    }
 
     return success, msg, meta
 

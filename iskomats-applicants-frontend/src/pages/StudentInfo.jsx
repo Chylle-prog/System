@@ -3275,6 +3275,7 @@ const StudentInfo = () => {
           } : (docType === 'Enrollment' ? {
             "FIRST NAME": isVerified,
             "LAST NAME": isVerified,
+            "ACADEMIC YEAR": isVerified,
             "SCHOOL NAME": isVerified,
             "TOTAL UNITS": isVerified,
             "DOCUMENT TYPE": isVerified,
@@ -3290,6 +3291,7 @@ const StudentInfo = () => {
             "LAST NAME": isVerified,
             "ID NUMBER": isVerified,
             "SCHOOL NAME": isVerified,
+            "ACADEMIC YEAR": isVerified,
             "DOCUMENT TYPE": isVerified,
             "VIDEO PROOF": true
           }));
