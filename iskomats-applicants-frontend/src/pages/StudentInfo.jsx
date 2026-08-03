@@ -2162,7 +2162,6 @@ const StudentInfo = () => {
           "FIRST NAME": true,
           "LAST NAME": true,
           "ID NUMBER": true,
-          "SCHOOL NAME": true,
           "DOCUMENT TYPE": true,
           "VIDEO PROOF": true
         }
@@ -3290,8 +3289,6 @@ const StudentInfo = () => {
             "FIRST NAME": isVerified,
             "LAST NAME": isVerified,
             "ID NUMBER": isVerified,
-            "SCHOOL NAME": isVerified,
-            "ACADEMIC YEAR": isVerified,
             "DOCUMENT TYPE": isVerified,
             "VIDEO PROOF": true
           }));
