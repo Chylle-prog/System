@@ -1749,16 +1749,16 @@ const StudentInfo = () => {
       return { valid: false, reason: "Invalid video source format." };
     }
 
-    let targetKeywords = [];
+    let strictKeywords = [];
     const fnLower = String(fieldName || '').toLowerCase();
     if (fnLower.includes('indigency') || fnLower.includes('residency')) {
-      targetKeywords = ['indigency', 'indigent', 'residency', 'resident', 'barangay', 'katibayan', 'punong', 'kapitan', 'bayan', 'mataasnakahoy', 'batangas', 'certificate'];
+      strictKeywords = ['indigency', 'indigent', 'residency', 'resident', 'barangay', 'katibayan', 'punong'];
     } else if (fnLower.includes('coe') || fnLower.includes('enrollment') || fnLower.includes('registration')) {
-      targetKeywords = ['registration', 'registered', 'enrollment', 'enrolled', 'cor', 'coe', 'certificate', 'student', 'college', 'units', 'schedule', 'lipa', 'salle', 'subject', 'class', 'faculty', 'term', 'ay', 'assessment', 'tuition'];
+      strictKeywords = ['registration', 'registered', 'enrollment', 'enrolled', 'cor', 'coe'];
     } else if (fnLower.includes('grades')) {
-      targetKeywords = ['grade', 'grades', 'gpa', 'gwa', 'transcript', 'evaluation', 'record', 'rating', 'remarks', 'subject', 'units'];
+      strictKeywords = ['grade', 'grades', 'gpa', 'gwa', 'transcript', 'evaluation'];
     } else {
-      targetKeywords = ['school', 'student', 'id', 'card', 'identity', 'university', 'college', 'lipa', 'salle', 'republic', 'holder'];
+      strictKeywords = ['school', 'student', 'id', 'identity', 'holder'];
     }
 
     let createdBlobUrl = null;
@@ -1784,7 +1784,7 @@ const StudentInfo = () => {
     }
 
     if (!srcUrl) {
-      return { valid: true, reason: "Video Text Verified", detectedText: "Proof video stream active." };
+      return { valid: false, reason: "No video stream source found." };
     }
 
     return await new Promise((resolve) => {
@@ -1824,8 +1824,12 @@ const StudentInfo = () => {
       };
 
       const timeout = setTimeout(() => {
-        finish({ valid: true, reason: "Video Text Verified", detectedText: "Proof video stream active." });
-      }, 3500);
+        finish({
+          valid: false,
+          reason: `Video text mismatch: Required document keywords (${strictKeywords.slice(0, 2).join(', ')}) were not detected in video frames.`,
+          detectedText: "Video frame capture timeout."
+        });
+      }, 4000);
 
       const captureAndVerify = async () => {
         try {
@@ -1844,7 +1848,10 @@ const StudentInfo = () => {
           const worker = await getTesseractWorker();
           if (!worker) {
             clearTimeout(timeout);
-            finish({ valid: true, reason: "Video Text Verified", detectedText: "Proof video stream active." });
+            finish({
+              valid: false,
+              reason: `Video text mismatch: Required document keywords (${strictKeywords.slice(0, 2).join(', ')}) were not detected in video frames.`
+            });
             return;
           }
 
@@ -1854,8 +1861,8 @@ const StudentInfo = () => {
 
           clearTimeout(timeout);
 
-          const kwFound = targetKeywords.some(kw => normTxt.includes(kw));
-          if (kwFound || normTxt.length < 5) {
+          const kwFound = strictKeywords.some(kw => normTxt.includes(kw));
+          if (kwFound) {
             finish({
               valid: true,
               reason: "Video Text Verified",
@@ -1864,13 +1871,16 @@ const StudentInfo = () => {
           } else {
             finish({
               valid: false,
-              reason: `Video text mismatch: Required document keywords (${targetKeywords.slice(0, 3).join(', ')}) were not detected in video frames.`,
+              reason: `Video text mismatch: Neither registration nor enrollment keywords were detected in the video proof frames.`,
               detectedText: `[Frame at ${(video.currentTime || 0).toFixed(1)}s]: "${rawTxt.trim()}"`
             });
           }
         } catch (err) {
           clearTimeout(timeout);
-          finish({ valid: true, reason: "Video Text Verified", detectedText: "Proof video stream active." });
+          finish({
+            valid: false,
+            reason: `Video text mismatch: Required document keywords (${strictKeywords.slice(0, 2).join(', ')}) were not detected in video frames.`
+          });
         }
       };
 
@@ -1892,7 +1902,10 @@ const StudentInfo = () => {
 
       video.onerror = () => {
         clearTimeout(timeout);
-        finish({ valid: true, reason: "Video Text Verified", detectedText: "Proof video stream active." });
+        finish({
+          valid: false,
+          reason: `Video text mismatch: Required document keywords (${strictKeywords.slice(0, 2).join(', ')}) were not detected in video frames.`
+        });
       };
 
       video.src = srcUrl;
