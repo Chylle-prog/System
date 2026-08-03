@@ -2834,8 +2834,6 @@ def verify_video_content(
 
     target_keywords = keywords or default_keywords
 
-    # 1. Extract frames from raw video bytes
-    # For indigency video: use only 3 frames + fast sparse-text OCR (psm=11) for keyword detection speed
     is_indigency_video = 'INDIGEN' in doc_type_upper
     video_sample_positions = [0.2, 0.5, 0.8] if is_indigency_video else sample_positions
     extracted_text_list = []
@@ -2843,17 +2841,10 @@ def verify_video_content(
         try:
             frames = extract_frames_from_video_bytes(video_bytes, sample_positions=video_sample_positions, max_width=max_width)
             for frame in frames:
-                # Indigency video: use fast sparse-text mode (psm=11) — just needs keyword detection, not full layout
-                video_psm = 11 if is_indigency_video else 6
-                frame_text = _run_tesseract_on_image(frame, psm=video_psm)
+                # Use Auto Layout OCR (psm=3) on video frames for clean text extraction
+                frame_text = _run_tesseract_on_image(frame, psm=3)
                 if frame_text and len(frame_text.strip()) > 3:
                     extracted_text_list.append(frame_text.strip())
-                    # Early exit for indigency: stop processing frames as soon as we hit a keyword
-                    if is_indigency_video:
-                        combined_so_far = normalize_text(frame_text)
-                        target_keywords_lower = [k.lower() for k in target_keywords]
-                        if any(k in combined_so_far for k in target_keywords_lower):
-                            break
         except Exception as video_err:
             print(f"[VIDEO OCR] Frame processing note: {video_err}", flush=True)
 

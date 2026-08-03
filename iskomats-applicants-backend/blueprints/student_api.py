@@ -3680,6 +3680,7 @@ def ocr_check():
         })
 
         # Video OCR verification
+        v_text = None
         if video_bytes and len(video_bytes) > 500:
             from services.ocr_utils import verify_video_content
             keywords_map = {
@@ -3688,20 +3689,25 @@ def ocr_check():
                 'Grades': ['grades', 'grade', 'transcript', 'records', 'units', 'subject', 'gpa', 'evaluation'],
                 'SchoolID': ['student', 'identity', 'id', 'republic', 'philippines', 'school', 'university', 'college']
             }
-            v_ok, v_msg = verify_video_content(
+            v_ok, v_msg, v_text = verify_video_content(
                 video_bytes,
                 keywords=keywords_map.get(doc_type, ['indigency', 'barangay']),
                 expected_address=expected_addr_to_check,
                 expected_name=f"{first_name} {last_name}".strip(),
                 expected_id=data.get('idNumber'),
-                doc_ocr_text=raw_text
+                doc_ocr_text=raw_text,
+                doc_type=doc_type
             )
             score_details['VIDEO PROOF'] = v_ok
             if not v_ok:
                 verified = False
                 message = f"{message}; Video Verification Alert: {v_msg}"
 
-        detected_text = (meta or {}).get('detected_text', raw_text)
+        base_detected_text = (meta or {}).get('detected_text', raw_text)
+        if v_text and len(v_text.strip()) > 0:
+            detected_text = f"{base_detected_text}\n\n--- 📹 EXTRACTED VIDEO PROOF OCR TEXT ---\n{v_text}"
+        else:
+            detected_text = base_detected_text
 
         response_payload = {
             'verified': verified,
