@@ -3657,7 +3657,10 @@ def ocr_check():
             expected_school_name=data.get('schoolName'),
             expected_gpa=data.get('gpa'),
             expected_year_level=data.get('yearLevel'),
+            expected_academic_year=data.get('academicYear') or data.get('academic_year'),
+            expected_semester=data.get('semester'),
             course=data.get('course'),
+            id_type=data.get('idType') or data.get('id_type') or 'School ID',
             skip_tamper_check=skip_tamper_check
         )
 

@@ -3222,6 +3222,10 @@ const StudentInfo = () => {
         if (idNumber) formDataPayload.append('idNumber', idNumber);
         if (yearLevel) formDataPayload.append('yearLevel', yearLevel);
         if (course) formDataPayload.append('course', course);
+        if (academicYear) formDataPayload.append('academicYear', academicYear);
+        if (semester) formDataPayload.append('semester', semester);
+        const _idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
+        formDataPayload.append('idType', _idType);
 
         const docFieldName = docType === 'Indigency' ? 'indigency_doc' : (docType === 'Enrollment' ? 'enrollment_doc' : (docType === 'Grades' ? 'grades_doc' : 'id_front'));
         
@@ -3325,6 +3329,28 @@ const StudentInfo = () => {
             ...(docType === 'Indigency' ? {
               "BARANGAY ADDRESS": targetBarangay || 'Extracted Address',
               "TOWN / CITY": townCity || 'Extracted City',
+            } : {}),
+            ...(docType === 'Enrollment' ? {
+              "SCHOOL NAME": schoolName || null,
+              "ACADEMIC YEAR": academicYear || null,
+              "SEMESTER": semester || null,
+              "YEAR LEVEL": yearLevel || null,
+              "COURSE": course || null,
+              "ID NUMBER": ((scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID') !== 'National ID' && idNumber) ? idNumber : null,
+              "TOTAL UNITS": sDetails["TOTAL UNITS"] || null,
+            } : {}),
+            ...(docType === 'Grades' ? {
+              "SCHOOL NAME": schoolName || null,
+              "ACADEMIC YEAR": academicYear || null,
+              "SEMESTER": semester || null,
+              "COURSE": course || null,
+              "GPA": gpa || null,
+            } : {}),
+            ...(docType === 'SchoolID' ? {
+              "SCHOOL NAME": schoolName || null,
+              "ACADEMIC YEAR": academicYear || null,
+              "ID NUMBER": idNumber || null,
+              "YEAR LEVEL": yearLevel || null,
             } : {}),
             "DOCUMENT TYPE": docType === 'Indigency' ? 'Certificate of Indigency' : docType,
             "VIDEO PROOF": sDetails["VIDEO PROOF"] ? 'Uploaded & Validated' : 'Validation Failed'
