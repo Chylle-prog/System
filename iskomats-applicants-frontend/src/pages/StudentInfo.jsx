@@ -1752,13 +1752,18 @@ const StudentInfo = () => {
     let strictKeywords = [];
     const fnLower = String(fieldName || '').toLowerCase();
     if (fnLower.includes('indigency') || fnLower.includes('residency')) {
-      strictKeywords = ['indigency', 'indigent', 'residency', 'resident', 'barangay', 'katibayan', 'punong', 'bayan', 'batangas', 'mataasnakahoy', 'certificate', 'officer', 'office'];
+      strictKeywords = [
+        'indigency', 'indigent', 'residency', 'resident', 'barangay', 'katibayan', 'punong',
+        'bayan', 'batangas', 'mataasnakahoy', 'certificate', 'officer', 'office', 'republic',
+        'philippines', 'sangguniang', 'kagawad', 'secretary', 'treasurer', 'sk', 'chairperson',
+        'concern', 'certify', 'famili', 'family', 'purok', 'kapitan', 'nangkaan', 'mataas', 'kahoy', 'lubi'
+      ];
     } else if (fnLower.includes('coe') || fnLower.includes('enrollment') || fnLower.includes('registration')) {
-      strictKeywords = ['registration', 'registered', 'enrollment', 'enrolled', 'cor', 'coe'];
+      strictKeywords = ['registration', 'registered', 'enrollment', 'enrolled', 'cor', 'coe', 'certificate', 'student', 'college', 'units', 'schedule', 'lipa', 'salle', 'subject', 'class', 'faculty', 'term', 'ay', 'assessment', 'tuition'];
     } else if (fnLower.includes('grades')) {
-      strictKeywords = ['grade', 'grades', 'gpa', 'gwa', 'transcript', 'evaluation'];
+      strictKeywords = ['grade', 'grades', 'gpa', 'gwa', 'transcript', 'evaluation', 'record', 'rating', 'remarks', 'subject', 'units'];
     } else {
-      strictKeywords = ['school', 'student', 'id', 'identity', 'holder'];
+      strictKeywords = ['school', 'student', 'id', 'identity', 'holder', 'card', 'university', 'college'];
     }
 
     let createdBlobUrl = null;
@@ -1849,14 +1854,14 @@ const StudentInfo = () => {
 
       const timeout = setTimeout(() => {
         evaluateFinal();
-      }, 9000);
+      }, 10000);
 
       const runPlayingVideoSample = async () => {
         try {
           await video.play().catch(() => { });
           await new Promise(r => setTimeout(r, 400));
 
-          const fractions = [0.20, 0.50, 0.80];
+          const fractions = [0.15, 0.45, 0.75];
           for (let sampleIndex = 0; sampleIndex < fractions.length; sampleIndex++) {
             if (isResolved) break;
 
@@ -1870,10 +1875,10 @@ const StudentInfo = () => {
               });
             }
 
-            const w = video.videoWidth;
-            const h = video.videoHeight;
+            const w = video.videoWidth || 600;
+            const h = video.videoHeight || 400;
             if (w && h) {
-              const scale = 800 / Math.max(w, h);
+              const scale = 1000 / Math.max(w, h);
               const targetW = Math.round(w * scale);
               const targetH = Math.round(h * scale);
 
@@ -1888,7 +1893,7 @@ const StudentInfo = () => {
                 const res = await worker.recognize(canvas).catch(() => null);
                 const rawTxt = res?.data?.text || '';
                 const cleanTxt = rawTxt.trim().replace(/\s+/g, ' ');
-                if (cleanTxt && cleanTxt.length >= 3) {
+                if (cleanTxt && cleanTxt.length >= 2) {
                   accumulatedLogs.push(`[Frame at ${(video.currentTime || 0).toFixed(1)}s]: "${cleanTxt}"`);
                 }
               }
