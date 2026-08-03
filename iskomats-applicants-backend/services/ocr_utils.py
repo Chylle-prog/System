@@ -1022,10 +1022,15 @@ def normalize_id_number(s):
 
 def _word_in_text(w, text):
     if not w or not text: return False
-    if re.search(rf'\b{re.escape(w)}\b', text):
+    w_clean = re.sub(r'^(?:bi|mr|ms|mrs|dr|prof|name|student|st|no|id|\d+|[:\-1l\|\]\}\)])+', '', w, flags=re.IGNORECASE).strip()
+    if re.search(rf'\b{re.escape(w)}\b', text) or (w_clean and re.search(rf'\b{re.escape(w_clean)}\b', text)):
         return True
-    if len(w) >= 3 and w in text:
+    if len(w) >= 3 and (w in text or (w_clean and w_clean in text)):
         return True
+    for tok in str(text).split():
+        tok_clean = re.sub(r'^(?:bi|mr|ms|mrs|dr|prof|name|student|st|no|id|\d+|[:\-1l\|\]\}\)])+', '', tok, flags=re.IGNORECASE).strip()
+        if tok_clean == w or (len(w) >= 4 and tok_clean.endswith(w)) or (len(w) >= 4 and w in tok):
+            return True
     return False
 
 def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None, middle_name=None):
@@ -1090,9 +1095,14 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
         if not e_word or not t_word: return False
         e_clean, t_clean = e_word.lower().strip(), t_word.lower().strip()
         if e_clean == t_clean: return True
+
+        t_clean_noprefix = re.sub(r'^(?:bi|mr|ms|mrs|dr|prof|name|student|st|no|id|\d+|[:\-1l\|\]\}\)])+', '', t_clean, flags=re.IGNORECASE).strip()
+        if t_clean_noprefix == e_clean or (len(e_clean) >= 4 and t_clean_noprefix.endswith(e_clean)): return True
+        if len(e_clean) >= 4 and len(t_clean) <= len(e_clean) + 4 and e_clean in t_clean: return True
+
         def _conf(s):
             return re.sub(r'[^a-z0-9]', '', s).replace('1', 'i').replace('|', 'i').replace('0', 'o').replace('5', 's').replace('3', 'e').replace('8', 'b').replace('rn', 'm').replace('cl', 'd').replace('vv', 'w')
-        return _conf(e_clean) == _conf(t_clean)
+        return _conf(e_clean) == _conf(t_clean_noprefix or t_clean) or (len(e_clean) >= 4 and _conf(t_clean).endswith(_conf(e_clean)))
 
     def check_word_sequence_fuzzy(name_str, search_text):
         exp_words = [w for w in normalize_text(name_str).split() if len(w) >= 1]
@@ -1122,14 +1132,17 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
         return False
 
     sequence_ok = False
-    for seq in sequences_to_check:
-        rx = build_sequence_regex(seq)
-        if rx and (rx.search(norm_target) or rx.search(norm_raw)):
-            sequence_ok = True
-            break
-        if check_word_sequence_fuzzy(seq, norm_target) or check_word_sequence_fuzzy(seq, norm_raw):
-            sequence_ok = True
-            break
+    if first_ok and last_ok and middle_ok:
+        sequence_ok = True
+    else:
+        for seq in sequences_to_check:
+            rx = build_sequence_regex(seq)
+            if rx and (rx.search(norm_target) or rx.search(norm_raw)):
+                sequence_ok = True
+                break
+            if check_word_sequence_fuzzy(seq, norm_target) or check_word_sequence_fuzzy(seq, norm_raw):
+                sequence_ok = True
+                break
 
     return first_ok, middle_ok, last_ok, sequence_ok
 
@@ -1550,12 +1563,12 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
     failures = []
 
     # 1. NAME MATCHING — full sequence required (not just word-by-word independently)
-    target_name_str = parsed_fields.get('name', raw_text)
+    target_name_str = parsed_fields.get('name') or raw_text
     first_ok, middle_ok, last_ok, sequence_ok = verify_name_sequence(
         first_name, last_name, target_name_str, raw_text, middle_name
     )
 
-    if not (first_ok and middle_ok and last_ok and sequence_ok):
+    if not (first_ok and last_ok and (middle_ok if middle_name else True)):
         failures.append(f"Name mismatch (Expected: '{first_name} {middle_name or ''} {last_name}'. Found in COR: '{parsed_fields.get('name', 'Not found')}')")
 
     # 2. STUDENT ID MATCHING (Only if required ID is School ID, NOT National ID)
