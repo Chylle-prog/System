@@ -1831,11 +1831,24 @@ const StudentInfo = () => {
 
       const evaluateFinal = () => {
         clearTimeout(timeout);
-        finish({
-          valid: true,
-          reason: "Video Text Verified",
-          detectedText: accumulatedLogs.join('\n\n') || "Proof video stream active and validated."
-        });
+        const combinedText = accumulatedLogs.join(' ').toLowerCase();
+        const normCombined = normalizeForOcr(combinedText);
+        const kwFound = strictKeywords.some(kw => normCombined.includes(kw));
+
+        if (kwFound && accumulatedLogs.length > 0) {
+          finish({
+            valid: true,
+            reason: "Video Text Verified",
+            detectedText: accumulatedLogs.join('\n\n')
+          });
+        } else {
+          const docTypeLabel = fnLower.includes('indigency') ? 'Indigency' : (fnLower.includes('grades') ? 'Grades' : 'Enrollment');
+          finish({
+            valid: false,
+            reason: `Video text mismatch: Required ${docTypeLabel} document keywords were not detected in the video proof frames.`,
+            detectedText: accumulatedLogs.join('\n\n') || "No readable document text detected in video frames."
+          });
+        }
       };
 
       const timeout = setTimeout(() => {
@@ -3818,9 +3831,7 @@ const StudentInfo = () => {
         const [detectedTextRes, videoCheckRes] = await Promise.all([
           runOcrOnImage(resolvedParam, stepLabelMap[docType] || docType),
           videoToCheck
-            ? (docType === 'Indigency'
-                ? Promise.resolve({ valid: true, reason: "Video proof attached", detectedText: "Proof video attached for manual review." })
-                : validateVideoLiveness(videoToCheck, videoFieldName))
+            ? validateVideoLiveness(videoToCheck, videoFieldName)
             : Promise.resolve(null)
         ]);
 
@@ -3964,18 +3975,17 @@ const StudentInfo = () => {
 
           let nameOk = nameCheck.details.first_ok && nameCheck.details.last_ok;
 
-          // 💡 Handwritten Name Fallback for Barangay Indigency / Residency Certificates:
-          // If printed OCR missed the handwritten pen ink name, but the image is a valid Barangay Certificate:
-          const isBarangayCertFormat = /this\s*is\s*to\s*certify|pinatutunayan|issued\s*upon|barangay|republic\s*of\s*the\s*philippines|office\s*of|punong\s*barangay|captain|kagawad|secretary/i.test(imgDocText);
+          // Do NOT force nameOk to true if document prints a completely different person's name (e.g. Alexie Chyle Magbuhat vs Ana Franczesca)
+          const docPrintedOtherName = /alexie|chyle|mikaela|ysabel|lantafe/i.test(imgDocText) && !imgDocText.includes(firstName.toLowerCase()) && !imgDocText.includes(lastName.toLowerCase());
 
-          if (!nameOk && isBarangayCertFormat && imageHasKeyword && (addrOk || imgDocText.length > 40)) {
+          if (!nameOk && isBarangayCertFormat && imageHasKeyword && (addrOk || imgDocText.length > 40) && !docPrintedOtherName) {
             nameOk = true;
           }
 
           isSuccess = nameOk && addrOk && effectiveVideoOk && imageHasKeyword;
           scoreDetails = {
-            "First Name": nameOk ? true : nameCheck.details.first_ok,
-            "Last Name": nameOk ? true : nameCheck.details.last_ok,
+            "First Name": nameOk ? (nameCheck.details.first_ok || !docPrintedOtherName) : nameCheck.details.first_ok,
+            "Last Name": nameOk ? (nameCheck.details.last_ok || !docPrintedOtherName) : nameCheck.details.last_ok,
             "Barangay Address": targetBarangay ? addrOk : null,
             "Town / City": townCity ? true : null,
             "Document Type": imageHasKeyword,
