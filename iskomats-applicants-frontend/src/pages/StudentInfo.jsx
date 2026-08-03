@@ -3439,22 +3439,24 @@ const StudentInfo = () => {
         const docFieldName = docType === 'Indigency' ? 'indigency_doc' : (docType === 'Enrollment' ? 'enrollment_doc' : (docType === 'Grades' ? 'grades_doc' : 'id_front'));
         
         if (docParam) {
-          if (typeof docParam === 'string') {
-            formDataPayload.append(docFieldName, docParam);
-          } else if (docParam.front) {
+          if (docParam && typeof docParam === 'object' && docParam.front) {
             formDataPayload.append('id_front', docParam.front);
             if (docParam.back) formDataPayload.append('id_back', docParam.back);
+          } else {
+            formDataPayload.append(docFieldName, docParam);
           }
         }
 
-        const videoVal = (documentVideos && documentVideos.mayorIndigency_video) ||
-                         (documentFiles && documentFiles.mayorIndigency_video) ||
-                         formData.mayorIndigency_video ||
-                         formData.indigencyVideo ||
-                         formData.video_proof ||
-                         formData.idVideoDoc ||
-                         formData.mayorCOE_video ||
-                         formData.mayorGrades_video;
+        let videoVal = null;
+        if (docType === 'Indigency') {
+          videoVal = (documentVideos && documentVideos.mayorIndigency_video) || (documentFiles && documentFiles.mayorIndigency_video) || formData.mayorIndigency_video || formData.indigencyVideo;
+        } else if (docType === 'Enrollment') {
+          videoVal = (documentVideos && documentVideos.mayorCOE_video) || (documentFiles && documentFiles.mayorCOE_video) || formData.mayorCOE_video || formData.enrollmentVideo;
+        } else if (docType === 'Grades') {
+          videoVal = (documentVideos && documentVideos.mayorGrades_video) || (documentFiles && documentFiles.mayorGrades_video) || formData.mayorGrades_video || formData.gradesVideo;
+        } else if (docType === 'SchoolID') {
+          videoVal = (documentVideos && documentVideos.schoolIdFront_video) || (documentFiles && documentFiles.schoolIdFront_video) || formData.schoolIdFront_video;
+        }
 
         let videoOcrPromise = Promise.resolve(null);
         if (videoVal) {
