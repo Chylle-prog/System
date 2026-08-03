@@ -2401,72 +2401,112 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
 
 def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
     """
-    Dedicated verification logic for School ID / National ID cards.
-    Validates applicant name, student ID number, and school name from ID OCR text.
+    Dedicated verification logic for School ID and Philippine National ID cards.
+    - National ID: Validates First Name, Last Name, and Permanent Address / Barangay.
+    - School ID: Validates First Name, Last Name, and Student ID Number.
     """
     meta = {}
     failures = []
     
     doc_norm = normalize_text(raw_text)
+    id_type = str(kwargs.get('id_type') or kwargs.get('idType') or 'School ID').strip()
+    is_national_id = 'national' in id_type.lower() or 'philid' in id_type.lower() or 'philsys' in id_type.lower()
     
-    # 1. Name Verification (First Name & Last Name only for School ID / National ID)
-    first_ok, middle_ok, last_ok, seq_ok = verify_name_sequence(first_name, last_name, raw_text, full_raw_text=raw_text, middle_name=None)
-    name_matched = first_ok and last_ok and seq_ok
+    # 1. Name Verification (First Name & Last Name)
+    first_ok, middle_ok, last_ok, seq_ok = verify_name_sequence(first_name, last_name, raw_text, full_raw_text=raw_text, middle_name=middle_name)
+    name_matched = first_ok and last_ok
     if not name_matched:
-        failures.append(f"Name mismatch (Expected: '{first_name} {last_name}' on ID)")
+        if not first_ok:
+            failures.append(f"First Name mismatch (Expected: '{first_name}' on ID)")
+        if not last_ok:
+            failures.append(f"Last Name mismatch (Expected: '{last_name}' on ID)")
 
-    # 2. Student ID Number (if expected_id_no provided)
-    expected_id_no = kwargs.get('expected_id_no')
+    # 2. National ID Address Verification OR School ID Number Verification
+    expected_id_no = kwargs.get('expected_id_no') or kwargs.get('student_id')
+    expected_address = kwargs.get('expected_address') or kwargs.get('address') or kwargs.get('barangay')
+    
     id_ok = True
-    if expected_id_no:
-        clean_expected_id = normalize_id_number(expected_id_no)
-        found_id = normalize_id_number(kwargs.get('student_id') or '')
-        tokens = [normalize_id_number(tok) for tok in re.findall(r'\b[0-9a-zA-Z\-]{4,25}\b', str(raw_text or ''))]
+    addr_ok = True
 
-        def _clean_cand(t):
-            d = re.sub(r'[^0-9]', '', str(t or ''))
-            if len(clean_expected_id) >= 6 and len(d) == len(clean_expected_id) + 1 and (d.startswith(clean_expected_id) or d.endswith(clean_expected_id)):
-                return clean_expected_id
-            return d
+    if is_national_id:
+        # National ID: Verify Name + Address / Barangay
+        if expected_address and str(expected_address).strip():
+            addr_clean = normalize_text(expected_address)
+            addr_words = [w for w in addr_clean.split() if len(w) >= 3 and w not in {'city', 'purok', 'street', 'province', 'municipality'}]
+            if addr_words:
+                addr_ok = any(_word_in_text(w, doc_norm) for w in addr_words) or ('philippines' in doc_norm) or ('republic' in doc_norm)
+                if not addr_ok:
+                    failures.append(f"Address mismatch (Expected: '{expected_address}' on National ID)")
+            else:
+                addr_ok = True
+        else:
+            addr_ok = ('republic' in doc_norm) or ('philippines' in doc_norm) or ('address' in doc_norm) or ('philsys' in doc_norm)
 
-        id_ok = (_clean_cand(found_id) == clean_expected_id) or (clean_expected_id in tokens)
-        if not id_ok:
-            for tok in tokens:
-                if _clean_cand(tok) == clean_expected_id:
-                    id_ok = True
-                    break
-        if not id_ok and len(clean_expected_id) >= 6:
+        # ID Number check for National ID (if provided)
+        if expected_id_no and str(expected_id_no).strip():
+            clean_expected_id = normalize_id_number(expected_id_no)
             raw_digits = re.sub(r'[^0-9]', '', str(raw_text or ''))
-            if clean_expected_id in raw_digits:
-                id_ok = True
+            id_ok = clean_expected_id in raw_digits if len(clean_expected_id) >= 6 else True
 
-        if not id_ok:
-            failures.append(f"ID Number mismatch (Expected: '{expected_id_no}' on ID)")
-
-    # 3. School Name & Academic Year (Advisory / Optional for School ID)
-    school_ok = True
-    ay_ok = True
-
-    success = (first_ok and last_ok) and id_ok
-    if success:
-        msg = f"School ID Verified: Name ({first_name} {last_name}) and ID details matched."
+        success = name_matched and addr_ok and id_ok
+        doc_label = "National ID"
     else:
-        msg = "School ID Verification Failed: " + ("; ".join(failures) if failures else "Details could not be verified on ID.")
+        # School ID: Verify Name + Student ID Number
+        if expected_id_no and str(expected_id_no).strip():
+            clean_expected_id = normalize_id_number(expected_id_no)
+            found_id = normalize_id_number(kwargs.get('student_id') or '')
+            tokens = [normalize_id_number(tok) for tok in re.findall(r'\b[0-9a-zA-Z\-]{4,25}\b', str(raw_text or ''))]
 
-    meta['name_ok'] = first_ok and last_ok
+            def _clean_cand(t):
+                d = re.sub(r'[^0-9]', '', str(t or ''))
+                if len(clean_expected_id) >= 6 and len(d) == len(clean_expected_id) + 1 and (d.startswith(clean_expected_id) or d.endswith(clean_expected_id)):
+                    return clean_expected_id
+                return d
+
+            id_ok = (_clean_cand(found_id) == clean_expected_id) or (clean_expected_id in tokens)
+            if not id_ok:
+                for tok in tokens:
+                    if _clean_cand(tok) == clean_expected_id:
+                        id_ok = True
+                        break
+            if not id_ok and len(clean_expected_id) >= 6:
+                raw_digits = re.sub(r'[^0-9]', '', str(raw_text or ''))
+                if clean_expected_id in raw_digits:
+                    id_ok = True
+
+            if not id_ok:
+                failures.append(f"ID Number mismatch (Expected: '{expected_id_no}' on ID)")
+
+        success = name_matched and id_ok
+        doc_label = "School ID"
+
+    if success:
+        msg = f"{doc_label} Verified: Name ({first_name} {last_name}) matched."
+    else:
+        msg = f"{doc_label} Verification Failed: " + ("; ".join(failures) if failures else f"Details could not be verified on {doc_label}.")
+
+    meta['name_ok'] = name_matched
     meta['id_ok'] = id_ok
-    meta['school_ok'] = True
-    meta['ay_ok'] = True
+    meta['addr_ok'] = addr_ok
     meta['details'] = failures
     meta['detected_text'] = raw_text
-    meta['score_details'] = {
-        'FIRST NAME': first_ok,
-        'LAST NAME': last_ok,
-        'ID NUMBER': id_ok,
-        'SCHOOL NAME': True,
-        'DOCUMENT TYPE': success,
-        'VIDEO PROOF': True
-    }
+
+    if is_national_id:
+        meta['score_details'] = {
+            'FIRST NAME': first_ok,
+            'LAST NAME': last_ok,
+            'ADDRESS': addr_ok,
+            'DOCUMENT TYPE': success,
+            'VIDEO PROOF': True
+        }
+    else:
+        meta['score_details'] = {
+            'FIRST NAME': first_ok,
+            'LAST NAME': last_ok,
+            'ID NUMBER': id_ok,
+            'DOCUMENT TYPE': success,
+            'VIDEO PROOF': True
+        }
 
     return success, msg, meta
 
