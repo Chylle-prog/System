@@ -558,14 +558,22 @@ function isSimilarWord(expected, actual) {
   const actNorm = actual.toLowerCase().trim();
   if (expNorm === actNorm) return true;
 
+  // Clean OCR label/colon prefixes (e.g. "bialexie" -> "alexie", ":alexie" -> "alexie")
+  const actClean = actNorm.replace(/^(?:bi|mr|ms|mrs|dr|prof|name|student|st|no|id|\d+|[:\-1l\|\]\}\)])+/i, '').trim();
+  if (actClean === expNorm || (expNorm.length >= 4 && actClean.endsWith(expNorm))) return true;
+
+  // Substring inclusion for concatenated OCR noise tokens
+  if (expNorm.length >= 4 && actNorm.length <= expNorm.length + 4 && actNorm.includes(expNorm)) return true;
+
   // Strict OCR glyph confusion match (visual OCR substitutions)
   const expConf = normalizeNameConfusions(expNorm);
-  const actConf = normalizeNameConfusions(actNorm);
-  if (expConf && expConf === actConf) return true;
+  const actConf = normalizeNameConfusions(actClean || actNorm);
+  if (expConf && (expConf === actConf || actConf.endsWith(expConf))) return true;
 
   // Levenshtein edit distance fuzzy match
-  const dist = getLevenshteinDistance(expNorm, actNorm);
-  if (expNorm.length >= 8 && dist <= 2) return true;
+  const dist = getLevenshteinDistance(expNorm, actClean || actNorm);
+  if (expNorm.length >= 8 && dist <= 3) return true;
+  if (expNorm.length >= 5 && dist <= 2) return true;
   if (expNorm.length >= 4 && dist <= 1) return true;
 
   return false;
@@ -706,7 +714,7 @@ function studentNameMatchesText(text, first, middle, last) {
   const lastOk = checkNameWordGroup(last, targetText) || checkNameWordGroup(last, normText);
   const middleOk = middle ? (checkNameWordGroup(middle, targetText) || checkNameWordGroup(middle, normText)) : true;
 
-  const success = firstOk && lastOk && middleOk && sequenceOk;
+  const success = firstOk && lastOk && middleOk;
 
   console.debug('[NAME CHECK]', { first, last, normText: normText.slice(0,200), targetText: targetText.slice(0,200), sequenceOk, firstOk, lastOk, success });
 
