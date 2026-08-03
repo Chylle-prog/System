@@ -1808,7 +1808,7 @@ def perform_error_level_analysis(img, quality=90):
     return False, "", 0
 
 
-def detect_document_tampering(image_bytes):
+def detect_document_tampering(image_bytes, doc_type=None, **kwargs):
     """
     Advanced Multi-Layer Document Tampering & Digital Manipulation Detector.
     Runs:
@@ -1816,6 +1816,10 @@ def detect_document_tampering(image_bytes):
     2. Pixel Grid Zero-Variance Overlay Check
     3. Error Level Analysis (ELA) Compression Discrepancy Check
     """
+    doc_key = str(doc_type or kwargs.get('doc_key') or kwargs.get('document_type') or '').lower()
+    if 'back' in doc_key or doc_key in ['back_id', 'id_img_back', 'schoolid_back', 'id_back']:
+        return False, "Tamper check bypassed for Back ID", 0
+
     if not image_bytes:
         return False, "No image provided", 0
 
@@ -1910,10 +1914,12 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name
     if not image_bytes:
         return False, "No document image provided.", "", {}
 
-    # Pre-scan Digital Tamper & Manipulation Check (bypassed if per-user skip_tamper_check flag is active)
-    skip_tamper_check = kwargs.get('skip_tamper_check') or kwargs.get('skipTamperCheck') or False
+    # Pre-scan Digital Tamper & Manipulation Check (bypassed if per-user skip_tamper_check flag is active or if document is Back ID)
+    doc_key = str(doc_type or kwargs.get('doc_key') or kwargs.get('document_type') or '').lower()
+    is_back = 'back' in doc_key or doc_key in ['back_id', 'id_img_back', 'schoolid_back', 'id_back']
+    skip_tamper_check = kwargs.get('skip_tamper_check') or kwargs.get('skipTamperCheck') or is_back
     if not skip_tamper_check:
-        is_edited, tamper_msg, _ = detect_document_tampering(image_bytes)
+        is_edited, tamper_msg, _ = detect_document_tampering(image_bytes, doc_type=doc_type, **kwargs)
         if is_edited:
             return False, f"Tampering Alert: {tamper_msg}", "", {'tamper_alert': True, 'details': [tamper_msg]}
 

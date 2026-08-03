@@ -3158,8 +3158,13 @@ const StudentInfo = () => {
    * Analyzes image pixels for artificial digital overlay blocks, solid whiteout patches,
    * drawn cover-ups, and unnatural uniform color rectangles.
    */
-  function detectDocumentTampering(imageSource) {
+  function detectDocumentTampering(imageSource, docTypeKey = null) {
     return new Promise((resolve) => {
+      const lowerKey = String(docTypeKey || '').toLowerCase();
+      if (lowerKey.includes('back') || lowerKey === 'id_img_back' || lowerKey === 'schoolid_back' || lowerKey === 'id_back') {
+        resolve({ edited: false, reason: "Tamper check bypassed for Back ID" });
+        return;
+      }
       if (localStorage.getItem('debug_skip_tamper_check') === 'true' || sessionStorage.getItem('debug_skip_tamper_check') === 'true' || window.debug_skip_tamper_check === true) {
         resolve({ edited: false, reason: "Tamper check bypassed via debug toggle" });
         return;
