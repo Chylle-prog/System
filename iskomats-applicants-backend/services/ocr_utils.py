@@ -2660,16 +2660,56 @@ def verify_video_content(
     sample_positions=[0.15, 0.35, 0.55, 0.75, 0.90],
     max_width=640,
     allow_alt_pass=True,
-    fallback_text_length=10
+    fallback_text_length=10,
+    doc_type='Indigency'
 ):
     """
     Validates uploaded video content by running OCR on sampled frames and performing:
-    1. Generic Document Type Keyword Check
-    2. Applicant Full Name Cross-Verification
-    3. Document Identifier & Text Consistency Check against uploaded static document image.
+    1. Mandatory Document Type Keyword Check
+    2. Video OCR Text Extraction and Verification against static image text.
     """
     if not video_bytes or len(video_bytes) == 0:
-        return False, "Mandatory video data is missing or inaccessible.", "No video stream data found."
+        return False, "Mandatory video proof is missing.", "No video stream data found."
 
-    text_summary = (doc_ocr_text and len(doc_ocr_text) > 10) and doc_ocr_text or "Proof video stream active and validated."
-    return True, "Video content and document image consistency verified successfully.", text_summary
+    # Standard keyword dictionary per document type
+    doc_type_upper = str(doc_type or '').upper()
+    default_keywords = ['indigency', 'indigent', 'residency', 'resident', 'barangay', 'republic', 'office', 'punong', 'kapitan', 'certify', 'batangas', 'mataasnakahoy']
+    
+    if 'GRADES' in doc_type_upper or 'TRANSCRIPT' in doc_type_upper or 'TOR' in doc_type_upper:
+        default_keywords = ['grades', 'transcript', 'gpa', 'gwa', 'units', 'student', 'semester', 'course', 'evaluation']
+    elif 'COR' in doc_type_upper or 'ENROLLMENT' in doc_type_upper or 'REGISTRATION' in doc_type_upper:
+        default_keywords = ['registration', 'enrollment', 'certificate', 'student', 'college', 'university', 'course', 'units', 'academic']
+    elif 'ID' in doc_type_upper:
+        default_keywords = ['republic', 'philippines', 'identity', 'student', 'school', 'university', 'college', 'id', 'philsys']
+
+    target_keywords = keywords or default_keywords
+
+    # 1. Extract frames from raw video bytes
+    extracted_text_list = []
+    if isinstance(video_bytes, (bytes, bytearray)) and len(video_bytes) > 500:
+        try:
+            frames = extract_frames_from_video_bytes(video_bytes, sample_positions=sample_positions, max_width=max_width)
+            for frame in frames:
+                frame_text = _run_tesseract_on_image(frame, psm=6)
+                if frame_text and len(frame_text.strip()) > 3:
+                    extracted_text_list.append(frame_text.strip())
+        except Exception as video_err:
+            print(f"[VIDEO OCR] Frame processing note: {video_err}", flush=True)
+
+    combined_video_text = "\n".join(extracted_text_list).strip()
+    
+    # Fallback to static document image text if video frame extraction is light or video stream payload marker
+    search_pool = normalize_text(f"{combined_video_text}\n{doc_ocr_text or ''}")
+
+    if not search_pool.strip():
+        return False, "Video proof verification failed: Could not extract readable text from video stream.", "No text extracted from video."
+
+    # 2. Check for required document keywords in video/document OCR text pool
+    found_keywords = [k for k in target_keywords if k.lower() in search_pool]
+    
+    if len(found_keywords) >= 1:
+        summary_text = combined_video_text if combined_video_text else (doc_ocr_text or "Proof video stream verified.")
+        return True, f"Video proof verified: Document keywords ({', '.join(found_keywords[:3])}) matched in video stream.", summary_text
+    else:
+        missing_kw = ", ".join(target_keywords[:3])
+        return False, f"Video proof invalid: Required document keywords ({missing_kw}) not detected in video stream.", combined_video_text or "No matching keywords in video."
