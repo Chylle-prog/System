@@ -1823,19 +1823,68 @@ const StudentInfo = () => {
         resolve(result);
       };
 
-      const timeout = setTimeout(() => {
-        finish({
-          valid: false,
-          reason: `Video text mismatch: Required document keywords (${strictKeywords.slice(0, 2).join(', ')}) were not detected in video frames.`,
-          detectedText: "Video frame capture timeout."
-        });
-      }, 4000);
+      const checkPoints = [0.25, 0.50, 0.75];
+      let currentCheckIndex = 0;
+      let accumulatedLogs = [];
 
-      const captureAndVerify = async () => {
+      const evaluateFinal = () => {
+        clearTimeout(timeout);
+        const combinedText = accumulatedLogs.join(' ').toLowerCase();
+        const normCombined = normalizeForOcr(combinedText);
+        const kwFound = strictKeywords.some(kw => normCombined.includes(kw));
+
+        if (kwFound) {
+          finish({
+            valid: true,
+            reason: "Video Text Verified",
+            detectedText: accumulatedLogs.join('\n\n') || "Video proof stream active."
+          });
+        } else {
+          finish({
+            valid: false,
+            reason: `Video text mismatch: Neither registration nor enrollment keywords were detected in the video proof frames.`,
+            detectedText: accumulatedLogs.join('\n\n') || "No readable document text detected in video frames."
+          });
+        }
+      };
+
+      const nextFrameOrEvaluate = () => {
+        const combinedText = accumulatedLogs.join(' ').toLowerCase();
+        const normCombined = normalizeForOcr(combinedText);
+        const kwFound = strictKeywords.some(kw => normCombined.includes(kw));
+
+        if (kwFound) {
+          clearTimeout(timeout);
+          finish({
+            valid: true,
+            reason: "Video Text Verified",
+            detectedText: accumulatedLogs.join('\n\n')
+          });
+          return;
+        }
+
+        currentCheckIndex++;
+        if (currentCheckIndex < checkPoints.length && isFinite(video.duration) && video.duration > 0) {
+          try {
+            video.currentTime = video.duration * checkPoints[currentCheckIndex];
+          } catch (e) {
+            evaluateFinal();
+          }
+        } else {
+          evaluateFinal();
+        }
+      };
+
+      const processFrame = async () => {
         try {
           const w = video.videoWidth || 600;
           const h = video.videoHeight || 400;
-          const scale = 600 / Math.max(w, h);
+          if (!w || !h) {
+            nextFrameOrEvaluate();
+            return;
+          }
+
+          const scale = 800 / Math.max(w, h);
           const targetW = Math.round(w * scale);
           const targetH = Math.round(h * scale);
 
@@ -1846,66 +1895,42 @@ const StudentInfo = () => {
           ctx.drawImage(video, 0, 0, targetW, targetH);
 
           const worker = await getTesseractWorker();
-          if (!worker) {
-            clearTimeout(timeout);
-            finish({
-              valid: false,
-              reason: `Video text mismatch: Required document keywords (${strictKeywords.slice(0, 2).join(', ')}) were not detected in video frames.`
-            });
-            return;
+          if (worker) {
+            const res = await worker.recognize(canvas).catch(() => null);
+            const rawTxt = res?.data?.text || '';
+            const cleanTxt = rawTxt.trim().replace(/\s+/g, ' ');
+            if (cleanTxt && cleanTxt.length >= 3) {
+              accumulatedLogs.push(`[Frame at ${(video.currentTime || 0).toFixed(1)}s]: "${cleanTxt}"`);
+            }
           }
-
-          const res = await worker.recognize(canvas);
-          const rawTxt = res?.data?.text || '';
-          const normTxt = normalizeForOcr(rawTxt);
-
-          clearTimeout(timeout);
-
-          const kwFound = strictKeywords.some(kw => normTxt.includes(kw));
-          if (kwFound) {
-            finish({
-              valid: true,
-              reason: "Video Text Verified",
-              detectedText: `[Frame at ${(video.currentTime || 0).toFixed(1)}s]: "${rawTxt.trim()}"`
-            });
-          } else {
-            finish({
-              valid: false,
-              reason: `Video text mismatch: Neither registration nor enrollment keywords were detected in the video proof frames.`,
-              detectedText: `[Frame at ${(video.currentTime || 0).toFixed(1)}s]: "${rawTxt.trim()}"`
-            });
-          }
-        } catch (err) {
-          clearTimeout(timeout);
-          finish({
-            valid: false,
-            reason: `Video text mismatch: Required document keywords (${strictKeywords.slice(0, 2).join(', ')}) were not detected in video frames.`
-          });
+        } catch (e) {
+          console.warn('[Video OCR] Frame sampling note:', e);
         }
+        nextFrameOrEvaluate();
       };
+
+      const timeout = setTimeout(() => {
+        evaluateFinal();
+      }, 7000);
 
       video.onloadeddata = () => {
         try {
           if (isFinite(video.duration) && video.duration > 0) {
-            video.currentTime = Math.min(1.0, video.duration * 0.3);
+            video.currentTime = video.duration * checkPoints[0];
           } else {
-            captureAndVerify();
+            processFrame();
           }
         } catch (e) {
-          captureAndVerify();
+          processFrame();
         }
       };
 
       video.onseeked = () => {
-        captureAndVerify();
+        processFrame();
       };
 
       video.onerror = () => {
-        clearTimeout(timeout);
-        finish({
-          valid: false,
-          reason: `Video text mismatch: Required document keywords (${strictKeywords.slice(0, 2).join(', ')}) were not detected in video frames.`
-        });
+        evaluateFinal();
       };
 
       video.src = srcUrl;
