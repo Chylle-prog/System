@@ -2308,7 +2308,7 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
     addr_ok = doc_type_ok or 'barangay' in doc_norm or 'batangas' in doc_norm
 
     success = name_matched and doc_type_ok
-    displayName = f"{doc_first or first_name} {doc_mid or middle_name or ''} {doc_last or last_name}".strip()
+    displayName = f"{first_name} {middle_name or ''} {last_name}".strip()
     if success:
         doc_name = "Residency Certificate" if is_residency_doc else "Indigency Certificate"
         msg = f"{doc_name} Verified: Name ({displayName}) and document type matched."
@@ -2318,8 +2318,8 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
     meta['name_ok'] = name_matched
     meta['details'] = failures
     meta['detected_text'] = raw_text
-    meta['extracted_doc_first'] = doc_first
-    meta['extracted_doc_last'] = doc_last
+    meta['extracted_doc_first'] = first_name
+    meta['extracted_doc_last'] = last_name
     meta['score_details'] = {
         'FIRST NAME': first_ok,
         'LAST NAME': last_ok,
@@ -2327,8 +2327,8 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
         'TOWN / CITY': addr_ok,
         'DOCUMENT TYPE': doc_type_ok,
         'VIDEO PROOF': True,
-        'DOC_FIRST_NAME': doc_first or first_name,
-        'DOC_LAST_NAME': doc_last or last_name
+        'DOC_FIRST_NAME': first_name,
+        'DOC_LAST_NAME': last_name
     }
 
     return success, msg, meta
