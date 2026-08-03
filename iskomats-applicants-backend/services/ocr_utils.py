@@ -1022,15 +1022,37 @@ def normalize_id_number(s):
 
 def _word_in_text(w, text):
     if not w or not text: return False
-    w_clean = re.sub(r'^(?:bi|mr|ms|mrs|dr|prof|name|student|st|no|id|\d+|[:\-1l\|\]\}\)])+', '', w, flags=re.IGNORECASE).strip()
-    if re.search(rf'\b{re.escape(w)}\b', text) or (w_clean and re.search(rf'\b{re.escape(w_clean)}\b', text)):
+    norm_w = normalize_text(w)
+    norm_text = normalize_text(text)
+    w_clean = re.sub(r'^(?:bi|mr|ms|mrs|dr|prof|name|student|st|no|id|\d+|[:\-1l\|\]\}\)])+', '', norm_w, flags=re.IGNORECASE).strip()
+
+    # 1. Standard word boundary and exact substring match
+    if re.search(rf'\b{re.escape(norm_w)}\b', norm_text) or (w_clean and re.search(rf'\b{re.escape(w_clean)}\b', norm_text)):
         return True
-    if len(w) >= 3 and (w in text or (w_clean and w_clean in text)):
+    if len(norm_w) >= 3 and (norm_w in norm_text or (w_clean and w_clean in norm_text)):
         return True
-    for tok in str(text).split():
-        tok_clean = re.sub(r'^(?:bi|mr|ms|mrs|dr|prof|name|student|st|no|id|\d+|[:\-1l\|\]\}\)])+', '', tok, flags=re.IGNORECASE).strip()
-        if tok_clean == w or (len(w) >= 4 and tok_clean.endswith(w)) or (len(w) >= 4 and w in tok):
-            return True
+
+    # 2. Compact Space-Free Substring Match (handles OCR space insertion in handwriting like "Francz esca")
+    compact_w = re.sub(r'[^a-z0-9]', '', norm_w)
+    compact_text = re.sub(r'[^a-z0-9]', '', norm_text)
+    if len(compact_w) >= 3 and compact_w in compact_text:
+        return True
+
+    # 3. Fuzzy Similarity Match (handles handwriting OCR character misreads like "Fvanczesca" or "Francz3sca")
+    if len(compact_w) >= 4:
+        from difflib import SequenceMatcher
+        tokens = [re.sub(r'[^a-z0-9]', '', tok) for tok in norm_text.split() if len(re.sub(r'[^a-z0-9]', '', tok)) >= 3]
+        for tok in tokens:
+            if compact_w in tok or tok in compact_w:
+                return True
+            if SequenceMatcher(None, compact_w, tok).ratio() >= 0.70:
+                return True
+        if len(compact_text) >= len(compact_w):
+            for i in range(0, len(compact_text) - len(compact_w) + 1):
+                chunk = compact_text[i:i + len(compact_w)]
+                if SequenceMatcher(None, compact_w, chunk).ratio() >= 0.72:
+                    return True
+
     return False
 
 def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None, middle_name=None):
@@ -2246,13 +2268,14 @@ def extract_full_name_from_document(raw_text):
     if not raw_text:
         return None, None, None
     clean = re.sub(r'\s+', ' ', raw_text)
-    pattern = r'(?:certify\s+that|known|personally\s+known)\s*(?:(?:that|i|personally|known|mr|ms|mrs|dr)[./\s]*)*\s*([A-Za-z\.\s]+)'
+    pattern = r'(?:certify\s+that|known|kiiown|kitown|katown|k[a-z]*own|personally\s+known|personally)\s*(?:(?:that|i|personally|known|mr|ms|mrs|dr|k[a-z]*own)[./\s_\-]*)*\s*([A-Za-z\.\s_]+)'
     m = re.search(pattern, clean, re.IGNORECASE)
     if m:
         raw_name = m.group(1).strip()
-        raw_name = re.sub(r'^(?:mr|ms|mrs|dr|miss|s)[./\s]*', '', raw_name, flags=re.IGNORECASE).strip()
+        raw_name = re.sub(r'^(?:mr|ms|mrs|dr|miss|s)[./\s_\-]*', '', raw_name, flags=re.IGNORECASE).strip()
         raw_name = re.split(r'\b(?:1\d|2\d|3\d|years|old|single|married|resident|bonafide|purok|barangay|is|a|an|the|of)\b', raw_name, flags=re.IGNORECASE)[0].strip()
         raw_name = re.sub(r'^[^\w]+|[^\w\.]+$', '', raw_name).strip()
+        raw_name = raw_name.replace('_', ' ')
         tokens = [t.strip() for t in raw_name.split() if t.strip() and len(t.strip()) >= 2]
         if len(tokens) >= 3:
             last = tokens[-1]
