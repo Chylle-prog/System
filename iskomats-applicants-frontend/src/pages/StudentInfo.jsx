@@ -1621,6 +1621,8 @@ const StudentInfo = () => {
     results.forEach(res => {
       if (res.score_details) {
         Object.entries(res.score_details).forEach(([key, val]) => {
+          const isStep3Doc = ['SchoolID', 'Enrollment', 'Grades'].includes(res.doc);
+          if (isStep3Doc && /address/i.test(String(key))) return;
           if (typeof val === 'boolean' || val === 1 || val === 0 || val === 'true' || val === 'false') {
             totalFields++;
             if (val === true || val === 1 || val === 'true') passedFields++;
@@ -1649,6 +1651,7 @@ const StudentInfo = () => {
           marginBottom: '8px'
         }}>
           {Object.entries(log.requirements).map(([key, val]) => {
+            if (['SchoolID', 'Enrollment', 'Grades'].includes(docType) && /address/i.test(String(key))) return null;
             if (val === 'N/A' || val === null || val === undefined || val === '') return null;
             const matchVal = log.scoreDetails ? log.scoreDetails[key] : null;
             let isMatch = false;
@@ -3404,17 +3407,23 @@ const StudentInfo = () => {
             doc: r.doc || docType,
             verified: r.verified,
             message: r.message,
-            score_details: r.score_details || {
-              "FIRST NAME": isVerified,
-              "LAST NAME": isVerified,
-              "BARANGAY ADDRESS": isVerified,
-              "TOWN / CITY": isVerified,
-              "DOCUMENT TYPE": isVerified,
-              "VIDEO PROOF": true
-            }
+            score_details: (() => {
+              const rawDetails = r.score_details || {
+                "FIRST NAME": isVerified,
+                "LAST NAME": isVerified,
+                "BARANGAY ADDRESS": isVerified,
+                "TOWN / CITY": isVerified,
+                "DOCUMENT TYPE": isVerified,
+                "VIDEO PROOF": true
+              };
+              if (['SchoolID', 'Enrollment', 'Grades'].includes(docType)) {
+                return Object.fromEntries(Object.entries(rawDetails).filter(([k]) => !/address/i.test(String(k))));
+              }
+              return rawDetails;
+            })()
           }));
 
-          const sDetails = backendResult.score_details || viewResults[0]?.score_details || {
+          const rawScoreDetails = backendResult.score_details || viewResults[0]?.score_details || {
             "FIRST NAME": isVerified,
             "LAST NAME": isVerified,
             "BARANGAY ADDRESS": isVerified,
@@ -3422,6 +3431,9 @@ const StudentInfo = () => {
             "DOCUMENT TYPE": isVerified,
             "VIDEO PROOF": true
           };
+          const sDetails = ['SchoolID', 'Enrollment', 'Grades'].includes(docType)
+            ? Object.fromEntries(Object.entries(rawScoreDetails).filter(([k]) => !/address/i.test(String(k))))
+            : rawScoreDetails;
 
           let combinedDetectedText = backendResult.detected_text || msg;
 
@@ -3448,6 +3460,7 @@ const StudentInfo = () => {
             "DOCUMENT TYPE": docType === 'Indigency' ? 'Certificate of Indigency' : docType,
             "VIDEO PROOF": sDetails["VIDEO PROOF"] ? 'Uploaded & Validated' : 'Validation Failed'
           };
+          if (['SchoolID', 'Enrollment', 'Grades'].includes(docType)) delete reqValues["BARANGAY ADDRESS"];
 
           setOcrDebugLogs((prev) => ({
             ...prev,
@@ -3921,7 +3934,6 @@ const StudentInfo = () => {
         scoreDetails = isNationalId ? {
           "First Name": firstOk,
           "Last Name": lastOk,
-          "Barangay Address": targetBarangay ? addrOk : null,
           "Video Proof": videoOk
         } : {
           "First Name": firstOk,
@@ -4154,7 +4166,6 @@ const StudentInfo = () => {
         debugRequirements = isNationalId ? {
           "First Name": firstName || 'N/A',
           "Last Name": lastName || 'N/A',
-          "Barangay Address": targetBarangay || 'N/A',
           "Video Proof": videoReason
         } : {
           "First Name": firstName || 'N/A',
