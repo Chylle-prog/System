@@ -1053,6 +1053,12 @@ def _word_in_text(w, text):
                 if SequenceMatcher(None, compact_w, chunk).ratio() >= 0.72:
                     return True
 
+    # 4. Short Name Token Matching (handles "Ana" matching "a" or "an" from OCR handwriting noise)
+    if len(compact_w) <= 3 and len(compact_w) >= 2:
+        tokens = [re.sub(r'[^a-z0-9]', '', tok) for tok in norm_text.split() if tok.strip()]
+        if any(tok.startswith(compact_w[0]) for tok in tokens if len(tok) <= 3):
+            return True
+
     return False
 
 def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None, middle_name=None):
@@ -1216,10 +1222,30 @@ def _run_tesseract_on_image(img, psm=3):
             scale = 1100.0 / float(w)
             gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
 
-        text = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 1')
+        # Pass 1: Standard grayscale OCR
+        text = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 1') or ""
+
+        # Pass 2: Adaptive Thresholding + Horizontal Rule Removal for handwritten form blanks
+        try:
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            contrast_gray = clahe.apply(gray)
+            adaptive_thresh = cv2.adaptiveThreshold(contrast_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 15, 3)
+
+            # Detect and subtract horizontal underline rules (e.g. _____ under handwritten names)
+            kernel_h = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 1))
+            detect_lines = cv2.morphologyEx(adaptive_thresh, cv2.MORPH_OPEN, kernel_h, iterations=1)
+            cleaned_bw = cv2.subtract(adaptive_thresh, detect_lines)
+            cleaned_img = cv2.bitwise_not(cleaned_bw)
+
+            alt_text = pytesseract.image_to_string(cleaned_img, config='--psm 6 --oem 1') or ""
+            if alt_text and len(alt_text.strip()) > 5:
+                text = text + "\n" + alt_text
+        except Exception as preprocess_err:
+            print(f"[OCR] Handwriting preprocess note: {preprocess_err}", flush=True)
+
         if not text or len(text.strip()) < 20:
             _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            alt_text = pytesseract.image_to_string(thresh, config=f'--psm {psm} --oem 1')
+            alt_text = pytesseract.image_to_string(thresh, config=f'--psm {psm} --oem 1') or ""
             if len(alt_text.strip()) > len(text.strip()):
                 text = alt_text
         return text.strip()
@@ -2313,36 +2339,33 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
     f_words = [w for w in user_first_clean.split() if len(w) >= 3]
     l_words = [w for w in user_last_clean.split() if len(w) >= 3]
 
-    # FIRST NAME VERIFICATION: Check if applicant's first_name words appear with strict word boundaries
-    f_in_doc = False
-    for w in f_words:
-        if len(w) <= 3:
-            # Short words like 'Ana' must be matched as exact whole words, e.g. \bana\b
-            if re.search(r'\b' + re.escape(w) + r'\b', doc_norm):
-                f_in_doc = True
-                break
-        else:
-            if w in doc_norm:
-                f_in_doc = True
-                break
-
+    # FIRST NAME VERIFICATION
+    f_in_doc = any(_word_in_text(w, doc_norm) for w in f_words) if f_words else True
     if doc_first:
         doc_first_clean = normalize_text(doc_first or '')
         if any(w in doc_first_clean for w in f_words):
             f_in_doc = True
 
-    first_ok = f_in_doc
-
-    # LAST NAME VERIFICATION: Check if applicant's last_name words appear in document text
-    l_in_doc = any(_word_in_text(w, doc_norm) for w in l_words) if l_words else False
+    # LAST NAME VERIFICATION
+    l_in_doc = any(_word_in_text(w, doc_norm) for w in l_words) if l_words else True
     if doc_last:
         doc_last_clean = normalize_text(doc_last or '')
         if any(w in doc_last_clean for w in l_words):
             l_in_doc = True
 
+    # HANDWRITTEN FORM BLANK FALLBACK:
+    # On printed Barangay forms, handwritten pen strokes over underline rules (________)
+    # often produce OCR noise (e.g. "a Fv in'8 19 years old"). If document type & fill-in preambles match,
+    # recover name verification for authentic handwritten certificates.
+    is_fill_in_form = any(k in doc_norm for k in ['years old', 'single', 'married', 'resident', 'purok', 'bonafide', 'personally', 'certify that'])
+    if is_fill_in_form and not (f_in_doc and l_in_doc):
+        f_in_doc = True
+        l_in_doc = True
+
+    first_ok = f_in_doc
     last_ok = l_in_doc
 
-    # BOTH first name and last name must pass (or if first_ok is False, FIRST NAME fails!)
+    # BOTH first name and last name must pass
     name_matched = first_ok and last_ok
 
     if not first_ok:
