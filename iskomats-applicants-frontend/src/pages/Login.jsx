@@ -23,7 +23,6 @@ const Login = () => {
   const [isLoginLoading, setIsLoginLoading] = useState(false);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const { setCurrentUserState, fetchProfile } = useAuth();
   const [currentUser, setCurrentUser] = useState(null);
@@ -38,6 +37,10 @@ const Login = () => {
     // Show suspension notice if redirected from a locked session
     if (searchParams.get('suspended') === '1') {
       setShowSuspensionModal(true);
+    }
+
+    if (searchParams.get('from') === 'apply') {
+      setShowTermsModal(true);
     }
 
     if (localStorage.getItem('accountSuspended') === 'true') {
@@ -177,12 +180,6 @@ const Login = () => {
 
     if (password !== confirmPassword) {
       setErrorMessage('Passwords do not match.');
-      setShowError(true);
-      return;
-    }
-
-    if (!agreedToTerms) {
-      setErrorMessage('You must agree to the Terms of Service to create an account.');
       setShowError(true);
       return;
     }
@@ -1275,35 +1272,6 @@ const Login = () => {
                     <input type="password" name="confirmPassword" placeholder="••••••••" required />
                   </div>
                 </div>
-                <div style={{ margin: '1.25rem 0 1.5rem 0', display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                  <input
-                    type="checkbox"
-                    id="termsCheckbox"
-                    checked={agreedToTerms}
-                    onChange={(e) => setAgreedToTerms(e.target.checked)}
-                    required
-                    style={{
-                      width: '18px',
-                      height: '18px',
-                      cursor: 'pointer',
-                      accentColor: '#991b1b',
-                      borderRadius: '4px'
-                    }}
-                  />
-                  <label htmlFor="termsCheckbox" style={{ fontSize: '0.88rem', color: 'rgba(255, 255, 255, 0.85)', cursor: 'pointer', margin: 0, userSelect: 'none' }}>
-                    I agree to the{' '}
-                    <a
-                      href="#terms"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setShowTermsModal(true);
-                      }}
-                      style={{ color: '#60a5fa', textDecoration: 'underline', fontWeight: 600 }}
-                    >
-                      Terms of Service
-                    </a>
-                  </label>
-                </div>
                 <button type="submit" className="submit-btn">Create account</button>
 
                 {/* Social Sign-up Options */}
@@ -1628,25 +1596,6 @@ const Login = () => {
               <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#ffffff' }}>
                 Terms & Conditions & Data Privacy
               </h3>
-              <button
-                type="button"
-                onClick={() => setShowTermsModal(false)}
-                style={{
-                  background: 'rgba(255,255,255,0.08)',
-                  border: 'none',
-                  color: '#94a3b8',
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '1.1rem',
-                  cursor: 'pointer'
-                }}
-              >
-                <i className="fas fa-times"></i>
-              </button>
             </div>
 
             <div style={{
@@ -1735,7 +1684,7 @@ const Login = () => {
               <div style={{ marginTop: '1.25rem', padding: '1rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
                 <h4 style={{ color: '#f8fafc', margin: '0 0 0.35rem 0', fontSize: '0.92rem' }}>Consent Statement</h4>
                 <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8' }}>
-                  By checking the box below and creating an account, I confirm that I have read, understood, and agree to the Terms and Conditions and Data Privacy Agreement of iskoMats. I consent to the collection, use, storage, and processing of my personal information solely for scholarship-related purposes in accordance with the Data Privacy Act of 2012 (Republic Act No. 10173).
+                  By accepting this prompt and continuing to the login screen, I confirm that I have read, understood, and agree to the Terms and Conditions and Data Privacy Agreement of iskoMats. I consent to the collection, use, storage, and processing of my personal information solely for scholarship-related purposes in accordance with the Data Privacy Act of 2012 (Republic Act No. 10173).
                 </p>
               </div>
             </div>
@@ -1745,14 +1694,28 @@ const Login = () => {
               paddingTop: '1rem',
               borderTop: '1px solid rgba(255, 255, 255, 0.1)',
               display: 'flex',
-              justify: 'flex-end'
+              justifyContent: 'space-between',
+              gap: '0.75rem'
             }}>
               <button
                 type="button"
-                onClick={() => {
-                  setAgreedToTerms(true);
-                  setShowTermsModal(false);
+                onClick={() => navigate('/')}
+                style={{
+                  background: 'transparent',
+                  color: '#cbd5e1',
+                  border: '1px solid rgba(203, 213, 225, 0.45)',
+                  borderRadius: '30px',
+                  padding: '0.65rem 1.6rem',
+                  fontSize: '0.95rem',
+                  fontWeight: 700,
+                  cursor: 'pointer'
                 }}
+              >
+                Reject
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowTermsModal(false)}
                 style={{
                   background: '#991b1b',
                   color: '#ffffff',
@@ -1764,7 +1727,7 @@ const Login = () => {
                   cursor: 'pointer'
                 }}
               >
-                I Agree
+                Accept
               </button>
             </div>
           </div>
