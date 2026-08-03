@@ -1831,11 +1831,11 @@ const StudentInfo = () => {
         const normCombined = normalizeForOcr(combinedText);
         const kwFound = strictKeywords.some(kw => normCombined.includes(kw));
 
-        if (kwFound || accumulatedLogs.length > 0 || (target && (target instanceof Blob || target instanceof File) && target.size > 0) || (typeof target === 'string' && target.length > 0)) {
+        if (kwFound) {
           finish({
             valid: true,
             reason: "Video Text Verified",
-            detectedText: accumulatedLogs.join('\n\n') || "Proof video stream active and uploaded."
+            detectedText: accumulatedLogs.join('\n\n') || "Video proof stream active."
           });
         } else {
           const docTypeLabel = fnLower.includes('indigency') ? 'Indigency' : (fnLower.includes('grades') ? 'Grades' : 'Enrollment');
@@ -1849,15 +1849,27 @@ const StudentInfo = () => {
 
       const timeout = setTimeout(() => {
         evaluateFinal();
-      }, 7000);
+      }, 9000);
 
       const runPlayingVideoSample = async () => {
         try {
           await video.play().catch(() => { });
           await new Promise(r => setTimeout(r, 400));
 
-          for (let sampleIndex = 0; sampleIndex < 3; sampleIndex++) {
+          const fractions = [0.20, 0.50, 0.80];
+          for (let sampleIndex = 0; sampleIndex < fractions.length; sampleIndex++) {
             if (isResolved) break;
+
+            if (isFinite(video.duration) && video.duration > 0) {
+              const targetTime = Math.min(video.duration - 0.1, video.duration * fractions[sampleIndex]);
+              video.currentTime = targetTime;
+              await new Promise(r => {
+                const onSeeked = () => { video.removeEventListener('seeked', onSeeked); r(); };
+                video.addEventListener('seeked', onSeeked);
+                setTimeout(onSeeked, 500);
+              });
+            }
+
             const w = video.videoWidth;
             const h = video.videoHeight;
             if (w && h) {
@@ -1894,12 +1906,6 @@ const StudentInfo = () => {
                 });
                 return;
               }
-            }
-
-            if (isFinite(video.duration) && video.duration > 0) {
-              const targetTime = Math.min(video.duration - 0.1, (sampleIndex + 1) * (video.duration / 3));
-              video.currentTime = targetTime;
-              await new Promise(r => setTimeout(r, 400));
             }
           }
         } catch (e) {
