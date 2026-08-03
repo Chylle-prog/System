@@ -1837,22 +1837,40 @@ def detect_document_tampering(image_bytes):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
         h, w = gray.shape[:2]
 
-        # Layer 2: Grid patch zero-noise variance analysis (digital white/black box overlays)
-        grid_w, grid_h = 20, 15
+        # Layer 2: Grid patch zero-noise variance & text box overlay analysis
+        grid_w, grid_h = 16, 16
         cols, rows = w // grid_w, h // grid_h
 
-        if cols >= 1 and rows >= 1:
+        if cols >= 4 and rows >= 4:
             gray_cropped = gray[:rows * grid_h, :cols * grid_w]
             patches = gray_cropped.reshape(rows, grid_h, cols, grid_w).swapaxes(1, 2)
             means = patches.mean(axis=(2, 3))
             stds = patches.std(axis=(2, 3))
-            suspicious = ((means >= 253) & (stds < 0.25)) | ((means <= 5) & (stds < 0.25))
-            suspicious_patches = int(np.sum(suspicious))
+
+            overlay_patches = ((means >= 252) & (stds < 0.35)) | ((means <= 5) & (stds < 0.35))
+            smooth_edit_patches = (means >= 238) & (stds < 1.3)
+
+            r_start, r_end = int(rows * 0.08), int(rows * 0.92)
+            c_start, c_end = int(cols * 0.05), int(cols * 0.95)
+
+            max_h_run = 0
+            for r in range(r_start, r_end):
+                run = 0
+                for c in range(c_start, c_end):
+                    if smooth_edit_patches[r, c]:
+                        run += 1
+                        if run > max_h_run: max_h_run = run
+                    else:
+                        run = 0
+
+            suspicious_patches = int(np.sum(overlay_patches[r_start:r_end, c_start:c_end]))
+            if suspicious_patches >= 4:
+                return True, f"Digital edit / solid overlay block detected on document ({suspicious_patches} artificial overlay patches found). Please upload an authentic, unedited document.", suspicious_patches
+
+            if max_h_run >= 8:
+                return True, f"Digital edit / text patch overlay detected on document (contiguous edited text block overlay of length {max_h_run * 16}px found around name/text region). Please upload an authentic, unedited document.", max_h_run
         else:
             suspicious_patches = 0
-
-        if suspicious_patches >= 3:
-            return True, f"Digital edit / overlay block detected on document ({suspicious_patches} artificial overlay patches found). Please upload an unedited document.", suspicious_patches
 
         # Layer 3: Error Level Analysis (ELA)
         ela_tampered, ela_msg, ela_score = perform_error_level_analysis(img)

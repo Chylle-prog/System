@@ -3223,6 +3223,7 @@ const StudentInfo = () => {
           const rows = Math.floor(contentH / gridH);
 
           let suspiciousPatches = 0;
+          const smoothPatchesGrid = Array.from({ length: rows }, () => Array(cols).fill(false));
 
           for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
@@ -3258,22 +3259,45 @@ const StudentInfo = () => {
               }
               const stdDev = Math.sqrt(varianceSum / count);
 
-              // Digital overlay box (pasted in Paint/Photoshop): 
-              // 100% pure artificial digital fill (#FFFFFF or #000000) with ZERO noise (stdDev < 0.25)
-              const isDigitalWhiteBox = (avgR >= 253 && avgG >= 253 && avgB >= 253 && stdDev < 0.25);
-              const isDigitalBlackBox = (avgGray <= 5 && stdDev < 0.25);
+              const isDigitalWhiteBox = ((avgR >= 252 && avgG >= 252 && avgB >= 252 && stdDev < 0.35) || (avgGray <= 5 && stdDev < 0.35));
+              const isSmoothEditPatch = (avgGray >= 238 && stdDev < 1.3);
 
-              if (isDigitalWhiteBox || isDigitalBlackBox) {
+              if (isDigitalWhiteBox) {
                 suspiciousPatches++;
+              }
+              if (isSmoothEditPatch && r >= Math.floor(rows * 0.08) && r <= Math.floor(rows * 0.92) && c >= Math.floor(cols * 0.05) && c <= Math.floor(cols * 0.95)) {
+                smoothPatchesGrid[r][c] = true;
               }
             }
           }
 
-          if (suspiciousPatches >= 3) {
+          let maxHRun = 0;
+          for (let r = 0; r < rows; r++) {
+            let run = 0;
+            for (let c = 0; c < cols; c++) {
+              if (smoothPatchesGrid[r] && smoothPatchesGrid[r][c]) {
+                run++;
+                if (run > maxHRun) maxHRun = run;
+              } else {
+                run = 0;
+              }
+            }
+          }
+
+          if (suspiciousPatches >= 4) {
             resolve({
               edited: true,
-              reason: `Digital edit / overlay block detected on document (${suspiciousPatches} artificial overlay patches found). Please upload an authentic, unedited document.`,
+              reason: `Digital edit / solid overlay block detected on document (${suspiciousPatches} artificial overlay patches found). Please upload an authentic, unedited document.`,
               patchCount: suspiciousPatches
+            });
+            return;
+          }
+
+          if (maxHRun >= 8) {
+            resolve({
+              edited: true,
+              reason: `Digital edit / text patch overlay detected on document (contiguous edited text block overlay of length ${maxHRun * 16}px found around name/text region). Please upload an authentic, unedited document.`,
+              patchCount: maxHRun
             });
             return;
           }
