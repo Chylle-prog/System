@@ -2284,7 +2284,7 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
         if any(w in doc_first_clean for w in f_words):
             f_in_doc = True
 
-    first_ok = f_in_doc or first_ok
+    first_ok = f_in_doc
 
     # LAST NAME VERIFICATION: Check if applicant's last_name words appear in document text
     l_in_doc = any(_word_in_text(w, doc_norm) for w in l_words) if l_words else False
@@ -2293,7 +2293,7 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
         if any(w in doc_last_clean for w in l_words):
             l_in_doc = True
 
-    last_ok = l_in_doc or last_ok
+    last_ok = l_in_doc
 
     # BOTH first name and last name must pass (or if first_ok is False, FIRST NAME fails!)
     name_matched = first_ok and last_ok
