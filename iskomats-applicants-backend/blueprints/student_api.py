@@ -3651,6 +3651,8 @@ def ocr_check():
             middle_name,
             last_name,
             expected_address=expected_addr_to_check,
+            target_barangay=barangay,
+            town_city=town_city,
             expected_id_no=data.get('idNumber'),
             expected_school_name=data.get('schoolName'),
             expected_gpa=data.get('gpa'),

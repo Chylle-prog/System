@@ -1020,22 +1020,24 @@ def normalize_id_number(s):
     return normalized
 
 
-def _word_in_text(w, text):
+def _word_in_text(w, text, is_name_check=False):
     if not w or not text: return False
     norm_w = normalize_text(w)
     norm_text = normalize_text(text)
-    w_clean = re.sub(r'^(?:bi|mr|ms|mrs|dr|prof|name|student|st|no|id|\d+|[:\-1l\|\]\}\)])+', '', norm_w, flags=re.IGNORECASE).strip()
 
-    # 1. Standard word boundary and exact substring match
-    if re.search(rf'\b{re.escape(norm_w)}\b', norm_text) or (w_clean and re.search(rf'\b{re.escape(w_clean)}\b', norm_text)):
+    # 1. Standard word boundary match
+    if re.search(rf'\b{re.escape(norm_w)}\b', norm_text):
         return True
-    if len(norm_w) >= 3 and (norm_w in norm_text or (w_clean and w_clean in norm_text)):
+    
+    # Check if any word token in the document starts with or equals norm_w
+    doc_tokens = [re.sub(r'[^a-z0-9]', '', tok) for tok in norm_text.split() if tok.strip()]
+    if any(tok == norm_w or (len(norm_w) >= 4 and tok.startswith(norm_w)) for tok in doc_tokens):
         return True
 
     # 2. Compact Space-Free Substring Match (handles OCR space insertion in handwriting like "Francz esca")
     compact_w = re.sub(r'[^a-z0-9]', '', norm_w)
     compact_text = re.sub(r'[^a-z0-9]', '', norm_text)
-    if len(compact_w) >= 3 and compact_w in compact_text:
+    if len(compact_w) >= 5 and compact_w in compact_text:
         return True
 
     # 3. Fuzzy Similarity Match (handles handwriting OCR character misreads like "Fvanczesca" or "Francz3sca")
@@ -1043,20 +1045,14 @@ def _word_in_text(w, text):
         from difflib import SequenceMatcher
         tokens = [re.sub(r'[^a-z0-9]', '', tok) for tok in norm_text.split() if len(re.sub(r'[^a-z0-9]', '', tok)) >= 3]
         for tok in tokens:
-            if compact_w in tok or tok in compact_w:
+            if (compact_w in tok and len(tok) <= len(compact_w) + 2) or (tok in compact_w and len(compact_w) <= len(tok) + 2):
                 return True
-            if SequenceMatcher(None, compact_w, tok).ratio() >= 0.70:
+            if SequenceMatcher(None, compact_w, tok).ratio() >= 0.78:
                 return True
-        if len(compact_text) >= len(compact_w):
-            for i in range(0, len(compact_text) - len(compact_w) + 1):
-                chunk = compact_text[i:i + len(compact_w)]
-                if SequenceMatcher(None, compact_w, chunk).ratio() >= 0.72:
-                    return True
 
-    # 4. Short Name Token Matching (handles "Ana" matching "a" or "an" from OCR handwriting noise)
-    if len(compact_w) <= 3 and len(compact_w) >= 2:
-        tokens = [re.sub(r'[^a-z0-9]', '', tok) for tok in norm_text.split() if tok.strip()]
-        if any(tok.startswith(compact_w[0]) for tok in tokens if len(tok) <= 3):
+    # 4. Short Name Token Matching (ONLY for person name checks like "Ana" matching "a" or "an" from OCR handwriting noise)
+    if is_name_check and len(compact_w) <= 3 and len(compact_w) >= 2:
+        if any(tok.startswith(compact_w[0]) for tok in doc_tokens if len(tok) <= 3):
             return True
 
     return False
@@ -2402,24 +2398,40 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
             if not doc_type_ok:
                 failures.append("Document Type Mismatch: Document does not contain required 'Certificate of Indigency' keywords")
 
-    # BARANGAY / ADDRESS VERIFICATION
-    expected_addr = expected_address or kwargs.get('expected_address') or kwargs.get('address') or kwargs.get('barangay')
-    addr_ok = True
+    # BARANGAY ADDRESS & TOWN / CITY VERIFICATION
+    target_barangay = kwargs.get('target_barangay') or kwargs.get('barangay') or expected_address
+    target_town = kwargs.get('town_city') or kwargs.get('townCity') or kwargs.get('town')
 
-    if expected_addr and str(expected_addr).strip():
-        addr_clean = normalize_text(expected_addr)
-        addr_words = [w for w in addr_clean.split() if len(w) >= 3 and w not in {'city', 'purok', 'street', 'province', 'municipality'}]
-        if addr_words:
-            matched_addr_word = any(_word_in_text(w, doc_norm) for w in addr_words)
-            addr_ok = matched_addr_word or ('barangay' in doc_norm) or ('batangas' in doc_norm)
-            if not matched_addr_word and not ('barangay' in doc_norm):
-                failures.append(f"Barangay Address mismatch (Expected: '{expected_addr}' in Indigency Certificate)")
+    addr_ok = True
+    town_ok = True
+
+    # 1. Barangay Address Matching
+    if target_barangay and str(target_barangay).strip():
+        b_clean = normalize_text(target_barangay)
+        b_words = [w for w in b_clean.split() if len(w) >= 3 and w not in {'barangay', 'brgy', 'purok', 'st', 'street', 'zone', 'sitio'}]
+        if b_words:
+            addr_ok = any(_word_in_text(w, doc_norm) for w in b_words)
+            if not addr_ok:
+                failures.append(f"Barangay Address mismatch: Document is not from Barangay '{target_barangay}'")
         else:
             addr_ok = True
     else:
         addr_ok = ('barangay' in doc_norm) or ('batangas' in doc_norm) or doc_type_ok
 
-    success = name_matched and doc_type_ok and addr_ok
+    # 2. Town / City Matching
+    if target_town and str(target_town).strip():
+        t_clean = normalize_text(target_town)
+        t_words = [w for w in t_clean.split() if len(w) >= 3 and w not in {'city', 'town', 'municipality', 'province'}]
+        if t_words:
+            town_ok = any(_word_in_text(w, doc_norm) for w in t_words)
+            if not town_ok:
+                failures.append(f"Town/City mismatch: Document is not from '{target_town}'")
+        else:
+            town_ok = True
+    else:
+        town_ok = ('batangas' in doc_norm) or ('mataasnakahoy' in doc_norm) or doc_type_ok
+
+    success = name_matched and doc_type_ok and addr_ok and town_ok
     displayName = f"{first_name} {middle_name or ''} {last_name}".strip()
     if success:
         doc_name = "Residency Certificate" if is_residency_doc else "Indigency Certificate"
@@ -2428,6 +2440,8 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
         msg = "Indigency/Residency Verification Failed: " + "; ".join(failures)
 
     meta['name_ok'] = name_matched
+    meta['addr_ok'] = addr_ok
+    meta['town_ok'] = town_ok
     meta['details'] = failures
     meta['detected_text'] = raw_text
     meta['extracted_doc_first'] = first_name
@@ -2436,7 +2450,7 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
         'FIRST NAME': first_ok,
         'LAST NAME': last_ok,
         'BARANGAY ADDRESS': addr_ok,
-        'TOWN / CITY': addr_ok,
+        'TOWN / CITY': town_ok,
         'DOCUMENT TYPE': doc_type_ok,
         'VIDEO PROOF': True,
         'DOC_FIRST_NAME': first_name,
