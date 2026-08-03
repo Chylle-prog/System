@@ -3619,9 +3619,19 @@ def ocr_check():
         if not doc_bytes:
             return jsonify({'verified': False, 'message': 'No valid document image provided for verification.'}), 400
 
-        # Extract video payload if present
-        video_file = request.files.get('indigency_video') or request.files.get('video_proof') or request.files.get('video_doc') or request.files.get('video')
-        video_param = video_file.read() if video_file else (data.get('indigency_video') or data.get('video_proof') or data.get('video_doc') or data.get('video_url') or data.get('video'))
+        # Extract video payload based on target doc_type
+        if doc_type == 'Enrollment':
+            video_file = request.files.get('mayorCOE_video') or request.files.get('enrollment_video') or request.files.get('video_proof')
+            video_param = video_file.read() if video_file else (data.get('mayorCOE_video') or data.get('enrollment_video') or data.get('video_proof'))
+        elif doc_type == 'Grades':
+            video_file = request.files.get('mayorGrades_video') or request.files.get('grades_video') or request.files.get('video_proof')
+            video_param = video_file.read() if video_file else (data.get('mayorGrades_video') or data.get('grades_video') or data.get('video_proof'))
+        elif doc_type == 'Indigency':
+            video_file = request.files.get('mayorIndigency_video') or request.files.get('indigency_video') or request.files.get('video_proof')
+            video_param = video_file.read() if video_file else (data.get('mayorIndigency_video') or data.get('indigency_video') or data.get('video_proof'))
+        else:
+            video_file = request.files.get('schoolIdFront_video') or request.files.get('video_proof')
+            video_param = video_file.read() if video_file else (data.get('schoolIdFront_video') or data.get('video_proof'))
 
         video_bytes = None
         if video_param:
