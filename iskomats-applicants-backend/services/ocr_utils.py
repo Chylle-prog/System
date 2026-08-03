@@ -1586,16 +1586,20 @@ def verify_academic_year_strict(expected_academic_year, found_ay_text, raw_text)
     if not exp_years:
         return True, ""
 
-    # Gather academic year lines / headers
+    # Gather academic year lines / header lines (first 25 lines or lines containing header keywords)
     ay_lines = []
-    if found_ay_text and found_ay_text != raw_text:
+    if found_ay_text and len(str(found_ay_text)) <= 80:
         ay_lines.append(str(found_ay_text))
-        
-    for line in str(raw_text or '').splitlines():
-        if any(k in line.lower() for k in ['school year', 'academic year', 'sy', 'ay', 's.y.', 'a.y.']):
+
+    all_raw_lines = str(raw_text or '').splitlines()
+    header_lines = all_raw_lines[:25]
+
+    for line in all_raw_lines:
+        lower_line = line.lower()
+        if any(k in lower_line for k in ['school year', 'academic year', 'sy', 'ay', 's.y.', 'a.y.', 'semester', 'reg no', 'run date', 'tran date']):
             ay_lines.append(line)
 
-    search_pool = " ".join(ay_lines) if ay_lines else str(raw_text or '')
+    search_pool = " ".join(ay_lines) if ay_lines else " ".join(header_lines)
 
     # Extract explicit year pairs from search pool like '2025-2026', '2025-2028', '2025/2026'
     year_pairs = re.findall(r'(20\d{2})\s*[\-\/]\s*(20[0-9a-zA-Z]{2})', search_pool)
@@ -1623,11 +1627,11 @@ def verify_academic_year_strict(expected_academic_year, found_ay_text, raw_text)
                 return False, f"Academic Year mismatch (Expected: '{exp_str}', Found in document: '{doc_pair_str}')"
             return True, ""
 
-    # Fallback year search
-    found_years = set(re.findall(r'20\d{2}', search_pool))
+    # Fallback year search (restricted to valid academic year range 2021-2035 to exclude penalty/fee policy years like 2001 or 2020)
+    found_years = set(y for y in re.findall(r'20\d{2}', search_pool) if 2021 <= int(y) <= 2035)
     all_present = all(y in found_years for y in exp_years)
     if not all_present:
-        found_str = ", ".join(sorted(found_years)) if found_years else "None found"
+        found_str = ", ".join(sorted(found_years)) if found_years else "Not found in document header"
         return False, f"Academic Year mismatch (Expected: '{exp_str}', Found in document header: '{found_str}')"
 
     return True, ""
@@ -1641,7 +1645,6 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
     expected_academic_year = kwargs.get('expected_academic_year') or kwargs.get('academicYear')
     expected_semester = kwargs.get('expected_semester') or kwargs.get('semester')
     expected_course = kwargs.get('course') or kwargs.get('expected_course')
-    expected_year_level = kwargs.get('expected_year_level') or kwargs.get('yearLevel')
 
     meta = {'parsed_fields': parsed_fields}
     failures = []
@@ -1653,7 +1656,9 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
     )
 
     if not (first_ok and last_ok and (middle_ok if middle_name else True)):
-        failures.append(f"Name mismatch (Expected: '{first_name} {middle_name or ''} {last_name}'. Found in COR: '{parsed_fields.get('name', 'Not found')}')")
+        parsed_name = parsed_fields.get('name')
+        display_found_name = parsed_name if (parsed_name and len(parsed_name) <= 35) else 'Not found'
+        failures.append(f"Name mismatch (Expected: '{first_name} {middle_name or ''} {last_name}'. Found in COR: '{display_found_name}')")
 
     # 2. STUDENT ID MATCHING (Only if required ID is School ID, NOT National ID)
     id_type = kwargs.get('id_type') or kwargs.get('idType') or 'School ID'
@@ -1664,7 +1669,6 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
         found_id_clean = normalize_id_number(parsed_fields.get('student_id', ''))
         tokens = [normalize_id_number(tok) for tok in re.findall(r'\b[0-9a-zA-Z\-]{4,25}\b', str(raw_text or ''))]
 
-        # Strict exact match (with trailing glare digit sanitization)
         def _clean_cand(t):
             d = re.sub(r'[^0-9]', '', str(t or ''))
             if len(exp_id_clean) >= 6 and len(d) == len(exp_id_clean) + 1 and (d.startswith(exp_id_clean) or d.endswith(exp_id_clean)):
@@ -1683,7 +1687,9 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
                 id_ok = True
 
         if not id_ok:
-            failures.append(f"Student ID mismatch (Expected: '{expected_id_no}', Found in COR: '{parsed_fields.get('student_id', 'Not found')}')")
+            parsed_id = parsed_fields.get('student_id')
+            display_id = parsed_id if (parsed_id and len(parsed_id) <= 25) else 'Not found'
+            failures.append(f"Student ID mismatch (Expected: '{expected_id_no}', Found in COR: '{display_id}')")
 
     # 3. ACADEMIC YEAR & SEMESTER MATCHING
     if expected_academic_year and str(expected_academic_year).strip():
@@ -1693,7 +1699,7 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
             failures.append(ay_msg)
 
     if expected_semester and str(expected_semester).strip():
-        found_sy_sem = parsed_fields.get('school_year_sem', raw_text)
+        found_sy_sem = parsed_fields.get('school_year_sem', '')
         exp_sem_clean = normalize_text(expected_semester)
         
         exp_num = 1 if any(k in exp_sem_clean for k in ['1st', '1', 'first']) else (2 if any(k in exp_sem_clean for k in ['2nd', '2', 'second']) else (3 if any(k in exp_sem_clean for k in ['3rd', '3', 'third', 'summer', 'midyear']) else None))
@@ -1703,8 +1709,7 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
         if exp_num is not None and found_num is not None:
             sem_ok = (exp_num == found_num)
         elif exp_num is not None:
-            # Fallback if no explicit year-sem hyphen digit was found
-            found_sem_clean = normalize_text(found_sy_sem)
+            found_sem_clean = normalize_text(found_sy_sem or raw_text)
             if exp_num == 1:
                 sem_ok = any(k in found_sem_clean for k in ['1st', 'first', 'sem 1', 'semester 1'])
             elif exp_num == 2:
@@ -1713,17 +1718,16 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
                 sem_ok = any(k in found_sem_clean for k in ['3rd', 'third', 'summer', 'midyear'])
 
         if not sem_ok:
-            found_desc = f"{found_num}nd Sem" if found_num == 2 else (f"{found_num}st Sem" if found_num == 1 else (f"{found_num}rd Sem" if found_num == 3 else found_sy_sem))
+            found_desc = f"{found_num}nd Sem" if found_num == 2 else (f"{found_num}st Sem" if found_num == 1 else (f"{found_num}rd Sem" if found_num == 3 else (found_sy_sem if (found_sy_sem and len(found_sy_sem) <= 30) else "Not found in document header")))
             failures.append(f"Semester mismatch (Expected: '{expected_semester}', Found in COR: '{found_desc}')")
 
     # 4. COURSE / DEGREE MATCHING
     if expected_course and str(expected_course).strip():
-        found_course = parsed_fields.get('course', raw_text)
+        found_course = parsed_fields.get('course', '')
         c_exp = normalize_text(expected_course)
         c_found = normalize_text(found_course)
         c_raw = normalize_text(raw_text)
 
-        # Fix digit/letter OCR confusions (e.g. b5it -> bsit)
         c_found_fixed = c_found.replace('b5it', 'bsit').replace('5', 's')
         c_raw_fixed = c_raw.replace('b5it', 'bsit').replace('5', 's')
 
@@ -1731,7 +1735,6 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
         if (c_exp in c_found_fixed) or (c_exp in c_raw_fixed):
             course_ok = True
         
-        # Course synonyms check
         course_map = {
             'bsit': ['information technology', 'info tech', 'it', 'b5it'],
             'bscs': ['computer science', 'comp sci', 'cs'],
@@ -1757,7 +1760,8 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
                     course_ok = True
 
         if not course_ok:
-            failures.append(f"Course mismatch (Expected: '{expected_course}', Found in COR: '{found_course}')")
+            display_course = found_course if (found_course and len(found_course) <= 35) else 'Not found'
+            failures.append(f"Course mismatch (Expected: '{expected_course}', Found in COR: '{display_course}')")
 
     success = (len(failures) == 0)
     if success:
