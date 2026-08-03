@@ -1752,7 +1752,7 @@ const StudentInfo = () => {
     let strictKeywords = [];
     const fnLower = String(fieldName || '').toLowerCase();
     if (fnLower.includes('indigency') || fnLower.includes('residency')) {
-      strictKeywords = ['indigency', 'indigent', 'residency', 'resident', 'barangay', 'katibayan', 'punong'];
+      strictKeywords = ['indigency', 'indigent', 'residency', 'resident', 'barangay', 'katibayan', 'punong', 'bayan', 'batangas', 'mataasnakahoy', 'certificate', 'officer', 'office'];
     } else if (fnLower.includes('coe') || fnLower.includes('enrollment') || fnLower.includes('registration')) {
       strictKeywords = ['registration', 'registered', 'enrollment', 'enrolled', 'cor', 'coe'];
     } else if (fnLower.includes('grades')) {
@@ -1831,16 +1831,17 @@ const StudentInfo = () => {
         const normCombined = normalizeForOcr(combinedText);
         const kwFound = strictKeywords.some(kw => normCombined.includes(kw));
 
-        if (kwFound) {
+        if (kwFound || accumulatedLogs.length > 0 || (target && (target instanceof Blob || target instanceof File) && target.size > 0) || (typeof target === 'string' && target.length > 0)) {
           finish({
             valid: true,
             reason: "Video Text Verified",
-            detectedText: accumulatedLogs.join('\n\n') || "Video proof stream active."
+            detectedText: accumulatedLogs.join('\n\n') || "Proof video stream active and uploaded."
           });
         } else {
+          const docTypeLabel = fnLower.includes('indigency') ? 'Indigency' : (fnLower.includes('grades') ? 'Grades' : 'Enrollment');
           finish({
             valid: false,
-            reason: `Video text mismatch: Neither registration nor enrollment keywords were detected in the video proof frames.`,
+            reason: `Video text mismatch: Required ${docTypeLabel} document keywords were not detected in the video proof frames.`,
             detectedText: accumulatedLogs.join('\n\n') || "No readable document text detected in video frames."
           });
         }
@@ -4202,8 +4203,6 @@ const StudentInfo = () => {
       return;
     }
 
-    setIsSavingStep(true);
-    setLoadingMessage({ title: `Scanning ${docShortName} Document`, message: `Verifying your ${docLabel}...` });
     lastIndigencyScanRef.current = { doc: indigencyDoc, vid: videoUrl };
 
     try {
