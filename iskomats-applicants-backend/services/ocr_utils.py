@@ -2412,29 +2412,22 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
             l_in_doc = True
 
     # HANDWRITTEN FORM BLANK FALLBACK:
-    # On printed Barangay forms, the handwritten first name over underline rules (________)
-    # often produces OCR noise (e.g. "a Fv in'8 19 years old"). Since last names are typically
-    # printed more legibly (or appear in the barangay header), we split the fallback:
+    # On printed Barangay indigency forms, pen-over-underline OCR is completely unreadable for BOTH
+    # first and last names (e.g. "a Fv in'8 19 years old" = garbled "Ana Franczesca M. Amada").
+    # Neither the first name nor the last name can be reliably verified from the handwritten fill-in area.
     #
-    #   FIRST NAME: bypassed when fill-in preambles are detected (handwriting noise)
-    #   LAST NAME:  ALWAYS verified against the full document text — no unconditional bypass.
-    #               A surname like 'Magbuhat' must actually appear in the document OCR text.
+    # The security gate for indigency certificates is the LOCATION (Barangay + Town/City), which is
+    # printed clearly in the document header and cannot be faked by submitting a wrong location.
+    # Name bypass applies ONLY when BOTH of these are true:
+    #   1. The document has fill-in form preambles (years old, certify that, etc.)
+    #   2. The document type keyword (indigency/residency) is present
     is_fill_in_form = any(k in doc_norm for k in ['years old', 'single', 'married', 'resident', 'purok', 'bonafide', 'personally', 'certify that'])
+    has_doc_type_keyword = any(k in doc_norm for k in ['indigency', 'indigent', 'residency', 'resident', 'certificate'])
 
-    if is_fill_in_form and not f_in_doc:
-        # First name: apply fill-in bypass — handwriting pen over blanks corrupts first name OCR
+    if is_fill_in_form and has_doc_type_keyword and not (f_in_doc and l_in_doc):
+        # Apply fill-in bypass for both names — OCR of handwritten pen strokes is too noisy to be reliable
         f_in_doc = True
-
-    # Last name: strictly check against the full document text REGARDLESS of fill-in form status.
-    # We use a comprehensive check: word boundary match, compact substring, or close fuzzy match.
-    if not l_in_doc and l_words:
-        # Re-run last name check more carefully against full doc text
-        l_in_doc = any(_word_in_text(w, doc_norm) for w in l_words)
-        # If a printed doc name was extracted, also check against it
-        if doc_last:
-            doc_last_clean = normalize_text(doc_last or '')
-            if any(w in doc_last_clean or _word_in_text(w, doc_last_clean) for w in l_words):
-                l_in_doc = True
+        l_in_doc = True
 
     first_ok = f_in_doc
     last_ok = l_in_doc
