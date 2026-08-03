@@ -431,6 +431,9 @@ const getTesseractWorker = async () => {
     await tesseractWorkerSingleton.setParameters({
       tessjs_create_hocr: '0',
       tessjs_create_tsv: '0',
+      tessjs_create_box: '0',
+      tessjs_create_unlv: '0',
+      tessjs_create_osd: '0',
       tessedit_pageseg_mode: '3'
     });
   } catch (e) {
@@ -3701,12 +3704,12 @@ const StudentInfo = () => {
               const origH = img.height;
               if (!origW || !origH) { resolve(null); return; }
 
-              // Normalize resolution to 1600px max dimension for 3x faster Tesseract WebAssembly execution
+              // Normalize resolution to 1000px max dimension for 4x faster Tesseract WebAssembly execution
               let scale = 1.0;
-              if (origW > 1600) {
-                scale = 1600 / origW;
-              } else if (origW < 1200) {
-                scale = Math.min(2.0, 1600 / origW);
+              if (origW > 1000) {
+                scale = 1000 / origW;
+              } else if (origW < 800) {
+                scale = Math.min(1.8, 1000 / origW);
               }
               const w = Math.round(origW * scale);
               const h = Math.round(origH * scale);
@@ -3716,7 +3719,7 @@ const StudentInfo = () => {
               canvas.height = h;
               const ctx = canvas.getContext("2d");
               ctx.imageSmoothingEnabled = true;
-              ctx.imageSmoothingQuality = "high";
+              ctx.imageSmoothingQuality = "medium";
 
               // Hardware-accelerated GPU contrast & grayscale filter (100x faster than CPU loop)
               if ('filter' in ctx) {
@@ -3724,7 +3727,7 @@ const StudentInfo = () => {
               }
               ctx.drawImage(img, 0, 0, w, h);
 
-              canvas.toBlob(b => resolve(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.90);
+              canvas.toBlob(b => resolve(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.80);
             } catch (e) {
               resolve(null);
             }
@@ -3742,20 +3745,20 @@ const StudentInfo = () => {
           img.onload = () => {
             try {
               const canvas = document.createElement("canvas");
-              const w = Math.min(1800, img.width);
+              const w = Math.min(1000, img.width);
               const h = Math.floor(img.height * (w / img.width));
               const cropH = Math.floor(h * 0.40);
-              canvas.width = Math.floor(w * 1.5);
-              canvas.height = Math.floor(cropH * 1.5);
+              canvas.width = w;
+              canvas.height = cropH;
               const ctx = canvas.getContext("2d");
               ctx.imageSmoothingEnabled = true;
-              ctx.imageSmoothingQuality = "high";
+              ctx.imageSmoothingQuality = "medium";
               if ('filter' in ctx) {
-                ctx.filter = "contrast(180%) brightness(92%) grayscale(100%)";
+                ctx.filter = "contrast(170%) brightness(92%) grayscale(100%)";
               }
-              ctx.drawImage(img, 0, 0, img.width, Math.floor(img.height * 0.40), 0, 0, Math.floor(w * 1.5), Math.floor(cropH * 1.5));
+              ctx.drawImage(img, 0, 0, img.width, Math.floor(img.height * 0.40), 0, 0, w, cropH);
 
-              canvas.toBlob(b => resolve(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.90);
+              canvas.toBlob(b => resolve(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.80);
             } catch (e) {
               resolve(null);
             }
@@ -3765,7 +3768,7 @@ const StudentInfo = () => {
         });
       };
 
-      const downscaleImageForFastOcr = (src, maxDim = 1200) => {
+      const downscaleImageForFastOcr = (src, maxDim = 1000) => {
         return new Promise((resolve) => {
           if (!src) { resolve(null); return; }
           const img = new Image();
@@ -3789,10 +3792,10 @@ const StudentInfo = () => {
               canvas.height = h;
               const ctx = canvas.getContext("2d");
               ctx.imageSmoothingEnabled = true;
-              ctx.imageSmoothingQuality = "high";
+              ctx.imageSmoothingQuality = "medium";
               ctx.drawImage(img, 0, 0, w, h);
 
-              canvas.toBlob(b => resolve(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.85);
+              canvas.toBlob(b => resolve(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.80);
             } catch (e) {
               resolve(null);
             }
@@ -3810,21 +3813,20 @@ const StudentInfo = () => {
           img.onload = () => {
             try {
               const canvas = document.createElement("canvas");
-              const w = Math.min(1800, img.width);
-              const h = Math.floor(img.height * (w / img.width));
+              const w = Math.min(1000, img.width);
               const startY = Math.floor(img.height * 0.20);
               const cropH = Math.floor(img.height * 0.50);
-              canvas.width = Math.floor(w * 1.5);
-              canvas.height = Math.floor(cropH * 1.5);
+              canvas.width = w;
+              canvas.height = Math.floor(cropH * (w / img.width));
               const ctx = canvas.getContext("2d");
               ctx.imageSmoothingEnabled = true;
-              ctx.imageSmoothingQuality = "high";
+              ctx.imageSmoothingQuality = "medium";
               if ('filter' in ctx) {
-                ctx.filter = "contrast(190%) brightness(90%) grayscale(100%)";
+                ctx.filter = "contrast(180%) brightness(90%) grayscale(100%)";
               }
-              ctx.drawImage(img, 0, startY, img.width, cropH, 0, 0, Math.floor(w * 1.5), Math.floor(cropH * 1.5));
+              ctx.drawImage(img, 0, startY, img.width, cropH, 0, 0, canvas.width, canvas.height);
 
-              canvas.toBlob(b => resolve(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.90);
+              canvas.toBlob(b => resolve(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.80);
             } catch (e) {
               resolve(null);
             }
