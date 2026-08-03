@@ -1837,7 +1837,7 @@ def detect_document_tampering(image_bytes):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
         h, w = gray.shape[:2]
 
-        # Layer 2: Grid patch zero-noise variance & text box overlay analysis
+        # Layer 2: Multi-layer Digital Box & Text Patch Overlay Analysis
         grid_w, grid_h = 16, 16
         cols, rows = w // grid_w, h // grid_h
 
@@ -1847,12 +1847,39 @@ def detect_document_tampering(image_bytes):
             means = patches.mean(axis=(2, 3))
             stds = patches.std(axis=(2, 3))
 
-            overlay_patches = ((means >= 252) & (stds < 0.35)) | ((means <= 5) & (stds < 0.35))
-            smooth_edit_patches = (means >= 238) & (stds < 1.3)
-
             r_start, r_end = int(rows * 0.08), int(rows * 0.92)
             c_start, c_end = int(cols * 0.05), int(cols * 0.95)
 
+            # 2a. Solid Whiteout / Blackout Overlay (#FFFFFF / #000000)
+            overlay_patches = ((means >= 252) & (stds < 0.35)) | ((means <= 5) & (stds < 0.35))
+            pure_count = int(np.sum(overlay_patches[r_start:r_end, c_start:c_end]))
+            if pure_count >= 4:
+                return True, f"Digital edit / solid overlay block detected on document ({pure_count} artificial overlay patches found). Please upload an authentic, unedited document.", pure_count
+
+            # 2b. Camera Photo / Shadowed Scan + Pure Digital White Edit Box Check
+            light_pixels = gray[gray >= 120]
+            if len(light_pixels) > 0:
+                doc_bg_median = float(np.median(light_pixels))
+                if doc_bg_median <= 236:
+                    white_pixel_counts = np.sum(patches >= 240, axis=(2, 3))
+                    white_patch_mask = (white_pixel_counts >= 20)
+
+                    max_photo_white_run = 0
+                    for r in range(r_start, r_end):
+                        run = 0
+                        for c in range(c_start, c_end):
+                            if white_patch_mask[r, c]:
+                                run += 1
+                                if run > max_photo_white_run: max_photo_white_run = run
+                            else:
+                                run = 0
+
+                    photo_white_patches = int(np.sum(white_patch_mask[r_start:r_end, c_start:c_end]))
+                    if max_photo_white_run >= 4 or photo_white_patches >= 6:
+                        return True, f"Digital edit / text patch overlay detected on document (contiguous white edit block of length {max_photo_white_run * 16}px found around text region). Please upload an authentic, unedited document.", max_photo_white_run
+
+            # 2c. Off-White Smooth Text Overlay (for bright scans with flat background noise)
+            smooth_edit_patches = (means >= 235) & (stds < 1.6)
             max_h_run = 0
             for r in range(r_start, r_end):
                 run = 0
@@ -1863,14 +1890,8 @@ def detect_document_tampering(image_bytes):
                     else:
                         run = 0
 
-            suspicious_patches = int(np.sum(overlay_patches[r_start:r_end, c_start:c_end]))
-            if suspicious_patches >= 4:
-                return True, f"Digital edit / solid overlay block detected on document ({suspicious_patches} artificial overlay patches found). Please upload an authentic, unedited document.", suspicious_patches
-
-            if max_h_run >= 8:
+            if max_h_run >= 7:
                 return True, f"Digital edit / text patch overlay detected on document (contiguous edited text block overlay of length {max_h_run * 16}px found around name/text region). Please upload an authentic, unedited document.", max_h_run
-        else:
-            suspicious_patches = 0
 
         # Layer 3: Error Level Analysis (ELA)
         ela_tampered, ela_msg, ela_score = perform_error_level_analysis(img)

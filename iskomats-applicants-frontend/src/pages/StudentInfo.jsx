@@ -3224,6 +3224,7 @@ const StudentInfo = () => {
 
           let suspiciousPatches = 0;
           const smoothPatchesGrid = Array.from({ length: rows }, () => Array(cols).fill(false));
+          const whitePixelPatchesGrid = Array.from({ length: rows }, () => Array(cols).fill(false));
 
           for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
@@ -3260,26 +3261,44 @@ const StudentInfo = () => {
               const stdDev = Math.sqrt(varianceSum / count);
 
               const isDigitalWhiteBox = ((avgR >= 252 && avgG >= 252 && avgB >= 252 && stdDev < 0.35) || (avgGray <= 5 && stdDev < 0.35));
-              const isSmoothEditPatch = (avgGray >= 238 && stdDev < 1.3);
+              const isSmoothEditPatch = (avgGray >= 235 && stdDev < 1.6);
+              const isPureWhitePixelPatch = (avgGray >= 240);
 
               if (isDigitalWhiteBox) {
                 suspiciousPatches++;
               }
-              if (isSmoothEditPatch && r >= Math.floor(rows * 0.08) && r <= Math.floor(rows * 0.92) && c >= Math.floor(cols * 0.05) && c <= Math.floor(cols * 0.95)) {
+
+              const inBody = r >= Math.floor(rows * 0.08) && r <= Math.floor(rows * 0.92) && c >= Math.floor(cols * 0.05) && c <= Math.floor(cols * 0.95);
+              if (isSmoothEditPatch && inBody) {
                 smoothPatchesGrid[r][c] = true;
+              }
+              if (isPureWhitePixelPatch && inBody) {
+                whitePixelPatchesGrid[r][c] = true;
               }
             }
           }
 
           let maxHRun = 0;
+          let maxWhiteRun = 0;
+          let totalWhitePatches = 0;
+
           for (let r = 0; r < rows; r++) {
             let run = 0;
+            let whiteRun = 0;
             for (let c = 0; c < cols; c++) {
               if (smoothPatchesGrid[r] && smoothPatchesGrid[r][c]) {
                 run++;
                 if (run > maxHRun) maxHRun = run;
               } else {
                 run = 0;
+              }
+
+              if (whitePixelPatchesGrid[r] && whitePixelPatchesGrid[r][c]) {
+                whiteRun++;
+                totalWhitePatches++;
+                if (whiteRun > maxWhiteRun) maxWhiteRun = whiteRun;
+              } else {
+                whiteRun = 0;
               }
             }
           }
@@ -3293,7 +3312,16 @@ const StudentInfo = () => {
             return;
           }
 
-          if (maxHRun >= 8) {
+          if (maxWhiteRun >= 4 || totalWhitePatches >= 6) {
+            resolve({
+              edited: true,
+              reason: `Digital edit / text patch overlay detected on document (contiguous white edit block of length ${maxWhiteRun * 16}px found around text region). Please upload an authentic, unedited document.`,
+              patchCount: maxWhiteRun
+            });
+            return;
+          }
+
+          if (maxHRun >= 7) {
             resolve({
               edited: true,
               reason: `Digital edit / text patch overlay detected on document (contiguous edited text block overlay of length ${maxHRun * 16}px found around name/text region). Please upload an authentic, unedited document.`,
