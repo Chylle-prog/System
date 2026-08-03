@@ -1187,14 +1187,19 @@ def _run_tesseract_on_image(img, psm=3):
         _init_tesseract()
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
         h, w = gray.shape[:2]
-        if w < 1200:
-            scale = 1200.0 / w
+        if w < 1000:
+            scale = 1000.0 / float(w)
             gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LINEAR)
-        elif w > 1800:
-            scale = 1800.0 / w
+        elif w > 1100:
+            scale = 1100.0 / float(w)
             gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
 
         text = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 1')
+        if not text or len(text.strip()) < 20:
+            _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            alt_text = pytesseract.image_to_string(thresh, config=f'--psm {psm} --oem 1')
+            if len(alt_text.strip()) > len(text.strip()):
+                text = alt_text
         return text.strip()
     except Exception as e:
         print(f"[OCR] Tesseract error: {e}", flush=True)
