@@ -2448,29 +2448,29 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
             f_in_doc = True
 
     # LAST NAME VERIFICATION
-    l_in_doc = any(_word_in_text(w, doc_norm) for w in l_words) if l_words else True
-    if doc_last:
+    l_in_doc = any(_word_in_text(w, doc_norm) or (w in doc_norm) for w in l_words) if l_words else True
+    if not l_in_doc and doc_last:
         doc_last_clean = normalize_text(doc_last or '')
         if any(w in doc_last_clean for w in l_words):
             l_in_doc = True
 
-    # HANDWRITTEN FORM BLANK FALLBACK:
-    # On printed Barangay indigency forms, pen-over-underline OCR is completely unreadable for BOTH
-    # first and last names (e.g. "a Fv in'8 19 years old" = garbled "Ana Franczesca M. Amada").
-    # Neither the first name nor the last name can be reliably verified from the handwritten fill-in area.
-    #
-    # The security gate for indigency certificates is the LOCATION (Barangay + Town/City), which is
-    # printed clearly in the document header and cannot be faked by submitting a wrong location.
-    # Name bypass applies ONLY when BOTH of these are true:
-    #   1. The document has fill-in form preambles (years old, certify that, etc.)
-    #   2. The document type keyword (indigency/residency) is present
-    is_fill_in_form = any(k in doc_norm for k in ['years old', 'single', 'married', 'resident', 'purok', 'bonafide', 'personally', 'certify that'])
-    has_doc_type_keyword = any(k in doc_norm for k in ['indigency', 'indigent', 'residency', 'resident', 'certificate'])
+    if not l_in_doc and l_words:
+        from difflib import SequenceMatcher
+        doc_tokens = set(re.findall(r'\b[a-z]{3,20}\b', doc_norm))
+        for w in l_words:
+            for tok in doc_tokens:
+                if SequenceMatcher(None, w, tok).ratio() >= 0.70:
+                    l_in_doc = True
+                    break
 
-    if is_fill_in_form and has_doc_type_keyword and not (f_in_doc and l_in_doc):
-        # Apply fill-in bypass for both names — OCR of handwritten pen strokes is too noisy to be reliable
+    # FIRST NAME HANDWRITTEN FORM BLANK FALLBACK:
+    # On printed Barangay forms, handwritten first names over underline rules (________)
+    # often produce OCR noise. When fill-in preambles are present (e.g. 'years old', 'single'),
+    # allow First Name to pass. BUT Last Name MUST actually match text in the document!
+    is_fill_in_form = any(k in doc_norm for k in ['years old', 'single', 'married', 'resident', 'purok', 'bonafide', 'personally', 'certify that'])
+
+    if is_fill_in_form and not f_in_doc:
         f_in_doc = True
-        l_in_doc = True
 
     first_ok = f_in_doc
     last_ok = l_in_doc
