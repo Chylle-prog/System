@@ -2412,13 +2412,29 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
             l_in_doc = True
 
     # HANDWRITTEN FORM BLANK FALLBACK:
-    # On printed Barangay forms, handwritten pen strokes over underline rules (________)
-    # often produce OCR noise (e.g. "a Fv in'8 19 years old"). If document type & fill-in preambles match,
-    # recover name verification for authentic handwritten certificates.
+    # On printed Barangay forms, the handwritten first name over underline rules (________)
+    # often produces OCR noise (e.g. "a Fv in'8 19 years old"). Since last names are typically
+    # printed more legibly (or appear in the barangay header), we split the fallback:
+    #
+    #   FIRST NAME: bypassed when fill-in preambles are detected (handwriting noise)
+    #   LAST NAME:  ALWAYS verified against the full document text — no unconditional bypass.
+    #               A surname like 'Magbuhat' must actually appear in the document OCR text.
     is_fill_in_form = any(k in doc_norm for k in ['years old', 'single', 'married', 'resident', 'purok', 'bonafide', 'personally', 'certify that'])
-    if is_fill_in_form and not (f_in_doc and l_in_doc):
+
+    if is_fill_in_form and not f_in_doc:
+        # First name: apply fill-in bypass — handwriting pen over blanks corrupts first name OCR
         f_in_doc = True
-        l_in_doc = True
+
+    # Last name: strictly check against the full document text REGARDLESS of fill-in form status.
+    # We use a comprehensive check: word boundary match, compact substring, or close fuzzy match.
+    if not l_in_doc and l_words:
+        # Re-run last name check more carefully against full doc text
+        l_in_doc = any(_word_in_text(w, doc_norm) for w in l_words)
+        # If a printed doc name was extracted, also check against it
+        if doc_last:
+            doc_last_clean = normalize_text(doc_last or '')
+            if any(w in doc_last_clean or _word_in_text(w, doc_last_clean) for w in l_words):
+                l_in_doc = True
 
     first_ok = f_in_doc
     last_ok = l_in_doc
