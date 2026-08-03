@@ -1207,8 +1207,8 @@ _OCR_TEXT_CACHE_LIMIT = 128
 def _run_tesseract_on_image(img, psm=3, fast_mode=False):
     """
     Run Tesseract OCR on a CV2 image.
-    fast_mode=True: single combined CLAHE+line-erase pass (used for indigency speed path).
-    fast_mode=False: full 3-pass (grayscale, adaptive, Otsu fallback) for other documents.
+    fast_mode=True: single primary Grayscale PSM3 pass with fast fallback if needed.
+    fast_mode=False: multi-pass (grayscale PSM3, CLAHE line-erase PSM3, Otsu fallback).
     """
     if img is None or pytesseract is None:
         return ""
@@ -1223,9 +1223,15 @@ def _run_tesseract_on_image(img, psm=3, fast_mode=False):
             scale = 1100.0 / float(w)
             gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
 
+        # Primary Pass: Grayscale image with PSM3 (Auto Layout - preserves clean multi-column document structure)
+        text = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 1') or ""
+
         if fast_mode:
-            # FAST PATH: Single combined CLAHE + horizontal rule removal pass (for indigency)
-            # This merges Pass1+Pass2 into one Tesseract call by using psm=6 on cleaned image
+            # If primary grayscale pass yielded good text (>= 30 chars), return immediately for speed & clean text
+            if len(text.strip()) >= 30:
+                return text.strip()
+            
+            # Fallback for faint/shadowed scans: CLAHE + line subtraction with PSM3
             try:
                 clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
                 contrast_gray = clahe.apply(gray)
@@ -1234,16 +1240,14 @@ def _run_tesseract_on_image(img, psm=3, fast_mode=False):
                 detect_lines = cv2.morphologyEx(adaptive_thresh, cv2.MORPH_OPEN, kernel_h, iterations=1)
                 cleaned_bw = cv2.subtract(adaptive_thresh, detect_lines)
                 cleaned_img = cv2.bitwise_not(cleaned_bw)
-                text = pytesseract.image_to_string(cleaned_img, config=f'--psm {psm} --oem 1') or ""
+                alt_text = pytesseract.image_to_string(cleaned_img, config=f'--psm {psm} --oem 1') or ""
+                if len(alt_text.strip()) > len(text.strip()):
+                    text = alt_text
             except Exception:
-                text = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 1') or ""
+                pass
             return text.strip()
 
-        # FULL PATH (standard 3-pass for all other doc types)
-        # Pass 1: Standard grayscale OCR
-        text = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 1') or ""
-
-        # Pass 2: Adaptive Thresholding + Horizontal Rule Removal for handwritten form blanks
+        # FULL PATH: Complement with line-subtraction pass if needed
         try:
             clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
             contrast_gray = clahe.apply(gray)
@@ -1255,9 +1259,17 @@ def _run_tesseract_on_image(img, psm=3, fast_mode=False):
             cleaned_bw = cv2.subtract(adaptive_thresh, detect_lines)
             cleaned_img = cv2.bitwise_not(cleaned_bw)
 
-            alt_text = pytesseract.image_to_string(cleaned_img, config='--psm 6 --oem 1') or ""
-            if alt_text and len(alt_text.strip()) > 5:
-                text = text + "\n" + alt_text
+            alt_text = pytesseract.image_to_string(cleaned_img, config=f'--psm {psm} --oem 1') or ""
+            if alt_text and len(alt_text.strip()) > 10:
+                # Append unique legible lines from alt_text that are not already present
+                existing_lines_set = set(line.strip().lower() for line in text.splitlines() if line.strip())
+                new_lines = []
+                for line in alt_text.splitlines():
+                    clean_line = line.strip()
+                    if len(clean_line) >= 4 and clean_line.lower() not in existing_lines_set:
+                        new_lines.append(clean_line)
+                if new_lines:
+                    text = text + "\n" + "\n".join(new_lines)
         except Exception as preprocess_err:
             print(f"[OCR] Handwriting preprocess note: {preprocess_err}", flush=True)
 
@@ -2082,7 +2094,7 @@ def _extract_indigency_text_fast(image_bytes):
         if img is None:
             return ""
 
-        text = _run_tesseract_on_image(img, psm=6, fast_mode=True)
+        text = _run_tesseract_on_image(img, psm=3, fast_mode=True)
 
         if len(_ocr_text_cache) >= _OCR_TEXT_CACHE_LIMIT:
             _ocr_text_cache.pop(next(iter(_ocr_text_cache)), None)
@@ -2891,19 +2903,16 @@ def verify_video_content(
             print(f"[VIDEO OCR] Frame processing note: {video_err}", flush=True)
 
     combined_video_text = "\n".join(extracted_text_list).strip()
-    
-    # Fallback to static document image text if video frame extraction is light or video stream payload marker
-    search_pool = normalize_text(f"{combined_video_text}\n{doc_ocr_text or ''}")
+    video_search_pool = normalize_text(combined_video_text)
 
-    if not search_pool.strip():
-        return False, "Video proof verification failed: Could not extract readable text from video stream.", "No text extracted from video."
+    if not video_search_pool.strip():
+        return False, "Video proof verification failed: Could not extract readable text from video stream frames.", "No readable text extracted from video frames."
 
-    # 2. Check for required document keywords in video/document OCR text pool
-    found_keywords = [k for k in target_keywords if k.lower() in search_pool]
-    
+    # 2. Check for required document keywords strictly within extracted video frame OCR text
+    found_keywords = [k for k in target_keywords if k.lower() in video_search_pool]
+
     if len(found_keywords) >= 1:
-        summary_text = combined_video_text if combined_video_text else (doc_ocr_text or "Proof video stream verified.")
-        return True, f"Video proof verified: Document keywords ({', '.join(found_keywords[:3])}) matched in video stream.", summary_text
+        return True, f"Video proof verified: Document keywords ({', '.join(found_keywords[:3])}) matched in video frames.", combined_video_text
     else:
         missing_kw = ", ".join(target_keywords[:3])
-        return False, f"Video proof invalid: Required document keywords ({missing_kw}) not detected in video stream.", combined_video_text or "No matching keywords in video."
+        return False, f"Video proof invalid: Required document keywords ({missing_kw}) not detected in video frames.", combined_video_text or "No matching keywords found in video frames."
