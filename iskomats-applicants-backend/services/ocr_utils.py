@@ -2277,26 +2277,33 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
     f_words = [w for w in user_first_clean.split() if len(w) >= 3]
     l_words = [w for w in user_last_clean.split() if len(w) >= 3]
 
+    # FIRST NAME VERIFICATION: Check if applicant's first_name words appear in document text
     f_in_doc = any(_word_in_text(w, doc_norm) for w in f_words) if f_words else False
-    l_in_doc = any(_word_in_text(w, doc_norm) for w in l_words) if l_words else False
-
-    # Also check if extracted doc name matches user name
     if doc_first:
         doc_first_clean = normalize_text(doc_first or '')
         if any(w in doc_first_clean for w in f_words):
             f_in_doc = True
 
-    if f_in_doc or first_ok or l_in_doc:
-        first_ok = True
-        last_ok = True
-        name_matched = True
-    else:
-        # Neither first name nor last name was detected anywhere in the document
-        first_ok = False
-        last_ok = False
-        name_matched = False
+    first_ok = f_in_doc or first_ok
+
+    # LAST NAME VERIFICATION: Check if applicant's last_name words appear in document text
+    l_in_doc = any(_word_in_text(w, doc_norm) for w in l_words) if l_words else False
+    if doc_last:
+        doc_last_clean = normalize_text(doc_last or '')
+        if any(w in doc_last_clean for w in l_words):
+            l_in_doc = True
+
+    last_ok = l_in_doc or last_ok
+
+    # BOTH first name and last name must pass (or if first_ok is False, FIRST NAME fails!)
+    name_matched = first_ok and last_ok
+
+    if not first_ok:
         display_doc_name = f"{doc_first} {doc_last}".strip() if doc_first and doc_last else "printed document name"
-        failures.append(f"Name mismatch: Document contains '{display_doc_name}', but input name is '{first_name} {last_name}'")
+        failures.append(f"First Name mismatch: Document contains '{display_doc_name}', but input First Name is '{first_name}'")
+
+    if not last_ok:
+        failures.append(f"Last Name mismatch (Expected: '{last_name}' in Indigency Certificate)")
 
     # DOCUMENT TYPE KEYWORD MATCHING
     is_residency_doc = kwargs.get('is_residency_doc') or kwargs.get('isResidencyDoc') or False
