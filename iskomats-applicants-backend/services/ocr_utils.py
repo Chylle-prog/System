@@ -1204,7 +1204,12 @@ def extract_semester_from_ocr_text(text):
 _ocr_text_cache = {}
 _OCR_TEXT_CACHE_LIMIT = 128
 
-def _run_tesseract_on_image(img, psm=3):
+def _run_tesseract_on_image(img, psm=3, fast_mode=False):
+    """
+    Run Tesseract OCR on a CV2 image.
+    fast_mode=True: single combined CLAHE+line-erase pass (used for indigency speed path).
+    fast_mode=False: full 3-pass (grayscale, adaptive, Otsu fallback) for other documents.
+    """
     if img is None or pytesseract is None:
         return ""
     try:
@@ -1218,6 +1223,23 @@ def _run_tesseract_on_image(img, psm=3):
             scale = 1100.0 / float(w)
             gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
 
+        if fast_mode:
+            # FAST PATH: Single combined CLAHE + horizontal rule removal pass (for indigency)
+            # This merges Pass1+Pass2 into one Tesseract call by using psm=6 on cleaned image
+            try:
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                contrast_gray = clahe.apply(gray)
+                adaptive_thresh = cv2.adaptiveThreshold(contrast_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 15, 3)
+                kernel_h = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 1))
+                detect_lines = cv2.morphologyEx(adaptive_thresh, cv2.MORPH_OPEN, kernel_h, iterations=1)
+                cleaned_bw = cv2.subtract(adaptive_thresh, detect_lines)
+                cleaned_img = cv2.bitwise_not(cleaned_bw)
+                text = pytesseract.image_to_string(cleaned_img, config=f'--psm {psm} --oem 1') or ""
+            except Exception:
+                text = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 1') or ""
+            return text.strip()
+
+        # FULL PATH (standard 3-pass for all other doc types)
         # Pass 1: Standard grayscale OCR
         text = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 1') or ""
 
@@ -1239,6 +1261,7 @@ def _run_tesseract_on_image(img, psm=3):
         except Exception as preprocess_err:
             print(f"[OCR] Handwriting preprocess note: {preprocess_err}", flush=True)
 
+        # Pass 3: Otsu fallback only if insufficient text found so far
         if not text or len(text.strip()) < 20:
             _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
             alt_text = pytesseract.image_to_string(thresh, config=f'--psm {psm} --oem 1') or ""
@@ -1977,6 +2000,40 @@ def detect_document_tampering(image_bytes, doc_type=None, **kwargs):
         logger.warning(f"[TAMPER DETECTOR] Error: {exc}")
         return False, f"Tamper detection error: {exc}", 0
 
+def _extract_indigency_text_fast(image_bytes):
+    """
+    Fast single-pass OCR for indigency certificates.
+    Uses CLAHE + horizontal rule removal in one Tesseract call (psm=6).
+    Avoids the 3-pass overhead of extract_document_text() used by other document types.
+    """
+    if not image_bytes:
+        return ""
+    try:
+        data = decode_base64(image_bytes)
+        if not data:
+            return ""
+
+        import hashlib
+        cache_key = (hashlib.md5(data).hexdigest(), 'indigency_fast')
+        if cache_key in _ocr_text_cache:
+            return _ocr_text_cache[cache_key]
+
+        nparr = np.frombuffer(data, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            return ""
+
+        text = _run_tesseract_on_image(img, psm=6, fast_mode=True)
+
+        if len(_ocr_text_cache) >= _OCR_TEXT_CACHE_LIMIT:
+            _ocr_text_cache.pop(next(iter(_ocr_text_cache)), None)
+        _ocr_text_cache[cache_key] = text
+        return text
+    except Exception as e:
+        print(f"[OCR] Indigency fast extract error: {e}", flush=True)
+        return ""
+
+
 def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name=None, last_name=None, **kwargs):
     """
     Main entry point for document verification (COR, Grades, Indigency, ID).
@@ -2011,18 +2068,23 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name
     middle_name = middle_name or ""
     last_name = last_name or ""
 
+    doc_type_upper = str(doc_type or '').strip().upper()
+
+    if 'INDIGENCY' in doc_type_upper:
+        # Fast path: single-pass combined OCR for indigency (CLAHE + line erase in one Tesseract call)
+        raw_text = _extract_indigency_text_fast(image_bytes)
+        if not raw_text.strip():
+            return False, "Unable to extract readable text from document.", "", {}
+        success, msg, meta = verify_indigency_fields(raw_text, first_name, middle_name, last_name, **kwargs)
+        return success, msg, raw_text, meta
+
     raw_text = extract_document_text(image_bytes, psm=3)
     if not raw_text.strip():
         return False, "Unable to extract readable text from document.", "", {}
 
-    doc_type_upper = str(doc_type or '').strip().upper()
-
     if 'GRADES' in doc_type_upper or 'TRANSCRIPT' in doc_type_upper or 'TOR' in doc_type_upper:
         parsed_fields = parse_grades_document(raw_text)
         success, msg, meta = verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_name, **kwargs)
-        return success, msg, raw_text, meta
-    elif 'INDIGENCY' in doc_type_upper:
-        success, msg, meta = verify_indigency_fields(raw_text, first_name, middle_name, last_name, **kwargs)
         return success, msg, raw_text, meta
     elif 'ID' in doc_type_upper or 'IDENTIFICATION' in doc_type_upper or 'SCHOOLID' in doc_type_upper:
         success, msg, meta = verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs)
@@ -2699,14 +2761,25 @@ def verify_video_content(
     target_keywords = keywords or default_keywords
 
     # 1. Extract frames from raw video bytes
+    # For indigency video: use only 3 frames + fast sparse-text OCR (psm=11) for keyword detection speed
+    is_indigency_video = 'INDIGEN' in doc_type_upper
+    video_sample_positions = [0.2, 0.5, 0.8] if is_indigency_video else sample_positions
     extracted_text_list = []
     if isinstance(video_bytes, (bytes, bytearray)) and len(video_bytes) > 500:
         try:
-            frames = extract_frames_from_video_bytes(video_bytes, sample_positions=sample_positions, max_width=max_width)
+            frames = extract_frames_from_video_bytes(video_bytes, sample_positions=video_sample_positions, max_width=max_width)
             for frame in frames:
-                frame_text = _run_tesseract_on_image(frame, psm=6)
+                # Indigency video: use fast sparse-text mode (psm=11) — just needs keyword detection, not full layout
+                video_psm = 11 if is_indigency_video else 6
+                frame_text = _run_tesseract_on_image(frame, psm=video_psm)
                 if frame_text and len(frame_text.strip()) > 3:
                     extracted_text_list.append(frame_text.strip())
+                    # Early exit for indigency: stop processing frames as soon as we hit a keyword
+                    if is_indigency_video:
+                        combined_so_far = normalize_text(frame_text)
+                        target_keywords_lower = [k.lower() for k in target_keywords]
+                        if any(k in combined_so_far for k in target_keywords_lower):
+                            break
         except Exception as video_err:
             print(f"[VIDEO OCR] Frame processing note: {video_err}", flush=True)
 
