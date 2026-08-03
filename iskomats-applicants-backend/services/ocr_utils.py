@@ -2356,10 +2356,24 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
             if not doc_type_ok:
                 failures.append("Document Type Mismatch: Document does not contain required 'Certificate of Indigency' keywords")
 
-    # ADDRESS MATCHING — Valid Barangay Indigency document satisfies address check
-    addr_ok = doc_type_ok or 'barangay' in doc_norm or 'batangas' in doc_norm
+    # BARANGAY / ADDRESS VERIFICATION
+    expected_addr = expected_address or kwargs.get('expected_address') or kwargs.get('address') or kwargs.get('barangay')
+    addr_ok = True
 
-    success = name_matched and doc_type_ok
+    if expected_addr and str(expected_addr).strip():
+        addr_clean = normalize_text(expected_addr)
+        addr_words = [w for w in addr_clean.split() if len(w) >= 3 and w not in {'city', 'purok', 'street', 'province', 'municipality'}]
+        if addr_words:
+            matched_addr_word = any(_word_in_text(w, doc_norm) for w in addr_words)
+            addr_ok = matched_addr_word or ('barangay' in doc_norm) or ('batangas' in doc_norm)
+            if not matched_addr_word and not ('barangay' in doc_norm):
+                failures.append(f"Barangay Address mismatch (Expected: '{expected_addr}' in Indigency Certificate)")
+        else:
+            addr_ok = True
+    else:
+        addr_ok = ('barangay' in doc_norm) or ('batangas' in doc_norm) or doc_type_ok
+
+    success = name_matched and doc_type_ok and addr_ok
     displayName = f"{first_name} {middle_name or ''} {last_name}".strip()
     if success:
         doc_name = "Residency Certificate" if is_residency_doc else "Indigency Certificate"
