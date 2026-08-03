@@ -3621,6 +3621,8 @@ def ocr_check():
         doc_hash = _hash_verification_source(doc_bytes)
         cache_key = f"verif:{request.user_no}:{doc_type}:{doc_hash}:{video_hash}:{first_name}:{last_name}:{town_city}:{barangay}:{skip_tamper_check}"
 
+        expected_addr_to_check = (f"{barangay} {town_city}".strip() or town_city) if doc_type == 'Indigency' else None
+
         from services.ocr_utils import verify_document_with_ocr
         success, message, raw_text, meta = verify_document_with_ocr(
             doc_bytes,
@@ -3628,7 +3630,7 @@ def ocr_check():
             first_name,
             middle_name,
             last_name,
-            expected_address=f"{barangay} {town_city}".strip() or town_city,
+            expected_address=expected_addr_to_check,
             expected_id_no=data.get('idNumber'),
             expected_school_name=data.get('schoolName'),
             expected_gpa=data.get('gpa'),
@@ -3638,14 +3640,19 @@ def ocr_check():
         )
 
         verified = bool(success)
-        score_details = (meta or {}).get('score_details') or {
+        score_details = (meta or {}).get('score_details') or ({
             "FIRST NAME": verified,
             "LAST NAME": verified,
             "BARANGAY ADDRESS": verified,
             "TOWN / CITY": verified,
             "DOCUMENT TYPE": verified,
             "VIDEO PROOF": True
-        }
+        } if doc_type == 'Indigency' else {
+            "FIRST NAME": verified,
+            "LAST NAME": verified,
+            "DOCUMENT TYPE": verified,
+            "VIDEO PROOF": True
+        })
 
         # Video OCR verification
         if video_bytes and len(video_bytes) > 500:
@@ -3659,7 +3666,7 @@ def ocr_check():
             v_ok, v_msg = verify_video_content(
                 video_bytes,
                 keywords=keywords_map.get(doc_type, ['indigency', 'barangay']),
-                expected_address=f"{barangay} {town_city}".strip() or town_city,
+                expected_address=expected_addr_to_check,
                 expected_name=f"{first_name} {last_name}".strip(),
                 expected_id=data.get('idNumber'),
                 doc_ocr_text=raw_text

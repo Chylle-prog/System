@@ -3428,24 +3428,34 @@ const StudentInfo = () => {
             doc: r.doc || docType,
             verified: r.verified,
             message: r.message,
-            score_details: r.score_details || {
+            score_details: r.score_details || (docType === 'Indigency' ? {
               "FIRST NAME": isVerified,
               "LAST NAME": isVerified,
               "BARANGAY ADDRESS": isVerified,
               "TOWN / CITY": isVerified,
               "DOCUMENT TYPE": isVerified,
               "VIDEO PROOF": true
-            }
+            } : {
+              "FIRST NAME": isVerified,
+              "LAST NAME": isVerified,
+              "DOCUMENT TYPE": isVerified,
+              "VIDEO PROOF": true
+            })
           }));
 
-          const sDetails = backendResult.score_details || viewResults[0]?.score_details || {
+          const sDetails = backendResult.score_details || viewResults[0]?.score_details || (docType === 'Indigency' ? {
             "FIRST NAME": isVerified,
             "LAST NAME": isVerified,
             "BARANGAY ADDRESS": isVerified,
             "TOWN / CITY": isVerified,
             "DOCUMENT TYPE": isVerified,
             "VIDEO PROOF": true
-          };
+          } : {
+            "FIRST NAME": isVerified,
+            "LAST NAME": isVerified,
+            "DOCUMENT TYPE": isVerified,
+            "VIDEO PROOF": true
+          });
 
           let combinedDetectedText = backendResult.detected_text || msg;
 
@@ -3467,8 +3477,10 @@ const StudentInfo = () => {
           const reqValues = {
             "FIRST NAME": firstName || 'Extracted Name',
             "LAST NAME": lastName || 'Extracted Name',
-            "BARANGAY ADDRESS": targetBarangay || 'Extracted Address',
-            "TOWN / CITY": townCity || 'Extracted City',
+            ...(docType === 'Indigency' ? {
+              "BARANGAY ADDRESS": targetBarangay || 'Extracted Address',
+              "TOWN / CITY": townCity || 'Extracted City',
+            } : {}),
             "DOCUMENT TYPE": docType === 'Indigency' ? 'Certificate of Indigency' : docType,
             "VIDEO PROOF": sDetails["VIDEO PROOF"] ? 'Uploaded & Validated' : 'Validation Failed'
           };
@@ -3930,22 +3942,18 @@ const StudentInfo = () => {
         const schoolOk = schoolName ? (schoolNameMatchesText(allIdText, schoolName)) : true;
         const ayOk = isNationalId ? true : (academicYear ? (academic_year_matches_expected(combinedFrontText, academicYear) || academic_year_matches_expected(combinedBackText, academicYear)) : true);
 
-        // National ID: Street / Barangay address verification (replaces student ID & year level checks)
-        const addrOk = isNationalId ? (targetBarangay ? addressMatchesText(allIdText, targetBarangay) : true) : true;
-
         // National ID: Only front video liveness is enforced. Back video (if uploaded) is stored without blocking verification.
         const videoOk = isNationalId
           ? (!fVid || (frontVidCheck && frontVidCheck.valid))
           : ((!fVid || (frontVidCheck && frontVidCheck.valid)) && (!bVid || (backVidCheck && backVidCheck.valid)));
 
         isSuccess = isNationalId
-          ? (nameOk && addrOk && videoOk)
+          ? (nameOk && videoOk)
           : (nameOk && idOk && schoolOk && ayOk && videoOk);
 
         scoreDetails = isNationalId ? {
           "First Name": firstOk,
           "Last Name": lastOk,
-          "Barangay Address": targetBarangay ? addrOk : null,
           "Video Proof": videoOk
         } : {
           "First Name": firstOk,
@@ -4178,7 +4186,6 @@ const StudentInfo = () => {
         debugRequirements = isNationalId ? {
           "First Name": firstName || 'N/A',
           "Last Name": lastName || 'N/A',
-          "Barangay Address": targetBarangay || 'N/A',
           "Video Proof": videoReason
         } : {
           "First Name": firstName || 'N/A',
