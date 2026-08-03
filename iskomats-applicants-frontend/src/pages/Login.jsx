@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { GoogleLogin } from '@react-oauth/google';
 import lipaBg from '../assets/lipa.jpg';
 import Navbar from './Navbar';
+import TermsModal from '../components/TermsModal';
 
 
 
@@ -28,7 +29,26 @@ const Login = () => {
   const { setCurrentUserState, fetchProfile } = useAuth();
   const [currentUser, setCurrentUser] = useState(null);
 
+  const handleAcceptTerms = () => {
+    sessionStorage.setItem('acceptedTerms', 'true');
+    setAgreedToTerms(true);
+    setShowTermsModal(false);
+  };
+
+  const handleRejectTerms = () => {
+    setShowTermsModal(false);
+    navigate('/');
+  };
+
   useEffect(() => {
+    // Check if terms accepted before viewing login screen
+    const hasAccepted = sessionStorage.getItem('acceptedTerms') === 'true';
+    if (!hasAccepted) {
+      setShowTermsModal(true);
+    } else {
+      setAgreedToTerms(true);
+    }
+
     // Check for setup param in URL
     const isSetup = searchParams.get('setup') === 'true';
     if (isSetup) {
@@ -177,12 +197,6 @@ const Login = () => {
 
     if (password !== confirmPassword) {
       setErrorMessage('Passwords do not match.');
-      setShowError(true);
-      return;
-    }
-
-    if (!agreedToTerms) {
-      setErrorMessage('You must agree to the Terms of Service to create an account.');
       setShowError(true);
       return;
     }
@@ -1275,36 +1289,7 @@ const Login = () => {
                     <input type="password" name="confirmPassword" placeholder="••••••••" required />
                   </div>
                 </div>
-                <div style={{ margin: '1.25rem 0 1.5rem 0', display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                  <input
-                    type="checkbox"
-                    id="termsCheckbox"
-                    checked={agreedToTerms}
-                    onChange={(e) => setAgreedToTerms(e.target.checked)}
-                    required
-                    style={{
-                      width: '18px',
-                      height: '18px',
-                      cursor: 'pointer',
-                      accentColor: '#991b1b',
-                      borderRadius: '4px'
-                    }}
-                  />
-                  <label htmlFor="termsCheckbox" style={{ fontSize: '0.88rem', color: 'rgba(255, 255, 255, 0.85)', cursor: 'pointer', margin: 0, userSelect: 'none' }}>
-                    I agree to the{' '}
-                    <a
-                      href="#terms"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setShowTermsModal(true);
-                      }}
-                      style={{ color: '#60a5fa', textDecoration: 'underline', fontWeight: 600 }}
-                    >
-                      Terms of Service
-                    </a>
-                  </label>
-                </div>
-                <button type="submit" className="submit-btn">Create account</button>
+                <button type="submit" className="submit-btn" style={{ marginTop: '1.25rem' }}>Create account</button>
 
                 {/* Social Sign-up Options */}
                 <div className="social-signup">
@@ -1591,185 +1576,11 @@ const Login = () => {
         </div>
       )}
       {/* Terms of Service Overlay Modal */}
-      {showTermsModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          background: 'rgba(0, 0, 0, 0.75)',
-          backdropFilter: 'blur(8px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 99999,
-          padding: '1rem'
-        }}>
-          <div style={{
-            background: '#1e293b',
-            color: '#f8fafc',
-            borderRadius: '24px',
-            maxWidth: '520px',
-            width: '92%',
-            padding: '2rem',
-            boxShadow: '0 25px 60px rgba(0, 0, 0, 0.5)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            position: 'relative'
-          }}>
-            <div style={{
-              display: 'flex',
-              justify: 'space-between',
-              alignItems: 'center',
-              marginBottom: '1.25rem',
-              paddingBottom: '1rem',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
-            }}>
-              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#ffffff' }}>
-                Terms & Conditions & Data Privacy
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowTermsModal(false)}
-                style={{
-                  background: 'rgba(255,255,255,0.08)',
-                  border: 'none',
-                  color: '#94a3b8',
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '1.1rem',
-                  cursor: 'pointer'
-                }}
-              >
-                <i className="fas fa-times"></i>
-              </button>
-            </div>
-
-            <div style={{
-              maxHeight: '380px',
-              overflowY: 'auto',
-              paddingRight: '0.75rem',
-              fontSize: '0.9rem',
-              lineHeight: '1.65',
-              color: '#cbd5e1'
-            }}>
-              <p style={{ marginTop: 0, marginBottom: '1rem', fontWeight: 500 }}>
-                Welcome to <strong>iskoMats</strong>. By creating an account, accessing, or using the system, you agree to comply with the following Terms and Conditions and consent to the collection and processing of your personal information in accordance with the <strong>Data Privacy Act of 2012 (Republic Act No. 10173)</strong>.
-              </p>
-
-              <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>1. Purpose of the System</h4>
-              <p style={{ margin: 0 }}>
-                iskoMats is a scholarship management system designed to help students discover scholarship opportunities, submit applications, and allow scholarship providers to manage and review applications efficiently.
-              </p>
-
-              <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>2. Eligibility</h4>
-              <p style={{ margin: 0 }}>
-                You agree that you are eligible to use the system and that all information you provide is accurate, complete, and up to date.
-              </p>
-
-              <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>3. User Account</h4>
-              <p style={{ margin: 0 }}>
-                You are responsible for maintaining the confidentiality of your account credentials. Any activity conducted using your account is your responsibility.
-              </p>
-
-              <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>4. Submission of Information and Documents</h4>
-              <p style={{ margin: 0 }}>
-                You agree to submit only authentic, complete, and unaltered information and documents. Providing false, misleading, or fraudulent information may result in the rejection of your application or suspension of your account.
-              </p>
-
-              <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>5. Data Privacy</h4>
-              <p style={{ margin: '0 0 0.5rem 0' }}>
-                By using iskoMats, you voluntarily consent to the collection, use, storage, and processing of your personal information, including but not limited to:
-              </p>
-              <ul style={{ margin: '0 0 0.75rem 0', paddingLeft: '1.25rem' }}>
-                <li>Full name</li>
-                <li>Email address</li>
-                <li>Student information</li>
-                <li>Scholarship application details</li>
-                <li>Uploaded documents</li>
-                <li>Information required for scholarship verification</li>
-              </ul>
-              <p style={{ margin: '0 0 0.5rem 0' }}>
-                Your personal information will be used only for:
-              </p>
-              <ul style={{ margin: '0 0 0.75rem 0', paddingLeft: '1.25rem' }}>
-                <li>Account registration and authentication</li>
-                <li>Scholarship application processing</li>
-                <li>Eligibility verification</li>
-                <li>Communication regarding your application</li>
-                <li>System administration and maintenance</li>
-              </ul>
-              <p style={{ margin: 0 }}>
-                Your personal information will only be accessed by authorized scholarship administrators and system administrators when necessary for scholarship-related purposes and as permitted by law.
-              </p>
-
-              <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>6. User Responsibilities</h4>
-              <p style={{ margin: '0 0 0.5rem 0' }}>You agree not to:</p>
-              <ul style={{ margin: '0 0 0.75rem 0', paddingLeft: '1.25rem' }}>
-                <li>Use another person's identity or documents.</li>
-                <li>Share your account credentials with others.</li>
-                <li>Attempt to gain unauthorized access to the system.</li>
-                <li>Upload malicious files or harmful content.</li>
-                <li>Use the system for unlawful purposes.</li>
-              </ul>
-
-              <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>7. Scholarship Decisions</h4>
-              <p style={{ margin: 0 }}>
-                iskoMats serves only as a platform for scholarship application and management. The final approval, rejection, or selection of scholarship applicants remains solely with the scholarship provider.
-              </p>
-
-              <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>8. Changes to the Terms</h4>
-              <p style={{ margin: 0 }}>
-                iskoMats reserves the right to update or modify these Terms and Conditions at any time. Continued use of the system after any changes constitutes your acceptance of the revised terms.
-              </p>
-
-              <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>9. Contact</h4>
-              <p style={{ margin: 0 }}>
-                If you have questions regarding these Terms and Conditions or your personal data, please contact the iskoMats administrator.
-              </p>
-
-              <div style={{ marginTop: '1.25rem', padding: '1rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
-                <h4 style={{ color: '#f8fafc', margin: '0 0 0.35rem 0', fontSize: '0.92rem' }}>Consent Statement</h4>
-                <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8' }}>
-                  By checking the box below and creating an account, I confirm that I have read, understood, and agree to the Terms and Conditions and Data Privacy Agreement of iskoMats. I consent to the collection, use, storage, and processing of my personal information solely for scholarship-related purposes in accordance with the Data Privacy Act of 2012 (Republic Act No. 10173).
-                </p>
-              </div>
-            </div>
-
-            <div style={{
-              marginTop: '1.5rem',
-              paddingTop: '1rem',
-              borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-              display: 'flex',
-              justify: 'flex-end'
-            }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setAgreedToTerms(true);
-                  setShowTermsModal(false);
-                }}
-                style={{
-                  background: '#991b1b',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: '30px',
-                  padding: '0.65rem 1.6rem',
-                  fontSize: '0.95rem',
-                  fontWeight: 700,
-                  cursor: 'pointer'
-                }}
-              >
-                I Agree
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <TermsModal
+        isOpen={showTermsModal}
+        onAccept={handleAcceptTerms}
+        onReject={handleRejectTerms}
+      />
     </>
   );
 };

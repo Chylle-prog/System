@@ -1,15 +1,45 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Navbar from './Navbar';
 import ChatbotDesign from '../components/ChatbotDesign';
+import TermsModal from '../components/TermsModal';
 import { useAuth } from '../contexts/AuthContext';
 import './HomePage.css';
 
 const HomePage = () => {
+  const navigate = useNavigate();
   const { currentUser } = useAuth();
   const [activeModal, setActiveModal] = useState(null);
   const [activeFAQ, setActiveFAQ] = useState(null);
   const [activeCategory, setActiveCategory] = useState('all');
+  const [showTermsOverlay, setShowTermsOverlay] = useState(false);
+  const [pendingTargetUrl, setPendingTargetUrl] = useState('/login');
+
+  const handleApplyClick = (e, targetUrl = '/login') => {
+    if (e) e.preventDefault();
+    if (currentUser) {
+      navigate(targetUrl.includes('studentinfo') ? targetUrl : '/portal');
+      return;
+    }
+
+    const hasAccepted = sessionStorage.getItem('acceptedTerms') === 'true';
+    if (hasAccepted) {
+      navigate(targetUrl);
+    } else {
+      setPendingTargetUrl(targetUrl);
+      setShowTermsOverlay(true);
+    }
+  };
+
+  const handleAcceptTerms = () => {
+    sessionStorage.setItem('acceptedTerms', 'true');
+    setShowTermsOverlay(false);
+    navigate(pendingTargetUrl);
+  };
+
+  const handleRejectTerms = () => {
+    setShowTermsOverlay(false);
+  };
 
   const scrollToSection = (sectionId) => {
     const element = document.getElementById(sectionId);
@@ -182,7 +212,7 @@ const HomePage = () => {
         <div className="hero">
           <h1>Tulong Isko, Tulong Bayan!</h1>
           <p>Unlock your future with iskoMats – A centralized scholarship matching made simple and smart.</p>
-          <Link to={currentUser ? "/portal" : "/login"} className="cta-button">Apply Now →</Link>
+          <button type="button" onClick={(e) => handleApplyClick(e, '/login')} className="cta-button" style={{ border: 'none', cursor: 'pointer' }}>Apply Now →</button>
           <div className="features">
             <div className="feature-card">
               <h3><span style={{fontSize: '1.2rem', marginRight: '0.5rem'}}>🎯</span> 90% match rate</h3>
@@ -390,15 +420,26 @@ const HomePage = () => {
                 </div>
               ))}
               <div className="scholarship-modal-section" style={{ textAlign: 'center', marginTop: '2rem', paddingTop: '2rem', borderTop: '1px solid var(--border)' }}>
-                <Link to={`/studentinfo?scholarship=${encodeURIComponent(scholarshipData[activeModal].name)}`} 
-                  className="apply-btn" style={{ display: 'inline-block', padding: '1rem 2.5rem', borderRadius: '40px' }}>
+                <button
+                  type="button"
+                  onClick={(e) => handleApplyClick(e, `/studentinfo?scholarship=${encodeURIComponent(scholarshipData[activeModal].name)}`)} 
+                  className="apply-btn"
+                  style={{ display: 'inline-block', padding: '1rem 2.5rem', borderRadius: '40px', cursor: 'pointer', border: 'none' }}
+                >
                   <i className="fas fa-paper-plane" style={{ marginRight: '8px' }}></i>Apply Now
-                </Link>
+                </button>
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* Terms & Conditions Overlay Modal */}
+      <TermsModal
+        isOpen={showTermsOverlay}
+        onAccept={handleAcceptTerms}
+        onReject={handleRejectTerms}
+      />
 
       {/* IskoBots AI Chatbot */}
       <ChatbotDesign />
