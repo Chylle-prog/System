@@ -2264,28 +2264,42 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
 
     doc_first, doc_mid, doc_last = extract_full_name_from_document(raw_text)
 
-    # NAME MATCHING — Compare input name against identified document full name if extracted
+    # NAME MATCHING — Compare input name against document raw text
     first_ok, middle_ok, last_ok, sequence_ok = verify_name_sequence(
         first_name, last_name, raw_text, raw_text, middle_name
     )
 
+    doc_norm = normalize_text(raw_text)
+    user_first_clean = normalize_text(first_name or '')
+    user_last_clean = normalize_text(last_name or '')
+
+    # Words of applicant's name
+    f_words = [w for w in user_first_clean.split() if len(w) >= 3]
+    l_words = [w for w in user_last_clean.split() if len(w) >= 3]
+
+    f_in_doc = any(_word_in_text(w, doc_norm) for w in f_words) if f_words else False
+    l_in_doc = any(_word_in_text(w, doc_norm) for w in l_words) if l_words else False
+
+    # Also check if extracted doc name matches user name
     if doc_first:
-        user_first_clean = normalize_text(first_name or '')
         doc_first_clean = normalize_text(doc_first or '')
-        if _word_in_text(user_first_clean, doc_first_clean) or _word_in_text(doc_first_clean, user_first_clean) or any(w in doc_first_clean for w in user_first_clean.split() if len(w) >= 3):
-            first_ok = True
+        if any(w in doc_first_clean for w in f_words):
+            f_in_doc = True
 
-    # User directive: For Indigency certificates, if First Name matches, Last Name mismatch is acceptable
-    if first_ok:
+    if f_in_doc or first_ok or l_in_doc:
+        first_ok = True
         last_ok = True
-
-    name_matched = first_ok
-    if not name_matched:
-        failures.append(f"First Name mismatch (Expected: '{first_name}' in Indigency Certificate)")
+        name_matched = True
+    else:
+        # Neither first name nor last name was detected anywhere in the document
+        first_ok = False
+        last_ok = False
+        name_matched = False
+        display_doc_name = f"{doc_first} {doc_last}".strip() if doc_first and doc_last else "printed document name"
+        failures.append(f"Name mismatch: Document contains '{display_doc_name}', but input name is '{first_name} {last_name}'")
 
     # DOCUMENT TYPE KEYWORD MATCHING
     is_residency_doc = kwargs.get('is_residency_doc') or kwargs.get('isResidencyDoc') or False
-    doc_norm = normalize_text(raw_text)
     residency_keywords = ['residency', 'resident', 'residing', 'pagkapamayanan', 'naninirahan', 'maninirahan', 'pamayanan']
     indigency_keywords = ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang', 'punong barangay', 'sangguniang', 'office of the punong']
     all_doc_keywords = residency_keywords + indigency_keywords
@@ -2293,16 +2307,6 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
     doc_type_ok = any(k in doc_norm for k in all_doc_keywords) or 'barangay' in doc_norm
     if not doc_type_ok:
         failures.append("Document Type Mismatch: Document does not contain required 'Indigency' / 'Residency' keywords")
-
-    # Handwritten Name Resolution: Official Barangay Indigency certificates contain handwritten applicant names.
-    # When doc_type_ok is True (verified Certificate of Indigency), name verification evaluates to True.
-    if doc_type_ok or first_ok:
-        first_ok = True
-        last_ok = True
-        name_matched = True
-    else:
-        name_matched = False
-        failures.append(f"First Name mismatch (Expected: '{first_name}' in Indigency Certificate)")
 
     # ADDRESS MATCHING — Valid Barangay Indigency document satisfies address check
     addr_ok = doc_type_ok or 'barangay' in doc_norm or 'batangas' in doc_norm
