@@ -1174,29 +1174,36 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
 def extract_semester_from_ocr_text(text):
     """
     Extracts semester digit (1, 2, or 3) from OCR text with support for OCR noise.
-    Matches patterns like '2026 - 2', '202¢ - 2', '2024 - 1', 'School Year Sem : ... 2', '2nd sem', '1st sem'.
+    Matches patterns like '2nd', '2nd sem', '2nd semester', '2026 - 2', 'School Year Sem : ... 2'.
     """
     if not text:
         return None
     lower = str(text).lower()
 
-    # Pattern 1: "2026 - 2" or "2026-2" or "2026 / 2" or OCR noisy "202¢ - 2", "2024 - 2"
-    year_sem_match = re.search(r'\b202[0-9a-z¢§\$!]\s*[\-\/:]\s*([123])\b', lower)
+    # Pattern 1: Explicit semester words / abbreviations
+    if re.search(r'\b(?:2nd|second|2ndsem|sem\s*2|2nd\s*sem|semester\s*2)\b', lower):
+        return 2
+    if re.search(r'\b(?:1st|first|1stsem|sem\s*1|1st\s*sem|semester\s*1)\b', lower):
+        return 1
+    if re.search(r'\b(?:3rd|third|summer|midyear|3rdsem|sem\s*3|semester\s*3)\b', lower):
+        return 3
+
+    # Pattern 2: Year-Sem hyphen digit e.g. '2025-2026 - 2', '2025-2026 2', 'ay 2025-2026-2', '2025/2026-2'
+    year_sem_match = re.search(r'20\d{2}\s*[\-\/:]\s*([123])\b', lower)
     if year_sem_match:
         return int(year_sem_match.group(1))
 
-    # Pattern 2: "School Year Sem : ... 2" or "Sem : 2" or "$ch00! Yaa, gum ... 2"
+    # Pattern 3: Header lines containing 'ay' / 'sy' / 'sem' / 'year' followed by digit 1, 2, or 3
     sy_sem_match = re.search(r'(?:school\s*year\s*sem|s\.?y\.?\s*sem|sem|\$ch00!|yaa,\s*gum)\s*[:\-]?\s*(?:ay|sy|20[0-9a-z¢§\$!]{2})?\s*[\-\/:]?\s*([123])\b', lower)
     if sy_sem_match:
         return int(sy_sem_match.group(1))
 
-    # Pattern 3: Explicit semester words
-    if re.search(r'\b(?:2nd|second|sem\s*2|2nd\s*sem|semester\s*2)\b', lower):
-        return 2
-    if re.search(r'\b(?:1st|first|sem\s*1|1st\s*sem|semester\s*1)\b', lower):
-        return 1
-    if re.search(r'\b(?:3rd|third|summer|midyear|sem\s*3|semester\s*3)\b', lower):
-        return 3
+    # Pattern 4: Scan top 25 header lines for 'ay'/'sy'/'sem'/'year' with trailing digit 1, 2, 3
+    for line in lower.splitlines()[:25]:
+        if any(k in line for k in ['school year', 'academic year', 'sy', 'ay', 'sem', 'reg no', 'registration']):
+            m_dig = re.search(r'\b([123])\b', line)
+            if m_dig:
+                return int(m_dig.group(1))
 
     return None
 
@@ -1226,34 +1233,11 @@ def _run_tesseract_on_image(img, psm=3, fast_mode=False):
         # Primary Pass: Grayscale image with PSM3 (Auto Layout - preserves clean multi-column document structure)
         text = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 1') or ""
 
-        if fast_mode:
-            # If primary grayscale pass yielded good text (>= 30 chars), return immediately for speed & clean text
-            if len(text.strip()) >= 30:
-                return text.strip()
-            
-            # Fallback for faint/shadowed scans: CLAHE + line subtraction with PSM3
-            try:
-                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-                contrast_gray = clahe.apply(gray)
-                adaptive_thresh = cv2.adaptiveThreshold(contrast_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 15, 3)
-                kernel_h = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 1))
-                detect_lines = cv2.morphologyEx(adaptive_thresh, cv2.MORPH_OPEN, kernel_h, iterations=1)
-                cleaned_bw = cv2.subtract(adaptive_thresh, detect_lines)
-                cleaned_img = cv2.bitwise_not(cleaned_bw)
-                alt_text = pytesseract.image_to_string(cleaned_img, config=f'--psm {psm} --oem 1') or ""
-                if len(alt_text.strip()) > len(text.strip()):
-                    text = alt_text
-            except Exception:
-                pass
-            return text.strip()
-
-        # FULL PATH: Complement with line-subtraction pass if needed
+        # Pass 2: CLAHE + Line Removal pass (extracts text inside highlighted or boxed form fields)
         try:
             clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
             contrast_gray = clahe.apply(gray)
             adaptive_thresh = cv2.adaptiveThreshold(contrast_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 15, 3)
-
-            # Detect and subtract horizontal underline rules (e.g. _____ under handwritten names)
             kernel_h = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 1))
             detect_lines = cv2.morphologyEx(adaptive_thresh, cv2.MORPH_OPEN, kernel_h, iterations=1)
             cleaned_bw = cv2.subtract(adaptive_thresh, detect_lines)
@@ -1261,7 +1245,6 @@ def _run_tesseract_on_image(img, psm=3, fast_mode=False):
 
             alt_text = pytesseract.image_to_string(cleaned_img, config=f'--psm {psm} --oem 1') or ""
             if alt_text and len(alt_text.strip()) > 10:
-                # Append unique legible lines from alt_text that are not already present
                 existing_lines_set = set(line.strip().lower() for line in text.splitlines() if line.strip())
                 new_lines = []
                 for line in alt_text.splitlines():
@@ -1271,7 +1254,9 @@ def _run_tesseract_on_image(img, psm=3, fast_mode=False):
                 if new_lines:
                     text = text + "\n" + "\n".join(new_lines)
         except Exception as preprocess_err:
-            print(f"[OCR] Handwriting preprocess note: {preprocess_err}", flush=True)
+            print(f"[OCR] Line removal pass note: {preprocess_err}", flush=True)
+
+        return text.strip()
 
         # Pass 3: Otsu fallback only if insufficient text found so far
         if not text or len(text.strip()) < 20:
