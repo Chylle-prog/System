@@ -2752,7 +2752,7 @@ def verify_id_with_ocr(image_bytes, first_name=None, middle_name=None, last_name
     return success, msg, raw_text, 1.0 if success else 0.0
 
 
-def extract_frames_from_video_bytes(video_bytes, sample_positions=[0.15, 0.35, 0.55, 0.75, 0.90], max_width=640):
+def extract_frames_from_video_bytes(video_bytes, sample_positions=[0.15, 0.35, 0.55, 0.75, 0.90], max_width=1280):
     """
     Extracts OpenCV frames at key sample positions from raw video bytes.
     Supports WebM, MP4, MOV, HEVC, MKV using FFmpeg with OpenCV fallback.
@@ -2765,7 +2765,6 @@ def extract_frames_from_video_bytes(video_bytes, sample_positions=[0.15, 0.35, 0
     import shutil
     import subprocess
 
-    # Detect extension from magic bytes or header
     ext = '.mp4'
     if isinstance(video_bytes, (bytes, bytearray)):
         if video_bytes.startswith(b'\x1a\x45\xdf\xa3'):
@@ -2781,14 +2780,14 @@ def extract_frames_from_video_bytes(video_bytes, sample_positions=[0.15, 0.35, 0
         with open(input_path, 'wb') as f:
             f.write(video_bytes)
 
-        # ── PATH 1: FFmpeg Frame Extraction (Supports ALL codecs: WebM, HEVC, MOV, MP4) ──
+        # ── PATH 1: FFmpeg Frame Extraction (High resolution 1280px frames) ──
         try:
             out_pattern = os.path.join(tmp_dir, 'frame_%03d.png')
             vf_filter = f"scale='min({max_width},iw)':-1"
             cmd = [
                 'ffmpeg', '-y', '-i', input_path,
                 '-vf', f"fps=1/2,{vf_filter}",
-                '-vframes', '5',
+                '-vframes', '6',
                 out_pattern
             ]
             res = subprocess.run(cmd, capture_output=True, timeout=10)
@@ -2840,7 +2839,7 @@ def verify_video_content(
     expected_id=None,
     doc_ocr_text=None,
     sample_positions=[0.15, 0.35, 0.55, 0.75, 0.90],
-    max_width=640,
+    max_width=1280,
     allow_alt_pass=True,
     fallback_text_length=10,
     doc_type='Indigency'
@@ -2867,16 +2866,27 @@ def verify_video_content(
     target_keywords = keywords or default_keywords
 
     is_indigency_video = 'INDIGEN' in doc_type_upper
-    video_sample_positions = [0.2, 0.5, 0.8] if is_indigency_video else sample_positions
+    video_sample_positions = [0.15, 0.40, 0.70, 0.90] if is_indigency_video else sample_positions
     extracted_text_list = []
     if isinstance(video_bytes, (bytes, bytearray)) and len(video_bytes) > 500:
         try:
             frames = extract_frames_from_video_bytes(video_bytes, sample_positions=video_sample_positions, max_width=max_width)
             for frame in frames:
-                # Use Auto Layout OCR (psm=3) on video frames for clean text extraction
+                # Primary Auto Layout OCR (psm=3) on video frame
                 frame_text = _run_tesseract_on_image(frame, psm=3)
                 if frame_text and len(frame_text.strip()) > 3:
                     extracted_text_list.append(frame_text.strip())
+                else:
+                    # High contrast / sharpened fallback pass for camera recordings
+                    try:
+                        gray_f = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
+                        kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]], dtype=np.float32)
+                        sharp_f = cv2.filter2D(gray_f, -1, kernel)
+                        alt_text = _run_tesseract_on_image(sharp_f, psm=3)
+                        if alt_text and len(alt_text.strip()) > 3:
+                            extracted_text_list.append(alt_text.strip())
+                    except Exception:
+                        pass
         except Exception as video_err:
             print(f"[VIDEO OCR] Frame processing note: {video_err}", flush=True)
 
@@ -2886,7 +2896,7 @@ def verify_video_content(
     if not video_search_pool.strip():
         return False, "Video proof verification failed: Could not extract readable text from video stream frames.", "No readable text extracted from video frames."
 
-    # 2. Check for required document keywords strictly within extracted video frame OCR text
+    # Check for required document keywords strictly within extracted video frame OCR text
     found_keywords = [k for k in target_keywords if k.lower() in video_search_pool]
 
     if len(found_keywords) >= 1:
