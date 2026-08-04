@@ -3309,13 +3309,20 @@ const StudentInfo = () => {
 
           let combinedDetectedText = backendResult.detected_text || msg;
 
+          if (sDetails["VIDEO PROOF"] === false) {
+            isVerified = false;
+          }
+
           if (videoLivenessResult) {
             const videoOk = Boolean(videoLivenessResult.valid);
             if (sDetails["VIDEO PROOF"] === undefined || sDetails["VIDEO PROOF"] === null) {
               sDetails["VIDEO PROOF"] = videoOk;
             }
-            if (!videoOk && sDetails["VIDEO PROOF"] === false && !msg.includes('Video')) {
-              msg += `; Video Proof Alert: ${videoLivenessResult.reason || 'Invalid video proof'}`;
+            if (!videoOk || sDetails["VIDEO PROOF"] === false) {
+              isVerified = false;
+              if (!msg.includes('Video')) {
+                msg += `; Video Proof Alert: ${videoLivenessResult.reason || 'Invalid video proof frames'}`;
+              }
             }
             if (videoLivenessResult.detectedText && !combinedDetectedText.includes("--- 📹 EXTRACTED VIDEO PROOF OCR TEXT ---") && videoLivenessResult.detectedText !== "No readable document text detected in video frames.") {
               combinedDetectedText += `\n\n--- 📹 EXTRACTED VIDEO PROOF OCR TEXT ---\n${videoLivenessResult.detectedText}`;
