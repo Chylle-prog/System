@@ -957,12 +957,13 @@ function academic_year_matches_expected(text, expectedYear) {
 
   // 1. Normalize OCR text and year characters
   const recoverYears = (str) => {
-    return str.replace(/20\d[a-z¢]/g, (match) => {
+    return str.replace(/20\d[a-z0-9¢]/gi, (match) => {
       const lastChar = match[3];
+      if (/[0-9]/.test(lastChar)) return match;
       const map = {
-        '¢': '4', '4': '4', 'o': '0', 'i': '1', 'l': '1', 'z': '2', 's': '5', 'g': '6', 'b': '8', 'q': '9'
+        '¢': '4', 'o': '0', 'i': '1', 'l': '1', 'z': '2', 's': '5', 'g': '6', 'b': '8', 'q': '9'
       };
-      return '202' + (map[lastChar] || '4');
+      return '202' + (map[lastChar.toLowerCase()] || '4');
     });
   };
 
