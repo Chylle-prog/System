@@ -3343,6 +3343,7 @@ const StudentInfo = () => {
               "ACADEMIC YEAR": academicYear || null,
               "SEMESTER": semester || null,
               "COURSE": course || null,
+              "ID NUMBER": ((scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID') !== 'National ID' && idNumber) ? idNumber : null,
               "GPA": gpa || null,
             } : {}),
             ...(docType === 'SchoolID' ? {

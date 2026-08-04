@@ -2382,6 +2382,36 @@ def verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_
         if not course_ok:
             failures.append(f"Course mismatch (Expected: '{expected_course}', Found in Grades: '{found_course}')")
 
+    # Compute individual check booleans for score details card display
+    _school_ok = True
+    if expected_school_name and str(expected_school_name).strip():
+        sn = normalize_text(expected_school_name)
+        sn_words = [w for w in sn.split() if len(w) >= 4 and w not in {'university', 'college', 'school', 'institute', 'foundation', 'national', 'state', 'of', 'the', 'and'}]
+        raw_norm = normalize_text(raw_text)
+        _school_ok = any(w in raw_norm for w in sn_words) if sn_words else True
+
+    _gpa_ok = True
+    if expected_gpa and str(expected_gpa).strip():
+        _gpa_ok = not any('GPA mismatch' in f for f in failures)
+
+    _ay_ok = True
+    if expected_academic_year and str(expected_academic_year).strip():
+        found_ay = parsed_fields.get('sy_sem', '')
+        _ay_ok, _ = verify_academic_year_strict(expected_academic_year, found_ay, raw_text)
+
+    _id_ok = True
+    if not is_national_id and expected_id_no and str(expected_id_no).strip():
+        exp_id_clean = re.sub(r'[^a-zA-Z0-9]', '', str(expected_id_no)).lower()
+        found_id_clean = re.sub(r'[^a-zA-Z0-9]', '', parsed_fields.get('student_id', '')).lower()
+        doc_raw_clean = re.sub(r'[^a-zA-Z0-9]', '', str(raw_text)).lower()
+        _id_ok = (exp_id_clean in found_id_clean) or (exp_id_clean in doc_raw_clean)
+
+    raw_norm = normalize_text(raw_text)
+    _doc_type_ok = any(k in raw_norm for k in [
+        'grades', 'transcript', 'gpa', 'gwa', 'units', 'evaluation', 'record of grades',
+        'scholastic record', 'subject', 'final grades', 'passed', 'rating'
+    ])
+
     success = (len(failures) == 0)
     if success:
         msg = f"Grades Verified: Name ({first_name} {last_name}), ID ({expected_id_no or 'N/A'}), GPA ({parsed_fields.get('gpa', 'N/A')}) matched."
@@ -2391,6 +2421,18 @@ def verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_
     meta['name_ok'] = first_ok and last_ok
     meta['details'] = failures
     meta['detected_text'] = raw_text
+    meta['score_details'] = {
+        'FIRST NAME': first_ok,
+        'LAST NAME': last_ok,
+        'ID NUMBER': _id_ok if (not is_national_id and expected_id_no) else None,
+        'SCHOOL NAME': _school_ok if expected_school_name else None,
+        'ACADEMIC YEAR': _ay_ok if expected_academic_year else None,
+        'SEMESTER': sem_ok if expected_semester else None,
+        'COURSE': course_ok if expected_course else None,
+        'GPA': _gpa_ok if expected_gpa else None,
+        'DOCUMENT TYPE': _doc_type_ok,
+        'VIDEO PROOF': True
+    }
 
     return success, msg, meta
 
