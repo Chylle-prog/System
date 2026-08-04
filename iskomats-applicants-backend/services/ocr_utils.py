@@ -1966,12 +1966,17 @@ def detect_document_tampering(image_bytes, doc_type=None, **kwargs):
             c_start, c_end = int(cols * 0.05), int(cols * 0.95)
 
             # 2a. Solid Whiteout / Blackout Overlay (#FFFFFF / #000000)
+            # Threshold raised to 8 patches (128px) to avoid false positives on paper form margins / underline areas.
             overlay_patches = ((means >= 252) & (stds < 0.35)) | ((means <= 5) & (stds < 0.35))
             pure_count = int(np.sum(overlay_patches[r_start:r_end, c_start:c_end]))
-            if pure_count >= 4:
+            if pure_count >= 8:
                 return True, f"Digital edit / solid overlay block detected on document ({pure_count} artificial overlay patches found). Please upload an authentic, unedited document.", pure_count
 
             # 2b. Camera Photo / Shadowed Scan + Pure Digital White Edit Box Check
+            # Only triggers when background is darker than a pure white scan (photo taken of printed document).
+            # A genuine fill-in form will have long white lines that span the full usable document width;
+            # a digital whiteout overlay will be a localized island that does NOT span the full width.
+            # Thresholds raised to avoid false positives on pre-printed forms (e.g., indigency certificates).
             light_pixels = gray[gray >= 120]
             if len(light_pixels) > 0:
                 doc_bg_median = float(np.median(light_pixels))
@@ -1980,6 +1985,7 @@ def detect_document_tampering(image_bytes, doc_type=None, **kwargs):
                     white_patch_mask = (white_pixel_counts >= 20)
 
                     max_photo_white_run = 0
+                    usable_cols = c_end - c_start
                     for r in range(r_start, r_end):
                         run = 0
                         for c in range(c_start, c_end):
@@ -1990,7 +1996,11 @@ def detect_document_tampering(image_bytes, doc_type=None, **kwargs):
                                 run = 0
 
                     photo_white_patches = int(np.sum(white_patch_mask[r_start:r_end, c_start:c_end]))
-                    if max_photo_white_run >= 4 or photo_white_patches >= 6:
+                    # Skip if the white run spans nearly the full document width —
+                    # that is a normal fill-in line on a pre-printed form, not a whiteout overlay.
+                    run_spans_full_width = usable_cols > 0 and (max_photo_white_run / usable_cols) >= 0.75
+                    # Require BOTH a long run AND many patches (AND logic); raised thresholds to reduce false positives.
+                    if not run_spans_full_width and max_photo_white_run >= 8 and photo_white_patches >= 20:
                         return True, f"Digital edit / text patch overlay detected on document (contiguous white edit block of length {max_photo_white_run * 16}px found around text region). Please upload an authentic, unedited document.", max_photo_white_run
 
             # 2c. Off-White Smooth Text Overlay (for bright scans with flat background noise)
@@ -2005,7 +2015,8 @@ def detect_document_tampering(image_bytes, doc_type=None, **kwargs):
                     else:
                         run = 0
 
-            if max_h_run >= 7:
+            # Threshold raised from 7 → 14 patches (224px): paper form backgrounds naturally produce long smooth regions.
+            if max_h_run >= 14:
                 return True, f"Digital edit / text patch overlay detected on document (contiguous edited text block overlay of length {max_h_run * 16}px found around name/text region). Please upload an authentic, unedited document.", max_h_run
 
         # Layer 3: Error Level Analysis (ELA)
