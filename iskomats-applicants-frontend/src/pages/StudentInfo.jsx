@@ -2041,8 +2041,8 @@ const StudentInfo = () => {
     // Immediate local preview
     const localUrl = URL.createObjectURL(blob);
     setDocumentVideos(prev => ({ ...prev, [fieldName]: localUrl }));
-    // Store raw blob so video OCR can process actual bytes (not just URL)
-    setDocumentVideoBlobs(prev => ({ ...prev, [fieldName]: blob }));
+    // Store raw blob in ref (immediate, no stale-closure issue) so OCR always gets fresh bytes
+    documentVideoBlobsRef.current = { ...documentVideoBlobsRef.current, [fieldName]: blob };
 
     // Reset verification on video change
     if (fieldName === 'mayorIndigency_video') { setOcrVerified(null); setOcrStatus(''); }
@@ -2201,8 +2201,8 @@ const StudentInfo = () => {
     face_video: null
   });
 
-  // Store the raw Blob objects (not just blob URLs) so OCR can process actual bytes
-  const [documentVideoBlobs, setDocumentVideoBlobs] = useState({});
+  // Use a ref (not state) so the blob is always immediately readable in closures without stale-closure issues
+  const documentVideoBlobsRef = useRef({});
 
   const [uploadingFields, setUploadingFields] = useState({}); // { fieldName: Promise }
   const [uploadProgress, setUploadProgress] = useState({});
@@ -3251,19 +3251,22 @@ const StudentInfo = () => {
         }
 
         let videoVal = null;
-        // Prefer the raw Blob object (stored in documentVideoBlobs) so OCR gets actual bytes.
+        // Prefer the raw Blob from the ref (always fresh, no stale-closure issue).
         // Fall back to URL strings only when no blob is available (e.g. previously uploaded docs).
+        const _blobs = documentVideoBlobsRef.current;
         if (docType === 'Indigency') {
-          videoVal = (documentVideoBlobs && documentVideoBlobs.mayorIndigency_video) || (documentFiles && documentFiles.mayorIndigency_video) || (documentVideos && documentVideos.mayorIndigency_video) || formData.mayorIndigency_video || formData.indigencyVideo || formData.indigency_vid_url;
+          videoVal = (_blobs && _blobs.mayorIndigency_video) || (documentFiles && documentFiles.mayorIndigency_video) || (documentVideos && documentVideos.mayorIndigency_video) || formData.mayorIndigency_video || formData.indigencyVideo || formData.indigency_vid_url;
         } else if (docType === 'Enrollment') {
-          videoVal = (documentVideoBlobs && documentVideoBlobs.mayorCOE_video) || (documentFiles && documentFiles.mayorCOE_video) || (documentVideos && documentVideos.mayorCOE_video) || formData.mayorCOE_video || formData.enrollmentVideo || formData.enrollment_certificate_vid_url;
+          videoVal = (_blobs && _blobs.mayorCOE_video) || (documentFiles && documentFiles.mayorCOE_video) || (documentVideos && documentVideos.mayorCOE_video) || formData.mayorCOE_video || formData.enrollmentVideo || formData.enrollment_certificate_vid_url;
         } else if (docType === 'Grades') {
-          videoVal = (documentVideoBlobs && documentVideoBlobs.mayorGrades_video) || (documentFiles && documentFiles.mayorGrades_video) || (documentVideos && documentVideos.mayorGrades_video) || formData.mayorGrades_video || formData.gradesVideo || formData.grades_vid_url;
+          videoVal = (_blobs && _blobs.mayorGrades_video) || (documentFiles && documentFiles.mayorGrades_video) || (documentVideos && documentVideos.mayorGrades_video) || formData.mayorGrades_video || formData.gradesVideo || formData.grades_vid_url;
         } else if (docType === 'SchoolID') {
-          videoVal = (documentVideoBlobs && documentVideoBlobs.schoolIdFront_video) || (documentFiles && documentFiles.schoolIdFront_video) || (documentVideos && documentVideos.schoolIdFront_video) || formData.schoolIdFront_video || formData.schoolid_front_vid_url;
+          videoVal = (_blobs && _blobs.schoolIdFront_video) || (documentFiles && documentFiles.schoolIdFront_video) || (documentVideos && documentVideos.schoolIdFront_video) || formData.schoolIdFront_video || formData.schoolid_front_vid_url;
         }
 
         const vFieldName = docType === 'Indigency' ? 'mayorIndigency_video' : (docType === 'Enrollment' ? 'mayorCOE_video' : (docType === 'Grades' ? 'mayorGrades_video' : 'schoolIdFront_video'));
+
+        console.log(`[Video OCR] videoVal for ${docType}: type=${videoVal ? (videoVal instanceof Blob || videoVal instanceof File ? `Blob/File(${videoVal.size}b)` : typeof videoVal + '=' + String(videoVal).substring(0, 60)) : 'null'}`);
 
         if (videoVal) {
           if (videoVal instanceof Blob || videoVal instanceof File) {
